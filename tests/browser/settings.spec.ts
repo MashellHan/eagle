@@ -206,3 +206,110 @@ test("history expands a persisted Chinese hourly report and keeps it mounted dur
     card.getByRole("heading", { name: "判断依据与数据覆盖" }),
   ).toBeVisible();
 });
+
+test.describe("hourly history filter", () => {
+  test.use({ timezoneId: "Asia/Shanghai" });
+
+  for (const theme of ["dark", "light"] as const) {
+    test(`${theme} calendar and hour menu follow the theme and filter the correct UTC bucket`, async ({
+      page,
+    }) => {
+      await page.clock.setFixedTime(new Date("2026-09-20T04:00:00Z"));
+      await page.addInitScript(
+        (mode) => localStorage.setItem("theme", mode),
+        theme,
+      );
+      await page.route("**/api/**", (route) =>
+        route.fulfill({
+          json: { now: new Date().toISOString(), machines: [], entries: [] },
+        }),
+      );
+      let query = new URLSearchParams();
+      await page.route("**/api/v1/hourly-reports?**", (route) => {
+        query = new URL(route.request().url()).searchParams;
+        return route.fulfill({ json: { entries: [], nextCursor: null } });
+      });
+      await page.goto("/history?machine=mac-one");
+      const date = page.getByRole("button", { name: /^报告日期/ });
+      const hour = page.getByRole("combobox", { name: "报告小时" });
+      const clear = page.getByRole("button", { name: "清除时间筛选" });
+      await expect(hour).toBeDisabled();
+      await expect(clear).toBeDisabled();
+      await date.click();
+      const calendar = page.getByRole("dialog", { name: "选择报告日期" });
+      await expect(calendar).toBeVisible();
+      const calendarColor = await calendar.evaluate(
+        (node) => getComputedStyle(node).backgroundColor,
+      );
+      const channels = calendarColor.match(/\d+/g)?.map(Number) ?? [];
+      expect(channels).toHaveLength(3);
+      for (const channel of channels) {
+        if (theme === "dark") expect(channel).toBeLessThan(100);
+        else expect(channel).toBeGreaterThan(200);
+      }
+      const bounds = await calendar.boundingBox();
+      if (!bounds) throw new Error("Calendar is not visible");
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(
+        await page.evaluate(() => innerWidth),
+      );
+      // Keyboard navigation must retain Basalt's accessible calendar behavior.
+      await expect(
+        calendar.getByRole("button", { name: "2026-09-20", exact: true }),
+      ).toBeFocused();
+      await page.keyboard.press("ArrowLeft");
+      await expect(
+        calendar.getByRole("button", { name: "2026-09-19", exact: true }),
+      ).toBeFocused();
+      await page.keyboard.press("ArrowRight");
+      await page.keyboard.press("Enter");
+      await expect(calendar).toBeHidden();
+      await expect(date).toContainText("2026");
+      await expect
+        .poll(() => query.get("hour"))
+        .toBe("2026-09-19T16:00:00.000Z");
+      await hour.click();
+      const menu = page.getByRole("listbox");
+      await expect(menu).toHaveCSS("background-color", calendarColor);
+      await page.getByRole("option", { name: "06:00", exact: true }).click();
+      await expect
+        .poll(() => query.get("hour"))
+        .toBe("2026-09-19T22:00:00.000Z");
+      expect(query.get("machine")).toBe("mac-one");
+      await expect(hour).toContainText("06:00");
+      for (const icon of [
+        page.locator(".lucide-calendar-days"),
+        hour.locator("svg"),
+      ]) {
+        await expect(icon).toBeVisible();
+        const size = await icon.boundingBox();
+        expect(size?.width).toBeGreaterThanOrEqual(16);
+        expect(size?.height).toBeGreaterThanOrEqual(16);
+        if (theme === "dark")
+          await expect(icon).not.toHaveCSS("color", "rgb(0, 0, 0)");
+      }
+      await hour.click();
+      const menuBounds = await menu.boundingBox();
+      if (!menuBounds) throw new Error("Hour menu is not visible");
+      expect(menuBounds.y).toBeGreaterThanOrEqual(0);
+      expect(menuBounds.y + menuBounds.height).toBeLessThanOrEqual(
+        await page.evaluate(() => innerHeight),
+      );
+      await page.getByRole("option", { name: "23:00", exact: true }).click();
+      await expect
+        .poll(() => query.get("hour"))
+        .toBe("2026-09-20T15:00:00.000Z");
+      await clear.click();
+      await expect.poll(() => query.has("hour")).toBe(false);
+      expect(query.get("machine")).toBe("mac-one");
+      await expect(date).toContainText("选择日期");
+      await expect(hour).toBeDisabled();
+      await expect(clear).toBeDisabled();
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+    });
+  }
+});

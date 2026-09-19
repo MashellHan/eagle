@@ -1,7 +1,21 @@
-import { Badge, Button, Input, Label, LayerCard } from "@nocoo/basalt";
+import { Badge, Button, Label, LayerCard } from "@nocoo/basalt";
+import { DatePicker } from "@nocoo/basalt/components/date-picker";
 import { SectionRule } from "@nocoo/basalt/components/section-rule";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@nocoo/basalt/components/select";
 import { SkeletonLine } from "@nocoo/basalt/components/skeleton-line";
-import { ChevronDown, Clock3, RefreshCw, Sparkles } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  Clock3,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type HourlyReport,
@@ -99,7 +113,9 @@ export function HourlyHistory({ machine }: { machine: string }) {
     { seq: number; report: HourlyReport }[]
   >([]);
   const [cursor, setCursor] = useState<string | null>(null);
-  const [hour, setHour] = useState("");
+  const [date, setDate] = useState("");
+  const [localHour, setLocalHour] = useState("00");
+  const hour = date ? `${date}T${localHour}:00` : "";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const active = useRef<AbortController | null>(null);
@@ -149,14 +165,63 @@ export function HourlyHistory({ machine }: { machine: string }) {
       <div className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="report-hour">筛选小时（本地时间）</Label>
-            <Input
-              id="report-hour"
-              type="datetime-local"
-              step="3600"
-              value={hour}
-              onChange={(e) => setHour(e.target.value)}
-            />
+            <Label htmlFor="report-date">筛选小时（本地时间）</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-44">
+                <DatePicker
+                  id="report-date"
+                  aria-label="报告日期"
+                  value={date}
+                  onChange={setDate}
+                  locale="zh-CN"
+                  labels={{
+                    calendar: "选择报告日期",
+                    placeholder: "选择日期",
+                    previousMonth: "上个月",
+                    nextMonth: "下个月",
+                    keyboardInstructions:
+                      "方向键移动日期，PageUp / PageDown 切换月份，Enter 选择日期。",
+                  }}
+                  className="h-9 w-full pl-9 pr-3"
+                />
+                <CalendarDays
+                  size={16}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-basalt-muted-foreground"
+                />
+              </div>
+              <Select
+                value={localHour}
+                onValueChange={setLocalHour}
+                disabled={!date}
+              >
+                <SelectTrigger aria-label="报告小时" className="w-24">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-[min(16rem,var(--radix-select-content-available-height))]">
+                  {Array.from({ length: 24 }, (_, h) => {
+                    const value = String(h).padStart(2, "0");
+                    return (
+                      <SelectItem key={value} value={value}>
+                        {value}:00
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="清除时间筛选"
+                disabled={!date}
+                onClick={() => {
+                  setDate("");
+                  setLocalHour("00");
+                }}
+              >
+                清除
+              </Button>
+            </div>
           </div>
           <Button
             aria-label="刷新小时报告"
