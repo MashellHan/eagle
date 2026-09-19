@@ -182,3 +182,12 @@ serving and the first catalogue-derived production Cron observation.
 - 网站 v0.2.1 的布局提交 CI 已通过；曾因同一工作区正在进行 README 整理而被部署脚本拒绝，没有产生不明确的线上 revision。该文档整理现已单独提交。新的 Agent 0.4.1 包已准备并等待 npm OTP；本轮修正提交通过 CI 后部署网站。
 - 19:14:09 生产语义复验逐一展开 18/18 live Pane 与 UTC 小时 latest/all，来源、内容 hash、sequence、桌面/手机、DOM 连续性全部通过。当前代码提交 `b51becd` CI 全绿（run 35439452296），Manager sequence 已持续到 66。
 - npm 0.4.1 发布等待用户提供新 OTP。为独立完成网站部署，Connect 与公开安装步骤暂时固定已发布的 0.4.0，并显式配置其已支持的 manager.command；因此新提示词不依赖未发布版本。0.4.1 tarball 和源码已单独留存待发布。
+
+## 2026-09-19 19:21 +08 — 网站 v0.2.1 发布验收
+
+- `c19801bd65b3d0648a3f01e9ccfd6acbee365386` 已部署到 https://eagle.hexly.ai，Cloudflare Version ID `76756438-c2cb-4865-8c7d-9c9ac2a62ab9`。`/api/live` 返回 v0.2.1 和对应 revision；该提交 CI 全绿（run 35439643975）。Git tag / GitHub Release `v0.2.1` 已发布。
+- 19:19:47 生产 verify-live 完成真实 10 Spaces / 18 Panes 的采集、Bearer、DO、资源和关注端口、幂等、Access 匿名跳转/会话、全部 Space、旧历史及桌面/手机验证；自动刷新保留原 DOM，整机快照仍不新增 D1 历史。daemon 已恢复并持续上报。
+- 19:20:44 在新网站逐一展开 18/18 live Pane 语义总结与 UTC 小时时间线，latest/all、来源、内容 hash、sequence、 freshness 和刷新连续性全部通过。生产 Manager 沿用原 profile/writer ID，sequence 连续推进，仍出现 interpreted=0 的稳定心跳轮次。
+- 线上静态资源烟测确认资源卡位于运行脉搏上方、版本 pill 正确、重命名按钮不挤压。对凭证创建响应作浏览器内桩替换以检查复制 UI，没有创建生产机器或修改生产凭证：按钮内“已复制提示词”、宽度不变、手机无横向溢出、浏览器存储无凭证均通过。实际部署的提示词为 Agent 中立、推荐 Hermes、显式 manager.command，下载固定已发布的 0.4.0。
+- npm 0.4.0 已发布并验证官方/腾讯安装；0.4.1 默认行为修复已完成 59 项单元/集成和 34 项浏览器门禁，发布 tarball 源码为 `b51becd`、SHA-1 为 `df0ecee674dc8a80844b70fb94f58800aae65ef9`，仍等待新的 npm OTP，尚未声称发布。
+- 已设置发布后 5 分钟 CI 复查；本轮网站部署完成，npm 验证码待补。
