@@ -27,6 +27,6 @@ The Worker owns `eagle.hexly.ai` as a custom domain. `https://eagle-ingest.hexly
 
 Apply migration `0003_hourly_reports.sql` before deploying v0.2.2. Deployment installs Cron `5 * * * *`. Set `AI_ENCRYPTION_KEY` once using a cryptographically random value of at least 32 characters (`npx wrangler secret put AI_ENCRYPTION_KEY`, interactive input or secure file stdin). Do not overwrite an existing wrapping key. Local development uses the same binding in gitignored `.dev.vars`.
 
-Users save provider/model and API keys in `/settings`. The directory DO stores authenticated ciphertext in the separate `ai-credential` record; API responses never return the key. Blank input keeps the existing credential, explicit clearing removes it, and changing provider/endpoint requires a new key. Without a complete AI configuration the schedule is a no-op.
+Users save provider/model and API keys in `/settings`. The directory DO stores authenticated ciphertext in the separate `ai-credential` record; API responses never return the key. Blank input keeps the existing credential, explicit clearing removes it, and changing provider/endpoint/protocol/authentication requires a new key. Without a complete AI configuration the schedule is a no-op.
 
 Run `scripts/verify-hourly.ts` with the same origin/Access settings as `verify-live.ts` to verify settings, no secret exposure, unconfigured skip, D1 query, report UI and mobile layout. The detailed generation/storage contract is in [HOURLY-REPORTS.md](HOURLY-REPORTS.md).

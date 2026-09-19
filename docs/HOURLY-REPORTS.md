@@ -6,9 +6,9 @@ Eagle v0.2.2 在每台机器的确定性采集与 Manager 语义流之上生成�
 
 侧栏「设置」复用 `@nocoo/next-ai@0.4.0` 的提供商注册表、配置解析和 PromptTemplateRegistry，控件全部使用 Basalt。默认开启自动生成，间隔 1 小时，可选 2/3/6/12/24 小时；每个 UTC 小时始终单独成稿。
 
-设置页可输入、替换和清除 API Key；留空保留已保存密钥，保存后清空输入框，只返回 `hasApiKey`，不回显原文或后缀。测试连接可以使用未保存的草稿密钥，不会自动保存。切换提供商或 API 地址后需重新输入密钥；草稿测试也不能把已保存密钥发到另一地址。
+设置页可输入、替换和清除 API Key；留空保留已保存密钥，保存后清空输入框，只返回 `hasApiKey`，不回显原文或后缀。测试连接可以使用未保存的草稿密钥，不会自动保存。切换提供商、API 地址、接口协议或认证方式后需重新输入密钥；草稿测试也不能把已保存密钥发到另一地址。
 
-密钥以 AES-256-GCM 加密，随机 12 字节 IV，并以版本、应用名、提供商/地址作认证附加数据。目录 DO 的独立 KV `ai-credential` 保存 `{version:1,endpoint,data}`；明文不进入非密设置、机器状态、D1、日志或浏览器持久存储。加密主密钥是 Worker secret `AI_ENCRYPTION_KEY`（至少 32 字符）；本地使用 gitignored `.dev.vars` 同名配置。主密钥丢失或改变会令既存凭据无法解密，不能在部署时自动覆盖。设置页同时编辑模型、公开 HTTPS 地址、协议和认证方式。未配置完整 AI 或关闭自动报告时跳过，不调用模型。
+密钥以 AES-256-GCM 加密，随机 12 字节 IV，并以版本、应用名、提供商/地址/协议/认证方式作认证附加数据。目录 DO 的独立 KV `ai-credential` 保存 `{version:1,endpoint,data}`；明文不进入非密设置、机器状态、D1、日志或浏览器持久存储。加密主密钥是 Worker secret `AI_ENCRYPTION_KEY`（至少 32 字符）；本地使用 gitignored `.dev.vars` 同名配置。主密钥丢失或改变会令既存凭据无法解密，不能在部署时自动覆盖。设置页同时编辑模型、公开 HTTPS 地址、协议和认证方式。未配置完整 AI 或关闭自动报告时跳过，不调用模型。
 
 OpenAI 兼容接口使用 Chat Completions；Anthropic 使用 Messages。next-ai 0.4.0 的工厂未暴露 transport 且 Bearer 会同时发送 x-api-key，Eagle 复用其解析器，使用相同底层 AI SDK 配置单一认证头并拒绝重定向，避免密钥跟随跳转。上游错误正文不会进入日志、API 或报告。
 
@@ -34,7 +34,7 @@ OpenAI 兼容接口使用 Chat Completions；Anthropic 使用 Messages。next-ai
 
 - `GET /api/v1/settings`：非密设置、`hasApiKey`、`configured`、模板版本与章节。
 - `POST /api/v1/settings`：局部更新设置；可选 `apiKey` 非空字符串用于替换，省略或空字符串保留，`null` 清除。设置与加密凭据原子保存；未知字段拒绝。
-- `POST /api/v1/settings/test`：草稿配置和可选草稿 `apiKey` 测试连接，否则只复用同提供商/地址的已保存密钥。不保存草稿，不返回模型原文或密钥。
+- `POST /api/v1/settings/test`：草稿配置和可选草稿 `apiKey` 测试连接，否则只复用同提供商/地址/协议/认证方式的已保存密钥。不保存草稿，不返回模型原文或密钥。
 - `POST /api/v1/hourly-reports/run`：可选 `{machine, hour}`；hour 必须是 48 小时内已关闭的标准 UTC 小时。无指定小时则补处理待生成小时，返回逐机器结果或明确的跳过原因。
 - `GET /api/v1/hourly-reports?machine=...&hour=...&limit=12&before=...`：机器/小时可选，返回 `{entries:[{seq,report}],nextCursor}`；游标是不透明值，原样传回。
 

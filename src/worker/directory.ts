@@ -30,7 +30,8 @@ export class MachineDirectory extends DurableObject<Env> {
         : undefined;
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.kv.put("hourly-settings", value);
-      if (credential !== undefined)
+      if (credential === null) this.ctx.storage.kv.delete("ai-credential");
+      else if (credential !== undefined)
         this.ctx.storage.kv.put("ai-credential", credential);
     });
     return value;

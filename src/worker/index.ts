@@ -308,7 +308,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       await noSecrets(JSON.stringify(input.settings), env);
       if (
         input.apiKey &&
-        (containsCredential(input.apiKey, env) ||
+        (containsCredential(input.apiKey, { ...env, AI_API_KEY: undefined }) ||
           JSON.stringify(input.settings).includes(input.apiKey))
       )
         throw new HttpError(

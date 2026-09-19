@@ -69,6 +69,19 @@ test("AI key can be saved, retained, tested and cleared without returning or per
   await page.getByRole("button", { name: "测试连接", exact: true }).click();
   await expect(page.getByText("AI 连接成功。", { exact: true })).toBeVisible();
   expect(tests).toBe(2);
+  await page.getByRole("combobox", { name: "接口协议" }).click();
+  await page
+    .getByRole("option", { name: "Anthropic Messages", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "测试连接", exact: true }),
+  ).toBeDisabled();
+  await expect(input).toHaveAttribute("placeholder", "输入服务商密钥");
+  await input.fill(key);
+  await page.getByRole("button", { name: "保存设置", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "已保存", exact: true }),
+  ).toBeVisible();
   expect(
     await page.evaluate(() =>
       JSON.stringify({ local: localStorage, session: sessionStorage }),

@@ -80,7 +80,9 @@ export function Settings({ onAuthError }: { onAuthError: () => void }) {
   const change = (value: Partial<HourlySettings>) => {
     const changedEndpoint =
       (value.provider !== undefined && value.provider !== settings?.provider) ||
-      (value.baseURL !== undefined && value.baseURL !== settings?.baseURL);
+      (value.baseURL !== undefined && value.baseURL !== settings?.baseURL) ||
+      (value.sdkType !== undefined && value.sdkType !== settings?.sdkType) ||
+      (value.authType !== undefined && value.authType !== settings?.authType);
     if (changedEndpoint) {
       setApiKey("");
       setClearKey(false);
@@ -329,8 +331,7 @@ export function Settings({ onAuthError }: { onAuthError: () => void }) {
                       : "未配置"}
               </p>
               <p>
-                密钥加密保存，保存后不回显。留空保留当前密钥，切换服务商或 API
-                地址需重新填写。
+                密钥加密保存，保存后不回显。留空保留当前密钥，切换服务商、地址或认证协议需重新填写。
               </p>
             </div>
             <Button

@@ -387,6 +387,17 @@ test("AI keys save encrypted from the UI, survive eviction, stay private, and bi
     authType: "bearer",
   };
   const key = "isolated-ai-test-secret";
+  assert("workers" in options);
+  await mf.setOptions({
+    ...options,
+    workers: options.workers.map((worker) => ({
+      ...worker,
+      config: {
+        ...worker.config,
+        env: { ...worker.config.env, AI_API_KEY: { type: "text", value: key } },
+      },
+    })),
+  });
   const saved = await request(
     "/api/v1/settings",
     { ...configuration, apiKey: key },
@@ -398,6 +409,7 @@ test("AI keys save encrypted from the UI, survive eviction, stay private, and bi
   assert(!Object.hasOwn(JSON.parse(value), "apiKey"));
   assert.equal(JSON.parse(value).hasApiKey, true);
   assert.equal(JSON.parse(value).configured, true);
+  await mf.setOptions(options);
   const raw = readdirSync(testStorage, { recursive: true })
     .map(String)
     .filter((file) => file.endsWith(".sqlite"))
@@ -429,6 +441,10 @@ test("AI keys save encrypted from the UI, survive eviction, stay private, and bi
           Buffer.from(row.key).toString() === "ai-credential"),
     ),
     "Encrypted credential is separate from public settings",
+  );
+  assert.equal(
+    (await request("/api/v1/settings", undefined, viewer)).status,
+    200,
   );
   await mf.unsafeEvictDurableObject("eagle", "MachineDirectory", {
     name: "fleet",
@@ -479,6 +495,17 @@ test("AI keys save encrypted from the UI, survive eviction, stay private, and bi
     ).hasApiKey,
     false,
     "Testing never saves a draft key",
+  );
+  await request("/api/v1/settings", { ...configuration, apiKey: key }, viewer);
+  const protocolChanged = await request(
+    "/api/v1/settings",
+    { sdkType: "anthropic" },
+    viewer,
+  );
+  assert.equal(
+    ((await protocolChanged.json()) as { hasApiKey: boolean }).hasApiKey,
+    false,
+    "Changing protocol must not reuse an existing credential",
   );
   await request("/api/v1/settings", { ...configuration, apiKey: key }, viewer);
   const cleared = await request("/api/v1/settings", { apiKey: null }, viewer);

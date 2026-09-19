@@ -5,7 +5,7 @@ const encoder = new TextEncoder();
 export function aiEndpoint(settings: HourlySettings): string {
   if (!settings.provider) return "";
   const config = resolveAiConfig({ ...settings, apiKey: "validation-only" });
-  return `${config.provider}:${config.baseURL.replace(/\/$/, "")}`;
+  return `${config.provider}:${config.baseURL.replace(/\/$/, "")}:${config.sdkType}:${config.authType}`;
 }
 async function encryptionKey(secret: string | undefined) {
   if (!secret || secret.length < 32)
