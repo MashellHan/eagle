@@ -143,6 +143,7 @@ test("adopted eagle mark and family links work in both sidebar states", async ({
   await page.getByRole("button", { name: "展开导航" }).click();
   const mark = page.locator("img[data-eagle-mark]").last();
   await expect(mark).toBeVisible();
+  await mark.evaluate((node) => (node as HTMLImageElement).decode());
   expect(
     await mark.evaluate(
       (node) =>
