@@ -3,7 +3,17 @@ name: eagle-report
 description: Collect and report all local Herdr Spaces to Eagle, or add structured task evidence as a local management agent such as Cherry. Use for Eagle machine status reporting and evidence summaries; not for controlling other agents or inferring completion from pane badges.
 ---
 
-Install `@nocoo/eagle-agent` from npm once published, or use the Eagle checkout's `agent/cli.ts`. Node 24+ and an installed Herdr server are required. Read the package README and https://github.com/nocoo/eagle/blob/main/docs/AGENT.md for secure configuration and evidence format. The Connect page provides a machine-scoped setup prompt and token; the current package is still a local preview.
+Install `@nocoo/eagle-agent@0.3.0` with Node 24+ and a running Herdr installation:
+
+```sh
+npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://registry.npmjs.org
+# If npm is unreachable, prefer the Tencent Cloud mirror:
+npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://mirrors.cloud.tencent.com/npm/
+eagle-agent --version # expected: 0.3.0
+eagle-agent --help
+```
+
+Choose one install command. Mirrors may lag a new release (`404` / `ETARGET`); retry later or use the official registry once reachable. Do not change global registry settings, disable TLS verification, or send Eagle credentials to npm. Alternatively use the Eagle checkout's `agent/cli.ts`. Read the package README and https://github.com/nocoo/eagle/blob/main/docs/AGENT.md for secure configuration and evidence format. The Connect page provides a machine-scoped setup prompt and token.
 
 - `eagle-agent once` (or `node agent/cli.ts once`) collects all running local sessions and uploads a complete inventory. `watch` repeats; `collect <private-file>` and `upload <private-file>` separate collection and delivery.
 - Credentials come only from a mode-0600 configuration selected by `EAGLE_CONFIG` (default `~/.config/eagle/agent.json`). Never print or copy tokens into evidence. The reporting token authorizes only its machine. Upload to https://eagle-ingest.hexly.ai; the website uses Cloudflare Access and has no Eagle viewing token.

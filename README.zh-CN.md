@@ -32,7 +32,16 @@ npm run dev
 
 全局总览只展示全部机器的可视化汇总；点击机器后进入资源、端口和 Space 详情。**Connect** 页面支持添加机器、重命名、轮换和停用凭证，并生成可贴给管理 Agent 的接入提示词。Token 只在生成时可复制，不入库；签名密钥留在安全配置中。
 
-Agent 已整理为独立 npm 包 `@nocoo/eagle-agent@0.3.0`，并完成本地 tarball 安装验证。本轮网站和 npm 包都未发布。可在仓库根目录运行 `npm pack ./agent --pack-destination .local` 生成本地安装包。
+Agent 使用独立 npm 包 `@nocoo/eagle-agent@0.3.0`，需要 Node 24+ 与 Herdr：
+
+```sh
+npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://registry.npmjs.org
+# npm 连不上时，首选腾讯云镜像：
+npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://mirrors.cloud.tencent.com/npm/
+eagle-agent --version # 应输出 0.3.0
+```
+
+两条安装命令选其一，不修改全局 npm 源。镜像同步新版本可能延迟，遇到 `404` / `ETARGET` 可稍后重试或在网络恢复后使用官方源。详细步骤见 [安装说明](agent/README.md)。**网站的 Connect 与可视化改动仍保持本地预览，尚未部署。** 开发者可在仓库根目录运行 `npm pack ./agent --pack-destination .local` 生成本地安装包。
 
 ## 如何理解工作态势
 

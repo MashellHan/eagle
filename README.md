@@ -41,7 +41,16 @@ NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" node scripts/verify-live.ts
 
 ## Machine agents
 
-`@nocoo/eagle-agent@0.3.0` is prepared as an independent npm package and verified from a local tarball. **This revision is local-only; the website change and npm package have not been published.** Build a preview with `npm pack ./agent --pack-destination .local`. Package builds run from the complete repository after `npm ci`; installed agents need only Node and their npm dependencies.
+Install the independent Agent package from npm (Node 24+ and Herdr required):
+
+```sh
+npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://registry.npmjs.org
+# If npm is unreachable, prefer the Tencent Cloud mirror:
+npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://mirrors.cloud.tencent.com/npm/
+eagle-agent --version # expected: 0.3.0
+```
+
+Choose one install command. New releases may take time to reach mirrors; on `404` / `ETARGET`, retry later or use the official registry when reachable. [Full installation and configuration](agent/README.md). **The website's Connect and visualization changes remain local; they have not been deployed.** Package builds run from the complete repository after `npm ci`; `npm pack ./agent --pack-destination .local` creates a preview tarball.
 
 Copy [the reporting Skill](skills/eagle-report/SKILL.md) to Cherry or any other local management agent. See [the agent contract](docs/AGENT.md) for credentials, periodic execution, structured evidence, retries and deployment receipts. The checked-in [v1 JSON Schema](public/report-v1.schema.json) is generated from the TypeScript validator; cross-object uniqueness checks additionally run on the server.
 
