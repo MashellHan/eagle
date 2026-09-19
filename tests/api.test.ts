@@ -2,15 +2,39 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { after, before, test } from "node:test";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
+import { viewerAuthorized } from "../src/worker/auth.ts";
 import { report } from "./fixtures.ts";
 
 let mf: Miniflare;
 const token = "test-agent-token-with-at-least-32-characters";
-const viewer = "test-viewer-token-with-at-least-32-characters";
+let viewer: string;
+let signingKey: CryptoKey;
+const issuer = "https://nocoo.cloudflareaccess.com";
+const audience =
+  "d1ffdb7fe2787e2a9e8f957a68ed5feec2b944c44c6fdbfd54341887eab6f873";
+async function accessToken(aud = audience, iss = issuer, expires = "1h") {
+  return new SignJWT({ email: "viewer@example.test" })
+    .setProtectedHeader({ alg: "RS256", kid: "test-key" })
+    .setIssuer(iss)
+    .setAudience(aud)
+    .setSubject("test-user")
+    .setIssuedAt()
+    .setExpirationTime(expires)
+    .sign(signingKey);
+}
 const currentReport = (id: string, offset = 0) =>
   report(id, new Date(Date.now() + offset).toISOString());
 before(async () => {
+  const keys = await generateKeyPair("RS256", { extractable: true });
+  signingKey = keys.privateKey;
+  const jwk = {
+    ...(await exportJWK(keys.publicKey)),
+    kid: "test-key",
+    alg: "RS256",
+  };
+  viewer = await accessToken();
   mkdirSync(".local/test-assets", { recursive: true });
   writeFileSync(
     ".local/test-assets/index.html",
@@ -38,12 +62,18 @@ before(async () => {
           compatibilityDate: "2026-09-19",
           compatibilityFlags: ["nodejs_compat"],
           d1Databases: ["DB"],
+          outboundService: async (request) => {
+            assert.equal(request.url, `${issuer}/cdn-cgi/access/certs`);
+            return Response.json({ keys: [jwk] });
+          },
           bindings: {
             AGENT_TOKENS: JSON.stringify({
               "mac-one": token,
               "mac-two": "different-test-token-with-at-least-32-characters",
             }),
-            VIEWER_TOKEN: viewer,
+            ACCESS_TEAM_URL: issuer,
+            ACCESS_AUD: audience,
+            LOCAL_DEV: "false",
             BUILD_REVISION: "test-build-sha",
           },
         },
@@ -62,7 +92,9 @@ function request(path: string, body?: unknown, bearer = token) {
   return mf.dispatchFetch(`https://eagle.test${path}`, {
     method: body === undefined ? "GET" : "POST",
     headers: {
-      Authorization: `Bearer ${bearer}`,
+      ...(bearer === viewer
+        ? { "Cf-Access-Jwt-Assertion": viewer }
+        : { Authorization: `Bearer ${bearer}` }),
       "Content-Type": "application/json",
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -172,34 +204,81 @@ test("heartbeats keep known machines alive without rewriting inventory and histo
     400,
   );
 });
-test("browser session has secure HttpOnly cookie, no token, origin checks and logout", async () => {
-  const response = await request("/api/session", {}, viewer);
-  assert.equal(response.status, 200);
-  const cookie = response.headers.get("set-cookie") ?? "";
-  assert.match(cookie, /HttpOnly/);
-  assert.match(cookie, /Secure/);
-  assert.match(cookie, /SameSite=Strict/);
-  assert(!cookie.includes(viewer));
-  const sessionCookie = cookie.split(";")[0];
-  const overview = await mf.dispatchFetch(
-    "https://eagle.test/api/v1/overview",
-    { headers: { Cookie: sessionCookie } },
+test("Access validates signature, issuer, audience and expiry and rejects legacy credentials", async () => {
+  const access = (jwt: string, headers: Record<string, string> = {}) =>
+    mf.dispatchFetch("https://eagle.test/api/v1/overview", {
+      headers: { "Cf-Access-Jwt-Assertion": jwt, ...headers },
+    });
+  assert.equal((await access(viewer)).status, 200);
+  for (const jwt of [
+    await accessToken("wrong"),
+    await accessToken(audience, "https://attacker.test"),
+    await accessToken(audience, issuer, "-1h"),
+    `${viewer.slice(0, -8)}tampered`,
+    "unsigned",
+  ]) {
+    assert.equal((await access(jwt)).status, 401);
+  }
+  assert.equal(
+    (
+      await mf.dispatchFetch("https://eagle.test/api/v1/overview", {
+        headers: {
+          Authorization: `Bearer ${viewer}`,
+          Cookie: "eagle_session=old-session",
+          "Cf-Access-Authenticated-User-Email": "viewer@example.test",
+        },
+      })
+    ).status,
+    401,
   );
-  assert.equal(overview.status, 200);
-  assert.equal(overview.headers.get("cache-control"), "no-store");
-  const crossOrigin = await mf.dispatchFetch("https://eagle.test/api/session", {
-    method: "POST",
-    headers: {
-      Origin: "https://attacker.test",
-      Authorization: `Bearer ${viewer}`,
+  assert.equal((await request("/api/session", undefined, viewer)).status, 404);
+  const crossOrigin = await mf.dispatchFetch(
+    "https://eagle.test/api/v1/reports",
+    {
+      method: "POST",
+      headers: {
+        Origin: "https://attacker.test",
+        Authorization: `Bearer ${token}`,
+      },
     },
-  });
+  );
   assert.equal(crossOrigin.status, 403);
-  const logout = await mf.dispatchFetch("https://eagle.test/api/session", {
-    method: "DELETE",
-    headers: { Cookie: sessionCookie },
-  });
-  assert.match(logout.headers.get("set-cookie") ?? "", /Max-Age=0/);
+});
+
+test("local viewing needs no token but a local hostname never bypasses production authentication", async () => {
+  const env = {
+    ACCESS_TEAM_URL: issuer,
+    ACCESS_AUD: audience,
+    LOCAL_DEV: "true",
+  } as Env;
+  assert.equal(
+    await viewerAuthorized(
+      new Request("https://eagle.dev.hexly.ai/api/v1/overview"),
+      env,
+    ),
+    true,
+  );
+  assert.equal(
+    await viewerAuthorized(
+      new Request("http://127.0.0.1:36001/api/v1/overview"),
+      env,
+    ),
+    true,
+  );
+  assert.equal(
+    await viewerAuthorized(
+      new Request("https://eagle.hexly.ai/api/v1/overview"),
+      env,
+    ),
+    false,
+  );
+  assert.equal(
+    await viewerAuthorized(
+      new Request("https://eagle.dev.hexly.ai/api/v1/overview"),
+      { ...env, LOCAL_DEV: "false" },
+    ),
+    false,
+  );
 });
 
 test("public health identifies the deployed revision without exposing inventory", async () => {
@@ -272,4 +351,43 @@ test("two machines may share Herdr IDs without inventory or history collisions",
   ).json()) as { entries: { report: ReturnType<typeof report> }[] };
   assert.equal(history.entries.length, 1);
   assert.equal(history.entries[0].report.machine.id, "mac-two");
+});
+
+test("the machine ingress exposes only Bearer-protected ingestion and public health", async () => {
+  for (const path of [
+    "/",
+    "/assets/app.js",
+    "/api/v1/overview",
+    "/api/v1/history",
+  ]) {
+    const response = await mf.dispatchFetch(
+      `https://eagle-ingest.hexly.ai${path}`,
+      { headers: { "Cf-Access-Jwt-Assertion": viewer } },
+    );
+    assert.equal(response.status, 404);
+  }
+  assert.equal(
+    (await mf.dispatchFetch("https://eagle-ingest.hexly.ai/api/live")).status,
+    200,
+  );
+  assert.equal(
+    (
+      await mf.dispatchFetch("https://eagle-ingest.hexly.ai/api/v1/reports", {
+        method: "POST",
+      })
+    ).status,
+    401,
+  );
+  const response = await mf.dispatchFetch(
+    "https://eagle-ingest.hexly.ai/api/v1/reports",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(currentReport("ingress-test")),
+    },
+  );
+  assert.equal(response.status, 201);
 });

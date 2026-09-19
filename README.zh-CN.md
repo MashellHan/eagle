@@ -10,6 +10,8 @@
 
 前端使用 React 19、Vite 与 Basalt；Cloudflare Worker 提供页面和受认证保护的 API，D1 保存完整快照与历史。本地 Node 管理 Agent 负责采集、脱敏、排队与幂等上报。没有远程终端控制入口。
 
+网站由 nocoo 团队的 Cloudflare Access 保护，本地免登录。机器使用独立 Bearer Token，向 `https://eagle-ingest.hexly.ai` 上报；该域名不开放看板、查询或历史。
+
 需要 Node 24+、npm、Herdr 0.9.1+。凭据仅保存在安全配置中，不写入源码、浏览器存储或上报数据。具体认证与部署步骤以 [English README](README.md) 和 [Agent 契约](docs/AGENT.md) 为准。
 
 ```sh
@@ -38,7 +40,7 @@ npm run test:browser
 npm run deploy
 ```
 
-发布从已提交的源码构建，公开 `/api/live` 检查 D1 连接并报告当前版本和完整提交，不泄露机器清单。真实机器、D1 与页面链路的验证方式见 [检查点](docs/CHECKPOINTS.md) 及 `scripts/verify-live.ts`。
+发布从已提交的源码构建，公开 `https://eagle-ingest.hexly.ai/api/live` 检查 D1 连接并报告当前版本和完整提交，不泄露机器清单。真实机器、D1 与页面链路的验证方式见 [检查点](docs/CHECKPOINTS.md) 及 `scripts/verify-live.ts`。
 
 ## 标识
 

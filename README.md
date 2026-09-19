@@ -16,9 +16,9 @@ Requires Node 24+ (native TypeScript and SQLite), npm, Herdr 0.9.1+, and Cloudfl
 
 ```sh
 npm ci
-# Add AGENT_TOKENS and VIEWER_TOKEN to ignored .dev.vars (chmod 600).
+# Add AGENT_TOKENS and LOCAL_DEV to ignored .dev.vars (chmod 600).
 # AGENT_TOKENS='{"your-machine":"a-random-token-of-at-least-32-characters"}'
-# VIEWER_TOKEN='a-separate-random-token-of-at-least-32-characters'
+# LOCAL_DEV="true"  # Local website requires no login token.
 npm run db:local
 npm run dev:api
 # A second terminal:
@@ -34,13 +34,17 @@ npm run test:browser
 NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" node scripts/verify-live.ts
 ```
 
-`verify-live.ts` reads credentials from `.local/dev-secrets.json` and `.local/agent-dev.json` by default. Override `EAGLE_VERIFY_ORIGIN`, `EAGLE_VERIFY_SECRETS`, and `EAGLE_CONFIG` for production. Screenshots and a sanitized verification receipt stay under ignored `.local/`. It checks anonymous rejection, duplicate upload, every real Space, automatic updates, history, and mobile layout.
+`verify-live.ts` reads `.local/agent-dev.json` by default; local viewing needs no credentials. For production, set `EAGLE_VERIFY_ORIGIN=https://eagle.hexly.ai`, `EAGLE_CONFIG` to the production agent configuration and `EAGLE_ACCESS_JWT_FILE` to a mode-0600 file containing a genuine Access application JWT. Obtain it through `cloudflared access login --quiet https://eagle.hexly.ai`; never paste credentials into commands or logs. Screenshots and sanitized receipts remain in ignored `.local/`. The script checks anonymous Access redirection, authenticated viewing, idempotency, every real Space, automatic updates, history and mobile layout.
 
 ## Machine agents
 
 Copy [the reporting Skill](skills/eagle-report/SKILL.md) to Cherry or any other local management agent. See [the agent contract](docs/AGENT.md) for credentials, periodic execution, structured evidence, retries and deployment receipts. The checked-in [v1 JSON Schema](public/report-v1.schema.json) is generated from the TypeScript validator; cross-object uniqueness checks additionally run on the server.
 
-Agents use **per-machine Bearer tokens** stored only in their 0600 config and the Worker's `AGENT_TOKENS` secret. The separate `VIEWER_TOKEN` signs a 12-hour Secure, HttpOnly, SameSite=Strict browser session. Browser storage and D1 contain no authentication tokens. Rotating the viewer secret invalidates all existing sessions. The private API never supports CORS.
+The website uses **Cloudflare Access** with team `nocoo`. The Worker verifies RS256 signatures against the team's rotating JWKS, issuer, application audience, expiry and required claims. The audience is configured in `wrangler.jsonc`. Eagle has no viewer token, password field, custom session endpoint or custom session cookie. Local viewing bypasses Access only with `LOCAL_DEV="true"` and an explicit loopback/development hostname; production sets the flag to `false`.
+
+Agents use **per-machine Bearer tokens** stored only in their 0600 configuration and the Worker's `AGENT_TOKENS` secret. They upload to **https://eagle-ingest.hexly.ai** so browser SSO never interrupts reporting. That host serves only reports, heartbeats and public `/api/live`; dashboard assets, overview and history all return 404 there. The private API never supports CORS. Browser storage and D1 contain no authentication tokens.
+
+The dashboard uses Basalt chrome, controls, semantic badges, chart primitives and palette tokens. Compact machine groups preserve real pane geometry; state filters, evidence coverage, agent distribution and change timelines expose useful details immediately. Skeletons keep loading geometry stable, refreshes retain content, and entrance/refresh motion respects reduced-motion preferences.
 
 ## Interpretation
 
@@ -61,8 +65,8 @@ npx wrangler secret bulk /secure/path/platform-secrets.json
 npm run deploy
 ```
 
-The Worker owns `eagle.hexly.ai` as a custom domain. `/api/live` publicly checks D1 connectivity and returns no inventory. The read-only reviewers are advisory; the integrator commits on `main`. See [checkpoints](docs/CHECKPOINTS.md) for real data verification and [API](docs/API.md) for ingestion/query semantics.
+The Worker owns `eagle.hexly.ai` as a custom domain. `https://eagle-ingest.hexly.ai/api/live` publicly checks D1 connectivity and returns no inventory. The read-only reviewers are advisory; the integrator commits on `main`. See [checkpoints](docs/CHECKPOINTS.md) for real data verification and [API](docs/API.md) for ingestion/query semantics.
 
 ## Identity
 
-The golden eagle belongs to the fragmented animal family. README uses the rounded presentation; the expanded/collapsed sidebar, loading and login marks use the transparent foreground without a background or corner mask. Root `logo.png` is the unchanged 2048px foreground; [brand provenance](assets/brand/provenance.json) records the exact master, generation and consumer roles. The Basalt application palette remains independent.
+The golden eagle belongs to the fragmented animal family. README uses the rounded presentation; the expanded/collapsed sidebar, loading and Access entry marks use the transparent foreground without a background or corner mask. Root `logo.png` is the unchanged 2048px foreground; [brand provenance](assets/brand/provenance.json) records the exact master, generation and consumer roles. The Basalt application palette remains independent.

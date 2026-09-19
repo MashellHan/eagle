@@ -8,7 +8,7 @@ Create `~/.config/eagle/agent.json`, directory mode 0700 and file mode 0600:
 
 ```json
 {
-  "url": "https://eagle.hexly.ai",
+  "url": "https://eagle-ingest.hexly.ai",
   "machineId": "your-machine",
   "machineName": "Your machine",
   "token": "REPLACE_WITH_MACHINE_SECRET",
@@ -17,7 +17,7 @@ Create `~/.config/eagle/agent.json`, directory mode 0700 and file mode 0600:
 }
 ```
 
-The matching platform secret is `AGENT_TOKENS`, a JSON map of machine IDs to random tokens of at least 32 characters. Keep the existing map when adding a machine. Upload via `wrangler secret bulk` from an owner-readable file, and deliver each machine only its own token. The viewing token is separate. Revoke one machine by removing its entry and deploying the updated secret. Tokens never belong in reports, documentation, Git, shell history or D1.
+The matching platform secret is `AGENT_TOKENS`, a JSON map of machine IDs to random tokens of at least 32 characters. Keep the existing map when adding a machine. Upload via `wrangler secret bulk` from an owner-readable file, and deliver each machine only its own token. Website viewing uses Cloudflare Access; it has no Eagle viewing token. Revoke one machine by removing its entry and deploying the updated secret. Tokens never belong in reports, documentation, Git, shell history or D1.
 
 Clone/install Eagle (`npm ci`), then:
 
@@ -54,7 +54,7 @@ Prefer a short human outcome: what changed, what remains, what needs a decision.
 
 ## Installed on MBPM5MSFT
 
-The production machine ID is `mbpm5msft`. Its macOS LaunchAgent at `~/Library/LaunchAgents/com.hexly.eagle-agent.plist` runs this checkout's `agent/cli.ts watch` every 30 seconds and restarts on failure. Configuration, the manager evidence file, durable spool, and `agent.stdout.log` / `agent.stderr.log` are under `~/.config/eagle/`. The separate dashboard token is `~/.config/eagle/viewer-token`; never include its contents in a report.
+The production machine ID is `mbpm5msft`. Its macOS LaunchAgent at `~/Library/LaunchAgents/com.hexly.eagle-agent.plist` runs this checkout's `agent/cli.ts watch` every 30 seconds and restarts on failure. Configuration, the manager evidence file, durable spool, and `agent.stdout.log` / `agent.stderr.log` are under `~/.config/eagle/`. The website uses Cloudflare Access; the former viewer-token file is removed when this release is deployed. Machine Bearer credentials remain required for reporting.
 
 ```sh
 # Restart after updating collector code:

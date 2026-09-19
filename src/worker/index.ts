@@ -5,15 +5,7 @@ import {
   type Report,
   ReportSchema,
 } from "../shared/schema.ts";
-import {
-  agentIdentity,
-  agentTokens,
-  bearer,
-  cookieFor,
-  equalSecret,
-  sessionValue,
-  viewerAuthorized,
-} from "./auth.ts";
+import { agentIdentity, agentTokens, viewerAuthorized } from "./auth.ts";
 
 class HttpError extends Error {
   constructor(
@@ -80,7 +72,7 @@ function timely(value: string) {
     throw new HttpError(400, "Timestamp too far in future");
 }
 function noSecrets(value: string, env: Env) {
-  for (const token of [...Object.values(agentTokens(env)), env.VIEWER_TOKEN])
+  for (const token of Object.values(agentTokens(env)))
     if (token && value.includes(token))
       throw new HttpError(400, "Credential found in report");
 }
@@ -162,24 +154,6 @@ async function route(request: Request, env: Env): Promise<Response> {
       schemaVersion: 1,
       revision: env.BUILD_REVISION,
     });
-  }
-  if (path === "/api/session") {
-    if (request.method === "POST") {
-      if (
-        !env.VIEWER_TOKEN ||
-        env.VIEWER_TOKEN.length < 32 ||
-        !(await equalSecret(bearer(request), env.VIEWER_TOKEN))
-      )
-        throw new HttpError(401, "Invalid viewer token");
-      return json({ authenticated: true }, 200, {
-        "Set-Cookie": cookieFor(await sessionValue(env.VIEWER_TOKEN)),
-      });
-    }
-    if (request.method === "DELETE")
-      return json({ authenticated: false }, 200, {
-        "Set-Cookie": cookieFor("", 0),
-      });
-    throw new HttpError(405, "Method not allowed");
   }
   if (path === "/api/v1/reports" || path === "/api/v1/heartbeat") {
     if (request.method !== "POST")
@@ -276,8 +250,15 @@ async function route(request: Request, env: Env): Promise<Response> {
 }
 export default {
   async fetch(request, env) {
-    if (!new URL(request.url).pathname.startsWith("/api/"))
-      return env.ASSETS.fetch(request);
+    const url = new URL(request.url);
+    if (
+      url.hostname === "eagle-ingest.hexly.ai" &&
+      !["/api/v1/reports", "/api/v1/heartbeat", "/api/live"].includes(
+        url.pathname,
+      )
+    )
+      return json({ error: "Not found" }, 404);
+    if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
     try {
       return await route(request, env);
     } catch (error) {

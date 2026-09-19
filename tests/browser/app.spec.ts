@@ -1,22 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { report } from "../fixtures.ts";
 
-test("private login, executive overview, topology evidence, history and empty search", async ({
+test("token-free overview, topology evidence, history and empty search", async ({
   page,
 }) => {
-  let signedIn = false;
   const value = report("browser-report", new Date().toISOString());
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/session") {
-      signedIn = route.request().method() !== "DELETE";
-      return route.fulfill({ json: { authenticated: signedIn } });
-    }
-    if (!signedIn)
-      return route.fulfill({
-        status: 401,
-        json: { error: "Sign in required" },
-      });
     if (path.includes("history"))
       return route.fulfill({
         json: {
@@ -48,14 +38,17 @@ test("private login, executive overview, topology evidence, history and empty se
     });
   });
   await page.goto("/");
-  await page.getByLabel("访问令牌").fill("test-token");
-  await page.getByRole("button", { name: "进入 Eagle" }).click();
+  await expect(page.getByLabel("访问令牌")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Space 拓扑" })).toBeVisible();
+  await page.getByRole("button", { name: "筛选进行中" }).click();
+  await expect(page.getByText("没有匹配的 Space")).toBeVisible();
+  await page.getByRole("button", { name: "筛选全部" }).click();
   await expect(page.getByRole("heading", { name: "当前态势" })).toBeVisible();
   await expect(
     page.getByText("已验证完成", { exact: true }).first(),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "最近变化" })).toBeVisible();
-  await expect(page.getByText("首次接入：Eagle")).toBeVisible();
+  await expect(page.getByText("首次接入：Eagle").first()).toBeVisible();
   await page.getByRole("button", { name: "查看 Eagle" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByText("Herdr 弱提示：done")).toBeVisible();
@@ -65,7 +58,7 @@ test("private login, executive overview, topology evidence, history and empty se
   await expect(page.getByText("没有匹配的 Space")).toBeVisible();
   await page.getByLabel("搜索 Space").clear();
   await page.getByRole("button", { name: "查看最近历史" }).click();
-  await expect(page.getByText("首次接入：Eagle")).toBeVisible();
+  await expect(page.getByText("首次接入：Eagle").first()).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -147,7 +140,7 @@ test("adopted eagle mark and family links work in both sidebar states", async ({
     "在 hexly.ai 查看 Eagle",
   );
   await page.keyboard.press("Escape");
-  if (isMobile) await page.getByRole("button", { name: "展开导航" }).click();
+  await page.getByRole("button", { name: "展开导航" }).click();
   const mark = page.locator("img[data-eagle-mark]").last();
   await expect(mark).toBeVisible();
   expect(
@@ -167,4 +160,72 @@ test("adopted eagle mark and family links work in both sidebar states", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("first load shows a stable skeleton and Access expiry offers SSO without a token field", async ({
+  page,
+}) => {
+  let finish: () => void = () => {};
+  const ready = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  await page.route("**/api/**", async (route) => {
+    await ready;
+    await route.fulfill({ status: 401, json: { error: "Access required" } });
+  });
+  await page.goto("/");
+  await expect(
+    page.getByRole("status", { name: "正在同步工作空间" }),
+  ).toBeVisible();
+  finish();
+  await expect(
+    page.getByRole("button", { name: "通过 Cloudflare Access 继续" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("访问令牌")).toHaveCount(0);
+});
+
+test("attention is shown first and reduced-motion users get no entrance animation", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const value = report("priority", new Date().toISOString());
+  const urgent = structuredClone(value.spaces[0]);
+  urgent.id = "default:w2";
+  urgent.name = "Urgent";
+  urgent.tabs[0].panes[0].evidence.push({
+    kind: "test",
+    status: "failure",
+    summary: "Production regression",
+    source: "test",
+    observedAt: value.capturedAt,
+    taskId: "task-1",
+  });
+  value.spaces.push(urgent);
+  await page.route("**/api/**", (route) =>
+    route.fulfill({
+      json: route.request().url().includes("history")
+        ? { entries: [], nextCursor: null }
+        : {
+            now: value.capturedAt,
+            machines: [
+              {
+                id: "mac-one",
+                name: "Mac One",
+                lastSeen: value.capturedAt,
+                receivedAt: value.capturedAt,
+                warning: null,
+                report: value,
+              },
+            ],
+          },
+    }),
+  );
+  await page.goto("/");
+  await expect(page.locator(".space-card h3").first()).toHaveText("Urgent");
+  expect(
+    await page
+      .locator(".space-card")
+      .first()
+      .evaluate((element) => getComputedStyle(element).animationName),
+  ).toBe("none");
 });

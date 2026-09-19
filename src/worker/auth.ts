@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const encoder = new TextEncoder();
 export async function equalSecret(a: string, b: string): Promise<boolean> {
@@ -30,48 +31,35 @@ export async function agentIdentity(request: Request, env: Env) {
     if (await equalSecret(token, value)) return id;
   return null;
 }
-async function sign(value: string, secret: string) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const bytes = new Uint8Array(
-    await crypto.subtle.sign("HMAC", key, encoder.encode(value)),
-  );
-  return btoa(String.fromCharCode(...bytes))
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replaceAll("=", "");
-}
-export async function sessionValue(secret: string) {
-  const payload = `${Date.now() + 43_200_000}.${crypto.randomUUID()}`;
-  return `${payload}.${await sign(payload, secret)}`;
-}
+// Public key caches contain no user credentials and follow Access key rotation.
+const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 export async function viewerAuthorized(request: Request, env: Env) {
-  if (!env.VIEWER_TOKEN || env.VIEWER_TOKEN.length < 32) return false;
-  const token = bearer(request);
-  if (token && (await equalSecret(token, env.VIEWER_TOKEN))) return true;
-  const cookie = request.headers
-    .get("cookie")
-    ?.match(/(?:^|;\s*)eagle_session=([^;]+)/)?.[1];
-  if (!cookie) return false;
-  const [expires, nonce, signature, extra] = cookie.split(".");
+  const host = new URL(request.url).hostname;
   if (
-    extra ||
-    !nonce ||
-    !signature ||
-    !/^\d+$/.test(expires) ||
-    Number(expires) <= Date.now() ||
-    Number(expires) > Date.now() + 43_200_000
+    env.LOCAL_DEV === "true" &&
+    ["localhost", "127.0.0.1", "[::1]", "eagle.dev.hexly.ai"].includes(host)
   )
+    return true;
+  const token = request.headers.get("cf-access-jwt-assertion");
+  if (!token || !env.ACCESS_TEAM_URL || !env.ACCESS_AUD) return false;
+  try {
+    if (!keySets.has(env.ACCESS_TEAM_URL))
+      keySets.set(
+        env.ACCESS_TEAM_URL,
+        createRemoteJWKSet(
+          new URL(`${env.ACCESS_TEAM_URL}/cdn-cgi/access/certs`),
+        ),
+      );
+    const keys = keySets.get(env.ACCESS_TEAM_URL);
+    if (!keys) return false;
+    await jwtVerify(token, keys, {
+      issuer: env.ACCESS_TEAM_URL,
+      audience: env.ACCESS_AUD,
+      algorithms: ["RS256"],
+      requiredClaims: ["exp", "iat", "sub"],
+    });
+    return true;
+  } catch {
     return false;
-  return equalSecret(
-    signature,
-    await sign(`${expires}.${nonce}`, env.VIEWER_TOKEN),
-  );
+  }
 }
-export const cookieFor = (value: string, age = 43200) =>
-  `eagle_session=${value}; Path=/api; HttpOnly; Secure; SameSite=Strict; Max-Age=${age}`;

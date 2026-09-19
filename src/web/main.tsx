@@ -12,15 +12,16 @@ try {
 }
 const dark =
   theme === "dark" ||
-  (theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+  (theme !== "light" &&
+    (theme !== "system" || matchMedia("(prefers-color-scheme: dark)").matches));
 document.documentElement.classList.toggle("dark", dark);
 document.documentElement.classList.toggle("light", !dark);
 document.documentElement.dataset.mode = dark ? "dark" : "light";
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing app root");
 createRoot(root).render(
-  <ThemeProvider>
-    <AccentProvider defaultAccent="teal">
+  <ThemeProvider defaultTheme="dark">
+    <AccentProvider defaultAccent="primary">
       <TooltipProvider>
         <App />
       </TooltipProvider>

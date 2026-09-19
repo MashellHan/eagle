@@ -38,3 +38,22 @@ no-store, revision and anonymous-read semantics. 31 API/agent/unit checks and
 results are not a claim of real-machine or production verification. Next hop:
 merge current published authentication changes, then verify actual local/public
 serving and the first catalogue-derived production Cron observation.
+
+
+## 2026-09-19 15:16 +08:00（Access 与视觉改版，15 分钟）
+
+- Access 签名、issuer、audience、过期和旧凭据拒绝测试已通过；本地免登录严格限定开发开关与本地主机名。Grok 只读认证 Review 未发现 P0/P1。
+- 真实 Herdr 采集仍为 15 Space / 30 Pane；15:16 本地无登录端到端验证通过，覆盖认证上传、D1、幂等重传、全量 Space、自动更新、详情、历史及桌面/手机渲染。
+- 本地检查发现 Wrangler 默认把 hostname 设成生产域名，已设置 dev.host；Vite 测试/开发服务共享缓存导致真实页面 504，已隔离缓存。上述修复均经过真实浏览器复验。
+- 视觉重构已实现紧凑机器分组、Space 拓扑、状态筛选、变更节奏、Agent 分布、证据覆盖和骨架加载；8 项桌面/手机交互测试通过。正在检查真实数据下的最终排版。
+- 公网现有 Access 同时阻断原机器上传；独立 eagle-ingest.hexly.ai 入口已补失败用例并实现，只开放 Bearer 上报/心跳与健康检查，其余路径 404。尚待部署。
+- 已发起真实 Access 登录，等用户在浏览器完成认证后执行生产认证页面验收；不请求用户提供 Token。
+
+
+## 2026-09-19 15:24 +08:00（发布前复核）
+
+- 最终门禁：33 项单元/集成测试、10 项桌面/手机浏览器测试、TypeScript、Biome、生产构建全部通过。
+- 15:23 本地真实免登录端到端复验通过。自动更新通过 machine-heading 的语义 time 元素核对精确 capturedAt，避免误把页面时钟当作新快照。
+- 首屏采用彩色状态指标、需关注/进行中优先的紧凑 Space 拓扑、右侧变化流与证据覆盖；多 Tab 并排展示，手机统计收为一行。动效支持 reduced-motion，后台刷新保留内容。
+- Grok 确认专用 ingest host 没有可复现绕过。其停止 Session 计数推测已通过 summarize 实际运行反证：即使 Pane 的证据齐全，unavailable Space 仍为 unverified。
+- 正在部署，并将本机上报入口切换到专用域名、清理旧 viewer secret。真实 Access 用户登录尚待完成。

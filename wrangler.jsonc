@@ -10,11 +10,15 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": true
   },
   "routes": [
     {
       "pattern": "eagle.hexly.ai",
+      "custom_domain": true
+    },
+    {
+      "pattern": "eagle-ingest.hexly.ai",
       "custom_domain": true
     }
   ],
@@ -32,10 +36,14 @@
   },
   "dev": {
     "ip": "127.0.0.1",
+    "host": "eagle.dev.hexly.ai",
     "port": 36001,
     "inspector_port": 46001
   },
   "vars": {
-    "BUILD_REVISION": "development"
+    "BUILD_REVISION": "development",
+    "LOCAL_DEV": "false",
+    "ACCESS_TEAM_URL": "https://nocoo.cloudflareaccess.com",
+    "ACCESS_AUD": "d1ffdb7fe2787e2a9e8f957a68ed5feec2b944c44c6fdbfd54341887eab6f873"
   }
 }
