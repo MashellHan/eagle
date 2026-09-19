@@ -218,3 +218,82 @@ test("one rejected Pane update is isolated without discarding valid interpretati
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("unconfigured Manager fails before network or model calls and explains explicit agent selection", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "eagle-no-manager-"));
+  let requests = 0;
+  try {
+    await assert.rejects(
+      managerTick(
+        {
+          url: "http://127.0.0.1:37053",
+          machineId: "mac-one",
+          machineName: "Mac One",
+          token: "test-token-with-at-least-32-characters",
+        },
+        directory,
+        {
+          transport: (async () => {
+            requests++;
+            throw new Error("Unexpected network call");
+          }) as typeof fetch,
+        },
+      ),
+      /Configure manager.command.*Hermes.*existing agent/,
+    );
+    assert.equal(requests, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("explicit Manager command uses stdin and preserves its own identity without Cherry", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "eagle-neutral-manager-"));
+  const snapshot = report("neutral-manager", new Date().toISOString());
+  let delivered: SummaryBatch | undefined;
+  try {
+    const result = await managerTick(
+      {
+        url: "http://127.0.0.1:37053",
+        machineId: "mac-one",
+        machineName: "Mac One",
+        token: "test-token-not-for-model-at-least-32-chars",
+        manager: {
+          id: "existing-agent",
+          command: [
+            process.execPath,
+            "--input-type=module",
+            "-e",
+            `
+        let input = ''; for await (const chunk of process.stdin) input += chunk;
+        if (input.includes('test-token-not-for-model') || input.includes('Cherry')) process.exit(1);
+        const items = JSON.parse(input.split('输入：\\n')[1]);
+        console.log(JSON.stringify(items.map(i => ({ key: i.key, summary: {
+          task: i.title, phase: 'verify', progress: 'Observed current terminal', outcomes: [],
+          blocker: null, nextStep: 'Check evidence', rationale: 'Bounded terminal and facts', evidenceRefs: []
+        } }))));
+      `,
+          ],
+        },
+      },
+      directory,
+      {
+        readPane: async () => "real terminal output",
+        transport: (async (url, options) => {
+          if (String(url).endsWith("agent-state"))
+            return Response.json({ report: snapshot });
+          delivered = JSON.parse(String(options?.body));
+          return Response.json({
+            accepted: true,
+            sequence: delivered?.sequence,
+          });
+        }) as typeof fetch,
+      },
+    );
+    assert.equal(result.interpreted, 1);
+    assert.equal(delivered?.managerId, "existing-agent");
+    assert.equal(delivered?.updates[0].summary.phase, "verify");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

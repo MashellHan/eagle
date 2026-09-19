@@ -172,3 +172,11 @@ serving and the first catalogue-derived production Cron observation.
 - 18:59 npm 复验完成：官方源与腾讯镜像均使用全新缓存安装成功，tarball integrity 相同，CLI `--version` 为 0.4.0，`manager-once` / `manager-watch` 均存在。`agent-v0.4.0` 已指向发布源码 `4a15692` 并推送。
 - 发布前布局复查覆盖 390 / 520 / 768 / 1024 / 1280 / 1600px：修复中等宽度下固定列数挤压多 Pane 按钮的问题，按实际可用宽度自动排列 Space；真实页面所有按钮无横向内容溢出。最终 57 项单元/集成、34 项浏览器、TypeScript、Biome、构建全部通过。人工 diff Review 核对原生 Basalt 控件、Token 内存生命周期、独立复制反馈、过期提示与 DOM 连续性，未发现发布阻断项。
 - 19:01:50 最终 Caddy 实测时库存已新增为 10 Spaces / 18 Panes；完整 verify-live 再次通过，daemon 恢复持续上报。
+
+## 2026-09-19 19:11 +08 — Agent 中立接入修正
+
+- 根据另一台机器的真实失败报告，移除隐式 `cherry` 可执行文件默认值。语义层要求显式 `manager.command`，推荐已配置的 Hermes，也支持任何满足 stdin/stdout 契约的管理 Agent；缺少配置时快速说明处理方式，不影响独立 daemon。
+- Onboarding、npm README、项目 Skill 和双语文档同步说明：Cherry 是本机 Hermes 别名/profile，不能据此寻找或安装同名产品。已核验本机 Hermes CLI 参数与官方项目来源；保留原模型/provider/profile，禁用工具，其他 Agent 采用自身已验证接口或适配器。
+- 两项 Manager 行为测试先失败再通过：未配置命令时不发网络请求；独立非 Cherry 子进程从 stdin 获取脱敏输入并成功上报自己的 writer ID。包测试确认 manager-once/watch 未配置时立即退出且不泄露 Token。59 项单元/集成、34 项浏览器、类型、Biome、构建及 Skill 校验通过。
+- 19:10:48 真实 Caddy 验证 10 Spaces / 18 Panes，采集→Bearer→DO→资源/拓扑→稳定刷新通过，旧 D1 历史未增加。本机安全配置已显式保留原 Cherry profile 命令和 writer ID，未重置 sequence。
+- 网站 v0.2.1 的布局提交 CI 已通过；曾因同一工作区正在进行 README 整理而被部署脚本拒绝，没有产生不明确的线上 revision。该文档整理现已单独提交。新的 Agent 0.4.1 包已准备并等待 npm OTP；本轮修正提交通过 CI 后部署网站。

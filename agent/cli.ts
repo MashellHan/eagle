@@ -102,7 +102,7 @@ async function main() {
   const action = process.argv[2] || "once";
   if (action === "--help" || action === "help") {
     console.log(
-      "Eagle Agent\nCommands: init (JSON on stdin), collect <file>, upload <file>, once, watch, heartbeat, manager-once, manager-watch\nConfig: EAGLE_CONFIG or ~/.config/eagle/agent.json (0600). Node.js 24+ and Herdr required. Manager uses Cherry chat with no tools by default.",
+      "Eagle Agent\nCommands: init (JSON on stdin), collect <file>, upload <file>, once, watch, heartbeat, manager-once, manager-watch\nConfig: EAGLE_CONFIG or ~/.config/eagle/agent.json (0600). Node.js 24+ and Herdr required. Manager requires explicit manager.command for your existing agent (Hermes recommended); deterministic collection is independent.",
     );
     return;
   }
@@ -145,6 +145,10 @@ async function main() {
     throw new Error("Config must have mode 0600");
   const config = ConfigSchema.parse(JSON.parse(await readFile(path, "utf8")));
   checkUrl(config.url);
+  if (action.startsWith("manager-") && !config.manager?.command)
+    throw new Error(
+      "Configure manager.command for your existing agent (Hermes recommended) before starting Manager; watch works independently.",
+    );
   if (action === "collect") {
     const output = process.argv[3];
     if (!output) throw new Error("Usage: collect <output.json>");

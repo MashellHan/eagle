@@ -1,6 +1,6 @@
 # Reporting from another machine
 
-The collector is read-only toward Herdr/Git. It never prompts agents, presses keys, runs repository tests, or changes workspaces. Use a management agent (Cherry or equivalent) to interpret outcomes and supply structured receipts.
+The collector is read-only toward Herdr/Git. It never prompts agents, presses keys, runs repository tests, or changes workspaces. Use a management agent (Hermes recommended; alternatives supported) to interpret outcomes and supply structured receipts.
 
 ## Secure config
 
@@ -20,26 +20,26 @@ Create `~/.config/eagle/agent.json`, directory mode 0700 and file mode 0600:
 
 Each machine has one SQLite-backed Durable Object selected by its `machineId`; the agent only posts reports and heartbeats to the authenticated Worker. No object ID or database credential is needed on the machine. The next valid full snapshot replaces the prior current state. A success receipt confirms persistence in DO, not insertion into D1. Semantic Pane changes are independently persisted in the same machine DO, grouped by UTC observation hour, and replicated to D1. Whole-report history and hourly AI aggregation remain paused.
 
-Open **Connect** on the Eagle website. Add a machine ID, display name and optional watched ports, then copy the generated prompt to Cherry or another management agent on that machine. Connect also supports renaming, rotating credentials, disabling and re-enabling machines. Token-bearing prompts exist only in browser memory until dismissed or navigation; the visible preview hides the token. Save the credential securely before leaving. Rotation invalidates the previous token immediately; re-enabling always issues a new token.
+Open **Connect** on the Eagle website. Add a machine ID, display name and optional watched ports, then copy the generated prompt to the existing management Agent (Hermes recommended) on that machine. Connect also supports renaming, rotating credentials, disabling and re-enabling machines. Token-bearing prompts exist only in browser memory until dismissed or navigation; the visible preview hides the token. Save the credential securely before leaving. Rotation invalidates the previous token immediately; re-enabling always issues a new token.
 
 The platform signs machine-scoped tokens using the `AGENT_SIGNING_KEY` Worker secret (at least 32 random characters). Raw tokens and the signing key never enter a database. Each machine DO stores only its configuration, public credential ID, enabled state and expiry. Tokens expire after one year. The directory DO indexes machine IDs only; ingestion goes directly to the corresponding machine DO. The old `AGENT_TOKENS` secret remains compatible; Connect can rotate a legacy machine to signed credentials or disable it. Removing a legacy secret alone does not disable a machine already migrated to signed credentials; use Connect.
 
-Install `@nocoo/eagle-agent@0.4.0` from npm. Check `node --version`, `npm --version` and `herdr --version`: Node 24+ and a running Herdr installation are required. Node downloads: https://nodejs.org/en/download. The installed Agent needs no Eagle checkout or TypeScript compiler.
+Install `@nocoo/eagle-agent@0.4.1` from npm. Check `node --version`, `npm --version` and `herdr --version`: Node 24+ and a running Herdr installation are required. Node downloads: https://nodejs.org/en/download. The installed Agent needs no Eagle checkout or TypeScript compiler.
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.4.1 --registry=https://registry.npmjs.org
 ```
 
 If npm is unreachable, **Tencent Cloud is the preferred mirror**:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g @nocoo/eagle-agent@0.4.1 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
 This changes the registry for this command only. A new version may not have synchronized yet (`404` / `ETARGET`); retry later or use the official registry when reachable, keeping the pinned version. Public installation needs no npm login. Never send an Eagle token to npm or a mirror, or disable HTTPS certificate verification.
 
 ```sh
-eagle-agent --version # expected: 0.4.0
+eagle-agent --version # expected: 0.4.1
 eagle-agent --help
 ```
 
@@ -76,7 +76,7 @@ Restart the collector after editing its configuration. For an upgrade, deploy th
   "default:w1:p1": {
     "task": { "id": "release-123", "title": "Publish release 123", "requiresDeployment": true },
     "evidence": [
-      { "kind": "goal", "status": "running", "summary": "Implementation complete; checking production", "source": "cherry:review", "observedAt": "2026-09-19T06:00:00.000Z", "taskId": "release-123" }
+      { "kind": "goal", "status": "running", "summary": "Implementation complete; checking production", "source": "manager:review", "observedAt": "2026-09-19T06:00:00.000Z", "taskId": "release-123" }
     ]
   }
 }
@@ -105,4 +105,4 @@ On this Mac, launchd follows the existing macOS HTTPS proxy through `HTTPS_PROXY
 
 ## Live semantic Manager
 
-The maintained integration is `eagle-agent manager-once` / `manager-watch`, not the legacy evidence file. Run Manager separately from the deterministic `watch` service. See [PANE-SUMMARIES.md](PANE-SUMMARIES.md) for complete v1 protocols, independent DO streams, UTC hourly API/indexes, retention, conflict recovery and Cherry Cron setup. The project [eagle-report Skill](../skills/eagle-report/SKILL.md) is reusable on every machine.
+The maintained integration is `eagle-agent manager-once` / `manager-watch`, not the legacy evidence file. Run Manager separately from the deterministic `watch` service. See [PANE-SUMMARIES.md](PANE-SUMMARIES.md) for complete v1 protocols, independent DO streams, UTC hourly API/indexes, retention, conflict recovery and agent-neutral scheduler setup. The project [eagle-report Skill](../skills/eagle-report/SKILL.md) is reusable on every machine.

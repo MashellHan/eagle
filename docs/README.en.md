@@ -35,31 +35,31 @@ The Codex adapter extracts only final replies and lifecycle events, excluding re
 
 ## Usage
 
-Open [Eagle](https://eagle.hexly.ai), sign in through Access, add a machine in **Connect**, and give its generated onboarding prompt to Cherry or another management agent on that machine.
+Open [Eagle](https://eagle.hexly.ai), sign in through Access, add a machine in **Connect**, and give its generated onboarding prompt to the existing management Agent (Hermes recommended; alternatives supported) on that machine.
 
 The collector requires Node.js 24+, npm and Herdr 0.9.1+. Install it independently without cloning Eagle:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.4.1 --registry=https://registry.npmjs.org
 eagle-agent --version
 ```
 
 If the official registry is unreachable, use the Tencent Cloud mirror instead. Choose one installation command:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g @nocoo/eagle-agent@0.4.1 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
-The expected version is `0.4.0`. Mirror synchronization may lag; on `404` / `ETARGET`, retry later or use the official registry when reachable, without changing the global npm registry. Save onboarding credentials following the [installation and configuration guide](../agent/README.md), then run:
+The expected version is `0.4.1`. Mirror synchronization may lag; on `404` / `ETARGET`, retry later or use the official registry when reachable, without changing the global npm registry. Save onboarding credentials following the [installation and configuration guide](../agent/README.md), then run:
 
 ```sh
 eagle-agent once
 eagle-agent watch
-# In a separate process, run the semantic Manager with Cherry configured:
+# In a separate process, run the semantic Manager after explicitly configuring manager.command for Hermes or another Agent:
 eagle-agent manager-watch
 ```
 
-The deterministic collector runs every 30 seconds by default. Manager uses the existing Cherry model only when inputs change and the per-task rate limit permits, independently of collection. The secure configuration's `watchPorts` field selects local endpoints, for example:
+The deterministic collector runs every 30 seconds by default. Manager uses the existing management Agent and model only when inputs change and the per-task rate limit permits, independently of collection. The secure configuration's `watchPorts` field selects local endpoints, for example:
 
 ```json
 {"watchPorts":[{"name":"Raven","port":7024}]}

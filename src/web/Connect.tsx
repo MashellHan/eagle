@@ -198,7 +198,7 @@ export function Connect({
               <LayerCard.Empty
                 icon={<Server size={28} />}
                 title="连接你的第一台机器"
-                description="生成专属提示词后，交给 Cherry 或任意管理 Agent 完成安装。"
+                description="生成专属提示词后，交给本机管理 Agent 完成接入；推荐 Hermes。"
               />
             </LayerCard>
           ) : (

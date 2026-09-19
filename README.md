@@ -35,31 +35,31 @@ Codex 适配器仅提取最终回复和生命周期事件，不采集推理与�
 
 ## 使用
 
-打开 [Eagle](https://eagle.hexly.ai)，通过 Access 登录，在 **Connect** 添加机器，将生成的接入提示词交给该机器上的 Cherry 或其他管理 Agent。
+打开 [Eagle](https://eagle.hexly.ai)，通过 Access 登录，在 **Connect** 添加机器，将生成的接入提示词交给该机器上的 管理 Agent（推荐 Hermes，也支持其他 Agent）。
 
 采集器需要 Node.js 24+、npm 与 Herdr 0.9.1+，可独立安装，无须克隆 Eagle 仓库：
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.4.1 --registry=https://registry.npmjs.org
 eagle-agent --version
 ```
 
 若官方源不可达，改用腾讯云镜像，二选一即可：
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g @nocoo/eagle-agent@0.4.1 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
-预期版本为 `0.4.0`。镜像同步可能延迟；遇到 `404` / `ETARGET` 可稍后重试或在网络恢复后使用官方源，不修改全局 npm 源。按照[安装与配置说明](agent/README.md)保存接入凭据后运行：
+预期版本为 `0.4.1`。镜像同步可能延迟；遇到 `404` / `ETARGET` 可稍后重试或在网络恢复后使用官方源，不修改全局 npm 源。按照[安装与配置说明](agent/README.md)保存接入凭据后运行：
 
 ```sh
 eagle-agent once
 eagle-agent watch
-# 在独立进程中运行语义 Manager，需要已配置的 Cherry：
+# 在独立进程中运行语义 Manager，先显式配置 manager.command；推荐 Hermes，也支持其他 Agent：
 eagle-agent manager-watch
 ```
 
-确定性采集器默认每 30 秒运行；Manager 仅在输入变化且满足每任务限频时调用现有 Cherry 模型，与采集进程独立运行。安全配置中的 `watchPorts` 可指定要检查的端口，例如：
+确定性采集器默认每 30 秒运行；Manager 仅在输入变化且满足每任务限频时调用现有管理 Agent 的模型，与采集进程独立运行。安全配置中的 `watchPorts` 可指定要检查的端口，例如：
 
 ```json
 {"watchPorts":[{"name":"Raven","port":7024}]}

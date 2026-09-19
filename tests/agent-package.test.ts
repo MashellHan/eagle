@@ -57,6 +57,17 @@ test("npm agent artifact installs outside the checkout and accepts credentials o
     assert(!initialized.stdout.includes(config.token));
     assert.equal(statSync(configPath).mode & 0o777, 0o600);
     assert.equal(statSync(join(directory, "config")).mode & 0o777, 0o700);
+    for (const action of ["manager-once", "manager-watch"]) {
+      const unconfigured = spawnSync(cli, [action], {
+        env,
+        encoding: "utf8",
+        timeout: 2000,
+      });
+      assert.equal(unconfigured.error, undefined);
+      assert.equal(unconfigured.status, 1);
+      assert.match(unconfigured.stderr, /Configure manager.command.*Hermes/);
+      assert(!unconfigured.stderr.includes(config.token));
+    }
     assert.equal(
       JSON.parse(readFileSync(configPath, "utf8")).token,
       config.token,

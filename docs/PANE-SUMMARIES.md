@@ -1,6 +1,6 @@
 # Live Pane summaries
 
-Two independent channels share machine-scoped Bearer authentication. The daemon's v1 report remains a complete deterministic inventory every 30 seconds. A local Manager reads that acknowledged snapshot plus bounded, redacted recent-unwrapped output and native final replies. It calls the machine's Cherry only when stable inputs change, with a minimum interval, and sends semantic updates independently. Unchanged inputs generate checks/heartbeats, never another LLM call.
+Two independent channels share machine-scoped Bearer authentication. The daemon's v1 report remains a complete deterministic inventory every 30 seconds. A local Manager reads that acknowledged snapshot plus bounded, redacted recent-unwrapped output and native final replies. It calls the machine's configured management Agent (Hermes recommended) only when stable inputs change, with a minimum interval, and sends semantic updates independently. Unchanged inputs generate checks/heartbeats, never another LLM call.
 
 The v1 summary protocol binds entries to machine + space + pane + task ID. Snapshot and semantic streams are independent: no matching report timestamp or sequence is required. A delayed semantic update (up to 30 days) is assigned to its original UTC observation hour, including when its task is no longer current. Its evidence references must resolve to daemon facts collected for that same Pane/task; empty references are explicitly unverified interpretations. It cannot submit or replace Git/test/deployment facts.
 
@@ -35,7 +35,7 @@ Manager reads `GET /api/v1/agent-state`, authenticated with the same machine cre
 {
   "protocolVersion": 1,
   "machineId": "mac-one",
-  "managerId": "cherry",
+  "managerId": "manager",
   "sequence": 42,
   "sentAt": "2026-09-19T10:00:30.000Z",
   "updates": [{
@@ -85,17 +85,32 @@ UI polls DO current state every five seconds, keeps mounted content while refres
 
 ## Continuous Manager
 
-Run daemon and Manager as separate supervised processes:
+Eagle is agent-neutral. Reuse the machine's existing management Agent; **Hermes Agent is recommended, not required**. Cherry is one machine's local Hermes profile/alias, not a product or dependency to install. Do not search for or install an unrelated Cherry package. If no suitable Agent is configured yet, keep `eagle-agent watch` running and report that semantic setup is pending.
 
-```sh
-eagle-agent watch
-eagle-agent manager-watch
+Set `manager.command` explicitly in the existing secure config, preserving its other fields. The command is an argv array, executed without a shell: it receives a UTF-8 instruction followed by bounded input JSON on stdin and must return the requested JSON array on stdout. Use the existing model/provider/profile, disable tools and avoid interactive prompts. A small adapter script can normalize another Agent's input/output. Eagle does not install an Agent or change its model configuration.
+
+For an already configured Hermes, inspect `hermes chat --help`, locate its executable and replace the example path below. Only use flags supported by that installed version. The official project is https://github.com/NousResearch/hermes-agent; follow its installation instructions only if Hermes is actually needed. A working alternative Agent needs no Hermes installation.
+
+```json
+{
+  "manager": {
+    "id": "manager",
+    "command": ["/absolute/path/to/hermes", "chat", "--query-file", "-", "--oneshot", "--quiet", "--toolsets", "none", "--ignore-rules", "--source", "tool", "--max-turns", "1", "--run-budget", "55"],
+    "minIntervalSeconds": 120,
+    "batchSize": 8
+  }
+}
 ```
 
-Manager uses the same secure config, with optional `manager: {"id":"cherry","minIntervalSeconds":120,"batchSize":8}`. `command` may be an argv array for another manager executable that consumes the JSON instruction on stdin and returns only the requested JSON array on stdout. The default uses the existing Cherry profile/model with tools disabled, a one-turn budget and a 65-second subprocess deadline; it does not replace your model configuration. Recent output is limited to 100 unwrapped lines / 12,000 characters per Pane, redacted before inference. Unreadable Panes do not refresh. Changed inputs are fairly batched, with a persistent per-Pane attempt cooldown, including failures; unchanged inputs send checks with no LLM call. A process lock prevents overlapping runs for a configuration.
+This is a config fragment, not a replacement for `agent.json`. For a named Hermes profile, use its existing launcher/wrapper or documented profile selection; retain the same provider credentials and service environment. The example does not pass model/provider overrides or `--ignore-user-config`. For another Agent, replace the entire `command` array with its verified stdin/noninteractive invocation or adapter; do not reuse Hermes flags blindly. Keep credentials out of argv and model input.
 
-State lives in `manager-MACHINE_ID/` alongside the config. Keep this private directory when restarting/upgrading: it holds sequence, cached interpretations and the exact pending batch. Network/auth/5xx failures preserve pending data; entry-specific binding/evidence failures return the rejected task key; Manager isolates that entry as `rejected-SEQUENCE.json` and immediately retries the remaining valid interpretations under a new sequence without another model call. Schema/sequence/writer conflicts quarantine the batch; the next cycle re-reads authoritative state. Never reset sequence or change manager ID to conceal a conflict. Different machines use independent state directories. Stop the old Manager before moving its configuration to another host.
+Run `eagle-agent manager-once`, verify actual summaries, then supervise `eagle-agent manager-watch` separately from `watch` using absolute paths and the required PATH/profile environment. Alternatively schedule `manager-once` with the machine's existing cron/scheduler; verify that scheduler's syntax and do not run both schedulers. A single successful cycle does not provide continuous coverage.
 
-For Cherry Cron instead of a separate service, put a script under Cherry's profile scripts directory that runs `eagle-agent manager-once` with absolute paths and `EAGLE_CONFIG`, then register it with `cherry cron create 'every 1m' --script SCRIPT --no-agent --deliver local --failure-deliver local`. Verify the installed CLI's `cron create --help` for schedule syntax. Do not schedule an unrestricted agent prompt every 30 seconds. The script's own change detector decides whether Cherry needs to run. Pick service or Cron, not both.
+Manager has a 65-second subprocess deadline and a persistent 120-second minimum per Pane/task. It interprets changed inputs only; stable inputs refresh freshness without another model call or history entry. Each summary describes task, phase, progress, outcomes, blocker, next step and rationale with deterministic evidence references. Neither Agent output nor a terminal completion claim certifies tests or deployment.
+
+Preserve the existing `manager.id` and `manager-MACHINE_ID/` directory across upgrades, even if its old ID is `cherry`: IDs are durable writer identities, not executable names. Keep sequence, pending batches and cached summaries. When upgrading from 0.4.0's implicit Cherry default, explicitly configure the already working command and keep ID `cherry`; do not reset identity or install a different Agent.
+
+Protocol, independent DO streams, hourly history and retention: https://github.com/nocoo/eagle/blob/main/docs/PANE-SUMMARIES.md
+Reusable Skill: https://github.com/nocoo/eagle/blob/main/skills/eagle-report/SKILL.md
 
 Only semantic Pane history is enabled. Hourly machine summaries and historical whole-report writes remain paused.
