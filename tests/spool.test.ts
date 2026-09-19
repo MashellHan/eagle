@@ -1,8 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { promisify } from "node:util";
 import { sendReport, UploadRejectedError } from "../agent/collector.ts";
 import { drainSpool } from "../agent/spool.ts";
 import { report } from "./fixtures.ts";
@@ -23,7 +32,10 @@ test("a malformed or permanently rejected report is retained without blocking fr
           if (value.reportId === "rejected")
             return new Response("{}", { status: 400 });
           sent.push(value.reportId);
-          return new Response("{}", { status: 201 });
+          return Response.json(
+            { accepted: true, duplicate: false, seq: 1 },
+            { status: 201 },
+          );
         },
         0,
       ),
@@ -43,6 +55,68 @@ test("a malformed or permanently rejected report is retained without blocking fr
       /401/,
     );
     assert((await readdir(dir)).includes("d.json"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a malformed successful acknowledgement keeps the valid report pending", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "eagle-ack-"));
+  try {
+    await writeFile(join(dir, "report.json"), JSON.stringify(report()));
+    for (const body of ["not-json", "{}", "null", '{"accepted":false}']) {
+      await assert.rejects(
+        drainSpool(dir, "mac-one", (value) =>
+          sendReport(
+            "https://eagle.test",
+            "test-token",
+            value,
+            async () => new Response(body, { status: 200 }),
+            0,
+          ),
+        ),
+        /acknowledgement/,
+      );
+      assert((await readdir(dir)).includes("report.json"));
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a full queue drains before attempting a fresh capture", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "eagle-full-"));
+  try {
+    const spool = join(dir, "spool");
+    await mkdir(spool);
+    await Promise.all(
+      Array.from({ length: 1000 }, (_, i) =>
+        writeFile(join(spool, `${i}.json`), "{broken"),
+      ),
+    );
+    const config = join(dir, "agent.json");
+    await writeFile(
+      config,
+      JSON.stringify({
+        url: "http://127.0.0.1:1",
+        token: "test-token".repeat(4),
+        machineId: "mac-one",
+        machineName: "Test machine",
+        spoolDir: spool,
+      }),
+      { mode: 0o600 },
+    );
+    await assert.rejects(
+      promisify(execFile)(process.execPath, ["agent/cli.ts", "once"], {
+        env: { ...process.env, PATH: "/nonexistent", EAGLE_CONFIG: config },
+      }),
+      /Collection failed; previous complete inventory preserved/,
+    );
+    assert.equal((await readdir(join(spool, "rejected"))).length, 1000);
+    assert.equal(
+      (await readdir(spool)).filter((f) => f.endsWith(".json")).length,
+      0,
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

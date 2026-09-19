@@ -67,7 +67,10 @@ test("upload retries reuse the identical ID/body; permanent auth failures stop; 
     async (_url, init) => {
       bodies.push(String(init?.body));
       assert.equal(init?.redirect, "error");
-      return new Response("{}", { status: ++attempts < 2 ? 503 : 201 });
+      return Response.json(
+        { accepted: true, duplicate: false, seq: 1 },
+        { status: ++attempts < 2 ? 503 : 201 },
+      );
     },
     0,
   );

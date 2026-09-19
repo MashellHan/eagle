@@ -55,8 +55,8 @@ async function cycle(config: AgentConfig) {
     .filter((f) => f.endsWith(".json"))
     .sort();
   if (files.length >= 1000)
-    throw new Error(
-      "Spool full (1000 reports); fix transport before collecting more",
+    await drainSpool(spool, config.machineId, (pending) =>
+      sendReport(config.url, config.token, pending),
     );
   let report: Awaited<ReturnType<typeof collect>>;
   try {

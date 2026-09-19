@@ -51,3 +51,18 @@ Automatic collection covers **every running local Herdr session** and every Spac
 First collect the live report and copy its pane.task.id into the manager entry. For Codex it is derived from the native session/turn; Grok and Pi use the latest native user prompt when available. A manager cannot replace this identity: stale IDs are ignored. Unsupported harnesses fall back to the session/title identity and require the manager to verify task continuity. Retain actual evidence timestamps; never renew old tests merely because the collector ran. Test and deployment receipts include the **tested/deployed full Git SHA**. `requiresDeployment:false` is valid for tasks that actually do not require publication. A terminal's final answer alone remains an unverified claim until the independent receipts agree.
 
 Prefer a short human outcome: what changed, what remains, what needs a decision. Do not send entire scrollback, internal reasoning, environment dumps, or credentials. The UI defaults to this summary and allows inspecting evidence underneath.
+
+## Installed on MBPM5MSFT
+
+The production machine ID is `mbpm5msft`. Its macOS LaunchAgent at `~/Library/LaunchAgents/com.hexly.eagle-agent.plist` runs this checkout's `agent/cli.ts watch` every 30 seconds and restarts on failure. Configuration, the manager evidence file, durable spool, and `agent.stdout.log` / `agent.stderr.log` are under `~/.config/eagle/`. The separate dashboard token is `~/.config/eagle/viewer-token`; never include its contents in a report.
+
+```sh
+# Restart after updating collector code:
+launchctl kickstart -k gui/501/com.hexly.eagle-agent
+# Stop reporting:
+launchctl bootout gui/501 ~/Library/LaunchAgents/com.hexly.eagle-agent.plist
+# Resume reporting:
+launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.hexly.eagle-agent.plist
+```
+
+These commands are for this machine's user ID 501. Other machines need their own token, identity, checkout path and service configuration. A valid success acknowledgement is required before a queued report is removed; malformed responses preserve the report for an idempotent retry.

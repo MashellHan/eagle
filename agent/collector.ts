@@ -642,7 +642,21 @@ export async function sendReport(
       await new Promise((r) => setTimeout(r, delayMs * 2 ** attempt));
       continue;
     }
-    if (response.ok) return response.json();
+    if (response.ok) {
+      try {
+        return z
+          .object({
+            accepted: z.literal(true),
+            duplicate: z.boolean(),
+            seq: z.number().int().positive(),
+          })
+          .parse(await response.json());
+      } catch {
+        throw new Error(
+          "Invalid upload acknowledgement; report retained for retry",
+        );
+      }
+    }
     if (response.status < 500 && response.status !== 429)
       throw new UploadRejectedError(response.status);
     if (attempt === 2)
