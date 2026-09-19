@@ -1,0 +1,269 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "reportId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[\\w.:/-]+$"
+    },
+    "capturedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+    },
+    "machine": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-z0-9][a-z0-9_-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "platform": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "collectorVersion": {
+          "type": "string",
+          "maxLength": 80
+        }
+      },
+      "required": ["id", "name", "platform", "collectorVersion"],
+      "additionalProperties": false
+    },
+    "spaces": {
+      "maxItems": 200,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[\\w.:/-]+$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "session": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "objective": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "tabs": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160,
+                  "pattern": "^[\\w.:/-]+$"
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 240
+                },
+                "panes": {
+                  "maxItems": 100,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "pattern": "^[\\w.:/-]+$"
+                      },
+                      "title": {
+                        "type": "string",
+                        "maxLength": 240
+                      },
+                      "agent": {
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      "hint": {
+                        "type": "string",
+                        "enum": [
+                          "working",
+                          "idle",
+                          "done",
+                          "blocked",
+                          "unknown"
+                        ]
+                      },
+                      "task": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 160,
+                            "pattern": "^[\\w.:/-]+$"
+                          },
+                          "title": {
+                            "type": "string",
+                            "maxLength": 500
+                          },
+                          "requiresDeployment": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["id", "title", "requiresDeployment"],
+                        "additionalProperties": false
+                      },
+                      "rect": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "y": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "width": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 1
+                          },
+                          "height": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 1
+                          }
+                        },
+                        "required": ["x", "y", "width", "height"],
+                        "additionalProperties": false
+                      },
+                      "evidence": {
+                        "maxItems": 30,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "summary",
+                                "goal",
+                                "git",
+                                "test",
+                                "process",
+                                "deployment"
+                              ]
+                            },
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "success",
+                                "failure",
+                                "running",
+                                "waiting",
+                                "unknown"
+                              ]
+                            },
+                            "summary": {
+                              "type": "string",
+                              "maxLength": 2000
+                            },
+                            "source": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 240
+                            },
+                            "observedAt": {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                            },
+                            "taskId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 160,
+                              "pattern": "^[\\w.:/-]+$"
+                            },
+                            "revision": {
+                              "type": "string",
+                              "maxLength": 100
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "status",
+                            "summary",
+                            "source",
+                            "observedAt",
+                            "taskId"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "agent",
+                      "hint",
+                      "task",
+                      "rect",
+                      "evidence"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["id", "name", "panes"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["id", "name", "session", "objective", "tabs"],
+        "additionalProperties": false
+      }
+    },
+    "warnings": {
+      "maxItems": 100,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 500
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "reportId",
+    "capturedAt",
+    "machine",
+    "spaces",
+    "warnings"
+  ],
+  "additionalProperties": false
+}

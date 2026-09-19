@@ -58,3 +58,9 @@ test("executive summary and history report meaningful task changes including clo
   after.spaces = [];
   assert.match(changesBetween(before, after).join(" "), /关闭|移除/);
 });
+
+test("contradictory evidence at an identical time does not become verified by array order", () => {
+  const pane = report().spaces[0].tabs[0].panes[0];
+  pane.evidence = [evidence("test", "failure"), evidence("test", "success")];
+  assert.equal(assessPane(pane, NOW).state, "attention");
+});

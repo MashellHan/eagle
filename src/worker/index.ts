@@ -279,7 +279,7 @@ export default {
       console.error(
         JSON.stringify({
           event: "request_failed",
-            category: error instanceof Error ? error.name : "unknown",
+          category: error instanceof Error ? error.name : "unknown",
           path: new URL(request.url).pathname,
         }),
       );

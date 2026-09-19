@@ -16,7 +16,13 @@ export function assessPane(
     if (item.taskId !== pane.task.id || age > 86_400_000 || age < -300_000)
       continue;
     const prior = latest.get(item.kind);
-    if (!prior || item.observedAt >= prior.observedAt)
+    const rank = { success: 0, unknown: 1, running: 2, waiting: 3, failure: 4 };
+    if (
+      !prior ||
+      Date.parse(item.observedAt) > Date.parse(prior.observedAt) ||
+      (Date.parse(item.observedAt) === Date.parse(prior.observedAt) &&
+        rank[item.status] > rank[prior.status])
+    )
       latest.set(item.kind, item);
   }
   const evidence = [...latest.values()];

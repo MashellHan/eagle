@@ -6,7 +6,9 @@ const id = z
   .max(160)
   .regex(/^[\w.:/-]+$/);
 const text = z.string().max(2000);
-const timestamp = z.iso.datetime({ offset: false });
+const timestamp = z.iso
+  .datetime({ offset: false })
+  .transform((value) => new Date(value).toISOString());
 export const EvidenceSchema = z.strictObject({
   kind: z.enum(["summary", "goal", "git", "test", "process", "deployment"]),
   status: z.enum(["success", "failure", "running", "waiting", "unknown"]),

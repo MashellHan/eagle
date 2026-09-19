@@ -45,3 +45,12 @@ test("reject invalid dates, geometry, excessive strings and duplicate pane ident
   value.spaces[0].tabs[0].panes.push(pane);
   assert.equal(ReportSchema.safeParse(value).success, false);
 });
+
+test("normalizes fractional timestamp precision before lexical D1 ordering", () => {
+  const value = report();
+  value.capturedAt = "2026-09-19T05:50:00Z";
+  assert.equal(
+    ReportSchema.parse(value).capturedAt,
+    "2026-09-19T05:50:00.000Z",
+  );
+});

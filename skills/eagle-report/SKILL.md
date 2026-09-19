@@ -1,0 +1,16 @@
+---
+name: eagle-report
+description: Collect and report all local Herdr Spaces to Eagle, or add structured task evidence as a local management agent such as Cherry. Use for Eagle machine status reporting and evidence summaries; not for controlling other agents or inferring completion from pane badges.
+---
+
+Use the Eagle checkout's `agent/cli.ts` from its repository root. Read `docs/AGENT.md` there for secure configuration and the evidence-file format. Node 24+, an installed Herdr server, and `npm ci` are required.
+
+- `node agent/cli.ts once` collects all running local sessions and uploads a complete inventory. `watch` repeats; `collect <private-file>` and `upload <private-file>` separate collection and delivery.
+- Credentials come only from a mode-0600 configuration selected by `EAGLE_CONFIG` (default `~/.config/eagle/agent.json`). Never print or copy tokens into evidence. The reporting token authorizes only its machine; it is not the viewing token.
+- Summarize each current task for the user: intended outcome, observed progress, latest meaningful change, remaining work or decision. Bind manager evidence to a task ID and retain the original evidence timestamps.
+- Treat terminal `idle`, `done`, `blocked`, wait completion, and “Goal achieved” text as weak hints. Read the actual final summary; reconcile native Goal, Git SHA/worktree, test result, actual process activity, and required production/browser evidence. Contradictions and missing evidence stay explicit. A running harness proves presence only.
+- For Codex, reuse the current pane.task.id from a fresh collection (native turn-scoped); old IDs are ignored. Update the configured evidence file atomically, keyed by `session:paneId`; send the actual tested/deployed revision for test/live receipts. Never claim verified delivery from a green health endpoint for an unidentified revision.
+- The collector does not execute arbitrary repo commands. Only run extra tests or live checks already authorized for that task. Never send prompts or keys to unrelated panes as part of status collection.
+- Failure preserves pending reports. Correct credentials/schema/transport before retrying; never regenerate an ID for the same pending payload or delete a queue merely to make status appear healthy. The platform rejects ID/content conflicts.
+
+After a report is accepted, verify the machine's current inventory and freshness in Eagle. A successful command exit is not proof that every Space was captured: inspect warnings and the Space/Pane counts. Use the authenticated history query to verify delayed uploads without expecting old snapshots to replace current state.
