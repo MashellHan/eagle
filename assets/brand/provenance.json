@@ -1,20 +1,20 @@
 {
   "project": "eagle",
   "study": "https://github.com/nocoo/hexly.ai/tree/main/artwork/logo-family/eagle/2026-09-19-01",
-  "finishing": "01",
+  "finishing": "02",
   "nativeSize": [2048, 2048],
   "model": "gpt-image-2.5-sunburst",
   "ownerReviewedExactBytes": false,
   "decisionSource": "owner-delegated batch acceptance",
   "master": {
     "path": "logo.png",
-    "sha256": "8e265377fc8b73a953207765c4cfd3daab265f71b8d818600c59635b69d38afb"
+    "sha256": "2dbda2e185133a9f708cbad1190c817d18ff5bb96aa1337f0a18edc9b5532e20"
   },
   "roles": {
     "assets/brand/readme.png": "Rounded presentation for README",
     "public/brand/mark-128.png": "Transparent sidebar (expanded/collapsed), login and loading mark; no mask",
     "public/favicon.ico": "Seven transparent PNG entries: 16,24,32,48,64,128,256",
     "public/brand/apple-touch-icon.png": "Square presentation for platform masking",
-    "https://hexly.ai/og/eagle.jpg": "Hexly authored social canvas with complete approved mark"
+    "https://hexly.ai/og/eagle.jpg": "Hexly social canvas with complete approved mark"
   }
 }

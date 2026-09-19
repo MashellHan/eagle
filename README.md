@@ -2,6 +2,8 @@
 
 # Eagle
 
+[简体中文](README.zh-CN.md)
+
 Private, evidence-led overview of every Herdr Space on every reporting machine.
 
 **Production:** https://eagle.hexly.ai · **Local:** https://eagle.dev.hexly.ai · **[Hexly](https://hexly.ai/projects/eagle)** · **[Status](https://status.hexly.ai)**
