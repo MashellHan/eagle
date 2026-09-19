@@ -57,3 +57,12 @@ serving and the first catalogue-derived production Cron observation.
 - 首屏采用彩色状态指标、需关注/进行中优先的紧凑 Space 拓扑、右侧变化流与证据覆盖；多 Tab 并排展示，手机统计收为一行。动效支持 reduced-motion，后台刷新保留内容。
 - Grok 确认专用 ingest host 没有可复现绕过。其停止 Session 计数推测已通过 summarize 实际运行反证：即使 Pane 的证据齐全，unavailable Space 仍为 unverified。
 - 正在部署，并将本机上报入口切换到专用域名、清理旧 viewer secret。真实 Access 用户登录尚待完成。
+
+
+## 2026-09-19 15:31 +08:00（Access 改版，第二个 15 分钟）
+
+- 已整合 main 上独立发布的鹰标识、品牌链接和健康版本字段，保留双方变更；Grok 已收回停止 Session 的误报，无可复现 P0/P1。
+- 15:30 本地真实免登录端到端复验通过：当前 Herdr 为 14 Space / 28 Pane，采集、Bearer、D1、全量渲染、自动刷新、详情、历史、桌面与手机均通过，无浏览器错误。
+- 冷启动测试发现 Vite 延迟发现 Radix 的 react-dom peer 导致依赖 504，已预加载该依赖；清空测试缓存后的 12 项桌面/手机用例通过，33 项单元/集成测试及类型、Biome、构建通过。
+- 真实 Access 用户登录已成功。旧 VIEWER_TOKEN 已从 Worker secret 和本地安全配置删除，机器 Bearer 保留。
+- 当前生产断点：新增采集域名尚未可解析；积压快照仍安全保留在 spool。正在核对域名绑定并部署整合后的确切提交，再验证生产登录与补传。
