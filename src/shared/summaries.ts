@@ -56,7 +56,7 @@ export const SummaryBatchSchema = z
     checks: z.array(SummaryCheckSchema).max(1000),
   })
   .refine((b) => {
-    const keys = [...b.updates, ...b.checks].map(paneKey);
+    const keys = [...b.updates, ...b.checks].map(taskKey);
     return keys.length <= 1000 && new Set(keys).size === keys.length;
   }, "Duplicate or too many pane entries");
 export type SummaryBatch = z.infer<typeof SummaryBatchSchema>;
@@ -91,6 +91,11 @@ export type SemanticHour = {
 };
 export const paneKey = (p: { spaceId: string; paneId: string }) =>
   `${encodeURIComponent(p.spaceId)}/${encodeURIComponent(p.paneId)}`;
+export const taskKey = (p: {
+  spaceId: string;
+  paneId: string;
+  taskId: string;
+}) => `${paneKey(p)}/${encodeURIComponent(p.taskId)}`;
 export function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (value && typeof value === "object")

@@ -57,6 +57,21 @@ test("summary protocol separates semantic changes, observation, and deterministi
     checks: [],
   };
   const batch = SummaryBatchSchema.parse(input);
+  assert(
+    SummaryBatchSchema.safeParse({
+      ...input,
+      checks: [
+        {
+          spaceId: "default:w1",
+          paneId: "w1:p1",
+          taskId: "another-task",
+          basis: [],
+          observedAt: input.sentAt,
+        },
+      ],
+    }).success,
+    "One batch can hold an old task update and the current task check for the same Pane",
+  );
   assert.equal(
     SummaryBatchSchema.safeParse({ ...input, protocolVersion: 2 }).success,
     false,

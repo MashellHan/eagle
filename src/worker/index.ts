@@ -11,6 +11,7 @@ import {
   evidenceKeys,
   paneKey,
   SummaryBatchSchema,
+  taskKey,
 } from "../shared/summaries.ts";
 import {
   agentIdentity,
@@ -222,20 +223,20 @@ async function route(request: Request, env: Env): Promise<Response> {
       Object.fromEntries(
         await Promise.all(
           batch.updates.map(async (entry) => [
-            paneKey(entry),
+            taskKey(entry),
             await digest({ taskId: entry.taskId, summary: entry.summary }),
           ]),
         ),
       ),
     );
     if ("error" in result && result.error)
-      throw new HttpError(
+      return json(
+        result,
         result.error === "unauthorized"
           ? 401
           : result.error === "archive_backpressure"
             ? 503
             : 409,
-        result.error,
       );
     return json(result, result.duplicate ? 200 : 201);
   }

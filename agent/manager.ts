@@ -22,6 +22,7 @@ import {
   type SummaryBatch,
   SummaryBatchSchema,
   type SummaryCheck,
+  taskKey,
 } from "../src/shared/summaries.ts";
 import { type AgentConfig, checkUrl, redact } from "./collector.ts";
 
@@ -227,7 +228,39 @@ async function runTick(
     if (!response.ok) {
       const reason = (await response.json().catch(() => ({}))) as {
         error?: string;
+        entry?: string;
       };
+      if (
+        response.status === 409 &&
+        reason.entry &&
+        [...pending.batch.updates, ...pending.batch.checks].some(
+          (e) => taskKey(e) === reason.entry,
+        )
+      ) {
+        const bad = pending.batch.updates.filter(
+          (e) => taskKey(e) === reason.entry,
+        );
+        if (bad.length)
+          await save(
+            join(directory, `rejected-${pending.batch.sequence}.json`),
+            { ...pending.batch, updates: bad, checks: [] },
+          );
+        for (const entry of bad) delete pending.cache[paneKey(entry)];
+        pending.batch = {
+          ...pending.batch,
+          sequence: ++state.sequence,
+          sentAt: new Date().toISOString(),
+          updates: pending.batch.updates.filter(
+            (e) => taskKey(e) !== reason.entry,
+          ),
+          checks: pending.batch.checks.filter(
+            (e) => taskKey(e) !== reason.entry,
+          ),
+        };
+        await save(path, state);
+        await deliver();
+        return;
+      }
       if (
         response.status === 409 &&
         pending.batch.checks.length &&
@@ -508,6 +541,6 @@ async function runTick(
     checked: checks.length,
     livePanes: inputs.length,
     unreadable,
-    sequence: batch.sequence,
+    sequence: state.sequence,
   };
 }

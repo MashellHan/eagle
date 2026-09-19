@@ -9,6 +9,7 @@ import {
   paneKey,
   type SummaryBatch,
   semanticContent,
+  taskKey,
 } from "../shared/summaries.ts";
 import { agentTokens } from "./auth.ts";
 
@@ -58,6 +59,9 @@ export class MachineState extends DurableObject<Env> {
     CREATE TABLE IF NOT EXISTS fact_evidence (pane_key TEXT,hash TEXT,task_id TEXT,received_at TEXT,payload TEXT,PRIMARY KEY(pane_key,hash));
     CREATE INDEX IF NOT EXISTS fact_retention ON fact_evidence(received_at);
     CREATE INDEX IF NOT EXISTS semantic_retention ON semantic_records(received_at);`);
+    ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS live_tasks(space_id TEXT,pane_id TEXT,task_id TEXT,PRIMARY KEY(space_id,pane_id))",
+    );
   }
 
   current(): MachineView | null {
@@ -206,6 +210,15 @@ export class MachineState extends DurableObject<Env> {
         : { ...previous, lastSeen: now, revision: previous.revision + 1 };
       if (newer) {
         this.ctx.storage.kv.put("fact-keys", factKeys);
+        this.ctx.storage.sql.exec("DELETE FROM live_tasks");
+        for (const space of report.spaces.filter((s) => !s.availability))
+          for (const pane of space.tabs.flatMap((t) => t.panes))
+            this.ctx.storage.sql.exec(
+              "INSERT INTO live_tasks VALUES(?,?,?)",
+              space.id,
+              pane.id,
+              pane.task.id,
+            );
         for (const [key, records] of Object.entries(factKeys))
           for (const [hash, evidence] of Object.entries(records))
             this.ctx.storage.sql.exec(
@@ -267,7 +280,7 @@ export class MachineState extends DurableObject<Env> {
       MAX_RECORDS,
     );
     sql.exec(
-      "DELETE FROM semantic_current WHERE received_at < ? OR rowid IN (SELECT rowid FROM semantic_current ORDER BY received_at DESC LIMIT -1 OFFSET ?)",
+      "DELETE FROM semantic_current WHERE (received_at < ? OR rowid IN (SELECT rowid FROM semantic_current ORDER BY received_at DESC LIMIT -1 OFFSET ?)) AND NOT EXISTS(SELECT 1 FROM live_tasks WHERE live_tasks.space_id=semantic_current.space_id AND live_tasks.pane_id=semantic_current.pane_id AND live_tasks.task_id=semantic_current.task_id)",
       cutoff,
       MAX_RECORDS,
     );
@@ -405,7 +418,10 @@ export class MachineState extends DurableObject<Env> {
           Date.parse(entry.observedAt) <
             Date.parse(now) - RETENTION_DAYS * 86400000
         )
-          return { error: "observation_outside_retention" } as const;
+          return {
+            error: "observation_outside_retention",
+            entry: taskKey(entry),
+          } as const;
         const key = paneKey(entry);
         const known: Facts = {};
         for (const ref of entry.basis) {
@@ -417,7 +433,8 @@ export class MachineState extends DurableObject<Env> {
               entry.taskId,
             )
             .toArray()[0];
-          if (!record) return { error: "basis_changed" } as const;
+          if (!record)
+            return { error: "basis_changed", entry: taskKey(entry) } as const;
           known[ref] = JSON.parse(record.payload);
         }
         if (
@@ -426,8 +443,8 @@ export class MachineState extends DurableObject<Env> {
             ...entry.summary.outcomes.flatMap((o) => o.evidenceRefs),
           ].some((ref) => !Object.hasOwn(known, ref))
         )
-          return { error: "unknown_evidence" } as const;
-        accepted[key] = known;
+          return { error: "unknown_evidence", entry: taskKey(entry) } as const;
+        accepted[taskKey(entry)] = known;
       }
       for (const entry of batch.checks) {
         const space = current?.report.spaces.find(
@@ -445,19 +462,19 @@ export class MachineState extends DurableObject<Env> {
           canonical(Object.keys(facts[paneKey(entry)] ?? {}).sort()) !==
             canonical([...entry.basis].sort())
         )
-          return { error: "basis_changed" } as const;
+          return { error: "basis_changed", entry: taskKey(entry) } as const;
         if (
           !previous ||
           canonical([...previous.basis].sort()) !==
             canonical([...entry.basis].sort())
         )
-          return { error: "summary_required" } as const;
+          return { error: "summary_required", entry: taskKey(entry) } as const;
         if (
           Date.parse(now) - Date.parse(entry.observedAt) > 300000 ||
           Date.parse(entry.observedAt) > Date.parse(now) + 30000 ||
           entry.observedAt < previous.checkedAt
         )
-          return { error: "stale_observation" } as const;
+          return { error: "stale_observation", entry: taskKey(entry) } as const;
       }
       if (
         sql.exec<{ n: number }>("SELECT count(*) n FROM summary_outbox").one()
@@ -467,7 +484,7 @@ export class MachineState extends DurableObject<Env> {
       )
         return { error: "archive_backpressure" } as const;
       for (const entry of batch.updates) {
-        const key = paneKey(entry);
+        const key = taskKey(entry);
         const previous = this.latest(entry.spaceId, entry.paneId, entry.taskId);
         const changed =
           !previous || semanticContent(previous) !== semanticContent(entry);

@@ -157,3 +157,64 @@ test("failed interpretation is durably debounced and concurrent runs are exclude
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("one rejected Pane update is isolated without discarding valid interpretations or invoking the model again", async () => {
+  const { taskKey } = await import("../src/shared/summaries.ts");
+  const directory = await mkdtemp(join(tmpdir(), "eagle-isolate-"));
+  try {
+    const snapshot = report("isolate", new Date().toISOString());
+    const second = structuredClone(snapshot.spaces[0].tabs[0].panes[0]);
+    second.id = "w1:p2";
+    snapshot.spaces[0].tabs[0].panes.push(second);
+    let calls = 0;
+    const delivered: SummaryBatch[] = [];
+    const dependencies = {
+      readPane: async () => "real output",
+      analyze: async (inputs: ManagerInput[]) => {
+        calls++;
+        return inputs.map((i) => ({
+          key: i.key,
+          summary: {
+            task: "task",
+            phase: "verify",
+            progress: "progress",
+            outcomes: [],
+            blocker: null,
+            nextStep: "next",
+            rationale: "reason",
+            evidenceRefs: [],
+          },
+        }));
+      },
+      transport: (async (url, options) => {
+        if (String(url).endsWith("agent-state"))
+          return Response.json({ report: snapshot });
+        const batch = JSON.parse(String(options?.body)) as SummaryBatch;
+        delivered.push(batch);
+        const bad = batch.updates.find((e) => e.paneId === "w1:p2");
+        return bad
+          ? Response.json(
+              { error: "unknown_evidence", entry: taskKey(bad) },
+              { status: 409 },
+            )
+          : Response.json({ accepted: true, sequence: batch.sequence });
+      }) as typeof fetch,
+    };
+    await managerTick(
+      {
+        url: "http://127.0.0.1:37053",
+        machineId: "mac-one",
+        machineName: "Mac",
+        token: "at-least-thirty-two-characters-token",
+      },
+      directory,
+      dependencies,
+    );
+    assert.equal(calls, 1);
+    assert.equal(delivered.length, 2);
+    assert.equal(delivered[1].updates.length, 1);
+    assert.equal(delivered[1].updates[0].paneId, "w1:p1");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

@@ -146,3 +146,10 @@ serving and the first catalogue-derived production Cron observation.
 - 同轮原有 verify-live.ts 验证完整采集、Bearer、DO、资源/端口、幂等、自动刷新和历史读取全部通过。新语义模型有 interpreted=0 的心跳轮次；真实变化后继续产生多条小时记录。
 - Grok 只读 Review 的缓存补传、旧任务 previous、409 心跳冲突与证据保留问题均已修复；语义存储改为独立 SQLite 表和已知事实索引。补充测试验证迟到观察不能回滚当前指针、latest 查询拒绝 cursor、观察超出保留期拒绝，以及含分隔符的 ID 不会串绑。
 - 当前 55 项单元/集成测试、30 项浏览器测试、类型、Biome 和构建通过。生产 D1 0002 已应用，Connect 签名密钥已写入 Worker 安全配置，真实 Access 会话有效。网站与生产 Manager 的正式切换即将进行；npm 0.4.0 待发布认证。
+
+## 2026-09-19 18:28 +08 — Review 修复与连续运行复验
+
+- 18:28:31 再次通过真实 Caddy 验收：9 Spaces / 18 live Panes 均有当前任务总结，逐 Pane 展开 UTC 小时全部记录，核对 latest、来源、内容哈希与 sequence；桌面、手机和刷新 DOM 连续性通过。
+- 真实安静 Pane w3J:p3 的语义更新时间保持 18:13:54，检查时间推进至 18:28:08，该 UTC 小时仍仅 1 条记录，证明持续 heartbeat 没有重复写历史。daemon 最近快照 18:28:03，Manager sequence 已到 42；本地 D1 副本已有 46 条、18 个不同 Pane（18:22 查询）。
+- Grok 第二轮 Review 后先补失败用例：同 Pane 不同 task 可独立上报；错误条目被隔离后有效条目立即续传；当前 live task 指针不被历史保留策略清理。三个问题均已修复，57 项单元/集成、30 项浏览器测试、TypeScript、Biome、构建通过。
+- 下一跳：当前修复提交通过 CI 后部署 Worker，重启生产确定性 daemon 并启用独立 Cherry Manager，验证生产 DO、D1 语义副本与全 Pane 页面。npm 0.4.0 已遇 EOTP，等待新的发布验证码；网站发布不依赖 npm 验证码。

@@ -102,6 +102,7 @@ before(async () => {
       },
     ],
   });
+  options = { ...options, unsafeInspectDurableObjects: true };
   mf = new Miniflare(options);
   const db = await mf.getD1Database("DB");
   await db.exec(
@@ -1227,4 +1228,21 @@ test("DO independently retains semantic records in UTC hours with latest/all que
     7,
     "A later upload of an older observation must never roll back the per-task latest pointer",
   );
+});
+
+test("retention cannot evict a live task interpretation in favor of delayed historical tasks", async () => {
+  const storage = await mf.unsafeGetDurableObjectStorage(
+    "eagle",
+    "MachineState",
+    { name: "mac-one" },
+  );
+  await storage.exec(
+    "UPDATE semantic_current SET received_at='2000-01-01T00:00:00.000Z' WHERE task_id='older-task'",
+  );
+  await request("/api/v1/semantic-hours?machine=mac-one", undefined, viewer);
+  const own = (await (await request("/api/v1/agent-state")).json()) as {
+    summaries: { taskId: string; sequence: number }[];
+  };
+  assert.equal(own.summaries[0]?.taskId, "older-task");
+  assert.equal(own.summaries[0].sequence, 7);
 });
