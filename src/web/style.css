@@ -643,6 +643,9 @@
   background: hsl(var(--basalt-accent-4));
   border-radius: 50%;
 }
+.sync-dot[data-offline="true"] {
+  background: hsl(var(--basalt-destructive));
+}
 .syncing {
   animation: eagle-pulse 1s ease-in-out infinite;
 }

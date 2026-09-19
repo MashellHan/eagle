@@ -85,6 +85,10 @@ test("failed refresh clearly preserves last known data and does not imply live s
   fail = true;
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("连接中断");
+  await expect(page.locator(".sync-caption")).toContainText(
+    "连接中断 · 保留上次快照",
+  );
+  await expect(page.locator(".sync-caption")).not.toContainText("已同步");
 });
 
 test("stale machine data is marked explicitly", async ({ page }) => {

@@ -66,3 +66,12 @@ serving and the first catalogue-derived production Cron observation.
 - 冷启动测试发现 Vite 延迟发现 Radix 的 react-dom peer 导致依赖 504，已预加载该依赖；清空测试缓存后的 12 项桌面/手机用例通过，33 项单元/集成测试及类型、Biome、构建通过。
 - 真实 Access 用户登录已成功。旧 VIEWER_TOKEN 已从 Worker secret 和本地安全配置删除，机器 Bearer 保留。
 - 当前生产断点：新增采集域名尚未可解析；积压快照仍安全保留在 spool。正在核对域名绑定并部署整合后的确切提交，再验证生产登录与补传。
+
+
+## 2026-09-19 15:40 +08:00（真实生产验收）
+
+- `fcadf5d` 已推送 main、GitHub CI 全绿并部署；真实 Access 会话在 15:37 完成生产端到端验证。14 Space / 28 Pane 从真实 Herdr 采集，经机器 Bearer、D1 到桌面/手机全部渲染；幂等、自动刷新、详情、历史及无浏览器错误均通过。
+- 生产匿名看板请求 302 到 nocoo Access；独立采集域名的页面、资源、overview、history 均为 404，未认证 reports/heartbeat 为 401。公开健康检查包含 0.1.1 与完整 Git revision。
+- DNS 问题来自 Mihomo 和系统的负缓存；清理 Mihomo 缓存后公网解析正常，Node 采集器已跟随本机现有 HTTPS 代理。spool 已清空，15:38:12、15:38:42、15:39:12 连续成功上报，均无采集告警，错误日志没有新增。
+- Worker 只剩 AGENT_TOKENS secret；旧 viewer 文件及安全 JSON 字段已删除，机器安全配置保持 0600。
+- 最终复核新增失败用例：请求失败不得继续显示“已同步”。桌面和手机均先复现，随后改成红色断线提示并保留上次快照；正执行最后复验与部署。

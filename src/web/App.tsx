@@ -610,8 +610,17 @@ export function App() {
                   </LayerCard>
                 )}
                 <div className="sync-caption">
-                  <span className={syncing ? "sync-dot syncing" : "sync-dot"} />
-                  {syncing ? "正在同步" : `已同步 ${time(now)}`}
+                  <span
+                    className={syncing ? "sync-dot syncing" : "sync-dot"}
+                    data-offline={!!error}
+                  />
+                  {error
+                    ? data
+                      ? "连接中断 · 保留上次快照"
+                      : "连接中断 · 等待首次快照"
+                    : syncing
+                      ? "正在同步"
+                      : `已同步 ${time(now)}`}
                   <span>每 5 秒自动更新</span>
                 </div>
                 {boot ? (

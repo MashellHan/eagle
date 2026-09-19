@@ -54,7 +54,7 @@ Prefer a short human outcome: what changed, what remains, what needs a decision.
 
 ## Installed on MBPM5MSFT
 
-The production machine ID is `mbpm5msft`. Its macOS LaunchAgent at `~/Library/LaunchAgents/com.hexly.eagle-agent.plist` runs this checkout's `agent/cli.ts watch` every 30 seconds and restarts on failure. Configuration, the manager evidence file, durable spool, and `agent.stdout.log` / `agent.stderr.log` are under `~/.config/eagle/`. The website uses Cloudflare Access; the former viewer-token file is removed when this release is deployed. Machine Bearer credentials remain required for reporting.
+The production machine ID is `mbpm5msft`. Its macOS LaunchAgent at `~/Library/LaunchAgents/com.hexly.eagle-agent.plist` runs this checkout's `agent/cli.ts watch` every 30 seconds and restarts on failure. Configuration, the manager evidence file, durable spool, and `agent.stdout.log` / `agent.stderr.log` are under `~/.config/eagle/`. The website uses Cloudflare Access; the former viewer-token file has been removed. Machine Bearer credentials remain required for reporting.
 
 ```sh
 # Restart after updating collector code:
@@ -66,3 +66,5 @@ launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.hexly.eagle-agent.plist
 ```
 
 These commands are for this machine's user ID 501. Other machines need their own token, identity, checkout path and service configuration. A valid success acknowledgement is required before a queued report is removed; malformed responses preserve the report for an idempotent retry.
+
+On this Mac, launchd follows the existing macOS HTTPS proxy through `HTTPS_PROXY` and Node’s `NODE_USE_ENV_PROXY=1`. Other machines do not require a proxy. This avoids the OS resolver retaining a negative answer after a new reporting hostname is provisioned.
