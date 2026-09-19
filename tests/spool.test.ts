@@ -3,7 +3,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { UploadRejectedError } from "../agent/collector.ts";
+import { sendReport, UploadRejectedError } from "../agent/collector.ts";
 import { drainSpool } from "../agent/spool.ts";
 import { report } from "./fixtures.ts";
 
@@ -14,10 +14,20 @@ test("a malformed or permanently rejected report is retained without blocking fr
     await writeFile(join(dir, "b.json"), JSON.stringify(report("rejected")));
     await writeFile(join(dir, "c.json"), JSON.stringify(report("current")));
     const sent: string[] = [];
-    const result = await drainSpool(dir, "mac-one", async (value) => {
-      if (value.reportId === "rejected") throw new UploadRejectedError(400);
-      sent.push(value.reportId);
-    });
+    const result = await drainSpool(dir, "mac-one", (value) =>
+      sendReport(
+        "https://eagle.test",
+        "test-token",
+        value,
+        async () => {
+          if (value.reportId === "rejected")
+            return new Response("{}", { status: 400 });
+          sent.push(value.reportId);
+          return new Response("{}", { status: 201 });
+        },
+        0,
+      ),
+    );
     assert.deepEqual(sent, ["current"]);
     assert.equal(result.rejected, 2);
     assert.equal(

@@ -644,7 +644,7 @@ export async function sendReport(
     }
     if (response.ok) return response.json();
     if (response.status < 500 && response.status !== 429)
-      throw new Error(`Upload rejected (${response.status}); report retained`);
+      throw new UploadRejectedError(response.status);
     if (attempt === 2)
       throw new Error(
         `Upload unavailable (${response.status}); report retained`,

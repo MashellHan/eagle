@@ -233,3 +233,37 @@ test("an ordinary heartbeat and old retry cannot clear a collector failure warni
   ).json()) as typeof view;
   assert.equal(after.machines[0].warning, "Collection incomplete");
 });
+
+test("two machines may share Herdr IDs without inventory or history collisions", async () => {
+  const second = currentReport("second-machine");
+  second.machine.id = "mac-two";
+  second.machine.name = "Mac Two";
+  assert.equal(
+    (
+      await request(
+        "/api/v1/reports",
+        second,
+        "different-test-token-with-at-least-32-characters",
+      )
+    ).status,
+    201,
+  );
+  const overview = (await (
+    await request("/api/v1/overview", undefined, viewer)
+  ).json()) as {
+    machines: { id: string; report: ReturnType<typeof report> }[];
+  };
+  assert.deepEqual(
+    overview.machines.map((m) => m.id),
+    ["mac-one", "mac-two"],
+  );
+  assert.equal(
+    overview.machines[0].report.spaces[0].id,
+    overview.machines[1].report.spaces[0].id,
+  );
+  const history = (await (
+    await request("/api/v1/history?machine=mac-two", undefined, viewer)
+  ).json()) as { entries: { report: ReturnType<typeof report> }[] };
+  assert.equal(history.entries.length, 1);
+  assert.equal(history.entries[0].report.machine.id, "mac-two");
+});
