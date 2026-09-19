@@ -1,92 +1,133 @@
-<p align="center"><img src="assets/brand/readme.png" width="128" height="128" alt="Eagle golden eagle Logo" /></p>
+<p align="center">
+  <img src="assets/brand/readme.png" width="128" height="128" alt="Eagle 金色鹰 Logo" />
+</p>
+<h1 align="center">Eagle</h1>
+<p align="center">汇总多台机器上的 Herdr Space、任务证据与工作态势。</p>
+<p align="center">
+  <a href="https://eagle.hexly.ai">站点</a> · <a href="docs/README.en.md">English</a>
+</p>
 
-# Eagle
+## 这是什么
 
-[简体中文](README.zh-CN.md)
+Eagle 是面向 Herdr 用户的私有看板，汇总每台上报机器的 Space、窗格布局、机器资源与任务证据。缺失、冲突或过期的数据明确标记；Agent 的 `idle`、`done`、`blocked` 仅是提示，不作为任务完成证明。项目不提供远程终端控制。
 
-Private, evidence-led overview of every Herdr Space on every reporting machine.
+## 功能
 
-**Production:** https://eagle.hexly.ai · **Local:** https://eagle.dev.hexly.ai · **[Hexly](https://hexly.ai/projects/eagle)** · **[Status](https://status.hexly.ai)**
+- **跨机器总览**：查看机器状态分布、资源概况与 Agent 分布，进入单台机器查看 Space、真实窗格布局、任务证据与变化时间线。
+- **机器接入**：Connect 页面添加和重命名机器，生成一次性接入提示词，轮换、停用与重新启用机器凭据。
+- **资源与端口**：上报 CPU、内存、主目录所在磁盘容量和运行时间，可检查指定本机 TCP 端口。端口监听只代表连通，不能证明业务健康。
+- **任务证据**：对照当前任务总结、Goal、Git revision 和测试凭证；涉及部署时还需要部署证据。运行中的 Goal 或实际工具执行优先于表面的完成提示。
+- **实时语义总结**：独立 Manager 为 Pane 提供任务、阶段、进展、成果、阻塞、下一步和依据。模型声称完成或测试通过不会自动成为已验证事实。
 
-Vite + React 19 + **@nocoo/basalt 2.1.8**, TypeScript **7.0.2**, Biome. Cloudflare Worker serves the SPA and authenticated API; one SQLite-backed Durable Object per machine maintains current state. Each DO independently retains deterministic current snapshots and semantic Pane changes in UTC hourly buckets. D1 archives semantic changes; whole-report history and hourly AI aggregation remain paused. The Node management agent runs locally on each machine. No remote terminal control is exposed.
+看板可见时每 5 秒刷新，重新可见时立即刷新。心跳超过 90 秒或快照超过 5 分钟会明确标记过期；刷新失败保留最后数据并提示连接异常。桌面侧栏支持折叠，加载占位保持布局稳定，动画遵守减少动态效果偏好。
 
-## Run
+每台机器有独立的 SQLite Durable Object，当前快照与语义流分别持久化。语义变化按观察时间归入 UTC 小时桶，同小时可保留多条记录并分页读取；心跳不产生历史，迟到的旧任务报告不会覆盖当前任务。DO 保留 30 天或 10,000 条语义变化，待归档记录受保护，D1 保存归档副本。全量快照历史和每小时 AI 聚合仍暂缓；总览直接读取 DO，不轮询 D1。
 
-Requires Node 24+ (native TypeScript and SQLite), npm, Herdr 0.9.1+, and Cloudflare credentials for deployment.
+### 认证与隐私
 
-```sh
-npm ci
-# Add a random AGENT_SIGNING_KEY (32+ characters) to ignored .dev.vars (chmod 600).
-# Optional AGENT_TOKENS retains existing legacy machine credentials.
-# LOCAL_DEV="true"  # Local website requires no login token.
-# LOCAL_USER_EMAIL="you@example.com"  # Optional avatar-service preview identity.
-npm run db:local
-npm run dev:api
-# A second terminal:
-npm run dev
-```
+网站由 Cloudflare Access 保护，Worker 校验签名、签发者、应用 audience、有效期与必要声明。本地免登录仅对明确的开发域名或 loopback 且 `LOCAL_DEV="true"` 生效；生产关闭此开关。
 
-Local Vite is **127.0.0.1:7053**, Worker is **127.0.0.1:37053**, inspector is **38053**. Caddy's existing `eagle.dev.hexly.ai` block proxies 7053 with the machine's mkcert certificate. Browser tests use **27053**. The **17053** suffix is reserved for standalone API E2E. Restart Wrangler after changing secrets.
+机器使用独立的签名 Bearer Token 向 `https://eagle-ingest.hexly.ai` 上报，避免浏览器 SSO 中断采集。该域名只提供机器上报、心跳、语义上传、自身快照和公开 `/api/live`，不提供看板与网站历史查询；私有 API 不开放 CORS。Token 仅在生成时可复制，保存在权限为 `0600` 的机器配置中；签名密钥留在 Worker secret，数据库和浏览器持久存储均不保存 Token。已有 `AGENT_TOKENS` 凭据可继续使用，直到轮换或停用。
 
-These ports follow the nmem allocation after Zeppelin (7052); 6001 belonged to the legacy eagle-webui and is no longer this project's development port.
+侧栏显示已验证的 Access 账户与退出入口。头像服务只接收规范化邮箱的 SHA-256，查询失败时保留账户名和首字母头像。本地可配置 `LOCAL_USER_EMAIL` 预览，退出功能在本地禁用。
 
-```sh
-npm run check
-npm run test:browser
-# Actual machine → authenticated upload → machine DO → Chromium, no mocked requests:
-NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" node scripts/verify-live.ts
-```
+Codex 适配器仅提取最终回复和生命周期事件，不采集推理与工具参数；其他 harness 使用有限终端片段和管理 Agent 提供的结构化证据。文本在落盘和上传前脱敏，但启发式规则无法保证识别任意秘密；应提供简明总结与验证凭证，避免原始终端转储。
 
-`verify-live.ts` reads `.local/agent-dev.json` by default; local viewing needs no credentials. For production, set `EAGLE_VERIFY_ORIGIN=https://eagle.hexly.ai`, `EAGLE_CONFIG` to the production agent configuration and `EAGLE_ACCESS_JWT_FILE` to a mode-0600 file containing a genuine Access application JWT. Obtain it through `cloudflared access login --quiet https://eagle.hexly.ai`; never paste credentials into commands or logs. Screenshots and sanitized receipts remain in ignored `.local/`. The script checks anonymous Access redirection, authenticated viewing, idempotency, every real Space, automatic updates, history and mobile layout.
+## 使用
 
-## Machine agents
+打开 [Eagle](https://eagle.hexly.ai)，通过 Access 登录，在 **Connect** 添加机器，将生成的接入提示词交给该机器上的 Cherry 或其他管理 Agent。
 
-Install the independent Agent package from npm (Node 24+ and Herdr required):
+采集器需要 Node.js 24+、npm 与 Herdr 0.9.1+，可独立安装，无须克隆 Eagle 仓库：
 
 ```sh
 npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org
-# If npm is unreachable, prefer the Tencent Cloud mirror:
-npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/
-eagle-agent --version # expected: 0.4.0
+eagle-agent --version
 ```
 
-Choose one install command. New releases may take time to reach mirrors; on `404` / `ETARGET`, retry later or use the official registry when reachable. [Full installation and configuration](agent/README.md). **The website's Connect and visualization changes remain local; they have not been deployed.** Package builds run from the complete repository after `npm ci`; `npm pack ./agent --pack-destination .local` creates a preview tarball.
-
-Copy [the reporting Skill](skills/eagle-report/SKILL.md) to Cherry or any other local management agent. See [the agent contract](docs/AGENT.md) for credentials, periodic execution, structured evidence, retries and deployment receipts. The checked-in [v1 JSON Schema](public/report-v1.schema.json) is generated from the TypeScript validator; cross-object uniqueness checks additionally run on the server.
-
-The website uses **Cloudflare Access** with team `nocoo`. The Worker verifies RS256 signatures against the team's rotating JWKS, issuer, application audience, expiry and required claims. The audience is configured in `wrangler.jsonc`. Eagle has no viewer token, password field, custom session endpoint or custom session cookie. Local viewing bypasses Access only with `LOCAL_DEV="true"` and an explicit loopback/development hostname; production sets the flag to `false`.
-
-The desktop sidebar starts expanded and keeps the Eagle mark fixed when toggled. Its footer shows the verified Access account, author-service avatar and Access logout. Only a SHA-256 hash of the normalized email is sent to `lizheng.blog`; profile lookup failures fall back to the account name and initial. Local preview may set `LOCAL_USER_EMAIL` in `.dev.vars` without a token; logout is disabled and marked as local.
-
-The **Connect** page manages machines, creates one-time onboarding prompts, rotates tokens and disables reporting. Agents use **machine-scoped signed Bearer tokens** stored only in their 0600 configuration. `AGENT_SIGNING_KEY` remains a Worker secret; DOs store public credential versions and machine metadata, never tokens. Existing `AGENT_TOKENS` credentials remain supported until rotated or disabled. They upload to **https://eagle-ingest.hexly.ai** so browser SSO never interrupts reporting. That host serves reports, heartbeats, semantic uploads, the authenticated machine’s own snapshot and public `/api/live`; dashboard assets, overview and history all return 404 there. The private API never supports CORS. Browser storage and D1 contain no authentication tokens.
-
-The global overview uses Basalt charts to summarize every machine, with state distributions and compact resource graphics. Open a machine to see resources, ports and Spaces without repeating fleet summary cards. Compact machine groups preserve real pane geometry; state filters, evidence coverage, agent distribution and change timelines expose useful details immediately. Skeletons keep loading geometry stable, refreshes retain content, and entrance/refresh motion respects reduced-motion preferences.
-
-Each machine also reports CPU, RAM, home-filesystem disk capacity and uptime. Add `"watchPorts":[{"name":"Raven","port":7024}]` to the agent's secure configuration to track named local TCP endpoints. Resource and port snapshots live in each machine DO with the current Space inventory, and stale observations are labelled explicitly. See [agent configuration](docs/AGENT.md) for measurement semantics and upgrade order.
-
-## Interpretation
-
-Herdr `idle`, `done` and `blocked` are weak hints. A verified task requires matching current-task final summary, Goal, Git revision and test evidence; deployment evidence is also required when the task says so. A running Goal or actual tool-execution event takes priority over apparent completion. Conflicting or missing evidence remains visible. An agent process merely being present does not prove activity. Old task evidence, stale evidence and mismatched revisions never certify completion.
-
-Codex's local thread/goal stores are optional adapters; only final replies and lifecycle events are extracted. Reasoning and tool arguments are excluded. Other harnesses use a bounded terminal excerpt and manager-supplied structured evidence. Text evidence is redacted before spool/upload. Heuristics cannot guarantee redaction of arbitrary secrets: managers should send concise summaries, and use the Skill to provide verified test/deployment receipts instead of raw terminal dumps.
-
-The dashboard refreshes every **5 seconds** while visible and refreshes immediately on return. After 90 seconds without heartbeat or 5 minutes without a snapshot, current-state cards explicitly show stale inventory. A failed refresh preserves the last snapshot with a connection warning. The overview reads machine DOs directly; it never polls D1. Latest changes retain their original capture time; The Pane hourly view reads DO semantic records; D1 is queried only for archive history.
-
-## Release
+若官方源不可达，改用腾讯云镜像，二选一即可：
 
 ```sh
-npm run check
-npm run test:browser
-npm run db:remote
-# Never put secret values on the command line or in source.
-npx wrangler secret bulk /secure/path/platform-secrets.json
-npm run deploy
+npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
-The Worker owns `eagle.hexly.ai` as a custom domain. `https://eagle-ingest.hexly.ai/api/live` publicly probes the first configured machine DO and returns no inventory. The read-only reviewers are advisory; the integrator commits on `main`. See [checkpoints](docs/CHECKPOINTS.md) for real data verification and [API](docs/API.md) for ingestion/query semantics.
+预期版本为 `0.4.0`。镜像同步可能延迟；遇到 `404` / `ETARGET` 可稍后重试或在网络恢复后使用官方源，不修改全局 npm 源。按照[安装与配置说明](agent/README.md)保存接入凭据后运行：
 
-## Identity
+```sh
+eagle-agent once
+eagle-agent watch
+# 在独立进程中运行语义 Manager，需要已配置的 Cherry：
+eagle-agent manager-watch
+```
 
-The golden eagle belongs to the fragmented animal family. README uses the rounded presentation; the expanded/collapsed sidebar, loading and Access entry marks use the transparent foreground without a background or corner mask. Root `logo.png` is the unchanged 2048px foreground; [brand provenance](assets/brand/provenance.json) records the exact master, generation and consumer roles. The Basalt application palette remains independent.
+确定性采集器默认每 30 秒运行；Manager 仅在输入变化且满足每任务限频时调用现有 Cherry 模型，与采集进程独立运行。安全配置中的 `watchPorts` 可指定要检查的端口，例如：
 
-Live Pane summary protocol, hourly DO indexes/API, retention and continuous Cherry integration: [docs/PANE-SUMMARIES.md](docs/PANE-SUMMARIES.md). Run `eagle-agent manager-watch` alongside the deterministic `watch` daemon.
+```json
+{"watchPorts":[{"name":"Raven","port":7024}]}
+```
+
+机器身份、凭据、重试、后台服务与升级顺序见 [Agent 契约](docs/AGENT.md)。可将 [eagle-report Skill](skills/eagle-report/SKILL.md)交给管理 Agent；[报告 Schema](public/report-v1.schema.json)由 TypeScript 校验器生成，服务端另行检查跨对象唯一性。
+
+## 开发
+
+需要 Node.js 24+ 与 npm；实际采集还需要 Herdr。先安装依赖：
+
+```sh
+npm ci
+```
+
+在忽略提交的 `.dev.vars` 中配置至少 32 个随机字符的 `AGENT_SIGNING_KEY`，文件权限设为 `0600`。本地浏览设置 `LOCAL_DEV="true"`；可选 `LOCAL_USER_EMAIL` 用于头像预览。已有机器凭据可通过可选的 `AGENT_TOKENS` 保留。修改 secret 后重启 Wrangler。
+
+```sh
+npm run db:local
+npm run dev:api
+# 另开一个终端：
+npm run dev
+```
+
+本机已配置 Caddy 时使用 [eagle.dev.hexly.ai](https://eagle.dev.hexly.ai)。Vite / Worker / inspector 分别监听 `7053` / `37053` / `38053`；浏览器测试使用 `27053`，独立 API E2E 保留 `17053`。开发、测试和生产数据分开存放。
+
+```sh
+npm run build
+# 从完整源码构建独立 Agent 安装包：
+npm pack ./agent --pack-destination .local
+```
+
+生产部署与真实链路核验见[部署说明](docs/DEPLOYMENT.md)。源码中的界面功能是否已上线，应以实际部署提交为准。
+
+## 测试
+
+```sh
+npm test
+npm run typecheck
+npm run lint
+npm run build
+npm run test:browser
+```
+
+`npm test` 运行 Node 测试，API 用例使用独立 Miniflare / D1；Playwright 覆盖桌面与手机页面。`npm run check` 汇总 Node 测试、类型检查、静态检查和构建。
+
+真实机器到鉴权上报、DO 和 Chromium 的端到端核验使用 `scripts/verify-live.ts`，需要可用的本地或生产 Agent 配置；生产另需有效 Access JWT。凭据准备、实际验证范围与保存在 `.local/` 的脱敏凭证见[真实链路核验](docs/DEPLOYMENT.md#verify-the-live-path)。
+
+## 技术栈
+
+| 技术 | 用途 |
+| --- | --- |
+| React、Vite、Basalt、Recharts | 私有看板、组件与可视化 |
+| TypeScript、Biome | 类型检查与源码规范 |
+| Cloudflare Workers、Durable Objects、D1 | 受认证 API、每机状态和语义归档 |
+| Cloudflare Access、jose | 查看者身份与 JWT 校验 |
+| Node.js、Herdr、Zod | 本地采集、管理 Agent 与报告校验 |
+| Node test runner、Miniflare、Playwright | 单元、API 与浏览器测试 |
+
+## 文档
+
+- [Agent 安装说明](agent/README.md)与[配置及上报契约](docs/AGENT.md)。
+- [API](docs/API.md)、[实时 Pane 语义契约](docs/PANE-SUMMARIES.md)与[eagle-report Skill](skills/eagle-report/SKILL.md)。
+- [部署及真实链路核验](docs/DEPLOYMENT.md)、[实施计划](docs/PLAN.md)与[验证检查点](docs/CHECKPOINTS.md)。
+- [品牌来源](assets/brand/provenance.json)、[Hexly 档案](https://hexly.ai/projects/eagle)与[服务状态](https://status.hexly.ai)。
+
+README 使用圆角金色鹰展示图；侧栏、加载、身份入口与浏览器图标使用透明前景。根目录 `logo.png` 保留 2048px 透明主文件，应用继续使用独立的 Basalt 色板。
+
+## 许可证
+
+仓库未提供项目级 LICENSE；Agent 包声明为 `UNLICENSED`。
