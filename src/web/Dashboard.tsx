@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from "@nocoo/basalt";
 import { SlotBarChart } from "@nocoo/basalt/charts/slot-bar";
+import { SectionRule } from "@nocoo/basalt/components/section-rule";
 import { SkeletonLine } from "@nocoo/basalt/components/skeleton-line";
 import {
   Activity,
@@ -110,6 +111,46 @@ export function isStale(machine: MachineView, now: string) {
   );
 }
 
+export function MachineStatus({
+  machine,
+  now,
+}: {
+  machine: MachineView;
+  now: string;
+}) {
+  const stale = isStale(machine, now);
+  return (
+    <span className="machine-heading">
+      <Badge variant={stale ? "warning" : "success"} dot>
+        {age(machine.lastSeen, now) > 90
+          ? "心跳过期"
+          : stale
+            ? "采集过期"
+            : "在线"}
+      </Badge>
+      <span>{machine.report.machine.platform}</span>
+      <span>{machine.report.spaces.length} Spaces</span>
+      <span>
+        {
+          machine.report.spaces.flatMap((s) => s.tabs.flatMap((t) => t.panes))
+            .length
+        }{" "}
+        Panes
+      </span>
+      <span className="machine-heartbeat">
+        <Clock3 size={11} aria-hidden="true" />
+        采集{" "}
+        <time
+          dateTime={machine.report.capturedAt}
+          title={time(machine.report.capturedAt)}
+        >
+          {time(machine.report.capturedAt).split(" ").at(-1)}
+        </time>
+      </span>
+    </span>
+  );
+}
+
 function MachineResources({
   machine,
   now,
@@ -126,22 +167,28 @@ function MachineResources({
       value / 1024 ** 3,
     );
   return (
-    <section aria-label="机器资源" className="mb-3">
+    <section aria-label="机器资源" className="machine-resources">
       {!telemetry ? (
         <p className="text-xs text-basalt-muted-foreground">尚未上报机器资源</p>
       ) : (
         <LayerCard className="p-3">
+          <div className="resource-heading">
+            <span>
+              <Server size={14} />
+              机器资源
+            </span>
+            <span>{stale ? "等待更新" : "实时采样"}</span>
+          </div>
           {stale && (
             <Badge variant="secondary" className="mb-2">
               历史快照 · 等待更新
             </Badge>
           )}
           {resources ? (
-            <dl
-              className={`grid grid-cols-2 gap-x-4 gap-y-3 text-xs md:grid-cols-4 ${stale ? "opacity-60" : ""}`}
-            >
+            <dl className={`resource-grid ${stale ? "opacity-60" : ""}`}>
               <div
                 className="min-w-0"
+                style={accent("hsl(var(--basalt-accent-1))")}
                 title={`${resources.cpuModel} · 采样 ${resources.cpuSampleMs} ms；负载为 1/5/15 分钟平均值`}
               >
                 <dt className="mb-1 flex items-center gap-1.5 text-basalt-muted-foreground">
@@ -160,7 +207,10 @@ function MachineResources({
                     .join(" / ") ?? "未知"}
                 </dd>
               </div>
-              <div title="已用量为总内存减去系统报告的空闲内存；缓存可能计入，不代表内存压力。">
+              <div
+                style={accent("hsl(var(--basalt-accent-9))")}
+                title="已用量为总内存减去系统报告的空闲内存；缓存可能计入，不代表内存压力。"
+              >
                 <dt className="mb-1 flex items-center gap-1.5 text-basalt-muted-foreground">
                   <MemoryStick size={13} />
                   内存
@@ -175,7 +225,10 @@ function MachineResources({
                   空闲 {gib(resources.memory.freeBytes)} GiB
                 </dd>
               </div>
-              <div title="采集器用户主目录所在文件系统的容量和可用空间。">
+              <div
+                style={accent("hsl(var(--basalt-accent-4))")}
+                title="采集器用户主目录所在文件系统的容量和可用空间。"
+              >
                 <dt className="mb-1 flex items-center gap-1.5 text-basalt-muted-foreground">
                   <HardDrive size={13} />
                   磁盘可用
@@ -191,7 +244,7 @@ function MachineResources({
                     : "磁盘信息不可读"}
                 </dd>
               </div>
-              <div>
+              <div style={accent("hsl(var(--basalt-accent-7))")}>
                 <dt className="mb-1 flex items-center gap-1.5 text-basalt-muted-foreground">
                   <Clock3 size={13} />
                   运行时间
@@ -355,11 +408,12 @@ function EvidenceStrip({ panes, at }: { panes: Pane[]; at: string }) {
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                className={`evidence-item h-auto p-0 evidence-${status}`}
+                size="sm"
+                className={`evidence-item px-1 text-[10px] [&_svg]:size-3 evidence-${status}`}
                 aria-label={`${evidenceNames[kind]}：${entries.length ? "有记录" : "缺少证据"}`}
               >
                 <Icon size={12} />
-                <span>{evidenceNames[kind]}</span>
+                <span>{kind === "summary" ? "总结" : evidenceNames[kind]}</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -908,20 +962,22 @@ export function Dashboard({
           </div>
         </section>
       ) : (
-        <div className="dashboard-layout">
-          <div className="min-w-0 space-y-4">
-            <div className="board-title">
-              <div>
-                <span className="section-index">01</span>
-                <h2>Space 拓扑</h2>
+        <div className="dashboard-layout machine-layout">
+          <div className="dashboard-spaces">
+            <SectionRule
+              className="board-rule"
+              title={
+                <>
+                  <span className="section-index">01</span> Space 拓扑
+                </>
+              }
+              hint="需关注与进行中优先 · 点击 Pane 查看总结与证据"
+              actions={
                 <Badge variant="secondary">
                   {filtered.length} / {spaces.length}
                 </Badge>
-              </div>
-              <span className="hidden text-xs text-basalt-muted-foreground sm:inline">
-                需关注与进行中优先 · 点击 Pane 查看证据
-              </span>
-            </div>
+              }
+            />
             <div className="board-toolbar">
               <div className="board-search">
                 <Search size={14} />
@@ -974,57 +1030,18 @@ export function Dashboard({
                 .filter((s) => s.machine.id === machine.id)
                 .sort((a, b) => priority[a.state] - priority[b.state]);
               if (!group.length && filtered.length) return null;
-              const stale = isStale(machine, now);
               return (
                 <section
                   key={machine.id}
                   className="machine-section"
                   aria-label={`${machine.name} 的工作空间`}
                 >
-                  <div className="machine-heading">
-                    <div className="machine-icon">
-                      <Server size={17} />
-                    </div>
-                    <div className="machine-identity">
-                      <h3>{machine.name.replace(/\.local$/, "")}</h3>
-                      <span>
-                        {machine.report.machine.platform} <span>·</span>{" "}
-                        {machine.report.spaces.length} spaces <span>·</span>{" "}
-                        {
-                          machine.report.spaces.flatMap((s) =>
-                            s.tabs.flatMap((t) => t.panes),
-                          ).length
-                        }{" "}
-                        panes
-                      </span>
-                    </div>
-                    <Badge variant={stale ? "warning" : "success"} dot>
-                      {age(machine.lastSeen, now) > 90
-                        ? "心跳过期"
-                        : stale
-                          ? "采集过期"
-                          : "在线"}
-                    </Badge>
-                    <div className="machine-heartbeat">
-                      <span>
-                        <Clock3 size={11} />{" "}
-                        <time
-                          dateTime={machine.report.capturedAt}
-                          title={time(machine.report.capturedAt)}
-                        >
-                          {time(machine.report.capturedAt).split(" ").at(-1)}
-                        </time>
-                      </span>
-                      <small>最新完整采集</small>
-                    </div>
-                  </div>
                   {(machine.warning || machine.report.warnings.length > 0) && (
                     <p className="machine-warning">
                       <TriangleAlert size={13} />
                       {machine.warning || machine.report.warnings.join("；")}
                     </p>
                   )}
-                  <MachineResources machine={machine} now={now} />
                   <div className="space-grid">
                     {group.map((s) => (
                       <SpaceCard
@@ -1050,17 +1067,26 @@ export function Dashboard({
               </LayerCard>
             )}
           </div>
+          <div className="dashboard-resources">
+            {machines.map((machine) => (
+              <MachineResources key={machine.id} machine={machine} now={now} />
+            ))}
+          </div>
           <aside className="dashboard-aside" aria-label="变化与证据摘要">
-            <div className="board-title">
-              <div>
-                <span className="section-index">02</span>
-                <h2>运行脉搏</h2>
-              </div>
-              <span className="live-label">
-                <span className="live-dot" />
-                实时
-              </span>
-            </div>
+            <SectionRule
+              className="board-rule"
+              title={
+                <>
+                  <span className="section-index">02</span> 运行脉搏
+                </>
+              }
+              actions={
+                <span className="live-label">
+                  <span className="live-dot" />
+                  实时
+                </span>
+              }
+            />
             <RecentActivity machines={machines} />
             <LayerCard padding="none" className="agents-card">
               <div className="panel-heading">

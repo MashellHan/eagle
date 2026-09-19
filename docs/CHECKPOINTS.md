@@ -161,3 +161,14 @@ serving and the first catalogue-derived production Cron observation.
 - 已启用独立 LaunchAgent `com.hexly.eagle-manager`，使用现有 Cherry profile；原 daemon 更新至 0.4.0 并继续每 30 秒运行。18:36:32 生产 verify-summaries.ts 逐一展开全部 18 个当前任务总结及小时记录，latest/all、source、content hash、桌面/手机与 DOM 连续性全部通过。
 - 远程 D1 实查 18 条语义副本、18 个不同 Pane，最新收件 18:35:35；DO 中同一 UTC 10:00 小时有 18 条记录。安静 Pane w3J:p3 的语义更新时间保持 18:33:48，检查时间从 18:35:11 推进到 18:35:41，内容哈希不变、小时仍仅 1 条。生产曾遇短暂 fetch 断连，持久 pending 批次重试成功，没有清除状态或重新创建 sequence。
 - 本机已从校验过的发布 tarball 安装 0.4.0，`eagle-agent --version` 与 manager-once / manager-watch 帮助验证成功。npm registry 的 0.4.0 发布仍被 EOTP 阻止，尚未取得新的验证码；因此其它机器暂不能从 registry 安装此版本。Skill 和安装说明已备妥，待验证码后发布相同包并校验腾讯镜像。
+
+## 2026-09-19 18:59 +08 — npm 0.4.0 与布局预览
+
+- npm 已接受 `@nocoo/eagle-agent@0.4.0`，官方 registry 已返回该版本；SHA-512 与此前测试的 tarball 完全一致。正在以全新缓存验证官方源及腾讯镜像安装，网站布局仍在本地收尾。
+- 18:57:31 真实 Caddy 验证通过：9 Spaces / 17 live Panes，采集、Bearer、幂等上传、DO revision、CPU/内存/磁盘/Raven 7024、全部 Space 渲染与稳定自动刷新正常。桌面和手机无浏览器错误；本地 daemon 已恢复。
+- 本地 D1 SQL 复核旧快照仍为 83 条，最新时间仍为 16:36:50.785，没有恢复整机快照归档。语义通道与生产 Manager 未改动。
+- 用户可在机器页看到压缩后的状态头部，资源卡已移到右侧「02 运行脉搏」上方；手机资源卡在拓扑之前。按钮问题先由浏览器测试复现：保存/取消文字换行、证据按钮高度仅 16px、复制提示词缺少按钮内文案。修复后桌面/手机对应 6 项回归通过。
+- 下一跳：审查多宽度按钮与实际预览，完成网站 v0.2.1 门禁、CI、部署和生产验证。
+- 18:59 npm 复验完成：官方源与腾讯镜像均使用全新缓存安装成功，tarball integrity 相同，CLI `--version` 为 0.4.0，`manager-once` / `manager-watch` 均存在。`agent-v0.4.0` 已指向发布源码 `4a15692` 并推送。
+- 发布前布局复查覆盖 390 / 520 / 768 / 1024 / 1280 / 1600px：修复中等宽度下固定列数挤压多 Pane 按钮的问题，按实际可用宽度自动排列 Space；真实页面所有按钮无横向内容溢出。最终 57 项单元/集成、34 项浏览器、TypeScript、Biome、构建全部通过。人工 diff Review 核对原生 Basalt 控件、Token 内存生命周期、独立复制反馈、过期提示与 DOM 连续性，未发现发布阻断项。
+- 19:01:50 最终 Caddy 实测时库存已新增为 10 Spaces / 18 Panes；完整 verify-live 再次通过，daemon 恢复持续上报。

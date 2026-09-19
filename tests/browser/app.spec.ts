@@ -130,6 +130,7 @@ test("live overview reads only current state and keeps cards mounted through ref
 
 test("machine resources and named TCP ports show freshness and missing data honestly", async ({
   page,
+  isMobile,
 }) => {
   const now = new Date().toISOString();
   const snapshot = telemetry(now);
@@ -181,6 +182,24 @@ test("machine resources and named TCP ports show freshness and missing data hone
   await expect(resources).toContainText("Raven");
   await expect(resources).toContainText("7024");
   await expect(resources.getByText("可连接", { exact: true })).toBeVisible();
+  const resourceBox = await resources.boundingBox();
+  const cardBox = await page.locator(".space-card").first().boundingBox();
+  const islandBox = await page.locator("#eagle-content").boundingBox();
+  const pulseBox = await page
+    .getByRole("heading", { name: "运行脉搏", exact: false })
+    .boundingBox();
+  expect(resourceBox).not.toBeNull();
+  expect(cardBox).not.toBeNull();
+  expect(pulseBox).not.toBeNull();
+  if (!resourceBox || !cardBox || !pulseBox || !islandBox)
+    throw new Error("Missing dashboard regions");
+  expect(resourceBox.y + resourceBox.height).toBeLessThan(pulseBox.y);
+  if (isMobile) {
+    expect(resourceBox.y).toBeLessThan(cardBox.y);
+  } else {
+    expect(resourceBox.x).toBeGreaterThan(cardBox.x + cardBox.width);
+    expect(cardBox.y - islandBox.y).toBeLessThan(190);
+  }
   stale = true;
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await expect(resources).toContainText("历史快照");
@@ -194,6 +213,52 @@ test("machine resources and named TCP ports show freshness and missing data hone
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("narrow desktop layouts keep three-pane topology controls readable", async ({
+  page,
+}) => {
+  const now = new Date().toISOString();
+  const value = report("narrow-topology", now);
+  const pane = value.spaces[0].tabs[0].panes[0];
+  value.spaces[0].tabs[0].panes = ["codex", "grok", "terminal"].map(
+    (agent, i) => ({
+      ...pane,
+      id: `w1:p${i + 1}`,
+      agent,
+      rect: { x: i / 3, y: 0, width: 1 / 3, height: 1 },
+    }),
+  );
+  await page.route("**/api/**", (route) =>
+    route.fulfill({
+      json: {
+        now,
+        machines: [
+          {
+            id: "mac-one",
+            name: "Mac One",
+            report: value,
+            lastSeen: now,
+            receivedAt: now,
+            warning: null,
+          },
+        ],
+      },
+    }),
+  );
+  for (const width of [520, 768, 1024]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto("/?machine=mac-one");
+    await expect(page.locator(".pane-button")).toHaveCount(3);
+    for (const button of await page.locator(".pane-button").all()) {
+      expect((await button.boundingBox())?.width).toBeGreaterThanOrEqual(44);
+      expect(
+        await button.evaluate(
+          (node) => node.scrollWidth <= node.clientWidth + 1,
+        ),
+      ).toBe(true);
+    }
+  }
 });
 
 test("token-free overview, topology evidence, history and empty search", async ({
@@ -246,6 +311,15 @@ test("token-free overview, topology evidence, history and empty search", async (
   await expect(page.getByText("待核实", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "最近变化" })).toBeVisible();
   await expect(page.getByText("首次接入：Eagle").first()).toBeVisible();
+  for (const button of await page.locator(".evidence-strip button").all()) {
+    const box = await button.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(28);
+    expect(
+      await button.evaluate((node) =>
+        Number.parseFloat(getComputedStyle(node).paddingLeft),
+      ),
+    ).toBeGreaterThanOrEqual(4);
+  }
   await page.getByRole("button", { name: "查看 Eagle" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByText("Herdr 弱提示：done")).toBeVisible();
@@ -604,6 +678,27 @@ test("Connect manages machines and creates a one-time onboarding prompt without 
   await expect(page.getByLabel("提示词预览")).not.toContainText(
     "eag1.test-only",
   );
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  const copyButton = page.getByRole("button", {
+    name: "复制完整提示词",
+    exact: true,
+  });
+  const copyWidth = (await copyButton.boundingBox())?.width;
+  await copyButton.click();
+  const copiedButton = page.getByRole("button", {
+    name: "已复制提示词",
+    exact: true,
+  });
+  await expect(copiedButton).toBeVisible();
+  expect((await copiedButton.boundingBox())?.width).toBe(copyWidth);
+  await page.getByRole("button", { name: "仅复制 Token", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "已复制 Token", exact: true }),
+  ).toBeVisible();
+  await expect(copyButton).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "仅复制 Token", exact: true }),
+  ).toBeVisible({ timeout: 5000 });
   expect(
     await page.evaluate(() =>
       JSON.stringify({ ...localStorage, ...sessionStorage }),
@@ -625,6 +720,51 @@ test("Connect manages machines and creates a one-time onboarding prompt without 
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("Connect rename actions keep a single text line and leave room for the input", async ({
+  page,
+}) => {
+  await page.route("**/api/**", (route) =>
+    route.fulfill({
+      json:
+        new URL(route.request().url()).pathname === "/api/v1/machines"
+          ? {
+              canIssue: true,
+              machines: [
+                {
+                  id: "mac-one",
+                  name: "Mac One",
+                  enabled: true,
+                  source: "managed",
+                },
+              ],
+            }
+          : { now: new Date().toISOString(), machines: [] },
+    }),
+  );
+  await page.goto("/connect");
+  await page.getByRole("button", { name: "重命名", exact: true }).click();
+  const input = page.getByRole("textbox", { name: "新的机器名称" });
+  expect((await input.boundingBox())?.width).toBeGreaterThanOrEqual(120);
+  for (const name of ["保存", "取消"]) {
+    const button = page.getByRole("button", { name, exact: true });
+    const geometry = await button.evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const text = range.getBoundingClientRect();
+      const box = node.getBoundingClientRect();
+      return {
+        textHeight: text.height,
+        lineHeight: Number.parseFloat(getComputedStyle(node).lineHeight),
+        left: text.left - box.left,
+        right: box.right - text.right,
+      };
+    });
+    expect(geometry.textHeight).toBeLessThanOrEqual(geometry.lineHeight + 1);
+    expect(geometry.left).toBeGreaterThanOrEqual(8);
+    expect(geometry.right).toBeGreaterThanOrEqual(8);
+  }
 });
 
 test("Pane semantic summary and timeline survive refresh, and stale manager never appears current", async ({

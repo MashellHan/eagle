@@ -58,6 +58,7 @@ import { Connect } from "./Connect.tsx";
 import {
   Dashboard,
   DashboardSkeleton,
+  MachineStatus,
   Status,
   Topology,
 } from "./Dashboard.tsx";
@@ -466,6 +467,23 @@ export function App() {
       : page === "history"
         ? "最近历史"
         : (selectedMachine?.name ?? "全局总览");
+  const compactMachine = page === "overview" && !!selectedMachine;
+  const syncCaption = (
+    <span className="sync-caption">
+      <span
+        className={syncing ? "sync-dot syncing" : "sync-dot"}
+        data-offline={!!error}
+      />
+      {error
+        ? data
+          ? "连接中断 · 保留上次快照"
+          : "连接中断 · 等待首次快照"
+        : data
+          ? `已同步 ${time(data.now)}`
+          : "正在连接机器状态…"}
+      <span>每 5 秒自动更新</span>
+    </span>
+  );
   return (
     <SidebarProvider
       collapsed={collapsed}
@@ -488,8 +506,8 @@ export function App() {
             {(!collapsed || mobile) && (
               <>
                 <strong className="text-lg font-semibold">Eagle</strong>
-                <Badge variant="secondary" className="text-[10px]">
-                  {__APP_VERSION__}
+                <Badge variant="secondary" className="font-mono text-[10px]">
+                  v{__APP_VERSION__}
                 </Badge>
                 <div className="ml-auto">{sidebarToggle}</div>
               </>
@@ -569,7 +587,9 @@ export function App() {
         <AppMain className="relative" tabIndex={-1}>
           <AppHeader
             title={title}
-            breadcrumbs={[{ label: "工作台" }]}
+            breadcrumbs={[
+              { label: <span className="whitespace-nowrap">工作台</span> },
+            ]}
             leading={
               mobile ? (
                 <Button
@@ -598,15 +618,26 @@ export function App() {
                 data-active={syncing}
                 aria-hidden="true"
               />
-              <div className="space-y-5">
+              <div
+                className={
+                  compactMachine ? "machine-page space-y-3" : "space-y-5"
+                }
+              >
                 <PageHeader
                   title={title}
                   description={
-                    page === "connect"
-                      ? "连接机器，管理凭证，把接入交给 Agent。"
-                      : machineId
-                        ? "机器资源、工作空间与任务证据。"
-                        : "全部机器的工作分布与资源概况。"
+                    compactMachine && selectedMachine ? (
+                      <span className="machine-subtitle">
+                        <MachineStatus machine={selectedMachine} now={now} />
+                        {syncCaption}
+                      </span>
+                    ) : page === "connect" ? (
+                      "连接机器，管理凭证，把接入交给 Agent。"
+                    ) : machineId ? (
+                      "机器资源、工作空间与任务证据。"
+                    ) : (
+                      "全部机器的工作分布与资源概况。"
+                    )
                   }
                   actions={
                     <>
@@ -644,20 +675,7 @@ export function App() {
                     </p>
                   </LayerCard>
                 )}
-                <div className="sync-caption">
-                  <span
-                    className={syncing ? "sync-dot syncing" : "sync-dot"}
-                    data-offline={!!error}
-                  />
-                  {error
-                    ? data
-                      ? "连接中断 · 保留上次快照"
-                      : "连接中断 · 等待首次快照"
-                    : data
-                      ? `已同步 ${time(data.now)}`
-                      : "正在连接机器状态…"}
-                  <span>每 5 秒自动更新</span>
-                </div>
+                {!compactMachine && syncCaption}
                 {page === "overview" &&
                   !machineId &&
                   !!data?.pendingMachines?.length && (

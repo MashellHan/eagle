@@ -47,7 +47,7 @@ export function Connect({
   const [issued, setIssued] = useState<IssuedCredential | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"prompt" | "token" | null>(null);
   const [confirm, setConfirm] = useState<{
     machine: Registration;
     action: "rotate" | "revoke";
@@ -84,10 +84,15 @@ export function Connect({
       active.current = false;
     };
   }, [load]);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(null), 2500);
+    return () => clearTimeout(timer);
+  }, [copied]);
   async function mutate(path: string, body: unknown) {
     setBusy(true);
     setError("");
-    setCopied(false);
+    setCopied(null);
     try {
       const result = await api<{ machine: Registration; token?: string }>(
         path,
@@ -116,11 +121,12 @@ export function Connect({
       if (active.current) setBusy(false);
     }
   }
-  async function copy(value: string) {
+  async function copy(value: string, target: "prompt" | "token") {
     try {
       await navigator.clipboard.writeText(value);
-      setCopied(true);
+      if (active.current) setCopied(target);
     } catch {
+      setCopied(null);
       setError("剪贴板不可用，请允许此网站访问剪贴板后重试。");
     }
   }
@@ -296,7 +302,7 @@ export function Connect({
                   </div>
                   {editing?.id === machine.id && (
                     <form
-                      className="mt-4 flex gap-2"
+                      className="mt-4 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2"
                       onSubmit={(e) => {
                         e.preventDefault();
                         void mutate(`/api/v1/machines/${machine.id}/rename`, {
@@ -305,18 +311,25 @@ export function Connect({
                       }}
                     >
                       <Input
+                        className="min-w-0"
                         aria-label="新的机器名称"
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
                         required
                         maxLength={120}
                       />
-                      <Button type="submit" size="sm" disabled={busy}>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        className="whitespace-nowrap"
+                        disabled={busy}
+                      >
                         保存
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
+                        className="whitespace-nowrap"
                         onClick={() => setEditing(null)}
                       >
                         取消
@@ -459,6 +472,7 @@ export function Connect({
           </section>
           <div className="flex flex-wrap items-center gap-3">
             <Button
+              className="shrink-0 whitespace-nowrap"
               onClick={() =>
                 void copy(
                   onboardingPrompt(
@@ -467,20 +481,27 @@ export function Connect({
                     url,
                     issued.machine.watchPorts ?? [],
                   ),
+                  "prompt",
                 )
               }
             >
-              {copied ? <Check size={15} /> : <Copy size={15} />}复制完整提示词
+              {copied === "prompt" ? <Check size={15} /> : <Copy size={15} />}
+              <span className="w-[7em]">
+                {copied === "prompt" ? "已复制提示词" : "复制完整提示词"}
+              </span>
             </Button>
-            <Button variant="outline" onClick={() => void copy(issued.token)}>
-              仅复制 Token
+            <Button
+              variant="outline"
+              className="shrink-0 whitespace-nowrap"
+              onClick={() => void copy(issued.token, "token")}
+            >
+              {copied === "token" ? <Check size={15} /> : <Copy size={15} />}
+              {copied === "token" ? "已复制 Token" : "仅复制 Token"}
             </Button>
             {copied && (
-              <span
-                role="status"
-                className="text-xs text-basalt-muted-foreground"
-              >
-                已复制，请安全保存
+              <span role="status" className="sr-only">
+                {copied === "prompt" ? "提示词已复制" : "Token 已复制"}
+                ，请安全保存
               </span>
             )}
           </div>
