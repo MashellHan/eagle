@@ -40,17 +40,17 @@ Codex 适配器仅提取最终回复和生命周期事件，不采集推理与�
 采集器需要 Node.js 24+、npm 与 Herdr 0.9.1+，可独立安装，无须克隆 Eagle 仓库：
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.1 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org
 eagle-agent --version
 ```
 
 若官方源不可达，改用腾讯云镜像，二选一即可：
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.1 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
-预期版本为 `0.4.1`。镜像同步可能延迟；遇到 `404` / `ETARGET` 可稍后重试或在网络恢复后使用官方源，不修改全局 npm 源。按照[安装与配置说明](agent/README.md)保存接入凭据后运行：
+预期版本为 `0.4.0`。镜像同步可能延迟；遇到 `404` / `ETARGET` 可稍后重试或在网络恢复后使用官方源，不修改全局 npm 源。按照[安装与配置说明](agent/README.md)保存接入凭据后运行：
 
 ```sh
 eagle-agent once

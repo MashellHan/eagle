@@ -180,3 +180,5 @@ serving and the first catalogue-derived production Cron observation.
 - 两项 Manager 行为测试先失败再通过：未配置命令时不发网络请求；独立非 Cherry 子进程从 stdin 获取脱敏输入并成功上报自己的 writer ID。包测试确认 manager-once/watch 未配置时立即退出且不泄露 Token。59 项单元/集成、34 项浏览器、类型、Biome、构建及 Skill 校验通过。
 - 19:10:48 真实 Caddy 验证 10 Spaces / 18 Panes，采集→Bearer→DO→资源/拓扑→稳定刷新通过，旧 D1 历史未增加。本机安全配置已显式保留原 Cherry profile 命令和 writer ID，未重置 sequence。
 - 网站 v0.2.1 的布局提交 CI 已通过；曾因同一工作区正在进行 README 整理而被部署脚本拒绝，没有产生不明确的线上 revision。该文档整理现已单独提交。新的 Agent 0.4.1 包已准备并等待 npm OTP；本轮修正提交通过 CI 后部署网站。
+- 19:14:09 生产语义复验逐一展开 18/18 live Pane 与 UTC 小时 latest/all，来源、内容 hash、sequence、桌面/手机、DOM 连续性全部通过。当前代码提交 `b51becd` CI 全绿（run 35439452296），Manager sequence 已持续到 66。
+- npm 0.4.1 发布等待用户提供新 OTP。为独立完成网站部署，Connect 与公开安装步骤暂时固定已发布的 0.4.0，并显式配置其已支持的 manager.command；因此新提示词不依赖未发布版本。0.4.1 tarball 和源码已单独留存待发布。

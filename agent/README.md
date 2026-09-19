@@ -9,13 +9,13 @@ Check `node --version`, `npm --version` and `herdr --version` first. Install Nod
 Download and install the pinned release from the official npm registry:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.1 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org
 ```
 
 **If npm is unreachable or times out, use the Tencent Cloud mirror first / npm 连不上时首选腾讯云镜像：**
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.1 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
 `--registry` applies only to this installation; it does not change your global npm configuration. Mirrors may take time to synchronize a new release: for `404` / `ETARGET`, retry later or use the official registry once reachable. Keep the pinned version, HTTPS and certificate verification. Eagle credentials are unrelated to npm and must never be sent to a registry.
@@ -23,7 +23,7 @@ npm install -g @nocoo/eagle-agent@0.4.1 --registry=https://mirrors.cloud.tencent
 Verify the installation before configuring the agent:
 
 ```sh
-eagle-agent --version # expected: 0.4.1
+eagle-agent --version # expected: 0.4.0
 eagle-agent --help
 ```
 

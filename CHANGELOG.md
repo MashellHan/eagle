@@ -8,7 +8,7 @@
 - Copying an onboarding prompt confirms success inside the button, keeps its width stable and resets automatically. Token copy has its own feedback.
 - Onboarding is agent-neutral, recommends Hermes with an explicit command example and preserves each machine's existing model/provider/profile.
 
-## Agent v0.4.1 — 2026-09-19
+## Agent v0.4.1 — prepared, npm publication pending
 
 - Remove the implicit Cherry executable. Manager requires an explicit command for the machine's existing Agent; deterministic collection remains independent.
 - Explain missing configuration and executable failures without exposing credentials. Preserve legacy Manager identity and state during upgrades.

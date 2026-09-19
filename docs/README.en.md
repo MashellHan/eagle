@@ -40,17 +40,17 @@ Open [Eagle](https://eagle.hexly.ai), sign in through Access, add a machine in *
 The collector requires Node.js 24+, npm and Herdr 0.9.1+. Install it independently without cloning Eagle:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.1 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org
 eagle-agent --version
 ```
 
 If the official registry is unreachable, use the Tencent Cloud mirror instead. Choose one installation command:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.1 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
-The expected version is `0.4.1`. Mirror synchronization may lag; on `404` / `ETARGET`, retry later or use the official registry when reachable, without changing the global npm registry. Save onboarding credentials following the [installation and configuration guide](../agent/README.md), then run:
+The expected version is `0.4.0`. Mirror synchronization may lag; on `404` / `ETARGET`, retry later or use the official registry when reachable, without changing the global npm registry. Save onboarding credentials following the [installation and configuration guide](../agent/README.md), then run:
 
 ```sh
 eagle-agent once
