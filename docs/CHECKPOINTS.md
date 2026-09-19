@@ -153,3 +153,11 @@ serving and the first catalogue-derived production Cron observation.
 - 真实安静 Pane w3J:p3 的语义更新时间保持 18:13:54，检查时间推进至 18:28:08，该 UTC 小时仍仅 1 条记录，证明持续 heartbeat 没有重复写历史。daemon 最近快照 18:28:03，Manager sequence 已到 42；本地 D1 副本已有 46 条、18 个不同 Pane（18:22 查询）。
 - Grok 第二轮 Review 后先补失败用例：同 Pane 不同 task 可独立上报；错误条目被隔离后有效条目立即续传；当前 live task 指针不被历史保留策略清理。三个问题均已修复，57 项单元/集成、30 项浏览器测试、TypeScript、Biome、构建通过。
 - 下一跳：当前修复提交通过 CI 后部署 Worker，重启生产确定性 daemon 并启用独立 Cherry Manager，验证生产 DO、D1 语义副本与全 Pane 页面。npm 0.4.0 已遇 EOTP，等待新的发布验证码；网站发布不依赖 npm 验证码。
+
+## 2026-09-19 18:38 +08 — 生产真实 Cherry 验收
+
+- `4a156928092969e4efa919a805ba41183b415bfe` 通过 GitHub CI（run 35437633317），部署到 https://eagle.hexly.ai；Cloudflare Version ID 为 `3e06045b-4ddf-4cc2-a830-b4ce41478c13`。线上健康接口返回相同源码 revision、semanticStore=durable-objects、semanticHours=UTC。
+- 18:33:40 生产 verify-live.ts 通过真实 9 Spaces / 18 Panes 的采集、Bearer、DO、资源/关注端口、幂等、Access 登录、全 Space 渲染、稳定刷新、旧历史与桌面/手机检查。整机快照没有继续写 D1。
+- 已启用独立 LaunchAgent `com.hexly.eagle-manager`，使用现有 Cherry profile；原 daemon 更新至 0.4.0 并继续每 30 秒运行。18:36:32 生产 verify-summaries.ts 逐一展开全部 18 个当前任务总结及小时记录，latest/all、source、content hash、桌面/手机与 DOM 连续性全部通过。
+- 远程 D1 实查 18 条语义副本、18 个不同 Pane，最新收件 18:35:35；DO 中同一 UTC 10:00 小时有 18 条记录。安静 Pane w3J:p3 的语义更新时间保持 18:33:48，检查时间从 18:35:11 推进到 18:35:41，内容哈希不变、小时仍仅 1 条。生产曾遇短暂 fetch 断连，持久 pending 批次重试成功，没有清除状态或重新创建 sequence。
+- 本机已从校验过的发布 tarball 安装 0.4.0，`eagle-agent --version` 与 manager-once / manager-watch 帮助验证成功。npm registry 的 0.4.0 发布仍被 EOTP 阻止，尚未取得新的验证码；因此其它机器暂不能从 registry 安装此版本。Skill 和安装说明已备妥，待验证码后发布相同包并校验腾讯镜像。
