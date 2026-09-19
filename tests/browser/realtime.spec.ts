@@ -24,6 +24,7 @@ test("Space realtime receives screens, gates input, and closes sockets on leavin
     }),
   );
   let closed = 0;
+  let acknowledge = true;
   const inputs: unknown[] = [];
   await page.routeWebSocket("**/api/v1/realtime?*", (ws) => {
     const sub = { spaceId: "default:w1", subscriptionId: "epoch" };
@@ -67,9 +68,10 @@ test("Space realtime receives screens, gates input, and closes sockets on leavin
         );
       if (m.type === "input") {
         inputs.push(m);
-        ws.send(
-          JSON.stringify({ type: "ack", seq: m.seq, status: "delivered" }),
-        );
+        if (acknowledge)
+          ws.send(
+            JSON.stringify({ type: "ack", seq: m.seq, status: "delivered" }),
+          );
       }
     });
     ws.onClose(() => closed++);
@@ -88,8 +90,28 @@ test("Space realtime receives screens, gates input, and closes sockets on leavin
   await expect.poll(() => closed).toBe(1);
   await page.getByRole("button", { name: "实时模式", exact: true }).click();
   await expect(page.getByText("ready from Herdr")).toBeVisible();
-  await page.keyboard.press("Escape");
+  acknowledge = false;
+  await page.getByRole("button", { name: "接管输入" }).click();
+  await page.getByLabel("发送到当前 Pane").fill("never-replay-this");
+  await page.getByRole("button", { name: "发送并回车" }).click();
+  await expect.poll(() => inputs.length).toBe(2);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
   await expect.poll(() => closed).toBe(2);
+  await page.evaluate(() => {
+    Reflect.deleteProperty(document, "hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(page.getByText("ready from Herdr")).toBeVisible();
+  await expect(page.getByRole("button", { name: "发送并回车" })).toBeDisabled();
+  expect(inputs.length).toBe(2);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => closed).toBe(3);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

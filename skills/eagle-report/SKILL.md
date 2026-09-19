@@ -6,9 +6,9 @@ description: Connect a machine to Eagle and continuously report all Herdr Panes 
 Install `@nocoo/eagle-agent@0.5.0` with Node 24+ and Herdr. Reuse the machine’s existing management Agent for semantics; Hermes Agent is recommended, not required:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.5.0 --registry=https://registry.npmjs.org
+npm install -g https://github.com/nocoo/eagle/releases/download/v0.4.0/nocoo-eagle-agent-0.5.0.tgz --registry=https://registry.npmjs.org
 # If npm is unreachable, prefer Tencent Cloud:
-npm install -g @nocoo/eagle-agent@0.5.0 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g https://github.com/nocoo/eagle/releases/download/v0.4.0/nocoo-eagle-agent-0.5.0.tgz --registry=https://mirrors.cloud.tencent.com/npm/
 eagle-agent --version
 ```
 
