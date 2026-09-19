@@ -209,3 +209,27 @@ test("public health identifies the deployed revision without exposing inventory"
   assert.equal(result.revision, "test-build-sha");
   assert(!("machines" in result));
 });
+
+test("an ordinary heartbeat and old retry cannot clear a collector failure warning", async () => {
+  const beat = {
+    schemaVersion: 1,
+    machineId: "mac-one",
+    sentAt: new Date().toISOString(),
+  };
+  await request("/api/v1/heartbeat", {
+    ...beat,
+    warning: "Collection incomplete",
+  });
+  await request("/api/v1/heartbeat", beat);
+  const view = (await (
+    await request("/api/v1/overview", undefined, viewer)
+  ).json()) as {
+    machines: { warning: string; report: ReturnType<typeof report> }[];
+  };
+  assert.equal(view.machines[0].warning, "Collection incomplete");
+  await request("/api/v1/reports", view.machines[0].report);
+  const after = (await (
+    await request("/api/v1/overview", undefined, viewer)
+  ).json()) as typeof view;
+  assert.equal(after.machines[0].warning, "Collection incomplete");
+});

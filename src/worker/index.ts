@@ -105,7 +105,7 @@ async function ingest(request: Request, env: Env, machineId: string) {
     ).bind(machineId, report.reportId, report.capturedAt, now, digest, payload),
     env.DB.prepare(`INSERT INTO machines(id, name, last_seen, latest_seq, latest_captured_at, latest_report_id)
       SELECT machine_id, ?, ?, seq, captured_at, report_id FROM reports WHERE machine_id = ? AND report_id = ? AND digest = ?
-      ON CONFLICT(id) DO UPDATE SET last_seen = excluded.last_seen, warning = NULL,
+      ON CONFLICT(id) DO UPDATE SET last_seen = excluded.last_seen, warning = CASE WHEN (excluded.latest_captured_at, excluded.latest_report_id) > (machines.latest_captured_at, machines.latest_report_id) THEN NULL ELSE machines.warning END,
       name = CASE WHEN (excluded.latest_captured_at, excluded.latest_report_id) > (machines.latest_captured_at, machines.latest_report_id) THEN excluded.name ELSE machines.name END,
       latest_seq = CASE WHEN (excluded.latest_captured_at, excluded.latest_report_id) > (machines.latest_captured_at, machines.latest_report_id) THEN excluded.latest_seq ELSE machines.latest_seq END,
       latest_captured_at = MAX(machines.latest_captured_at, excluded.latest_captured_at),
@@ -192,7 +192,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     timely(parsed.data.sentAt);
     noSecrets(JSON.stringify(parsed.data), env);
     const result = await env.DB.prepare(
-      "UPDATE machines SET last_seen = ?, warning = ? WHERE id = ?",
+      "UPDATE machines SET last_seen = ?, warning = COALESCE(?, warning) WHERE id = ?",
     )
       .bind(new Date().toISOString(), parsed.data.warning ?? null, identity)
       .run();

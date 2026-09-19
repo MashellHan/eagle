@@ -196,3 +196,32 @@ test("a new native turn changes task identity, including a bounded tail with onl
   assert.equal(transcriptContext(one)?.turnId, "turn-one");
   assert.equal(transcriptContext(`${one}\n${two}`)?.turnId, "turn-two");
 });
+
+test("manager evidence cannot reassign a replaced pane to the old task", async () => {
+  const { applyManager } = await import("../agent/collector.ts");
+  const pane = report().spaces[0].tabs[0].panes[0];
+  const prior = { task: { ...pane.task, id: "old-task" }, evidence: [] };
+  assert.equal(applyManager(pane, prior), false);
+  assert.equal(pane.task.id, "task-1");
+});
+
+test("stopped sessions retain last known topology and are explicitly unavailable", async () => {
+  const { preserveStopped } = await import("../agent/collector.ts");
+  const prior = report();
+  const result = preserveStopped([], prior.spaces, ["default"]);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].availability, "unavailable");
+});
+
+test("portable conversation identity changes with the latest real user prompt", async () => {
+  const { conversationTaskId } = await import("../agent/collector.ts");
+  const first = JSON.stringify({ type: "user", content: [{ text: "Ship A" }] });
+  const second = JSON.stringify({
+    type: "user",
+    content: [{ text: "Ship B" }],
+  });
+  assert.notEqual(
+    conversationTaskId(first, "session"),
+    conversationTaskId(`${first}\n${second}`, "session"),
+  );
+});

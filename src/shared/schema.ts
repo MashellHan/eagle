@@ -42,6 +42,7 @@ export const PaneSchema = z.strictObject({
   evidence: z.array(EvidenceSchema).max(30),
 });
 export const SpaceSchema = z.strictObject({
+  availability: z.literal("unavailable").optional(),
   id,
   name: z.string().min(1).max(240),
   session: z.string().min(1).max(100),

@@ -232,6 +232,7 @@ function SpaceCard({
   onOpen: () => void;
 }) {
   const stale =
+    space.availability === "unavailable" ||
     age(machine.lastSeen, new Date().toISOString()) > 90 ||
     age(machine.report.capturedAt, new Date().toISOString()) > 300;
   const latest = space.tabs

@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { open, readFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir, platform } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify, stripVTControlCharacters } from "node:util";
 import { z } from "zod";
@@ -105,7 +105,7 @@ export function normalizeSnapshot(
               task: {
                 id: createHash("sha256")
                   .update(
-                    `${session}:${p.pane_id}:${p.agent_session?.value || title}`,
+                    `${session}:${p.pane_id}:${p.agent_session?.value || "shell"}:${p.agent === "codex" ? "" : title}`,
                   )
                   .digest("hex")
                   .slice(0, 32),
@@ -274,14 +274,76 @@ export type AgentConfig = {
   spoolDir?: string;
 };
 
+export function applyManager(
+  pane: Pane,
+  managed: { task: Pane["task"]; evidence: Evidence[] },
+): boolean {
+  if (managed.task.id !== pane.task.id) return false;
+  pane.task = managed.task;
+  pane.evidence.push(...managed.evidence);
+  return true;
+}
+export function preserveStopped(
+  current: Space[],
+  previous: Space[],
+  stopped: string[],
+): Space[] {
+  return [
+    ...current,
+    ...previous
+      .filter((s) => stopped.includes(s.session))
+      .map((s) => ({ ...s, availability: "unavailable" as const })),
+  ];
+}
+export function conversationTaskId(
+  text: string,
+  sessionId: string,
+): string | undefined {
+  let lastUser: string | undefined;
+  for (const line of text.split("\n")) {
+    try {
+      const e = JSON.parse(line);
+      if (
+        (e.type === "user" && !e.synthetic_reason) ||
+        (e.type === "message" && e.message?.role === "user")
+      )
+        lastUser = JSON.stringify(
+          e.type === "user" ? e.content : e.message.content,
+        );
+    } catch {
+      /* Bounded tail can begin mid-line. */
+    }
+  }
+  return lastUser
+    ? createHash("sha256")
+        .update(`${sessionId}:${lastUser}`)
+        .digest("hex")
+        .slice(0, 32)
+    : undefined;
+}
+
 export async function collect(config: AgentConfig): Promise<Report> {
   const capturedAt = new Date().toISOString();
   const warnings: string[] = [];
-  const spaces: Space[] = [];
+  let spaces: Space[] = [];
+  const cachePath = join(
+    dirname(config.spoolDir ?? join(homedir(), ".config/eagle/spool")),
+    "latest-report.json",
+  );
+  let previous: Report | undefined;
+  try {
+    const cached = ReportSchema.parse(
+      JSON.parse(await readFile(cachePath, "utf8")),
+    );
+    if (cached.machine.id === config.machineId) previous = cached;
+  } catch {
+    /* First collection has no cache. */
+  }
+
   const sessions: { name: string; running: boolean }[] = JSON.parse(
     await herdr(["session", "list", "--json"]),
   ).sessions;
-  if (!sessions.some((s) => s.running))
+  if (!sessions.some((s) => s.running) && !previous)
     throw new Error("No running Herdr sessions; preserving previous inventory");
   const manager = config.evidenceFile
     ? ManagerSchema.parse(
@@ -372,15 +434,34 @@ export async function collect(config: AgentConfig): Promise<Report> {
               warnings.push(`${space.name}/${pane.id}：原生会话证据不可读`);
             }
           }
-          if (managed) {
-            if (pane.agent !== "codex" || managed.task.id === pane.task.id) {
-              pane.task = managed.task;
-              pane.evidence.push(...managed.evidence);
-            } else
-              warnings.push(
-                `${space.name}/${pane.id}：管理证据属于旧任务，已忽略`,
-              );
+          if (pane.agent === "grok" || pane.agent === "pi") {
+            try {
+              const identity = original?.agent_session?.value;
+              const cwd = original?.cwd;
+              const path =
+                pane.agent === "pi"
+                  ? identity
+                  : identity && cwd
+                    ? join(
+                        homedir(),
+                        ".grok/sessions",
+                        encodeURIComponent(cwd),
+                        identity,
+                        "chat_history.jsonl",
+                      )
+                    : undefined;
+              if (path && identity) {
+                const taskId = conversationTaskId(await tail(path), identity);
+                if (taskId) pane.task.id = taskId;
+              }
+            } catch {
+              /* Portable manager evidence remains available when native history is absent. */
+            }
           }
+          if (managed && !applyManager(pane, managed))
+            warnings.push(
+              `${space.name}/${pane.id}：管理证据属于旧任务，已忽略`,
+            );
           if (!pane.evidence.some((e) => e.kind === "summary")) {
             try {
               const terminal = await herdr(
@@ -468,6 +549,10 @@ export async function collect(config: AgentConfig): Promise<Report> {
     state?.close();
     goals?.close();
   }
+  const stopped = sessions.filter((s) => !s.running).map((s) => s.name);
+  spaces = preserveStopped(spaces, previous?.spaces ?? [], stopped);
+  for (const session of stopped)
+    warnings.push(`${session}：Session 已停止，保留最近已知拓扑`);
   const value = {
     schemaVersion: 1,
     reportId: randomUUID(),
@@ -492,7 +577,15 @@ export async function collect(config: AgentConfig): Promise<Report> {
       );
     return v;
   }
-  return ReportSchema.parse(scrub(value));
+  const report = ReportSchema.parse(scrub(value));
+  await mkdir(dirname(cachePath), { recursive: true, mode: 0o700 });
+  await writeFile(
+    `${cachePath}.${report.reportId}.tmp`,
+    JSON.stringify(report),
+    { mode: 0o600 },
+  );
+  await rename(`${cachePath}.${report.reportId}.tmp`, cachePath);
+  return report;
 }
 export function checkUrl(value: string) {
   const url = new URL(value);
@@ -513,6 +606,13 @@ export function checkUrl(value: string) {
   )
     throw new Error("HTTPS is required outside loopback");
   return url.origin;
+}
+export class UploadRejectedError extends Error {
+  status: number;
+  constructor(status: number) {
+    super(`Upload rejected (${status}); report retained`);
+    this.status = status;
+  }
 }
 export async function sendReport(
   url: string,

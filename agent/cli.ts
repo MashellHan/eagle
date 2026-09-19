@@ -4,7 +4,6 @@ import {
   readFile,
   rename,
   stat,
-  unlink,
   writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -17,6 +16,7 @@ import {
   collect,
   sendReport,
 } from "./collector.ts";
+import { drainSpool } from "./spool.ts";
 
 const ConfigSchema = z.strictObject({
   url: z.string().url(),
@@ -73,15 +73,14 @@ async function cycle(config: AgentConfig) {
     mode: 0o600,
   });
   await rename(join(spool, `${name}.tmp`), join(spool, name));
-  for (const file of [...files, name]) {
-    const pending = ReportSchema.parse(
-      JSON.parse(await readFile(join(spool, file), "utf8")),
+  const drained = await drainSpool(spool, config.machineId, (pending) =>
+    sendReport(config.url, config.token, pending),
+  );
+  if (drained.rejected)
+    await heartbeat(
+      config,
+      `${drained.rejected} 份无效上报已隔离保留，请检查本机 spool/rejected`,
     );
-    if (pending.machine.id !== config.machineId)
-      throw new Error("Spool machine identity mismatch");
-    await sendReport(config.url, config.token, pending);
-    await unlink(join(spool, file));
-  }
   console.log(
     JSON.stringify({
       event: "reported",

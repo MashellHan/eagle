@@ -4,7 +4,7 @@ All private responses are `Cache-Control: no-store`. Maximum streamed upload siz
 
 | Endpoint | Authentication | Contract |
 | --- | --- | --- |
-| `GET /api/live` | Public | `{status,service,schemaVersion}`; D1 connectivity only |
+| `GET /api/live` | Public | `{status,service,schemaVersion,revision}`; D1 connectivity only |
 | `POST /api/session` | Viewer Bearer | Issue 12-hour signed HttpOnly cookie; token is never stored |
 | `DELETE /api/session` | Same origin | Clear browser cookie |
 | `POST /api/v1/reports` | Machine Bearer | Full v1 report; 201 new / 200 duplicate / 409 reused ID with different content |
@@ -16,7 +16,7 @@ All private responses are `Cache-Control: no-store`. Maximum streamed upload siz
 
 `reportId` is generated once before transmission and persisted in the local spool. Retries send the same body and ID. A unique `(machine_id, report_id)` constraint and canonical content hash enforce idempotency. D1 `batch` atomically inserts history and conditionally advances the current pointer. Concurrent retries cannot create two reports. Different JSON object key ordering produces the same hash.
 
-Current state is ordered by `(capturedAt, reportId)`; a delayed older report enters history without replacing a newer snapshot. Equal capture times use report ID as a deterministic tie-breaker. Timestamps more than five minutes ahead of the server are rejected. All sessions must be collected successfully before the inventory can replace the previous snapshot; any missing session aborts the cycle and sends a warning heartbeat. Closing a Space is represented by its absence in a later complete inventory.
+Current state is ordered by `(capturedAt, reportId)`; a delayed older report enters history without replacing a newer snapshot. Equal capture times use report ID as a deterministic tie-breaker. Timestamps more than five minutes ahead of the server are rejected. All sessions must be collected successfully before the inventory can replace the previous snapshot; any missing session aborts the cycle and sends a warning heartbeat. Closing a Space is represented by its absence in a later complete inventory. Stopped sessions retain cached Spaces marked `availability:unavailable`. A heartbeat without a warning cannot clear a collection failure; only a newer complete report clears it.
 
 History pagination orders by received sequence (strictly decreasing integer cursor); capture time is shown separately. Changes compare the prior capture for that machine, so late delivery is not mistaken for a rollback. Space history filters snapshots containing that Space. Closure events are visible in machine history.
 

@@ -86,13 +86,16 @@ export function summarize(report: Report) {
       .flatMap((tab) => tab.panes)
       .map((pane) => ({ pane, ...assessPane(pane, report.capturedAt) }));
     for (const p of panes) counts[p.state]++;
-    const state: State = panes.some((p) => p.state === "attention")
-      ? "attention"
-      : panes.some((p) => p.state === "active")
-        ? "active"
-        : panes.length && panes.every((p) => p.state === "verified")
-          ? "verified"
-          : "unverified";
+    const state: State =
+      space.availability === "unavailable"
+        ? "unverified"
+        : panes.some((p) => p.state === "attention")
+          ? "attention"
+          : panes.some((p) => p.state === "active")
+            ? "active"
+            : panes.length && panes.every((p) => p.state === "verified")
+              ? "verified"
+              : "unverified";
     const lead = panes.find((p) => p.state === state);
     return { space, state, panes, summary: lead?.reason ?? "暂无任务证据" };
   });
@@ -113,6 +116,10 @@ export function changesBetween(before: Report | null, after: Report): string[] {
       changes.push(`${current.space.name}：新增 Space`);
       continue;
     }
+    if (prev.space.availability !== current.space.availability)
+      changes.push(
+        `${current.space.name}：${current.space.availability === "unavailable" ? "Session 已停止，保留历史拓扑" : "Session 恢复采集"}`,
+      );
     if (prev.state !== current.state)
       changes.push(
         `${current.space.name}：${STATE_LABEL[prev.state]} → ${STATE_LABEL[current.state]}`,
