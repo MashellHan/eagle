@@ -115,3 +115,12 @@ serving and the first catalogue-derived production Cron observation.
 - 最终本地 45 项单元/集成、26 项桌面/手机浏览器测试、TypeScript、Biome、构建全部通过。npm 包在临时目录独立安装并运行 init/帮助已通过，实际 npm 安装包的上报链路也已验证。
 - 17:17 SQL 复核：本地 D1 仍为 83 条，最新写入仍为 16:36:50.785。新机器管理和当前状态没有写入 D1。测试机器已停用，本地正式采集恢复每 30 秒运行，生产 LaunchAgent 未停止或更新。
 - 网站与 npm 包都保持本地预览，未部署或发布。
+
+## 2026-09-19 17:31 +08 — Agent npm 首次发布
+
+- `@nocoo/eagle-agent@0.3.0` 已公开发布到 npm，发布源码为 `23880d7`。精确 tarball 只包含 6 个编译后的 JS 文件、package.json 和安装说明；官方 registry 的 SHA-512 integrity 与发布前检查的包一致。
+- Connect 提示词、npm README、仓库安装文档和 eagle-report Skill 已写明 Node 24+ / Herdr 前提、官方源下载、npm 连不上时首选腾讯云 HTTPS 镜像、固定版本验证及镜像同步延迟处理。只对单条命令指定 registry，不改全局配置。
+- 官方源以全新缓存独立安装成功；腾讯镜像已同步 0.3.0，校验值一致，未使用 npm 登录凭据的全新全局安装也成功。两种安装的 `--version` 均为 0.3.0，`--help` 正常。
+- 17:30:17 从官方 npm 下载的 Agent 完成真实 Connect 验收：本机 11 Spaces / 20 Panes，经签名 Bearer 上报到机器 DO；轮换后旧 Token 401，新 Token 能上报；停用后新 Token 401。Raven 7024 配置保留，桌面与手机渲染、浏览器无凭据持久化均通过；验证机已再次停用。
+- SQL 复核本地 D1 仍为 83 条，最近写入仍为 16:36:50.785，新上报没有写入 D1。新增提示词检查先失败再通过；45 项单元/集成/安装测试、26 项浏览器测试、类型、Biome 和构建全部通过。
+- 本轮只发布 npm Agent。网站改动继续在 https://eagle.dev.hexly.ai/connect 预览，Worker 未部署，生产采集服务未更新。
