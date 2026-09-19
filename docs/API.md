@@ -4,7 +4,7 @@ All private responses are `Cache-Control: no-store`. Maximum streamed upload siz
 
 | Endpoint | Authentication | Contract |
 | --- | --- | --- |
-| `GET /api/live` | Public | `{status,service,schemaVersion,revision,stateStore,historyWrites}`; probes the first configured machine DO, no inventory |
+| `GET /api/live` | Public | `{status,service,version,schemaVersion,revision,stateStore,historyWrites}`; probes the first configured machine DO, no inventory; website and ingest Worker use the root package version |
 | `POST /api/v1/reports` | Machine Bearer | Full v1 report; 201 new / 200 duplicate / 409 reused ID with different content |
 | `POST /api/v1/heartbeat` | Machine Bearer | `{schemaVersion:1,machineId,sentAt,warning?}`; requires initial report |
 | `GET /api/v1/me` | Verified Access JWT | `{name,email,avatar,local}`; account and optional author-service profile |

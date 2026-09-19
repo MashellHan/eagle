@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.0 — 2026-09-20
+
+- Hourly report template v3 keeps evidence timestamps, task boundaries and source attribution explicit. It instructs the model to retain uncertainty around historical blockers, cancelled tasks and sparse resource samples.
+- Large hours use compact intermediate evidence notes, validated inline citations and one bounded rewrite for an oversized executive summary. Truncated or invalid model responses fail before archival; template upgrades can regenerate an hour without creating duplicate D1 rows.
+- Add a reproducible real-model evaluation with five controlled cases and documented results from real Herdr hourly inputs. Shared AI credential decryption verifies the intended endpoint in both generation and evaluation.
+- History uses Basalt date and hour selectors with themed calendar/chevron icons, Chinese calendar labels, keyboard navigation and clear-filter feedback. The hour menu scrolls within mobile screens and local time still maps to UTC archive buckets.
+
 ## v0.2.2 — 2026-09-19
 
 - Sidebar machine items show glowing online, stale-snapshot and offline indicators in expanded, collapsed and mobile layouts.
