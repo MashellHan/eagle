@@ -4,12 +4,12 @@ All private responses are `Cache-Control: no-store`. Maximum streamed upload siz
 
 | Endpoint | Authentication | Contract |
 | --- | --- | --- |
-| `GET /api/live` | Public | `{status,service,schemaVersion,revision}`; D1 connectivity only |
+| `GET /api/live` | Public | `{status,service,schemaVersion,revision,stateStore,historyWrites}`; probes the first configured machine DO, no inventory |
 | `POST /api/v1/reports` | Machine Bearer | Full v1 report; 201 new / 200 duplicate / 409 reused ID with different content |
 | `POST /api/v1/heartbeat` | Machine Bearer | `{schemaVersion:1,machineId,sentAt,warning?}`; requires initial report |
 | `GET /api/v1/me` | Verified Access JWT | `{name,email,avatar,local}`; account and optional author-service profile |
-| `GET /api/v1/overview` | Verified Access JWT | Server time, latest report per machine, last heartbeat and collector warning |
-| `GET /api/v1/history` | Verified Access JWT | Optional `machine`, `space`, `before` cursor, `limit` 1–100 (default 20); entries and nextCursor |
+| `GET /api/v1/overview` | Verified Access JWT | Server time, DO current state per machine, heartbeat, warning, revision, latest changes, pending machine IDs |
+| `GET /api/v1/history` | Verified Access JWT | Existing D1 history only; optional `machine`, `space`, `before` cursor, `limit` 1–100 (default 20); entries and nextCursor |
 
 Browser origin: `https://eagle.hexly.ai`, protected by the nocoo Access application. Local development viewing is unauthenticated. Machine origin: `https://eagle-ingest.hexly.ai`, which serves only the two ingestion endpoints and public health; all other paths are 404. The browser Access JWT is validated by the Worker, and is never accepted as a machine Bearer token. Legacy viewer Bearer credentials and Eagle session cookies no longer authorize requests.
 
@@ -19,17 +19,27 @@ Account email comes from the verified JWT payload, never an unverified email hea
 
 Report v1 now accepts optional `machine.telemetry` with `observedAt`, nullable `resources`, and `ports`. Resources include CPU model/core count/utilization/sample duration/load average, total/free memory bytes, nullable home-filesystem total/available bytes, and uptime seconds. Each port has a name, loopback host, port number, `checkedAt`, `status` (`open`, `closed`, `timeout`, `error`) and nullable successful-connection `latencyMs`. Unknown data is not zero. The validator rejects out-of-range values and duplicate watched endpoints. Existing v1 reports without telemetry remain valid; upgrade the server before enabling the new collector.
 
-Telemetry is persisted atomically inside the same `reports.payload` as the Herdr snapshot. Both overview and history return it. Resource samples and port observations older than 90 seconds are shown as historical; TCP success never counts as task-deployment evidence. The existing D1 schema needs no migration for this additive JSON field.
+Telemetry is persisted with the current full snapshot in the machine's Durable Object. Overview returns it; new reports do not enter D1. Resource samples and port observations older than 90 seconds are shown as historical; TCP success never counts as task-deployment evidence.
 
-## Snapshot and ordering
+## Current state and ordering
 
-`reportId` is generated once before transmission and persisted in the local spool. Retries send the same body and ID. A unique `(machine_id, report_id)` constraint and canonical content hash enforce idempotency. D1 `batch` atomically inserts history and conditionally advances the current pointer. Concurrent retries cannot create two reports. Different JSON object key ordering produces the same hash.
+`MACHINES.getByName(machineId)` selects a SQLite-backed Durable Object. Each object stores exactly one complete `MachineView`: report, name, server receipt time, heartbeat time, collector warning, monotonically increasing revision, and the latest meaningful change summary with its original capture time. An identical snapshot does not refresh that change timestamp. No history payloads are retained in the object. Compact `(reportId, digest, seq)` receipt metadata preserves idempotency across arbitrary retries and restarts; this metadata grows with accepted reports.
 
-Current state is ordered by `(capturedAt, reportId)`; a delayed older report enters history without replacing a newer snapshot. Equal capture times use report ID as a deterministic tie-breaker. Timestamps more than five minutes ahead of the server are rejected. All sessions must be collected successfully before the inventory can replace the previous snapshot; any missing session aborts the cycle and sends a warning heartbeat. Closing a Space is represented by its absence in a later complete inventory. Stopped sessions retain cached Spaces marked `availability:unavailable`. A heartbeat without a warning cannot clear a collection failure; only a newer complete report clears it.
+`reportId` is generated once and persisted in the agent's local spool. Retries send the same body and ID. A synchronous SQLite transaction checks the canonical content hash, stores the receipt, and advances current state atomically. The existing acknowledgement `{accepted:true, duplicate, seq}` is unchanged, but `seq` is now a **per-machine upload receipt**, not a D1 history cursor. Different JSON object key ordering has the same hash. A conflicting ID returns 409 without touching current state or heartbeat.
 
-History pagination orders by received sequence (strictly decreasing integer cursor); capture time is shown separately. Changes compare the prior capture for that machine, so late delivery is not mistaken for a rollback. Space history filters snapshots containing that Space. Closure events are visible in machine history.
+Current state is ordered by `(capturedAt, reportId)`. Late reports are acknowledged without replacing current inventory, warning or change summary. Equal capture times use report ID as a deterministic tie-breaker. Capture timestamps more than five minutes ahead of the server are rejected. An authenticated retry updates contact time; freshness still checks the snapshot's original capture time. The server records receipt/heartbeat time itself.
 
-The initial release preserves full history. D1 storage growth is proportional to machines × report size × frequency; no silent retention deletion runs. Set collection intervals explicitly for large fleets and monitor database size before increasing fleet size. Future archival can be added without changing report v1.
+Closing a Space is represented by its absence in a newer complete report. A collection failure preserves inventory and sends a warning heartbeat; an ordinary heartbeat or old retry cannot clear that warning. Only a newer complete report clears it. Stopped sessions retain cached Spaces marked `availability:unavailable`.
+
+The `AGENT_TOKENS` secret's keys are the managed machine directory. A new key automatically provides a named object on first access; `pendingMachines` lists machines awaiting their initial report. The overview contains only configured machines and reads no D1 data. Removing a key revokes reporting and removes the machine from the active directory without deleting its object or old history; restoring the same ID restores access to its state. Failed DO reads fail the overview request, so the browser keeps its last complete fleet view rather than silently hiding a machine.
+
+The browser polls current state every five seconds while visible. Existing cards, focus, search and open detail remain mounted during refresh. Latest changes come from DO state; history is fetched only on explicit navigation.
+
+## History (paused)
+
+New D1 writes, hourly Cron and AI summaries are deferred. Existing `reports` and `machines` tables remain untouched. `/history` continues reading existing reports using the original decreasing sequence cursor. Those cursors are independent of new DO upload receipts. No database migration or scheduled trigger is introduced in this revision.
+
+On first deployment the DO namespace starts empty. Configured machines are marked as awaiting a report until their next successful full upload; old D1 snapshots remain accessible in history, never mislabeled as live DO state. Deploy the Worker before restarting upgraded collectors.
 
 ## Evidence semantics
 

@@ -8,7 +8,7 @@ Private, evidence-led overview of every Herdr Space on every reporting machine.
 
 **Production:** https://eagle.hexly.ai · **Local:** https://eagle.dev.hexly.ai · **[Hexly](https://hexly.ai/projects/eagle)** · **[Status](https://status.hexly.ai)**
 
-Vite + React 19 + **@nocoo/basalt 2.1.8**, TypeScript **7.0.2**, Biome. Cloudflare Worker serves the SPA and authenticated API; D1 keeps full snapshots and history. The Node management agent runs locally on each machine. No remote terminal control is exposed.
+Vite + React 19 + **@nocoo/basalt 2.1.8**, TypeScript **7.0.2**, Biome. Cloudflare Worker serves the SPA and authenticated API; one SQLite-backed Durable Object per machine maintains current state. D1 retains existing history; new history writes and hourly AI summaries are paused. The Node management agent runs locally on each machine. No remote terminal control is exposed.
 
 ## Run
 
@@ -33,7 +33,7 @@ These ports follow the nmem allocation after Zeppelin (7052); 6001 belonged to t
 ```sh
 npm run check
 npm run test:browser
-# Actual machine → authenticated upload → D1 → Chromium, no mocked requests:
+# Actual machine → authenticated upload → machine DO → Chromium, no mocked requests:
 NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" node scripts/verify-live.ts
 ```
 
@@ -51,7 +51,7 @@ Agents use **per-machine Bearer tokens** stored only in their 0600 configuration
 
 The dashboard uses Basalt chrome, controls, semantic badges, chart primitives and palette tokens. Compact machine groups preserve real pane geometry; state filters, evidence coverage, agent distribution and change timelines expose useful details immediately. Skeletons keep loading geometry stable, refreshes retain content, and entrance/refresh motion respects reduced-motion preferences.
 
-Each machine also reports CPU, RAM, home-filesystem disk capacity and uptime. Add `"watchPorts":[{"name":"Raven","port":7024}]` to the agent's secure configuration to track named local TCP endpoints. Resource and port snapshots are stored in D1 history with the Space inventory, and stale observations are labelled explicitly. See [agent configuration](docs/AGENT.md) for measurement semantics and upgrade order.
+Each machine also reports CPU, RAM, home-filesystem disk capacity and uptime. Add `"watchPorts":[{"name":"Raven","port":7024}]` to the agent's secure configuration to track named local TCP endpoints. Resource and port snapshots live in each machine DO with the current Space inventory, and stale observations are labelled explicitly. See [agent configuration](docs/AGENT.md) for measurement semantics and upgrade order.
 
 ## Interpretation
 
@@ -59,7 +59,7 @@ Herdr `idle`, `done` and `blocked` are weak hints. A verified task requires matc
 
 Codex's local thread/goal stores are optional adapters; only final replies and lifecycle events are extracted. Reasoning and tool arguments are excluded. Other harnesses use a bounded terminal excerpt and manager-supplied structured evidence. Text evidence is redacted before spool/upload. Heuristics cannot guarantee redaction of arbitrary secrets: managers should send concise summaries, and use the Skill to provide verified test/deployment receipts instead of raw terminal dumps.
 
-The dashboard refreshes every **5 seconds** while visible and refreshes immediately on return. After 90 seconds without heartbeat or 5 minutes without a snapshot, current-state cards explicitly show stale inventory. A failed refresh preserves the last snapshot with a connection warning. This is bounded polling, with no WebSocket/DO infrastructure.
+The dashboard refreshes every **5 seconds** while visible and refreshes immediately on return. After 90 seconds without heartbeat or 5 minutes without a snapshot, current-state cards explicitly show stale inventory. A failed refresh preserves the last snapshot with a connection warning. The overview reads machine DOs directly; it never polls D1. Latest changes retain their original capture time; D1 is queried only when opening existing history.
 
 ## Release
 
@@ -72,7 +72,7 @@ npx wrangler secret bulk /secure/path/platform-secrets.json
 npm run deploy
 ```
 
-The Worker owns `eagle.hexly.ai` as a custom domain. `https://eagle-ingest.hexly.ai/api/live` publicly checks D1 connectivity and returns no inventory. The read-only reviewers are advisory; the integrator commits on `main`. See [checkpoints](docs/CHECKPOINTS.md) for real data verification and [API](docs/API.md) for ingestion/query semantics.
+The Worker owns `eagle.hexly.ai` as a custom domain. `https://eagle-ingest.hexly.ai/api/live` publicly probes the first configured machine DO and returns no inventory. The read-only reviewers are advisory; the integrator commits on `main`. See [checkpoints](docs/CHECKPOINTS.md) for real data verification and [API](docs/API.md) for ingestion/query semantics.
 
 ## Identity
 

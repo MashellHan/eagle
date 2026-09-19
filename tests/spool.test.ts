@@ -16,6 +16,27 @@ import { sendReport, UploadRejectedError } from "../agent/collector.ts";
 import { drainSpool } from "../agent/spool.ts";
 import { report } from "./fixtures.ts";
 
+test("reconnect sends the newest queued snapshot before older backlog", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "eagle-latest-"));
+  try {
+    await writeFile(
+      join(dir, "2026-09-19T01-00-00-old.json"),
+      JSON.stringify(report("old")),
+    );
+    await writeFile(
+      join(dir, "2026-09-19T02-00-00-new.json"),
+      JSON.stringify(report("new")),
+    );
+    const sent: string[] = [];
+    await drainSpool(dir, "mac-one", async (value) => {
+      sent.push(value.reportId);
+    });
+    assert.deepEqual(sent, ["new", "old"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a malformed or permanently rejected report is retained without blocking fresh inventory", async () => {
   const dir = await mkdtemp(join(tmpdir(), "eagle-spool-"));
   try {

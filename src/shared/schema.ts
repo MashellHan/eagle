@@ -185,8 +185,15 @@ export type MachineView = {
   receivedAt: string;
   warning: string | null;
   report: Report;
+  revision: number;
+  changes: string[];
+  changedAt: string | null;
 };
-export type Overview = { now: string; machines: MachineView[] };
+export type Overview = {
+  now: string;
+  machines: MachineView[];
+  pendingMachines: string[];
+};
 export type HistoryEntry = {
   seq: number;
   receivedAt: string;

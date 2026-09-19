@@ -29,6 +29,7 @@ import {
 } from "@nocoo/basalt/components/app-shell";
 import { PageHeader } from "@nocoo/basalt/components/page-header";
 import { SectionRule } from "@nocoo/basalt/components/section-rule";
+import { SkeletonLine } from "@nocoo/basalt/components/skeleton-line";
 import {
   History as HistoryIcon,
   LayoutDashboard,
@@ -78,15 +79,7 @@ function AccessGate() {
   );
 }
 
-function HistoryView({
-  machine,
-  space,
-  compact = false,
-}: {
-  machine: string;
-  space?: string;
-  compact?: boolean;
-}) {
+function HistoryView({ machine, space }: { machine: string; space?: string }) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [cursor, setCursor] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -99,7 +92,7 @@ function HistoryView({
       active.current = controller;
       setLoading(true);
       setError("");
-      const query = new URLSearchParams({ limit: compact ? "6" : "12" });
+      const query = new URLSearchParams({ limit: "12" });
       if (machine) query.set("machine", machine);
       if (space) query.set("space", space);
       if (before) query.set("before", String(before));
@@ -120,54 +113,18 @@ function HistoryView({
         if (!controller.signal.aborted) setLoading(false);
       }
     },
-    [machine, space, compact],
+    [machine, space],
   );
   useEffect(() => {
     setEntries([]);
     void load();
     return () => active.current?.abort();
   }, [load]);
-  if (compact) {
-    const changes = entries.flatMap((entry) =>
-      entry.changes.map((change) => ({
-        key: `${entry.seq}:${change}`,
-        change,
-      })),
-    );
-    return (
-      <LayerCard>
-        <h2 className="text-sm font-semibold">最近变化</h2>
-        <p className="mt-2 text-xs text-basalt-muted-foreground">
-          最近 {entries.length} 次采集中，
-          {entries.filter((e) => e.changes.length).length}{" "}
-          次出现任务或布局变化。
-        </p>
-        {error ? (
-          <p role="alert" className="mt-3 text-sm text-basalt-destructive">
-            历史暂不可用
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-2 text-sm">
-            {changes.slice(0, 4).map((item) => (
-              <li key={item.key} className="line-clamp-2 break-words">
-                {item.change}
-              </li>
-            ))}
-          </ul>
-        )}
-        {!changes.length && !error && (
-          <p className="mt-3 text-sm text-basalt-muted-foreground">
-            {loading ? "正在核对最近变化…" : "最近任务与布局保持稳定。"}
-          </p>
-        )}
-      </LayerCard>
-    );
-  }
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-basalt-muted-foreground">
-          按接收时间记录，结论与上一次采集比较。
+          历史归档已暂停，当前状态持续更新。此处可查阅之前的记录。
         </p>
         <Button
           size="sm"
@@ -184,7 +141,17 @@ function HistoryView({
         </p>
       )}
       {!loading && !entries.length && !error && (
-        <LayerCard>暂无历史记录</LayerCard>
+        <LayerCard>暂无历史记录；当前状态可在总览查看。</LayerCard>
+      )}
+      {loading && !entries.length && (
+        <div role="status" aria-label="正在读取历史" className="space-y-3">
+          {[0, 1, 2].map((key) => (
+            <LayerCard key={key}>
+              <SkeletonLine />
+              <SkeletonLine minWidth={50} maxWidth={70} />
+            </LayerCard>
+          ))}
+        </div>
       )}
       {entries.map((entry) => (
         <LayerCard key={entry.seq}>
@@ -558,6 +525,11 @@ export function App() {
           />
           <div className="flex min-h-0 flex-1 flex-col px-2 pb-2 md:px-3 md:pb-3">
             <ContentIsland className="relative">
+              <div
+                className="sync-progress"
+                data-active={syncing}
+                aria-hidden="true"
+              />
               <div className="space-y-5">
                 <PageHeader
                   title={title}
@@ -607,11 +579,18 @@ export function App() {
                     ? data
                       ? "连接中断 · 保留上次快照"
                       : "连接中断 · 等待首次快照"
-                    : syncing
-                      ? "正在同步"
-                      : `已同步 ${time(now)}`}
+                    : data
+                      ? `已同步 ${time(data.now)}`
+                      : "正在连接机器状态…"}
                   <span>每 5 秒自动更新</span>
                 </div>
+                {!!data?.pendingMachines?.length && (
+                  <LayerCard>
+                    <p className="text-sm text-basalt-muted-foreground">
+                      等待首次上报：{data.pendingMachines.join("、")}
+                    </p>
+                  </LayerCard>
+                )}
                 {boot ? (
                   <DashboardSkeleton />
                 ) : page === "history" ? (

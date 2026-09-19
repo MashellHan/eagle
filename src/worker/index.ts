@@ -6,6 +6,9 @@ import {
   ReportSchema,
 } from "../shared/schema.ts";
 import { agentIdentity, agentTokens, viewerIdentity } from "./auth.ts";
+
+export { MachineState } from "./machine.ts";
+
 import { withProfile } from "./profile.ts";
 
 class HttpError extends Error {
@@ -92,35 +95,10 @@ async function ingest(request: Request, env: Env, machineId: string) {
     ),
     (b) => b.toString(16).padStart(2, "0"),
   ).join("");
-  const now = new Date().toISOString();
-  const result = await env.DB.batch([
-    env.DB.prepare(
-      "INSERT INTO reports(machine_id, report_id, captured_at, received_at, digest, payload) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(machine_id, report_id) DO NOTHING",
-    ).bind(machineId, report.reportId, report.capturedAt, now, digest, payload),
-    env.DB.prepare(`INSERT INTO machines(id, name, last_seen, latest_seq, latest_captured_at, latest_report_id)
-      SELECT machine_id, ?, ?, seq, captured_at, report_id FROM reports WHERE machine_id = ? AND report_id = ? AND digest = ?
-      ON CONFLICT(id) DO UPDATE SET last_seen = excluded.last_seen, warning = CASE WHEN (excluded.latest_captured_at, excluded.latest_report_id) > (machines.latest_captured_at, machines.latest_report_id) THEN NULL ELSE machines.warning END,
-      name = CASE WHEN (excluded.latest_captured_at, excluded.latest_report_id) > (machines.latest_captured_at, machines.latest_report_id) THEN excluded.name ELSE machines.name END,
-      latest_seq = CASE WHEN (excluded.latest_captured_at, excluded.latest_report_id) > (machines.latest_captured_at, machines.latest_report_id) THEN excluded.latest_seq ELSE machines.latest_seq END,
-      latest_captured_at = MAX(machines.latest_captured_at, excluded.latest_captured_at),
-      latest_report_id = CASE WHEN (excluded.latest_captured_at, excluded.latest_report_id) > (machines.latest_captured_at, machines.latest_report_id) THEN excluded.latest_report_id ELSE machines.latest_report_id END`).bind(
-      report.machine.name,
-      now,
-      machineId,
-      report.reportId,
-      digest,
-    ),
-    env.DB.prepare(
-      "SELECT seq, digest FROM reports WHERE machine_id = ? AND report_id = ?",
-    ).bind(machineId, report.reportId),
-  ]);
-  const saved = result[2].results[0] as { seq: number; digest: string };
-  if (saved.digest !== digest)
+  const result = await env.MACHINES.getByName(machineId).ingest(report, digest);
+  if ("conflict" in result)
     throw new HttpError(409, "reportId already used for different content");
-  return json(
-    { accepted: true, duplicate: result[0].meta.changes === 0, seq: saved.seq },
-    result[0].meta.changes ? 201 : 200,
-  );
+  return json(result, result.duplicate ? 200 : 201);
 }
 function positive(
   value: string | null,
@@ -147,13 +125,16 @@ async function route(request: Request, env: Env): Promise<Response> {
   )
     throw new HttpError(403, "Origin not allowed");
   if (path === "/api/live" && request.method === "GET") {
-    await env.DB.prepare("SELECT 1").first();
+    const [machine] = Object.keys(agentTokens(env)).sort();
+    if (machine) await env.MACHINES.getByName(machine).current();
     return json({
       status: "ok",
       service: "eagle",
       version,
       schemaVersion: 1,
       revision: env.BUILD_REVISION,
+      stateStore: "durable-objects",
+      historyWrites: false,
     });
   }
   if (path === "/api/v1/reports" || path === "/api/v1/heartbeat") {
@@ -168,13 +149,10 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(403, "Token does not authorize this machine");
     timely(parsed.data.sentAt);
     noSecrets(JSON.stringify(parsed.data), env);
-    const result = await env.DB.prepare(
-      "UPDATE machines SET last_seen = ?, warning = COALESCE(?, warning) WHERE id = ?",
-    )
-      .bind(new Date().toISOString(), parsed.data.warning ?? null, identity)
-      .run();
-    if (!result.meta.changes)
-      throw new HttpError(409, "Upload initial report first");
+    const alive = await env.MACHINES.getByName(identity).heartbeat(
+      parsed.data.warning,
+    );
+    if (!alive) throw new HttpError(409, "Upload initial report first");
     return json({ alive: true });
   }
   const viewer = await viewerIdentity(request, env);
@@ -182,26 +160,14 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET") throw new HttpError(405, "Method not allowed");
   if (path === "/api/v1/me") return json(await withProfile(viewer));
   if (path === "/api/v1/overview") {
-    const { results } = await env.DB.prepare(
-      "SELECT m.id, m.name, m.last_seen, m.warning, r.received_at, r.payload FROM machines m JOIN reports r ON r.seq = m.latest_seq ORDER BY m.name, m.id",
-    ).all<{
-      id: string;
-      name: string;
-      last_seen: string;
-      warning: string | null;
-      received_at: string;
-      payload: string;
-    }>();
+    const ids = Object.keys(agentTokens(env)).sort();
+    const states = await Promise.all(
+      ids.map((id) => env.MACHINES.getByName(id).current()),
+    );
     return json({
       now: new Date().toISOString(),
-      machines: results.map((r) => ({
-        id: r.id,
-        name: r.name,
-        lastSeen: r.last_seen,
-        warning: r.warning,
-        receivedAt: r.received_at,
-        report: JSON.parse(r.payload),
-      })),
+      machines: states.filter((state) => state !== null),
+      pendingMachines: ids.filter((_, index) => states[index] === null),
     });
   }
   if (path === "/api/v1/history") {

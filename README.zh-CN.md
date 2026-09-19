@@ -8,7 +8,7 @@
 
 ## 运行与架构
 
-前端使用 React 19、Vite 与 Basalt；Cloudflare Worker 提供页面和受认证保护的 API，D1 保存完整快照与历史。本地 Node 管理 Agent 负责采集、脱敏、排队与幂等上报。没有远程终端控制入口。
+前端使用 React 19、Vite 与 Basalt；Cloudflare Worker 提供页面和受认证保护的 API，每台机器一个 SQLite Durable Object 保存当前状态；D1 保留既有历史，新归档与每小时 AI 总结暂缓。本地 Node 管理 Agent 负责采集、脱敏、排队与幂等上报。没有远程终端控制入口。
 
 网站由 nocoo 团队的 Cloudflare Access 保护，本地免登录。机器使用独立 Bearer Token，向 `https://eagle-ingest.hexly.ai` 上报；该域名不开放看板、查询或历史。
 
@@ -28,7 +28,7 @@ npm run dev
 
 端口已按 nmem 最新序列分配到 Zeppelin 7052 之后；6001 属于历史 eagle-webui。Worker inspector 为 38053。
 
-每台机器还会上报 CPU、内存、主目录所在磁盘容量和运行时间。在采集器安全配置中增加 `"watchPorts":[{"name":"Raven","port":7024}]`，即可检查指定本机 TCP 端口。数据与 Space 快照一起进入 D1 历史；端口可连接不等于应用业务健康，过期结果明确显示为历史。配置与升级顺序见 [Agent 契约](docs/AGENT.md)。
+每台机器还会上报 CPU、内存、主目录所在磁盘容量和运行时间。在采集器安全配置中增加 `"watchPorts":[{"name":"Raven","port":7024}]`，即可检查指定本机 TCP 端口。数据与 Space 当前快照一起保存在该机器的 DO；端口可连接不等于应用业务健康，过期结果明确显示为历史。配置与升级顺序见 [Agent 契约](docs/AGENT.md)。
 
 ## 如何理解工作态势
 
@@ -46,7 +46,7 @@ npm run test:browser
 npm run deploy
 ```
 
-发布从已提交的源码构建，公开 `https://eagle-ingest.hexly.ai/api/live` 检查 D1 连接并报告当前版本和完整提交，不泄露机器清单。真实机器、D1 与页面链路的验证方式见 [检查点](docs/CHECKPOINTS.md) 及 `scripts/verify-live.ts`。
+发布从已提交的源码构建，公开 `https://eagle-ingest.hexly.ai/api/live` 探测第一台已配置机器的 DO并报告当前版本和完整提交，不泄露机器清单。真实机器、DO 与页面链路的验证方式见 [检查点](docs/CHECKPOINTS.md) 及 `scripts/verify-live.ts`。
 
 ## 标识
 

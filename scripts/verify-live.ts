@@ -79,11 +79,48 @@ try {
     await expect(resources).toContainText(port.name);
     await expect(resources).toContainText(String(port.port));
   }
+  assert(machine.revision > 0, "Expected durable machine revision");
+  const currentCard = page
+    .getByRole("region", { name: `${machine.name} 的工作空间` })
+    .locator(".space-card")
+    .first();
+  await currentCard.evaluate((node) =>
+    node.setAttribute("data-continuity", "original"),
+  );
+  const historyBefore = await (
+    await context.request.get(
+      `${origin}/api/v1/history?machine=${config.machineId}&limit=1`,
+    )
+  ).json();
+  assert(
+    historyBefore.entries.every(
+      (entry: { report: { reportId: string } }) =>
+        entry.report.reportId !== report.reportId,
+    ),
+  );
   const second = await collect(config);
   await sendReport(config.url, config.token, second);
   await expect(
     page.locator(`.machine-heading time[datetime="${second.capturedAt}"]`),
   ).toBeVisible({ timeout: 12000 });
+  await expect(currentCard).toHaveAttribute("data-continuity", "original");
+  const latest = (await (
+    await context.request.get(`${origin}/api/v1/overview`)
+  ).json()) as Overview;
+  assert(
+    (latest.machines.find((m) => m.id === config.machineId)?.revision ?? 0) >
+      machine.revision,
+  );
+  const historyAfter = await (
+    await context.request.get(
+      `${origin}/api/v1/history?machine=${config.machineId}&limit=1`,
+    )
+  ).json();
+  assert.deepEqual(
+    historyAfter,
+    historyBefore,
+    "Current uploads must not append D1 history",
+  );
   const target =
     second.spaces.find((s) => s.name === "eagle") ?? second.spaces[0];
   await page
@@ -105,11 +142,17 @@ try {
   });
   await page.getByRole("button", { name: "查看最近历史" }).click();
   await expect(
-    page.getByText(
-      `#${(await (await context.request.get(`${origin}/api/v1/history?machine=${config.machineId}&limit=1`)).json()).entries[0].seq}`,
-      { exact: false },
-    ),
+    page.getByText("历史归档已暂停", { exact: false }),
   ).toBeVisible();
+  if (historyAfter.entries.length) {
+    await expect(
+      page.getByText(`#${historyAfter.entries[0].seq}`, { exact: false }),
+    ).toBeVisible();
+  } else {
+    await expect(
+      page.getByText("暂无历史记录；当前状态可在总览查看。"),
+    ).toBeVisible();
+  }
   await page.getByRole("button", { name: "返回总览", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({
@@ -134,13 +177,15 @@ try {
     checks: [
       production ? "anonymous Access redirect" : "local viewing without token",
       production ? "verified Access session" : "no login form",
-      "real Herdr inventory in D1 API",
+      "real Herdr inventory in per-machine Durable Object",
       "real machine resources and configured TCP ports",
       "idempotent retry",
       "all Spaces rendered",
-      "automatic refresh",
+      "automatic refresh with stable DOM",
+      "durable machine revision",
+      "no new D1 history writes",
       "pane evidence",
-      "history",
+      "legacy history remains readable",
       "desktop and mobile",
       "no browser errors",
     ],

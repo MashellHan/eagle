@@ -12,7 +12,8 @@ export async function drainSpool(
   let sent = 0;
   const files = (await readdir(directory))
     .filter((f) => f.endsWith(".json"))
-    .sort();
+    .sort()
+    .reverse(); // Timestamp-prefixed files: restore current state before replaying backlog.
   for (const file of files) {
     const path = join(directory, file);
     try {

@@ -64,6 +64,9 @@ before(async () => {
           compatibilityDate: "2026-09-19",
           compatibilityFlags: ["nodejs_compat"],
           d1Databases: ["DB"],
+          durableObjects: {
+            MACHINES: { className: "MachineState", useSQLite: true },
+          },
           outboundService: async (request) => {
             const url = new URL(request.url);
             if (url.origin === "https://lizheng.blog") {
@@ -107,6 +110,21 @@ before(async () => {
   await db.exec(
     readFileSync("migrations/0001_initial.sql", "utf8").replace(/\n/g, " "),
   );
+  const legacy = report("legacy-import");
+  legacy.machine.id = "retired";
+  await db
+    .prepare(
+      "INSERT INTO reports(machine_id, report_id, captured_at, received_at, digest, payload) VALUES(?, ?, ?, ?, ?, ?)",
+    )
+    .bind(
+      "retired",
+      legacy.reportId,
+      legacy.capturedAt,
+      legacy.capturedAt,
+      "legacy-digest",
+      JSON.stringify(legacy),
+    )
+    .run();
 });
 test("viewer profile uses verified Access email and hashed avatar service with a safe fallback", async () => {
   assert.equal((await request("/api/v1/me", undefined, "")).status, 401);
@@ -150,7 +168,35 @@ after(async () => {
   await mf?.dispose();
 });
 
-test("machine resources and watched ports survive authenticated D1 upload, retry and history", async () => {
+test("uploads update current state without writing a D1 report", async () => {
+  assert.equal(
+    (
+      await request(
+        "/api/v1/heartbeat",
+        {
+          schemaVersion: 1,
+          machineId: "mac-two",
+          sentAt: new Date().toISOString(),
+        },
+        "different-test-token-with-at-least-32-characters",
+      )
+    ).status,
+    409,
+  );
+  const value = currentReport("do-only", -20000);
+  assert.equal((await request("/api/v1/reports", value)).status, 201);
+  const db = await mf.getD1Database("DB");
+  assert.equal(
+    await db.prepare("SELECT COUNT(*) AS n FROM reports").first("n"),
+    1,
+  );
+  const view = (await (
+    await request("/api/v1/overview", undefined, viewer)
+  ).json()) as { machines: { report: typeof value }[] };
+  assert.equal(view.machines[0].report.reportId, value.reportId);
+});
+
+test("telemetry and current state survive DO eviction without a D1 write", async () => {
   const value = currentReport("telemetry", -10000);
   const snapshot = telemetry(value.capturedAt);
   const payload = {
@@ -168,36 +214,32 @@ test("machine resources and watched ports survive authenticated D1 upload, retry
     ((await duplicate.json()) as { duplicate: boolean }).duplicate,
     true,
   );
-  const history = await request(
-    "/api/v1/history?machine=mac-one&limit=100",
-    undefined,
-    viewer,
-  );
-  const entries = (
-    (await history.json()) as { entries: { report: typeof payload }[] }
-  ).entries;
-  assert.deepEqual(
-    entries.find((e) => e.report.reportId === value.reportId)?.report.machine
-      .telemetry,
-    snapshot,
-  );
+  await mf.unsafeEvictDurableObject("eagle", "MachineState", {
+    name: "mac-one",
+  });
+  const view = (await (
+    await request("/api/v1/overview", undefined, viewer)
+  ).json()) as {
+    machines: { report: typeof payload; revision: number }[];
+    pendingMachines: string[];
+  };
+  assert.deepEqual(view.machines[0].report.machine.telemetry, snapshot);
+  assert(view.machines[0].revision > 0);
+  assert.deepEqual(view.pendingMachines, ["mac-two"]);
   const db = await mf.getD1Database("DB");
-  const stored = await db
-    .prepare("SELECT payload FROM reports WHERE report_id = ?")
-    .bind(value.reportId)
-    .first<{ payload: string }>();
-  assert(stored);
-  assert.deepEqual(JSON.parse(stored.payload).machine.telemetry, snapshot);
-  // Keep the stateful ingestion tests isolated from this additional snapshot.
-  await db
-    .prepare("DELETE FROM machines WHERE id = ?")
-    .bind(value.machine.id)
-    .run();
-  await db
-    .prepare("DELETE FROM reports WHERE report_id = ?")
-    .bind(value.reportId)
-    .run();
+  assert.equal(
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM reports WHERE machine_id = 'mac-one'")
+      .first("n"),
+    0,
+  );
+  assert.equal((await request("/api/v1/reports", payload)).status, 200);
+  assert.equal(
+    (await request("/api/v1/reports", { ...payload, spaces: [] })).status,
+    409,
+  );
 });
+
 function request(path: string, body?: unknown, bearer = token) {
   return mf.dispatchFetch(`https://eagle.test${path}`, {
     method: body === undefined ? "GET" : "POST",
@@ -275,10 +317,11 @@ test("atomic dedup, content conflicts, concurrent retries and out-of-order curre
   assert.equal(overview.machines[0].report.reportId, "newest");
   const db = await mf.getD1Database("DB");
   const stored = await db.prepare("SELECT * FROM reports").all();
-  assert.equal(stored.results.length, 2);
+  assert.equal(stored.results.length, 1);
+  assert.equal(stored.results[0].machine_id, "retired");
   assert(!JSON.stringify(stored).includes(token));
 });
-test("heartbeats keep known machines alive without rewriting inventory and history is paginated", async () => {
+test("heartbeats keep known machines alive without rewriting inventory; legacy history stays queryable", async () => {
   const beat = {
     schemaVersion: 1,
     machineId: "mac-one",
@@ -287,24 +330,17 @@ test("heartbeats keep known machines alive without rewriting inventory and histo
   };
   assert.equal((await request("/api/v1/heartbeat", beat)).status, 200);
   const response = await request(
-    "/api/v1/history?machine=mac-one&limit=1",
+    "/api/v1/history?machine=retired&limit=1",
     undefined,
     viewer,
   );
   const page = (await response.json()) as {
-    entries: { seq: number; report: { reportId: string } }[];
+    entries: { report: { reportId: string } }[];
     nextCursor: number | null;
   };
   assert.equal(page.entries.length, 1);
-  assert(page.nextCursor);
-  const next = (await (
-    await request(
-      `/api/v1/history?machine=mac-one&limit=1&before=${page.nextCursor}`,
-      undefined,
-      viewer,
-    )
-  ).json()) as { entries: { seq: number }[] };
-  assert(next.entries[0].seq < page.entries[0].seq);
+  assert.equal(page.entries[0].report.reportId, "legacy-import");
+  assert.equal(page.nextCursor, null);
   assert.equal(
     (await request("/api/v1/history?limit=-1", undefined, viewer)).status,
     400,
@@ -397,6 +433,8 @@ test("public health identifies the deployed revision without exposing inventory"
   assert.equal(response.headers.get("cache-control"), "no-store");
   const result = (await response.json()) as Record<string, unknown>;
   assert.equal(result.status, "ok");
+  assert.equal(result.stateStore, "durable-objects");
+  assert.equal(result.historyWrites, false);
   assert.equal(
     result.version,
     JSON.parse(readFileSync("package.json", "utf8")).version,
@@ -459,8 +497,7 @@ test("two machines may share Herdr IDs without inventory or history collisions",
   const history = (await (
     await request("/api/v1/history?machine=mac-two", undefined, viewer)
   ).json()) as { entries: { report: ReturnType<typeof report> }[] };
-  assert.equal(history.entries.length, 1);
-  assert.equal(history.entries[0].report.machine.id, "mac-two");
+  assert.equal(history.entries.length, 0);
 });
 
 test("the machine ingress exposes only Bearer-protected ingestion and public health", async () => {
@@ -500,4 +537,77 @@ test("the machine ingress exposes only Bearer-protected ingestion and public hea
     },
   );
   assert.equal(response.status, 201);
+});
+
+test("concurrent first delivery shares one receipt; complete replacement removes closed Spaces and clears warnings", async () => {
+  const value = currentReport("replace-current", 2000);
+  value.spaces = [];
+  const receipts = await Promise.all(
+    Array.from({ length: 4 }, () => request("/api/v1/reports", value)),
+  );
+  assert.deepEqual(receipts.map((r) => r.status).sort(), [200, 200, 200, 201]);
+  const acks = (await Promise.all(receipts.map((r) => r.json()))) as {
+    seq: number;
+  }[];
+  assert.equal(new Set(acks.map((a) => a.seq)).size, 1);
+  const read = async () =>
+    (await (await request("/api/v1/overview", undefined, viewer)).json()) as {
+      machines: {
+        id: string;
+        report: typeof value;
+        warning: string | null;
+        changedAt: string;
+        changes: string[];
+        revision: number;
+      }[];
+    };
+  const current = (await read()).machines[0];
+  assert.equal(current.warning, null);
+  assert.deepEqual(current.report.spaces, []);
+  assert(current.changes.some((change) => change.includes("已关闭")));
+  const reordered = {
+    ...value,
+    machine: Object.fromEntries(Object.entries(value.machine).reverse()),
+  };
+  const duplicate = await request("/api/v1/reports", reordered);
+  assert.equal(duplicate.status, 200);
+  assert.equal(((await duplicate.json()) as { seq: number }).seq, acks[0].seq);
+  const beforeConflict = (await read()).machines[0];
+  assert.equal(
+    (await request("/api/v1/reports", { ...value, warnings: ["changed body"] }))
+      .status,
+    409,
+  );
+  assert.deepEqual((await read()).machines[0], beforeConflict);
+  await request("/api/v1/reports", {
+    ...value,
+    reportId: "same-inventory",
+    capturedAt: new Date(Date.parse(value.capturedAt) + 1000).toISOString(),
+  });
+  const after = (await read()).machines[0];
+  assert.equal(after.changedAt, current.changedAt);
+  assert.deepEqual(after.changes, current.changes);
+  assert(after.revision > current.revision);
+});
+
+test("credentials embedded in reports are rejected; missing legacy tables cannot break live ingestion or viewing", async () => {
+  const value = currentReport("secret-in-evidence");
+  value.warnings = [token];
+  assert.equal((await request("/api/v1/reports", value)).status, 400);
+  const db = await mf.getD1Database("DB");
+  await db.exec("DROP TABLE machines; DROP TABLE reports;");
+  assert.equal(
+    (await request("/api/v1/reports", currentReport("archive-outage", 1000)))
+      .status,
+    201,
+  );
+  assert.equal(
+    (await request("/api/v1/overview", undefined, viewer)).status,
+    200,
+  );
+  assert.equal((await request("/api/live", undefined, "")).status, 200);
+  assert.equal(
+    (await request("/api/v1/history", undefined, viewer)).status,
+    503,
+  );
 });

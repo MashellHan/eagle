@@ -31,17 +31,16 @@ import {
   TriangleAlert,
   Workflow,
 } from "lucide-react";
-import { type CSSProperties, useEffect, useState } from "react";
+import { type CSSProperties, useState } from "react";
 import { assessPane, summarize } from "../shared/assessment.ts";
 import {
-  type HistoryEntry,
   type MachineView,
   type Pane,
   type Space,
   STATE_LABEL,
   type State,
 } from "../shared/schema.ts";
-import { age, api, time } from "./api.ts";
+import { age, time } from "./api.ts";
 
 const states: State[] = ["active", "attention", "verified", "unverified"];
 export const tones = {
@@ -375,7 +374,6 @@ function SpaceCard({
   summary,
   machine,
   now,
-  index,
   onOpen,
 }: {
   space: Space;
@@ -383,7 +381,6 @@ function SpaceCard({
   summary: string;
   machine: MachineView;
   now: string;
-  index: number;
   onOpen: (pane?: Pane) => void;
 }) {
   const stale = isStale(machine, now) || space.availability === "unavailable";
@@ -400,10 +397,9 @@ function SpaceCard({
   return (
     <LayerCard
       padding="none"
-      className="space-card eagle-enter"
+      className="space-card"
       style={{
         ...accent(stateColors[actual]),
-        animationDelay: `${Math.min(index, 12) * 25}ms`,
       }}
     >
       <div className="space-card-heading">
@@ -458,42 +454,17 @@ function SpaceCard({
   );
 }
 
-function RecentActivity({
-  machine,
-  revision,
-}: {
-  machine: string;
-  revision: string;
-}) {
-  const [entries, setEntries] = useState<HistoryEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  useEffect(() => {
-    const controller = new AbortController();
-    setError(false);
-    void api<{ entries: HistoryEntry[] }>(
-      `/api/v1/history?limit=16${machine ? `&machine=${encodeURIComponent(machine)}` : ""}`,
-      { signal: controller.signal },
+function RecentActivity({ machines }: { machines: MachineView[] }) {
+  const changes = machines
+    .flatMap((machine) =>
+      (machine.changes ?? []).map((change, index) => ({
+        key: `${machine.id}:${index}:${change}`,
+        change,
+        at: machine.changedAt ?? machine.report.capturedAt,
+        machine: machine.name,
+      })),
     )
-      .then((result) => {
-        if (!controller.signal.aborted) setEntries(result.entries ?? []);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setError(true);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [machine, revision]);
-  const changes = entries.flatMap((entry) =>
-    entry.changes.map((change, index) => ({
-      key: `${entry.seq}:${index}`,
-      change,
-      at: entry.report.capturedAt,
-      machine: entry.report.machine.name,
-    })),
-  );
+    .sort((a, b) => b.at.localeCompare(a.at));
   return (
     <LayerCard padding="none" className="activity-card">
       <div className="panel-heading">
@@ -506,70 +477,26 @@ function RecentActivity({
         <h2>最近变化</h2>
         <Badge variant="purple">{changes.length}</Badge>
       </div>
-      <div className="activity-chart">
-        <div className="flex items-center justify-between">
-          <span>变更节奏</span>
-          <span className="mono">最近 {entries.length} 次采集</span>
-        </div>
-        {loading ? (
-          <SkeletonLine height={36} />
-        ) : (
-          <SlotBarChart
-            items={[...entries].reverse().map((e) => ({
-              color: e.changes.length
-                ? "hsl(var(--basalt-accent-9))"
-                : "hsl(var(--basalt-accent-12) / .22)",
-              height: e.changes.length
-                ? Math.max(
-                    0.18,
-                    e.changes.length /
-                      Math.max(
-                        1,
-                        ...entries.map((item) => item.changes.length),
-                      ),
-                  )
-                : 0.08,
-              label: `${e.report.machine.name} ${time(e.report.capturedAt)}：${e.changes.length} 项变化`,
-            }))}
-            ariaLabel="每次采集的变化数量"
-            heightClass="h-10"
-          />
-        )}
-      </div>
       <div className="activity-summary">
-        <strong>{entries.filter((e) => e.changes.length).length}</strong>{" "}
-        次采集有变化 <span>·</span> {changes.length} 项任务与布局更新
+        各机器最近一次任务或拓扑变化 · 保留变化的采集时间
       </div>
-      {error && (
-        <p role="alert" className="px-4 pb-4 text-xs text-basalt-destructive">
-          历史暂不可用，保留上次记录
-        </p>
-      )}
       <ol className="activity-feed">
-        {loading
-          ? [0, 1, 2, 3].map((n) => (
-              <li key={n}>
-                <SkeletonLine />
-                <SkeletonLine minWidth={40} maxWidth={60} />
-              </li>
-            ))
-          : changes.slice(0, 7).map((item) => (
-              <li key={item.key}>
-                <span className="timeline-node" />
-                <div>
-                  <p className="line-clamp-2 break-words">{item.change}</p>
-                  <span className="activity-time">
-                    {time(item.at).split(" ").at(-1)} ·{" "}
-                    {item.machine.replace(/\.local$/, "")}
-                  </span>
-                </div>
-              </li>
-            ))}
-        {!loading && !changes.length && (
+        {changes.slice(0, 7).map((item) => (
+          <li key={item.key} className="eagle-change">
+            <span className="timeline-node" />
+            <div>
+              <p className="line-clamp-2 break-words">{item.change}</p>
+              <span className="activity-time">
+                {time(item.at)} · {item.machine.replace(/\.local$/, "")}
+              </span>
+            </div>
+          </li>
+        ))}
+        {!changes.length && (
           <li>
             <CheckCheck size={16} className="text-basalt-success-foreground" />
             <p className="text-basalt-muted-foreground">
-              最近任务与布局保持稳定。
+              尚无任务或布局变化记录。
             </p>
           </li>
         )}
@@ -712,7 +639,6 @@ export function Dashboard({
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
-  const revision = machines.map((m) => m.report.reportId).join(":");
   const agents = spaces
     .flatMap((s) => s.panes)
     .reduce(
@@ -724,7 +650,7 @@ export function Dashboard({
       new Map<string, number>(),
     );
   return (
-    <div className="dashboard-content">
+    <div className="dashboard-content eagle-enter">
       <section className="metric-grid" aria-label="当前工作态势">
         <LayerCard className="overview-metric" padding="none">
           <div className="overview-glow" />
@@ -904,12 +830,11 @@ export function Dashboard({
                 )}
                 <MachineResources machine={machine} now={now} />
                 <div className="space-grid">
-                  {group.map((s, i) => (
+                  {group.map((s) => (
                     <SpaceCard
                       key={s.space.id}
                       {...s}
                       now={now}
-                      index={i}
                       onOpen={(pane) =>
                         onOpen(machine.id, s.space.id, pane?.id)
                       }
@@ -940,10 +865,7 @@ export function Dashboard({
               实时
             </span>
           </div>
-          <RecentActivity
-            machine={machines.length === 1 ? machines[0].id : ""}
-            revision={revision}
-          />
+          <RecentActivity machines={machines} />
           <LayerCard padding="none" className="agents-card">
             <div className="panel-heading">
               <span

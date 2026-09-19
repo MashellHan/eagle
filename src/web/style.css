@@ -515,24 +515,10 @@
   display: flex;
   color: var(--eagle-color);
 }
-.activity-chart {
-  padding: 0 14px;
-}
-.activity-chart > div:first-child {
-  margin-bottom: 8px;
-  font-size: 9px;
-  color: hsl(var(--basalt-muted-foreground));
-}
 .activity-summary {
   padding: 9px 14px 12px;
   color: hsl(var(--basalt-muted-foreground));
   font-size: 9px;
-}
-.activity-summary strong {
-  color: hsl(var(--basalt-foreground));
-}
-.activity-summary > span {
-  padding: 0 3px;
 }
 .activity-feed {
   list-style: none;
@@ -633,6 +619,70 @@
   margin-top: -8px;
   color: hsl(var(--basalt-muted-foreground));
   font-size: 10px;
+  min-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.sync-progress {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.sync-progress[data-active="true"] {
+  opacity: 1;
+  transition-delay: 250ms;
+}
+.sync-progress::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 35%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    hsl(var(--basalt-accent-1)),
+    hsl(var(--basalt-accent-9)),
+    transparent
+  );
+  animation: eagle-progress 1.8s ease-in-out infinite;
+  animation-play-state: paused;
+}
+.sync-progress[data-active="true"]::after {
+  animation-play-state: running;
+}
+.topology-cell {
+  transition:
+    left 320ms ease,
+    top 320ms ease,
+    width 320ms ease,
+    height 320ms ease;
+}
+.pane-button {
+  transition:
+    border-color 240ms ease,
+    background-color 240ms ease;
+}
+.eagle-change {
+  animation: eagle-change 700ms ease-out;
+}
+@keyframes eagle-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(390%);
+  }
+}
+@keyframes eagle-change {
+  from {
+    background-color: hsl(var(--basalt-accent-9) / 0.12);
+  }
+  to {
+    background-color: transparent;
+  }
 }
 .sync-caption > span:last-child {
   margin-left: auto;
@@ -912,10 +962,15 @@
   .eagle-enter,
   .eagle-spin,
   .eagle-pulse,
+  .eagle-change,
+  .sync-progress::after,
   .syncing {
     animation: none;
   }
-  .space-card {
+  .space-card,
+  .topology-cell,
+  .pane-button,
+  .sync-progress {
     transition: none;
   }
   .space-card:hover {

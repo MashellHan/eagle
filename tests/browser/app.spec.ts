@@ -2,6 +2,76 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { report, telemetry } from "../fixtures.ts";
 
+test("live overview reads only current state and keeps cards mounted through refresh and failures", async ({
+  page,
+}) => {
+  let revision = 1;
+  let fail = false;
+  let release: (() => void) | undefined;
+  let paused: Promise<void> | undefined;
+  let historyReads = 0;
+  const value = report("do-snapshot", new Date().toISOString());
+  await page.route("**/api/**", async (route) => {
+    if (route.request().url().includes("history")) historyReads++;
+    await paused;
+    if (fail) return route.fulfill({ status: 503, json: {} });
+    return route.fulfill({
+      json: {
+        now: new Date().toISOString(),
+        pendingMachines: [],
+        machines: [
+          {
+            id: "mac-one",
+            name: "Mac One",
+            revision,
+            changedAt: value.capturedAt,
+            changes: ["Eagle：任务已更新"],
+            lastSeen: value.capturedAt,
+            receivedAt: value.capturedAt,
+            warning: null,
+            report: { ...value, reportId: `do-${revision}` },
+          },
+        ],
+      },
+    });
+  });
+  await page.goto("/");
+  const card = page.locator(".space-card").first();
+  await expect(card).toBeVisible();
+  await expect(page.getByText("Eagle：任务已更新")).toBeVisible();
+  expect(historyReads).toBe(0);
+  await page
+    .locator(".dashboard-content")
+    .evaluate((node) =>
+      Promise.all(node.getAnimations().map((animation) => animation.finished)),
+    );
+  await card.evaluate((node) =>
+    node.setAttribute("data-continuity", "original"),
+  );
+  const before = await card.boundingBox();
+  paused = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(card).toHaveAttribute("data-continuity", "original");
+  await expect(
+    page.getByRole("status", { name: "正在同步工作空间" }),
+  ).toHaveCount(0);
+  await expect(card).toHaveCSS("opacity", "1");
+  revision++;
+  release?.();
+  await expect(
+    page.getByRole("button", { name: "刷新", exact: true }),
+  ).toBeEnabled();
+  await expect(card).toHaveAttribute("data-continuity", "original");
+  expect(await card.boundingBox()).toEqual(before);
+  fail = true;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("连接中断");
+  await expect(card).toHaveAttribute("data-continuity", "original");
+  expect(historyReads).toBe(0);
+});
+
 test("machine resources and named TCP ports show freshness and missing data honestly", async ({
   page,
 }) => {
@@ -99,6 +169,9 @@ test("token-free overview, topology evidence, history and empty search", async (
             lastSeen: new Date().toISOString(),
             receivedAt: value.capturedAt,
             warning: null,
+            changes: ["首次接入：Eagle"],
+            changedAt: value.capturedAt,
+            revision: 1,
             report: value,
           },
         ],
