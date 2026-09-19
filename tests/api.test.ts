@@ -9,6 +9,7 @@ import { viewerAuthorized } from "../src/worker/auth.ts";
 import { report, telemetry } from "./fixtures.ts";
 
 let mf: Miniflare;
+let options: ReturnType<typeof convertV4MiniflareOptions>;
 const token = "test-agent-token-with-at-least-32-characters";
 let viewer: string;
 let signingKey: CryptoKey;
@@ -54,58 +55,54 @@ before(async () => {
     ],
     { stdio: "pipe" },
   );
-  mf = new Miniflare(
-    convertV4MiniflareOptions({
-      workers: [
-        {
-          name: "eagle",
-          modules: true,
-          scriptPath: ".local/test-worker/index.js",
-          compatibilityDate: "2026-09-19",
-          compatibilityFlags: ["nodejs_compat"],
-          d1Databases: ["DB"],
-          durableObjects: {
-            MACHINES: { className: "MachineState", useSQLite: true },
-          },
-          outboundService: async (request) => {
-            const url = new URL(request.url);
-            if (url.origin === "https://lizheng.blog") {
-              assert.equal(url.pathname, "/api/authors/profile");
-              assert.equal(
-                url.searchParams.get("hash"),
-                createHash("sha256")
-                  .update("viewer@example.test")
-                  .digest("hex"),
-              );
-              assert.equal(request.headers.get("authorization"), null);
-              assert.equal(
-                request.headers.get("cf-access-jwt-assertion"),
-                null,
-              );
-              return profileAvailable
-                ? Response.json({
-                    name: "Li Zheng",
-                    avatar: "https://images.example.test/avatar.png",
-                  })
-                : new Response("Unavailable", { status: 503 });
-            }
-            assert.equal(request.url, `${issuer}/cdn-cgi/access/certs`);
-            return Response.json({ keys: [jwk] });
-          },
-          bindings: {
-            AGENT_TOKENS: JSON.stringify({
-              "mac-one": token,
-              "mac-two": "different-test-token-with-at-least-32-characters",
-            }),
-            ACCESS_TEAM_URL: issuer,
-            ACCESS_AUD: audience,
-            LOCAL_DEV: "false",
-            BUILD_REVISION: "test-build-sha",
-          },
+  options = convertV4MiniflareOptions({
+    workers: [
+      {
+        name: "eagle",
+        modules: true,
+        scriptPath: ".local/test-worker/index.js",
+        compatibilityDate: "2026-09-19",
+        compatibilityFlags: ["nodejs_compat"],
+        d1Databases: ["DB"],
+        durableObjects: {
+          MACHINES: { className: "MachineState", useSQLite: true },
+          DIRECTORY: { className: "MachineDirectory", useSQLite: true },
         },
-      ],
-    }),
-  );
+        outboundService: async (request) => {
+          const url = new URL(request.url);
+          if (url.origin === "https://lizheng.blog") {
+            assert.equal(url.pathname, "/api/authors/profile");
+            assert.equal(
+              url.searchParams.get("hash"),
+              createHash("sha256").update("viewer@example.test").digest("hex"),
+            );
+            assert.equal(request.headers.get("authorization"), null);
+            assert.equal(request.headers.get("cf-access-jwt-assertion"), null);
+            return profileAvailable
+              ? Response.json({
+                  name: "Li Zheng",
+                  avatar: "https://images.example.test/avatar.png",
+                })
+              : new Response("Unavailable", { status: 503 });
+          }
+          assert.equal(request.url, `${issuer}/cdn-cgi/access/certs`);
+          return Response.json({ keys: [jwk] });
+        },
+        bindings: {
+          AGENT_SIGNING_KEY: "test-signing-key-at-least-32-characters-long",
+          AGENT_TOKENS: JSON.stringify({
+            "mac-one": token,
+            "mac-two": "different-test-token-with-at-least-32-characters",
+          }),
+          ACCESS_TEAM_URL: issuer,
+          ACCESS_AUD: audience,
+          LOCAL_DEV: "false",
+          BUILD_REVISION: "test-build-sha",
+        },
+      },
+    ],
+  });
+  mf = new Miniflare(options);
   const db = await mf.getD1Database("DB");
   await db.exec(
     readFileSync("migrations/0001_initial.sql", "utf8").replace(/\n/g, " "),
@@ -588,6 +585,196 @@ test("concurrent first delivery shares one receipt; complete replacement removes
   assert.equal(after.changedAt, current.changedAt);
   assert.deepEqual(after.changes, current.changes);
   assert(after.revision > current.revision);
+});
+
+test("Connect creates scoped credentials, rotates and revokes them without persisting tokens", async () => {
+  assert.equal((await request("/api/v1/machines", undefined, "")).status, 401);
+  assert.equal(
+    (
+      await request(
+        "/api/v1/machines",
+        { id: "connected", name: "New Mac" },
+        token,
+      )
+    ).status,
+    401,
+  );
+  const created = await request(
+    "/api/v1/machines",
+    {
+      id: "connected",
+      name: "New Mac",
+      watchPorts: [{ name: "Raven", port: 7024 }],
+    },
+    viewer,
+  );
+  assert.equal(created.status, 201);
+  const first = (await created.json()) as {
+    token: string;
+    machine: { id: string; credentialId: string };
+  };
+  assert(first.token.startsWith("eag1."));
+  assert.equal(
+    (
+      await request(
+        "/api/v1/machines",
+        { id: "connected", name: "Duplicate" },
+        viewer,
+      )
+    ).status,
+    409,
+  );
+  const value = currentReport("connect-first");
+  value.machine.id = "connected";
+  assert.equal(
+    (await request("/api/v1/reports", value, first.token)).status,
+    201,
+  );
+  assert.equal(
+    (
+      await request(
+        "/api/v1/reports",
+        currentReport("cross-machine"),
+        first.token,
+      )
+    ).status,
+    403,
+  );
+  const leaked = structuredClone(value);
+  leaked.reportId = "credential-leak";
+  leaked.warnings = [first.token];
+  assert.equal(
+    (await request("/api/v1/reports", leaked, first.token)).status,
+    400,
+  );
+  assert.equal(
+    (await request("/api/v1/reports", value, `${first.token}x`)).status,
+    401,
+  );
+  const list = await (
+    await request("/api/v1/machines", undefined, viewer)
+  ).text();
+  assert(!list.includes(first.token));
+  assert(list.includes('"name":"New Mac"'));
+  const rotated = await request(
+    "/api/v1/machines/connected/rotate",
+    {},
+    viewer,
+  );
+  assert.equal(rotated.status, 200);
+  const second = (await rotated.json()) as { token: string };
+  assert.notEqual(second.token, first.token);
+  assert.equal(
+    (await request("/api/v1/reports", value, first.token)).status,
+    401,
+  );
+  assert.equal(
+    (await request("/api/v1/reports", value, second.token)).status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(
+        "/api/v1/machines/connected/rename",
+        { name: "Renamed Mac" },
+        viewer,
+      )
+    ).status,
+    200,
+  );
+  const overview = (await (
+    await request("/api/v1/overview", undefined, viewer)
+  ).json()) as { machines: { id: string; name: string }[] };
+  assert.equal(
+    overview.machines.find((m) => m.id === "connected")?.name,
+    "Renamed Mac",
+  );
+  assert.equal(
+    (await request("/api/v1/machines/connected/revoke", {}, viewer)).status,
+    200,
+  );
+  assert.equal(
+    (await request("/api/v1/reports", value, second.token)).status,
+    401,
+  );
+  const after = (await (
+    await request("/api/v1/machines", undefined, viewer)
+  ).json()) as { machines: { id: string; enabled: boolean }[] };
+  assert.equal(
+    after.machines.find((m) => m.id === "connected")?.enabled,
+    false,
+  );
+  const db = await mf.getD1Database("DB");
+  assert.equal(
+    await db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM reports WHERE machine_id = 'connected'",
+      )
+      .first("n"),
+    0,
+  );
+});
+
+test("Connect mutations reject cross-origin requests and can revoke legacy machine tokens", async () => {
+  assert.equal(
+    (await request("/api/v1/machines/mac-two/rotate", {}, viewer)).status,
+    200,
+  );
+  assert("workers" in options);
+  await mf.setOptions({
+    ...options,
+    workers: options.workers.map((worker) => ({
+      ...worker,
+      config: {
+        ...worker.config,
+        env: {
+          ...worker.config.env,
+          AGENT_TOKENS: {
+            type: "text",
+            value: JSON.stringify({ "mac-one": token }),
+          },
+        },
+      },
+    })),
+  });
+  const listing = (await (
+    await request("/api/v1/machines", undefined, viewer)
+  ).json()) as { machines: { id: string }[] };
+  assert(
+    listing.machines.some((machine) => machine.id === "mac-two"),
+    "Migrated legacy identity must remain discoverable after removing its legacy secret",
+  );
+  const csrf = await mf.dispatchFetch("https://eagle.test/api/v1/machines", {
+    method: "POST",
+    headers: {
+      "Cf-Access-Jwt-Assertion": viewer,
+      Origin: "https://evil.test",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ id: "csrf", name: "CSRF" }),
+  });
+  assert.equal(csrf.status, 403);
+  assert.equal(
+    (await request("/api/v1/machines", { id: "bad/id", name: "Bad" }, viewer))
+      .status,
+    400,
+  );
+  assert.equal(
+    (await request("/api/v1/machines/mac-two/revoke", {}, viewer)).status,
+    200,
+  );
+  const value = currentReport("revoked-legacy");
+  value.machine.id = "mac-two";
+  assert.equal(
+    (
+      await request(
+        "/api/v1/reports",
+        value,
+        "different-test-token-with-at-least-32-characters",
+      )
+    ).status,
+    401,
+  );
 });
 
 test("credentials embedded in reports are rejected; missing legacy tables cannot break live ingestion or viewing", async () => {

@@ -35,9 +35,16 @@ import {
   LayoutDashboard,
   Monitor,
   PanelLeft,
+  Plug,
   RefreshCw,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { assessPane } from "../shared/assessment.ts";
 import type {
   HistoryEntry,
@@ -47,6 +54,7 @@ import type {
 } from "../shared/schema.ts";
 import { AuthError, api, time } from "./api.ts";
 import { FamilyActions, Mark, SidebarAccount } from "./Brand.tsx";
+import { Connect } from "./Connect.tsx";
 import {
   Dashboard,
   DashboardSkeleton,
@@ -310,8 +318,16 @@ export function App() {
   const [auth, setAuth] = useState(false);
   const [boot, setBoot] = useState(true);
   const [error, setError] = useState("");
-  const [machineId, setMachineId] = useState("");
-  const [page, setPage] = useState<"overview" | "history">("overview");
+  const [machineId, setMachineId] = useState(
+    () => new URLSearchParams(location.search).get("machine") || "",
+  );
+  const [page, setPage] = useState<"overview" | "history" | "connect">(() =>
+    location.pathname === "/connect"
+      ? "connect"
+      : location.pathname === "/history"
+        ? "history"
+        : "overview",
+  );
   const [search, setSearch] = useState("");
   const [selection, setSelection] = useState<{
     machine: string;
@@ -324,6 +340,14 @@ export function App() {
   const [collapsed, setCollapsed] = useState(mobile);
   const [syncing, setSyncing] = useState(false);
   const fetching = useRef(false);
+  useLayoutEffect(() => {
+    document.getElementById("eagle-content")?.scrollTo(0, 0);
+  }, [page, machineId]);
+  const expire = useCallback(() => {
+    setAuth(false);
+    setData(null);
+    setError("");
+  }, []);
   const refresh = useCallback(async () => {
     if (fetching.current) return;
     fetching.current = true;
@@ -343,6 +367,21 @@ export function App() {
       fetching.current = false;
       setSyncing(false);
     }
+  }, []);
+  useEffect(() => {
+    const back = () => {
+      setPage(
+        location.pathname === "/connect"
+          ? "connect"
+          : location.pathname === "/history"
+            ? "history"
+            : "overview",
+      );
+      setMachineId(new URLSearchParams(location.search).get("machine") || "");
+      setSearch("");
+    };
+    window.addEventListener("popstate", back);
+    return () => window.removeEventListener("popstate", back);
   }, []);
   useEffect(() => {
     void refresh();
@@ -378,9 +417,18 @@ export function App() {
   const detailSpace = detailMachine?.report.spaces.find(
     (s) => s.id === selection?.space,
   );
-  const navigate = (next: "overview" | "history", id = machineId) => {
+  const navigate = (
+    next: "overview" | "history" | "connect",
+    id = machineId,
+  ) => {
     setPage(next);
     setMachineId(id);
+    setSearch("");
+    history.pushState(
+      null,
+      "",
+      `${next === "connect" ? "/connect" : next === "history" ? "/history" : "/"}${id && next !== "connect" ? `?machine=${encodeURIComponent(id)}` : ""}`,
+    );
     if (mobile) setCollapsed(true);
   };
   const sidebarToggle = (
@@ -405,7 +453,11 @@ export function App() {
   );
   const NavItem = collapsed && !mobile ? SidebarIconItem : SidebarItem;
   const title =
-    page === "history" ? "最近历史" : (selectedMachine?.name ?? "任务控制台");
+    page === "connect"
+      ? "Connect"
+      : page === "history"
+        ? "最近历史"
+        : (selectedMachine?.name ?? "全局总览");
   return (
     <SidebarProvider
       collapsed={collapsed}
@@ -455,6 +507,14 @@ export function App() {
                   strokeWidth={1.5}
                 />
                 {(!collapsed || mobile) && "全局总览"}
+              </NavItem>
+              <NavItem
+                aria-label="Connect"
+                active={page === "connect"}
+                onClick={() => navigate("connect", "")}
+              >
+                <Plug className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+                {(!collapsed || mobile) && "Connect"}
               </NavItem>
               <NavItem
                 aria-label="最近历史"
@@ -524,7 +584,7 @@ export function App() {
             }
           />
           <div className="flex min-h-0 flex-1 flex-col px-2 pb-2 md:px-3 md:pb-3">
-            <ContentIsland className="relative">
+            <ContentIsland id="eagle-content" className="relative">
               <div
                 className="sync-progress"
                 data-active={syncing}
@@ -533,7 +593,13 @@ export function App() {
               <div className="space-y-5">
                 <PageHeader
                   title={title}
-                  description="跨机器工作态势 · 任务、拓扑与交付证据，尽在一屏。"
+                  description={
+                    page === "connect"
+                      ? "连接机器，管理凭证，把接入交给 Agent。"
+                      : machineId
+                        ? "机器资源、工作空间与任务证据。"
+                        : "全部机器的工作分布与资源概况。"
+                  }
                   actions={
                     <>
                       <Button
@@ -584,23 +650,41 @@ export function App() {
                       : "正在连接机器状态…"}
                   <span>每 5 秒自动更新</span>
                 </div>
-                {!!data?.pendingMachines?.length && (
-                  <LayerCard>
-                    <p className="text-sm text-basalt-muted-foreground">
-                      等待首次上报：{data.pendingMachines.join("、")}
-                    </p>
-                  </LayerCard>
-                )}
+                {page === "overview" &&
+                  !machineId &&
+                  !!data?.pendingMachines?.length && (
+                    <LayerCard>
+                      <p className="text-sm text-basalt-muted-foreground">
+                        等待首次上报：{data.pendingMachines.join("、")}
+                      </p>
+                    </LayerCard>
+                  )}
                 {boot ? (
                   <DashboardSkeleton />
+                ) : page === "connect" ? (
+                  <Connect
+                    live={machines}
+                    onChange={() => void refresh()}
+                    onOpen={(id) => navigate("overview", id)}
+                    onAuthError={expire}
+                  />
                 ) : page === "history" ? (
                   <HistoryView machine={machineId} />
                 ) : (
                   <Dashboard
+                    key={machineId || "fleet"}
                     machines={shown}
                     now={now}
                     search={search}
                     onSearch={setSearch}
+                    onMachine={
+                      !machineId
+                        ? (id) => {
+                            setSearch("");
+                            navigate("overview", id);
+                          }
+                        : undefined
+                    }
                     onOpen={(machine, space, pane) =>
                       setSelection({ machine, space, pane })
                     }

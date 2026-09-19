@@ -55,6 +55,10 @@ test("redacts tokens, Authorization, env secrets and PEM before reports leave a 
     "ABC",
   ])
     assert(!clean.includes(secret));
+  assert.equal(
+    redact("Copied eag1.header.payload.signature"),
+    "Copied [REDACTED]",
+  );
 });
 test("upload retries reuse the identical ID/body; permanent auth failures stop; redirects never forward credentials", async () => {
   const value = report();

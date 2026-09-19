@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, jwtVerify, SignJWT } from "jose";
+import type { Registration } from "../shared/connect.ts";
 import type { Viewer } from "../shared/schema.ts";
 
 const encoder = new TextEncoder();
@@ -15,7 +16,7 @@ export function bearer(request: Request) {
   );
 }
 export function agentTokens(env: Env): Record<string, string> {
-  const parsed: unknown = JSON.parse(env.AGENT_TOKENS);
+  const parsed: unknown = JSON.parse(env.AGENT_TOKENS || "{}");
   if (
     !parsed ||
     typeof parsed !== "object" ||
@@ -28,9 +29,53 @@ export function agentTokens(env: Env): Record<string, string> {
 export async function agentIdentity(request: Request, env: Env) {
   const token = bearer(request);
   if (!token) return null;
+  if (token.startsWith("eag1.")) {
+    if (!env.AGENT_SIGNING_KEY || env.AGENT_SIGNING_KEY.length < 32)
+      return null;
+    try {
+      const { payload } = await jwtVerify(
+        token.slice(5),
+        encoder.encode(env.AGENT_SIGNING_KEY),
+        {
+          issuer: "eagle",
+          audience: "eagle-agent",
+          algorithms: ["HS256"],
+          requiredClaims: ["sub", "jti", "iat", "exp"],
+        },
+      );
+      if (
+        !payload.sub ||
+        !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(payload.sub) ||
+        typeof payload.jti !== "string"
+      )
+        return null;
+      return { machineId: payload.sub, credentialId: payload.jti };
+    } catch {
+      return null;
+    }
+  }
   for (const [id, value] of Object.entries(agentTokens(env)))
-    if (await equalSecret(token, value)) return id;
+    if (await equalSecret(token, value))
+      return { machineId: id, credentialId: null };
   return null;
+}
+export async function issueToken(machine: Registration, env: Env) {
+  if (
+    !env.AGENT_SIGNING_KEY ||
+    env.AGENT_SIGNING_KEY.length < 32 ||
+    !machine.credentialId ||
+    !machine.expiresAt
+  )
+    throw new Error("Missing signing configuration");
+  return `eag1.${await new SignJWT()
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setIssuer("eagle")
+    .setAudience("eagle-agent")
+    .setSubject(machine.id)
+    .setJti(machine.credentialId)
+    .setIssuedAt()
+    .setExpirationTime(Math.floor(Date.parse(machine.expiresAt) / 1000))
+    .sign(encoder.encode(env.AGENT_SIGNING_KEY))}`;
 }
 // Public key caches contain no user credentials and follow Access key rotation.
 const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();

@@ -1,12 +1,19 @@
 import { version } from "../../package.json";
 import { changesBetween } from "../shared/assessment.ts";
+import { MachineInput, MachineName } from "../shared/connect.ts";
 import {
   HeartbeatSchema,
   type Report,
   ReportSchema,
 } from "../shared/schema.ts";
-import { agentIdentity, agentTokens, viewerIdentity } from "./auth.ts";
+import {
+  agentIdentity,
+  agentTokens,
+  issueToken,
+  viewerIdentity,
+} from "./auth.ts";
 
+export { MachineDirectory } from "./directory.ts";
 export { MachineState } from "./machine.ts";
 
 import { withProfile } from "./profile.ts";
@@ -76,11 +83,21 @@ function timely(value: string) {
     throw new HttpError(400, "Timestamp too far in future");
 }
 function noSecrets(value: string, env: Env) {
+  if (
+    /eag1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(value) ||
+    (env.AGENT_SIGNING_KEY && value.includes(env.AGENT_SIGNING_KEY))
+  )
+    throw new HttpError(400, "Credential found in report");
   for (const token of Object.values(agentTokens(env)))
     if (token && value.includes(token))
       throw new HttpError(400, "Credential found in report");
 }
-async function ingest(request: Request, env: Env, machineId: string) {
+async function ingest(
+  request: Request,
+  env: Env,
+  machineId: string,
+  credentialId: string | null,
+) {
   const parsed = ReportSchema.safeParse(await body(request));
   if (!parsed.success) throw new HttpError(400, "Invalid v1 report");
   const report = parsed.data;
@@ -95,10 +112,27 @@ async function ingest(request: Request, env: Env, machineId: string) {
     ),
     (b) => b.toString(16).padStart(2, "0"),
   ).join("");
-  const result = await env.MACHINES.getByName(machineId).ingest(report, digest);
+  const result = await env.MACHINES.getByName(machineId).ingest(
+    report,
+    digest,
+    credentialId,
+  );
+  if ("unauthorized" in result) throw new HttpError(401, "Invalid agent token");
   if ("conflict" in result)
     throw new HttpError(409, "reportId already used for different content");
   return json(result, result.duplicate ? 200 : 201);
+}
+async function registrations(env: Env) {
+  const ids = [
+    ...new Set([
+      ...Object.keys(agentTokens(env)),
+      ...(await env.DIRECTORY.getByName("fleet").ids()),
+    ]),
+  ].sort();
+  const machines = await Promise.all(
+    ids.map((id) => env.MACHINES.getByName(id).registration(id)),
+  );
+  return machines.filter((m) => m !== null);
 }
 function positive(
   value: string | null,
@@ -142,25 +176,86 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(405, "Method not allowed");
     const identity = await agentIdentity(request, env);
     if (!identity) throw new HttpError(401, "Invalid agent token");
-    if (path.endsWith("reports")) return ingest(request, env, identity);
+    if (path.endsWith("reports"))
+      return ingest(request, env, identity.machineId, identity.credentialId);
     const parsed = HeartbeatSchema.safeParse(await body(request));
     if (!parsed.success) throw new HttpError(400, "Invalid v1 heartbeat");
-    if (parsed.data.machineId !== identity)
+    if (parsed.data.machineId !== identity.machineId)
       throw new HttpError(403, "Token does not authorize this machine");
     timely(parsed.data.sentAt);
     noSecrets(JSON.stringify(parsed.data), env);
-    const alive = await env.MACHINES.getByName(identity).heartbeat(
+    const alive = await env.MACHINES.getByName(identity.machineId).heartbeat(
       parsed.data.warning,
+      identity.credentialId,
     );
+    if (typeof alive === "object")
+      throw new HttpError(401, "Invalid agent token");
     if (!alive) throw new HttpError(409, "Upload initial report first");
     return json({ alive: true });
   }
   const viewer = await viewerIdentity(request, env);
   if (!viewer) throw new HttpError(401, "Sign in required");
+  if (path === "/api/v1/machines" && request.method === "GET")
+    return json({
+      machines: await registrations(env),
+      canIssue: !!env.AGENT_SIGNING_KEY && env.AGENT_SIGNING_KEY.length >= 32,
+    });
+  if (path === "/api/v1/machines" && request.method === "POST") {
+    if (!env.AGENT_SIGNING_KEY || env.AGENT_SIGNING_KEY.length < 32)
+      throw new HttpError(503, "Token signing is not configured");
+    const parsed = MachineInput.safeParse(await body(request));
+    if (!parsed.success) throw new HttpError(400, "Invalid machine name or ID");
+    const { id, name, watchPorts } = parsed.data;
+    noSecrets(JSON.stringify(parsed.data), env);
+    if (!(await env.DIRECTORY.getByName("fleet").add(id)))
+      throw new HttpError(409, "Machine limit reached");
+    const machine = await env.MACHINES.getByName(id).configure(
+      id,
+      "create",
+      name,
+      watchPorts,
+    );
+    if (!machine) throw new HttpError(409, "Machine already exists");
+    return json({ machine, token: await issueToken(machine, env) }, 201);
+  }
+  const management = path.match(
+    /^\/api\/v1\/machines\/([a-z0-9][a-z0-9_-]{0,79})\/(rotate|revoke|rename)$/,
+  );
+  if (management && request.method === "POST") {
+    const [, id, operation] = management;
+    const action = operation as "rotate" | "revoke" | "rename";
+    if (
+      action === "rotate" &&
+      (!env.AGENT_SIGNING_KEY || env.AGENT_SIGNING_KEY.length < 32)
+    )
+      throw new HttpError(503, "Token signing is not configured");
+    const input = await body(request);
+    const parsed = MachineName.safeParse(input);
+    if (action === "rename" && !parsed.success)
+      throw new HttpError(400, "Invalid machine name");
+    noSecrets(JSON.stringify(input), env);
+    if (!(await env.MACHINES.getByName(id).registration(id)))
+      throw new HttpError(404, "Machine not found");
+    // Index legacy machines before migrating, so removing their old secret is safe.
+    if (!(await env.DIRECTORY.getByName("fleet").add(id)))
+      throw new HttpError(409, "Machine limit reached");
+    const machine = await env.MACHINES.getByName(id).configure(
+      id,
+      action,
+      action === "rename" && parsed.success ? parsed.data.name : undefined,
+    );
+    if (!machine) throw new HttpError(404, "Machine not found");
+    return json({
+      machine,
+      ...(action === "rotate" ? { token: await issueToken(machine, env) } : {}),
+    });
+  }
   if (request.method !== "GET") throw new HttpError(405, "Method not allowed");
   if (path === "/api/v1/me") return json(await withProfile(viewer));
   if (path === "/api/v1/overview") {
-    const ids = Object.keys(agentTokens(env)).sort();
+    const ids = (await registrations(env))
+      .filter((m) => m.enabled)
+      .map((m) => m.id);
     const states = await Promise.all(
       ids.map((id) => env.MACHINES.getByName(id).current()),
     );

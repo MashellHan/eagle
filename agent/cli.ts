@@ -1,5 +1,7 @@
+#!/usr/bin/env node
 import {
   mkdir,
+  open,
   readdir,
   readFile,
   rename,
@@ -17,6 +19,7 @@ import {
   sendReport,
 } from "./collector.ts";
 import { drainSpool } from "./spool.ts";
+import { AGENT_VERSION } from "./version.ts";
 
 const ConfigSchema = z.strictObject({
   url: z.string().url(),
@@ -93,13 +96,53 @@ async function cycle(config: AgentConfig) {
     }),
   );
 }
-try {
+async function main() {
+  const action = process.argv[2] || "once";
+  if (action === "--help" || action === "help") {
+    console.log(
+      "Eagle Agent\nCommands: init (JSON on stdin), collect <file>, upload <file>, once, watch, heartbeat\nConfig: EAGLE_CONFIG or ~/.config/eagle/agent.json (0600). Node.js 24+ and Herdr required.",
+    );
+    return;
+  }
+  if (action === "--version") {
+    console.log(AGENT_VERSION);
+    return;
+  }
+  if (action === "init") {
+    if (process.stdin.isTTY)
+      throw new Error(
+        "Pass configuration JSON through stdin; never pass credentials as arguments",
+      );
+    let input = "";
+    for await (const chunk of process.stdin) {
+      input += chunk;
+      if (input.length > 65536) throw new Error("Configuration exceeds 64 KiB");
+    }
+    let value: unknown;
+    try {
+      value = JSON.parse(input);
+    } catch {
+      throw new Error("Invalid configuration JSON");
+    }
+    const config = ConfigSchema.parse(value);
+    checkUrl(config.url);
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    const file = await open(path, "wx", 0o600);
+    try {
+      await file.writeFile(JSON.stringify(config, null, 2));
+    } finally {
+      await file.close();
+    }
+    console.log(
+      "Secure configuration created. Run eagle-agent once to verify reporting.",
+    );
+    return;
+  }
   const permissions = await stat(path);
   if (process.platform !== "win32" && (permissions.mode & 0o077) !== 0)
     throw new Error("Config must have mode 0600");
   const config = ConfigSchema.parse(JSON.parse(await readFile(path, "utf8")));
   checkUrl(config.url);
-  const action = process.argv[2] || "once";
   if (action === "collect") {
     const output = process.argv[3];
     if (!output) throw new Error("Usage: collect <output.json>");
@@ -165,7 +208,8 @@ try {
     throw new Error(
       "Commands: collect <file>, upload <file>, once, watch, heartbeat",
     );
-} catch (e) {
+}
+void main().catch((e: unknown) => {
   console.error(
     e instanceof z.ZodError
       ? "Invalid config or report schema"
@@ -174,4 +218,4 @@ try {
         : "Agent failed",
   );
   process.exitCode = 1;
-}
+});

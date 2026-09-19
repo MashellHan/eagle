@@ -2,6 +2,55 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { report, telemetry } from "../fixtures.ts";
 
+test("global overview summarizes the fleet and opens only the selected machine", async ({
+  page,
+  isMobile,
+}) => {
+  const now = new Date().toISOString();
+  const machines = ["One", "Two"].map((name) => {
+    const value = report(`fleet-${name}`, now);
+    value.spaces[0].name = `${name} Space`;
+    return {
+      id: name.toLowerCase(),
+      name: `Mac ${name}`,
+      report: value,
+      lastSeen: now,
+      receivedAt: now,
+      warning: null,
+    };
+  });
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ json: { now, machines } }),
+  );
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "全部机器" })).toBeVisible();
+  await expect(page.getByText("2/2 台机器在线")).toBeVisible();
+  await expect(page.locator(".space-card")).toHaveCount(0);
+  await expect(page.getByLabel("搜索 Space")).toHaveCount(0);
+  const card = page.locator(".fleet-machine").first();
+  await card.evaluate((node) =>
+    node.setAttribute("data-continuity", "original"),
+  );
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(card).toHaveAttribute("data-continuity", "original");
+  await page.getByRole("button", { name: "打开机器 Mac One" }).click();
+  await expect(page.locator(".space-card")).toHaveCount(1);
+  await expect(page.locator(".space-card")).toContainText("One Space");
+  await expect(page.getByRole("region", { name: "当前工作态势" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("region", { name: "机器资源" })).toBeVisible();
+  if (isMobile) await page.getByRole("button", { name: "展开导航" }).click();
+  await page.getByRole("button", { name: "全局总览", exact: true }).click();
+  await expect(page.locator(".fleet-machine")).toHaveCount(2);
+  await expect(page.locator(".space-card")).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
 test("live overview reads only current state and keeps cards mounted through refresh and failures", async ({
   page,
 }) => {
@@ -36,6 +85,7 @@ test("live overview reads only current state and keeps cards mounted through ref
     });
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "打开机器 Mac One" }).click();
   const card = page.locator(".space-card").first();
   await expect(card).toBeVisible();
   await expect(page.getByText("Eagle：任务已更新")).toBeVisible();
@@ -48,6 +98,8 @@ test("live overview reads only current state and keeps cards mounted through ref
   await card.evaluate((node) =>
     node.setAttribute("data-continuity", "original"),
   );
+  // Settle browser focus scrolling before measuring refresh continuity.
+  await page.getByRole("button", { name: "刷新", exact: true }).focus();
   const before = await card.boundingBox();
   paused = new Promise<void>((resolve) => {
     release = resolve;
@@ -117,6 +169,7 @@ test("machine resources and named TCP ports show freshness and missing data hone
     }),
   );
   await page.goto("/");
+  await page.getByRole("button", { name: "打开机器 Mac One" }).click();
   const resources = page.getByRole("region", { name: "机器资源" });
   await expect(resources).toContainText("25%");
   await expect(resources).toContainText("12 / 16 GiB");
@@ -179,15 +232,14 @@ test("token-free overview, topology evidence, history and empty search", async (
     });
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "打开机器 Mac One" }).click();
   await expect(page.getByLabel("访问令牌")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Space 拓扑" })).toBeVisible();
   await page.getByRole("button", { name: "筛选进行中" }).click();
   await expect(page.getByText("没有匹配的 Space")).toBeVisible();
   await page.getByRole("button", { name: "筛选全部" }).click();
-  await expect(page.getByRole("heading", { name: "当前态势" })).toBeVisible();
-  await expect(
-    page.getByText("已验证完成", { exact: true }).first(),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "当前态势" })).toHaveCount(0);
+  await expect(page.getByText("待核实", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "最近变化" })).toBeVisible();
   await expect(page.getByText("首次接入：Eagle").first()).toBeVisible();
   await page.getByRole("button", { name: "查看 Eagle" }).click();
@@ -252,6 +304,7 @@ test("stale machine data is marked explicitly", async ({ page }) => {
     }),
   );
   await page.goto("/");
+  await page.getByRole("button", { name: "打开机器 Old Mac" }).click();
   await expect(page.getByText("心跳过期", { exact: true })).toBeVisible();
   await expect(page.getByText("历史快照 · 等待重新采集")).toBeVisible();
 });
@@ -472,6 +525,7 @@ test("attention is shown first and reduced-motion users get no entrance animatio
     }),
   );
   await page.goto("/");
+  await page.getByRole("button", { name: "打开机器 Mac One" }).click();
   await expect(page.locator(".space-card h3").first()).toHaveText("Urgent");
   expect(
     await page
@@ -479,4 +533,85 @@ test("attention is shown first and reduced-motion users get no entrance animatio
       .first()
       .evaluate((element) => getComputedStyle(element).animationName),
   ).toBe("none");
+});
+
+test("Connect manages machines and creates a one-time onboarding prompt without browser persistence", async ({
+  page,
+}) => {
+  let machines: {
+    id: string;
+    name: string;
+    enabled: boolean;
+    source: string;
+    expiresAt: string;
+  }[] = [];
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === "/api/v1/machines" && request.method() === "GET")
+      return route.fulfill({ json: { machines, canIssue: true } });
+    if (path === "/api/v1/machines") {
+      machines = [
+        {
+          ...request.postDataJSON(),
+          enabled: true,
+          source: "managed",
+          expiresAt: "2027-09-19T00:00:00Z",
+        },
+      ];
+      return route.fulfill({
+        status: 201,
+        json: {
+          machine: machines[0],
+          token: "eag1.test-only-never-persisted-token",
+        },
+      });
+    }
+    if (path.endsWith("/revoke")) {
+      machines[0].enabled = false;
+      return route.fulfill({ json: { machine: machines[0] } });
+    }
+    return route.fulfill({
+      json: {
+        now: new Date().toISOString(),
+        machines: [],
+        pendingMachines: [],
+      },
+    });
+  });
+  await page.goto("/connect");
+  await expect(page.getByRole("heading", { name: "添加机器" })).toBeVisible();
+  await page.getByLabel("机器名称", { exact: true }).fill("Studio Mac");
+  await page.getByLabel("机器 ID", { exact: true }).fill("studio-mac");
+  await page.getByLabel("关注端口", { exact: true }).fill("Raven:7024");
+  await page.getByRole("button", { name: "创建并生成提示词" }).click();
+  await expect(page.getByRole("heading", { name: "接入提示词" })).toBeVisible();
+  await expect(page.getByLabel("提示词预览")).toContainText(
+    "@nocoo/eagle-agent",
+  );
+  await expect(page.getByLabel("提示词预览")).toContainText("7024");
+  await expect(page.getByLabel("提示词预览")).not.toContainText(
+    "eag1.test-only",
+  );
+  expect(
+    await page.evaluate(() =>
+      JSON.stringify({ ...localStorage, ...sessionStorage }),
+    ),
+  ).not.toContain("eag1.");
+  await page.getByRole("button", { name: "关闭提示词" }).click();
+  await page.getByRole("button", { name: "停用 Studio Mac" }).click();
+  await page.getByRole("button", { name: "确认停用" }).click();
+  await expect(page.getByText("已停用", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "重新启用 Studio Mac" }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "接入提示词" })).toHaveCount(
+    0,
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
 });

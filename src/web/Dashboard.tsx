@@ -609,12 +609,14 @@ export function Dashboard({
   search,
   onSearch,
   onOpen,
+  onMachine,
 }: {
   machines: MachineView[];
   now: string;
   search: string;
   onSearch: (value: string) => void;
   onOpen: (machine: string, space: string, pane?: string) => void;
+  onMachine?: (id: string) => void;
 }) {
   const [filter, setFilter] = useState<State | "all">("all");
   const spaces = machines.flatMap((machine) =>
@@ -651,264 +653,434 @@ export function Dashboard({
     );
   return (
     <div className="dashboard-content eagle-enter">
-      <section className="metric-grid" aria-label="当前工作态势">
-        <LayerCard className="overview-metric" padding="none">
-          <div className="overview-glow" />
-          <div className="relative">
-            <h2 className="metric-eyebrow">
-              <Radio size={14} />
-              当前态势
-            </h2>
-            <div className="overview-number">
-              <span>{spaces.length.toString().padStart(2, "0")}</span>
-              <div>
-                工作空间<small>{paneCount} 个 Pane · 全量拓扑</small>
+      {onMachine && (
+        <section className="metric-grid" aria-label="当前工作态势">
+          <LayerCard className="overview-metric" padding="none">
+            <div className="overview-glow" />
+            <div className="relative">
+              <h2 className="metric-eyebrow">
+                <Radio size={14} />
+                当前态势
+              </h2>
+              <div className="overview-number">
+                <span>{spaces.length.toString().padStart(2, "0")}</span>
+                <div>
+                  工作空间<small>{paneCount} 个 Pane · 全部机器</small>
+                </div>
+              </div>
+              <div className="overview-footer">
+                <span className="live-dot" />
+                {online}/{machines.length} 台机器在线
+                <span className="ml-auto mono">LIVE FLEET</span>
               </div>
             </div>
-            <div className="overview-footer">
-              <span className="live-dot" />
-              {online}/{machines.length} 台机器在线
-              <span className="ml-auto mono">LIVE FLEET</span>
-            </div>
-          </div>
-        </LayerCard>
-        {states.map((state) => {
-          const Icon = stateIcons[state];
-          return (
-            <LayerCard
-              key={state}
-              className={`metric-card metric-${state}`}
-              style={accent(stateColors[state])}
-            >
-              <div className="metric-title">
-                <span>{STATE_LABEL[state]}</span>
-                <Icon size={17} strokeWidth={1.5} />
-              </div>
-              <div className="metric-value">
-                {counts[state].toString().padStart(2, "0")}
-                <span>SPACES</span>
-              </div>
-              <SlotBarChart
-                items={spaces.map((s) => ({
-                  color:
-                    s.state === state
-                      ? stateColors[state]
-                      : "hsl(var(--basalt-accent-12) / .15)",
-                }))}
-                ariaLabel={`${counts[state]} / ${spaces.length} 个 Space ${STATE_LABEL[state]}`}
-                heightClass="h-1.5"
-                gapClass="gap-1"
-              />
-              <p className="metric-caption">
-                {state === "active"
-                  ? "任务正在推进"
-                  : state === "attention"
-                    ? "存在阻塞或失败证据"
-                    : state === "verified"
-                      ? "交付证据已交叉验证"
-                      : "等待补足或核对证据"}
-              </p>
-            </LayerCard>
-          );
-        })}
-      </section>
-      <div className="dashboard-layout">
-        <div className="min-w-0 space-y-4">
+          </LayerCard>
+          {states.map((state) => {
+            const Icon = stateIcons[state];
+            return (
+              <LayerCard
+                key={state}
+                className={`metric-card metric-${state}`}
+                style={accent(stateColors[state])}
+              >
+                <div className="metric-title">
+                  <span>{STATE_LABEL[state]}</span>
+                  <Icon size={17} strokeWidth={1.5} />
+                </div>
+                <div className="metric-value">
+                  {counts[state].toString().padStart(2, "0")}
+                  <span>SPACES</span>
+                </div>
+                <SlotBarChart
+                  items={spaces.map((s) => ({
+                    color:
+                      s.state === state
+                        ? stateColors[state]
+                        : "hsl(var(--basalt-accent-12) / .15)",
+                  }))}
+                  ariaLabel={`${counts[state]} / ${spaces.length} 个 Space ${STATE_LABEL[state]}`}
+                  heightClass="h-1.5"
+                  gapClass="gap-1"
+                />
+                <p className="metric-caption">
+                  {state === "active"
+                    ? "任务正在推进"
+                    : state === "attention"
+                      ? "存在阻塞或失败证据"
+                      : state === "verified"
+                        ? "交付证据已交叉验证"
+                        : "等待补足或核对证据"}
+                </p>
+              </LayerCard>
+            );
+          })}
+        </section>
+      )}
+      {onMachine ? (
+        <section aria-label="全部机器" className="space-y-4">
           <div className="board-title">
             <div>
               <span className="section-index">01</span>
-              <h2>Space 拓扑</h2>
-              <Badge variant="secondary">
-                {filtered.length} / {spaces.length}
-              </Badge>
+              <h2>机器全景</h2>
+              <Badge variant="secondary">{machines.length} 台</Badge>
             </div>
-            <span className="hidden text-xs text-basalt-muted-foreground sm:inline">
-              需关注与进行中优先 · 点击 Pane 查看证据
+            <span className="text-xs text-basalt-muted-foreground">
+              选择机器，展开工作现场
             </span>
-          </div>
-          <div className="board-toolbar">
-            <div className="board-search">
-              <Search size={14} />
-              <Input
-                aria-label="搜索 Space"
-                value={search}
-                onChange={(e) => onSearch(e.target.value)}
-                placeholder="搜索空间、目标、任务…"
-              />
-            </div>
-            <fieldset className="state-filters" aria-label="Space 状态筛选">
-              {(["all", ...states] as const).map((state) => (
-                <Button
-                  key={state}
-                  size="sm"
-                  variant={filter === state ? "secondary" : "ghost"}
-                  aria-pressed={filter === state}
-                  aria-label={`筛选${state === "all" ? "全部" : STATE_LABEL[state]}`}
-                  onClick={() => setFilter(state)}
-                >
-                  {state === "all"
-                    ? "全部"
-                    : state === "verified"
-                      ? "已验证"
-                      : STATE_LABEL[state]}
-                  <span className="mono">
-                    {state === "all" ? spaces.length : counts[state]}
-                  </span>
-                </Button>
-              ))}
-            </fieldset>
           </div>
           {!machines.length && (
             <LayerCard>
               <LayerCard.Empty
                 icon={<Server size={28} />}
                 title="等待第一台机器接入"
-                description="配置本机 Eagle Agent，机器和全部 Space 会自动出现在这里。"
+                description="在 Connect 添加机器，生成接入提示词。"
               />
             </LayerCard>
           )}
-          {machines.map((machine) => {
-            const priority = {
-              attention: 0,
-              active: 1,
-              unverified: 2,
-              verified: 3,
-            };
-            const group = filtered
-              .filter((s) => s.machine.id === machine.id)
-              .sort((a, b) => priority[a.state] - priority[b.state]);
-            if (!group.length && filtered.length) return null;
-            const stale = isStale(machine, now);
-            return (
-              <section
-                key={machine.id}
-                className="machine-section"
-                aria-label={`${machine.name} 的工作空间`}
-              >
-                <div className="machine-heading">
-                  <div className="machine-icon">
-                    <Server size={17} />
-                  </div>
-                  <div className="machine-identity">
-                    <h3>{machine.name.replace(/\.local$/, "")}</h3>
-                    <span>
-                      {machine.report.machine.platform} <span>·</span>{" "}
-                      {machine.report.spaces.length} spaces <span>·</span>{" "}
-                      {
-                        machine.report.spaces.flatMap((s) =>
-                          s.tabs.flatMap((t) => t.panes),
-                        ).length
-                      }{" "}
-                      panes
-                    </span>
-                  </div>
-                  <Badge variant={stale ? "warning" : "success"} dot>
-                    {age(machine.lastSeen, now) > 90
-                      ? "心跳过期"
-                      : stale
-                        ? "采集过期"
-                        : "在线"}
-                  </Badge>
-                  <div className="machine-heartbeat">
-                    <span>
-                      <Clock3 size={11} />{" "}
-                      <time
-                        dateTime={machine.report.capturedAt}
-                        title={time(machine.report.capturedAt)}
-                      >
-                        {time(machine.report.capturedAt).split(" ").at(-1)}
-                      </time>
-                    </span>
-                    <small>最新完整采集</small>
-                  </div>
-                </div>
-                {(machine.warning || machine.report.warnings.length > 0) && (
-                  <p className="machine-warning">
-                    <TriangleAlert size={13} />
-                    {machine.warning || machine.report.warnings.join("；")}
-                  </p>
-                )}
-                <MachineResources machine={machine} now={now} />
-                <div className="space-grid">
-                  {group.map((s) => (
-                    <SpaceCard
-                      key={s.space.id}
-                      {...s}
-                      now={now}
-                      onOpen={(pane) =>
-                        onOpen(machine.id, s.space.id, pane?.id)
-                      }
-                    />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
-          {machines.length > 0 && !filtered.length && (
-            <LayerCard>
-              <LayerCard.Empty
-                icon={<Search size={24} />}
-                title="没有匹配的 Space"
-                description="尝试其它关键词或切换状态筛选。"
-              />
-            </LayerCard>
-          )}
-        </div>
-        <aside className="dashboard-aside" aria-label="变化与证据摘要">
-          <div className="board-title">
-            <div>
-              <span className="section-index">02</span>
-              <h2>运行脉搏</h2>
-            </div>
-            <span className="live-label">
-              <span className="live-dot" />
-              实时
-            </span>
-          </div>
-          <RecentActivity machines={machines} />
-          <LayerCard padding="none" className="agents-card">
-            <div className="panel-heading">
-              <span
-                className="panel-icon"
-                style={accent("hsl(var(--basalt-accent-7))")}
-              >
-                <Bot size={16} />
-              </span>
-              <h2>Agent 分布</h2>
-              <span className="mono ml-auto text-xs text-basalt-muted-foreground">
-                {paneCount}
-              </span>
-            </div>
-            <div className="agent-distribution">
-              {[...agents]
-                .sort((a, b) => b[1] - a[1])
-                .map(([agent, count]) => (
-                  <div key={agent}>
-                    <Badge variant={agentTone(agent)} dot>
-                      {agent}
+          <div className="fleet-grid">
+            {machines.map((machine) => {
+              const group = spaces.filter((s) => s.machine.id === machine.id);
+              const stale = isStale(machine, now);
+              const telemetry = machine.report.machine.telemetry;
+              const resource = telemetry?.resources;
+              const resourceStale =
+                stale || !telemetry || age(telemetry.observedAt, now) > 90;
+              const metrics = [
+                {
+                  label: "CPU",
+                  value: resource?.cpuUsagePercent ?? null,
+                  color: stateColors.active,
+                },
+                {
+                  label: "内存已用",
+                  value: resource
+                    ? 100 *
+                      (1 -
+                        resource.memory.freeBytes / resource.memory.totalBytes)
+                    : null,
+                  color: stateColors.unverified,
+                },
+                {
+                  label: "磁盘已用",
+                  value: resource?.disk
+                    ? 100 *
+                      (1 -
+                        resource.disk.availableBytes / resource.disk.totalBytes)
+                    : null,
+                  color: stateColors.verified,
+                },
+              ];
+              return (
+                <LayerCard
+                  key={machine.id}
+                  padding="none"
+                  className="fleet-machine"
+                >
+                  <div className="fleet-machine-header">
+                    <div className="machine-icon">
+                      <Server size={21} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate font-semibold">
+                        {machine.name.replace(/\.local$/, "")}
+                      </h3>
+                      <p className="mt-1 text-xs text-basalt-muted-foreground">
+                        {machine.report.machine.platform} · {machine.id}
+                      </p>
+                    </div>
+                    <Badge variant={stale ? "warning" : "success"} dot>
+                      {age(machine.lastSeen, now) > 90
+                        ? "心跳过期"
+                        : stale
+                          ? "采集过期"
+                          : "在线"}
                     </Badge>
-                    <SlotBarChart
-                      items={Array.from(
-                        { length: Math.min(paneCount, 20) },
-                        (_, i) => ({
-                          color:
-                            i / Math.min(paneCount, 20) < count / paneCount
-                              ? agentColor(agent)
-                              : "hsl(var(--basalt-accent-12) / .15)",
-                        }),
-                      )}
-                      ariaLabel={`${agent}：${count} 个 Pane`}
-                      heightClass="h-2"
-                      gapClass="gap-px"
-                    />
-                    <strong className="mono">{count}</strong>
                   </div>
-                ))}
+                  <div className="fleet-machine-body">
+                    <div className="fleet-workload">
+                      <strong>
+                        {group.length}
+                        <small>SPACES</small>
+                      </strong>
+                      <span>
+                        {group.reduce((n, s) => n + s.panes.length, 0)} 个 Pane
+                      </span>
+                      <span className="ml-auto text-xs">
+                        {stale ? "历史快照" : "当前任务分布"}
+                      </span>
+                    </div>
+                    <SlotBarChart
+                      items={group.map((s) => ({
+                        color: stateColors[s.state],
+                      }))}
+                      ariaLabel={`${machine.name} 的 Space 状态分布`}
+                      heightClass="h-3"
+                      gapClass="gap-1"
+                    />
+                    <div className="fleet-legend">
+                      {states.map((state) => (
+                        <span key={state} style={accent(stateColors[state])}>
+                          <i />
+                          {STATE_LABEL[state]}
+                          <b>{group.filter((s) => s.state === state).length}</b>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="fleet-resources" data-stale={resourceStale}>
+                      {metrics.map(({ label, value, color }) => (
+                        <div key={label}>
+                          <div>
+                            <span>{label}</span>
+                            <strong>
+                              {value === null
+                                ? "未知"
+                                : `${Math.round(value)}%`}
+                            </strong>
+                          </div>
+                          <SlotBarChart
+                            items={Array.from({ length: 20 }, (_, i) => ({
+                              color:
+                                value !== null && i < value / 5
+                                  ? color
+                                  : "hsl(var(--basalt-accent-12) / .15)",
+                            }))}
+                            ariaLabel={`${label} ${value === null ? "未知" : `${Math.round(value)}%`}${resourceStale ? "，历史采样" : ""}`}
+                            heightClass="h-1.5"
+                            gapClass="gap-px"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    {resourceStale && (
+                      <p className="text-xs text-basalt-muted-foreground">
+                        {telemetry
+                          ? "资源为历史采样，等待更新"
+                          : "等待资源采样"}
+                      </p>
+                    )}
+                    {machine.warning && (
+                      <p className="machine-warning">{machine.warning}</p>
+                    )}
+                  </div>
+                  <div className="fleet-machine-footer">
+                    <span>
+                      <Clock3 size={12} />
+                      {time(machine.report.capturedAt)}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      aria-label={`打开机器 ${machine.name}`}
+                      onClick={() => onMachine(machine.id)}
+                    >
+                      查看机器
+                      <ArrowUpRight size={14} />
+                    </Button>
+                  </div>
+                </LayerCard>
+              );
+            })}
+          </div>
+        </section>
+      ) : (
+        <div className="dashboard-layout">
+          <div className="min-w-0 space-y-4">
+            <div className="board-title">
+              <div>
+                <span className="section-index">01</span>
+                <h2>Space 拓扑</h2>
+                <Badge variant="secondary">
+                  {filtered.length} / {spaces.length}
+                </Badge>
+              </div>
+              <span className="hidden text-xs text-basalt-muted-foreground sm:inline">
+                需关注与进行中优先 · 点击 Pane 查看证据
+              </span>
             </div>
-          </LayerCard>
-          <EvidenceCoverage machines={machines} />
-        </aside>
-      </div>
+            <div className="board-toolbar">
+              <div className="board-search">
+                <Search size={14} />
+                <Input
+                  aria-label="搜索 Space"
+                  value={search}
+                  onChange={(e) => onSearch(e.target.value)}
+                  placeholder="搜索空间、目标、任务…"
+                />
+              </div>
+              <fieldset className="state-filters" aria-label="Space 状态筛选">
+                {(["all", ...states] as const).map((state) => (
+                  <Button
+                    key={state}
+                    size="sm"
+                    variant={filter === state ? "secondary" : "ghost"}
+                    aria-pressed={filter === state}
+                    aria-label={`筛选${state === "all" ? "全部" : STATE_LABEL[state]}`}
+                    onClick={() => setFilter(state)}
+                  >
+                    {state === "all"
+                      ? "全部"
+                      : state === "verified"
+                        ? "已验证"
+                        : STATE_LABEL[state]}
+                    <span className="mono">
+                      {state === "all" ? spaces.length : counts[state]}
+                    </span>
+                  </Button>
+                ))}
+              </fieldset>
+            </div>
+            {!machines.length && (
+              <LayerCard>
+                <LayerCard.Empty
+                  icon={<Server size={28} />}
+                  title="等待第一台机器接入"
+                  description="配置本机 Eagle Agent，机器和全部 Space 会自动出现在这里。"
+                />
+              </LayerCard>
+            )}
+            {machines.map((machine) => {
+              const priority = {
+                attention: 0,
+                active: 1,
+                unverified: 2,
+                verified: 3,
+              };
+              const group = filtered
+                .filter((s) => s.machine.id === machine.id)
+                .sort((a, b) => priority[a.state] - priority[b.state]);
+              if (!group.length && filtered.length) return null;
+              const stale = isStale(machine, now);
+              return (
+                <section
+                  key={machine.id}
+                  className="machine-section"
+                  aria-label={`${machine.name} 的工作空间`}
+                >
+                  <div className="machine-heading">
+                    <div className="machine-icon">
+                      <Server size={17} />
+                    </div>
+                    <div className="machine-identity">
+                      <h3>{machine.name.replace(/\.local$/, "")}</h3>
+                      <span>
+                        {machine.report.machine.platform} <span>·</span>{" "}
+                        {machine.report.spaces.length} spaces <span>·</span>{" "}
+                        {
+                          machine.report.spaces.flatMap((s) =>
+                            s.tabs.flatMap((t) => t.panes),
+                          ).length
+                        }{" "}
+                        panes
+                      </span>
+                    </div>
+                    <Badge variant={stale ? "warning" : "success"} dot>
+                      {age(machine.lastSeen, now) > 90
+                        ? "心跳过期"
+                        : stale
+                          ? "采集过期"
+                          : "在线"}
+                    </Badge>
+                    <div className="machine-heartbeat">
+                      <span>
+                        <Clock3 size={11} />{" "}
+                        <time
+                          dateTime={machine.report.capturedAt}
+                          title={time(machine.report.capturedAt)}
+                        >
+                          {time(machine.report.capturedAt).split(" ").at(-1)}
+                        </time>
+                      </span>
+                      <small>最新完整采集</small>
+                    </div>
+                  </div>
+                  {(machine.warning || machine.report.warnings.length > 0) && (
+                    <p className="machine-warning">
+                      <TriangleAlert size={13} />
+                      {machine.warning || machine.report.warnings.join("；")}
+                    </p>
+                  )}
+                  <MachineResources machine={machine} now={now} />
+                  <div className="space-grid">
+                    {group.map((s) => (
+                      <SpaceCard
+                        key={s.space.id}
+                        {...s}
+                        now={now}
+                        onOpen={(pane) =>
+                          onOpen(machine.id, s.space.id, pane?.id)
+                        }
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+            {machines.length > 0 && !filtered.length && (
+              <LayerCard>
+                <LayerCard.Empty
+                  icon={<Search size={24} />}
+                  title="没有匹配的 Space"
+                  description="尝试其它关键词或切换状态筛选。"
+                />
+              </LayerCard>
+            )}
+          </div>
+          <aside className="dashboard-aside" aria-label="变化与证据摘要">
+            <div className="board-title">
+              <div>
+                <span className="section-index">02</span>
+                <h2>运行脉搏</h2>
+              </div>
+              <span className="live-label">
+                <span className="live-dot" />
+                实时
+              </span>
+            </div>
+            <RecentActivity machines={machines} />
+            <LayerCard padding="none" className="agents-card">
+              <div className="panel-heading">
+                <span
+                  className="panel-icon"
+                  style={accent("hsl(var(--basalt-accent-7))")}
+                >
+                  <Bot size={16} />
+                </span>
+                <h2>Agent 分布</h2>
+                <span className="mono ml-auto text-xs text-basalt-muted-foreground">
+                  {paneCount}
+                </span>
+              </div>
+              <div className="agent-distribution">
+                {[...agents]
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([agent, count]) => (
+                    <div key={agent}>
+                      <Badge variant={agentTone(agent)} dot>
+                        {agent}
+                      </Badge>
+                      <SlotBarChart
+                        items={Array.from(
+                          { length: Math.min(paneCount, 20) },
+                          (_, i) => ({
+                            color:
+                              i / Math.min(paneCount, 20) < count / paneCount
+                                ? agentColor(agent)
+                                : "hsl(var(--basalt-accent-12) / .15)",
+                          }),
+                        )}
+                        ariaLabel={`${agent}：${count} 个 Pane`}
+                        heightClass="h-2"
+                        gapClass="gap-px"
+                      />
+                      <strong className="mono">{count}</strong>
+                    </div>
+                  ))}
+              </div>
+            </LayerCard>
+            <EvidenceCoverage machines={machines} />
+          </aside>
+        </div>
+      )}
     </div>
   );
 }

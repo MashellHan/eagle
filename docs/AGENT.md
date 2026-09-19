@@ -20,17 +20,23 @@ Create `~/.config/eagle/agent.json`, directory mode 0700 and file mode 0600:
 
 Each machine has one SQLite-backed Durable Object selected by its `machineId`; the agent only posts reports and heartbeats to the authenticated Worker. No object ID or database credential is needed on the machine. The next valid full snapshot replaces the prior current state. A success receipt confirms persistence in DO, not insertion into D1. Hourly summaries and new history are deferred until AI integration.
 
-The matching platform secret is `AGENT_TOKENS`, a JSON map of machine IDs to random tokens of at least 32 characters. Keep the existing map when adding a machine. Upload via `wrangler secret bulk` from an owner-readable file, and deliver each machine only its own token. Website viewing uses Cloudflare Access; it has no Eagle viewing token. The map keys form the managed machine directory. Adding a key provisions its object on first access; the UI shows it as pending until its first full upload. Revoke one machine by removing its entry and updating the secret; this hides it from active overview without deleting its object or existing history. Tokens never belong in reports, documentation, Git, shell history or D1.
+Open **Connect** on the Eagle website. Add a machine ID, display name and optional watched ports, then copy the generated prompt to Cherry or another management agent on that machine. Connect also supports renaming, rotating credentials, disabling and re-enabling machines. Token-bearing prompts exist only in browser memory until dismissed or navigation; the visible preview hides the token. Save the credential securely before leaving. Rotation invalidates the previous token immediately; re-enabling always issues a new token.
 
-Clone/install Eagle (`npm ci`), then:
+The platform signs machine-scoped tokens using the `AGENT_SIGNING_KEY` Worker secret (at least 32 random characters). Raw tokens and the signing key never enter a database. Each machine DO stores only its configuration, public credential ID, enabled state and expiry. Tokens expire after one year. The directory DO indexes machine IDs only; ingestion goes directly to the corresponding machine DO. The old `AGENT_TOKENS` secret remains compatible; Connect can rotate a legacy machine to signed credentials or disable it. Removing a legacy secret alone does not disable a machine already migrated to signed credentials; use Connect.
+
+The Agent is packaged as `@nocoo/eagle-agent` (Node 24+). **The current 0.3.0 package has only been packed and installed locally; npm publication is pending.** After publication:
 
 ```sh
-node agent/cli.ts collect /private/path/report.json
-node agent/cli.ts upload /private/path/report.json
-node agent/cli.ts once
-node agent/cli.ts watch
-node agent/cli.ts heartbeat
+npm install -g @nocoo/eagle-agent@0.3.0
+eagle-agent --help
+eagle-agent once
+eagle-agent watch
+eagle-agent collect /private/path/report.json
+eagle-agent upload /private/path/report.json
+eagle-agent heartbeat
 ```
+
+`eagle-agent init` accepts config JSON through stdin, writes a 0600 file in a 0700 directory, and refuses to overwrite existing configuration. Never pass tokens in command arguments. Existing checkout commands (`node agent/cli.ts …`) remain supported. For local package verification use `npm pack ./agent --pack-destination .local`, then install that tarball in an isolated directory.
 
 `EAGLE_CONFIG` selects another 0600 config. `once` collects, atomically writes a 0600 spool entry, then drains pending reports newest first. Network/429/5xx failures retry with backoff using the same report body and ID; 400/409/413/415 或损坏 JSON 会移入 `spool/rejected/` 保留，并在心跳中提示；后续有效快照继续发送。401/403 和网络故障保留整个待发送队列等待修复。Reports remain on disk until acknowledged or explicitly quarantined. At 1000 pending entries the spool first attempts to drain before collecting more; it never deletes unacknowledged data. An explicit auth/schema failure requires operator correction; do not discard old reports to make the queue green. `watch` repeats after the configured interval. Alternatively run `once` with launchd/systemd at the same interval; prevent overlapping invocations.
 

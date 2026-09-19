@@ -15,6 +15,7 @@ import {
   type Space,
 } from "../src/shared/schema.ts";
 import { collectTelemetry } from "./machine.ts";
+import { AGENT_VERSION } from "./version.ts";
 
 const exec = promisify(execFile);
 
@@ -25,6 +26,10 @@ export function redact(text: string, secrets: string[] = []) {
       "[REDACTED KEY]",
     )
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
+    .replace(
+      /\beag1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
+      "[REDACTED]",
+    )
     .replace(
       /((?:[A-Z_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL)[A-Z_]*)\s*[=:]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;]+)/gi,
       "$1[REDACTED]",
@@ -567,7 +572,7 @@ export async function collect(config: AgentConfig): Promise<Report> {
       id: config.machineId,
       name: config.machineName,
       platform: platform(),
-      collectorVersion: "0.2.0",
+      collectorVersion: AGENT_VERSION,
       telemetry,
     },
     spaces,

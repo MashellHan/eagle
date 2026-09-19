@@ -16,8 +16,8 @@ Requires Node 24+ (native TypeScript and SQLite), npm, Herdr 0.9.1+, and Cloudfl
 
 ```sh
 npm ci
-# Add AGENT_TOKENS and LOCAL_DEV to ignored .dev.vars (chmod 600).
-# AGENT_TOKENS='{"your-machine":"a-random-token-of-at-least-32-characters"}'
+# Add a random AGENT_SIGNING_KEY (32+ characters) to ignored .dev.vars (chmod 600).
+# Optional AGENT_TOKENS retains existing legacy machine credentials.
 # LOCAL_DEV="true"  # Local website requires no login token.
 # LOCAL_USER_EMAIL="you@example.com"  # Optional avatar-service preview identity.
 npm run db:local
@@ -41,15 +41,17 @@ NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" node scripts/verify-live.ts
 
 ## Machine agents
 
+`@nocoo/eagle-agent@0.3.0` is prepared as an independent npm package and verified from a local tarball. **This revision is local-only; the website change and npm package have not been published.** Build a preview with `npm pack ./agent --pack-destination .local`. Package builds run from the complete repository after `npm ci`; installed agents need only Node and their npm dependencies.
+
 Copy [the reporting Skill](skills/eagle-report/SKILL.md) to Cherry or any other local management agent. See [the agent contract](docs/AGENT.md) for credentials, periodic execution, structured evidence, retries and deployment receipts. The checked-in [v1 JSON Schema](public/report-v1.schema.json) is generated from the TypeScript validator; cross-object uniqueness checks additionally run on the server.
 
 The website uses **Cloudflare Access** with team `nocoo`. The Worker verifies RS256 signatures against the team's rotating JWKS, issuer, application audience, expiry and required claims. The audience is configured in `wrangler.jsonc`. Eagle has no viewer token, password field, custom session endpoint or custom session cookie. Local viewing bypasses Access only with `LOCAL_DEV="true"` and an explicit loopback/development hostname; production sets the flag to `false`.
 
 The desktop sidebar starts expanded and keeps the Eagle mark fixed when toggled. Its footer shows the verified Access account, author-service avatar and Access logout. Only a SHA-256 hash of the normalized email is sent to `lizheng.blog`; profile lookup failures fall back to the account name and initial. Local preview may set `LOCAL_USER_EMAIL` in `.dev.vars` without a token; logout is disabled and marked as local.
 
-Agents use **per-machine Bearer tokens** stored only in their 0600 configuration and the Worker's `AGENT_TOKENS` secret. They upload to **https://eagle-ingest.hexly.ai** so browser SSO never interrupts reporting. That host serves only reports, heartbeats and public `/api/live`; dashboard assets, overview and history all return 404 there. The private API never supports CORS. Browser storage and D1 contain no authentication tokens.
+The **Connect** page manages machines, creates one-time onboarding prompts, rotates tokens and disables reporting. Agents use **machine-scoped signed Bearer tokens** stored only in their 0600 configuration. `AGENT_SIGNING_KEY` remains a Worker secret; DOs store public credential versions and machine metadata, never tokens. Existing `AGENT_TOKENS` credentials remain supported until rotated or disabled. They upload to **https://eagle-ingest.hexly.ai** so browser SSO never interrupts reporting. That host serves only reports, heartbeats and public `/api/live`; dashboard assets, overview and history all return 404 there. The private API never supports CORS. Browser storage and D1 contain no authentication tokens.
 
-The dashboard uses Basalt chrome, controls, semantic badges, chart primitives and palette tokens. Compact machine groups preserve real pane geometry; state filters, evidence coverage, agent distribution and change timelines expose useful details immediately. Skeletons keep loading geometry stable, refreshes retain content, and entrance/refresh motion respects reduced-motion preferences.
+The global overview uses Basalt charts to summarize every machine, with state distributions and compact resource graphics. Open a machine to see resources, ports and Spaces without repeating fleet summary cards. Compact machine groups preserve real pane geometry; state filters, evidence coverage, agent distribution and change timelines expose useful details immediately. Skeletons keep loading geometry stable, refreshes retain content, and entrance/refresh motion respects reduced-motion preferences.
 
 Each machine also reports CPU, RAM, home-filesystem disk capacity and uptime. Add `"watchPorts":[{"name":"Raven","port":7024}]` to the agent's secure configuration to track named local TCP endpoints. Resource and port snapshots live in each machine DO with the current Space inventory, and stale observations are labelled explicitly. See [agent configuration](docs/AGENT.md) for measurement semantics and upgrade order.
 

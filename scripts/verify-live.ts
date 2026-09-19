@@ -68,6 +68,16 @@ try {
     machine.report.spaces.map((s) => s.id).sort(),
     report.spaces.map((s) => s.id).sort(),
   );
+  const prefix = origin.includes(".dev.") ? "local" : "production";
+  await expect(page.locator(".space-card")).toHaveCount(0);
+  await page.screenshot({
+    animations: "disabled",
+    path: `.local/${prefix}-fleet.png`,
+  });
+  await page.getByRole("button", { name: `打开机器 ${machine.name}` }).click();
+  await expect(page.getByRole("region", { name: "当前工作态势" })).toHaveCount(
+    0,
+  );
   for (const space of report.spaces)
     await expect(
       page.getByRole("button", { name: `查看 ${space.name}`, exact: true }),
@@ -127,14 +137,13 @@ try {
     .getByRole("button", { name: `查看 ${target.name}`, exact: true })
     .click();
   await expect(page.getByRole("dialog")).toContainText("Herdr 弱提示");
-  const prefix = origin.includes(".dev.") ? "local" : "production";
   await page.screenshot({
     animations: "disabled",
     path: `.local/${prefix}-detail.png`,
   });
   await page.keyboard.press("Escape");
   await page
-    .getByRole("heading", { name: "当前态势" })
+    .getByRole("heading", { name: "Space 拓扑" })
     .scrollIntoViewIfNeeded();
   await page.screenshot({
     animations: "disabled",

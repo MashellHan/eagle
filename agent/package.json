@@ -1,0 +1,32 @@
+{
+  "name": "@nocoo/eagle-agent",
+  "version": "0.3.0",
+  "description": "Report all local Herdr spaces and machine resources to Eagle",
+  "type": "module",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nocoo/eagle.git",
+    "directory": "agent"
+  },
+  "bin": {
+    "eagle-agent": "dist/agent/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "zod": "^4.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

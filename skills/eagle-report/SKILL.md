@@ -3,9 +3,9 @@ name: eagle-report
 description: Collect and report all local Herdr Spaces to Eagle, or add structured task evidence as a local management agent such as Cherry. Use for Eagle machine status reporting and evidence summaries; not for controlling other agents or inferring completion from pane badges.
 ---
 
-Use the Eagle checkout's `agent/cli.ts` from its repository root. Read `docs/AGENT.md` there for secure configuration and the evidence-file format. Node 24+, an installed Herdr server, and `npm ci` are required.
+Install `@nocoo/eagle-agent` from npm once published, or use the Eagle checkout's `agent/cli.ts`. Node 24+ and an installed Herdr server are required. Read the package README and https://github.com/nocoo/eagle/blob/main/docs/AGENT.md for secure configuration and evidence format. The Connect page provides a machine-scoped setup prompt and token; the current package is still a local preview.
 
-- `node agent/cli.ts once` collects all running local sessions and uploads a complete inventory. `watch` repeats; `collect <private-file>` and `upload <private-file>` separate collection and delivery.
+- `eagle-agent once` (or `node agent/cli.ts once`) collects all running local sessions and uploads a complete inventory. `watch` repeats; `collect <private-file>` and `upload <private-file>` separate collection and delivery.
 - Credentials come only from a mode-0600 configuration selected by `EAGLE_CONFIG` (default `~/.config/eagle/agent.json`). Never print or copy tokens into evidence. The reporting token authorizes only its machine. Upload to https://eagle-ingest.hexly.ai; the website uses Cloudflare Access and has no Eagle viewing token.
 - Summarize each current task for the user: intended outcome, observed progress, latest meaningful change, remaining work or decision. Bind manager evidence to a task ID and retain the original evidence timestamps.
 - Treat terminal `idle`, `done`, `blocked`, wait completion, and “Goal achieved” text as weak hints. Read the actual final summary; reconcile native Goal, Git SHA/worktree, test result, actual process activity, and required production/browser evidence. Contradictions and missing evidence stay explicit. A running harness proves presence only.

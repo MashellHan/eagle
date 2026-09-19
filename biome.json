@@ -5,6 +5,7 @@
       "**",
       "!worker-configuration.d.ts",
       "!dist",
+      "!agent/dist",
       "!node_modules",
       "!package-lock.json",
       "!.wrangler",

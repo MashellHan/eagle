@@ -10,6 +10,11 @@ All private responses are `Cache-Control: no-store`. Maximum streamed upload siz
 | `GET /api/v1/me` | Verified Access JWT | `{name,email,avatar,local}`; account and optional author-service profile |
 | `GET /api/v1/overview` | Verified Access JWT | Server time, DO current state per machine, heartbeat, warning, revision, latest changes, pending machine IDs |
 | `GET /api/v1/history` | Verified Access JWT | Existing D1 history only; optional `machine`, `space`, `before` cursor, `limit` 1–100 (default 20); entries and nextCursor |
+| `GET /api/v1/machines` | Verified Access JWT | Machine configuration and `canIssue`; no tokens |
+| `POST /api/v1/machines` | Verified Access JWT | `{id,name,watchPorts?}`; 201 `{machine,token}` shown once; duplicate ID 409 |
+| `POST /api/v1/machines/:id/rotate` | Verified Access JWT | `{}`; new token, old token invalid immediately; also re-enables |
+| `POST /api/v1/machines/:id/revoke` | Verified Access JWT | `{}`; disables ingestion and hides from overview, preserves DO state |
+| `POST /api/v1/machines/:id/rename` | Verified Access JWT | `{name}`; management display name overrides collected hostname |
 
 Browser origin: `https://eagle.hexly.ai`, protected by the nocoo Access application. Local development viewing is unauthenticated. Machine origin: `https://eagle-ingest.hexly.ai`, which serves only the two ingestion endpoints and public health; all other paths are 404. The browser Access JWT is validated by the Worker, and is never accepted as a machine Bearer token. Legacy viewer Bearer credentials and Eagle session cookies no longer authorize requests.
 
@@ -31,7 +36,9 @@ Current state is ordered by `(capturedAt, reportId)`. Late reports are acknowled
 
 Closing a Space is represented by its absence in a newer complete report. A collection failure preserves inventory and sends a warning heartbeat; an ordinary heartbeat or old retry cannot clear that warning. Only a newer complete report clears it. Stopped sessions retain cached Spaces marked `availability:unavailable`.
 
-The `AGENT_TOKENS` secret's keys are the managed machine directory. A new key automatically provides a named object on first access; `pendingMachines` lists machines awaiting their initial report. The overview contains only configured machines and reads no D1 data. Removing a key revokes reporting and removes the machine from the active directory without deleting its object or old history; restoring the same ID restores access to its state. Failed DO reads fail the overview request, so the browser keeps its last complete fleet view rather than silently hiding a machine.
+The control-plane `MachineDirectory` DO indexes registered IDs. Machine-specific configuration, credential version, expiry and enabled state reside in the machine's own DO. Legacy `AGENT_TOKENS` IDs remain discoverable until migrated or disabled. `pendingMachines` lists enabled machines awaiting their initial report. The overview contains enabled machines and reads no D1 data. A failed DO read fails the entire overview request, preserving the browser's last complete fleet view.
+
+Managed credentials use `eag1.`-prefixed HS256 JWTs signed by `AGENT_SIGNING_KEY`, scoped by subject to one machine, with a public credential ID and one-year expiry. Signature, issuer, audience and expiry are checked at the Worker; current credential ID and enabled state are checked inside the machine DO immediately before ingestion or heartbeat. Rotation/revocation therefore cannot be bypassed by a concurrently pending upload. The token is returned only when created or rotated and is never persisted. Mutation requests require Access (or explicit local development mode), JSON content type and same-origin browser requests. The ingestion hostname does not expose any management endpoints. No Cloudflare account API credential is needed by this application.
 
 The browser polls current state every five seconds while visible. Existing cards, focus, search and open detail remain mounted during refresh. Latest changes come from DO state; history is fetched only on explicit navigation.
 
