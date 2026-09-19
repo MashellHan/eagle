@@ -8,7 +8,7 @@ Private, evidence-led overview of every Herdr Space on every reporting machine.
 
 **Production:** https://eagle.hexly.ai · **Local:** https://eagle.dev.hexly.ai · **[Hexly](https://hexly.ai/projects/eagle)** · **[Status](https://status.hexly.ai)**
 
-Vite + React 19 + **@nocoo/basalt 2.1.8**, TypeScript **7.0.2**, Biome. Cloudflare Worker serves the SPA and authenticated API; one SQLite-backed Durable Object per machine maintains current state. D1 retains existing history; new history writes and hourly AI summaries are paused. The Node management agent runs locally on each machine. No remote terminal control is exposed.
+Vite + React 19 + **@nocoo/basalt 2.1.8**, TypeScript **7.0.2**, Biome. Cloudflare Worker serves the SPA and authenticated API; one SQLite-backed Durable Object per machine maintains current state. Each DO independently retains deterministic current snapshots and semantic Pane changes in UTC hourly buckets. D1 archives semantic changes; whole-report history and hourly AI aggregation remain paused. The Node management agent runs locally on each machine. No remote terminal control is exposed.
 
 ## Run
 
@@ -44,10 +44,10 @@ NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" node scripts/verify-live.ts
 Install the independent Agent package from npm (Node 24+ and Herdr required):
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org
 # If npm is unreachable, prefer the Tencent Cloud mirror:
-npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://mirrors.cloud.tencent.com/npm/
-eagle-agent --version # expected: 0.3.0
+npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/
+eagle-agent --version # expected: 0.4.0
 ```
 
 Choose one install command. New releases may take time to reach mirrors; on `404` / `ETARGET`, retry later or use the official registry when reachable. [Full installation and configuration](agent/README.md). **The website's Connect and visualization changes remain local; they have not been deployed.** Package builds run from the complete repository after `npm ci`; `npm pack ./agent --pack-destination .local` creates a preview tarball.
@@ -58,7 +58,7 @@ The website uses **Cloudflare Access** with team `nocoo`. The Worker verifies RS
 
 The desktop sidebar starts expanded and keeps the Eagle mark fixed when toggled. Its footer shows the verified Access account, author-service avatar and Access logout. Only a SHA-256 hash of the normalized email is sent to `lizheng.blog`; profile lookup failures fall back to the account name and initial. Local preview may set `LOCAL_USER_EMAIL` in `.dev.vars` without a token; logout is disabled and marked as local.
 
-The **Connect** page manages machines, creates one-time onboarding prompts, rotates tokens and disables reporting. Agents use **machine-scoped signed Bearer tokens** stored only in their 0600 configuration. `AGENT_SIGNING_KEY` remains a Worker secret; DOs store public credential versions and machine metadata, never tokens. Existing `AGENT_TOKENS` credentials remain supported until rotated or disabled. They upload to **https://eagle-ingest.hexly.ai** so browser SSO never interrupts reporting. That host serves only reports, heartbeats and public `/api/live`; dashboard assets, overview and history all return 404 there. The private API never supports CORS. Browser storage and D1 contain no authentication tokens.
+The **Connect** page manages machines, creates one-time onboarding prompts, rotates tokens and disables reporting. Agents use **machine-scoped signed Bearer tokens** stored only in their 0600 configuration. `AGENT_SIGNING_KEY` remains a Worker secret; DOs store public credential versions and machine metadata, never tokens. Existing `AGENT_TOKENS` credentials remain supported until rotated or disabled. They upload to **https://eagle-ingest.hexly.ai** so browser SSO never interrupts reporting. That host serves reports, heartbeats, semantic uploads, the authenticated machine’s own snapshot and public `/api/live`; dashboard assets, overview and history all return 404 there. The private API never supports CORS. Browser storage and D1 contain no authentication tokens.
 
 The global overview uses Basalt charts to summarize every machine, with state distributions and compact resource graphics. Open a machine to see resources, ports and Spaces without repeating fleet summary cards. Compact machine groups preserve real pane geometry; state filters, evidence coverage, agent distribution and change timelines expose useful details immediately. Skeletons keep loading geometry stable, refreshes retain content, and entrance/refresh motion respects reduced-motion preferences.
 
@@ -70,7 +70,7 @@ Herdr `idle`, `done` and `blocked` are weak hints. A verified task requires matc
 
 Codex's local thread/goal stores are optional adapters; only final replies and lifecycle events are extracted. Reasoning and tool arguments are excluded. Other harnesses use a bounded terminal excerpt and manager-supplied structured evidence. Text evidence is redacted before spool/upload. Heuristics cannot guarantee redaction of arbitrary secrets: managers should send concise summaries, and use the Skill to provide verified test/deployment receipts instead of raw terminal dumps.
 
-The dashboard refreshes every **5 seconds** while visible and refreshes immediately on return. After 90 seconds without heartbeat or 5 minutes without a snapshot, current-state cards explicitly show stale inventory. A failed refresh preserves the last snapshot with a connection warning. The overview reads machine DOs directly; it never polls D1. Latest changes retain their original capture time; D1 is queried only when opening existing history.
+The dashboard refreshes every **5 seconds** while visible and refreshes immediately on return. After 90 seconds without heartbeat or 5 minutes without a snapshot, current-state cards explicitly show stale inventory. A failed refresh preserves the last snapshot with a connection warning. The overview reads machine DOs directly; it never polls D1. Latest changes retain their original capture time; The Pane hourly view reads DO semantic records; D1 is queried only for archive history.
 
 ## Release
 
@@ -88,3 +88,5 @@ The Worker owns `eagle.hexly.ai` as a custom domain. `https://eagle-ingest.hexly
 ## Identity
 
 The golden eagle belongs to the fragmented animal family. README uses the rounded presentation; the expanded/collapsed sidebar, loading and Access entry marks use the transparent foreground without a background or corner mask. Root `logo.png` is the unchanged 2048px foreground; [brand provenance](assets/brand/provenance.json) records the exact master, generation and consumer roles. The Basalt application palette remains independent.
+
+Live Pane summary protocol, hourly DO indexes/API, retention and continuous Cherry integration: [docs/PANE-SUMMARIES.md](docs/PANE-SUMMARIES.md). Run `eagle-agent manager-watch` alongside the deterministic `watch` daemon.

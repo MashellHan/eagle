@@ -8,9 +8,9 @@
 
 ## 运行与架构
 
-前端使用 React 19、Vite 与 Basalt；Cloudflare Worker 提供页面和受认证保护的 API，每台机器一个 SQLite Durable Object 保存当前状态；D1 保留既有历史，新归档与每小时 AI 总结暂缓。本地 Node 管理 Agent 负责采集、脱敏、排队与幂等上报。没有远程终端控制入口。
+前端使用 React 19、Vite 与 Basalt；Cloudflare Worker 提供页面和受认证保护的 API，每台机器一个 SQLite Durable Object 保存当前状态；DO 内快照与语义流独立保存，语义变化按 UTC 小时分桶并复制到 D1；快照历史和每小时 AI 聚合仍暂缓。本地 Node 管理 Agent 负责采集、脱敏、排队与幂等上报。没有远程终端控制入口。
 
-网站由 nocoo 团队的 Cloudflare Access 保护，本地免登录。机器使用独立 Bearer Token，向 `https://eagle-ingest.hexly.ai` 上报；该域名不开放看板、查询或历史。
+网站由 nocoo 团队的 Cloudflare Access 保护，本地免登录。机器使用独立 Bearer Token，向 `https://eagle-ingest.hexly.ai` 上报；该域名只开放机器专用上报和自身快照读取，不开放看板或网站历史查询。
 
 桌面侧栏默认展开，展开与折叠时 Logo 位置固定。底部显示 Access 账户、头像服务返回的姓名与头像，以及退出登录按钮。头像查询只发送规范化邮箱的 SHA-256；服务不可用时保留姓名和首字母头像。本地可在 `.dev.vars` 配置 `LOCAL_USER_EMAIL` 预览真实头像，无须 Token，退出按钮显示为不可用。
 
@@ -32,16 +32,16 @@ npm run dev
 
 全局总览只展示全部机器的可视化汇总；点击机器后进入资源、端口和 Space 详情。**Connect** 页面支持添加机器、重命名、轮换和停用凭证，并生成可贴给管理 Agent 的接入提示词。Token 只在生成时可复制，不入库；签名密钥留在安全配置中。
 
-Agent 使用独立 npm 包 `@nocoo/eagle-agent@0.3.0`，需要 Node 24+ 与 Herdr：
+Agent 使用独立 npm 包 `@nocoo/eagle-agent@0.4.0`，需要 Node 24+ 与 Herdr：
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org
 # npm 连不上时，首选腾讯云镜像：
-npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://mirrors.cloud.tencent.com/npm/
-eagle-agent --version # 应输出 0.3.0
+npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/
+eagle-agent --version # 应输出 0.4.0
 ```
 
-两条安装命令选其一，不修改全局 npm 源。镜像同步新版本可能延迟，遇到 `404` / `ETARGET` 可稍后重试或在网络恢复后使用官方源。详细步骤见 [安装说明](agent/README.md)。**网站的 Connect 与可视化改动仍保持本地预览，尚未部署。** 开发者可在仓库根目录运行 `npm pack ./agent --pack-destination .local` 生成本地安装包。
+两条安装命令选其一，不修改全局 npm 源。镜像同步新版本可能延迟，遇到 `404` / `ETARGET` 可稍后重试或在网络恢复后使用官方源。详细步骤见 [安装说明](agent/README.md)。 开发者可在仓库根目录运行 `npm pack ./agent --pack-destination .local` 生成本地安装包。
 
 ## 如何理解工作态势
 
@@ -64,3 +64,9 @@ npm run deploy
 ## 标识
 
 金色鹰采用动物系列的连贯平面切面，鹰喙轻衔一条多色飘带。README 使用圆角展示图；展开与收起的侧栏、加载及身份入口使用透明前景，不加背景底板或圆角遮罩。根目录 `logo.png` 是 2048px 透明主文件，来源与角色详见 [品牌记录](assets/brand/provenance.json)。网站保留独立的 Basalt 色板。
+
+## 实时 Pane 总结
+
+每台机器独立运行 `eagle-agent watch` 和 `eagle-agent manager-watch`。daemon 每 30 秒采集确定性事实，Manager 仅在输入变化且满足每任务限频时调用现有 Cherry 模型。每个 Pane 可展开任务、阶段、进展、成果、阻塞、下一步及依据；模型的完成或测试声称不会变成已验证事实。
+
+语义流在每机 DO 独立持久化，按 observedAt 的 UTC 小时分桶，同小时保留多条，支持最新/全部与分页。心跳不产生历史。DO 保留 30 天或 10,000 条语义变化；待归档记录受保护，D1 副本继续保留。迟到旧任务报告留在原小时，不能覆盖当前任务。完整协议、索引、冲突及持续运行方案见 [语义契约](docs/PANE-SUMMARIES.md)。

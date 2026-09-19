@@ -7,6 +7,12 @@ import {
   ReportSchema,
 } from "../shared/schema.ts";
 import {
+  digest,
+  evidenceKeys,
+  paneKey,
+  SummaryBatchSchema,
+} from "../shared/summaries.ts";
+import {
   agentIdentity,
   agentTokens,
   issueToken,
@@ -116,6 +122,20 @@ async function ingest(
     report,
     digest,
     credentialId,
+    Object.fromEntries(
+      await Promise.all(
+        report.spaces.flatMap((space) =>
+          space.tabs.flatMap((tab) =>
+            tab.panes.map(async (pane) => [
+              paneKey({ spaceId: space.id, paneId: pane.id }),
+              await evidenceKeys(
+                pane.evidence.filter((e) => e.taskId === pane.task.id),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    ),
   );
   if ("unauthorized" in result) throw new HttpError(401, "Invalid agent token");
   if ("conflict" in result)
@@ -169,7 +189,55 @@ async function route(request: Request, env: Env): Promise<Response> {
       revision: env.BUILD_REVISION,
       stateStore: "durable-objects",
       historyWrites: false,
+      semanticStore: "durable-objects",
+      semanticProtocolVersion: 1,
+      semanticHours: "UTC",
     });
+  }
+  if (path === "/api/v1/summaries" || path === "/api/v1/agent-state") {
+    const identity = await agentIdentity(request, env);
+    if (!identity) throw new HttpError(401, "Invalid agent token");
+    const object = env.MACHINES.getByName(identity.machineId);
+    if (path.endsWith("agent-state")) {
+      if (request.method !== "GET")
+        throw new HttpError(405, "Method not allowed");
+      const state = await object.agentCurrent(identity.credentialId);
+      if (state && "unauthorized" in state)
+        throw new HttpError(401, "Invalid agent token");
+      return json(state);
+    }
+    if (request.method !== "POST")
+      throw new HttpError(405, "Method not allowed");
+    const parsed = SummaryBatchSchema.safeParse(await body(request));
+    if (!parsed.success) throw new HttpError(400, "Invalid v1 summary batch");
+    const batch = parsed.data;
+    if (batch.machineId !== identity.machineId)
+      throw new HttpError(403, "Token does not authorize this machine");
+    timely(batch.sentAt);
+    noSecrets(JSON.stringify(batch), env);
+    const result = await object.summarize(
+      batch,
+      await digest(batch),
+      identity.credentialId,
+      Object.fromEntries(
+        await Promise.all(
+          batch.updates.map(async (entry) => [
+            paneKey(entry),
+            await digest({ taskId: entry.taskId, summary: entry.summary }),
+          ]),
+        ),
+      ),
+    );
+    if ("error" in result && result.error)
+      throw new HttpError(
+        result.error === "unauthorized"
+          ? 401
+          : result.error === "archive_backpressure"
+            ? 503
+            : 409,
+        result.error,
+      );
+    return json(result, result.duplicate ? 200 : 201);
   }
   if (path === "/api/v1/reports" || path === "/api/v1/heartbeat") {
     if (request.method !== "POST")
@@ -265,6 +333,62 @@ async function route(request: Request, env: Env): Promise<Response> {
       pendingMachines: ids.filter((_, index) => states[index] === null),
     });
   }
+  if (path === "/api/v1/semantic-hours") {
+    const machine = url.searchParams.get("machine");
+    if (!machine || !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(machine))
+      throw new HttpError(400, "Machine required");
+    const hour = url.searchParams.get("hour") ?? undefined;
+    const before = url.searchParams.get("before") ?? undefined;
+    const validHour = (v: string) =>
+      /^\d{4}-\d{2}-\d{2}T\d{2}:00:00\.000Z$/.test(v) &&
+      Number.isFinite(Date.parse(v)) &&
+      new Date(v).toISOString() === v;
+    if (hour && !validHour(hour))
+      throw new HttpError(400, "Expected canonical UTC hour");
+    if (before && (hour ? !/^[1-9]\d{0,15}$/.test(before) : !validHour(before)))
+      throw new HttpError(400, "Invalid semantic cursor");
+    const mode = url.searchParams.get("mode") ?? "all";
+    if (mode !== "all" && mode !== "latest")
+      throw new HttpError(400, "Invalid semantic mode");
+    if (mode === "latest" && before)
+      throw new HttpError(400, "Latest mode does not accept a cursor");
+    return json(
+      await env.MACHINES.getByName(machine).semanticHours({
+        spaceId: url.searchParams.get("space") ?? undefined,
+        paneId: url.searchParams.get("pane") ?? undefined,
+        hour,
+        mode,
+        before,
+        limit: positive(url.searchParams.get("limit"), 12, 100),
+      }),
+    );
+  }
+  if (path === "/api/v1/summary-history") {
+    const machine = url.searchParams.get("machine");
+    const space = url.searchParams.get("space");
+    const pane = url.searchParams.get("pane");
+    if (!machine || !space || !pane)
+      throw new HttpError(400, "Machine, space and pane are required");
+    const limit = positive(url.searchParams.get("limit"), 20, 100);
+    const before = positive(
+      url.searchParams.get("before"),
+      Number.MAX_SAFE_INTEGER,
+    );
+    const { results } = await env.DB.prepare(
+      "SELECT seq, received_at, payload FROM pane_summaries WHERE machine_id = ? AND space_id = ? AND pane_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?",
+    )
+      .bind(machine, space, pane, before, limit + 1)
+      .all<{ seq: number; received_at: string; payload: string }>();
+    const entries = results.slice(0, limit).map((r) => ({
+      seq: r.seq,
+      receivedAt: r.received_at,
+      value: JSON.parse(r.payload),
+    }));
+    return json({
+      entries,
+      nextCursor: results.length > limit ? entries.at(-1)?.seq : null,
+    });
+  }
   if (path === "/api/v1/history") {
     const machine = url.searchParams.get("machine");
     const space = url.searchParams.get("space");
@@ -316,9 +440,13 @@ export default {
     const url = new URL(request.url);
     if (
       url.hostname === "eagle-ingest.hexly.ai" &&
-      !["/api/v1/reports", "/api/v1/heartbeat", "/api/live"].includes(
-        url.pathname,
-      )
+      ![
+        "/api/v1/reports",
+        "/api/v1/heartbeat",
+        "/api/v1/summaries",
+        "/api/v1/agent-state",
+        "/api/live",
+      ].includes(url.pathname)
     )
       return json({ error: "Not found" }, 404);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);

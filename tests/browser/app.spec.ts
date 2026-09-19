@@ -591,10 +591,10 @@ test("Connect manages machines and creates a one-time onboarding prompt without 
   await page.getByRole("button", { name: "创建并生成提示词" }).click();
   await expect(page.getByRole("heading", { name: "接入提示词" })).toBeVisible();
   await expect(page.getByLabel("提示词预览")).toContainText(
-    "npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://registry.npmjs.org",
+    "npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org",
   );
   await expect(page.getByLabel("提示词预览")).toContainText(
-    "npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://mirrors.cloud.tencent.com/npm/",
+    "npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/",
   );
   await expect(page.getByLabel("提示词预览")).toContainText("首选腾讯云镜像");
   await expect(page.getByLabel("提示词预览")).toContainText(
@@ -625,4 +625,190 @@ test("Connect manages machines and creates a one-time onboarding prompt without 
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("Pane semantic summary and timeline survive refresh, and stale manager never appears current", async ({
+  page,
+}) => {
+  const now = new Date().toISOString();
+  const value = report("semantic-browser", now);
+  let disconnected = false;
+  const summary = {
+    spaceId: "default:w1",
+    paneId: "w1:p1",
+    taskId: "task-1",
+    basis: [],
+    observedAt: now,
+    updatedAt: now,
+    checkedAt: now,
+    receivedAt: now,
+    sequence: 1,
+    evidence: [],
+    summary: {
+      task: "让每个 Pane 可读",
+      phase: "verify",
+      progress: "实时摘要已经连通",
+      outcomes: [
+        { kind: "test", text: "终端声称测试通过，待核对", evidenceRefs: [] },
+      ],
+      blocker: null,
+      nextStep: "核验生产链路",
+      rationale: "参考当前终端，缺少测试独立回执",
+      evidenceRefs: [],
+    },
+  };
+  await page.route("**/api/**", (route) =>
+    route.fulfill({
+      json: route.request().url().includes("semantic-hours")
+        ? {
+            hours: [
+              {
+                hour: `${now.slice(0, 13)}:00:00.000Z`,
+                count: 1,
+                latest: {
+                  seq: 1,
+                  receivedAt: now,
+                  source: { managerId: "cherry", protocolVersion: 1 },
+                  contentHash: "a".repeat(64),
+                  value: {
+                    ...summary,
+                    summary: {
+                      ...summary.summary,
+                      progress: "此前完成协议设计",
+                    },
+                  },
+                },
+              },
+            ],
+            nextCursor: null,
+          }
+        : {
+            now,
+            machines: [
+              {
+                id: "mac-one",
+                name: "Mac One",
+                lastSeen: now,
+                receivedAt: now,
+                warning: null,
+                report: value,
+                summaries: [summary],
+                manager: {
+                  id: "cherry",
+                  sequence: 1,
+                  lastSeen: disconnected ? "2020-01-01T00:00:00.000Z" : now,
+                },
+              },
+            ],
+          },
+    }),
+  );
+  await page.goto("/?machine=mac-one");
+  await page.getByRole("button", { name: "查看 Eagle" }).click();
+  const panel = page.getByRole("region", { name: "Pane 实时总结" });
+  await expect(panel).toContainText("实时摘要已经连通");
+  await expect(panel).toContainText("语义在线");
+  await expect(panel).toContainText("核验生产链路");
+  await expect(panel).toContainText("未独立验证");
+  await expect(page.getByText("此前完成协议设计")).toBeVisible();
+  await panel.evaluate((node) => node.setAttribute("data-continuity", "same"));
+  disconnected = true;
+  await page.waitForTimeout(6000);
+  await expect(panel).toContainText("Manager 断连");
+  await expect(panel).toHaveAttribute("data-continuity", "same");
+  await expect(panel).not.toContainText("已验证完成");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("Pane history groups UTC hours and expands every semantic record in that hour", async ({
+  page,
+}) => {
+  const now = new Date().toISOString();
+  const value = report("hour-ui", now);
+  const hour = `${now.slice(0, 13)}:00:00.000Z`;
+  const semantic = {
+    spaceId: "default:w1",
+    paneId: "w1:p1",
+    taskId: "task-1",
+    basis: [],
+    observedAt: now,
+    updatedAt: now,
+    checkedAt: now,
+    receivedAt: now,
+    sequence: 1,
+    evidence: [],
+    summary: {
+      task: "小时契约",
+      phase: "verify",
+      progress: "这个小时的最新进展",
+      outcomes: [],
+      blocker: null,
+      nextStep: "验证",
+      rationale: "实际证据",
+      evidenceRefs: [],
+    },
+  };
+  const entry = {
+    seq: 1,
+    hour,
+    contentHash: "a".repeat(64),
+    source: { managerId: "cherry", protocolVersion: 1 },
+    receivedAt: now,
+    value: semantic,
+  };
+  await page.route("**/api/**", (route) => {
+    const url = new URL(route.request().url());
+    return route.fulfill({
+      json: url.pathname.includes("semantic-hours")
+        ? url.searchParams.has("hour")
+          ? {
+              entries: [
+                entry,
+                {
+                  ...entry,
+                  seq: 2,
+                  value: {
+                    ...semantic,
+                    summary: {
+                      ...semantic.summary,
+                      progress: "该小时更早的语义记录",
+                    },
+                  },
+                },
+              ],
+              nextCursor: null,
+            }
+          : {
+              hours: [{ hour, count: 2, latest: entry }],
+              nextCursor: null,
+              retention: { days: 30, maxRecords: 10000 },
+            }
+        : url.pathname.includes("history")
+          ? { entries: [], nextCursor: null }
+          : {
+              now,
+              machines: [
+                {
+                  id: "mac-one",
+                  name: "Mac One",
+                  report: value,
+                  lastSeen: now,
+                  receivedAt: now,
+                  warning: null,
+                  summaries: [semantic],
+                  manager: { id: "cherry", lastSeen: now, sequence: 1 },
+                },
+              ],
+            },
+    });
+  });
+  await page.goto("/?machine=mac-one");
+  await page.getByRole("button", { name: "查看 Eagle" }).click();
+  await expect(page.getByText("UTC 小时时间线")).toBeVisible();
+  await page.getByRole("button", { name: /展开.*2 条/ }).click();
+  await expect(page.getByText("该小时更早的语义记录")).toBeVisible();
 });

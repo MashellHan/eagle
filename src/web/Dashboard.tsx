@@ -258,11 +258,13 @@ export function Topology({
   at,
   onPane,
   compact = false,
+  summaries = [],
 }: {
   space: Space;
   at: string;
   onPane?: (pane: Pane) => void;
   compact?: boolean;
+  summaries?: MachineView["summaries"];
 }) {
   return (
     <div className={`topology ${compact ? "topology-compact" : ""}`}>
@@ -309,7 +311,12 @@ export function Topology({
                     </span>
                     {!compact && (
                       <span className="line-clamp-2 whitespace-normal text-xs font-normal">
-                        {pane.task.title}
+                        {summaries.find(
+                          (s) =>
+                            s.spaceId === space.id &&
+                            s.paneId === pane.id &&
+                            s.taskId === pane.task.id,
+                        )?.summary.task ?? pane.task.title}
                       </span>
                     )}
                     <span className="pane-state">
@@ -394,6 +401,13 @@ function SpaceCard({
     )
     .sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
   const actual = stale ? "unverified" : state;
+  const semantic = machine.summaries
+    ?.filter(
+      (s) =>
+        s.spaceId === space.id &&
+        panes.some((p) => p.id === s.paneId && p.task.id === s.taskId),
+    )
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   return (
     <LayerCard
       padding="none"
@@ -430,15 +444,25 @@ function SpaceCard({
           </span>
         </div>
         <p className="space-objective" title={space.objective}>
-          {space.objective || "等待管理 Agent 补充当前目标"}
+          {semantic?.summary.task ||
+            space.objective ||
+            "等待管理 Agent 补充当前目标"}
         </p>
         <p
           className="space-summary"
-          title={stale ? undefined : latest?.summary || summary}
+          title={
+            stale
+              ? undefined
+              : semantic?.summary.progress || latest?.summary || summary
+          }
         >
           {stale
             ? "历史快照 · 等待重新采集"
-            : (latest?.summary || summary).replace(/[*#`]/g, "")}
+            : (
+                semantic?.summary.progress ||
+                latest?.summary ||
+                summary
+              ).replace(/[*#`]/g, "")}
         </p>
       </div>
       <div className="space-topology">
@@ -446,6 +470,7 @@ function SpaceCard({
           space={space}
           at={machine.report.capturedAt}
           compact
+          summaries={machine.summaries}
           onPane={onOpen}
         />
       </div>

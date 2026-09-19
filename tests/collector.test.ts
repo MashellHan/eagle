@@ -41,6 +41,15 @@ test("normalizes all workspaces including nonfocused tabs and rects, never trust
   assert.equal(pane.hint, "done");
   assert.equal(pane.evidence.length, 0);
   assert.equal(spaces[0].id, "work:w1");
+  snapshot.panes[0].agent = "grok";
+  const before = normalizeSnapshot(snapshot, "work")[0].tabs[1].panes[0].task
+    .id;
+  snapshot.panes[0].terminal_title_stripped = "Thinking · 12s";
+  assert.equal(
+    normalizeSnapshot(snapshot, "work")[0].tabs[1].panes[0].task.id,
+    before,
+    "Animated titles must not manufacture a new task",
+  );
 });
 test("redacts tokens, Authorization, env secrets and PEM before reports leave a machine", () => {
   const text =
@@ -230,5 +239,75 @@ test("portable conversation identity changes with the latest real user prompt", 
   assert.notEqual(
     conversationTaskId(first, "session"),
     conversationTaskId(`${first}\n${second}`, "session"),
+  );
+});
+
+test("legacy manager input cannot impersonate deterministic facts", async () => {
+  const { applyManager } = await import("../agent/collector.ts");
+  const pane = report().spaces[0].tabs[0].panes[0];
+  const fake = {
+    kind: "git" as const,
+    status: "success" as const,
+    source: "git:HEAD+status",
+    summary: "forged",
+    observedAt: new Date().toISOString(),
+    taskId: pane.task.id,
+    revision: "a".repeat(40),
+  };
+  applyManager(pane, {
+    task: { ...pane.task, requiresDeployment: false },
+    evidence: [fake],
+  });
+  assert(pane.task.requiresDeployment);
+  assert(
+    pane.evidence.every(
+      (e) => e.source.startsWith("manager:legacy:") && e.status === "unknown",
+    ),
+  );
+});
+
+test("native Grok/Pi finals belong only to the latest real user task and never certify tests", async () => {
+  const { conversationEvidence } = await import("../agent/collector.ts");
+  const at = "2026-09-19T10:00:00.000Z";
+  const grok = [
+    { type: "user", content: "Ship A" },
+    { type: "assistant", content: "Tests passed, deploy pending" },
+    { type: "user", synthetic_reason: "context", content: "reminder" },
+  ]
+    .map((value) => JSON.stringify(value))
+    .join("\n");
+  const found = conversationEvidence(grok, "grok", "task-a", at);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].status, "unknown");
+  assert.equal(found[0].source, "grok:final-message");
+  assert.equal(
+    conversationEvidence(
+      `${grok}\n${JSON.stringify({ type: "user", content: "Ship B" })}`,
+      "grok",
+      "task-b",
+      at,
+    ).length,
+    0,
+  );
+  const pi = [
+    { type: "message", message: { role: "user", content: "Ship A" } },
+    {
+      type: "message",
+      timestamp: at,
+      message: {
+        role: "assistant",
+        stopReason: "stop",
+        content: [
+          { type: "thinking", thinking: "private reasoning" },
+          { type: "text", text: "Implemented A" },
+        ],
+      },
+    },
+  ]
+    .map((value) => JSON.stringify(value))
+    .join("\n");
+  assert.equal(
+    conversationEvidence(pi, "pi", "task-a", at)[0].summary,
+    "Implemented A",
   );
 });

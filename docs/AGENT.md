@@ -18,28 +18,28 @@ Create `~/.config/eagle/agent.json`, directory mode 0700 and file mode 0600:
 }
 ```
 
-Each machine has one SQLite-backed Durable Object selected by its `machineId`; the agent only posts reports and heartbeats to the authenticated Worker. No object ID or database credential is needed on the machine. The next valid full snapshot replaces the prior current state. A success receipt confirms persistence in DO, not insertion into D1. Hourly summaries and new history are deferred until AI integration.
+Each machine has one SQLite-backed Durable Object selected by its `machineId`; the agent only posts reports and heartbeats to the authenticated Worker. No object ID or database credential is needed on the machine. The next valid full snapshot replaces the prior current state. A success receipt confirms persistence in DO, not insertion into D1. Semantic Pane changes are independently persisted in the same machine DO, grouped by UTC observation hour, and replicated to D1. Whole-report history and hourly AI aggregation remain paused.
 
 Open **Connect** on the Eagle website. Add a machine ID, display name and optional watched ports, then copy the generated prompt to Cherry or another management agent on that machine. Connect also supports renaming, rotating credentials, disabling and re-enabling machines. Token-bearing prompts exist only in browser memory until dismissed or navigation; the visible preview hides the token. Save the credential securely before leaving. Rotation invalidates the previous token immediately; re-enabling always issues a new token.
 
 The platform signs machine-scoped tokens using the `AGENT_SIGNING_KEY` Worker secret (at least 32 random characters). Raw tokens and the signing key never enter a database. Each machine DO stores only its configuration, public credential ID, enabled state and expiry. Tokens expire after one year. The directory DO indexes machine IDs only; ingestion goes directly to the corresponding machine DO. The old `AGENT_TOKENS` secret remains compatible; Connect can rotate a legacy machine to signed credentials or disable it. Removing a legacy secret alone does not disable a machine already migrated to signed credentials; use Connect.
 
-Install `@nocoo/eagle-agent@0.3.0` from npm. Check `node --version`, `npm --version` and `herdr --version`: Node 24+ and a running Herdr installation are required. Node downloads: https://nodejs.org/en/download. The installed Agent needs no Eagle checkout or TypeScript compiler.
+Install `@nocoo/eagle-agent@0.4.0` from npm. Check `node --version`, `npm --version` and `herdr --version`: Node 24+ and a running Herdr installation are required. Node downloads: https://nodejs.org/en/download. The installed Agent needs no Eagle checkout or TypeScript compiler.
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org
 ```
 
 If npm is unreachable, **Tencent Cloud is the preferred mirror**:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.3.0 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
 This changes the registry for this command only. A new version may not have synchronized yet (`404` / `ETARGET`); retry later or use the official registry when reachable, keeping the pinned version. Public installation needs no npm login. Never send an Eagle token to npm or a mirror, or disable HTTPS certificate verification.
 
 ```sh
-eagle-agent --version # expected: 0.3.0
+eagle-agent --version # expected: 0.4.0
 eagle-agent --help
 ```
 
@@ -82,7 +82,7 @@ Restart the collector after editing its configuration. For an upgrade, deploy th
 }
 ```
 
-First collect the live report and copy its pane.task.id into the manager entry. For Codex it is derived from the native session/turn; Grok and Pi use the latest native user prompt when available. A manager cannot replace this identity: stale IDs are ignored. Unsupported harnesses fall back to the session/title identity and require the manager to verify task continuity. Retain actual evidence timestamps; never renew old tests merely because the collector ran. Test and deployment receipts include the **tested/deployed full Git SHA**. `requiresDeployment:false` is valid for tasks that actually do not require publication. A terminal's final answer alone remains an unverified claim until the independent receipts agree.
+First collect the live report and copy its pane.task.id into the manager entry. For Codex it is derived from the native session/turn; Grok and Pi use the latest native user prompt when available. A manager cannot replace this identity: stale IDs are ignored. Unsupported harnesses fall back to terminal/session identity and require the manager to verify task continuity. Retain actual evidence timestamps; never renew old tests merely because the collector ran. Test and deployment receipts include the **tested/deployed full Git SHA**. Legacy Manager evidence is now forced to unknown status and a manager:legacy source; it cannot lower the daemon requiresDeployment requirement or masquerade as Git/test/deployment facts. A terminal's final answer alone remains an unverified claim until the independent receipts agree.
 
 Prefer a short human outcome: what changed, what remains, what needs a decision. Do not send entire scrollback, internal reasoning, environment dumps, or credentials. The UI defaults to this summary and allows inspecting evidence underneath.
 
@@ -102,3 +102,7 @@ launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.hexly.eagle-agent.plist
 These commands are for this machine's user ID 501. Other machines need their own token, identity, checkout path and service configuration. A valid success acknowledgement is required before a queued report is removed; malformed responses preserve the report for an idempotent retry.
 
 On this Mac, launchd follows the existing macOS HTTPS proxy through `HTTPS_PROXY` and Node’s `NODE_USE_ENV_PROXY=1`. Other machines do not require a proxy. This avoids the OS resolver retaining a negative answer after a new reporting hostname is provisioned.
+
+## Live semantic Manager
+
+The maintained integration is `eagle-agent manager-once` / `manager-watch`, not the legacy evidence file. Run Manager separately from the deterministic `watch` service. See [PANE-SUMMARIES.md](PANE-SUMMARIES.md) for complete v1 protocols, independent DO streams, UTC hourly API/indexes, retention, conflict recovery and Cherry Cron setup. The project [eagle-report Skill](../skills/eagle-report/SKILL.md) is reusable on every machine.

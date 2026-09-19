@@ -61,6 +61,7 @@ import {
   Status,
   Topology,
 } from "./Dashboard.tsx";
+import { PaneSummaryView } from "./PaneSummary.tsx";
 
 declare const __APP_VERSION__: string;
 function AccessGate() {
@@ -249,10 +250,17 @@ function SpaceDetail({
             <Topology
               space={space}
               at={machine.report.capturedAt}
+              summaries={machine.summaries}
               onPane={(p) => setPaneId(p.id)}
             />
             {pane && assessment && (
               <>
+                <PaneSummaryView
+                  key={`${space.id}/${pane.id}`}
+                  machine={machine}
+                  space={space}
+                  pane={pane}
+                />
                 <SectionRule title={`${pane.agent || "终端"} · ${pane.id}`}>
                   <LayerCard>
                     <div className="flex flex-wrap items-center justify-between gap-3">

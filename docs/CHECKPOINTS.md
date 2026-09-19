@@ -125,3 +125,24 @@ serving and the first catalogue-derived production Cron observation.
 - SQL 复核本地 D1 仍为 83 条，最近写入仍为 16:36:50.785，新上报没有写入 D1。新增提示词检查先失败再通过；45 项单元/集成/安装测试、26 项浏览器测试、类型、Biome 和构建全部通过。
 - 本轮只发布 npm Agent。网站改动继续在 https://eagle.dev.hexly.ai/connect 预览，Worker 未部署，生产采集服务未更新。
 - 首轮 GitHub CI 揭示移动端刷新测试把尚未结束的 2px 悬停动画误判为布局变化；测试改为先把指针移到刷新按钮、等待卡片动画完成再测量，保留原来的严格坐标和 DOM 连续性断言。桌面/手机该用例各重复 5 次均通过，完整本地门禁再次通过；发布包内容未变化。
+
+## 2026-09-19 17:58 +08 — Pane 语义通道实施检查点
+
+- 本机真实 Caddy API 确认 11 Spaces / 21 Panes，最后快照 17:58:00；daemon → Bearer → DO 的持续链路正常。
+- summary v1、task/evidence 绑定、sequence 幂等与独立 D1 摘要表已完成首轮 Miniflare 测试；采集器旧 manager 文件不能再冒充 Git/测试/部署证据。旧报告历史仍暂停写入。
+- 真实语义链路尚未接通：本地 API summaries 为 0，Migration 尚未应用、Manager CLI 和页面展示正在实现。本检查点不算语义能力验收。
+- 下一跳：完成持续 Manager、处理总结期间事实变化、接入 Pane 摘要与时间线，再用本机所有 live Pane 验证。
+
+## 2026-09-19 18:13 +08 — 独立语义流与 UTC 小时契约
+
+- 真实 Herdr 库存已变化为 9 Spaces / 18 live Panes，0.4.0 daemon 于 18:12:52 经 Bearer 成功更新本地 DO。先前 Cherry 已实际覆盖全部 18 个 live Pane，并出现 interpreted=0 的纯核对轮次，未每 30 秒调用模型。
+- 按用户补充将语义历史改为 DO 独立 SQLite 记录，按 observedAt 的 UTC 小时桶分组；D1 仅作不可变副本。小时 latest/all 查询、迟到旧任务不覆盖当前任务、跨 DO 驱逐恢复、幂等与桌面/手机展开测试通过。
+- 重构后的本地 DO 语义表目前为空；旧开发态总结已在 D1，新的真实 Cherry 验收尚在进行。Review 发现 cache 与 DO 缺失状态可能持续 409，已先复现再修复为缓存补传；同时修复新任务复用旧 previous 和 cooldown 的问题。
+- 当前下一跳：用更新后的持续 Manager 重新填满全部 live Pane，验证 DO 小时记录→页面→D1副本，再进行完整 Review、CI 和生产发布。每小时 AI 聚合保持暂停。
+
+## 2026-09-19 18:21 +08 — 全 Pane 本地验收与发布门禁
+
+- 18:16 真实 Caddy 验收逐一打开 9 Spaces / 18 live Panes，18 个均有 Cherry 当前任务语义总结；每个 Pane 的 UTC 小时分组、latest/all、来源与 64 位内容哈希均核对成功。桌面/手机无溢出或脚本错误，自动刷新保留同一总结 DOM。
+- 同轮原有 verify-live.ts 验证完整采集、Bearer、DO、资源/端口、幂等、自动刷新和历史读取全部通过。新语义模型有 interpreted=0 的心跳轮次；真实变化后继续产生多条小时记录。
+- Grok 只读 Review 的缓存补传、旧任务 previous、409 心跳冲突与证据保留问题均已修复；语义存储改为独立 SQLite 表和已知事实索引。补充测试验证迟到观察不能回滚当前指针、latest 查询拒绝 cursor、观察超出保留期拒绝，以及含分隔符的 ID 不会串绑。
+- 当前 55 项单元/集成测试、30 项浏览器测试、类型、Biome 和构建通过。生产 D1 0002 已应用，Connect 签名密钥已写入 Worker 安全配置，真实 Access 会话有效。网站与生产 Manager 的正式切换即将进行；npm 0.4.0 待发布认证。

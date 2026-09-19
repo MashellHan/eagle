@@ -1,6 +1,13 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  open,
+  readFile,
+  rename,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -47,13 +54,14 @@ type RawPane = {
   workspace_id: string;
   tab_id: string;
   pane_id: string;
+  terminal_id?: string;
   agent?: string;
   agent_status?: string;
   terminal_title_stripped?: string;
   title?: string;
   cwd?: string;
   foreground_cwd?: string;
-  agent_session?: { value: string; kind: string };
+  agent_session?: { value: string; kind: string; agent?: string };
 };
 export type Snapshot = {
   workspaces: { workspace_id: string; label: string }[];
@@ -111,7 +119,7 @@ export function normalizeSnapshot(
               task: {
                 id: createHash("sha256")
                   .update(
-                    `${session}:${p.pane_id}:${p.agent_session?.value || "shell"}:${p.agent === "codex" ? "" : title}`,
+                    `${session}:${p.pane_id}:${p.agent || "shell"}:${p.agent_session?.agent && p.agent_session.agent !== p.agent ? (p.terminal_id ?? "") : (p.agent_session?.value ?? p.terminal_id ?? "")}`,
                   )
                   .digest("hex")
                   .slice(0, 32),
@@ -270,6 +278,9 @@ const ManagerSchema = z.record(
   }),
 );
 export type AgentConfig = {
+  manager?: Partial<
+    import("zod").infer<typeof import("./manager.ts").ManagerConfigSchema>
+  >;
   url: string;
   token: string;
   machineId: string;
@@ -286,8 +297,14 @@ export function applyManager(
   managed: { task: Pane["task"]; evidence: Evidence[] },
 ): boolean {
   if (managed.task.id !== pane.task.id) return false;
-  pane.task = managed.task;
-  pane.evidence.push(...managed.evidence);
+  pane.task.title = managed.task.title;
+  pane.evidence.push(
+    ...managed.evidence.map((e) => ({
+      ...e,
+      status: "unknown" as const,
+      source: `manager:legacy:${e.source}`.slice(0, 240),
+    })),
+  );
   return true;
 }
 export function preserveStopped(
@@ -327,6 +344,65 @@ export function conversationTaskId(
         .digest("hex")
         .slice(0, 32)
     : undefined;
+}
+
+export function conversationEvidence(
+  text: string,
+  agent: "grok" | "pi",
+  taskId: string,
+  modifiedAt: string,
+): Evidence[] {
+  let final: Evidence | undefined;
+  for (const line of text.split("\n")) {
+    try {
+      const event = JSON.parse(line);
+      const message = event.type === "message" ? event.message : event;
+      if (
+        (event.type === "user" && !event.synthetic_reason) ||
+        (event.type === "message" && message.role === "user")
+      )
+        final = undefined;
+      if (!(event.type === "assistant" || message?.role === "assistant"))
+        continue;
+      if (
+        message.tool_calls?.length ||
+        (message.stopReason && message.stopReason !== "stop")
+      )
+        continue;
+      if (
+        Array.isArray(message.content) &&
+        message.content.some(
+          (c: { type: string }) =>
+            c.type === "toolCall" || c.type === "tool_use",
+        )
+      )
+        continue;
+      const content =
+        typeof message.content === "string"
+          ? message.content
+          : Array.isArray(message.content)
+            ? message.content
+                .filter((c: { type: string }) => c.type === "text")
+                .map((c: { text: string }) => c.text)
+                .join("\n")
+            : "";
+      if (!content.trim()) continue;
+      const timestamp = Date.parse(event.timestamp ?? message.timestamp);
+      final = {
+        kind: "summary",
+        status: "unknown",
+        summary: content.slice(-2000),
+        source: `${agent}:final-message`,
+        taskId,
+        observedAt: Number.isFinite(timestamp)
+          ? new Date(timestamp).toISOString()
+          : modifiedAt,
+      };
+    } catch {
+      /* A bounded native transcript can begin mid-line. */
+    }
+  }
+  return final ? [final] : [];
 }
 
 export async function collect(config: AgentConfig): Promise<Report> {
@@ -390,7 +466,9 @@ export async function collect(config: AgentConfig): Promise<Report> {
           const original = raw.panes.find((p) => p.pane_id === pane.id);
           const managed = manager[`${session.name}:${pane.id}`];
           const sessionId =
-            original?.agent_session?.kind === "id"
+            original?.agent_session?.kind === "id" &&
+            (!original.agent_session.agent ||
+              original.agent_session.agent === pane.agent)
               ? original.agent_session.value
               : undefined;
           if (pane.agent === "codex" && sessionId) {
@@ -447,7 +525,11 @@ export async function collect(config: AgentConfig): Promise<Report> {
           }
           if (pane.agent === "grok" || pane.agent === "pi") {
             try {
-              const identity = original?.agent_session?.value;
+              const identity =
+                original?.agent_session?.agent &&
+                original.agent_session.agent !== pane.agent
+                  ? undefined
+                  : original?.agent_session?.value;
               const cwd = original?.cwd;
               const path =
                 pane.agent === "pi"
@@ -462,8 +544,17 @@ export async function collect(config: AgentConfig): Promise<Report> {
                       )
                     : undefined;
               if (path && identity) {
-                const taskId = conversationTaskId(await tail(path), identity);
+                const transcript = await tail(path);
+                const taskId = conversationTaskId(transcript, identity);
                 if (taskId) pane.task.id = taskId;
+                pane.evidence.push(
+                  ...conversationEvidence(
+                    transcript,
+                    pane.agent,
+                    pane.task.id,
+                    (await stat(path)).mtime.toISOString(),
+                  ),
+                );
               }
             } catch {
               /* Portable manager evidence remains available when native history is absent. */

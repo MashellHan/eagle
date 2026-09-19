@@ -107,6 +107,12 @@ before(async () => {
   await db.exec(
     readFileSync("migrations/0001_initial.sql", "utf8").replace(/\n/g, " "),
   );
+  await db.exec(
+    readFileSync("migrations/0002_pane_summaries.sql", "utf8").replace(
+      /\n/g,
+      " ",
+    ),
+  );
   const legacy = report("legacy-import");
   legacy.machine.id = "retired";
   await db
@@ -796,5 +802,429 @@ test("credentials embedded in reports are rejected; missing legacy tables cannot
   assert.equal(
     (await request("/api/v1/history", undefined, viewer)).status,
     503,
+  );
+});
+
+test("semantic summaries bind current tasks and facts, dedupe changes, preserve history, and reject fabricated evidence", async () => {
+  const { evidenceKeys } = await import("../src/shared/summaries.ts");
+  const current = currentReport("semantic-base", 10000);
+  const pane = current.spaces[0].tabs[0].panes[0];
+  pane.evidence = [
+    {
+      kind: "git",
+      status: "success",
+      source: "git:HEAD+status",
+      observedAt: current.capturedAt,
+      taskId: pane.task.id,
+      revision: "a".repeat(40),
+      summary: "main clean",
+    },
+  ];
+  assert.equal((await request("/api/v1/reports", current)).status, 201);
+  const basis = Object.keys(await evidenceKeys(pane.evidence));
+  const entry = {
+    spaceId: current.spaces[0].id,
+    paneId: pane.id,
+    taskId: pane.task.id,
+    basis,
+    observedAt: new Date().toISOString(),
+    summary: {
+      task: "实现实时总结",
+      phase: "verify",
+      progress: "正在核对实际数据",
+      outcomes: [{ kind: "commit", text: "main 已提交", evidenceRefs: basis }],
+      blocker: null,
+      nextStep: "生产验收",
+      rationale: "Git 可见，测试与部署待核对",
+      evidenceRefs: basis,
+    },
+  };
+  const batch = {
+    protocolVersion: 1,
+    machineId: current.machine.id,
+    managerId: "cherry",
+    sequence: 1,
+    sentAt: new Date().toISOString(),
+    updates: [entry],
+    checks: [],
+  };
+  assert.equal(
+    (await request("/api/v1/summaries", batch, "wrong")).status,
+    401,
+  );
+  assert.equal((await request("/api/v1/summaries", batch)).status, 201);
+  assert.equal((await request("/api/v1/summaries", batch)).status, 200);
+  const db = await mf.getD1Database("DB");
+  assert.equal(
+    await db.prepare("SELECT count(*) n FROM pane_summaries").first("n"),
+    1,
+  );
+  assert.equal(
+    (
+      await request("/api/v1/summaries", {
+        ...batch,
+        updates: [
+          { ...entry, summary: { ...entry.summary, progress: "conflict" } },
+        ],
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await request("/api/v1/summaries", {
+        ...batch,
+        sequence: 2,
+        updates: [{ ...entry, observedAt: new Date().toISOString() }],
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    await db.prepare("SELECT count(*) n FROM pane_summaries").first("n"),
+    1,
+  );
+  assert.equal(
+    (
+      await request("/api/v1/summaries", {
+        ...batch,
+        sequence: 3,
+        updates: [
+          {
+            ...entry,
+            summary: { ...entry.summary, evidenceRefs: ["b".repeat(64)] },
+          },
+        ],
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await request("/api/v1/summaries", {
+        ...batch,
+        sequence: 3,
+        updates: [{ ...entry, taskId: "wrong-task" }],
+      })
+    ).status,
+    409,
+  );
+  const changed = {
+    ...entry,
+    observedAt: new Date().toISOString(),
+    summary: { ...entry.summary, progress: "完成核对，等待发布" },
+  };
+  assert.equal(
+    (
+      await request("/api/v1/summaries", {
+        ...batch,
+        sequence: 3,
+        updates: [changed],
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    await db.prepare("SELECT count(*) n FROM pane_summaries").first("n"),
+    2,
+  );
+  const { summary, ...check } = {
+    ...entry,
+    observedAt: new Date().toISOString(),
+  };
+  assert.equal(
+    (
+      await request("/api/v1/summaries", {
+        ...batch,
+        sequence: 4,
+        updates: [],
+        checks: [check],
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    await db.prepare("SELECT count(*) n FROM pane_summaries").first("n"),
+    2,
+  );
+  assert.equal(
+    (
+      await request("/api/v1/summaries", {
+        ...batch,
+        managerId: "other",
+        sequence: 5,
+      })
+    ).status,
+    409,
+  );
+  const own = await request("/api/v1/agent-state");
+  assert.equal(own.status, 200);
+  const self = (await own.json()) as {
+    manager: { sequence: number };
+    summaries: { summary: { progress: string } }[];
+  };
+  assert.equal(self.manager.sequence, 4);
+  assert.equal(self.summaries[0].summary.progress, changed.summary.progress);
+  const history = await request(
+    "/api/v1/summary-history?machine=mac-one&space=default:w1&pane=w1:p1",
+    undefined,
+    viewer,
+  );
+  assert.equal(history.status, 200);
+  assert.equal(
+    ((await history.json()) as { entries: unknown[] }).entries.length,
+    2,
+  );
+  await mf.unsafeEvictDurableObject("eagle", "MachineState", {
+    name: "mac-one",
+  });
+  assert.equal(
+    (
+      await request("/api/v1/summaries", {
+        ...batch,
+        sequence: 4,
+        updates: [],
+        checks: [check],
+      })
+    ).status,
+    200,
+  );
+});
+
+test("summaries accept recent acknowledged evidence during active work, while checks cannot refresh old facts; outbox survives D1 outage", async () => {
+  const { evidenceKeys } = await import("../src/shared/summaries.ts");
+  const base = currentReport("semantic-moving", 20000);
+  const pane = base.spaces[0].tabs[0].panes[0];
+  pane.evidence = [
+    {
+      kind: "git",
+      status: "success",
+      source: "git:HEAD+status",
+      observedAt: base.capturedAt,
+      taskId: pane.task.id,
+      revision: "a".repeat(40),
+      summary: "main clean",
+    },
+  ];
+  assert.equal((await request("/api/v1/reports", base)).status, 201);
+  const entry = {
+    spaceId: base.spaces[0].id,
+    paneId: pane.id,
+    taskId: pane.task.id,
+    basis: Object.keys(await evidenceKeys(pane.evidence)),
+    observedAt: new Date().toISOString(),
+    summary: {
+      task: "持续变化任务",
+      phase: "implement",
+      progress: "已完成第一步，后续仍在进行",
+      outcomes: [],
+      blocker: null,
+      nextStep: "继续验证",
+      rationale: "基于分析开始时的实际证据",
+      evidenceRefs: [],
+    },
+  };
+  const next = structuredClone(base);
+  next.reportId = "semantic-moving-next";
+  next.capturedAt = new Date(Date.parse(base.capturedAt) + 1).toISOString();
+  next.spaces[0].tabs[0].panes[0].evidence[0].revision = "b".repeat(40);
+  assert.equal((await request("/api/v1/reports", next)).status, 201);
+  const batch = {
+    protocolVersion: 1,
+    machineId: "mac-one",
+    managerId: "cherry",
+    sequence: 5,
+    sentAt: new Date().toISOString(),
+    updates: [entry],
+    checks: [],
+  };
+  const db = await mf.getD1Database("DB");
+  await db.exec("ALTER TABLE pane_summaries RENAME TO archive_unavailable");
+  const response = await request("/api/v1/summaries", batch);
+  assert.equal(response.status, 201);
+  assert.equal(
+    ((await response.json()) as { archivePending: number }).archivePending,
+    1,
+  );
+  const { summary, ...check } = {
+    ...entry,
+    observedAt: new Date().toISOString(),
+  };
+  assert.equal(
+    (
+      await request("/api/v1/summaries", {
+        ...batch,
+        sequence: 6,
+        updates: [],
+        checks: [check],
+      })
+    ).status,
+    409,
+  );
+  await db.exec("ALTER TABLE archive_unavailable RENAME TO pane_summaries");
+  await mf.unsafeEvictDurableObject("eagle", "MachineState", {
+    name: "mac-one",
+  });
+  assert.equal((await request("/api/v1/summaries", batch)).status, 200);
+  assert.equal(
+    await db
+      .prepare(
+        "SELECT count(*) n FROM pane_summaries WHERE task_id=? AND payload LIKE ?",
+      )
+      .bind("task-1", "%已完成第一步%")
+      .first("n"),
+    1,
+  );
+});
+
+test("DO independently retains semantic records in UTC hours with latest/all queries, source and hashes", async () => {
+  const now = new Date();
+  const previousHour = new Date(now.getTime() - 3600000).toISOString();
+  const entry = {
+    spaceId: "default:w1",
+    paneId: "w1:p1",
+    taskId: "older-task",
+    basis: [],
+    observedAt: previousHour,
+    summary: {
+      task: "过去的任务",
+      phase: "verify",
+      progress: "小时内首次核对",
+      outcomes: [],
+      blocker: null,
+      nextStep: "继续",
+      rationale: "仅语义描述，无事实凭据",
+      evidenceRefs: [],
+    },
+  };
+  const batch = {
+    protocolVersion: 1,
+    machineId: "mac-one",
+    managerId: "cherry",
+    sequence: 6,
+    sentAt: now.toISOString(),
+    updates: [entry],
+    checks: [],
+  };
+  assert.equal(
+    (await request("/api/v1/summaries", batch)).status,
+    201,
+    "Delayed independent semantic report must not require an aligned current snapshot",
+  );
+  const second = {
+    ...batch,
+    sequence: 7,
+    updates: [
+      {
+        ...entry,
+        observedAt: new Date(Date.parse(previousHour) + 1).toISOString(),
+        summary: { ...entry.summary, progress: "同一小时第二次实质变化" },
+      },
+    ],
+  };
+  assert.equal((await request("/api/v1/summaries", second)).status, 201);
+  assert.equal((await request("/api/v1/summaries", second)).status, 200);
+  const hour = `${previousHour.slice(0, 13)}:00:00.000Z`;
+  const query =
+    "/api/v1/semantic-hours?machine=mac-one&space=default:w1&pane=w1:p1";
+  const get = async (path: string) =>
+    (await request(path, undefined, viewer)).json() as Promise<{
+      hours: {
+        hour: string;
+        count: number;
+        latest: {
+          contentHash: string;
+          source: { managerId: string };
+          value: { sequence: number; taskId: string };
+        };
+      }[];
+      entries: {
+        contentHash: string;
+        hour: string;
+        value: { sequence: number };
+      }[];
+    }>;
+  const grouped = await get(query);
+  const bucket = grouped.hours.find((h) => h.hour === hour);
+  assert(bucket);
+  assert.equal(bucket.count, 2);
+  assert.equal(bucket.latest.value.sequence, 7);
+  assert.equal(bucket.latest.source.managerId, "cherry");
+  assert.match(bucket.latest.contentHash, /^[a-f0-9]{64}$/);
+  const all = await get(`${query}&hour=${encodeURIComponent(hour)}&mode=all`);
+  assert.equal(all.entries.length, 2);
+  assert(all.entries.every((e) => e.hour === hour));
+  const latest = await get(
+    `${query}&hour=${encodeURIComponent(hour)}&mode=latest`,
+  );
+  assert.equal(latest.entries.length, 1);
+  assert.equal(latest.entries[0].value.sequence, 7);
+  const own = (await (await request("/api/v1/agent-state")).json()) as {
+    summaries: { taskId: string }[];
+  };
+  assert(
+    own.summaries.every((s) => s.taskId !== "older-task"),
+    "Delayed task cannot replace current interpretation",
+  );
+  await mf.unsafeEvictDurableObject("eagle", "MachineState", {
+    name: "mac-one",
+  });
+  assert.equal(
+    (await get(`${query}&hour=${encodeURIComponent(hour)}&mode=all`)).entries
+      .length,
+    2,
+  );
+  assert.equal((await request(query, undefined, "wrong")).status, 401);
+  assert.equal(
+    (
+      await request(
+        `${query}&hour=${encodeURIComponent(hour)}&mode=latest&before=2`,
+        undefined,
+        viewer,
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request("/api/v1/summaries", {
+        ...batch,
+        sequence: 8,
+        updates: [
+          {
+            ...entry,
+            observedAt: new Date(Date.now() - 31 * 86400000).toISOString(),
+          },
+        ],
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await request("/api/v1/summaries", {
+        ...batch,
+        sequence: 8,
+        updates: [
+          {
+            ...entry,
+            observedAt: new Date(Date.parse(previousHour) - 1).toISOString(),
+            summary: { ...entry.summary, progress: "迟到的更早观察" },
+          },
+        ],
+      })
+    ).status,
+    201,
+  );
+  const active = currentReport("activate-historical-task", 30000);
+  active.spaces[0].tabs[0].panes[0].task.id = "older-task";
+  assert.equal((await request("/api/v1/reports", active)).status, 201);
+  const restored = (await (await request("/api/v1/agent-state")).json()) as {
+    summaries: { sequence: number }[];
+  };
+  assert.equal(
+    restored.summaries[0].sequence,
+    7,
+    "A later upload of an older observation must never roll back the per-task latest pointer",
   );
 });

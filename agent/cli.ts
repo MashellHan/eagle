@@ -18,6 +18,7 @@ import {
   collect,
   sendReport,
 } from "./collector.ts";
+import { ManagerConfigSchema, managerTick } from "./manager.ts";
 import { drainSpool } from "./spool.ts";
 import { AGENT_VERSION } from "./version.ts";
 
@@ -31,6 +32,7 @@ const ConfigSchema = z.strictObject({
   codexDir: z.string().optional(),
   spoolDir: z.string().optional(),
   watchPorts: WatchPortsSchema.default([]),
+  manager: ManagerConfigSchema.optional(),
 });
 const path =
   process.env.EAGLE_CONFIG || join(homedir(), ".config/eagle/agent.json");
@@ -100,7 +102,7 @@ async function main() {
   const action = process.argv[2] || "once";
   if (action === "--help" || action === "help") {
     console.log(
-      "Eagle Agent\nCommands: init (JSON on stdin), collect <file>, upload <file>, once, watch, heartbeat\nConfig: EAGLE_CONFIG or ~/.config/eagle/agent.json (0600). Node.js 24+ and Herdr required.",
+      "Eagle Agent\nCommands: init (JSON on stdin), collect <file>, upload <file>, once, watch, heartbeat, manager-once, manager-watch\nConfig: EAGLE_CONFIG or ~/.config/eagle/agent.json (0600). Node.js 24+ and Herdr required. Manager uses Cherry chat with no tools by default.",
     );
     return;
   }
@@ -168,7 +170,16 @@ async function main() {
     await heartbeat(config);
     console.log("Heartbeat accepted");
   } else if (action === "once") await cycle(config);
-  else if (action === "watch") {
+  else if (action === "manager-once")
+    console.log(
+      JSON.stringify(
+        await managerTick(
+          config,
+          join(dirname(path), `manager-${config.machineId}`),
+        ),
+      ),
+    );
+  else if (action === "watch" || action === "manager-watch") {
     let running = true;
     process.on("SIGTERM", () => {
       running = false;
@@ -179,11 +190,23 @@ async function main() {
     while (running) {
       const start = Date.now();
       try {
-        await cycle(config);
+        if (action === "manager-watch")
+          console.log(
+            JSON.stringify({
+              event: "manager_reported",
+              at: new Date().toISOString(),
+              ...(await managerTick(
+                config,
+                join(dirname(path), `manager-${config.machineId}`),
+              )),
+            }),
+          );
+        else await cycle(config);
       } catch (e) {
         console.error(
           JSON.stringify({
-            event: "report_failed",
+            event:
+              action === "manager-watch" ? "manager_failed" : "report_failed",
             message:
               e instanceof z.ZodError
                 ? "Invalid config or report schema"
@@ -206,7 +229,7 @@ async function main() {
     }
   } else
     throw new Error(
-      "Commands: collect <file>, upload <file>, once, watch, heartbeat",
+      "Commands: collect <file>, upload <file>, once, watch, heartbeat, manager-once, manager-watch",
     );
 }
 void main().catch((e: unknown) => {

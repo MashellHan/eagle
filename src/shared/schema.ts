@@ -179,6 +179,8 @@ export const STATE_LABEL: Record<State, string> = {
   unverified: "待核实",
 };
 export type MachineView = {
+  summaries?: import("./summaries.ts").PaneSummary[];
+  manager?: import("./summaries.ts").ManagerState | null;
   id: string;
   name: string;
   lastSeen: string;
