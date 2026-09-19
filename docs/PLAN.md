@@ -8,7 +8,7 @@ Owner: Codex integrates on main; Grok/Pi in this Space provide read-only researc
 - Transactional, content-checked idempotency; stale delivery cannot rewind current state. Independent heartbeat and stale-machine indicator.
 - Executive overview, topology, pane evidence drilldown, changes and paginated history. Browser refresh every five seconds with failure and freshness visibility.
 - Node agent with durable retry spool and reusable Skill, secrets in a 0600 config. No arbitrary commands from remote reports.
-- Local HTTPS eagle.dev.hexly.ai → Vite 6001 → Worker 36001. Tests use 16001/26001. Publish eagle.hexly.ai.
+- Local HTTPS eagle.dev.hexly.ai → Vite 7053 → Worker 37053. Tests use 17053/27053. Publish eagle.hexly.ai.
 
 ## Test-first slices
 

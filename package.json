@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 6001 --strictPort",
-    "dev:api": "wrangler dev --port 36001 --inspector-port 46001",
+    "dev": "vite --host 127.0.0.1 --port 7053 --strictPort",
+    "dev:api": "wrangler dev --port 37053 --inspector-port 38053",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",

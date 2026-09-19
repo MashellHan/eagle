@@ -10,11 +10,11 @@ export default defineConfig(({ mode }) => ({
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   server: {
     host: "127.0.0.1",
-    port: 6001,
+    port: 7053,
     strictPort: true,
     allowedHosts: ["eagle.dev.hexly.ai"],
     proxy: {
-      "/api": { target: "http://127.0.0.1:36001", changeOrigin: false },
+      "/api": { target: "http://127.0.0.1:37053", changeOrigin: false },
     },
   },
 }));

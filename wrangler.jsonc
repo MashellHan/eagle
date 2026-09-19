@@ -37,8 +37,8 @@
   "dev": {
     "ip": "127.0.0.1",
     "host": "eagle.dev.hexly.ai",
-    "port": 36001,
-    "inspector_port": 46001
+    "port": 37053,
+    "inspector_port": 38053
   },
   "vars": {
     "BUILD_REVISION": "development",
