@@ -1,3 +1,4 @@
+import { version } from "../../package.json";
 import { changesBetween } from "../shared/assessment.ts";
 import {
   HeartbeatSchema,
@@ -157,6 +158,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     return json({
       status: "ok",
       service: "eagle",
+      version,
       schemaVersion: 1,
       revision: env.BUILD_REVISION,
     });

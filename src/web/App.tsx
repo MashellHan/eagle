@@ -19,7 +19,9 @@ import {
   SidebarNav,
   SidebarPartition,
   SidebarProvider,
-  ThemeToggle,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from "@nocoo/basalt";
 import { AppHeader } from "@nocoo/basalt/components/app-header";
 import {
@@ -33,7 +35,6 @@ import { SectionRule } from "@nocoo/basalt/components/section-rule";
 import { SensitiveInput } from "@nocoo/basalt/components/sensitive-input";
 import {
   Activity,
-  Bird,
   ChevronLeft,
   History as HistoryIcon,
   LayoutDashboard,
@@ -55,6 +56,7 @@ import {
   type State,
 } from "../shared/schema.ts";
 import { AuthError, age, api, time } from "./api.ts";
+import { FamilyActions, Mark } from "./Brand.tsx";
 
 declare const __APP_VERSION__: string;
 const tones = {
@@ -70,17 +72,18 @@ function Status({ state }: { state: State }) {
     </Badge>
   );
 }
-function Mark() {
-  return (
-    <Bird aria-hidden="true" strokeWidth={1.5} className="h-5 w-5 shrink-0" />
-  );
-}
 
 function Login({ onSuccess }: { onSuccess: () => void }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   return (
     <main className="relative flex min-h-screen items-center justify-center bg-basalt-background p-4">
+      <nav
+        aria-label="项目链接"
+        className="absolute right-4 top-4 flex items-center gap-1"
+      >
+        <FamilyActions />
+      </nav>
       <div
         data-basalt-surface-root=""
         className="relative flex aspect-[54/86] w-72 flex-col overflow-hidden rounded-2xl bg-basalt-card shadow-xl ring-1 ring-basalt-border"
@@ -94,8 +97,8 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
           <span className="text-[10px] tracking-widest">PRIVATE</span>
         </div>
         <div className="flex flex-1 flex-col px-6 pt-7 pb-14">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-basalt-secondary">
-            <Bird size={40} strokeWidth={1.5} />
+          <div className="mx-auto flex h-20 w-20 items-center justify-center">
+            <Mark size={80} />
           </div>
           <h1 className="mt-5 text-center text-lg font-semibold">
             每一台机器，尽在眼前
@@ -760,23 +763,30 @@ export function App() {
             }
             actions={
               <>
-                <ThemeToggle aria-label="切换主题" />
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-label="退出登录"
-                  onClick={async () => {
-                    try {
-                      await api("/api/session", { method: "DELETE" });
-                      setAuth(false);
-                      setData(null);
-                    } catch {
-                      setError("退出失败，请重试");
-                    }
-                  }}
-                >
-                  <LogOut size={16} strokeWidth={1.5} />
-                </Button>
+                <FamilyActions />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label="退出登录"
+                      onClick={async () => {
+                        try {
+                          await api("/api/session", { method: "DELETE" });
+                          setAuth(false);
+                          setData(null);
+                        } catch {
+                          setError("退出失败，请重试");
+                        }
+                      }}
+                    >
+                      <LogOut size={16} strokeWidth={1.5} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">
+                    退出登录
+                  </TooltipContent>
+                </Tooltip>
               </>
             }
           />

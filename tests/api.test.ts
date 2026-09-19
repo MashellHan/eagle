@@ -203,9 +203,15 @@ test("browser session has secure HttpOnly cookie, no token, origin checks and lo
 });
 
 test("public health identifies the deployed revision without exposing inventory", async () => {
-  const result = (await (
-    await request("/api/live", undefined, "")
-  ).json()) as Record<string, unknown>;
+  const response = await request("/api/live", undefined, "");
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  const result = (await response.json()) as Record<string, unknown>;
+  assert.equal(result.status, "ok");
+  assert.equal(
+    result.version,
+    JSON.parse(readFileSync("package.json", "utf8")).version,
+  );
   assert.equal(result.revision, "test-build-sha");
   assert(!("machines" in result));
 });

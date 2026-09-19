@@ -22,3 +22,19 @@
 - 生产本机 LaunchAgent 已持续按 30 秒间隔成功上报，无采集告警或错误日志；页面每 5 秒更新。其它物理机器尚未接入，复用 Skill 和接入文档已提供。
 - `21e55da` 的 GitHub CI 全绿；Grok 确认实际 HTTP 400 → UploadRejectedError → spool 隔离路径闭环，无剩余该项 P0/P1。
 - 最终恢复检查新增了两个先失败的用例：成功 HTTP 响应缺少有效入库回执时保留报告；1000 条积压队列先重传再采集。修复后 31 项单元/集成测试通过，6 项桌面/手机浏览器测试通过。正在核对完整发布检查和最终部署版本。
+
+## 2026-09-19 · Identity and Hexly onboarding checkpoint
+
+Prepared in an isolated checkout while the original checkout's Access migration
+continues independently. The golden eagle is installed in README, transparent
+sidebar (expanded/collapsed), loading/login marks and seven-resolution browser
+ICO. GitHub → Hexly → Theme controls share Basalt tooltips. Existing business
+credentials and reporting data are unchanged by this batch.
+
+A real Miniflare/D1 check first demonstrated the missing public health version;
+the endpoint now reads the root package version and retains dependency failure,
+no-store, revision and anonymous-read semantics. 31 API/agent/unit checks and
+8 desktop/mobile browser cases passed. Browser fixtures are test-only; these
+results are not a claim of real-machine or production verification. Next hop:
+merge current published authentication changes, then verify actual local/public
+serving and the first catalogue-derived production Cron observation.

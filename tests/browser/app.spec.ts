@@ -117,3 +117,54 @@ test("stale machine data is marked explicitly", async ({ page }) => {
   await expect(page.getByText("心跳过期", { exact: true })).toBeVisible();
   await expect(page.getByText("历史快照 · 等待重新采集")).toBeVisible();
 });
+
+test("adopted eagle mark and family links work in both sidebar states", async ({
+  page,
+  isMobile,
+}) => {
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ json: { now: new Date().toISOString(), machines: [] } }),
+  );
+  await page.goto("/");
+  await expect(page.getByText("等待第一台机器接入")).toBeVisible();
+  const github = page.getByRole("link", {
+    name: "Eagle GitHub 仓库（新标签页）",
+  });
+  const hexly = page.getByRole("link", {
+    name: "在 hexly.ai 查看 Eagle（新标签页）",
+  });
+  await expect(github).toHaveAttribute(
+    "href",
+    "https://github.com/nocoo/eagle",
+  );
+  await expect(hexly).toHaveAttribute(
+    "href",
+    "https://hexly.ai/projects/eagle",
+  );
+  await expect(hexly).toHaveAttribute("target", "_blank");
+  await hexly.focus();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "在 hexly.ai 查看 Eagle",
+  );
+  await page.keyboard.press("Escape");
+  if (isMobile) await page.getByRole("button", { name: "展开导航" }).click();
+  const mark = page.locator("img[data-eagle-mark]").last();
+  await expect(mark).toBeVisible();
+  expect(
+    await mark.evaluate(
+      (node) =>
+        (node as HTMLImageElement).complete &&
+        (node as HTMLImageElement).naturalWidth > 0,
+    ),
+  ).toBe(true);
+  expect(
+    await mark.evaluate((node) => getComputedStyle(node).borderRadius),
+  ).toBe("0px");
+  await page.getByRole("button", { name: "收起导航" }).click();
+  if (!isMobile) await expect(mark).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});

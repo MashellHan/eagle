@@ -1,8 +1,10 @@
+<p align="center"><img src="assets/brand/readme.png" width="128" height="128" alt="Eagle golden eagle Logo" /></p>
+
 # Eagle
 
 Private, evidence-led overview of every Herdr Space on every reporting machine.
 
-**Production:** https://eagle.hexly.ai · **Local:** https://eagle.dev.hexly.ai
+**Production:** https://eagle.hexly.ai · **Local:** https://eagle.dev.hexly.ai · **[Hexly](https://hexly.ai/projects/eagle)** · **[Status](https://status.hexly.ai)**
 
 Vite + React 19 + **@nocoo/basalt 2.1.8**, TypeScript **7.0.2**, Biome. Cloudflare Worker serves the SPA and authenticated API; D1 keeps full snapshots and history. The Node management agent runs locally on each machine. No remote terminal control is exposed.
 
@@ -58,3 +60,7 @@ npm run deploy
 ```
 
 The Worker owns `eagle.hexly.ai` as a custom domain. `/api/live` publicly checks D1 connectivity and returns no inventory. The read-only reviewers are advisory; the integrator commits on `main`. See [checkpoints](docs/CHECKPOINTS.md) for real data verification and [API](docs/API.md) for ingestion/query semantics.
+
+## Identity
+
+The golden eagle belongs to the fragmented animal family. README uses the rounded presentation; the expanded/collapsed sidebar, loading and login marks use the transparent foreground without a background or corner mask. Root `logo.png` is the unchanged 2048px foreground; [brand provenance](assets/brand/provenance.json) records the exact master, generation and consumer roles. The Basalt application palette remains independent.
