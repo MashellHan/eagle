@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   AgentMessageSchema,
   type Subscription,
@@ -16,8 +17,22 @@ type Attachment = {
   control?: boolean;
   seq?: number;
   pending?: number;
-  panes?: Record<string, string>;
+  panes?: string[];
+  delivery?: number;
+  deliveryBytes?: number;
+  rendered?: number;
+  renderedBytes?: number;
 };
+const paneKey = (paneId: string, terminalId: string) =>
+  createHash("sha256")
+    .update(JSON.stringify([paneId, terminalId]))
+    .digest("base64url")
+    .slice(0, 22);
+export async function scheduleEarlier(ctx: DurableObjectState, when: number) {
+  if (!Number.isFinite(when)) return;
+  const previous = await ctx.storage.getAlarm();
+  if (previous === null || when < previous) await ctx.storage.setAlarm(when);
+}
 // Attachments contain routing/leases only. Terminal text and inputs are never persisted.
 export class LiveRelay {
   constructor(
@@ -34,8 +49,36 @@ export class LiveRelay {
     return s.deserializeAttachment() as Attachment;
   }
   private send(s: WebSocket, value: unknown) {
+    const meta = this.meta(s);
+    let payload = JSON.stringify(value);
+    if (
+      meta.role === "viewer" &&
+      (value as { type?: string }).type === "frame"
+    ) {
+      const id = (meta.delivery ?? 0) + 1;
+      const bytes =
+        (meta.deliveryBytes ?? 0) +
+        new TextEncoder().encode(payload).length +
+        100;
+      if (
+        bytes - (meta.renderedBytes ?? 0) > 2 * 1024 * 1024 ||
+        id - (meta.rendered ?? 0) > 128
+      ) {
+        s.close(1013, "Slow viewer");
+        this.subscriptions();
+        return;
+      }
+      meta.delivery = id;
+      meta.deliveryBytes = bytes;
+      payload = JSON.stringify({
+        ...(value as object),
+        deliveryId: id,
+        deliveryBytes: bytes,
+      });
+      s.serializeAttachment(meta);
+    }
     try {
-      s.send(JSON.stringify(value));
+      s.send(payload);
     } catch {
       s.close(1011, "Connection failed");
     }
@@ -74,13 +117,27 @@ export class LiveRelay {
   private prune() {
     for (const s of this.sockets()) {
       const a = this.meta(s);
-      if (
-        a.expires <= Date.now() ||
-        Date.now() - a.seen > 35000 ||
-        (a.role === "agent" && !this.authorized(a.credentialId))
-      )
-        s.close(4001, "Lease expired");
+      if (a.role === "agent" && !this.authorized(a.credentialId))
+        s.close(4001, "Authorization revoked");
+      else if (a.expires <= Date.now()) {
+        s.close(4002, "Renew authorization");
+      } else if (Date.now() - a.seen >= 35000)
+        s.close(4000, "Heartbeat timeout");
     }
+  }
+  async schedule() {
+    const next = Math.min(
+      ...this.sockets().map((s) => {
+        const a = this.meta(s);
+        return Math.min(a.expires, a.seen + 35000);
+      }),
+    );
+    await scheduleEarlier(this.ctx, next);
+  }
+  sweep() {
+    this.prune();
+    this.subscriptions();
+    this.status();
   }
   connect(
     role: "agent" | "viewer",
@@ -117,12 +174,13 @@ export class LiveRelay {
               ? this.meta(existing).subscriptionId
               : crypto.randomUUID(),
             seq: 0,
-            panes: {},
+            panes: [],
           }
         : {}),
     };
     this.ctx.acceptWebSocket(server, ["live"]);
     server.serializeAttachment(attachment);
+    this.ctx.waitUntil(this.schedule());
     this.subscriptions();
     this.status();
     return new Response(null, { status: 101, webSocket: pair[0] });
@@ -160,6 +218,19 @@ export class LiveRelay {
     a.seen = Date.now();
     socket.serializeAttachment(a);
     const data = parsed.data;
+    if (data.type === "rendered" && a.role === "viewer") {
+      if (
+        data.deliveryId > (a.delivery ?? 0) ||
+        data.deliveryBytes > (a.deliveryBytes ?? 0)
+      ) {
+        socket.close(1008, "Invalid acknowledgement");
+        return;
+      }
+      a.rendered = Math.max(a.rendered ?? 0, data.deliveryId);
+      a.renderedBytes = Math.max(a.renderedBytes ?? 0, data.deliveryBytes);
+      socket.serializeAttachment(a);
+      return;
+    }
     if (data.type === "ping") {
       this.send(socket, { type: "pong" });
       this.subscriptions();
@@ -192,16 +263,14 @@ export class LiveRelay {
             continue;
           }
           if (data.type === "topology") {
-            v.panes = Object.fromEntries(
-              data.tabs.flatMap((t) =>
-                t.panes.map((p) => [p.id, p.terminalId]),
-              ),
+            v.panes = data.tabs.flatMap((t) =>
+              t.panes.map((p) => paneKey(p.id, p.terminalId)),
             );
             viewer.serializeAttachment(v);
           }
           if (
             data.type !== "frame" ||
-            v.panes?.[data.paneId] === data.terminalId
+            v.panes?.includes(paneKey(data.paneId, data.terminalId))
           )
             this.send(viewer, data);
         }
@@ -226,7 +295,7 @@ export class LiveRelay {
         !a.control ||
         a.pending ||
         data.seq <= (a.seq ?? 0) ||
-        a.panes?.[data.paneId] !== data.terminalId
+        !a.panes?.includes(paneKey(data.paneId, data.terminalId))
       ) {
         this.send(socket, { type: "ack", seq: data.seq, status: "rejected" });
         return;

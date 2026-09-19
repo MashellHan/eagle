@@ -18,7 +18,7 @@ import {
   taskKey,
 } from "../shared/summaries.ts";
 import { agentTokens } from "./auth.ts";
-import { LiveRelay } from "./realtime.ts";
+import { LiveRelay, scheduleEarlier } from "./realtime.ts";
 
 type Facts = Record<string, import("../shared/schema.ts").Evidence>;
 type SemanticRow = {
@@ -64,8 +64,8 @@ export class MachineState extends DurableObject<Env> {
   webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
     this.live.message(socket, message);
   }
-  webSocketClose(socket: WebSocket) {
-    socket.close(1000, "Closed");
+  webSocketClose(socket: WebSocket, code: number, reason: string) {
+    socket.close(code, reason);
     this.live.close(socket);
   }
   webSocketError(socket: WebSocket) {
@@ -566,7 +566,7 @@ export class MachineState extends DurableObject<Env> {
     credentialId: string | null,
     contentHashes: Record<string, string>,
   ) {
-    await this.ctx.storage.setAlarm(Date.now() + 1000);
+    await scheduleEarlier(this.ctx, Date.now() + 1000);
     const result = this.ctx.storage.transactionSync(() => {
       if (!this.authorized(credentialId))
         return { error: "unauthorized" } as const;
@@ -794,6 +794,7 @@ export class MachineState extends DurableObject<Env> {
   }
 
   async alarm() {
+    this.live.sweep();
     try {
       await this.flushSummaries();
     } finally {
@@ -802,7 +803,8 @@ export class MachineState extends DurableObject<Env> {
           .exec<{ n: number }>("SELECT count(*) n FROM summary_outbox")
           .one().n
       )
-        await this.ctx.storage.setAlarm(Date.now() + 30000);
+        await scheduleEarlier(this.ctx, Date.now() + 30000);
+      await this.live.schedule();
     }
   }
 

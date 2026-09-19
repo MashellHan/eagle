@@ -18,6 +18,44 @@ import {
   redact,
   type Snapshot,
 } from "./collector.ts";
+import { submitTerminalInput } from "./terminal-input.ts";
+
+export function redactScreen(value: string, secrets: string[]) {
+  const text = redact(value, secrets);
+  const positions: number[] = [];
+  let compact = "";
+  for (let i = 0; i < text.length; i++)
+    if (!/\s/.test(text[i])) {
+      positions.push(i);
+      compact += text[i];
+    }
+  const masked = new Set<number>();
+  const mask = (start: number, length: number) => {
+    for (let i = start; i < start + length; i++) masked.add(positions[i]);
+  };
+  // Match across rendered wraps; also suppress recognizable credential fragments at viewport edges.
+  for (const secret of secrets.filter(Boolean)) {
+    const size = Math.min(8, secret.length);
+    for (let i = 0; i <= secret.length - size; i++) {
+      const part = secret.slice(i, i + size);
+      for (
+        let at = compact.indexOf(part);
+        at >= 0;
+        at = compact.indexOf(part, at + 1)
+      )
+        mask(at, size);
+    }
+  }
+  for (const match of compact.matchAll(
+    /(?:eag1\.[A-Za-z0-9_.-]+|sk-[\w-]{16,}|gh[pousr]_[\w]{20,}|github_pat_[\w]{20,}|(?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL)[\w]*[=:][^,;"']+)/gi,
+  ))
+    mask(match.index, match[0].length);
+  return text
+    .split("")
+    .map((c, i) => (masked.has(i) ? "*" : c))
+    .join("")
+    .replace(/\*{8,}/g, "[REDACTED]");
+}
 
 export function socketRequest(
   path: string,
@@ -79,7 +117,8 @@ type Watch = {
   force: boolean;
   path?: string;
   topology?: LiveTopology;
-  revisions: Map<string, number>;
+  screens: Map<string, string>;
+  frameSequence: number;
   queue: Promise<void>;
 };
 export class LiveBridge {
@@ -121,7 +160,8 @@ export class LiveBridge {
           subscription,
           abort: new AbortController(),
           force: true,
-          revisions: new Map(),
+          screens: new Map(),
+          frameSequence: 0,
           queue: Promise.resolve(),
         };
         this.watches.set(subscription.spaceId, watch);
@@ -129,7 +169,7 @@ export class LiveBridge {
       }
     } else if (message.type === "input") {
       const watch = this.watches.get(message.spaceId);
-      const ack = (status: "delivered" | "rejected" | "unknown") =>
+      const ack = (status: "submitted" | "rejected" | "unknown") =>
         this.send({
           type: "ack",
           clientId: message.clientId,
@@ -144,7 +184,6 @@ export class LiveBridge {
         return;
       }
       watch.queue = watch.queue.then(async () => {
-        let dispatched = false;
         try {
           if (
             !watch.path ||
@@ -172,17 +211,40 @@ export class LiveBridge {
             ack("rejected");
             return;
           }
-          dispatched = true;
-          await socketRequest(
+          const rect = raw.layouts
+            .find((l) => l.tab_id === pane.tab_id)
+            ?.panes.find((p) => p.pane_id === pane.pane_id)?.rect;
+          if (!rect) {
+            ack("rejected");
+            return;
+          }
+          const status = await submitTerminalInput(
             watch.path,
-            "pane.send_input",
-            { pane_id: pane.pane_id, text: message.text, keys: message.keys },
+            message,
+            { width: rect.width, height: Math.max(1, rect.height - 1) },
             watch.abort.signal,
+            async () => {
+              const latest = (
+                await socketRequest(
+                  watch.path ?? "",
+                  "session.snapshot",
+                  {},
+                  watch.abort.signal,
+                )
+              ).snapshot as Snapshot;
+              return latest.panes.some(
+                (p) =>
+                  p.pane_id === pane.pane_id &&
+                  p.terminal_id === message.terminalId &&
+                  p.workspace_id === pane.workspace_id &&
+                  p.tab_id === pane.tab_id,
+              );
+            },
           );
           watch.force = true;
-          ack("delivered");
+          ack(status);
         } catch {
-          ack(dispatched ? "unknown" : "rejected");
+          ack("rejected");
         }
       });
     }
@@ -232,16 +294,15 @@ export class LiveBridge {
           watch.topology = topology;
         }
         const panes = topology.tabs.flatMap((t) => t.panes);
-        // ponytail: bounded screen polling, one loop per subscribed Space; use native output events if profiling warrants it.
+        const pending: {
+          pane: (typeof panes)[number];
+          text: string;
+          tab: string;
+        }[] = [];
+        // Herdr 0.9.1 screen revisions can be zero. Compare content after bounded reads.
         for (let i = 0; i < panes.length; i += 4)
           await Promise.all(
             panes.slice(i, i + 4).map(async (p) => {
-              const current = raw.panes.find((r) => r.pane_id === p.id);
-              if (
-                !force &&
-                watch.revisions.get(p.terminalId) === current?.revision
-              )
-                return;
               const result = await socketRequest(
                 watch.path ?? "",
                 "pane.read",
@@ -253,24 +314,59 @@ export class LiveBridge {
                 },
                 signal,
               );
-              const read = result.read as { revision: number; text: string };
-              if (signal.aborted) return;
-              const frame = AgentMessageSchema.parse({
-                type: "frame",
-                ...watch.subscription,
-                paneId: p.id,
-                terminalId: p.terminalId,
-                revision: read.revision,
-                text: redact(read.text, this.secrets).slice(-32000),
-                observedAt: new Date().toISOString(),
+              const read = result.read as {
+                text: string;
+                pane_id: string;
+                workspace_id: string;
+                tab_id: string;
+              };
+              const original = raw.panes.find((r) => r.pane_id === p.id);
+              if (
+                read.pane_id !== p.id ||
+                read.workspace_id !== original?.workspace_id ||
+                read.tab_id !== original?.tab_id
+              )
+                return;
+              pending.push({
+                pane: p,
+                text: redactScreen(read.text, this.secrets).slice(-32000),
+                tab: read.tab_id,
               });
-              this.send(frame);
-              watch.revisions.set(p.terminalId, read.revision);
             }),
           );
-        for (const key of watch.revisions.keys())
+        const after = (
+          await socketRequest(watch.path, "session.snapshot", {}, signal)
+        ).snapshot as Snapshot;
+        if (signal.aborted) return;
+        for (const { pane: p, text, tab } of pending) {
+          const current = after.panes.find(
+            (r) =>
+              r.pane_id === p.id &&
+              r.terminal_id === p.terminalId &&
+              r.tab_id === tab &&
+              `${session}:${r.workspace_id}` === spaceId,
+          );
+          if (!current) {
+            watch.force = true;
+            continue;
+          }
+          if (!force && watch.screens.get(p.terminalId) === text) continue;
+          this.send(
+            AgentMessageSchema.parse({
+              type: "frame",
+              ...watch.subscription,
+              paneId: p.id,
+              terminalId: p.terminalId,
+              revision: ++watch.frameSequence,
+              text,
+              observedAt: new Date().toISOString(),
+            }),
+          );
+          watch.screens.set(p.terminalId, text);
+        }
+        for (const key of watch.screens.keys())
           if (!panes.some((p) => p.terminalId === key))
-            watch.revisions.delete(key);
+            watch.screens.delete(key);
         await delay(350, undefined, { signal });
       }
     } catch {
@@ -305,7 +401,8 @@ export async function realtimeWatch(config: AgentConfig, signal: AbortSignal) {
         (message) => {
           if (ws.readyState !== WebSocket.OPEN) return;
           if (ws.bufferedAmount > 524288) {
-            ws.close(1013, "Slow connection");
+            bridge.close();
+            ws.terminate();
             return;
           }
           ws.send(JSON.stringify(message));
@@ -326,13 +423,19 @@ export async function realtimeWatch(config: AgentConfig, signal: AbortSignal) {
       );
       let lastMessage = Date.now();
       const heartbeat = setInterval(() => {
-        if (Date.now() - lastMessage > 30000) ws.terminate();
-        else if (ws.readyState === WebSocket.OPEN)
+        if (Date.now() - lastMessage > 30000) {
+          bridge.close();
+          ws.terminate();
+        } else if (ws.readyState === WebSocket.OPEN)
           ws.send(JSON.stringify({ type: "ping" }));
       }, 10000);
-      const stop = () => ws.terminate();
+      const stop = () => {
+        bridge.close();
+        ws.terminate();
+      };
       signal.addEventListener("abort", stop, { once: true });
       ws.on("open", () => {
+        ws.send(JSON.stringify({ type: "ping" }));
         retry = 1000;
         console.log(JSON.stringify({ event: "realtime_connected" }));
       });
@@ -341,10 +444,12 @@ export async function realtimeWatch(config: AgentConfig, signal: AbortSignal) {
         try {
           bridge.receive(JSON.parse(String(data)));
         } catch {
-          ws.close(1008, "Invalid relay message");
+          bridge.close();
+          ws.terminate();
         }
       });
       ws.on("unexpected-response", (_request, response) => {
+        bridge.close();
         authFailure = [401, 403].includes(response.statusCode ?? 0);
         response.destroy();
         ws.terminate();

@@ -262,3 +262,24 @@ serving and the first catalogue-derived production Cron observation.
 - Real local collection passed at 06:30:33 and production at 06:36:19: 11 Spaces / 20 Panes, Bearer ingestion into the machine DO, resources/ports, idempotency, every Space rendered, stable automatic refresh, Access authentication in production and mobile layouts. Raw snapshot D1 writes remain paused.
 - Real dev D1 still contains two successfully generated reports with all seven sections and stable expanded DOM. Production has no AI configuration and zero hourly reports; the authenticated generation endpoint explicitly skips. Existing configurations and secrets were preserved. Both production themes and viewport sizes pass the real hour-query UI checks with no browser errors.
 - Sanitized verification receipts and screenshots are in `.local/v0.3.0-*`. The required five-minute post-release CI/health follow-up is due at 06:41:02 +08.
+
+
+## 2026-09-20 07:30 +08 — Realtime review fixes before release
+
+- Real local Herdr collection/authentication/DO/rendering passed with 11 Spaces / 20 Panes. The temporary shell realtime test observed an 822 ms roundtrip and four opened/four closed browser connections. Existing historical D1 behavior is unchanged; realtime screens/input are not persisted.
+- Codex pane review found terminal identity races, wrapped-secret exposure, Herdr revision-zero behavior, replacement drafts and lifecycle gaps. Release remains pending while fixes and regression checks are completed. No production deployment or tag has been published.
+- Next broken hop: replace non-atomic pane input with strict terminal-bound native input, then verify idle alarms, slow viewers, renewable authorization and clean Codex review.
+
+
+## 2026-09-20 07:40 +08 — Bound terminal input and cleanup regression
+
+- Strict protocol-22 AttachTerminal replaced pane input routing. Real Caddy → authenticated relay → native Herdr → isolated shell output passed at 07:38:17, with 1,323 ms observed roundtrip and four opened/four closed view connections. The temporary pane was removed; no user/reviewer pane received input.
+- Wrapped-token, revision-zero screen updates, target replacement and native socket cancellation regressions pass. Realtime frames and inputs still bypass D1 and ordinary snapshot storage. Browser replacement and renewable reconnect checks pass on desktop/mobile.
+- Next broken hop: the idle alarm fires and closes the DO socket, but the outer client close event does not arrive within five seconds in isolated Miniflare. Slow-viewer close exposes the same forwarding behavior. Codex is diagnosing this read-only while keyboard-mode and release documentation are completed. Production is unchanged.
+
+
+## 2026-09-20 07:53 +08 — Release gates and lifecycle regression
+
+- All 77 unit/API tests, TypeScript, Biome and build pass; all 52 desktop/mobile browser tests pass. Coverage includes idle expiration, slow-viewer output bounds, maximum-size topology attachments, target replacement, frame identity, wrapped secrets and native terminal cancellation.
+- Codex isolated a workerd hibernation close issue before the first client message. Browser and bridge now send ping immediately after every connection; idle expiry and slow-viewer TCP closure pass with real WebSockets. Redundant pageshow/visibility notifications retain one connection. Custom clients that never send remain subject to the runtime issue; subscribed collection is still removed server-side.
+- Independently packed Agent v0.5.0 passed real local collection/authentication, credential rotation and revocation, no D1 writes, clipboard cleanup and desktop/mobile onboarding. The verifier now reads the agent version instead of a stale literal. Final native realtime and whole-machine local verification are running on the installed tarball; production remains unchanged pending Codex Sign Off.

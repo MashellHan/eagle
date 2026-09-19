@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
+import { AGENT_VERSION } from "../agent/version.ts";
 import type { IssuedCredential, Registration } from "../src/shared/connect.ts";
 import type { Overview } from "../src/shared/schema.ts";
 
@@ -90,7 +91,7 @@ try {
     state && state.report.spaces.length > 0,
     "Packaged agent did not populate its DO",
   );
-  assert(state.report.machine.collectorVersion === "0.3.0");
+  assert.equal(state.report.machine.collectorVersion, AGENT_VERSION);
   await page.getByRole("button", { name: "关闭提示词" }).click();
   const rotateResponse = page.waitForResponse((r) =>
     r.url().endsWith(`/machines/${id}/rotate`),

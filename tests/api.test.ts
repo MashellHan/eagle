@@ -15,6 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import { after, before, test } from "node:test";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
+import NativeWebSocket from "ws";
 import {
   REPORT_SECTIONS,
   TEMPLATE_VERSION,
@@ -1876,7 +1877,24 @@ test("realtime requires Access and same origin, scopes subscriptions, and releas
   assert(subscription);
   assert.equal(subscription.spaceId, "default:w1");
   assert(subscription.subscriptionId);
+  const second = (
+    await connect(path, {
+      "Cf-Access-Jwt-Assertion": viewer,
+      Origin: "https://eagle.test",
+    })
+  ).webSocket;
+  assert(second);
+  second.accept();
+  await new Promise((r) => setTimeout(r, 30));
+  assert.deepEqual(messages.at(-1)?.spaces, [subscription]);
+  const closed = new Promise<void>((r) =>
+    client.addEventListener("close", () => r()),
+  );
   client.close(1000);
+  await closed;
+  await new Promise((r) => setTimeout(r, 30));
+  assert.deepEqual(messages.at(-1)?.spaces, [subscription]);
+  second.close(1000);
   await new Promise((r) => setTimeout(r, 50));
   assert.deepEqual(messages.at(-1)?.spaces, []);
   agent.close(1000);
@@ -1976,7 +1994,7 @@ test("realtime has one controller, rejects stale identities and sequences, and c
       type: "ack",
       clientId: command.clientId,
       seq: 1,
-      status: "delivered",
+      status: "submitted",
     }),
   );
   await settle();
@@ -1990,4 +2008,124 @@ test("realtime has one controller, rejects stale identities and sequences, and c
   );
   await request("/api/v1/machines/realtime-security/revoke", {}, viewer);
   await close;
+});
+
+async function liveSocket(path: string, headers: Record<string, string>) {
+  const url = new URL(path, await mf.ready);
+  const origin = url.origin;
+  url.protocol = "ws:";
+  const socket = new NativeWebSocket(url, {
+    headers: { Origin: origin, ...headers },
+  });
+  await new Promise<void>((resolve, reject) => {
+    socket.once("open", resolve);
+    socket.once("error", reject);
+  });
+  socket.send(JSON.stringify({ type: "ping" }));
+  return socket;
+}
+test("realtime alarm expires an idle viewer without another request", async () => {
+  await request("/api/v1/reports", currentReport("idle-live"));
+  const access = await accessToken(audience, issuer, "2s");
+  const ws = await liveSocket(
+    "/api/v1/realtime?machine=mac-one&space=default:w1",
+    { "Cf-Access-Jwt-Assertion": access },
+  );
+  const closed = new Promise<number>((resolve) => ws.once("close", resolve));
+  const timeout = AbortSignal.timeout(5000);
+  try {
+    assert.equal(
+      await Promise.race([
+        closed,
+        new Promise((resolve) =>
+          timeout.addEventListener("abort", () => resolve("not reclaimed")),
+        ),
+      ]),
+      4002,
+    );
+  } finally {
+    ws.terminate();
+  }
+});
+
+test("realtime bounds slow viewer output while acknowledged viewers keep receiving", async () => {
+  await request("/api/v1/reports", currentReport("slow-live"));
+  const open = liveSocket;
+  const agent = await open("/api/v1/realtime-agent", {
+    Authorization: `Bearer ${token}`,
+  });
+  let binding: { spaceId: string; subscriptionId: string } | undefined;
+  agent.addEventListener("message", (event) => {
+    const m = JSON.parse(String(event.data));
+    if (m.spaces?.length) binding = m.spaces[0];
+  });
+  const headers = {
+    "Cf-Access-Jwt-Assertion": viewer,
+  };
+  const slow = await open(
+    "/api/v1/realtime?machine=mac-one&space=default:w1",
+    headers,
+  );
+  const fast = await open(
+    "/api/v1/realtime?machine=mac-one&space=default:w1",
+    headers,
+  );
+  let received = 0,
+    slowCode = 0;
+  fast.addEventListener("message", (event) => {
+    const m = JSON.parse(String(event.data));
+    if (m.type === "frame") {
+      received++;
+      fast.send(
+        JSON.stringify({
+          type: "rendered",
+          deliveryId: m.deliveryId,
+          deliveryBytes: m.deliveryBytes,
+        }),
+      );
+    }
+  });
+  slow.addEventListener("close", (event) => {
+    slowCode = event.code;
+  });
+  const settle = () => new Promise((r) => setTimeout(r, 20));
+  await settle();
+  assert(binding);
+  // Maximum topology with long IDs must fit the 2 KiB hibernation attachment limit.
+  const panes = Array.from({ length: 32 }, (_, i) => ({
+    id: `p${i}${"x".repeat(150)}`,
+    terminalId: `t${i}${"y".repeat(150)}`,
+    title: "P",
+    rect: { x: 0, y: 0, width: 1, height: 1 },
+  }));
+  agent.send(
+    JSON.stringify({
+      type: "topology",
+      ...binding,
+      tabs: [{ id: "t", name: "T", panes }],
+    }),
+  );
+  await settle();
+  try {
+    for (let revision = 1; revision <= 80; revision++) {
+      agent.send(
+        JSON.stringify({
+          type: "frame",
+          ...binding,
+          paneId: panes[0].id,
+          terminalId: panes[0].terminalId,
+          revision,
+          text: "x".repeat(32000),
+          observedAt: new Date().toISOString(),
+        }),
+      );
+      await settle();
+    }
+    assert.equal(received, 80);
+    assert.equal(slowCode, 1013);
+  } finally {
+    slow.close();
+    fast.close();
+    agent.close();
+  }
 });

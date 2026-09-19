@@ -24,7 +24,8 @@ export function Realtime({
   const [topology, setTopology] = useState<LiveTopology | null>(null);
   const [frames, setFrames] = useState<Record<string, LiveFrame>>({});
   const [selected, setSelected] = useState("");
-  const [text, setText] = useState("");
+  const [draft, setDraft] = useState({ target: "", text: "" });
+  const [authority, setAuthority] = useState("");
   const [receipt, setReceipt] = useState("");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -39,6 +40,7 @@ export function Realtime({
       const ws = socket.current;
       socket.current = null;
       if (ws) {
+        ws.onopen = null;
         ws.onclose = null;
         ws.onmessage = null;
         ws.onerror = null;
@@ -50,13 +52,15 @@ export function Realtime({
       }
       setOnline(false);
       setControl(false);
+      setAuthority("");
+      setDraft({ target: "", text: "" });
       setBusy(false);
       setTopology(null);
       setFrames({});
       current = null;
     };
     const connect = () => {
-      if (disposed || document.hidden) return;
+      if (disposed || document.hidden || socket.current) return;
       disconnect();
       setConnection("正在连接");
       const url = new URL("/api/v1/realtime", location.origin);
@@ -66,6 +70,10 @@ export function Realtime({
       const ws = new WebSocket(url);
       socket.current = ws;
       let last = Date.now();
+      ws.onopen = () => {
+        if (!disposed && socket.current === ws)
+          ws.send(JSON.stringify({ type: "ping" }));
+      };
       ws.onmessage = (e) => {
         if (disposed || socket.current !== ws) return;
         last = Date.now();
@@ -120,13 +128,21 @@ export function Realtime({
               ? old
               : { ...old, [m.paneId]: m },
           );
+          if (m.deliveryId)
+            ws.send(
+              JSON.stringify({
+                type: "rendered",
+                deliveryId: m.deliveryId,
+                deliveryBytes: m.deliveryBytes,
+              }),
+            );
         }
         if (m.type === "ack" && pending.current?.seq === m.seq) {
           pending.current = null;
           setBusy(false);
           setReceipt(
-            m.status === "delivered"
-              ? "已交给终端；请查看执行结果"
+            m.status === "submitted"
+              ? "已提交输入；请查看终端执行结果"
               : m.status === "unknown"
                 ? "输入结果未知；不会自动重发"
                 : "输入未发送，请检查控制权和 Pane",
@@ -167,22 +183,39 @@ export function Realtime({
     const leave = () => disconnect();
     document.addEventListener("visibilitychange", visibility);
     window.addEventListener("pagehide", leave);
+    window.addEventListener("pageshow", visibility);
     connect();
     return () => {
       disposed = true;
       disconnect();
       document.removeEventListener("visibilitychange", visibility);
       window.removeEventListener("pagehide", leave);
+      window.removeEventListener("pageshow", visibility);
     };
   }, [machineId, spaceId, attempt]);
   const panes = topology?.tabs.flatMap((t) => t.panes) ?? [];
   const pane = panes.find((p) => p.id === selected) ?? panes[0];
+  const targetIdentity = pane ? `${pane.id}/${pane.terminalId}` : "";
+  const text = draft.target === targetIdentity ? draft.text : "";
+  const previousTarget = useRef("");
+  useEffect(() => {
+    if (previousTarget.current && previousTarget.current !== targetIdentity) {
+      setDraft({ target: "", text: "" });
+      setAuthority("");
+      setControl(false);
+      if (socket.current?.readyState === WebSocket.OPEN)
+        socket.current.send(JSON.stringify({ type: "release" }));
+      if (targetIdentity) setReceipt("目标已变化，请重新选择 Pane 并接管输入");
+    }
+    previousTarget.current = targetIdentity;
+  }, [targetIdentity]);
   const send = (keys: LiveInput["keys"], value = "") => {
     const ws = socket.current;
     if (
       !pane ||
       !online ||
       !control ||
+      authority !== targetIdentity ||
       pending.current ||
       ws?.readyState !== WebSocket.OPEN
     )
@@ -200,9 +233,10 @@ export function Realtime({
         keys,
       }),
     );
-    if (value) setText("");
+    if (value) setDraft({ target: "", text: "" });
   };
-  const disabled = !online || !control || busy || !pane;
+  const disabled =
+    !online || !control || authority !== targetIdentity || busy || !pane;
   return (
     <section aria-label="Space 实时终端" className="live-space">
       <div className="flex flex-wrap items-center gap-2">
@@ -213,11 +247,12 @@ export function Realtime({
           size="sm"
           variant="secondary"
           disabled={!online}
-          onClick={() =>
+          onClick={() => {
+            setAuthority(control ? "" : targetIdentity);
             socket.current?.send(
               JSON.stringify({ type: control ? "release" : "control" }),
-            )
-          }
+            );
+          }}
         >
           {control ? "释放输入" : "接管输入"}
         </Button>
@@ -231,7 +266,7 @@ export function Realtime({
       </div>
       <p className="text-xs text-basalt-muted-foreground">
         {control
-          ? "你正在控制此 Space；本机也可同时操作。"
+          ? "你正在控制此 Space；发送时会短暂附着终端，可能调整尺寸或恢复暂停的任务。"
           : "当前为观看模式；同一 Space 仅一个网页可输入。"}
       </p>
       {!online && (
@@ -274,7 +309,9 @@ export function Realtime({
           id="live-input"
           aria-label="发送到当前 Pane"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) =>
+            setDraft({ target: targetIdentity, text: e.target.value })
+          }
           maxLength={8000}
           disabled={disabled}
           placeholder="输入文字或指令"
@@ -299,12 +336,11 @@ export function Realtime({
             [
               ["enter", "Enter"],
               ["ctrl+c", "Ctrl+C"],
+              ["ctrl+d", "Ctrl+D"],
+              ["ctrl+l", "Ctrl+L"],
               ["esc", "Esc"],
               ["tab", "Tab"],
-              ["up", "↑"],
-              ["down", "↓"],
-              ["left", "←"],
-              ["right", "→"],
+              ["shift+tab", "Shift+Tab"],
               ["backspace", "⌫"],
             ] as const
           ).map(([key, label]) => (
@@ -320,7 +356,7 @@ export function Realtime({
           ))}
         </div>
         <p role="status" className="text-xs text-basalt-muted-foreground">
-          {busy ? "等待终端确认…" : receipt}
+          {busy ? "等待提交结果…" : receipt}
         </p>
       </div>
     </section>

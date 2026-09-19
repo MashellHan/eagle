@@ -45,15 +45,6 @@ export const InputSchema = z
           "tab",
           "shift+tab",
           "backspace",
-          "delete",
-          "up",
-          "down",
-          "left",
-          "right",
-          "home",
-          "end",
-          "pageup",
-          "pagedown",
           "ctrl+c",
           "ctrl+d",
           "ctrl+l",
@@ -66,6 +57,11 @@ export const InputSchema = z
 export type LiveInput = z.infer<typeof InputSchema>;
 export const ViewerMessageSchema = z.union([
   InputSchema,
+  z.strictObject({
+    type: z.literal("rendered"),
+    deliveryId: z.number().int().positive(),
+    deliveryBytes: z.number().int().positive(),
+  }),
   z.strictObject({ type: z.enum(["ping", "control", "release"]) }),
 ]);
 export const FrameSchema = SubscriptionSchema.extend({
@@ -75,12 +71,14 @@ export const FrameSchema = SubscriptionSchema.extend({
   revision: z.number().int().nonnegative(),
   text: z.string().max(32000),
   observedAt: z.string().datetime(),
+  deliveryId: z.number().int().positive().optional(),
+  deliveryBytes: z.number().int().positive().optional(),
 });
 export const AckSchema = z.strictObject({
   type: z.literal("ack"),
   clientId: id,
   seq: z.number().int().positive(),
-  status: z.enum(["delivered", "rejected", "unknown"]),
+  status: z.enum(["submitted", "rejected", "unknown"]),
 });
 export const AgentMessageSchema = z.union([
   TopologySchema,

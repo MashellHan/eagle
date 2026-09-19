@@ -87,7 +87,7 @@ try {
   const sent = Date.now();
   await page.getByRole("button", { name: "发送并回车" }).click();
   await expect(pane.locator("pre")).toContainText(marker, { timeout: 15000 });
-  await expect(page.getByText("已交给终端；请查看执行结果")).toBeVisible();
+  await expect(page.getByText("已提交输入；请查看终端执行结果")).toBeVisible();
   // The marker must be output by the shell, not merely echoed on its command line.
   await expect
     .poll(async () =>
