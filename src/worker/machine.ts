@@ -1,7 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
 import { changesBetween } from "../shared/assessment.ts";
 import type { Registration } from "../shared/connect.ts";
-import { compactHour, type HourlyReport, utcHour } from "../shared/hourly.ts";
+import {
+  compactHour,
+  type HourlyReport,
+  TEMPLATE_VERSION,
+  utcHour,
+} from "../shared/hourly.ts";
 import type { MachineView, Report } from "../shared/schema.ts";
 import {
   canonical,
@@ -280,7 +285,7 @@ export class MachineState extends DurableObject<Env> {
         hour,
       )
       .one();
-    return `${facts.n}:${facts.last}:${semantics.n}:${semantics.last}`;
+    return `${TEMPLATE_VERSION}:${facts.n}:${facts.last}:${semantics.n}:${semantics.last}`;
   }
   pendingHours(at: number, before = utcHour(at - 300000)): string[] {
     const cutoff = utcHour(at - 48 * 3600000);
@@ -327,7 +332,8 @@ export class MachineState extends DurableObject<Env> {
     const expiredPending =
       previous?.pending && hour < utcHour(Date.now() - 48 * 3600000);
     const version = expiredPending ? previous.version : this.hourVersion(hour);
-    if (version === "0:0:0:0") return { skipped: "no_data" } as const;
+    if (version === `${TEMPLATE_VERSION}:0:0:0:0`)
+      return { skipped: "no_data" } as const;
     if (version === previous?.completed_version)
       return { skipped: "unchanged" } as const;
     const lease = crypto.randomUUID();

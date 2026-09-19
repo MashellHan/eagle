@@ -15,7 +15,7 @@ export class MachineDirectory extends DurableObject<Env> {
         "ai-credential",
       );
     if (!value || value.endpoint !== aiEndpoint(settings)) return "";
-    return unsealAiKey(value, this.env.AI_ENCRYPTION_KEY);
+    return unsealAiKey(value, this.env.AI_ENCRYPTION_KEY, aiEndpoint(settings));
   }
   async saveSettings(
     settings: HourlySettings,

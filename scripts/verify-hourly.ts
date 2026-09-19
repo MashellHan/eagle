@@ -142,8 +142,23 @@ try {
   await expect(
     page.getByRole("heading", { name: "小时报告", exact: true }),
   ).toBeVisible();
-  if (records.entries.length)
+  if (records.entries.length) {
     await page.getByRole("button", { name: "展开报告" }).first().click();
+    const article = page.getByRole("article").first();
+    for (const title of Object.values(REPORT_SECTIONS))
+      await expect(
+        article.getByRole("heading", { name: title, exact: true }),
+      ).toBeVisible();
+    const content = await article.textContent();
+    await article.evaluate((element) =>
+      element.setAttribute("data-eval-mounted", "yes"),
+    );
+    const refresh = page.getByRole("button", { name: "刷新小时报告" });
+    await refresh.click();
+    await expect(refresh).toBeEnabled();
+    await expect(article).toHaveAttribute("data-eval-mounted", "yes");
+    assert.equal(await article.textContent(), content);
+  }
   await page.screenshot({
     path: `.local/${prefix}-hourly-history.png`,
     animations: "disabled",
@@ -169,9 +184,14 @@ try {
     checks: [
       "viewer authentication",
       "secret absent from settings response",
-      "unconfigured generation skips",
+      ...(settings.configured
+        ? ["user AI configuration preserved"]
+        : ["unconfigured generation skips"]),
       "D1 report query",
       "settings and history render",
+      ...(records.entries.length
+        ? ["all report sections render", "expanded report survives refresh"]
+        : []),
       "mobile layout",
       "no browser errors",
     ],
@@ -181,6 +201,14 @@ try {
     JSON.stringify(result, null, 2),
   );
   console.log(JSON.stringify(result));
+} catch (error) {
+  // Browser request errors may embed authentication headers; never print the raw exception.
+  console.error(
+    JSON.stringify({
+      category: error instanceof Error ? error.name : "unknown",
+    }),
+  );
+  process.exitCode = 1;
 } finally {
   await browser.close();
 }

@@ -40,7 +40,12 @@ export async function sealAiKey(
 export async function unsealAiKey(
   value: Awaited<ReturnType<typeof sealAiKey>>,
   secret: string | undefined,
+  endpoint: string,
 ) {
+  if (value.endpoint !== endpoint)
+    throw Object.assign(new Error("AI credential endpoint does not match"), {
+      name: "AIEndpointMismatchError",
+    });
   if (value.version !== 1) throw new Error("Unknown credential version");
   const data = Buffer.from(value.data, "base64");
   const plain = await crypto.subtle.decrypt(

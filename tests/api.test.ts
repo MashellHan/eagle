@@ -15,7 +15,11 @@ import { DatabaseSync } from "node:sqlite";
 import { after, before, test } from "node:test";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
-import { REPORT_SECTIONS, utcHour } from "../src/shared/hourly.ts";
+import {
+  REPORT_SECTIONS,
+  TEMPLATE_VERSION,
+  utcHour,
+} from "../src/shared/hourly.ts";
 import { viewerAuthorized } from "../src/worker/auth.ts";
 import { report, telemetry } from "./fixtures.ts";
 
@@ -95,6 +99,9 @@ before(async () => {
             assert.equal(request.headers.get("x-api-key"), null);
             const prompt = JSON.stringify(await request.json());
             assert(!prompt.includes("isolated-ai-test-secret"));
+            const evidenceId = prompt
+              .slice(prompt.lastIndexOf("以下是待分析的数据材料"))
+              .match(/\b[FS]\d+\b/)?.[0];
             await aiHold;
             if (aiFailure)
               return new Response(
@@ -116,11 +123,10 @@ before(async () => {
                       ...Object.fromEntries(
                         Object.keys(REPORT_SECTIONS).map((k) => [
                           k,
-                          "本小时任务持续推进，生产部署尚无验证证据。",
+                          `本小时任务持续推进，生产部署尚无验证证据。${evidenceId ? `[${evidenceId}]` : ""}`,
                         ]),
                       ),
-                      evidenceIds:
-                        prompt.match(/\b[FS]\d+\b/)?.slice(0, 1) ?? [],
+                      evidenceIds: evidenceId ? [evidenceId] : [],
                     }),
                   },
                 },
@@ -1617,6 +1623,32 @@ test("hourly AI reports are leased, durable, idempotent and retry D1 without ano
     "unchanged",
   );
   assert.equal(aiCalls, calls + 1);
+  const versionStorage = await mf.unsafeGetDurableObjectStorage(
+    "eagle",
+    "MachineState",
+    { name: "mac-one" },
+  );
+  // A v1 job used only the input fingerprint. Upgrading the template must rerun unchanged inputs.
+  await versionStorage.exec(
+    `UPDATE hourly_jobs SET completed_version=replace(completed_version,'${TEMPLATE_VERSION}:','') WHERE hour='${hour}'`,
+  );
+  const upgraded = await request("/api/v1/hourly-reports/run", params, viewer);
+  assert.equal(
+    ((await upgraded.json()) as { results: { generated: boolean }[] })
+      .results[0].generated,
+    true,
+  );
+  assert.equal(aiCalls, calls + 2);
+  const versionDuplicate = await request(
+    "/api/v1/hourly-reports/run",
+    params,
+    viewer,
+  );
+  assert.equal(
+    ((await versionDuplicate.json()) as { results: { skipped: string }[] })
+      .results[0].skipped,
+    "unchanged",
+  );
   const later = report(
     "hour-late",
     new Date(Date.parse(hour) + 58 * 60000).toISOString(),
@@ -1676,9 +1708,9 @@ test("hourly AI reports are leased, durable, idempotent and retry D1 without ano
   assert.equal(entries[0].report.hour, hour);
   assert.equal(entries[0].report.snapshots, 2);
   assert.equal(entries[0].report.semanticRecords, 1);
-  assert.equal(
+  assert.match(
     entries[0].report.content.executiveSummary,
-    "本小时任务持续推进，生产部署尚无验证证据。",
+    /^本小时任务持续推进，生产部署尚无验证证据。\[F\d+\]$/,
   );
   assert.equal(
     (
