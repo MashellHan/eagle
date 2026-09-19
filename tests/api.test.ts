@@ -6,7 +6,7 @@ import { after, before, test } from "node:test";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 import { viewerAuthorized } from "../src/worker/auth.ts";
-import { report } from "./fixtures.ts";
+import { report, telemetry } from "./fixtures.ts";
 
 let mf: Miniflare;
 const token = "test-agent-token-with-at-least-32-characters";
@@ -148,6 +148,55 @@ test("viewer profile uses verified Access email and hashed avatar service with a
 });
 after(async () => {
   await mf?.dispose();
+});
+
+test("machine resources and watched ports survive authenticated D1 upload, retry and history", async () => {
+  const value = currentReport("telemetry", -10000);
+  const snapshot = telemetry(value.capturedAt);
+  const payload = {
+    ...value,
+    machine: { ...value.machine, telemetry: snapshot },
+  };
+  assert.equal(
+    (await request("/api/v1/reports", payload, "wrong")).status,
+    401,
+  );
+  assert.equal((await request("/api/v1/reports", payload)).status, 201);
+  const duplicate = await request("/api/v1/reports", payload);
+  assert.equal(duplicate.status, 200);
+  assert.equal(
+    ((await duplicate.json()) as { duplicate: boolean }).duplicate,
+    true,
+  );
+  const history = await request(
+    "/api/v1/history?machine=mac-one&limit=100",
+    undefined,
+    viewer,
+  );
+  const entries = (
+    (await history.json()) as { entries: { report: typeof payload }[] }
+  ).entries;
+  assert.deepEqual(
+    entries.find((e) => e.report.reportId === value.reportId)?.report.machine
+      .telemetry,
+    snapshot,
+  );
+  const db = await mf.getD1Database("DB");
+  const stored = await db
+    .prepare("SELECT payload FROM reports WHERE report_id = ?")
+    .bind(value.reportId)
+    .first<{ payload: string }>();
+  assert(stored);
+  assert.deepEqual(JSON.parse(stored.payload).machine.telemetry, snapshot);
+  // Keep the stateful ingestion tests isolated from this additional snapshot.
+  await db
+    .prepare("DELETE FROM machines WHERE id = ?")
+    .bind(value.machine.id)
+    .run();
+  await db
+    .prepare("DELETE FROM reports WHERE report_id = ?")
+    .bind(value.reportId)
+    .run();
 });
 function request(path: string, body?: unknown, bearer = token) {
   return mf.dispatchFetch(`https://eagle.test${path}`, {
@@ -321,7 +370,7 @@ test("local viewing needs no token but a local hostname never bypasses productio
   );
   assert.equal(
     await viewerAuthorized(
-      new Request("http://127.0.0.1:36001/api/v1/overview"),
+      new Request("http://127.0.0.1:37053/api/v1/overview"),
       env,
     ),
     true,

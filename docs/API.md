@@ -15,6 +15,12 @@ Browser origin: `https://eagle.hexly.ai`, protected by the nocoo Access applicat
 
 Account email comes from the verified JWT payload, never an unverified email header. `/api/v1/me` queries `https://lizheng.blog/api/authors/profile` with the SHA-256 of the trimmed, lowercase email, forwarding no credentials. The lookup times out after 2.5 seconds and falls back to the account name with `avatar:null`; avatars must use HTTPS. Profile data is not persisted. Local development may use `LOCAL_USER_EMAIL` from `.dev.vars` and returns `local:true`; this setting cannot authorize production requests. Browser logout uses `/cdn-cgi/access/logout`.
 
+## Machine telemetry
+
+Report v1 now accepts optional `machine.telemetry` with `observedAt`, nullable `resources`, and `ports`. Resources include CPU model/core count/utilization/sample duration/load average, total/free memory bytes, nullable home-filesystem total/available bytes, and uptime seconds. Each port has a name, loopback host, port number, `checkedAt`, `status` (`open`, `closed`, `timeout`, `error`) and nullable successful-connection `latencyMs`. Unknown data is not zero. The validator rejects out-of-range values and duplicate watched endpoints. Existing v1 reports without telemetry remain valid; upgrade the server before enabling the new collector.
+
+Telemetry is persisted atomically inside the same `reports.payload` as the Herdr snapshot. Both overview and history return it. Resource samples and port observations older than 90 seconds are shown as historical; TCP success never counts as task-deployment evidence. The existing D1 schema needs no migration for this additive JSON field.
+
 ## Snapshot and ordering
 
 `reportId` is generated once before transmission and persisted in the local spool. Retries send the same body and ID. A unique `(machine_id, report_id)` constraint and canonical content hash enforce idempotency. D1 `batch` atomically inserts history and conditionally advances the current pointer. Concurrent retries cannot create two reports. Different JSON object key ordering produces the same hash.

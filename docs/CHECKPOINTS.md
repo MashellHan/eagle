@@ -83,3 +83,12 @@ serving and the first catalogue-derived production Cron observation.
 - 16:04 本地真实端到端通过：12 Space / 21 Pane，从 Herdr 采集、Bearer 上传、D1 到全量页面；幂等、自动刷新、详情、历史、桌面和手机均通过，无浏览器错误。16:06 本地每 30 秒采集已启动，首轮成功，无采集告警。
 - 新增测试先复现旧侧栏行为、缺失身份接口及发布 CSP 阻止外部头像，再完成修复。最终 34 项单元/集成、18 项浏览器测试、TypeScript、Biome 与构建通过。
 - 已打开 https://eagle.dev.hexly.ai。此次按要求交付本地预览，尚未将该批框架改动部署到生产。
+
+## 2026-09-19 16:31 +08:00（端口纠正、机器资源与关注端口）
+
+- 查询 nmem 确认 6001 属于历史 eagle-webui，最新项目序列为 Archy 7051、Zeppelin 7052。核对注册记录、两份 Caddyfile 和可绑定性后，为当前 Eagle 分配 7053 / 37053（Worker）/ 38053（inspector）/ 17053（API E2E 预留）/ 27053（浏览器）。项目配置、文档、活跃及 workflow Caddyfile 已同步；Caddy validate/reload 与 HTTPS 200 通过，分配记录写入 nmem `eagle-local-ports`。
+- 16:21 直接 SQL 核验：线上 Cloudflare D1 `eagle` 已有 235 份报告，最近写入 16:21:16；独立本地 D1 当时有 60 份报告。生产原有采集持续运行。
+- 采集器增加 CPU 使用率/型号/核数/负载、内存、主目录文件系统容量/可用空间和 uptime；`watchPorts` 可配置最多 32 个本机 TCP 端口，已在本地启用 Raven 7024。当前真实探测为未监听，不等同于线上 Raven 服务状态。
+- 16:30 本地 D1 SQL 直接读出最新快照的 18 核、128 GiB、Raven 7024 与 closed 状态。新增字段保存在原有 reports.payload，无需表迁移；旧 v1 报告仍有效，缺失/过期数据不显示为当前正常。
+- 16:30:55 真实端到端验证通过：11 Space / 20 Pane + 资源和关注端口，从采集、Bearer、幂等、D1 到全量页面/历史/自动刷新与桌面手机均通过；无页面错误或横向溢出。38 项单元/集成、20 项浏览器测试及类型、Biome、构建通过，新增用例先失败后实现。
+- 本地持续采集已恢复，预览域名不变。此次未部署新增字段；发布顺序已写入 Agent 文档：先部署兼容 Worker，再重启生产采集器。

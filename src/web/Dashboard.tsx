@@ -16,9 +16,12 @@ import {
   CheckCheck,
   CircleHelp,
   Clock3,
+  Cpu,
   GitBranch,
+  HardDrive,
   Layers3,
   ListChecks,
+  MemoryStick,
   Radio,
   Search,
   Server,
@@ -105,6 +108,149 @@ export function Status({ state }: { state: State }) {
 export function isStale(machine: MachineView, now: string) {
   return (
     age(machine.lastSeen, now) > 90 || age(machine.report.capturedAt, now) > 300
+  );
+}
+
+function MachineResources({
+  machine,
+  now,
+}: {
+  machine: MachineView;
+  now: string;
+}) {
+  const telemetry = machine.report.machine.telemetry;
+  const resources = telemetry?.resources;
+  const stale =
+    isStale(machine, now) || (telemetry && age(telemetry.observedAt, now) > 90);
+  const gib = (value: number) =>
+    new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format(
+      value / 1024 ** 3,
+    );
+  return (
+    <section aria-label="机器资源" className="mb-3">
+      {!telemetry ? (
+        <p className="text-xs text-basalt-muted-foreground">尚未上报机器资源</p>
+      ) : (
+        <LayerCard className="p-3">
+          {stale && (
+            <Badge variant="secondary" className="mb-2">
+              历史快照 · 等待更新
+            </Badge>
+          )}
+          {resources ? (
+            <dl
+              className={`grid grid-cols-2 gap-x-4 gap-y-3 text-xs md:grid-cols-4 ${stale ? "opacity-60" : ""}`}
+            >
+              <div
+                className="min-w-0"
+                title={`${resources.cpuModel} · 采样 ${resources.cpuSampleMs} ms；负载为 1/5/15 分钟平均值`}
+              >
+                <dt className="mb-1 flex items-center gap-1.5 text-basalt-muted-foreground">
+                  <Cpu size={13} />
+                  CPU <span className="ml-auto">{resources.cpuCores} 核</span>
+                </dt>
+                <dd className="font-semibold tabular-nums">
+                  {resources.cpuUsagePercent === null
+                    ? "未知"
+                    : `${resources.cpuUsagePercent}%`}
+                </dd>
+                <dd className="mt-1 truncate text-[10px] text-basalt-muted-foreground">
+                  负载{" "}
+                  {resources.loadAverage
+                    ?.map((n) => n.toFixed(1))
+                    .join(" / ") ?? "未知"}
+                </dd>
+              </div>
+              <div title="已用量为总内存减去系统报告的空闲内存；缓存可能计入，不代表内存压力。">
+                <dt className="mb-1 flex items-center gap-1.5 text-basalt-muted-foreground">
+                  <MemoryStick size={13} />
+                  内存
+                </dt>
+                <dd className="font-semibold tabular-nums">
+                  {gib(
+                    resources.memory.totalBytes - resources.memory.freeBytes,
+                  )}{" "}
+                  / {gib(resources.memory.totalBytes)} GiB
+                </dd>
+                <dd className="mt-1 text-[10px] text-basalt-muted-foreground">
+                  空闲 {gib(resources.memory.freeBytes)} GiB
+                </dd>
+              </div>
+              <div title="采集器用户主目录所在文件系统的容量和可用空间。">
+                <dt className="mb-1 flex items-center gap-1.5 text-basalt-muted-foreground">
+                  <HardDrive size={13} />
+                  磁盘可用
+                </dt>
+                <dd className="font-semibold tabular-nums">
+                  {resources.disk
+                    ? `${gib(resources.disk.availableBytes)} GiB`
+                    : "未知"}
+                </dd>
+                <dd className="mt-1 text-[10px] text-basalt-muted-foreground">
+                  {resources.disk
+                    ? `总计 ${gib(resources.disk.totalBytes)} GiB`
+                    : "磁盘信息不可读"}
+                </dd>
+              </div>
+              <div>
+                <dt className="mb-1 flex items-center gap-1.5 text-basalt-muted-foreground">
+                  <Clock3 size={13} />
+                  运行时间
+                </dt>
+                <dd className="font-semibold tabular-nums">
+                  {Math.floor(resources.uptimeSeconds / 86400)} 天{" "}
+                  {Math.floor(resources.uptimeSeconds / 3600) % 24} 小时
+                </dd>
+                <dd className="mt-1 text-[10px] text-basalt-muted-foreground">
+                  <time dateTime={telemetry.observedAt}>
+                    {time(telemetry.observedAt)}
+                  </time>{" "}
+                  采样
+                </dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="text-xs text-basalt-muted-foreground">
+              资源采集失败 · 等待更新
+            </p>
+          )}
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-basalt-border pt-2 text-[10px] text-basalt-muted-foreground">
+            <span title="只验证本机 TCP 连接，不代表应用业务健康。">
+              关注端口 · TCP
+            </span>
+            {!telemetry.ports.length && <span>未配置关注端口</span>}
+            {telemetry.ports.map((port) => {
+              const old = stale || age(port.checkedAt, now) > 90;
+              const label = {
+                open: "可连接",
+                closed: "未监听",
+                timeout: "连接超时",
+                error: "检查失败",
+              }[port.status];
+              return (
+                <Badge
+                  key={`${port.host}:${port.port}`}
+                  variant={
+                    old
+                      ? "secondary"
+                      : port.status === "open"
+                        ? "success"
+                        : "warning"
+                  }
+                  title={`${port.host}:${port.port} · ${time(port.checkedAt)} · 仅 TCP 连通性`}
+                >
+                  {port.name} · {port.port}
+                  <span>{old ? `上次${label}` : label}</span>
+                  {!old && port.latencyMs !== null && (
+                    <span className="tabular-nums">{port.latencyMs} ms</span>
+                  )}
+                </Badge>
+              );
+            })}
+          </div>
+        </LayerCard>
+      )}
+    </section>
   );
 }
 
@@ -756,6 +902,7 @@ export function Dashboard({
                     {machine.warning || machine.report.warnings.join("；")}
                   </p>
                 )}
+                <MachineResources machine={machine} now={now} />
                 <div className="space-grid">
                   {group.map((s, i) => (
                     <SpaceCard

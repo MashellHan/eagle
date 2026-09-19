@@ -9,7 +9,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import { ReportSchema } from "../src/shared/schema.ts";
+import { ReportSchema, WatchPortsSchema } from "../src/shared/schema.ts";
 import {
   type AgentConfig,
   checkUrl,
@@ -27,6 +27,7 @@ const ConfigSchema = z.strictObject({
   intervalSeconds: z.number().int().min(15).max(3600).default(30),
   codexDir: z.string().optional(),
   spoolDir: z.string().optional(),
+  watchPorts: WatchPortsSchema.default([]),
 });
 const path =
   process.env.EAGLE_CONFIG || join(homedir(), ".config/eagle/agent.json");

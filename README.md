@@ -26,7 +26,9 @@ npm run dev:api
 npm run dev
 ```
 
-Local Vite is **127.0.0.1:6001**, Worker is **127.0.0.1:36001**, inspector is **46001**. Caddy's existing `eagle.dev.hexly.ai` block proxies 6001 with the machine's mkcert certificate. Browser tests use **26001**. The **16001** suffix is reserved for standalone API E2E. Restart Wrangler after changing secrets.
+Local Vite is **127.0.0.1:7053**, Worker is **127.0.0.1:37053**, inspector is **38053**. Caddy's existing `eagle.dev.hexly.ai` block proxies 7053 with the machine's mkcert certificate. Browser tests use **27053**. The **17053** suffix is reserved for standalone API E2E. Restart Wrangler after changing secrets.
+
+These ports follow the nmem allocation after Zeppelin (7052); 6001 belonged to the legacy eagle-webui and is no longer this project's development port.
 
 ```sh
 npm run check
@@ -48,6 +50,8 @@ The desktop sidebar starts expanded and keeps the Eagle mark fixed when toggled.
 Agents use **per-machine Bearer tokens** stored only in their 0600 configuration and the Worker's `AGENT_TOKENS` secret. They upload to **https://eagle-ingest.hexly.ai** so browser SSO never interrupts reporting. That host serves only reports, heartbeats and public `/api/live`; dashboard assets, overview and history all return 404 there. The private API never supports CORS. Browser storage and D1 contain no authentication tokens.
 
 The dashboard uses Basalt chrome, controls, semantic badges, chart primitives and palette tokens. Compact machine groups preserve real pane geometry; state filters, evidence coverage, agent distribution and change timelines expose useful details immediately. Skeletons keep loading geometry stable, refreshes retain content, and entrance/refresh motion respects reduced-motion preferences.
+
+Each machine also reports CPU, RAM, home-filesystem disk capacity and uptime. Add `"watchPorts":[{"name":"Raven","port":7024}]` to the agent's secure configuration to track named local TCP endpoints. Resource and port snapshots are stored in D1 history with the Space inventory, and stale observations are labelled explicitly. See [agent configuration](docs/AGENT.md) for measurement semantics and upgrade order.
 
 ## Interpretation
 

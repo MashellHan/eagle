@@ -24,7 +24,11 @@ npm run dev:api
 npm run dev
 ```
 
-日常访问 `https://eagle.dev.hexly.ai`。Vite / Worker 端口为 6001 / 36001，浏览器测试使用 26001，独立 API 测试保留 16001。开发、测试和生产数据相互隔离。
+日常访问 `https://eagle.dev.hexly.ai`。Vite / Worker 端口为 7053 / 37053，浏览器测试使用 27053，独立 API 测试保留 17053。开发、测试和生产数据相互隔离。
+
+端口已按 nmem 最新序列分配到 Zeppelin 7052 之后；6001 属于历史 eagle-webui。Worker inspector 为 38053。
+
+每台机器还会上报 CPU、内存、主目录所在磁盘容量和运行时间。在采集器安全配置中增加 `"watchPorts":[{"name":"Raven","port":7024}]`，即可检查指定本机 TCP 端口。数据与 Space 快照一起进入 D1 历史；端口可连接不等于应用业务健康，过期结果明确显示为历史。配置与升级顺序见 [Agent 契约](docs/AGENT.md)。
 
 ## 如何理解工作态势
 

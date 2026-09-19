@@ -13,6 +13,7 @@ Create `~/.config/eagle/agent.json`, directory mode 0700 and file mode 0600:
   "machineName": "Your machine",
   "token": "REPLACE_WITH_MACHINE_SECRET",
   "intervalSeconds": 30,
+  "watchPorts": [{ "name": "Raven", "port": 7024 }],
   "evidenceFile": "/absolute/private/path/evidence.json"
 }
 ```
@@ -32,6 +33,14 @@ node agent/cli.ts heartbeat
 `EAGLE_CONFIG` selects another 0600 config. `once` collects, atomically writes a 0600 spool entry, then drains pending reports. Network/429/5xx failures retry with backoff using the same report body and ID; 400/409/413/415 或损坏 JSON 会移入 `spool/rejected/` 保留，并在心跳中提示；后续有效快照继续发送。401/403 和网络故障保留整个待发送队列等待修复。Reports remain on disk until acknowledged or explicitly quarantined. At 1000 pending entries the spool first attempts to drain before collecting more; it never deletes unacknowledged data. An explicit auth/schema failure requires operator correction; do not discard old reports to make the queue green. `watch` repeats after the configured interval. Alternatively run `once` with launchd/systemd at the same interval; prevent overlapping invocations.
 
 Automatic collection covers **every running local Herdr session** and every Space/tab/pane, not just the active tab. A whole-session error preserves the previous inventory. Stopped sessions retain cached Spaces with `availability:unavailable`; they cannot count as live or verified. The last validated report is cached as a 0600 file alongside the spool. The optional local Codex adapter uses `state_5.sqlite` and `goals_1.sqlite` in `codexDir` (default `~/.codex`), reads bounded transcript tails, and records native final replies and explicit activity. Unknown/changed store schemas fall back to terminal evidence. Raw command arguments and reasoning are never extracted. All outbound strings redact known credentials, common token formats, secret assignments and private-key blocks.
+
+## Machine resources and watched ports
+
+Collector 0.2.0 adds optional `machine.telemetry` to v1 snapshots. It samples CPU utilization across all logical cores over approximately 250 ms, CPU model/core count, 1/5/15-minute load average, total/free RAM, home-filesystem total/available space and system uptime. Memory usage is total minus free, which may include caches; it is not a memory-pressure measurement. Missing resources or disk measurements remain unknown. Values and their observation times are kept in the existing D1 report payload and returned by overview/history; no table migration is needed.
+
+`watchPorts` is optional and defaults to an empty list. Each entry has `name`, `port` and optional `host` (`127.0.0.1` by default; `::1` is also supported). At most 32 unique host/port pairs can be configured. For Raven, 7023 is the dashboard and 7024 is the proxy; configure either or both. Checks run concurrently, each bounded to one second, and send no application data or credentials. Results distinguish TCP connect success, connection refusal, timeout and check error. A listening port does not prove business health or successful task deployment. The UI marks observations older than 90 seconds as historical.
+
+Restart the collector after editing its configuration. For an upgrade, deploy the compatible Worker **before** restarting production collectors: old strict v1 servers reject the newly added telemetry field. Older agent reports without telemetry continue to work on the new server. The current preview is configured in `.local/agent-dev.json`; its Raven port check and resource snapshots go to the independent local D1.
 
 ## Manager evidence
 

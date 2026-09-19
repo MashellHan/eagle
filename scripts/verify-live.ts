@@ -62,6 +62,8 @@ try {
   const machine = overview.machines.find((m) => m.id === config.machineId);
   assert(machine);
   assert.equal(machine.report.reportId, report.reportId);
+  assert.deepEqual(machine.report.machine.telemetry, report.machine.telemetry);
+  assert(report.machine.telemetry?.resources, "Real machine resources missing");
   assert.deepEqual(
     machine.report.spaces.map((s) => s.id).sort(),
     report.spaces.map((s) => s.id).sort(),
@@ -70,6 +72,13 @@ try {
     await expect(
       page.getByRole("button", { name: `查看 ${space.name}`, exact: true }),
     ).toBeAttached();
+  const resources = page.getByRole("region", { name: "机器资源" }).first();
+  await expect(resources).toContainText("CPU");
+  await expect(resources).toContainText("GiB");
+  for (const port of report.machine.telemetry.ports) {
+    await expect(resources).toContainText(port.name);
+    await expect(resources).toContainText(String(port.port));
+  }
   const second = await collect(config);
   await sendReport(config.url, config.token, second);
   await expect(
@@ -126,6 +135,7 @@ try {
       production ? "anonymous Access redirect" : "local viewing without token",
       production ? "verified Access session" : "no login form",
       "real Herdr inventory in D1 API",
+      "real machine resources and configured TCP ports",
       "idempotent retry",
       "all Spaces rendered",
       "automatic refresh",

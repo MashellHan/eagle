@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ReportSchema } from "../src/shared/schema.ts";
-import { report } from "./fixtures.ts";
+import { report, telemetry } from "./fixtures.ts";
 
 test("v1 report round trips; unsupported versions, secrets and duplicate IDs fail closed", () => {
   const value = report();
@@ -53,4 +53,30 @@ test("normalizes fractional timestamp precision before lexical D1 ordering", () 
     ReportSchema.parse(value).capturedAt,
     "2026-09-19T05:50:00.000Z",
   );
+});
+
+test("optional machine telemetry preserves v1 reports and rejects invalid resource and port values", () => {
+  const value = report();
+  const snapshot = telemetry();
+  const parse = () =>
+    ReportSchema.safeParse({
+      ...value,
+      machine: { ...value.machine, telemetry: snapshot },
+    });
+  assert.equal(parse().success, true);
+  snapshot.resources.cpuUsagePercent = 101;
+  assert.equal(parse().success, false);
+  snapshot.resources.cpuUsagePercent = 25;
+  snapshot.resources.memory.freeBytes =
+    snapshot.resources.memory.totalBytes + 1;
+  assert.equal(parse().success, false);
+  snapshot.resources.memory.freeBytes = 0;
+  snapshot.ports[0].port = 65536;
+  assert.equal(parse().success, false);
+  snapshot.ports[0].port = 7024;
+  snapshot.ports[0].host = "example.com";
+  assert.equal(parse().success, false);
+  snapshot.ports[0].host = "127.0.0.1";
+  snapshot.ports.push(snapshot.ports[0]);
+  assert.equal(parse().success, false);
 });

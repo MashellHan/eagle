@@ -16,6 +16,67 @@ const text = z.string().max(2000);
 const timestamp = z.iso
   .datetime({ offset: false })
   .transform((value) => new Date(value).toISOString());
+const bytes = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+export const WatchPortSchema = z.strictObject({
+  name: z.string().trim().min(1).max(80),
+  host: z.enum(["127.0.0.1", "::1"]).default("127.0.0.1"),
+  port: z.number().int().min(1).max(65535),
+});
+export const WatchPortsSchema = z
+  .array(WatchPortSchema)
+  .max(32)
+  .refine(
+    (ports) =>
+      new Set(ports.map((p) => `${p.host}:${p.port}`)).size === ports.length,
+    "Duplicate watched port",
+  );
+export const PortCheckSchema = WatchPortSchema.extend({
+  status: z.enum(["open", "closed", "timeout", "error"]),
+  latencyMs: z.number().nonnegative().nullable(),
+  checkedAt: timestamp,
+});
+export const MachineTelemetrySchema = z.strictObject({
+  observedAt: timestamp,
+  resources: z
+    .strictObject({
+      cpuModel: z.string().max(240),
+      cpuCores: z.number().int().positive().max(4096),
+      cpuUsagePercent: z.number().min(0).max(100).nullable(),
+      cpuSampleMs: z.number().positive(),
+      loadAverage: z
+        .tuple([
+          z.number().nonnegative(),
+          z.number().nonnegative(),
+          z.number().nonnegative(),
+        ])
+        .nullable(),
+      memory: z
+        .strictObject({ totalBytes: bytes.positive(), freeBytes: bytes })
+        .refine(
+          (m) => m.freeBytes <= m.totalBytes,
+          "Free memory exceeds total",
+        ),
+      disk: z
+        .strictObject({ totalBytes: bytes.positive(), availableBytes: bytes })
+        .refine(
+          (d) => d.availableBytes <= d.totalBytes,
+          "Available disk exceeds total",
+        )
+        .nullable(),
+      uptimeSeconds: z.number().int().nonnegative(),
+    })
+    .nullable(),
+  ports: z
+    .array(PortCheckSchema)
+    .max(32)
+    .refine(
+      (ports) =>
+        new Set(ports.map((p) => `${p.host}:${p.port}`)).size === ports.length,
+      "Duplicate watched port",
+    ),
+});
+export type MachineTelemetry = z.infer<typeof MachineTelemetrySchema>;
+export type PortCheck = z.infer<typeof PortCheckSchema>;
 export const EvidenceSchema = z.strictObject({
   kind: z.enum(["summary", "goal", "git", "test", "process", "deployment"]),
   status: z.enum(["success", "failure", "running", "waiting", "unknown"]),
@@ -78,6 +139,7 @@ export const ReportSchema = z
       name: z.string().min(1).max(120),
       platform: z.string().max(80),
       collectorVersion: z.string().max(80),
+      telemetry: MachineTelemetrySchema.optional(),
     }),
     spaces: z.array(SpaceSchema).max(200),
     warnings: z.array(z.string().max(500)).max(100),

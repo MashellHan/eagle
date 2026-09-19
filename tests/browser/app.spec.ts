@@ -1,6 +1,73 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { report } from "../fixtures.ts";
+import { report, telemetry } from "../fixtures.ts";
+
+test("machine resources and named TCP ports show freshness and missing data honestly", async ({
+  page,
+}) => {
+  const now = new Date().toISOString();
+  const snapshot = telemetry(now);
+  const value = report("resources", now);
+  let stale = false;
+  let legacy = false;
+  await page.route("**/api/**", (route) =>
+    route.fulfill({
+      json: {
+        now: new Date().toISOString(),
+        machines: [
+          {
+            id: "mac-one",
+            name: "Mac One",
+            lastSeen: now,
+            receivedAt: now,
+            warning: null,
+            report: {
+              ...value,
+              machine: {
+                ...value.machine,
+                ...(!legacy && {
+                  telemetry: {
+                    ...snapshot,
+                    observedAt: stale
+                      ? new Date(Date.now() - 600000).toISOString()
+                      : now,
+                    ports: snapshot.ports.map((port) => ({
+                      ...port,
+                      checkedAt: stale
+                        ? new Date(Date.now() - 600000).toISOString()
+                        : now,
+                    })),
+                  },
+                }),
+              },
+            },
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto("/");
+  const resources = page.getByRole("region", { name: "机器资源" });
+  await expect(resources).toContainText("25%");
+  await expect(resources).toContainText("12 / 16 GiB");
+  await expect(resources).toContainText("200 GiB");
+  await expect(resources).toContainText("Raven");
+  await expect(resources).toContainText("7024");
+  await expect(resources.getByText("可连接", { exact: true })).toBeVisible();
+  stale = true;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(resources).toContainText("历史快照");
+  await expect(resources.getByText("可连接", { exact: true })).toHaveCount(0);
+  await expect(resources).toContainText("上次可连接");
+  legacy = true;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(resources).toContainText("尚未上报机器资源");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
 
 test("token-free overview, topology evidence, history and empty search", async ({
   page,
