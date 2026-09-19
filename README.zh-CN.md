@@ -12,6 +12,8 @@
 
 网站由 nocoo 团队的 Cloudflare Access 保护，本地免登录。机器使用独立 Bearer Token，向 `https://eagle-ingest.hexly.ai` 上报；该域名不开放看板、查询或历史。
 
+桌面侧栏默认展开，展开与折叠时 Logo 位置固定。底部显示 Access 账户、头像服务返回的姓名与头像，以及退出登录按钮。头像查询只发送规范化邮箱的 SHA-256；服务不可用时保留姓名和首字母头像。本地可在 `.dev.vars` 配置 `LOCAL_USER_EMAIL` 预览真实头像，无须 Token，退出按钮显示为不可用。
+
 需要 Node 24+、npm、Herdr 0.9.1+。凭据仅保存在安全配置中，不写入源码、浏览器存储或上报数据。具体认证与部署步骤以 [English README](README.md) 和 [Agent 契约](docs/AGENT.md) 为准。
 
 ```sh

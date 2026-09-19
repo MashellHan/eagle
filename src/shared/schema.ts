@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+export type Viewer = {
+  name: string;
+  email: string;
+  avatar: string | null;
+  local: boolean;
+};
+
 const id = z
   .string()
   .min(1)

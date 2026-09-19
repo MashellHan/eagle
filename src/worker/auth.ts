@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import type { Viewer } from "../shared/schema.ts";
 
 const encoder = new TextEncoder();
 export async function equalSecret(a: string, b: string): Promise<boolean> {
@@ -33,15 +34,23 @@ export async function agentIdentity(request: Request, env: Env) {
 }
 // Public key caches contain no user credentials and follow Access key rotation.
 const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
-export async function viewerAuthorized(request: Request, env: Env) {
+export async function viewerIdentity(
+  request: Request,
+  env: Env,
+): Promise<Viewer | null> {
   const host = new URL(request.url).hostname;
   if (
     env.LOCAL_DEV === "true" &&
     ["localhost", "127.0.0.1", "[::1]", "eagle.dev.hexly.ai"].includes(host)
   )
-    return true;
+    return {
+      email: env.LOCAL_USER_EMAIL?.trim().toLowerCase() || "",
+      name: "本地开发",
+      avatar: null,
+      local: true,
+    };
   const token = request.headers.get("cf-access-jwt-assertion");
-  if (!token || !env.ACCESS_TEAM_URL || !env.ACCESS_AUD) return false;
+  if (!token || !env.ACCESS_TEAM_URL || !env.ACCESS_AUD) return null;
   try {
     if (!keySets.has(env.ACCESS_TEAM_URL))
       keySets.set(
@@ -51,15 +60,27 @@ export async function viewerAuthorized(request: Request, env: Env) {
         ),
       );
     const keys = keySets.get(env.ACCESS_TEAM_URL);
-    if (!keys) return false;
-    await jwtVerify(token, keys, {
+    if (!keys) return null;
+    const { payload } = await jwtVerify(token, keys, {
       issuer: env.ACCESS_TEAM_URL,
       audience: env.ACCESS_AUD,
       algorithms: ["RS256"],
       requiredClaims: ["exp", "iat", "sub"],
     });
-    return true;
+    const email =
+      typeof payload.email === "string"
+        ? payload.email.trim().toLowerCase()
+        : "";
+    return {
+      email,
+      name: email.split("@")[0] || "Access 用户",
+      avatar: null,
+      local: false,
+    };
   } catch {
-    return false;
+    return null;
   }
+}
+export async function viewerAuthorized(request: Request, env: Env) {
+  return (await viewerIdentity(request, env)) !== null;
 }

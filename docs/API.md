@@ -7,10 +7,13 @@ All private responses are `Cache-Control: no-store`. Maximum streamed upload siz
 | `GET /api/live` | Public | `{status,service,schemaVersion,revision}`; D1 connectivity only |
 | `POST /api/v1/reports` | Machine Bearer | Full v1 report; 201 new / 200 duplicate / 409 reused ID with different content |
 | `POST /api/v1/heartbeat` | Machine Bearer | `{schemaVersion:1,machineId,sentAt,warning?}`; requires initial report |
+| `GET /api/v1/me` | Verified Access JWT | `{name,email,avatar,local}`; account and optional author-service profile |
 | `GET /api/v1/overview` | Verified Access JWT | Server time, latest report per machine, last heartbeat and collector warning |
 | `GET /api/v1/history` | Verified Access JWT | Optional `machine`, `space`, `before` cursor, `limit` 1–100 (default 20); entries and nextCursor |
 
 Browser origin: `https://eagle.hexly.ai`, protected by the nocoo Access application. Local development viewing is unauthenticated. Machine origin: `https://eagle-ingest.hexly.ai`, which serves only the two ingestion endpoints and public health; all other paths are 404. The browser Access JWT is validated by the Worker, and is never accepted as a machine Bearer token. Legacy viewer Bearer credentials and Eagle session cookies no longer authorize requests.
+
+Account email comes from the verified JWT payload, never an unverified email header. `/api/v1/me` queries `https://lizheng.blog/api/authors/profile` with the SHA-256 of the trimmed, lowercase email, forwarding no credentials. The lookup times out after 2.5 seconds and falls back to the account name with `avatar:null`; avatars must use HTTPS. Profile data is not persisted. Local development may use `LOCAL_USER_EMAIL` from `.dev.vars` and returns `local:true`; this setting cannot authorize production requests. Browser logout uses `/cdn-cgi/access/logout`.
 
 ## Snapshot and ordering
 

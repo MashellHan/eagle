@@ -30,12 +30,10 @@ import {
 import { PageHeader } from "@nocoo/basalt/components/page-header";
 import { SectionRule } from "@nocoo/basalt/components/section-rule";
 import {
-  ChevronLeft,
   History as HistoryIcon,
   LayoutDashboard,
-  LogOut,
-  Menu,
   Monitor,
+  PanelLeft,
   RefreshCw,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -47,7 +45,7 @@ import type {
   Space,
 } from "../shared/schema.ts";
 import { AuthError, api, time } from "./api.ts";
-import { FamilyActions, Mark } from "./Brand.tsx";
+import { FamilyActions, Mark, SidebarAccount } from "./Brand.tsx";
 import {
   Dashboard,
   DashboardSkeleton,
@@ -356,7 +354,7 @@ export function App() {
   const [mobile, setMobile] = useState(
     () => matchMedia("(max-width: 767px)").matches,
   );
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(mobile);
   const [syncing, setSyncing] = useState(false);
   const fetching = useRef(false);
   const refresh = useCallback(async () => {
@@ -418,6 +416,26 @@ export function App() {
     setMachineId(id);
     if (mobile) setCollapsed(true);
   };
+  const sidebarToggle = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          size="icon"
+          variant="ghost"
+          className={!collapsed || mobile ? "h-7 w-7 shrink-0" : undefined}
+          aria-label={collapsed && !mobile ? "展开导航" : "收起导航"}
+          aria-expanded={!collapsed}
+          aria-controls="eagle-navigation"
+          onClick={() => setCollapsed((value) => !value)}
+        >
+          <PanelLeft size={18} strokeWidth={1.5} aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side={collapsed && !mobile ? "right" : "bottom"}>
+        {collapsed && !mobile ? "展开侧栏" : "收起侧栏"}
+      </TooltipContent>
+    </Tooltip>
+  );
   const NavItem = collapsed && !mobile ? SidebarIconItem : SidebarItem;
   const title =
     page === "history" ? "最近历史" : (selectedMachine?.name ?? "任务控制台");
@@ -429,7 +447,7 @@ export function App() {
     >
       <AppShell>
         <AppSkipLink>跳至内容</AppSkipLink>
-        <Sidebar>
+        <Sidebar id="eagle-navigation" aria-label="侧栏">
           {mobile && (
             <>
               <DialogTitle className="sr-only">导航</DialogTitle>
@@ -438,32 +456,21 @@ export function App() {
               </DialogDescription>
             </>
           )}
-          <SidebarHeader>
-            <div
-              className={`flex w-full items-center ${collapsed && !mobile ? "justify-center" : "justify-between"}`}
-            >
-              <span className="flex min-w-0 items-center gap-3">
-                <Mark />
-                {(!collapsed || mobile) && (
-                  <>
-                    <strong className="font-semibold">Eagle</strong>
-                    <Badge variant="secondary">{__APP_VERSION__}</Badge>
-                  </>
-                )}
-              </span>
-              {(!collapsed || mobile) && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7"
-                  aria-label="收起导航"
-                  onClick={() => setCollapsed(true)}
-                >
-                  <ChevronLeft size={16} />
-                </Button>
-              )}
-            </div>
+          <SidebarHeader className="gap-3 pl-[22px] pr-3">
+            <Mark />
+            {(!collapsed || mobile) && (
+              <>
+                <strong className="text-lg font-semibold">Eagle</strong>
+                <Badge variant="secondary" className="text-[10px]">
+                  {__APP_VERSION__}
+                </Badge>
+                <div className="ml-auto">{sidebarToggle}</div>
+              </>
+            )}
           </SidebarHeader>
+          {collapsed && !mobile && (
+            <div className="mb-1 self-center">{sidebarToggle}</div>
+          )}
           <SidebarNav aria-label="工作台导航">
             {(!collapsed || mobile) && (
               <SidebarPartition>工作态势</SidebarPartition>
@@ -514,13 +521,14 @@ export function App() {
               ))}
             </div>
           </SidebarNav>
-          <SidebarFooter>
-            {(!collapsed || mobile) && (
-              <div className="space-y-1 text-xs text-basalt-muted-foreground">
-                <p>证据优先，结论有据</p>
-                <p>每 5 秒同步一次</p>
-              </div>
-            )}
+          <SidebarFooter
+            className={
+              collapsed && !mobile
+                ? "flex flex-col items-center gap-2 px-0"
+                : undefined
+            }
+          >
+            <SidebarAccount collapsed={collapsed && !mobile} />
           </SidebarFooter>
         </Sidebar>
         <AppMain className="relative" tabIndex={-1}>
@@ -528,14 +536,14 @@ export function App() {
             title={title}
             breadcrumbs={[{ label: "工作台" }]}
             leading={
-              collapsed || mobile ? (
+              mobile ? (
                 <Button
                   size="icon"
                   variant="ghost"
                   aria-label="展开导航"
                   onClick={() => setCollapsed(false)}
                 >
-                  <Menu size={18} />
+                  <PanelLeft size={18} strokeWidth={1.5} aria-hidden="true" />
                 </Button>
               ) : undefined
             }
@@ -545,25 +553,6 @@ export function App() {
                   {import.meta.env.DEV ? "LOCAL" : "ACCESS"}
                 </Badge>
                 <FamilyActions />
-                {!import.meta.env.DEV && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        aria-label="退出登录"
-                        onClick={() =>
-                          window.location.assign("/cdn-cgi/access/logout")
-                        }
-                      >
-                        <LogOut size={16} strokeWidth={1.5} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="text-xs">
-                      退出登录
-                    </TooltipContent>
-                  </Tooltip>
-                )}
               </>
             }
           />

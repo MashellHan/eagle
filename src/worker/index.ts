@@ -5,7 +5,8 @@ import {
   type Report,
   ReportSchema,
 } from "../shared/schema.ts";
-import { agentIdentity, agentTokens, viewerAuthorized } from "./auth.ts";
+import { agentIdentity, agentTokens, viewerIdentity } from "./auth.ts";
+import { withProfile } from "./profile.ts";
 
 class HttpError extends Error {
   constructor(
@@ -176,9 +177,10 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(409, "Upload initial report first");
     return json({ alive: true });
   }
-  if (!(await viewerAuthorized(request, env)))
-    throw new HttpError(401, "Sign in required");
+  const viewer = await viewerIdentity(request, env);
+  if (!viewer) throw new HttpError(401, "Sign in required");
   if (request.method !== "GET") throw new HttpError(405, "Method not allowed");
+  if (path === "/api/v1/me") return json(await withProfile(viewer));
   if (path === "/api/v1/overview") {
     const { results } = await env.DB.prepare(
       "SELECT m.id, m.name, m.last_seen, m.warning, r.received_at, r.payload FROM machines m JOIN reports r ON r.seq = m.latest_seq ORDER BY m.name, m.id",

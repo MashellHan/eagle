@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { after, before, test } from "node:test";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
@@ -11,6 +12,7 @@ let mf: Miniflare;
 const token = "test-agent-token-with-at-least-32-characters";
 let viewer: string;
 let signingKey: CryptoKey;
+let profileAvailable = true;
 const issuer = "https://nocoo.cloudflareaccess.com";
 const audience =
   "d1ffdb7fe2787e2a9e8f957a68ed5feec2b944c44c6fdbfd54341887eab6f873";
@@ -63,6 +65,27 @@ before(async () => {
           compatibilityFlags: ["nodejs_compat"],
           d1Databases: ["DB"],
           outboundService: async (request) => {
+            const url = new URL(request.url);
+            if (url.origin === "https://lizheng.blog") {
+              assert.equal(url.pathname, "/api/authors/profile");
+              assert.equal(
+                url.searchParams.get("hash"),
+                createHash("sha256")
+                  .update("viewer@example.test")
+                  .digest("hex"),
+              );
+              assert.equal(request.headers.get("authorization"), null);
+              assert.equal(
+                request.headers.get("cf-access-jwt-assertion"),
+                null,
+              );
+              return profileAvailable
+                ? Response.json({
+                    name: "Li Zheng",
+                    avatar: "https://images.example.test/avatar.png",
+                  })
+                : new Response("Unavailable", { status: 503 });
+            }
             assert.equal(request.url, `${issuer}/cdn-cgi/access/certs`);
             return Response.json({ keys: [jwk] });
           },
@@ -83,6 +106,44 @@ before(async () => {
   const db = await mf.getD1Database("DB");
   await db.exec(
     readFileSync("migrations/0001_initial.sql", "utf8").replace(/\n/g, " "),
+  );
+});
+test("viewer profile uses verified Access email and hashed avatar service with a safe fallback", async () => {
+  assert.equal((await request("/api/v1/me", undefined, "")).status, 401);
+  const response = await mf.dispatchFetch("https://eagle.test/api/v1/me", {
+    headers: {
+      "Cf-Access-Jwt-Assertion": viewer,
+      "Cf-Access-Authenticated-User-Email": "forged@example.test",
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await response.json(), {
+    email: "viewer@example.test",
+    name: "Li Zheng",
+    avatar: "https://images.example.test/avatar.png",
+    local: false,
+  });
+  profileAvailable = false;
+  try {
+    const fallback = await request("/api/v1/me", undefined, viewer);
+    assert.equal(fallback.status, 200);
+    assert.deepEqual(await fallback.json(), {
+      email: "viewer@example.test",
+      name: "viewer",
+      avatar: null,
+      local: false,
+    });
+  } finally {
+    profileAvailable = true;
+  }
+  assert.equal(
+    (
+      await mf.dispatchFetch("https://eagle-ingest.hexly.ai/api/v1/me", {
+        headers: { "Cf-Access-Jwt-Assertion": viewer },
+      })
+    ).status,
+    404,
   );
 });
 after(async () => {

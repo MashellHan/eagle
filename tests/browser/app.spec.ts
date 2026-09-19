@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { report } from "../fixtures.ts";
 
@@ -144,7 +145,8 @@ test("adopted eagle mark and family links work in both sidebar states", async ({
     "在 hexly.ai 查看 Eagle",
   );
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "展开导航" }).click();
+  if (isMobile) await page.getByRole("button", { name: "展开导航" }).click();
+  await expect(page.getByRole("button", { name: "收起导航" })).toBeVisible();
   const mark = page.locator("img[data-eagle-mark]").last();
   await expect(mark).toBeVisible();
   await mark.evaluate((node) => (node as HTMLImageElement).decode());
@@ -158,13 +160,117 @@ test("adopted eagle mark and family links work in both sidebar states", async ({
   expect(
     await mark.evaluate((node) => getComputedStyle(node).borderRadius),
   ).toBe("0px");
+  const expandedMark = await mark.boundingBox();
   await page.getByRole("button", { name: "收起导航" }).click();
-  if (!isMobile) await expect(mark).toBeVisible();
+  if (!isMobile) {
+    await expect(mark).toBeVisible();
+    await expect.poll(() => mark.boundingBox()).toEqual(expandedMark);
+    const toggle = page.getByRole("button", { name: "展开导航" });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.click();
+    await expect.poll(() => mark.boundingBox()).toEqual(expandedMark);
+  }
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("sidebar profile shows service avatar and Access logout in expanded and collapsed layouts", async ({
+  page,
+  isMobile,
+}) => {
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ json: { now: new Date().toISOString(), machines: [] } }),
+  );
+  await page.route("**/api/v1/me", (route) =>
+    route.fulfill({
+      json: {
+        name: "Li Zheng",
+        email: "viewer@example.test",
+        avatar: "https://images.example.test/avatar.svg",
+        local: false,
+      },
+    }),
+  );
+  await page.route("https://images.example.test/avatar.svg", (route) =>
+    route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="20" fill="blue"/></svg>',
+    }),
+  );
+  await page.route("**/cdn-cgi/access/logout", (route) =>
+    route.fulfill({ body: "Signed out" }),
+  );
+  await page.goto("/");
+  if (isMobile) await page.getByRole("button", { name: "展开导航" }).click();
+  await expect(page.getByText("Li Zheng", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("viewer@example.test", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: "Li Zheng 的头像" }),
+  ).toBeVisible();
+  if (!isMobile) {
+    await page.getByRole("button", { name: "收起导航" }).click();
+    await expect(
+      page.getByRole("img", { name: "Li Zheng 的头像" }),
+    ).toBeVisible();
+  }
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(page).toHaveURL(/\/cdn-cgi\/access\/logout$/);
+});
+
+test("local sidebar preserves logout chrome without inventing a login session", async ({
+  page,
+  isMobile,
+}) => {
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ json: { now: new Date().toISOString(), machines: [] } }),
+  );
+  await page.route("**/api/v1/me", (route) =>
+    route.fulfill({
+      json: { name: "本地开发", email: "", avatar: null, local: true },
+    }),
+  );
+  await page.goto("/");
+  if (isMobile) await page.getByRole("button", { name: "展开导航" }).click();
+  await expect(page.getByText("本地开发", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "退出登录", exact: true }),
+  ).toBeDisabled();
+  await expect(page.getByText("本地免登录", { exact: true })).toBeVisible();
+});
+
+test("deployment image policy allows HTTPS author-service avatars", async ({
+  page,
+}) => {
+  const policy = readFileSync("public/_headers", "utf8")
+    .split("\n")
+    .find((line) => line.trim().startsWith("Content-Security-Policy:"))
+    ?.trim()
+    .slice("Content-Security-Policy:".length)
+    .trim();
+  expect(policy).toBeTruthy();
+  await page.route("**/avatar-policy-check", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      headers: { "Content-Security-Policy": policy as string },
+      body: '<img alt="Profile" src="https://images.example.test/profile.svg">',
+    }),
+  );
+  await page.route("https://images.example.test/profile.svg", (route) =>
+    route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="20"/></svg>',
+    }),
+  );
+  await page.goto("/avatar-policy-check");
+  await expect(page.getByRole("img", { name: "Profile" })).toHaveJSProperty(
+    "naturalWidth",
+    40,
+  );
 });
 
 test("first load shows a stable skeleton and Access expiry offers SSO without a token field", async ({

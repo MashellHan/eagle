@@ -1,6 +1,18 @@
-import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@nocoo/basalt";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  Button,
+  SidebarUser,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@nocoo/basalt";
 import { useTheme } from "@nocoo/basalt/providers/theme";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { LogOut, Monitor, Moon, Sun } from "lucide-react";
+import { useEffect, useState } from "react";
+import type { Viewer } from "../shared/schema.ts";
+import { api } from "./api.ts";
 export function Mark({ size = 24 }: { size?: number }) {
   return (
     <img
@@ -11,6 +23,75 @@ export function Mark({ size = 24 }: { size?: number }) {
       width={size}
       height={size}
       className="shrink-0 object-contain"
+    />
+  );
+}
+export function SidebarAccount({ collapsed }: { collapsed: boolean }) {
+  const [viewer, setViewer] = useState<Viewer | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    void api<Viewer>("/api/v1/me", { signal: controller.signal })
+      .then(setViewer)
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true);
+      });
+    return () => controller.abort();
+  }, []);
+  const name = viewer?.name || (failed ? "身份暂不可用" : "正在读取身份…");
+  const avatar = (
+    <Avatar className="h-9 w-9 shrink-0">
+      <AvatarImage
+        src={viewer?.avatar || undefined}
+        alt={`${name} 的头像`}
+        referrerPolicy="no-referrer"
+      />
+      <AvatarFallback className="text-xs">
+        {viewer?.name?.slice(0, 1).toUpperCase() || "E"}
+      </AvatarFallback>
+    </Avatar>
+  );
+  const logout = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="退出登录"
+          aria-disabled={!viewer || viewer.local}
+          className="shrink-0 aria-disabled:opacity-50"
+          onClick={() => {
+            if (viewer && !viewer.local)
+              window.location.assign("/cdn-cgi/access/logout");
+          }}
+        >
+          <LogOut size={16} strokeWidth={1.5} aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side={collapsed ? "right" : "top"}>
+        {viewer?.local ? "本地免登录，无须退出" : "退出登录"}
+      </TooltipContent>
+    </Tooltip>
+  );
+  return collapsed ? (
+    <>
+      {logout}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">{avatar}</span>
+        </TooltipTrigger>
+        <TooltipContent side="right">
+          {name}
+          {viewer?.email ? ` · ${viewer.email}` : ""}
+        </TooltipContent>
+      </Tooltip>
+    </>
+  ) : (
+    <SidebarUser
+      name={name}
+      email={viewer?.local ? "本地免登录" : viewer?.email}
+      avatar={avatar}
+      action={logout}
     />
   );
 }
