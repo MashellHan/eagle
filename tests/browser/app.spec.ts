@@ -98,8 +98,12 @@ test("live overview reads only current state and keeps cards mounted through ref
   await card.evaluate((node) =>
     node.setAttribute("data-continuity", "original"),
   );
-  // Settle browser focus scrolling before measuring refresh continuity.
+  // Move off any hovered card and settle its lift before measuring refresh.
+  await page.getByRole("button", { name: "刷新", exact: true }).hover();
   await page.getByRole("button", { name: "刷新", exact: true }).focus();
+  await card.evaluate((node) =>
+    Promise.all(node.getAnimations().map((animation) => animation.finished)),
+  );
   const before = await card.boundingBox();
   paused = new Promise<void>((resolve) => {
     release = resolve;

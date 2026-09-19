@@ -124,3 +124,4 @@ serving and the first catalogue-derived production Cron observation.
 - 17:30:17 从官方 npm 下载的 Agent 完成真实 Connect 验收：本机 11 Spaces / 20 Panes，经签名 Bearer 上报到机器 DO；轮换后旧 Token 401，新 Token 能上报；停用后新 Token 401。Raven 7024 配置保留，桌面与手机渲染、浏览器无凭据持久化均通过；验证机已再次停用。
 - SQL 复核本地 D1 仍为 83 条，最近写入仍为 16:36:50.785，新上报没有写入 D1。新增提示词检查先失败再通过；45 项单元/集成/安装测试、26 项浏览器测试、类型、Biome 和构建全部通过。
 - 本轮只发布 npm Agent。网站改动继续在 https://eagle.dev.hexly.ai/connect 预览，Worker 未部署，生产采集服务未更新。
+- 首轮 GitHub CI 揭示移动端刷新测试把尚未结束的 2px 悬停动画误判为布局变化；测试改为先把指针移到刷新按钮、等待卡片动画完成再测量，保留原来的严格坐标和 DOM 连续性断言。桌面/手机该用例各重复 5 次均通过，完整本地门禁再次通过；发布包内容未变化。
