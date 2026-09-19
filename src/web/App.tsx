@@ -284,7 +284,15 @@ function SpaceCard({
   );
 }
 
-function HistoryView({ machine, space }: { machine: string; space?: string }) {
+function HistoryView({
+  machine,
+  space,
+  compact = false,
+}: {
+  machine: string;
+  space?: string;
+  compact?: boolean;
+}) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [cursor, setCursor] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -297,7 +305,7 @@ function HistoryView({ machine, space }: { machine: string; space?: string }) {
       active.current = controller;
       setLoading(true);
       setError("");
-      const query = new URLSearchParams({ limit: "12" });
+      const query = new URLSearchParams({ limit: compact ? "6" : "12" });
       if (machine) query.set("machine", machine);
       if (space) query.set("space", space);
       if (before) query.set("before", String(before));
@@ -308,7 +316,7 @@ function HistoryView({ machine, space }: { machine: string; space?: string }) {
         }>(`/api/v1/history?${query}`, { signal: controller.signal });
         if (controller.signal.aborted) return;
         setEntries((old) =>
-          before ? [...old, ...result.entries] : result.entries,
+          before ? [...old, ...(result.entries ?? [])] : (result.entries ?? []),
         );
         setCursor(result.nextCursor);
       } catch (e) {
@@ -318,13 +326,49 @@ function HistoryView({ machine, space }: { machine: string; space?: string }) {
         if (!controller.signal.aborted) setLoading(false);
       }
     },
-    [machine, space],
+    [machine, space, compact],
   );
   useEffect(() => {
     setEntries([]);
     void load();
     return () => active.current?.abort();
   }, [load]);
+  if (compact) {
+    const changes = entries.flatMap((entry) =>
+      entry.changes.map((change) => ({
+        key: `${entry.seq}:${change}`,
+        change,
+      })),
+    );
+    return (
+      <LayerCard>
+        <h2 className="text-sm font-semibold">最近变化</h2>
+        <p className="mt-2 text-xs text-basalt-muted-foreground">
+          最近 {entries.length} 次采集中，
+          {entries.filter((e) => e.changes.length).length}{" "}
+          次出现任务或布局变化。
+        </p>
+        {error ? (
+          <p role="alert" className="mt-3 text-sm text-basalt-destructive">
+            历史暂不可用
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-2 text-sm">
+            {changes.slice(0, 4).map((item) => (
+              <li key={item.key} className="line-clamp-2 break-words">
+                {item.change}
+              </li>
+            ))}
+          </ul>
+        )}
+        {!changes.length && !error && (
+          <p className="mt-3 text-sm text-basalt-muted-foreground">
+            {loading ? "正在核对最近变化…" : "最近任务与布局保持稳定。"}
+          </p>
+        )}
+      </LayerCard>
+    );
+  }
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -811,6 +855,11 @@ export function App() {
                         </Badge>
                       </div>
                     </LayerCard>
+                    <HistoryView
+                      compact
+                      machine={machineId}
+                      key={shown.map((m) => m.report.reportId).join(":")}
+                    />
                     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                       {(
                         [

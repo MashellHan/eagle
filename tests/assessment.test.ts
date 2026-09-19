@@ -64,3 +64,16 @@ test("contradictory evidence at an identical time does not become verified by ar
   pane.evidence = [evidence("test", "failure"), evidence("test", "success")];
   assert.equal(assessPane(pane, NOW).state, "attention");
 });
+
+test("an explicit failed process cannot be masked by completion claims", () => {
+  const pane = report().spaces[0].tabs[0].panes[0];
+  pane.evidence = [
+    evidence("summary", "success"),
+    evidence("goal", "success"),
+    evidence("git", "success", { revision: "abc" }),
+    evidence("test", "success", { revision: "abc" }),
+    evidence("deployment", "success", { revision: "abc" }),
+    evidence("process", "failure"),
+  ];
+  assert.equal(assessPane(pane, NOW).state, "attention");
+});

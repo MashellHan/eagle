@@ -44,6 +44,7 @@ before(async () => {
               "mac-two": "different-test-token-with-at-least-32-characters",
             }),
             VIEWER_TOKEN: viewer,
+            BUILD_REVISION: "test-build-sha",
           },
         },
       ],
@@ -199,4 +200,12 @@ test("browser session has secure HttpOnly cookie, no token, origin checks and lo
     headers: { Cookie: sessionCookie },
   });
   assert.match(logout.headers.get("set-cookie") ?? "", /Max-Age=0/);
+});
+
+test("public health identifies the deployed revision without exposing inventory", async () => {
+  const result = (await (
+    await request("/api/live", undefined, "")
+  ).json()) as Record<string, unknown>;
+  assert.equal(result.revision, "test-build-sha");
+  assert(!("machines" in result));
 });

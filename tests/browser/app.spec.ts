@@ -54,6 +54,8 @@ test("private login, executive overview, topology evidence, history and empty se
   await expect(
     page.getByText("已验证完成", { exact: true }).first(),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "最近变化" })).toBeVisible();
+  await expect(page.getByText("首次接入：Eagle")).toBeVisible();
   await page.getByRole("button", { name: "查看 Eagle" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByText("Herdr 弱提示：done")).toBeVisible();

@@ -26,8 +26,8 @@ export function assessPane(
       latest.set(item.kind, item);
   }
   const evidence = [...latest.values()];
-  const attention = evidence.find(
-    (e) => ["failure", "waiting"].includes(e.status) && e.kind !== "process",
+  const attention = evidence.find((e) =>
+    ["failure", "waiting"].includes(e.status),
   );
   if (attention)
     return { state: "attention", reason: attention.summary, evidence };
@@ -154,5 +154,5 @@ export function changesBetween(before: Report | null, after: Report): string[] {
   }
   for (const closed of old.values())
     changes.push(`${closed.space.name}：Space 已关闭`);
-  return changes.slice(0, 100);
+  return [...new Set(changes)].slice(0, 100);
 }

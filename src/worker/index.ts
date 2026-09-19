@@ -154,7 +154,12 @@ async function route(request: Request, env: Env): Promise<Response> {
     throw new HttpError(403, "Origin not allowed");
   if (path === "/api/live" && request.method === "GET") {
     await env.DB.prepare("SELECT 1").first();
-    return json({ status: "ok", service: "eagle", schemaVersion: 1 });
+    return json({
+      status: "ok",
+      service: "eagle",
+      schemaVersion: 1,
+      revision: env.BUILD_REVISION,
+    });
   }
   if (path === "/api/session") {
     if (request.method === "POST") {

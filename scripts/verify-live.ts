@@ -75,6 +75,9 @@ try {
   const prefix = origin.includes(".dev.") ? "local" : "production";
   await page.screenshot({ path: `.local/${prefix}-detail.png` });
   await page.keyboard.press("Escape");
+  await page
+    .getByRole("heading", { name: "当前态势" })
+    .scrollIntoViewIfNeeded();
   await page.screenshot({ path: `.local/${prefix}-desktop.png` });
   await page.getByRole("button", { name: "查看最近历史" }).click();
   await expect(
