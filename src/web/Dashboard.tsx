@@ -105,10 +105,13 @@ export function Status({ state }: { state: State }) {
     </Badge>
   );
 }
+export function machineConnection(machine: MachineView, now: string) {
+  if (age(machine.lastSeen, now) > 90) return "offline";
+  if (age(machine.report.capturedAt, now) > 300) return "stale";
+  return "online";
+}
 export function isStale(machine: MachineView, now: string) {
-  return (
-    age(machine.lastSeen, now) > 90 || age(machine.report.capturedAt, now) > 300
-  );
+  return machineConnection(machine, now) !== "online";
 }
 
 export function MachineStatus({
@@ -118,13 +121,13 @@ export function MachineStatus({
   machine: MachineView;
   now: string;
 }) {
-  const stale = isStale(machine, now);
+  const connection = machineConnection(machine, now);
   return (
     <span className="machine-heading">
-      <Badge variant={stale ? "warning" : "success"} dot>
-        {age(machine.lastSeen, now) > 90
+      <Badge variant={connection === "online" ? "success" : "warning"} dot>
+        {connection === "offline"
           ? "心跳过期"
-          : stale
+          : connection === "stale"
             ? "采集过期"
             : "在线"}
       </Badge>

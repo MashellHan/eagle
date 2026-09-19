@@ -59,6 +59,7 @@ import {
   Dashboard,
   DashboardSkeleton,
   MachineStatus,
+  machineConnection,
   Status,
   Topology,
 } from "./Dashboard.tsx";
@@ -559,19 +560,45 @@ export function App() {
             <div
               className={`flex flex-col gap-0.5 ${collapsed && !mobile ? "items-center mt-6" : "px-3"}`}
             >
-              {machines.map((m) => (
-                <NavItem
-                  key={m.id}
-                  aria-label={m.name}
-                  active={machineId === m.id && page === "overview"}
-                  onClick={() => navigate("overview", m.id)}
-                >
-                  <Monitor className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-                  {(!collapsed || mobile) && (
-                    <span className="truncate">{m.name}</span>
-                  )}
-                </NavItem>
-              ))}
+              {machines.map((m) => {
+                const connection = machineConnection(m, now);
+                const label = {
+                  online: "在线",
+                  stale: "采集过期",
+                  offline: "离线 · 心跳过期",
+                }[connection];
+                return (
+                  <Tooltip key={m.id}>
+                    <TooltipTrigger asChild>
+                      <NavItem
+                        aria-label={m.name}
+                        aria-description={label}
+                        className="machine-nav-item"
+                        data-compact={collapsed && !mobile}
+                        active={machineId === m.id && page === "overview"}
+                        onClick={() => navigate("overview", m.id)}
+                      >
+                        <Monitor
+                          className="h-4 w-4 shrink-0"
+                          strokeWidth={1.5}
+                          aria-hidden="true"
+                        />
+                        {(!collapsed || mobile) && (
+                          <span className="truncate">{m.name}</span>
+                        )}
+                        <span
+                          className="machine-status-dot"
+                          data-status={connection}
+                          aria-hidden="true"
+                        />
+                      </NavItem>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={8}>
+                      {m.name} · {label}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
             </div>
           </SidebarNav>
           <SidebarFooter

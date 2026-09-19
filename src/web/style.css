@@ -14,6 +14,36 @@
 }
 
 /* Product data graphics use Basalt's palette; controls and surfaces remain Basalt. */
+.machine-status-dot {
+  --machine-status-color: var(--basalt-accent-4);
+  width: 7px;
+  height: 7px;
+  flex: none;
+  margin-left: auto;
+  margin-right: 2px;
+  border-radius: 50%;
+  background: hsl(var(--machine-status-color));
+  box-shadow:
+    0 0 0 3px hsl(var(--machine-status-color) / 0.12),
+    0 0 10px 2px hsl(var(--machine-status-color) / 0.35);
+  transition:
+    background-color 350ms ease,
+    box-shadow 350ms ease;
+}
+.machine-status-dot[data-status="stale"] {
+  --machine-status-color: var(--basalt-accent-7);
+}
+.machine-status-dot[data-status="offline"] {
+  --machine-status-color: var(--basalt-destructive);
+}
+.machine-nav-item[data-compact="true"] .machine-status-dot {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 6px;
+  height: 6px;
+  margin: 0;
+}
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-variant-numeric: tabular-nums;
@@ -998,6 +1028,7 @@
   .space-card,
   .topology-cell,
   .pane-button,
+  .machine-status-dot,
   .sync-progress {
     transition: none;
   }

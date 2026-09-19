@@ -387,6 +387,123 @@ test("stale machine data is marked explicitly", async ({ page }) => {
   await expect(page.getByText("历史快照 · 等待重新采集")).toBeVisible();
 });
 
+test("sidebar machine lights distinguish heartbeat and snapshot freshness across layouts and refresh", async ({
+  page,
+  isMobile,
+}) => {
+  const now = new Date().toISOString();
+  const old = new Date(Date.now() - 600_000).toISOString();
+  const machines = [
+    { id: "online", name: "Online Mac", lastSeen: now, capturedAt: now },
+    { id: "stale", name: "Stale Mac", lastSeen: now, capturedAt: old },
+    { id: "offline", name: "Offline Mac", lastSeen: old, capturedAt: now },
+  ].map(({ capturedAt, ...machine }) => ({
+    ...machine,
+    report: report(machine.id, capturedAt),
+    receivedAt: now,
+    warning: null,
+  }));
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ json: { now, machines } }),
+  );
+  await page.goto("/");
+  if (isMobile) await page.getByRole("button", { name: "展开导航" }).click();
+  const nav = page.getByRole("navigation", { name: "工作台导航" });
+  const online = nav.getByRole("button", { name: "Online Mac", exact: true });
+  const stale = nav.getByRole("button", { name: "Stale Mac", exact: true });
+  const offline = nav.getByRole("button", { name: "Offline Mac", exact: true });
+  await expect(online).toHaveAccessibleDescription("在线");
+  await expect(stale).toHaveAccessibleDescription("采集过期");
+  await expect(offline).toHaveAccessibleDescription("离线 · 心跳过期");
+  const colors: string[] = [];
+  for (const item of [online, stale, offline]) {
+    const dot = item.locator(".machine-status-dot");
+    await expect(dot).toBeVisible();
+    await expect(dot).not.toHaveCSS("box-shadow", "none");
+    colors.push(
+      await dot.evaluate((node) => getComputedStyle(node).backgroundColor),
+    );
+    const itemBox = await item.boundingBox();
+    const dotBox = await dot.boundingBox();
+    if (!itemBox || !dotBox)
+      throw new Error("Machine item and light must be visible");
+    expect(dotBox.x).toBeGreaterThan(itemBox.x + itemBox.width / 2);
+    expect(dotBox.x + dotBox.width).toBeLessThan(itemBox.x + itemBox.width);
+  }
+  expect(new Set(colors).size).toBe(3);
+  await page.getByRole("button", { name: "收起导航" }).click();
+  if (!isMobile) {
+    await expect(online.locator(".machine-status-dot")).toBeVisible();
+    await offline.focus();
+    await expect(page.getByRole("tooltip")).toContainText(
+      "Offline Mac · 离线 · 心跳过期",
+    );
+    await page.keyboard.press("Escape");
+    await online.click();
+    await expect(page).toHaveURL(/machine=online/);
+  }
+  // Reconnection updates the existing item instead of flashing a replacement.
+  if (isMobile) await page.getByRole("button", { name: "展开导航" }).click();
+  await offline
+    .locator(".machine-status-dot")
+    .evaluate((node) => node.setAttribute("data-continuity", "original"));
+  machines[2].lastSeen = now;
+  if (isMobile) await page.getByRole("button", { name: "收起导航" }).click();
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  if (isMobile) await page.getByRole("button", { name: "展开导航" }).click();
+  await expect(offline).toHaveAccessibleDescription("在线");
+  if (!isMobile)
+    await expect(offline.locator(".machine-status-dot")).toHaveAttribute(
+      "data-continuity",
+      "original",
+    );
+  await expect(offline.locator(".machine-status-dot")).toHaveCSS(
+    "background-color",
+    colors[0],
+  );
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(online.locator(".machine-status-dot")).toHaveCSS(
+    "transition-duration",
+    "0s",
+  );
+});
+
+test("sidebar machine lights expire when overview requests fail", async ({
+  page,
+  isMobile,
+}) => {
+  const now = new Date();
+  await page.clock.install({ time: now });
+  let fail = false;
+  await page.route("**/api/**", (route) =>
+    fail
+      ? route.fulfill({ status: 503, json: {} })
+      : route.fulfill({
+          json: {
+            now: now.toISOString(),
+            machines: [
+              {
+                id: "mac",
+                name: "Cached Mac",
+                lastSeen: now.toISOString(),
+                receivedAt: now.toISOString(),
+                warning: null,
+                report: report("cached", now.toISOString()),
+              },
+            ],
+          },
+        }),
+  );
+  await page.goto("/");
+  if (isMobile) await page.getByRole("button", { name: "展开导航" }).click();
+  const item = page.getByRole("button", { name: "Cached Mac", exact: true });
+  await expect(item).toHaveAccessibleDescription("在线");
+  fail = true;
+  await page.clock.fastForward(95_000);
+  await expect(item).toHaveAccessibleDescription("离线 · 心跳过期");
+  await expect(item.locator(".machine-status-dot")).toBeVisible();
+});
+
 test("adopted eagle mark and family links work in both sidebar states", async ({
   page,
   isMobile,
