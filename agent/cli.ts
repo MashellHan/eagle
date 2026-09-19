@@ -19,6 +19,7 @@ import {
   sendReport,
 } from "./collector.ts";
 import { ManagerConfigSchema, managerTick } from "./manager.ts";
+import { realtimeWatch } from "./realtime.ts";
 import { drainSpool } from "./spool.ts";
 import { AGENT_VERSION } from "./version.ts";
 
@@ -102,7 +103,7 @@ async function main() {
   const action = process.argv[2] || "once";
   if (action === "--help" || action === "help") {
     console.log(
-      "Eagle Agent\nCommands: init (JSON on stdin), collect <file>, upload <file>, once, watch, heartbeat, manager-once, manager-watch\nConfig: EAGLE_CONFIG or ~/.config/eagle/agent.json (0600). Node.js 24+ and Herdr required. Manager requires explicit manager.command for your existing agent (Hermes recommended); deterministic collection is independent.",
+      "Eagle Agent\nCommands: init (JSON on stdin), collect <file>, upload <file>, once, watch, realtime-watch, heartbeat, manager-once, manager-watch\nConfig: EAGLE_CONFIG or ~/.config/eagle/agent.json (0600). Node.js 24+ and Herdr required. Manager requires explicit manager.command for your existing agent (Hermes recommended); deterministic collection is independent.",
     );
     return;
   }
@@ -170,6 +171,11 @@ async function main() {
     console.log(
       JSON.stringify(await sendReport(config.url, config.token, report)),
     );
+  } else if (action === "realtime-watch") {
+    const stop = new AbortController();
+    process.once("SIGTERM", () => stop.abort());
+    process.once("SIGINT", () => stop.abort());
+    await realtimeWatch(config, stop.signal);
   } else if (action === "heartbeat") {
     await heartbeat(config);
     console.log("Heartbeat accepted");
@@ -233,7 +239,7 @@ async function main() {
     }
   } else
     throw new Error(
-      "Commands: collect <file>, upload <file>, once, watch, heartbeat, manager-once, manager-watch",
+      "Commands: collect <file>, upload <file>, once, watch, realtime-watch, heartbeat, manager-once, manager-watch",
     );
 }
 void main().catch((e: unknown) => {

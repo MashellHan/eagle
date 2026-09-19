@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.0 — 2026-09-20
+
+- Add Space realtime viewing and exclusive web input through authenticated WebSocket connections and the existing per-machine Durable Object. Mirrors Herdr text screens/layout and supports text, Enter and common terminal keys.
+- Cancel subscriptions, socket reads and timers on view switches, page hiding and disconnects. Bound viewers, Spaces, screen sizes and transport queues; reject stale terminal identities and duplicate input. Inputs are never replayed after an uncertain acknowledgement.
+- Add isolated API/socket/browser tests and real local/public terminal round-trip verification. Screen and input content is redacted and never archived.
+
+## Agent v0.5.0 — 2026-09-20
+
+- Add `realtime-watch`, a separate supervised outbound bridge to the local Herdr socket. Existing collection and Manager state remain independent.
+- Include the explicit Manager command configuration prepared in v0.4.1.
+
 ## v0.3.0 — 2026-09-20
 
 - Hourly report template v3 keeps evidence timestamps, task boundaries and source attribution explicit. It instructs the model to retain uncertainty around historical blockers, cancelled tasks and sparse resource samples.

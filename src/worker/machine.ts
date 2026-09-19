@@ -18,6 +18,7 @@ import {
   taskKey,
 } from "../shared/summaries.ts";
 import { agentTokens } from "./auth.ts";
+import { LiveRelay } from "./realtime.ts";
 
 type Facts = Record<string, import("../shared/schema.ts").Evidence>;
 type SemanticRow = {
@@ -41,6 +42,36 @@ const unpack = (row: SemanticRow) => ({
 
 /** Current state plus separate semantic and short-lived hourly input streams. */
 export class MachineState extends DurableObject<Env> {
+  private live = new LiveRelay(this.ctx, this.env, (id) => this.authorized(id));
+  fetch(request: Request) {
+    const role = request.headers.get("x-live-role");
+    if (role !== "agent" && role !== "viewer")
+      return new Response(null, { status: 403 });
+    const expires = Number(request.headers.get("x-live-expires"));
+    const credentialId = request.headers.get("x-live-credential");
+    const spaceId = request.headers.get("x-live-space") ?? undefined;
+    if (role === "viewer") {
+      const current = this.current();
+      const config = this.ctx.storage.kv.get<Registration>("registration");
+      if (
+        config?.enabled === false ||
+        !current?.report.spaces.some((s) => s.id === spaceId && !s.availability)
+      )
+        return new Response(null, { status: 404 });
+    }
+    return this.live.connect(role, expires, credentialId, spaceId);
+  }
+  webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
+    this.live.message(socket, message);
+  }
+  webSocketClose(socket: WebSocket) {
+    socket.close(1000, "Closed");
+    this.live.close(socket);
+  }
+  webSocketError(socket: WebSocket) {
+    socket.close(1011, "Connection failed");
+    this.live.close(socket);
+  }
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS receipts (
@@ -155,6 +186,7 @@ export class MachineState extends DurableObject<Env> {
         : (previous?.expiresAt ?? null),
     };
     this.ctx.storage.kv.put("registration", machine);
+    if (issue || action === "revoke") this.live.revoke();
     return machine;
   }
 

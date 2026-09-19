@@ -66,6 +66,7 @@ import {
 } from "./Dashboard.tsx";
 import { HourlyHistory } from "./HourlyHistory.tsx";
 import { PaneSummaryView } from "./PaneSummary.tsx";
+import { Realtime } from "./Realtime.tsx";
 import { Settings } from "./Settings.tsx";
 
 declare const __APP_VERSION__: string;
@@ -223,6 +224,7 @@ function SpaceDetail({
 }) {
   const [paneId, setPaneId] = useState(initialPane);
   const [history, setHistory] = useState(false);
+  const [realtime, setRealtime] = useState(false);
   const panes = space.tabs.flatMap((t) => t.panes);
   const pane = panes.find((p) => p.id === paneId) ?? panes[0];
   const assessment = pane ? assessPane(pane, machine.report.capturedAt) : null;
@@ -235,21 +237,39 @@ function SpaceDetail({
       <div className="mt-5 flex gap-2">
         <Button
           size="sm"
-          variant={history ? "ghost" : "secondary"}
-          onClick={() => setHistory(false)}
+          variant={history || realtime ? "ghost" : "secondary"}
+          onClick={() => {
+            setHistory(false);
+            setRealtime(false);
+          }}
         >
           当前任务
         </Button>
         <Button
           size="sm"
           variant={history ? "secondary" : "ghost"}
-          onClick={() => setHistory(true)}
+          onClick={() => {
+            setHistory(true);
+            setRealtime(false);
+          }}
         >
           Space 历史
         </Button>
+        <Button
+          size="sm"
+          variant={realtime ? "secondary" : "ghost"}
+          onClick={() => {
+            setRealtime(true);
+            setHistory(false);
+          }}
+        >
+          实时模式
+        </Button>
       </div>
       <div className="mt-6 space-y-6">
-        {history ? (
+        {realtime ? (
+          <Realtime machineId={machine.id} spaceId={space.id} />
+        ) : history ? (
           <HistoryView machine={machine.id} space={space.id} />
         ) : (
           <>
@@ -388,6 +408,7 @@ export function App() {
   }, []);
   useEffect(() => {
     const back = () => {
+      setSelection(null);
       setPage(
         location.pathname === "/settings"
           ? "settings"
@@ -441,6 +462,7 @@ export function App() {
     next: "overview" | "history" | "connect" | "settings",
     id = machineId,
   ) => {
+    setSelection(null);
     setPage(next);
     setMachineId(id);
     setSearch("");

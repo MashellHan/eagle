@@ -1,3 +1,4 @@
+import { decodeJwt } from "jose";
 import { version } from "../../package.json";
 import { changesBetween } from "../shared/assessment.ts";
 import { MachineInput, MachineName } from "../shared/connect.ts";
@@ -204,6 +205,64 @@ function positive(
 async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
+  if (path === "/api/v1/realtime" || path === "/api/v1/realtime-agent") {
+    if (
+      request.method !== "GET" ||
+      request.headers.get("upgrade")?.toLowerCase() !== "websocket"
+    )
+      throw new HttpError(426, "WebSocket required");
+    const expires = Date.now() + 15 * 60000;
+    if (path.endsWith("-agent")) {
+      if (url.search) throw new HttpError(400, "Unexpected query");
+      const identity = await agentIdentity(request, env);
+      if (!identity) throw new HttpError(401, "Invalid agent token");
+      return env.MACHINES.getByName(identity.machineId).fetch(
+        new Request("https://internal/realtime", {
+          headers: {
+            Upgrade: "websocket",
+            "x-live-role": "agent",
+            "x-live-expires": String(
+              Math.min(expires, identity.expires ?? expires),
+            ),
+            ...(identity.credentialId
+              ? { "x-live-credential": identity.credentialId }
+              : {}),
+          },
+        }),
+      );
+    }
+    const viewer = await viewerIdentity(request, env);
+    if (!viewer) throw new HttpError(401, "Sign in required");
+    if (request.headers.get("origin") !== url.origin)
+      throw new HttpError(403, "Origin not allowed");
+    const machine = url.searchParams.get("machine");
+    const space = url.searchParams.get("space");
+    if (
+      !machine ||
+      !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(machine) ||
+      !space ||
+      space.length > 160 ||
+      [...url.searchParams.keys()].some(
+        (k) => !["machine", "space"].includes(k),
+      )
+    )
+      throw new HttpError(400, "Invalid subscription");
+    const expiry = viewer.local
+      ? expires
+      : Number(
+          decodeJwt(request.headers.get("cf-access-jwt-assertion") ?? "").exp,
+        ) * 1000;
+    return env.MACHINES.getByName(machine).fetch(
+      new Request("https://internal/realtime", {
+        headers: {
+          Upgrade: "websocket",
+          "x-live-role": "viewer",
+          "x-live-expires": String(Math.min(expires, expiry)),
+          "x-live-space": space,
+        },
+      }),
+    );
+  }
   if (
     request.method !== "GET" &&
     request.headers.has("origin") &&
@@ -587,6 +646,7 @@ export default {
         "/api/v1/heartbeat",
         "/api/v1/summaries",
         "/api/v1/agent-state",
+        "/api/v1/realtime-agent",
         "/api/live",
       ].includes(url.pathname)
     )

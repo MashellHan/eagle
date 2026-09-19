@@ -48,6 +48,7 @@ async function accessToken(aud = audience, iss = issuer, expires = "1h") {
 }
 const currentReport = (id: string, offset = 0) =>
   report(id, new Date(Date.now() + offset).toISOString());
+
 before(async () => {
   const keys = await generateKeyPair("RS256", { extractable: true });
   signingKey = keys.privateKey;
@@ -1826,4 +1827,167 @@ test("hourly AI reports are leased, durable, idempotent and retry D1 without ano
     aiCalls > beforeChunks + 1,
     "Large hours validate partial templates before final reduction",
   );
+});
+
+test("realtime requires Access and same origin, scopes subscriptions, and releases the last viewer", async () => {
+  await request("/api/v1/reports", currentReport("realtime-base"));
+  const connect = (path: string, headers: Record<string, string>) =>
+    mf.dispatchFetch(`https://eagle.test${path}`, {
+      headers: { Upgrade: "websocket", ...headers },
+    });
+  const path = "/api/v1/realtime?machine=mac-one&space=default%3Aw1";
+  assert.equal(
+    (await connect(path, { Origin: "https://eagle.test" })).status,
+    401,
+  );
+  assert.equal(
+    (
+      await connect(path, {
+        "Cf-Access-Jwt-Assertion": viewer,
+        Origin: "https://evil.test",
+      })
+    ).status,
+    403,
+  );
+  const agentResponse = await connect("/api/v1/realtime-agent", {
+    Authorization: `Bearer ${token}`,
+  });
+  assert.equal(agentResponse.status, 101);
+  const agent = agentResponse.webSocket;
+  assert(agent);
+  const messages: {
+    type: string;
+    spaces?: { spaceId: string; subscriptionId: string }[];
+  }[] = [];
+  agent.addEventListener("message", (e) =>
+    messages.push(JSON.parse(String(e.data))),
+  );
+  agent.accept();
+  const response = await connect(path, {
+    "Cf-Access-Jwt-Assertion": viewer,
+    Origin: "https://eagle.test",
+  });
+  assert.equal(response.status, 101);
+  const client = response.webSocket;
+  assert(client);
+  client.accept();
+  await new Promise((r) => setTimeout(r, 50));
+  const subscription = messages.at(-1)?.spaces?.[0];
+  assert(subscription);
+  assert.equal(subscription.spaceId, "default:w1");
+  assert(subscription.subscriptionId);
+  client.close(1000);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.deepEqual(messages.at(-1)?.spaces, []);
+  agent.close(1000);
+});
+
+test("realtime has one controller, rejects stale identities and sequences, and closes on credential revocation", async () => {
+  const created = await request(
+    "/api/v1/machines",
+    { id: "realtime-security", name: "Live security" },
+    viewer,
+  );
+  const credential = (await created.json()) as { token: string };
+  const value = currentReport("live-security");
+  value.machine.id = "realtime-security";
+  await request("/api/v1/reports", value, credential.token);
+  const open = async (path: string, headers: Record<string, string>) => {
+    const result = await mf.dispatchFetch(`https://eagle.test${path}`, {
+      headers: { Upgrade: "websocket", ...headers },
+    });
+    assert.equal(result.status, 101);
+    const ws = result.webSocket;
+    assert(ws);
+    const messages: Record<string, unknown>[] = [];
+    ws.addEventListener("message", (event) =>
+      messages.push(JSON.parse(String(event.data))),
+    );
+    ws.accept();
+    return { ws, messages };
+  };
+  const agent = await open("/api/v1/realtime-agent", {
+    Authorization: `Bearer ${credential.token}`,
+  });
+  const headers = {
+    "Cf-Access-Jwt-Assertion": viewer,
+    Origin: "https://eagle.test",
+  };
+  const a = await open(
+    "/api/v1/realtime?machine=realtime-security&space=default:w1",
+    headers,
+  );
+  const b = await open(
+    "/api/v1/realtime?machine=realtime-security&space=default:w1",
+    headers,
+  );
+  const settle = () => new Promise((r) => setTimeout(r, 30));
+  await settle();
+  const spaces = agent.messages.at(-1)?.spaces as {
+    spaceId: string;
+    subscriptionId: string;
+  }[];
+  assert.equal(spaces.length, 1);
+  const binding = spaces[0];
+  agent.ws.send(
+    JSON.stringify({
+      type: "topology",
+      ...binding,
+      tabs: [
+        {
+          id: "t",
+          name: "T",
+          panes: [
+            {
+              id: "p",
+              terminalId: "terminal",
+              title: "P",
+              rect: { x: 0, y: 0, width: 1, height: 1 },
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  a.ws.send(JSON.stringify({ type: "control" }));
+  await settle();
+  b.ws.send(JSON.stringify({ type: "control" }));
+  await settle();
+  assert.equal(a.messages.at(-1)?.control, true);
+  assert.equal(b.messages.at(-1)?.control, false);
+  const input = {
+    type: "input",
+    seq: 1,
+    paneId: "p",
+    terminalId: "terminal",
+    text: "hello",
+    keys: [],
+  };
+  b.ws.send(JSON.stringify(input));
+  a.ws.send(JSON.stringify({ ...input, terminalId: "old" }));
+  await settle();
+  assert.equal(agent.messages.filter((m) => m.type === "input").length, 0);
+  a.ws.send(JSON.stringify(input));
+  await settle();
+  const command = agent.messages.find((m) => m.type === "input");
+  assert(command);
+  agent.ws.send(
+    JSON.stringify({
+      type: "ack",
+      clientId: command.clientId,
+      seq: 1,
+      status: "delivered",
+    }),
+  );
+  await settle();
+  a.ws.send(JSON.stringify(input));
+  await settle();
+  assert.equal(agent.messages.filter((m) => m.type === "input").length, 1);
+  const close = Promise.all(
+    [a.ws, b.ws, agent.ws].map(
+      (ws) => new Promise<void>((r) => ws.addEventListener("close", () => r())),
+    ),
+  );
+  await request("/api/v1/machines/realtime-security/revoke", {}, viewer);
+  await close;
 });

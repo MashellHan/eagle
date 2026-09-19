@@ -782,10 +782,10 @@ test("Connect manages machines and creates a one-time onboarding prompt without 
   await page.getByRole("button", { name: "创建并生成提示词" }).click();
   await expect(page.getByRole("heading", { name: "接入提示词" })).toBeVisible();
   await expect(page.getByLabel("提示词预览")).toContainText(
-    "npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org",
+    "npm install -g @nocoo/eagle-agent@0.5.0 --registry=https://registry.npmjs.org",
   );
   await expect(page.getByLabel("提示词预览")).toContainText(
-    "npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/",
+    "npm install -g @nocoo/eagle-agent@0.5.0 --registry=https://mirrors.cloud.tencent.com/npm/",
   );
   await expect(page.getByLabel("提示词预览")).toContainText("首选腾讯云镜像");
   await expect(page.getByLabel("提示词预览")).toContainText(

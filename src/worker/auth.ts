@@ -60,7 +60,11 @@ export async function agentIdentity(request: Request, env: Env) {
         typeof payload.jti !== "string"
       )
         return null;
-      return { machineId: payload.sub, credentialId: payload.jti };
+      return {
+        machineId: payload.sub,
+        credentialId: payload.jti,
+        expires: Number(payload.exp) * 1000,
+      };
     } catch {
       return null;
     }

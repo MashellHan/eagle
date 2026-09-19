@@ -1,5 +1,12 @@
 # 用户视角检查点
 
+## 2026-09-20 07:14 +08 — Space realtime local round trip
+
+- Actual Herdr 0.9.1 socket collection and machine-Bearer upload reach the local machine DO. The real local site renders live Space layout and terminal text; a browser-controlled temporary shell printed the verification marker and returned it in 822 ms.
+- Four enter/leave cycles opened and closed four WebSockets. Fixed a missing DO close-handshake acknowledgement found by this real test. Unsubscribing also aborts bridge socket reads/timers; replaced terminals and duplicate input are rejected in isolated tests.
+- Access/Origin checks, exclusive control and credential revocation pass with real isolated Miniflare/DO/D1. Raw snapshots still do not append D1 history; realtime terminal/input content has no storage path.
+- `npm run check` passes. Next hops: full browser suite, same-project Codex pane review, production bridge/service deployment, real local/public `verify-live.ts` and `verify-realtime.ts` receipts.
+
 ## 2026-09-19 13:58 +08:00（15 分钟）
 
 - 用户可访问 https://eagle.dev.hexly.ai（Caddy → 6001 Vite → 36001 Worker），HTTPS 200，私密登录已可用。

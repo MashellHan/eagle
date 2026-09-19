@@ -1,6 +1,6 @@
 {
   "name": "eagle",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -29,6 +29,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "recharts": "^3.10.1",
+    "ws": "^8.21.3",
     "zod": "^4.1.0"
   },
   "devDependencies": {
@@ -38,6 +39,7 @@
     "@types/node": "^25.0.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.1.0",
     "miniflare": "5.20260918.0-alpha",
     "tailwindcss": "^4.3.3",
