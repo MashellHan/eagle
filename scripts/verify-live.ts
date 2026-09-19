@@ -110,9 +110,18 @@ try {
   );
   const second = await collect(config);
   await sendReport(config.url, config.token, second);
-  await expect(
-    page.locator(`.machine-heading time[datetime="${second.capturedAt}"]`),
-  ).toBeVisible({ timeout: 12000 });
+  // The real daemon can upload again before the next browser poll.
+  await expect
+    .poll(
+      async () =>
+        Date.parse(
+          (await page
+            .locator(".machine-heading time")
+            .getAttribute("datetime")) ?? "",
+        ),
+      { timeout: 12000 },
+    )
+    .toBeGreaterThanOrEqual(Date.parse(second.capturedAt));
   await expect(currentCard).toHaveAttribute("data-continuity", "original");
   const latest = (await (
     await context.request.get(`${origin}/api/v1/overview`)

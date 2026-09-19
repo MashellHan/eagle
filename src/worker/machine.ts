@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { changesBetween } from "../shared/assessment.ts";
 import type { Registration } from "../shared/connect.ts";
+import { compactHour, type HourlyReport, utcHour } from "../shared/hourly.ts";
 import type { MachineView, Report } from "../shared/schema.ts";
 import {
   canonical,
@@ -33,7 +34,7 @@ const unpack = (row: SemanticRow) => ({
   value: JSON.parse(row.payload) as PaneSummary,
 });
 
-/** One named object per configured machine. No historical report payloads. */
+/** Current state plus separate semantic and short-lived hourly input streams. */
 export class MachineState extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -62,6 +63,14 @@ export class MachineState extends DurableObject<Env> {
     ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS live_tasks(space_id TEXT,pane_id TEXT,task_id TEXT,PRIMARY KEY(space_id,pane_id))",
     );
+    ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS hourly_facts (
+      seq INTEGER PRIMARY KEY AUTOINCREMENT, report_id TEXT UNIQUE NOT NULL,
+      hour TEXT NOT NULL, captured_at TEXT NOT NULL, payload TEXT NOT NULL
+    ); CREATE INDEX IF NOT EXISTS hourly_fact_hours ON hourly_facts(hour,seq);
+    CREATE TABLE IF NOT EXISTS hourly_jobs (
+      hour TEXT PRIMARY KEY, version TEXT, lease TEXT, expires INTEGER,
+      pending TEXT, completed_version TEXT, last_error TEXT
+    );`);
   }
 
   current(): MachineView | null {
@@ -193,6 +202,21 @@ export class MachineState extends DurableObject<Env> {
       const changes = newer
         ? changesBetween(previous?.report ?? null, report)
         : [];
+      if (
+        !receipt &&
+        Date.parse(report.capturedAt) >= Date.now() - 48 * 3600000
+      )
+        sql.exec(
+          "INSERT OR IGNORE INTO hourly_facts(report_id,hour,captured_at,payload) VALUES(?,?,?,?)",
+          report.reportId,
+          utcHour(report.capturedAt),
+          report.capturedAt,
+          JSON.stringify(report),
+        );
+      sql.exec(
+        "DELETE FROM hourly_facts WHERE hour < ?",
+        utcHour(Date.now() - 48 * 3600000),
+      );
       const current: MachineView = newer
         ? {
             id: report.machine.id,
@@ -241,6 +265,127 @@ export class MachineState extends DurableObject<Env> {
     return this.authorized(credentialId)
       ? this.current()
       : { unauthorized: true };
+  }
+
+  private hourVersion(hour: string) {
+    const facts = this.ctx.storage.sql
+      .exec<{ n: number; last: number }>(
+        "SELECT count(*) n,coalesce(max(seq),0) last FROM hourly_facts WHERE hour=?",
+        hour,
+      )
+      .one();
+    const semantics = this.ctx.storage.sql
+      .exec<{ n: number; last: number }>(
+        "SELECT count(*) n,coalesce(max(seq),0) last FROM semantic_records WHERE hour=?",
+        hour,
+      )
+      .one();
+    return `${facts.n}:${facts.last}:${semantics.n}:${semantics.last}`;
+  }
+  pendingHours(at: number, before = utcHour(at - 300000)): string[] {
+    const cutoff = utcHour(at - 48 * 3600000);
+    this.ctx.storage.sql.exec(
+      "DELETE FROM hourly_facts WHERE hour < ?",
+      cutoff,
+    );
+    this.ctx.storage.sql.exec(
+      "DELETE FROM hourly_jobs WHERE hour < ? AND pending IS NULL",
+      cutoff,
+    );
+    return this.ctx.storage.sql
+      .exec<{ hour: string }>(
+        `SELECT hour FROM hourly_facts WHERE hour>=? AND hour<? UNION SELECT hour FROM semantic_records WHERE hour>=? AND hour<? UNION SELECT hour FROM hourly_jobs WHERE pending IS NOT NULL ORDER BY hour`,
+        cutoff,
+        before,
+        cutoff,
+        before,
+      )
+      .toArray()
+      .map((r) => r.hour)
+      .filter((hour) => {
+        const done = this.ctx.storage.sql
+          .exec<{ completed_version: string | null }>(
+            "SELECT completed_version FROM hourly_jobs WHERE hour=?",
+            hour,
+          )
+          .toArray()[0];
+        return this.hourVersion(hour) !== done?.completed_version;
+      });
+  }
+  claimHour(hour: string) {
+    const sql = this.ctx.storage.sql;
+    const previous = sql
+      .exec<{
+        expires: number;
+        pending: string | null;
+        version: string;
+        completed_version: string | null;
+      }>("SELECT * FROM hourly_jobs WHERE hour=?", hour)
+      .toArray()[0];
+    if (previous?.expires > Date.now())
+      return { skipped: "in_progress" } as const;
+    const expiredPending =
+      previous?.pending && hour < utcHour(Date.now() - 48 * 3600000);
+    const version = expiredPending ? previous.version : this.hourVersion(hour);
+    if (version === "0:0:0:0") return { skipped: "no_data" } as const;
+    if (version === previous?.completed_version)
+      return { skipped: "unchanged" } as const;
+    const lease = crypto.randomUUID();
+    sql.exec(
+      `INSERT INTO hourly_jobs(hour,version,lease,expires) VALUES(?,?,?,?) ON CONFLICT(hour) DO UPDATE SET pending=CASE WHEN hourly_jobs.version=excluded.version THEN hourly_jobs.pending ELSE NULL END,version=excluded.version,lease=excluded.lease,expires=excluded.expires,last_error=NULL`,
+      hour,
+      version,
+      lease,
+      Date.now() + 14 * 60000,
+    );
+    const pending =
+      previous?.pending && previous.version === version
+        ? (JSON.parse(previous.pending) as HourlyReport)
+        : null;
+    return { lease, version, pending };
+  }
+  hourInput(hour: string) {
+    const sql = this.ctx.storage.sql;
+    const rows = sql.exec<{ payload: string }>(
+      "SELECT payload FROM hourly_facts WHERE hour=? ORDER BY captured_at,seq",
+      hour,
+    );
+    function* reports() {
+      for (const row of rows) yield JSON.parse(row.payload) as Report;
+    }
+    const semantic = sql
+      .exec<SemanticRow>(
+        "SELECT * FROM semantic_records WHERE hour=? ORDER BY observed_at,seq",
+        hour,
+      )
+      .toArray()
+      .map(unpack);
+    return {
+      ...compactHour(reports(), semantic),
+      machineName: this.current()?.name ?? "",
+    };
+  }
+  cacheHour(hour: string, lease: string, result: HourlyReport) {
+    return (
+      this.ctx.storage.sql
+        .exec(
+          "UPDATE hourly_jobs SET pending=? WHERE hour=? AND lease=? RETURNING hour",
+          JSON.stringify(result),
+          hour,
+          lease,
+        )
+        .toArray().length === 1
+    );
+  }
+  finishHour(hour: string, lease: string, error: string | null) {
+    this.ctx.storage.sql.exec(
+      `UPDATE hourly_jobs SET expires=0,lease=NULL,last_error=?,completed_version=CASE WHEN ? IS NULL THEN version ELSE completed_version END,pending=CASE WHEN ? IS NULL THEN NULL ELSE pending END WHERE hour=? AND lease=?`,
+      error,
+      error,
+      error,
+      hour,
+      lease,
+    );
   }
 
   private latest(

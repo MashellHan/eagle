@@ -1,19 +1,34 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { after, before, test } from "node:test";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
+import { REPORT_SECTIONS, utcHour } from "../src/shared/hourly.ts";
 import { viewerAuthorized } from "../src/worker/auth.ts";
 import { report, telemetry } from "./fixtures.ts";
 
 let mf: Miniflare;
+const testStorage = mkdtempSync(join(tmpdir(), "eagle-api-"));
 let options: ReturnType<typeof convertV4MiniflareOptions>;
 const token = "test-agent-token-with-at-least-32-characters";
 let viewer: string;
 let signingKey: CryptoKey;
 let profileAvailable = true;
+let aiCalls = 0;
+let aiFailure = false;
+let aiHold: Promise<void> | undefined;
 const issuer = "https://nocoo.cloudflareaccess.com";
 const audience =
   "d1ffdb7fe2787e2a9e8f957a68ed5feec2b944c44c6fdbfd54341887eab6f873";
@@ -70,6 +85,53 @@ before(async () => {
         },
         outboundService: async (request) => {
           const url = new URL(request.url);
+          if (url.origin === "https://api.ai.example") {
+            aiCalls++;
+            assert.equal(url.pathname, "/v1/chat/completions");
+            assert.equal(
+              request.headers.get("authorization"),
+              "Bearer isolated-ai-test-secret",
+            );
+            assert.equal(request.headers.get("x-api-key"), null);
+            const prompt = JSON.stringify(await request.json());
+            assert(!prompt.includes("isolated-ai-test-secret"));
+            await aiHold;
+            if (aiFailure)
+              return new Response(
+                "Upstream failed with isolated-ai-test-secret",
+                { status: 500 },
+              );
+            return Response.json({
+              id: "completion",
+              object: "chat.completion",
+              created: 1,
+              model: "test-model",
+              choices: [
+                {
+                  index: 0,
+                  finish_reason: "stop",
+                  message: {
+                    role: "assistant",
+                    content: JSON.stringify({
+                      ...Object.fromEntries(
+                        Object.keys(REPORT_SECTIONS).map((k) => [
+                          k,
+                          "本小时任务持续推进，生产部署尚无验证证据。",
+                        ]),
+                      ),
+                      evidenceIds:
+                        prompt.match(/\b[FS]\d+\b/)?.slice(0, 1) ?? [],
+                    }),
+                  },
+                },
+              ],
+              usage: {
+                prompt_tokens: 10,
+                completion_tokens: 20,
+                total_tokens: 30,
+              },
+            });
+          }
           if (url.origin === "https://lizheng.blog") {
             assert.equal(url.pathname, "/api/authors/profile");
             assert.equal(
@@ -89,6 +151,7 @@ before(async () => {
           return Response.json({ keys: [jwk] });
         },
         bindings: {
+          AI_ENCRYPTION_KEY: "test-encryption-key-at-least-32-characters-long",
           AGENT_SIGNING_KEY: "test-signing-key-at-least-32-characters-long",
           AGENT_TOKENS: JSON.stringify({
             "mac-one": token,
@@ -102,7 +165,13 @@ before(async () => {
       },
     ],
   });
-  options = { ...options, unsafeInspectDurableObjects: true };
+  options = {
+    ...options,
+    resourcePersistencePath: testStorage,
+    isolatedResourcePersistencePath: testStorage,
+    unsafeInspectDurableObjects: true,
+    unsafeTriggerHandlers: true,
+  };
   mf = new Miniflare(options);
   const db = await mf.getD1Database("DB");
   await db.exec(
@@ -110,6 +179,12 @@ before(async () => {
   );
   await db.exec(
     readFileSync("migrations/0002_pane_summaries.sql", "utf8").replace(
+      /\n/g,
+      " ",
+    ),
+  );
+  await db.exec(
+    readFileSync("migrations/0003_hourly_reports.sql", "utf8").replace(
       /\n/g,
       " ",
     ),
@@ -170,6 +245,7 @@ test("viewer profile uses verified Access email and hashed avatar service with a
 });
 after(async () => {
   await mf?.dispose();
+  rmSync(testStorage, { recursive: true, force: true });
 });
 
 test("uploads update current state without writing a D1 report", async () => {
@@ -256,6 +332,167 @@ function request(path: string, body?: unknown, bearer = token) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
+test("AI settings require viewer auth, reject invalid keys, and unconfigured hourly runs skip", async () => {
+  assert.equal((await request("/api/v1/settings")).status, 401);
+  const initial = await request("/api/v1/settings", undefined, viewer);
+  assert.equal(initial.status, 200);
+  const settings = (await initial.json()) as {
+    intervalHours: number;
+    hasApiKey: boolean;
+  };
+  assert.equal(settings.intervalHours, 1);
+  assert.equal(settings.hasApiKey, false);
+  assert.equal(
+    (await request("/api/v1/settings", { apiKey: { invalid: true } }, viewer))
+      .status,
+    400,
+  );
+  const skipped = await request("/api/v1/hourly-reports/run", {}, viewer);
+  assert.equal(skipped.status, 200);
+  assert.deepEqual(await skipped.json(), {
+    skipped: "ai_not_configured",
+    results: [],
+  });
+  const scheduled = await mf.dispatchFetch(
+    `http://eagle.test/cdn-cgi/local/scheduled?cron=5+*+*+*+*&time=${Date.now()}`,
+  );
+  assert.equal(scheduled.status, 200, await scheduled.text());
+  assert.equal(
+    (await request("/api/v1/settings", { intervalHours: 0 }, viewer)).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(
+        "/api/v1/settings",
+        {
+          provider: "custom",
+          model: "test",
+          baseURL: "http://127.0.0.1",
+          sdkType: "openai",
+        },
+        viewer,
+      )
+    ).status,
+    400,
+  );
+});
+
+test("AI keys save encrypted from the UI, survive eviction, stay private, and bind to their endpoint", async () => {
+  const configuration = {
+    provider: "custom",
+    model: "test-model",
+    baseURL: "https://api.ai.example/v1",
+    sdkType: "openai",
+    authType: "bearer",
+  };
+  const key = "isolated-ai-test-secret";
+  const saved = await request(
+    "/api/v1/settings",
+    { ...configuration, apiKey: key },
+    viewer,
+  );
+  assert.equal(saved.status, 200);
+  const value = await saved.text();
+  assert(!value.includes(key));
+  assert(!Object.hasOwn(JSON.parse(value), "apiKey"));
+  assert.equal(JSON.parse(value).hasApiKey, true);
+  assert.equal(JSON.parse(value).configured, true);
+  const raw = readdirSync(testStorage, { recursive: true })
+    .map(String)
+    .filter((file) => file.endsWith(".sqlite"))
+    .flatMap((file) => {
+      const database = new DatabaseSync(join(testStorage, file), {
+        readOnly: true,
+      });
+      try {
+        return database
+          .prepare("SELECT name FROM sqlite_master WHERE name='_cf_KV'")
+          .get()
+          ? database.prepare("SELECT key,hex(value) value FROM _cf_KV").all()
+          : [];
+      } finally {
+        database.close();
+      }
+    });
+  assert(
+    !JSON.stringify(raw)
+      .toLowerCase()
+      .includes(Buffer.from(key).toString("hex")),
+    "No plaintext key in DO storage",
+  );
+  assert(
+    raw.some(
+      (row) =>
+        String(row.key) === "ai-credential" ||
+        (row.key instanceof Uint8Array &&
+          Buffer.from(row.key).toString() === "ai-credential"),
+    ),
+    "Encrypted credential is separate from public settings",
+  );
+  await mf.unsafeEvictDurableObject("eagle", "MachineDirectory", {
+    name: "fleet",
+  });
+  const tested = await request("/api/v1/settings/test", configuration, viewer);
+  assert.equal(((await tested.json()) as { success: boolean }).success, true);
+  const calls = aiCalls;
+  const other = { ...configuration, baseURL: "https://another.ai.example/v1" };
+  const unbound = await request("/api/v1/settings/test", other, viewer);
+  assert.equal(((await unbound.json()) as { success: boolean }).success, false);
+  assert.equal(
+    aiCalls,
+    calls,
+    "Saved key must never be sent to a draft endpoint",
+  );
+  const leaked = currentReport("saved-key-leak");
+  leaked.warnings = [key];
+  assert.equal((await request("/api/v1/reports", leaked)).status, 400);
+  assert.equal(
+    (await request("/api/v1/settings", { model: key }, viewer)).status,
+    400,
+  );
+  const retained = await request(
+    "/api/v1/settings",
+    { intervalHours: 2, apiKey: "" },
+    viewer,
+  );
+  assert.equal(
+    ((await retained.json()) as { hasApiKey: boolean }).hasApiKey,
+    true,
+  );
+  const changed = await request("/api/v1/settings", other, viewer);
+  assert.equal(
+    ((await changed.json()) as { hasApiKey: boolean }).hasApiKey,
+    false,
+  );
+  const draft = await request(
+    "/api/v1/settings/test",
+    { ...configuration, apiKey: key },
+    viewer,
+  );
+  assert.equal(((await draft.json()) as { success: boolean }).success, true);
+  assert.equal(
+    (
+      (await (await request("/api/v1/settings", undefined, viewer)).json()) as {
+        hasApiKey: boolean;
+      }
+    ).hasApiKey,
+    false,
+    "Testing never saves a draft key",
+  );
+  await request("/api/v1/settings", { ...configuration, apiKey: key }, viewer);
+  const cleared = await request("/api/v1/settings", { apiKey: null }, viewer);
+  assert.equal(
+    ((await cleared.json()) as { hasApiKey: boolean }).hasApiKey,
+    false,
+  );
+  await request(
+    "/api/v1/settings",
+    { provider: "", model: "", intervalHours: 1 },
+    viewer,
+  );
+});
+
 test("fail-closed auth, machine scoping, versions, body limits and no token persistence", async () => {
   assert.equal(
     (await request("/api/v1/reports", currentReport("bad-auth"), "wrong"))
@@ -1245,4 +1482,289 @@ test("retention cannot evict a live task interpretation in favor of delayed hist
   };
   assert.equal(own.summaries[0]?.taskId, "older-task");
   assert.equal(own.summaries[0].sequence, 7);
+});
+
+test("hourly AI reports are leased, durable, idempotent and retry D1 without another model call", async () => {
+  const configuration = {
+    provider: "custom",
+    model: "test-model",
+    baseURL: "https://api.ai.example/v1",
+    sdkType: "openai",
+    authType: "bearer",
+    enabled: true,
+    intervalHours: 1,
+  };
+  assert.equal(
+    (
+      await request(
+        "/api/v1/settings",
+        { ...configuration, apiKey: "isolated-ai-test-secret" },
+        viewer,
+      )
+    ).status,
+    200,
+  );
+  const partial = await request(
+    "/api/v1/settings",
+    { intervalHours: 2 },
+    viewer,
+  );
+  assert.equal(
+    ((await partial.json()) as { provider: string }).provider,
+    "custom",
+  );
+  await request("/api/v1/settings", { intervalHours: 1 }, viewer);
+  const hour = utcHour(Date.now() - 2 * 3600000);
+  const first = report(
+    "hour-start",
+    new Date(Date.parse(hour) + 60000).toISOString(),
+  );
+  assert.equal((await request("/api/v1/reports", first)).status, 201);
+  assert.equal((await request("/api/v1/reports", first)).status, 200);
+  const own = (await (await request("/api/v1/agent-state")).json()) as {
+    manager?: { id: string; sequence: number };
+  };
+  const semantic = await request("/api/v1/summaries", {
+    protocolVersion: 1,
+    machineId: "mac-one",
+    managerId: own.manager?.id ?? "manager",
+    sequence: (own.manager?.sequence ?? 0) + 1,
+    sentAt: new Date().toISOString(),
+    checks: [],
+    updates: [
+      {
+        spaceId: "default:w1",
+        paneId: "w1:p1",
+        taskId: "hour-task",
+        basis: [],
+        observedAt: new Date(Date.parse(hour) + 15 * 60000).toISOString(),
+        summary: {
+          task: "小时报告接入",
+          phase: "verify",
+          progress: "已完成接口检查",
+          outcomes: [],
+          blocker: null,
+          nextStep: "核对生产证据",
+          rationale: "管理 Agent 原生最终消息",
+          evidenceRefs: [],
+        },
+      },
+    ],
+  });
+  assert.equal(semantic.status, 201);
+  const params = { machine: "mac-one", hour };
+  const calls = aiCalls;
+  let release = () => {};
+  aiHold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const running = request("/api/v1/hourly-reports/run", params, viewer);
+  const deadline = Date.now() + 5000;
+  while (aiCalls === calls && Date.now() < deadline)
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  if (aiCalls === calls)
+    assert.fail(JSON.stringify(await (await running).json()));
+  assert.equal(aiCalls, calls + 1);
+  const concurrent = await request(
+    "/api/v1/hourly-reports/run",
+    params,
+    viewer,
+  );
+  assert.equal(
+    ((await concurrent.json()) as { results: { skipped: string }[] }).results[0]
+      .skipped,
+    "in_progress",
+  );
+  release();
+  aiHold = undefined;
+  const result = await running;
+  assert.equal(
+    ((await result.json()) as { results: { generated: boolean }[] }).results[0]
+      .generated,
+    true,
+  );
+  const duplicate = await request("/api/v1/hourly-reports/run", params, viewer);
+  assert.equal(
+    ((await duplicate.json()) as { results: { skipped: string }[] }).results[0]
+      .skipped,
+    "unchanged",
+  );
+  assert.equal(aiCalls, calls + 1);
+  const later = report(
+    "hour-late",
+    new Date(Date.parse(hour) + 58 * 60000).toISOString(),
+  );
+  later.spaces[0].tabs[0].panes = [];
+  await request("/api/v1/reports", later);
+  aiFailure = true;
+  const failed = await request("/api/v1/hourly-reports/run", params, viewer);
+  assert.equal(
+    ((await failed.json()) as { results: { error: string }[] }).results[0]
+      .error,
+    "generation_failed",
+  );
+  aiFailure = false;
+  const db = await mf.getD1Database("DB");
+  await db.exec(
+    "ALTER TABLE machine_hour_reports RENAME TO saved_hour_reports",
+  );
+  const writeFailed = await request(
+    "/api/v1/hourly-reports/run",
+    params,
+    viewer,
+  );
+  assert.equal(
+    ((await writeFailed.json()) as { results: { error: string }[] }).results[0]
+      .error,
+    "generation_failed",
+  );
+  await db.exec(
+    "ALTER TABLE saved_hour_reports RENAME TO machine_hour_reports",
+  );
+  const beforeRetry = aiCalls;
+  const retried = await request("/api/v1/hourly-reports/run", params, viewer);
+  assert.equal(
+    ((await retried.json()) as { results: { generated: boolean }[] }).results[0]
+      .generated,
+    true,
+  );
+  assert.equal(
+    aiCalls,
+    beforeRetry,
+    "D1 retry reuses durable generated result",
+  );
+  await mf.unsafeEvictDurableObject("eagle", "MachineState", {
+    name: "mac-one",
+  });
+  const history = await request(
+    `/api/v1/hourly-reports?machine=mac-one&hour=${encodeURIComponent(hour)}`,
+    undefined,
+    viewer,
+  );
+  assert.equal(history.status, 200);
+  const serialized = await history.text();
+  assert(!serialized.includes("isolated-ai-test-secret"));
+  const entries = JSON.parse(serialized).entries;
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].report.hour, hour);
+  assert.equal(entries[0].report.snapshots, 2);
+  assert.equal(entries[0].report.semanticRecords, 1);
+  assert.equal(
+    entries[0].report.content.executiveSummary,
+    "本小时任务持续推进，生产部署尚无验证证据。",
+  );
+  assert.equal(
+    (
+      await request(
+        "/api/v1/settings",
+        { model: "isolated-ai-test-secret" },
+        viewer,
+      )
+    ).status,
+    400,
+  );
+  for (const offset of [3, 1, 2]) {
+    const bucket = utcHour(Date.now() - offset * 3600000);
+    await db
+      .prepare(
+        "INSERT INTO machine_hour_reports(machine_id,hour,generated_at,input_hash,payload) VALUES(?,?,?,?,?)",
+      )
+      .bind(
+        "pagination",
+        bucket,
+        new Date().toISOString(),
+        "test",
+        JSON.stringify({ ...entries[0].report, hour: bucket }),
+      )
+      .run();
+  }
+  const page1 = (await (
+    await request(
+      "/api/v1/hourly-reports?machine=pagination&limit=1",
+      undefined,
+      viewer,
+    )
+  ).json()) as { entries: { report: { hour: string } }[]; nextCursor: string };
+  assert.equal(page1.entries[0].report.hour, utcHour(Date.now() - 3600000));
+  const page2 = (await (
+    await request(
+      `/api/v1/hourly-reports?machine=pagination&limit=1&before=${encodeURIComponent(page1.nextCursor)}`,
+      undefined,
+      viewer,
+    )
+  ).json()) as typeof page1;
+  assert.equal(page2.entries[0].report.hour, utcHour(Date.now() - 2 * 3600000));
+  // A generated result survives expiry of its raw inputs while D1 is unavailable.
+  const expiredHour = utcHour(Date.now() - 49 * 3600000);
+  const cached = { ...entries[0].report, hour: expiredHour, snapshots: 120 };
+  const storage = await mf.unsafeGetDurableObjectStorage(
+    "eagle",
+    "MachineState",
+    { name: "mac-one" },
+  );
+  await storage.exec(
+    `INSERT INTO hourly_jobs(hour,version,expires,pending) VALUES('${expiredHour}','expired-input',0,'${JSON.stringify(cached).replaceAll("'", "''")}')`,
+  );
+  await request("/api/v1/settings", { intervalHours: 2 }, viewer);
+  const tick = Math.floor(Date.now() / 7200000) * 7200000 + 3600000 + 300000;
+  const catchupHour = utcHour(tick - 2 * 3600000);
+  const catchup = report(
+    "cron-catchup",
+    new Date(Date.parse(catchupHour) + 60000).toISOString(),
+  );
+  await request("/api/v1/reports", catchup);
+  const cron = await mf.dispatchFetch(
+    `http://eagle.test/cdn-cgi/local/scheduled?cron=5+*+*+*+*&time=${tick}`,
+  );
+  assert.equal(cron.status, 200, await cron.text());
+  const archived = await db
+    .prepare(
+      "SELECT payload FROM machine_hour_reports WHERE machine_id='mac-one' AND hour=?",
+    )
+    .bind(expiredHour)
+    .first<{ payload: string }>();
+  assert(archived);
+  assert.equal(JSON.parse(archived.payload).snapshots, 120);
+  assert(
+    await db
+      .prepare(
+        "SELECT seq FROM machine_hour_reports WHERE machine_id='mac-one' AND hour=?",
+      )
+      .bind(catchupHour)
+      .first(),
+  );
+  const chunkHour = utcHour(Date.now() - 4 * 3600000);
+  const large = report(
+    "chunked-hour",
+    new Date(Date.parse(chunkHour) + 60000).toISOString(),
+  );
+  const pane = large.spaces[0].tabs[0].panes[0];
+  large.spaces[0].tabs[0].panes = [0, 1].map((n) => ({
+    ...pane,
+    id: `chunk-pane-${n}`,
+    evidence: Array.from({ length: 30 }, (_, i) => ({
+      kind: "summary" as const,
+      status: "unknown" as const,
+      source: `native:${n}:${i}`,
+      observedAt: large.capturedAt,
+      taskId: pane.task.id,
+      summary: `检查记录${n}:${i}。${"实现仍在核验，部署没有完成证明。".repeat(100)}`,
+    })),
+  }));
+  assert.equal((await request("/api/v1/reports", large)).status, 201);
+  const beforeChunks = aiCalls;
+  const reduced = await request(
+    "/api/v1/hourly-reports/run",
+    { machine: "mac-one", hour: chunkHour },
+    viewer,
+  );
+  assert.equal(
+    ((await reduced.json()) as { results: { generated: boolean }[] }).results[0]
+      .generated,
+    true,
+  );
+  assert(
+    aiCalls > beforeChunks + 1,
+    "Large hours validate partial templates before final reduction",
+  );
 });

@@ -2,6 +2,13 @@ import { version } from "../../package.json";
 import { changesBetween } from "../shared/assessment.ts";
 import { MachineInput, MachineName } from "../shared/connect.ts";
 import {
+  type HourlySettings,
+  HourlySettingsSchema,
+  REPORT_SECTIONS,
+  TEMPLATE_VERSION,
+  validHour,
+} from "../shared/hourly.ts";
+import {
   HeartbeatSchema,
   type Report,
   ReportSchema,
@@ -16,6 +23,7 @@ import {
 import {
   agentIdentity,
   agentTokens,
+  containsCredential,
   issueToken,
   viewerIdentity,
 } from "./auth.ts";
@@ -23,6 +31,8 @@ import {
 export { MachineDirectory } from "./directory.ts";
 export { MachineState } from "./machine.ts";
 
+import { withAiKey } from "./ai-secret.ts";
+import { aiConfig, aiReady, runHourly, testAi } from "./hourly.ts";
 import { withProfile } from "./profile.ts";
 
 class HttpError extends Error {
@@ -89,15 +99,36 @@ function timely(value: string) {
   if (Date.parse(value) > Date.now() + 300_000)
     throw new HttpError(400, "Timestamp too far in future");
 }
-function noSecrets(value: string, env: Env) {
-  if (
-    /eag1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(value) ||
-    (env.AGENT_SIGNING_KEY && value.includes(env.AGENT_SIGNING_KEY))
-  )
+async function noSecrets(value: string, env: Env) {
+  if (containsCredential(value, await withAiKey(env)))
     throw new HttpError(400, "Credential found in report");
-  for (const token of Object.values(agentTokens(env)))
-    if (token && value.includes(token))
-      throw new HttpError(400, "Credential found in report");
+}
+function settingsInput(input: unknown, previous: HourlySettings) {
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    throw new HttpError(400, "Invalid AI settings");
+  const { apiKey, ...fields } = input as Record<string, unknown>;
+  if (
+    apiKey !== undefined &&
+    apiKey !== null &&
+    (typeof apiKey !== "string" ||
+      apiKey.length > 4096 ||
+      /\s/.test(apiKey.trim()))
+  )
+    throw new HttpError(400, "Invalid API key");
+  const parsed = HourlySettingsSchema.safeParse({ ...previous, ...fields });
+  if (!parsed.success) throw new HttpError(400, "Invalid AI settings");
+  try {
+    if (parsed.data.provider) aiConfig(parsed.data, "validation-placeholder");
+  } catch {
+    throw new HttpError(400, "Invalid AI configuration");
+  }
+  const key =
+    typeof apiKey === "string"
+      ? apiKey.trim() || undefined
+      : (apiKey as null | undefined);
+  if (key && !parsed.data.provider)
+    throw new HttpError(400, "Select an AI provider before saving its key");
+  return { settings: parsed.data, apiKey: key };
 }
 async function ingest(
   request: Request,
@@ -112,7 +143,7 @@ async function ingest(
     throw new HttpError(403, "Token does not authorize this machine");
   timely(report.capturedAt);
   const payload = canonical(report);
-  noSecrets(payload, env);
+  await noSecrets(payload, env);
   const digest = Array.from(
     new Uint8Array(
       await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload)),
@@ -193,6 +224,11 @@ async function route(request: Request, env: Env): Promise<Response> {
       semanticStore: "durable-objects",
       semanticProtocolVersion: 1,
       semanticHours: "UTC",
+      hourlyReports: {
+        available: true,
+        defaultIntervalHours: 1,
+        templateVersion: TEMPLATE_VERSION,
+      },
     });
   }
   if (path === "/api/v1/summaries" || path === "/api/v1/agent-state") {
@@ -215,7 +251,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (batch.machineId !== identity.machineId)
       throw new HttpError(403, "Token does not authorize this machine");
     timely(batch.sentAt);
-    noSecrets(JSON.stringify(batch), env);
+    await noSecrets(JSON.stringify(batch), env);
     const result = await object.summarize(
       batch,
       await digest(batch),
@@ -252,7 +288,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (parsed.data.machineId !== identity.machineId)
       throw new HttpError(403, "Token does not authorize this machine");
     timely(parsed.data.sentAt);
-    noSecrets(JSON.stringify(parsed.data), env);
+    await noSecrets(JSON.stringify(parsed.data), env);
     const alive = await env.MACHINES.getByName(identity.machineId).heartbeat(
       parsed.data.warning,
       identity.credentialId,
@@ -264,6 +300,64 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   const viewer = await viewerIdentity(request, env);
   if (!viewer) throw new HttpError(401, "Sign in required");
+  if (path === "/api/v1/settings") {
+    const directory = env.DIRECTORY.getByName("fleet");
+    let settings: HourlySettings = await directory.settings();
+    if (request.method === "POST") {
+      const input = settingsInput(await body(request), settings);
+      await noSecrets(JSON.stringify(input.settings), env);
+      if (
+        input.apiKey &&
+        (containsCredential(input.apiKey, env) ||
+          JSON.stringify(input.settings).includes(input.apiKey))
+      )
+        throw new HttpError(
+          400,
+          "Credential must only appear in the API key field",
+        );
+      settings = await directory.saveSettings(input.settings, input.apiKey);
+    } else if (request.method !== "GET")
+      throw new HttpError(405, "Method not allowed");
+    const configuredEnv = await withAiKey(env, settings);
+    return json({
+      ...settings,
+      hasApiKey: !!configuredEnv.AI_API_KEY,
+      configured: aiReady(settings, configuredEnv),
+      templateVersion: TEMPLATE_VERSION,
+      sections: REPORT_SECTIONS,
+    });
+  }
+  if (path === "/api/v1/settings/test" && request.method === "POST") {
+    const previous = await env.DIRECTORY.getByName("fleet").settings();
+    const input = settingsInput(await body(request), previous);
+    const configuredEnv = await withAiKey(env, input.settings);
+    if (input.apiKey !== undefined)
+      configuredEnv.AI_API_KEY = input.apiKey ?? "";
+    return json(await testAi(input.settings, configuredEnv));
+  }
+  if (path === "/api/v1/hourly-reports/run" && request.method === "POST") {
+    const input = await body(request);
+    if (
+      !input ||
+      typeof input !== "object" ||
+      Object.keys(input).some((k) => !["machine", "hour"].includes(k)) ||
+      (input.machine !== undefined &&
+        (typeof input.machine !== "string" ||
+          !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(input.machine))) ||
+      (input.hour !== undefined &&
+        (typeof input.hour !== "string" ||
+          !validHour(input.hour) ||
+          Date.parse(input.hour) + 3600000 > Date.now() - 300000 ||
+          Date.parse(input.hour) < Date.now() - 48 * 3600000))
+    )
+      throw new HttpError(400, "Expected a closed UTC hour within retention");
+    const ids = (await registrations(env))
+      .filter((m) => m.enabled)
+      .map((m) => m.id);
+    if (input.machine && !ids.includes(input.machine))
+      throw new HttpError(404, "Machine not found");
+    return json(await runHourly(env, ids, Date.now(), input));
+  }
   if (path === "/api/v1/machines" && request.method === "GET")
     return json({
       machines: await registrations(env),
@@ -275,7 +369,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     const parsed = MachineInput.safeParse(await body(request));
     if (!parsed.success) throw new HttpError(400, "Invalid machine name or ID");
     const { id, name, watchPorts } = parsed.data;
-    noSecrets(JSON.stringify(parsed.data), env);
+    await noSecrets(JSON.stringify(parsed.data), env);
     if (!(await env.DIRECTORY.getByName("fleet").add(id)))
       throw new HttpError(409, "Machine limit reached");
     const machine = await env.MACHINES.getByName(id).configure(
@@ -302,7 +396,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     const parsed = MachineName.safeParse(input);
     if (action === "rename" && !parsed.success)
       throw new HttpError(400, "Invalid machine name");
-    noSecrets(JSON.stringify(input), env);
+    await noSecrets(JSON.stringify(input), env);
     if (!(await env.MACHINES.getByName(id).registration(id)))
       throw new HttpError(404, "Machine not found");
     // Index legacy machines before migrating, so removing their old secret is safe.
@@ -321,6 +415,45 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (request.method !== "GET") throw new HttpError(405, "Method not allowed");
   if (path === "/api/v1/me") return json(await withProfile(viewer));
+  if (path === "/api/v1/hourly-reports") {
+    const machine = url.searchParams.get("machine");
+    const hour = url.searchParams.get("hour");
+    if (hour && !validHour(hour)) throw new HttpError(400, "Invalid UTC hour");
+    const limit = positive(url.searchParams.get("limit"), 12, 100);
+    const before = url.searchParams.get("before");
+    const cursor = before?.split("|");
+    if (
+      cursor &&
+      (cursor.length !== 2 ||
+        !validHour(cursor[0]) ||
+        !/^[1-9]\d{0,15}$/.test(cursor[1]) ||
+        !Number.isSafeInteger(Number(cursor[1])))
+    )
+      throw new HttpError(400, "Invalid hourly cursor");
+    const { results } = await env.DB.prepare(
+      "SELECT seq,hour,payload FROM machine_hour_reports WHERE (hour,seq)<(?,?) AND (? IS NULL OR machine_id=?) AND (? IS NULL OR hour=?) ORDER BY hour DESC,seq DESC LIMIT ?",
+    )
+      .bind(
+        cursor?.[0] ?? "9999-12-31T23:00:00.000Z",
+        cursor ? Number(cursor[1]) : Number.MAX_SAFE_INTEGER,
+        machine,
+        machine,
+        hour,
+        hour,
+        limit + 1,
+      )
+      .all<{ seq: number; hour: string; payload: string }>();
+    const entries = results
+      .slice(0, limit)
+      .map((r) => ({ seq: r.seq, report: JSON.parse(r.payload) }));
+    return json({
+      entries,
+      nextCursor:
+        results.length > limit
+          ? `${results[limit - 1].hour}|${results[limit - 1].seq}`
+          : null,
+    });
+  }
   if (path === "/api/v1/overview") {
     const ids = (await registrations(env))
       .filter((m) => m.enabled)
@@ -437,6 +570,14 @@ async function route(request: Request, env: Env): Promise<Response> {
   throw new HttpError(404, "Not found");
 }
 export default {
+  async scheduled(controller, env) {
+    const ids = (await registrations(env))
+      .filter((m) => m.enabled)
+      .map((m) => m.id);
+    const result = await runHourly(env, ids, controller.scheduledTime);
+    if (result.results.some((r) => "error" in r))
+      throw new Error("Hourly report generation failed");
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
     if (

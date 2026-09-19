@@ -191,3 +191,24 @@ serving and the first catalogue-derived production Cron observation.
 - 线上静态资源烟测确认资源卡位于运行脉搏上方、版本 pill 正确、重命名按钮不挤压。对凭证创建响应作浏览器内桩替换以检查复制 UI，没有创建生产机器或修改生产凭证：按钮内“已复制提示词”、宽度不变、手机无横向溢出、浏览器存储无凭证均通过。实际部署的提示词为 Agent 中立、推荐 Hermes、显式 manager.command，下载固定已发布的 0.4.0。
 - npm 0.4.0 已发布并验证官方/腾讯安装；0.4.1 默认行为修复已完成 59 项单元/集成和 34 项浏览器门禁，发布 tarball 源码为 `b51becd`、SHA-1 为 `df0ecee674dc8a80844b70fb94f58800aae65ef9`，仍等待新的 npm OTP，尚未声称发布。
 - 已设置发布后 5 分钟 CI 复查；本轮网站部署完成，npm 验证码待补。
+
+## 2026-09-19 20:09 +08 — Sidebar lights and hourly-report baseline
+
+- User view: dev sidebar now has glowing online/stale/offline indicators in expanded, collapsed and mobile layouts; 38 browser checks passed before hourly-report work.
+- Real local path verified at 20:08:45: 10 Spaces / 19 Panes collected, Bearer upload accepted into the machine DO, duplicate upload idempotent, resources/ports rendered, auto-refresh kept DOM stable. Local viewing remains token-free.
+- D1 old whole-snapshot writes remain paused; local migration 0003 adds a separate AI hourly-report archive. No model is configured yet, so generation explicitly skips.
+- Next hop: finish next-ai settings/report UI, exercise complete generation and retry against isolated Miniflare/D1, then review and release v0.2.2. Evidence: `.local/hourly-baseline-live.log`.
+
+## 2026-09-19 20:27 +08 — Hourly report flow and dev preview
+
+- Dev user view: Basalt AI settings and Chinese report history render on desktop/mobile; all 42 browser checks passed before final review fixes. Hour reports keep expanded content mounted on refresh.
+- Real local upload and initial rendering succeeded (10 Spaces / 19 Panes). A refresh assertion raced the running daemon, so the verifier now accepts the submitted timestamp or a newer one while requiring revision advancement and stable DOM. The corrected real verification passed at 20:28:10. Legacy D1 snapshot writes are still paused.
+- Migration 0003 is applied locally. `verify-hourly.ts` confirms the real settings API is non-secret, unconfigured generation skips, and D1 hourly history is queryable. A configured provider simulator with real Miniflare/DO/D1 verifies independent semantic times, concurrent leases, same-hour upserts, late input, upstream failure and protected generated-result retry.
+- Grok read-only review found chronological pagination, catch-up cadence, partial-report validation, pending retention and deferred-result messaging issues. Corrected; final regression and v0.2.2 release verification follow. No production AI credential has been configured.
+
+## 2026-09-19 20:38 +08 — UI credential storage and final local verification
+
+- Following the user's clarification, Settings now saves/replaces/tests/clears API keys in the browser form, without returning plaintext or storing it in browser persistence. AES-GCM ciphertext lives in the directory DO's independent credential record; the wrapping key lives in Worker secrets. Changed provider/endpoint cannot reuse the previous key.
+- TDD first reproduced rejection of UI key saves. The final 66 unit/integration tests and 44 desktop/mobile browser tests pass, including raw SQLite inspection for absence of plaintext, authenticated encryption, DO eviction recovery, draft testing without saving, endpoint binding and hourly generation using the saved credential.
+- Real Caddy verification at 20:38:16 saved a temporary validation credential through the page, reloaded its configured status, cleared it and restored the original settings, without calling an AI provider. It also verified unconfigured skip, D1 hourly queries, settings/history rendering and mobile layout. The first attempt identified a dev Worker missing the new wrapping-key binding; restarting it resolved the failure.
+- At 20:38:22, real Herdr collection again verified 10 Spaces / 19 Panes through Bearer, machine DO, resources/ports, all-Space rendering and stable automatic refresh. Raw D1 snapshot writes remain paused. Next: finish credential review, apply production migration, release v0.2.2 and verify both real production paths.

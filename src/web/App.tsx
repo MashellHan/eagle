@@ -37,6 +37,7 @@ import {
   PanelLeft,
   Plug,
   RefreshCw,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import {
   useCallback,
@@ -63,7 +64,9 @@ import {
   Status,
   Topology,
 } from "./Dashboard.tsx";
+import { HourlyHistory } from "./HourlyHistory.tsx";
 import { PaneSummaryView } from "./PaneSummary.tsx";
+import { Settings } from "./Settings.tsx";
 
 declare const __APP_VERSION__: string;
 function AccessGate() {
@@ -133,9 +136,10 @@ function HistoryView({ machine, space }: { machine: string; space?: string }) {
   }, [load]);
   return (
     <div className="space-y-4">
+      <HourlyHistory machine={machine} />
       <div className="flex items-center justify-between">
         <p className="text-sm text-basalt-muted-foreground">
-          历史归档已暂停，当前状态持续更新。此处可查阅之前的记录。
+          历史归档已暂停（旧版原始快照）；新的 AI 小时报告显示在上方。
         </p>
         <Button
           size="sm"
@@ -331,12 +335,16 @@ export function App() {
   const [machineId, setMachineId] = useState(
     () => new URLSearchParams(location.search).get("machine") || "",
   );
-  const [page, setPage] = useState<"overview" | "history" | "connect">(() =>
-    location.pathname === "/connect"
-      ? "connect"
-      : location.pathname === "/history"
-        ? "history"
-        : "overview",
+  const [page, setPage] = useState<
+    "overview" | "history" | "connect" | "settings"
+  >(() =>
+    location.pathname === "/settings"
+      ? "settings"
+      : location.pathname === "/connect"
+        ? "connect"
+        : location.pathname === "/history"
+          ? "history"
+          : "overview",
   );
   const [search, setSearch] = useState("");
   const [selection, setSelection] = useState<{
@@ -381,11 +389,13 @@ export function App() {
   useEffect(() => {
     const back = () => {
       setPage(
-        location.pathname === "/connect"
-          ? "connect"
-          : location.pathname === "/history"
-            ? "history"
-            : "overview",
+        location.pathname === "/settings"
+          ? "settings"
+          : location.pathname === "/connect"
+            ? "connect"
+            : location.pathname === "/history"
+              ? "history"
+              : "overview",
       );
       setMachineId(new URLSearchParams(location.search).get("machine") || "");
       setSearch("");
@@ -428,7 +438,7 @@ export function App() {
     (s) => s.id === selection?.space,
   );
   const navigate = (
-    next: "overview" | "history" | "connect",
+    next: "overview" | "history" | "connect" | "settings",
     id = machineId,
   ) => {
     setPage(next);
@@ -437,7 +447,7 @@ export function App() {
     history.pushState(
       null,
       "",
-      `${next === "connect" ? "/connect" : next === "history" ? "/history" : "/"}${id && next !== "connect" ? `?machine=${encodeURIComponent(id)}` : ""}`,
+      `${next === "overview" ? "/" : `/${next}`}${id && (next === "overview" || next === "history") ? `?machine=${encodeURIComponent(id)}` : ""}`,
     );
     if (mobile) setCollapsed(true);
   };
@@ -463,11 +473,13 @@ export function App() {
   );
   const NavItem = collapsed && !mobile ? SidebarIconItem : SidebarItem;
   const title =
-    page === "connect"
-      ? "Connect"
-      : page === "history"
-        ? "最近历史"
-        : (selectedMachine?.name ?? "全局总览");
+    page === "settings"
+      ? "设置"
+      : page === "connect"
+        ? "Connect"
+        : page === "history"
+          ? "最近历史"
+          : (selectedMachine?.name ?? "全局总览");
   const compactMachine = page === "overview" && !!selectedMachine;
   const syncCaption = (
     <span className="sync-caption">
@@ -550,6 +562,14 @@ export function App() {
               >
                 <HistoryIcon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
                 {(!collapsed || mobile) && "最近历史"}
+              </NavItem>
+              <NavItem
+                aria-label="设置"
+                active={page === "settings"}
+                onClick={() => navigate("settings", "")}
+              >
+                <SettingsIcon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+                {(!collapsed || mobile) && "设置"}
               </NavItem>
             </div>
             {(!collapsed || mobile) && (
@@ -653,7 +673,9 @@ export function App() {
                 <PageHeader
                   title={title}
                   description={
-                    compactMachine && selectedMachine ? (
+                    page === "settings" ? (
+                      "AI 连接、生成频率与中文报告模板。"
+                    ) : compactMachine && selectedMachine ? (
                       <span className="machine-subtitle">
                         <MachineStatus machine={selectedMachine} now={now} />
                         {syncCaption}
@@ -702,7 +724,7 @@ export function App() {
                     </p>
                   </LayerCard>
                 )}
-                {!compactMachine && syncCaption}
+                {!compactMachine && page !== "settings" && syncCaption}
                 {page === "overview" &&
                   !machineId &&
                   !!data?.pendingMachines?.length && (
@@ -714,6 +736,8 @@ export function App() {
                   )}
                 {boot ? (
                   <DashboardSkeleton />
+                ) : page === "settings" ? (
+                  <Settings onAuthError={expire} />
                 ) : page === "connect" ? (
                   <Connect
                     live={machines}

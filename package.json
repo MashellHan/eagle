@@ -1,6 +1,6 @@
 {
   "name": "eagle",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -19,7 +19,11 @@
     "db:remote": "wrangler d1 migrations apply eagle --remote"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.58",
+    "@ai-sdk/openai": "^4.0.71",
     "@nocoo/basalt": "2.1.8",
+    "@nocoo/next-ai": "^0.4.0",
+    "ai": "^7.0.107",
     "jose": "^6.2.12",
     "lucide-react": "^1.34.0",
     "react": "^19.2.8",

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.2 — 2026-09-19
+
+- Sidebar machine items show glowing online, stale-snapshot and offline indicators in expanded, collapsed and mobile layouts.
+- A Basalt settings page reuses next-ai provider configuration and a fixed seven-section Chinese report template. API keys can be saved, replaced, tested and cleared in the UI; authenticated encryption protects them in a separate DO configuration record, with the wrapping key in Worker secrets.
+- Hourly Cron combines each machine's independent factual and semantic streams, defaults to a one-hour cadence and skips unconfigured AI.
+- Durable leases, protected pending results, late-input revisions and a unique machine/hour D1 archive prevent duplicate reports and preserve failed writes for retry.
+- History supports machine/hour queries, chronological pagination and detailed report expansion without remounting during refresh.
+
 ## v0.2.1 — 2026-09-19
 
 - Compact machine headers combine freshness, inventory and sync status. CPU, memory, disk and watched ports sit above the activity column.
