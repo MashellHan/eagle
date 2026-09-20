@@ -80,7 +80,9 @@ function keyBytes(
         : "";
     return press + release;
   }
-  return modify === 2 && key === "shift+tab" ? "\x1b[27;2;9~" : legacy;
+  return modify === 2 && modifier !== 1
+    ? `\x1b[27;${modifier};${code}~`
+    : legacy;
 }
 export async function submitTerminalInput(
   apiPath: string,

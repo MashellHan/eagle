@@ -383,12 +383,20 @@ test("native input binds the terminal before paste/keys, confirms only submissio
     );
     changeModeDuringValidation = false;
     modify = 2;
-    input.keys = ["shift+tab", "ctrl+c"];
+    input.keys = ["shift+tab", "ctrl+c", "ctrl+d", "ctrl+l"];
     frames.length = 0;
     assert.equal(await submit(), "submitted");
     assert.deepEqual(
       frames.filter((f) => f[0] === 1).map((f) => f.subarray(2).toString()),
-      ["\x1b[27;2;9~", "\x03"],
+      ["\x1b[27;2;9~", "\x1b[27;5;99~", "\x1b[27;5;100~", "\x1b[27;5;108~"],
+    );
+    modify = 1;
+    input.keys = ["ctrl+c", "ctrl+d", "ctrl+l"];
+    frames.length = 0;
+    assert.equal(await submit(), "submitted");
+    assert.deepEqual(
+      frames.filter((f) => f[0] === 1).map((f) => f.subarray(2).toString()),
+      ["\x03", "\x04", "\x0c"],
     );
     frames.length = 0;
     protocol = 23;
