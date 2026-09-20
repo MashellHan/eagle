@@ -9,11 +9,12 @@
 
 ## What it does
 
-Eagle is a private dashboard for Herdr users, bringing together each reporting machine's Spaces, pane layouts, resources and task evidence. Missing, conflicting or stale data stays explicit. Agent lifecycle labels such as `idle`, `done` and `blocked` are hints, not proof of task completion. Eagle exposes no remote terminal control.
+Eagle is a private dashboard for Herdr users, bringing together each reporting machine's Spaces, pane layouts, resources and task evidence. Missing, conflicting or stale data stays explicit. Agent lifecycle labels such as `idle`, `done` and `blocked` are hints, not proof of task completion.
 
 ## Features
 
 - **Cross-machine overview**: inspect machine states, resources and agent distribution, then open a machine for Spaces, actual pane geometry, task evidence and change timelines.
+- **Space realtime mode**: a separate machine bridge streams terminal text/layout and accepts input after explicit control. Switching views, leaving or hiding the page releases subscriptions; disconnected inputs are never replayed. See [realtime mode and protocol limits](REALTIME.md).
 - **Machine onboarding**: use Connect to add or rename machines, generate one-time onboarding prompts, rotate credentials, disable reporting and re-enable machines.
 - **Resources and ports**: report CPU, RAM, home-filesystem capacity and uptime, with optional local TCP endpoint checks. A listening port proves connectivity, not business health.
 - **Task evidence**: compare the current task summary, Goal, Git revision and test receipts, with deployment evidence when required. A running Goal or actual tool execution takes priority over apparent completion.
@@ -27,36 +28,40 @@ Each machine has an independent SQLite Durable Object, with current snapshots an
 
 Cloudflare Access protects the website. The Worker verifies signatures, issuer, application audience, expiry and required claims. Local viewing bypasses authentication only on explicit development/loopback hosts with `LOCAL_DEV="true"`; production disables this flag.
 
-Machines report to `https://eagle-ingest.hexly.ai` with independent signed Bearer tokens, keeping browser SSO out of collection. This host serves machine reports, heartbeats, semantic uploads, the authenticated machine's own snapshot and public `/api/live`, but no dashboard or website history. Private APIs do not support CORS. Tokens can be copied only when issued and belong in mode-`0600` machine configuration. The signing key stays in a Worker secret; databases and persistent browser storage hold no tokens. Existing `AGENT_TOKENS` credentials remain supported until rotated or disabled.
+Machines report to `https://eagle-ingest.hexly.ai` with independent signed Bearer tokens, keeping browser SSO out of collection. This host serves machine reports, heartbeats, semantic uploads, the authenticated machine's own snapshot, the realtime bridge and public `/api/live`, but no dashboard or website history. Private APIs do not support CORS. Tokens can be copied only when issued and belong in mode-`0600` machine configuration. The signing key stays in a Worker secret; databases and persistent browser storage hold no tokens. Existing `AGENT_TOKENS` credentials remain supported until rotated or disabled.
 
 The sidebar shows the verified Access account and logout control. Avatar lookup sends only a SHA-256 hash of the normalized email, falling back to the account name and initial on failure. Local preview can set `LOCAL_USER_EMAIL`; logout is disabled locally.
 
 The Codex adapter extracts only final replies and lifecycle events, excluding reasoning and tool arguments. Other harnesses use bounded terminal excerpts and management-agent evidence. Text is redacted before spool/upload, but heuristics cannot guarantee removal of arbitrary secrets. Supply concise summaries and verification receipts instead of raw terminal dumps.
 
+Realtime mode separately transmits redacted current terminal screens. Screen text and input are never persisted in D1, DO storage or browser storage.
+
 ## Usage
 
 Open [Eagle](https://eagle.hexly.ai), sign in through Access, add a machine in **Connect**, and give its generated onboarding prompt to the existing management Agent (Hermes recommended; alternatives supported) on that machine.
 
-The collector requires Node.js 24+, npm and Herdr 0.9.1+. Install it independently without cloning Eagle:
+The collector requires Node.js 24+, npm and Herdr 0.9.1+; realtime input currently requires Herdr 0.9.1 protocol 22. Install it independently without cloning Eagle. Agent v0.5.0 is distributed as a GitHub Release asset while npm publication is pending:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org
+npm install -g https://github.com/nocoo/eagle/releases/download/v0.4.0/nocoo-eagle-agent-0.5.0.tgz --registry=https://registry.npmjs.org
 eagle-agent --version
 ```
 
-If the official registry is unreachable, use the Tencent Cloud mirror instead. Choose one installation command:
+If npm dependency downloads fail, use the Tencent Cloud mirror instead; the agent tarball still comes from GitHub. Choose one installation command:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g https://github.com/nocoo/eagle/releases/download/v0.4.0/nocoo-eagle-agent-0.5.0.tgz --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
-The expected version is `0.4.0`. Mirror synchronization may lag; on `404` / `ETARGET`, retry later or use the official registry when reachable, without changing the global npm registry. Save onboarding credentials following the [installation and configuration guide](../agent/README.md), then run:
+The expected version is `0.5.0`. These commands select a dependency registry for this installation only, without changing the global npm registry. Save onboarding credentials following the [installation and configuration guide](../agent/README.md), then run:
 
 ```sh
 eagle-agent once
 eagle-agent watch
 # In a separate process, run the semantic Manager after explicitly configuring manager.command for Hermes or another Agent:
 eagle-agent manager-watch
+# For web viewing/input, use another process with the same secure configuration; run only one instance:
+eagle-agent realtime-watch
 ```
 
 The deterministic collector runs every 30 seconds by default. Manager uses the existing management Agent and model only when inputs change and the per-task rate limit permits, independently of collection. The secure configuration's `watchPorts` field selects local endpoints, for example:

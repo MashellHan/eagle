@@ -9,11 +9,12 @@
 
 ## 这是什么
 
-Eagle 是面向 Herdr 用户的私有看板，汇总每台上报机器的 Space、窗格布局、机器资源与任务证据。缺失、冲突或过期的数据明确标记；Agent 的 `idle`、`done`、`blocked` 仅是提示，不作为任务完成证明。项目不提供远程终端控制。
+Eagle 是面向 Herdr 用户的私有看板，汇总每台上报机器的 Space、窗格布局、机器资源与任务证据。缺失、冲突或过期的数据明确标记；Agent 的 `idle`、`done`、`blocked` 仅是提示，不作为任务完成证明。
 
 ## 功能
 
 - **跨机器总览**：查看机器状态分布、资源概况与 Agent 分布，进入单台机器查看 Space、真实窗格布局、任务证据与变化时间线。
+- **Space 实时模式**：通过独立机器桥接服务近实时查看终端文本和布局，接管后发送输入；切换、退出或页面后台自动回收订阅，断线输入不重放。见[实时模式与协议限制](docs/REALTIME.md)。
 - **机器接入**：Connect 页面添加和重命名机器，生成一次性接入提示词，轮换、停用与重新启用机器凭据。
 - **资源与端口**：上报 CPU、内存、主目录所在磁盘容量和运行时间，可检查指定本机 TCP 端口。端口监听只代表连通，不能证明业务健康。
 - **任务证据**：对照当前任务总结、Goal、Git revision 和测试凭证；涉及部署时还需要部署证据。运行中的 Goal 或实际工具执行优先于表面的完成提示。
@@ -28,36 +29,40 @@ Eagle 是面向 Herdr 用户的私有看板，汇总每台上报机器的 Space�
 
 网站由 Cloudflare Access 保护，Worker 校验签名、签发者、应用 audience、有效期与必要声明。本地免登录仅对明确的开发域名或 loopback 且 `LOCAL_DEV="true"` 生效；生产关闭此开关。
 
-机器使用独立的签名 Bearer Token 向 `https://eagle-ingest.hexly.ai` 上报，避免浏览器 SSO 中断采集。该域名只提供机器上报、心跳、语义上传、自身快照和公开 `/api/live`，不提供看板与网站历史查询；私有 API 不开放 CORS。Token 仅在生成时可复制，保存在权限为 `0600` 的机器配置中；签名密钥留在 Worker secret，数据库和浏览器持久存储均不保存 Token。已有 `AGENT_TOKENS` 凭据可继续使用，直到轮换或停用。
+机器使用独立的签名 Bearer Token 向 `https://eagle-ingest.hexly.ai` 上报，避免浏览器 SSO 中断采集。该域名只提供机器上报、心跳、语义上传、自身快照、实时桥接和公开 `/api/live`，不提供看板与网站历史查询；私有 API 不开放 CORS。Token 仅在生成时可复制，保存在权限为 `0600` 的机器配置中；签名密钥留在 Worker secret，数据库和浏览器持久存储均不保存 Token。已有 `AGENT_TOKENS` 凭据可继续使用，直到轮换或停用。
 
 侧栏显示已验证的 Access 账户与退出入口。头像服务只接收规范化邮箱的 SHA-256，查询失败时保留账户名和首字母头像。本地可配置 `LOCAL_USER_EMAIL` 预览，退出功能在本地禁用。
 
 Codex 适配器仅提取最终回复和生命周期事件，不采集推理与工具参数；其他 harness 使用有限终端片段和管理 Agent 提供的结构化证据。文本在落盘和上传前脱敏，但启发式规则无法保证识别任意秘密；应提供简明总结与验证凭证，避免原始终端转储。
 
+实时模式另行传输脱敏后的当前终端画面；画面与输入不写入 D1、DO 存储或浏览器持久存储。
+
 ## 使用
 
 打开 [Eagle](https://eagle.hexly.ai)，通过 Access 登录，在 **Connect** 添加机器，将生成的接入提示词交给该机器上的 管理 Agent（推荐 Hermes，也支持其他 Agent）。
 
-采集器需要 Node.js 24+、npm 与 Herdr 0.9.1+，可独立安装，无须克隆 Eagle 仓库：
+采集器需要 Node.js 24+、npm 与 Herdr 0.9.1+；实时输入当前要求 Herdr 0.9.1 的协议 22。可独立安装，无须克隆 Eagle 仓库。本次 Agent v0.5.0 通过 GitHub Release 安装包分发，npm 发布待完成：
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://registry.npmjs.org
+npm install -g https://github.com/nocoo/eagle/releases/download/v0.4.0/nocoo-eagle-agent-0.5.0.tgz --registry=https://registry.npmjs.org
 eagle-agent --version
 ```
 
-若官方源不可达，改用腾讯云镜像，二选一即可：
+若 npm 依赖下载失败，改用腾讯云镜像，安装包仍从 GitHub 下载，二选一即可：
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.4.0 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g https://github.com/nocoo/eagle/releases/download/v0.4.0/nocoo-eagle-agent-0.5.0.tgz --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
-预期版本为 `0.4.0`。镜像同步可能延迟；遇到 `404` / `ETARGET` 可稍后重试或在网络恢复后使用官方源，不修改全局 npm 源。按照[安装与配置说明](agent/README.md)保存接入凭据后运行：
+预期版本为 `0.5.0`。命令仅为本次安装指定依赖源，不修改全局 npm 源。按照[安装与配置说明](agent/README.md)保存接入凭据后运行：
 
 ```sh
 eagle-agent once
 eagle-agent watch
 # 在独立进程中运行语义 Manager，先显式配置 manager.command；推荐 Hermes，也支持其他 Agent：
 eagle-agent manager-watch
+# 如需网页实时查看与输入，在另一独立进程中运行，沿用安全配置且仅启动一个实例：
+eagle-agent realtime-watch
 ```
 
 确定性采集器默认每 30 秒运行；Manager 仅在输入变化且满足每任务限频时调用现有管理 Agent 的模型，与采集进程独立运行。安全配置中的 `watchPorts` 可指定要检查的端口，例如：
