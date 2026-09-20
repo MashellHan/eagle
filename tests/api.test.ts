@@ -2145,6 +2145,9 @@ test("realtime bounds slow viewer output while acknowledged viewers keep receivi
       );
       await settle();
     }
+    const deadline = Date.now() + 5000;
+    while ((received < 80 || !slowCode) && Date.now() < deadline)
+      await settle();
     assert.equal(received, 80);
     assert.equal(slowCode, 1013);
   } finally {
