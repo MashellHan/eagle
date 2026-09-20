@@ -2,6 +2,7 @@ import { ThemeProvider, TooltipProvider } from "@nocoo/basalt";
 import { AccentProvider } from "@nocoo/basalt/providers/accent";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
+import { TimezoneProvider } from "./Timezone.tsx";
 import "./style.css";
 
 let theme: string | null = null;
@@ -23,7 +24,9 @@ createRoot(root).render(
   <ThemeProvider defaultTheme="dark">
     <AccentProvider defaultAccent="primary">
       <TooltipProvider>
-        <App />
+        <TimezoneProvider>
+          <App />
+        </TimezoneProvider>
       </TooltipProvider>
     </AccentProvider>
   </ThemeProvider>,

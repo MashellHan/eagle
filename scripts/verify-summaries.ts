@@ -117,7 +117,7 @@ try {
     const panel = page.getByRole("region", { name: "Pane 实时总结" });
     await expect(panel).toBeVisible();
     await expect(panel).not.toContainText("等待 Manager");
-    await expect(page.getByText("UTC 小时时间线")).toBeVisible();
+    await expect(page.getByText("小时时间线 · UTC+08:00")).toBeVisible();
     await panel
       .getByRole("button", { name: /展开.*条/ })
       .first()

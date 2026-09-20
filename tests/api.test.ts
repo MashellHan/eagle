@@ -2009,7 +2009,12 @@ test("realtime has one controller, rejects stale identities and sequences, and c
   await settle();
   assert.equal(agent.messages.filter((m) => m.type === "input").length, 0);
   a.ws.send(JSON.stringify(input));
-  await settle();
+  const inputDeadline = Date.now() + 2000;
+  while (
+    !agent.messages.some((message) => message.type === "input") &&
+    Date.now() < inputDeadline
+  )
+    await settle();
   const command = agent.messages.find((m) => m.type === "input");
   assert(command);
   agent.ws.send(

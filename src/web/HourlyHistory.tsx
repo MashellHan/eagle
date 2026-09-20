@@ -17,14 +17,12 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  type HourlyReport,
-  REPORT_SECTIONS,
-  utcHour,
-} from "../shared/hourly.ts";
-import { api, time } from "./api.ts";
+import { type HourlyReport, REPORT_SECTIONS } from "../shared/hourly.ts";
+import { api } from "./api.ts";
+import { useTimezone } from "./Timezone.tsx";
 
 function ReportCard({ report }: { report: HourlyReport }) {
+  const { time, zone } = useTimezone();
   const [expanded, setExpanded] = useState(false);
   return (
     <LayerCard
@@ -43,13 +41,13 @@ function ReportCard({ report }: { report: HourlyReport }) {
           </div>
           <p className="flex flex-wrap items-center gap-1.5 text-xs text-basalt-muted-foreground">
             <Clock3 size={12} />
-            <time dateTime={report.hour} title={report.hour}>
+            <time dateTime={report.hour} title={`${time(report.hour)} ${zone}`}>
               {time(report.hour).slice(0, -3)} —{" "}
               {time(
                 new Date(Date.parse(report.hour) + 3600000).toISOString(),
               ).slice(-8, -3)}
             </time>
-            <span>（本地时间）</span>
+            <span>（{zone}）</span>
           </p>
         </div>
         <Button
@@ -89,7 +87,7 @@ function ReportCard({ report }: { report: HourlyReport }) {
             </section>
           ))}
           <p className="text-xs break-all text-basalt-muted-foreground">
-            UTC {report.hour} · {report.templateVersion}
+            {time(report.hour)} {zone} · {report.templateVersion}
             <br />
             数据覆盖：
             {report.firstObservedAt
@@ -109,13 +107,19 @@ function ReportCard({ report }: { report: HourlyReport }) {
 }
 
 export function HourlyHistory({ machine }: { machine: string }) {
+  const { offset, zone } = useTimezone();
+  const minute = String(((offset % 60) + 60) % 60).padStart(2, "0");
   const [entries, setEntries] = useState<
     { seq: number; report: HourlyReport }[]
   >([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [date, setDate] = useState("");
   const [localHour, setLocalHour] = useState("00");
-  const hour = date ? `${date}T${localHour}:00` : "";
+  const hour = date
+    ? new Date(
+        Date.parse(`${date}T${localHour}:${minute}:00Z`) - offset * 60000,
+      ).toISOString()
+    : "";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const active = useRef<AbortController | null>(null);
@@ -128,7 +132,7 @@ export function HourlyHistory({ machine }: { machine: string }) {
       setError("");
       const query = new URLSearchParams({ limit: "12" });
       if (machine) query.set("machine", machine);
-      if (hour) query.set("hour", utcHour(hour));
+      if (hour) query.set("hour", hour);
       if (before) query.set("before", String(before));
       try {
         const result = await api<{
@@ -158,14 +162,11 @@ export function HourlyHistory({ machine }: { machine: string }) {
     return () => active.current?.abort();
   }, [load]);
   return (
-    <SectionRule
-      title="小时报告"
-      hint="每台机器的中文工作报告 · 按 UTC 小时归档"
-    >
+    <SectionRule title="小时报告" hint={`每台机器的中文工作报告 · ${zone}`}>
       <div className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="report-date">筛选小时（本地时间）</Label>
+            <Label htmlFor="report-date">筛选小时（{zone}）</Label>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative w-44">
                 <DatePicker
@@ -174,6 +175,7 @@ export function HourlyHistory({ machine }: { machine: string }) {
                   value={date}
                   onChange={setDate}
                   locale="zh-CN"
+                  timeZone={zone.slice(3).replace("−", "-")}
                   labels={{
                     calendar: "选择报告日期",
                     placeholder: "选择日期",
@@ -203,7 +205,7 @@ export function HourlyHistory({ machine }: { machine: string }) {
                     const value = String(h).padStart(2, "0");
                     return (
                       <SelectItem key={value} value={value}>
-                        {value}:00
+                        {value}:{minute}
                       </SelectItem>
                     );
                   })}

@@ -2,6 +2,10 @@
 
 Open a machine, open a Space, then select **实时模式**. Eagle mirrors the current terminal text and tab/pane layout. **接管输入** grants one browser control of that Space; other browsers can watch. Select a pane, send text with or without Enter, or use the common key buttons. The local Herdr client remains able to operate concurrently. This release mirrors text screens; terminal colors, mouse reporting, pixel graphics and arbitrary PTY resize are not implemented.
 
+The Basalt workspace sheet overlays the dashboard and widens for realtime mode. Pick a tab and a target pane in the controls above the black terminal canvas. Desktop retains the selected tab's pane layout; mobile shows the selected pane. Terminal output scrolls internally while the composer remains visible, including when the visual viewport shrinks for the keyboard. Enter submits the draft; switching targets clears the draft and releases input control. Reduced-motion preferences disable the sheet motion.
+
+**设置 → 显示时区** controls all structured timestamps, calendar dates and hourly filters. It defaults to UTC+08:00 and stores only the fixed UTC offset in this browser; it does not follow daylight-saving changes or modify source timestamps/UTC archive boundaries. Half-hour and quarter-hour offsets show the corresponding local archive minutes. A blocked browser store keeps the preference in memory and reports that it cannot persist.
+
 Run a separate user service with the same secure config:
 
 ```sh
@@ -30,7 +34,7 @@ Native attach briefly controls terminal geometry and can resume a pending agent.
 
 ## Verification
 
-API tests use real isolated Miniflare/DO/D1. Bridge tests use a disposable Unix socket. Browser tests cover viewing, control and cleanup on desktop/mobile.
+API tests use real isolated Miniflare/DO/D1. Bridge tests use a disposable Unix socket. Browser tests cover viewing, control, malformed-message cleanup, timezone conversion, light/dark overlays, reduced motion and viewport-constrained composers on desktop/mobile.
 
 With a realtime bridge running, `scripts/verify-realtime.ts` creates a temporary sibling shell, sends a harmless marker command through the real web page, checks shell output and exercises four enter/leave cycles. It closes only the pane it created and saves a sanitized receipt and screenshot of that pane under `.local/`. Use the same local/public origin and Access-file environment as `scripts/verify-live.ts`.
 

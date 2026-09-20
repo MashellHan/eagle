@@ -9,7 +9,8 @@ import {
   type SemanticRecord,
   summaryFreshness,
 } from "../shared/summaries.ts";
-import { api, time } from "./api.ts";
+import { api } from "./api.ts";
+import { useTimezone } from "./Timezone.tsx";
 
 const FRESH_LABEL = {
   current: "语义在线",
@@ -26,6 +27,7 @@ export function PaneSummaryView({
   space: Space;
   pane: Pane;
 }) {
+  const { time } = useTimezone();
   const latest = machine.summaries?.find(
     (s) => s.spaceId === space.id && s.paneId === pane.id,
   );
@@ -119,6 +121,7 @@ export function PaneSummaryView({
 }
 
 function RecordDetail({ entry }: { entry: SemanticRecord }) {
+  const { time, zone } = useTimezone();
   return (
     <div className="space-y-2 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -126,7 +129,7 @@ function RecordDetail({ entry }: { entry: SemanticRecord }) {
           {PHASE_LABEL[entry.value.summary.phase]}
         </Badge>
         <time dateTime={entry.value.observedAt}>
-          {`${new Date(entry.value.observedAt).toISOString().slice(11, 19)} UTC`}
+          {`${time(entry.value.observedAt)} ${zone}`}
         </time>
       </div>
       <p className="font-medium">{entry.value.summary.task}</p>
@@ -223,6 +226,7 @@ function HourRecords({
   );
 }
 function HourTimeline({ query }: { query: string }) {
+  const { time, zone } = useTimezone();
   const [hours, setHours] = useState<SemanticHour[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -289,7 +293,7 @@ function HourTimeline({ query }: { query: string }) {
   }
   return (
     <SectionRule
-      title="UTC 小时时间线"
+      title={`小时时间线 · ${zone}`}
       hint="DO 独立语义流 · 每小时可有多条 · 心跳不记历史"
     >
       {loading && !hours.length && (
@@ -303,7 +307,14 @@ function HourTimeline({ query }: { query: string }) {
             <LayerCard>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <time className="text-xs font-medium" dateTime={bucket.hour}>
-                  {bucket.hour.slice(0, 10)} {bucket.hour.slice(11, 13)}:00 UTC
+                  {time(bucket.hour, {
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}{" "}
+                  {zone}
                 </time>
                 <Button
                   variant="ghost"

@@ -25,8 +25,9 @@ import {
   type Registration,
 } from "../shared/connect.ts";
 import { type MachineView, WatchPortsSchema } from "../shared/schema.ts";
-import { AuthError, api, time } from "./api.ts";
+import { AuthError, api } from "./api.ts";
 import { isStale } from "./Dashboard.tsx";
+import { useTimezone } from "./Timezone.tsx";
 
 export function Connect({
   live,
@@ -39,6 +40,7 @@ export function Connect({
   onOpen: (id: string) => void;
   onAuthError: () => void;
 }) {
+  const { time } = useTimezone();
   const [machines, setMachines] = useState<Registration[] | null>(null);
   const [canIssue, setCanIssue] = useState(false);
   const [name, setName] = useState("");
@@ -245,7 +247,7 @@ export function Connect({
                     </span>
                     <span>
                       {machine.expiresAt
-                        ? `有效至 ${new Date(machine.expiresAt).toLocaleDateString("zh-CN")}`
+                        ? `有效至 ${time(machine.expiresAt, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}`
                         : "手工配置"}
                     </span>
                   </div>

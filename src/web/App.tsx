@@ -6,6 +6,7 @@ import {
   DialogTitle,
   LayerCard,
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetTitle,
@@ -32,12 +33,15 @@ import { SectionRule } from "@nocoo/basalt/components/section-rule";
 import { SkeletonLine } from "@nocoo/basalt/components/skeleton-line";
 import {
   History as HistoryIcon,
+  Layers3,
   LayoutDashboard,
   Monitor,
   PanelLeft,
   Plug,
   RefreshCw,
   Settings as SettingsIcon,
+  TerminalSquare,
+  X,
 } from "lucide-react";
 import {
   useCallback,
@@ -53,7 +57,7 @@ import type {
   Overview,
   Space,
 } from "../shared/schema.ts";
-import { AuthError, api, time } from "./api.ts";
+import { AuthError, api } from "./api.ts";
 import { FamilyActions, Mark, SidebarAccount } from "./Brand.tsx";
 import { Connect } from "./Connect.tsx";
 import {
@@ -68,6 +72,7 @@ import { HourlyHistory } from "./HourlyHistory.tsx";
 import { PaneSummaryView } from "./PaneSummary.tsx";
 import { Realtime } from "./Realtime.tsx";
 import { Settings } from "./Settings.tsx";
+import { useTimezone } from "./Timezone.tsx";
 
 declare const __APP_VERSION__: string;
 function AccessGate() {
@@ -95,6 +100,7 @@ function AccessGate() {
 }
 
 function HistoryView({ machine, space }: { machine: string; space?: string }) {
+  const { time } = useTimezone();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [cursor, setCursor] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -222,6 +228,32 @@ function SpaceDetail({
   space: Space;
   initialPane?: string;
 }) {
+  const { time, zone } = useTimezone();
+  const header = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const sheet = header.current?.closest<HTMLElement>("[role=dialog]");
+    if (!viewport || !sheet) return;
+    const resize = () => {
+      sheet.style.setProperty(
+        "--eagle-viewport-height",
+        `${viewport.height}px`,
+      );
+      sheet.style.setProperty(
+        "--eagle-viewport-top",
+        `${viewport.offsetTop}px`,
+      );
+    };
+    resize();
+    viewport.addEventListener("resize", resize);
+    viewport.addEventListener("scroll", resize);
+    return () => {
+      viewport.removeEventListener("resize", resize);
+      viewport.removeEventListener("scroll", resize);
+      sheet.style.removeProperty("--eagle-viewport-height");
+      sheet.style.removeProperty("--eagle-viewport-top");
+    };
+  }, []);
   const [paneId, setPaneId] = useState(initialPane);
   const [history, setHistory] = useState(false);
   const [realtime, setRealtime] = useState(false);
@@ -230,55 +262,94 @@ function SpaceDetail({
   const assessment = pane ? assessPane(pane, machine.report.capturedAt) : null;
   return (
     <>
-      <SheetTitle>{space.name}</SheetTitle>
-      <SheetDescription>
-        {machine.name} · {space.objective || "目标待补充"}
-      </SheetDescription>
-      <div className="mt-5 flex gap-2">
-        <Button
-          size="sm"
-          variant={history || realtime ? "ghost" : "secondary"}
-          onClick={() => {
-            setHistory(false);
-            setRealtime(false);
-          }}
-        >
-          当前任务
-        </Button>
-        <Button
-          size="sm"
-          variant={history ? "secondary" : "ghost"}
-          onClick={() => {
-            setHistory(true);
-            setRealtime(false);
-          }}
-        >
-          Space 历史
-        </Button>
-        <Button
-          size="sm"
-          variant={realtime ? "secondary" : "ghost"}
-          onClick={() => {
-            setRealtime(true);
-            setHistory(false);
-          }}
-        >
-          实时模式
-        </Button>
-      </div>
-      <div className="mt-6 space-y-6">
+      <header ref={header} className="space-detail-header">
+        <div className="space-detail-eyebrow">
+          <span>
+            <Layers3 size={13} /> 工作区{" "}
+            <span className="mono">{space.id}</span>
+          </span>
+          <SheetClose asChild>
+            <Button size="icon" variant="outline" aria-label="关闭工作区">
+              <X size={17} />
+            </Button>
+          </SheetClose>
+        </div>
+        <SheetTitle className="space-detail-title">{space.name}</SheetTitle>
+        <SheetDescription className="space-detail-description">
+          {space.objective || "目标待补充"}
+        </SheetDescription>
+        <div className="space-detail-meta">
+          <span>
+            <Monitor size={13} />
+            {machine.name}
+          </span>
+          <span>
+            <TerminalSquare size={13} />
+            {panes.length} Panes
+          </span>
+          <span className="mono">{zone}</span>
+        </div>
+        <fieldset className="space-mode-switch" aria-label="工作区视图">
+          <Button
+            size="sm"
+            variant={history || realtime ? "outline" : "default"}
+            aria-pressed={!history && !realtime}
+            onClick={() => {
+              setHistory(false);
+              setRealtime(false);
+            }}
+          >
+            <Layers3 size={14} />
+            当前任务
+          </Button>
+          <Button
+            size="sm"
+            variant={history ? "default" : "outline"}
+            aria-pressed={history}
+            onClick={() => {
+              setHistory(true);
+              setRealtime(false);
+            }}
+          >
+            <HistoryIcon size={14} />
+            Space 历史
+          </Button>
+          <Button
+            size="sm"
+            variant={realtime ? "default" : "outline"}
+            aria-pressed={realtime}
+            onClick={() => {
+              setRealtime(true);
+              setHistory(false);
+            }}
+          >
+            <TerminalSquare size={14} />
+            实时模式
+          </Button>
+        </fieldset>
+      </header>
+      <div
+        className={
+          realtime ? "space-detail-body space-detail-live" : "space-detail-body"
+        }
+      >
         {realtime ? (
           <Realtime machineId={machine.id} spaceId={space.id} />
         ) : history ? (
           <HistoryView machine={machine.id} space={space.id} />
         ) : (
           <>
-            <Topology
-              space={space}
-              at={machine.report.capturedAt}
-              summaries={machine.summaries}
-              onPane={(p) => setPaneId(p.id)}
-            />
+            <SectionRule title="终端布局" hint="选择 Pane 查看任务与证据">
+              <LayerCard className="space-topology-card">
+                <Topology
+                  space={space}
+                  at={machine.report.capturedAt}
+                  summaries={machine.summaries}
+                  onPane={(p) => setPaneId(p.id)}
+                  selectedPane={pane?.id}
+                />
+              </LayerCard>
+            </SectionRule>
             {pane && assessment && (
               <>
                 <PaneSummaryView
@@ -347,6 +418,7 @@ function SpaceDetail({
 }
 
 export function App() {
+  const { time, zone } = useTimezone();
   const [clock, setClock] = useState(new Date().toISOString());
   const [data, setData] = useState<Overview | null>(null);
   const [auth, setAuth] = useState(false);
@@ -514,7 +586,7 @@ export function App() {
           ? "连接中断 · 保留上次快照"
           : "连接中断 · 等待首次快照"
         : data
-          ? `已同步 ${time(data.now)}`
+          ? `已同步 ${time(data.now)} · ${zone}`
           : "正在连接机器状态…"}
       <span>每 5 秒自动更新</span>
     </span>
@@ -696,7 +768,7 @@ export function App() {
                   title={title}
                   description={
                     page === "settings" ? (
-                      "AI 连接、生成频率与中文报告模板。"
+                      "显示时区、AI 连接与小时报告。"
                     ) : compactMachine && selectedMachine ? (
                       <span className="machine-subtitle">
                         <MachineStatus machine={selectedMachine} now={now} />
@@ -799,10 +871,7 @@ export function App() {
             if (!open) setSelection(null);
           }}
         >
-          <SheetContent
-            side="right"
-            className="w-full overflow-y-auto sm:max-w-2xl"
-          >
+          <SheetContent side="right" className="space-sheet">
             {detailMachine && detailSpace ? (
               <SpaceDetail
                 key={`${detailMachine.id}:${detailSpace.id}`}

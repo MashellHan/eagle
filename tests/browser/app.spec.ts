@@ -1065,7 +1065,7 @@ test("Pane history groups UTC hours and expands every semantic record in that ho
   });
   await page.goto("/?machine=mac-one");
   await page.getByRole("button", { name: "查看 Eagle" }).click();
-  await expect(page.getByText("UTC 小时时间线")).toBeVisible();
+  await expect(page.getByText("小时时间线 · UTC+08:00")).toBeVisible();
   await page.getByRole("button", { name: /展开.*2 条/ }).click();
   await expect(page.getByText("该小时更早的语义记录")).toBeVisible();
 });

@@ -20,6 +20,7 @@ import {
 import { useEffect, useState } from "react";
 import { type HourlySettings, REPORT_SECTIONS } from "../shared/hourly.ts";
 import { AuthError, api } from "./api.ts";
+import { TIMEZONE_OFFSETS, timezoneLabel, useTimezone } from "./Timezone.tsx";
 
 type SettingsView = HourlySettings & {
   hasApiKey: boolean;
@@ -57,6 +58,7 @@ function Choice({
   );
 }
 export function Settings({ onAuthError }: { onAuthError: () => void }) {
+  const { offset, setOffset, persisted } = useTimezone();
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [busy, setBusy] = useState("");
   const [saved, setSaved] = useState(false);
@@ -199,6 +201,32 @@ export function Settings({ onAuthError }: { onAuthError: () => void }) {
   return (
     <div className="settings-layout">
       <div className="space-y-5">
+        <SectionRule title="显示偏好" hint="即刻生效，保存在当前浏览器。">
+          <LayerCard className="space-y-3">
+            <Choice
+              id="display-timezone"
+              label="显示时区"
+              value={String(offset)}
+              values={TIMEZONE_OFFSETS.map((value) => [
+                String(value),
+                timezoneLabel(value),
+              ])}
+              onChange={(value) => setOffset(Number(value))}
+            />
+            <p className="text-xs leading-relaxed text-basalt-muted-foreground">
+              全站时间与小时筛选均使用此时区。默认 UTC+08:00；固定 UTC
+              偏移，不随夏令时变化。
+            </p>
+            {!persisted && (
+              <p
+                role="status"
+                className="text-xs text-basalt-warning-foreground"
+              >
+                浏览器不允许保存偏好，本次选择仅在当前页面生效。
+              </p>
+            )}
+          </LayerCard>
+        </SectionRule>
         <SectionRule title="AI 连接" hint="由 next-ai 提供统一的模型配置。">
           <LayerCard className="space-y-5">
             <div className="flex items-center justify-between gap-3">

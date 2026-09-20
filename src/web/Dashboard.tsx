@@ -41,7 +41,8 @@ import {
   STATE_LABEL,
   type State,
 } from "../shared/schema.ts";
-import { age, time } from "./api.ts";
+import { age } from "./api.ts";
+import { useTimezone } from "./Timezone.tsx";
 
 const states: State[] = ["active", "attention", "verified", "unverified"];
 export const tones = {
@@ -121,6 +122,7 @@ export function MachineStatus({
   machine: MachineView;
   now: string;
 }) {
+  const { time } = useTimezone();
   const connection = machineConnection(machine, now);
   return (
     <span className="machine-heading">
@@ -161,6 +163,7 @@ function MachineResources({
   machine: MachineView;
   now: string;
 }) {
+  const { time } = useTimezone();
   const telemetry = machine.report.machine.telemetry;
   const resources = telemetry?.resources;
   const stale =
@@ -314,12 +317,14 @@ export function Topology({
   at,
   onPane,
   compact = false,
+  selectedPane,
   summaries = [],
 }: {
   space: Space;
   at: string;
   onPane?: (pane: Pane) => void;
   compact?: boolean;
+  selectedPane?: string;
   summaries?: MachineView["summaries"];
 }) {
   return (
@@ -355,6 +360,9 @@ export function Topology({
                   <Button
                     variant="outline"
                     className="pane-button"
+                    aria-pressed={
+                      selectedPane ? pane.id === selectedPane : undefined
+                    }
                     onClick={() => onPane?.(pane)}
                     aria-label={`${pane.agent || "终端"} ${pane.id} 证据`}
                   >
@@ -537,6 +545,7 @@ function SpaceCard({
 }
 
 function RecentActivity({ machines }: { machines: MachineView[] }) {
+  const { time } = useTimezone();
   const changes = machines
     .flatMap((machine) =>
       (machine.changes ?? []).map((change, index) => ({
@@ -700,6 +709,7 @@ export function Dashboard({
   onOpen: (machine: string, space: string, pane?: string) => void;
   onMachine?: (id: string) => void;
 }) {
+  const { time } = useTimezone();
   const [filter, setFilter] = useState<State | "all">("all");
   const spaces = machines.flatMap((machine) =>
     summarize(machine.report).spaces.map((s) => ({
