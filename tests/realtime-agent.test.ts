@@ -270,7 +270,8 @@ test("native input binds the terminal before paste/keys, confirms only submissio
   let flags = 0,
     modify = 0;
   let stall = false,
-    holdDetach = false;
+    holdDetach = false,
+    changeModeDuringValidation = false;
   const framed = (bytes: number[] | Buffer) => {
     const data = Buffer.from(bytes);
     const size = Buffer.alloc(4);
@@ -319,7 +320,13 @@ test("native input binds the terminal before paste/keys, confirms only submissio
       input,
       { width: 80, height: 24 },
       signal,
-      async () => valid,
+      async () => {
+        if (changeModeDuringValidation) {
+          for (const socket of sockets) socket.write(framed([16, 31, 0]));
+          await new Promise((r) => setTimeout(r, 30));
+        }
+        return valid;
+      },
     );
   try {
     assert.equal(await submit(), "submitted");
@@ -363,6 +370,18 @@ test("native input binds the terminal before paste/keys, confirms only submissio
       "\x1b[13;1:1u\x1b[13;1:3u",
     );
     flags = 0;
+    changeModeDuringValidation = true;
+    frames.length = 0;
+    assert.equal(await submit(), "submitted");
+    assert.equal(
+      frames
+        .find((f) => f[0] === 1)
+        ?.subarray(2)
+        .toString(),
+      "\x1b[13;1:1u\x1b[13;1:3u",
+      "Use the most recent keyboard mode after asynchronous identity validation",
+    );
+    changeModeDuringValidation = false;
     modify = 2;
     input.keys = ["shift+tab", "ctrl+c"];
     frames.length = 0;

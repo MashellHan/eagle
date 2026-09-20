@@ -128,14 +128,14 @@ export async function submitTerminalInput(
       if (!screen || !keyboard || checking || settled) return;
       checking = true;
       try {
-        const mode = keyboard;
-        const keys = input.keys.map((key) =>
-          keyBytes(key, mode.flags, mode.modify),
-        );
         if (!(await validate()) || signal.aborted || settled) {
           finish();
           return;
         }
+        const mode = keyboard;
+        const keys = input.keys.map((key) =>
+          keyBytes(key, mode.flags, mode.modify),
+        );
         const messages: Buffer[] = [];
         // Complete paste in its own Input: Herdr applies the runtime's paste mode.
         if (input.text)
