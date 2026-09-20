@@ -1830,6 +1830,27 @@ test("hourly AI reports are leased, durable, idempotent and retry D1 without ano
   );
 });
 
+test("realtime bridge rejects missing or mismatched configured machine identity", async () => {
+  const statuses: number[] = [];
+  for (const machine of [undefined, "mac-two"]) {
+    const response = await mf.dispatchFetch(
+      "https://eagle.test/api/v1/realtime-agent",
+      {
+        headers: {
+          Upgrade: "websocket",
+          Authorization: `Bearer ${token}`,
+          ...(machine ? { "X-Eagle-Machine": machine } : {}),
+        },
+      },
+    );
+    statuses.push(response.status);
+    response.webSocket?.accept();
+    response.webSocket?.close(1000);
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  assert.deepEqual(statuses, [403, 403]);
+});
+
 test("realtime requires Access and same origin, scopes subscriptions, and releases the last viewer", async () => {
   await request("/api/v1/reports", currentReport("realtime-base"));
   const connect = (path: string, headers: Record<string, string>) =>
@@ -1852,6 +1873,7 @@ test("realtime requires Access and same origin, scopes subscriptions, and releas
   );
   const agentResponse = await connect("/api/v1/realtime-agent", {
     Authorization: `Bearer ${token}`,
+    "X-Eagle-Machine": "mac-one",
   });
   assert.equal(agentResponse.status, 101);
   const agent = agentResponse.webSocket;
@@ -1926,6 +1948,7 @@ test("realtime has one controller, rejects stale identities and sequences, and c
   };
   const agent = await open("/api/v1/realtime-agent", {
     Authorization: `Bearer ${credential.token}`,
+    "X-Eagle-Machine": "realtime-security",
   });
   const headers = {
     "Cf-Access-Jwt-Assertion": viewer,
@@ -2053,6 +2076,7 @@ test("realtime bounds slow viewer output while acknowledged viewers keep receivi
   const open = liveSocket;
   const agent = await open("/api/v1/realtime-agent", {
     Authorization: `Bearer ${token}`,
+    "X-Eagle-Machine": "mac-one",
   });
   let binding: { spaceId: string; subscriptionId: string } | undefined;
   agent.addEventListener("message", (event) => {
@@ -2127,5 +2151,39 @@ test("realtime bounds slow viewer output while acknowledged viewers keep receivi
     slow.close();
     fast.close();
     agent.close();
+  }
+});
+
+test("abrupt viewer termination promptly removes its last subscription", async () => {
+  await request("/api/v1/reports", currentReport("abrupt-live"));
+  const agent = await liveSocket("/api/v1/realtime-agent", {
+    Authorization: `Bearer ${token}`,
+    "X-Eagle-Machine": "mac-one",
+  });
+  const subscriptions: unknown[][] = [];
+  agent.on("message", (bytes) => {
+    const message = JSON.parse(String(bytes));
+    if (message.type === "subscriptions") subscriptions.push(message.spaces);
+  });
+  const client = await liveSocket(
+    "/api/v1/realtime?machine=mac-one&space=default:w1",
+    {
+      "Cf-Access-Jwt-Assertion": viewer,
+    },
+  );
+  try {
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(subscriptions.at(-1)?.length, 1);
+    subscriptions.length = 0;
+    client.terminate();
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(
+      subscriptions.at(-1)?.length,
+      0,
+      "Cleanup must not wait for the next bridge heartbeat",
+    );
+  } finally {
+    client.terminate();
+    agent.terminate();
   }
 });

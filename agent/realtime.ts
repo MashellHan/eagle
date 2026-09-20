@@ -396,7 +396,10 @@ export async function realtimeWatch(config: AgentConfig, signal: AbortSignal) {
     let authFailure = false;
     await new Promise<void>((resolve) => {
       const ws = new WebSocket(url, {
-        headers: { Authorization: `Bearer ${config.token}` },
+        headers: {
+          Authorization: `Bearer ${config.token}`,
+          "X-Eagle-Machine": config.machineId,
+        },
         handshakeTimeout: 10000,
         maxPayload: 262144,
         followRedirects: false,

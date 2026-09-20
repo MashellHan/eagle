@@ -216,6 +216,8 @@ async function route(request: Request, env: Env): Promise<Response> {
       if (url.search) throw new HttpError(400, "Unexpected query");
       const identity = await agentIdentity(request, env);
       if (!identity) throw new HttpError(401, "Invalid agent token");
+      if (request.headers.get("X-Eagle-Machine") !== identity.machineId)
+        throw new HttpError(403, "Machine identity mismatch");
       return env.MACHINES.getByName(identity.machineId).fetch(
         new Request("https://internal/realtime", {
           headers: {

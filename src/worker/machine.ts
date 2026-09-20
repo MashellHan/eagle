@@ -65,12 +65,19 @@ export class MachineState extends DurableObject<Env> {
     this.live.message(socket, message);
   }
   webSocketClose(socket: WebSocket, code: number, reason: string) {
-    socket.close(code, reason);
-    this.live.close(socket);
+    try {
+      // Reserved local-only codes (notably abrupt-disconnect 1006) cannot be sent.
+      socket.close([1005, 1006, 1015].includes(code) ? 1000 : code, reason);
+    } finally {
+      this.live.close(socket);
+    }
   }
   webSocketError(socket: WebSocket) {
-    socket.close(1011, "Connection failed");
-    this.live.close(socket);
+    try {
+      socket.close(1011, "Connection failed");
+    } finally {
+      this.live.close(socket);
+    }
   }
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
