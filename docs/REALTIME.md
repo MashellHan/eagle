@@ -14,6 +14,16 @@ eagle-agent realtime-watch
 
 Use absolute executable paths and a PATH containing Herdr, as with `watch`. Keep only one realtime bridge per machine configuration. This service is independent of the read-only collector and semantic Manager; it enables authenticated remote input. Deploy the compatible Worker before starting upgraded bridges. Agents older than v0.5.0 continue ordinary reporting but cannot provide realtime mode.
 
+## Upgrade existing machines
+
+Installing a new npm version updates the executable; it does not create or start a realtime service. Each machine needs its own `realtime-watch` process. An existing `watch` or `manager-watch` process does not provide the realtime connection.
+
+1. Verify `eagle-agent --version` reports 0.5.0. Herdr must be running; native input currently requires Herdr 0.9.1 / protocol 22.
+2. Reuse the existing collector's secure configuration, including its machine ID, token and ingestion URL. The default is `~/.config/eagle/agent.json`; preserve an existing custom `EAGLE_CONFIG` path. There are no additional realtime fields to add to that file.
+3. If no realtime service is running, test `eagle-agent realtime-watch` in the foreground. For a custom config, use `EAGLE_CONFIG=/absolute/path/agent.json eagle-agent realtime-watch`. If authentication fails, correct that existing configuration; do not create a replacement machine or discard Manager state.
+4. Stop the foreground test before enabling a separate user service with launchd on macOS or systemd on Linux. Use absolute executable paths and the same configuration/PATH as the working collector so the service can find Node and Herdr. Give it its own label/unit and preserve the collector and Manager services. If a realtime service already exists, restart that service after upgrading instead of adding a duplicate.
+5. Reopen the Space in Eagle. `等待本机实时服务` means the machine's realtime bridge is not connected, even when ordinary snapshots are current. Once connected, viewing is available; select `接管输入` separately when input is intended.
+
 ## Transport and lifecycle
 
 - Browser: same-origin `/api/v1/realtime?machine=M&space=S`, authenticated by the verified Access JWT. Upgrade requires the exact Origin. No machine token enters the browser or a URL.
