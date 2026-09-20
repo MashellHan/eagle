@@ -61,8 +61,15 @@ try {
   const overview = (await response.json()) as Overview;
   const machine = overview.machines.find((m) => m.id === config.machineId);
   assert(machine);
-  assert.equal(machine.report.reportId, report.reportId);
-  assert.deepEqual(machine.report.machine.telemetry, report.machine.telemetry);
+  assert(
+    Date.parse(machine.report.capturedAt) >= Date.parse(report.capturedAt),
+    "Live state must include this upload or a newer collector snapshot",
+  );
+  if (machine.report.reportId === report.reportId)
+    assert.deepEqual(
+      machine.report.machine.telemetry,
+      report.machine.telemetry,
+    );
   assert(report.machine.telemetry?.resources, "Real machine resources missing");
   assert.deepEqual(
     machine.report.spaces.map((s) => s.id).sort(),
@@ -81,7 +88,9 @@ try {
   for (const space of report.spaces)
     await expect(
       page.getByRole("button", { name: `查看 ${space.name}`, exact: true }),
-    ).toBeAttached();
+    ).toHaveCount(
+      report.spaces.filter((candidate) => candidate.name === space.name).length,
+    );
   const resources = page.getByRole("region", { name: "机器资源" }).first();
   await expect(resources).toContainText("CPU");
   await expect(resources).toContainText("GiB");
@@ -140,11 +149,7 @@ try {
     historyBefore,
     "Current uploads must not append D1 history",
   );
-  const target =
-    second.spaces.find((s) => s.name === "eagle") ?? second.spaces[0];
-  await page
-    .getByRole("button", { name: `查看 ${target.name}`, exact: true })
-    .click();
+  await currentCard.getByRole("button", { name: /^查看 / }).click();
   await expect(page.getByRole("dialog")).toContainText("Herdr 弱提示");
   await page.screenshot({
     animations: "disabled",
