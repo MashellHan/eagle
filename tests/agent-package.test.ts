@@ -4,8 +4,22 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import pkg from "../package.json" with { type: "json" };
 
 test("npm agent artifact installs outside the checkout and accepts credentials only through secure config", () => {
+  const manifest = JSON.parse(
+    readFileSync(new URL("../agent/package.json", import.meta.url), "utf8"),
+  );
+  const lock = JSON.parse(
+    readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"),
+  );
+  assert.equal(
+    manifest.version,
+    pkg.version,
+    "Agent and site versions must match",
+  );
+  assert.equal(lock.version, pkg.version);
+  assert.equal(lock.packages[""].version, pkg.version);
   const directory = mkdtempSync(join(tmpdir(), "eagle-agent-package-"));
   try {
     const packed = JSON.parse(
@@ -15,6 +29,7 @@ test("npm agent artifact installs outside the checkout and accepts credentials o
         { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
       ),
     )[0];
+    assert.equal(packed.version, pkg.version);
     assert(
       packed.files.every(
         (file: { path: string }) =>
@@ -35,6 +50,10 @@ test("npm agent artifact installs outside the checkout and accepts credentials o
       { stdio: "pipe" },
     );
     const cli = join(directory, "node_modules/.bin/eagle-agent");
+    assert.equal(
+      execFileSync(cli, ["--version"], { encoding: "utf8" }).trim(),
+      pkg.version,
+    );
     assert.match(
       execFileSync(cli, ["--help"], { encoding: "utf8" }),
       /init.*once.*watch/s,

@@ -1,1 +1,3 @@
-export const AGENT_VERSION = "0.5.0";
+import pkg from "../package.json" with { type: "json" };
+
+export const AGENT_VERSION = pkg.version;

@@ -2,6 +2,7 @@
 
 - Implement on `main` with coherent atomic commits. Preserve user changes. The integrating agent owns writes; reviewers in the Herdr Space are read-only.
 - Strict TDD: first demonstrate a failing behavior, then implement the smallest fix and run the affected checks. `npm run check` and `npm run test:browser` are release gates. Use real Miniflare/D1 in API tests, isolated from development storage.
+- Version the website and standalone Agent together. Root `package.json` is the release source of truth; keep `agent/package.json`, the root lockfile and installation docs in sync. Runtime and onboarding versions derive from the root manifest; the package test must verify the published manifest and installed CLI match it.
 - Fixed stack: Vite, Biome, TypeScript 7.0.2. All controls and application chrome use @nocoo/basalt. Follow its installed integration docs; no second component or color system.
 - Tokens live only in secure configuration. Never put them in report payloads, D1, URLs, source, browser storage, screenshots, or command arguments. Authentication errors fail closed.
 - Preserve versioned whole-machine snapshots, idempotency, capture ordering, session-scoped identities, explicit freshness and evidence provenance. Lifecycle badges never certify task completion. Missing data remains unknown.

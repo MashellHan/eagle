@@ -1,15 +1,17 @@
 # Changelog
 
+## v0.5.0 — 2026-09-20
+
+- Unify the website, health endpoint, standalone Agent and onboarding version. Runtime versions derive from the root package manifest; package tests reject version drift in manifests, the lockfile and the installed CLI.
+- Publish `@nocoo/eagle-agent@0.5.0` through npm and use pinned registry installation commands in Connect and the installation guides.
+- Add `realtime-watch`, a separate supervised outbound bridge to the local Herdr socket. Existing collection and Manager state remain independent. Include the explicit Manager command configuration prepared in v0.4.1.
+- Refine the workspace sheet and realtime layout for desktop and mobile, and add a persistent display timezone preference for structured timestamps and archive filters.
+
 ## v0.4.0 — 2026-09-20
 
 - Add Space realtime viewing and exclusive web input through authenticated WebSocket connections and the existing per-machine Durable Object. Mirrors Herdr text screens/layout and supports text, Enter and common terminal keys.
 - Cancel subscriptions, socket reads and timers on view switches, page hiding and disconnects. Bound viewers, Spaces, screen sizes and transport queues; reject stale terminal identities and duplicate input. Inputs are never replayed after an uncertain acknowledgement.
 - Add isolated API/socket/browser tests and real local/public terminal round-trip verification. Screen and input content is redacted and never archived.
-
-## Agent v0.5.0 — 2026-09-20
-
-- Add `realtime-watch`, a separate supervised outbound bridge to the local Herdr socket. Existing collection and Manager state remain independent.
-- Include the explicit Manager command configuration prepared in v0.4.1.
 
 ## v0.3.0 — 2026-09-20
 
@@ -34,7 +36,7 @@
 - Copying an onboarding prompt confirms success inside the button, keeps its width stable and resets automatically. Token copy has its own feedback.
 - Onboarding is agent-neutral, recommends Hermes with an explicit command example and preserves each machine's existing model/provider/profile.
 
-## Agent v0.4.1 — prepared, npm publication pending
+## Agent v0.4.1 — unreleased; included in v0.5.0
 
 - Remove the implicit Cherry executable. Manager requires an explicit command for the machine's existing Agent; deterministic collection remains independent.
 - Explain missing configuration and executable failures without exposing credentials. Preserve legacy Manager identity and state during upgrades.

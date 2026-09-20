@@ -6,19 +6,19 @@ Read-only Herdr inventory, task evidence, machine resources and named TCP port c
 
 Check `node --version`, `npm --version` and `herdr --version` first. Install Node.js 24+ from https://nodejs.org/en/download if needed, and have Herdr installed and running. No Eagle repository checkout, TypeScript compiler or npm login is required to install this public package.
 
-Install the v0.5.0 tarball attached to the official Eagle v0.4.0 GitHub Release. npm registry publication is pending:
+Install Agent v0.5.0 from npm. The Agent and Eagle website share the same release version:
 
 ```sh
-npm install -g https://github.com/nocoo/eagle/releases/download/v0.4.0/nocoo-eagle-agent-0.5.0.tgz --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.5.0 --registry=https://registry.npmjs.org
 ```
 
-**If npm dependency downloads time out, use Tencent Cloud for dependencies / 依赖下载超时时首选腾讯云镜像：**
+**If npm downloads time out, use the Tencent Cloud mirror / 下载超时时首选腾讯云镜像：**
 
 ```sh
-npm install -g https://github.com/nocoo/eagle/releases/download/v0.4.0/nocoo-eagle-agent-0.5.0.tgz --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g @nocoo/eagle-agent@0.5.0 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
-`--registry` applies only to this installation; it does not change your global npm configuration. The package itself is downloaded from GitHub; the registry is used for dependencies. Keep the pinned version, HTTPS and certificate verification. Eagle credentials are unrelated to npm and must never be sent to a registry.
+`--registry` applies only to this installation; it does not change your global npm configuration. Mirrors may lag (`404` / `ETARGET`); retry later or use the official registry when reachable. Keep the pinned version, HTTPS and certificate verification. Eagle credentials are unrelated to npm and must never be sent to a registry.
 
 Verify the installation before configuring the agent:
 
