@@ -51,6 +51,16 @@ Optional `watchPorts`: `[{ "name": "Raven", "port": 7024 }]`. Only loopback TCP 
 
 Detailed configuration and manager evidence format: https://github.com/nocoo/eagle/blob/main/docs/AGENT.md
 
+## Optional reporting proxy
+
+Direct connections are the default. Set `NODE_USE_ENV_PROXY=0` in the service environment and leave proxy addresses unset. A local proxy is not a prerequisite for Eagle.
+
+Only when the machine needs a proxy, set `NODE_USE_ENV_PROXY=1` and `HTTPS_PROXY` to the user's verified HTTP(S) proxy URL. Use `HTTP_PROXY` for HTTP destinations and `NO_PROXY` for destinations that should bypass the proxy. Do not assume a host or port. These are Node environment settings, not fields in `agent.json`; no new Agent package is required. Node.js 24.5+ is required for proxying the `realtime-watch` WebSocket connection.
+
+Apply the selected environment to each Eagle service (`watch`, `manager-watch`, and `realtime-watch`) and to any foreground verification command. On macOS, use the LaunchAgent's `EnvironmentVariables`; on Linux, use the user systemd unit's environment. Keep proxy credentials, if needed, in protected service configuration, never in command arguments or reports.
+
+To return to direct connections, remove the service's proxy address variables and set `NODE_USE_ENV_PROXY=0`. Reload the service definition and restart it; restarting alone does not reload a changed launchd plist. Wait until the old service has fully stopped before registering it again. Preserve the secure Agent config, spool and Manager state. Confirm a fresh successful report and an empty pending spool; a running process alone does not prove connectivity. An explicitly selected proxy remains required until disabled; there is no automatic direct fallback.
+
 ## Continuous Pane summaries
 
 Eagle is agent-neutral. Reuse the machine's existing management Agent; **Hermes Agent is recommended, not required**. Cherry is one machine's local Hermes profile/alias, not a product or dependency to install. Do not search for or install an unrelated Cherry package. If no suitable Agent is configured yet, keep `eagle-agent watch` running and report that semantic setup is pending.

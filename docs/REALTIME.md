@@ -12,7 +12,7 @@ Run a separate user service with the same secure config:
 eagle-agent realtime-watch
 ```
 
-Use absolute executable paths and a PATH containing Herdr, as with `watch`. Keep only one realtime bridge per machine configuration. This service is independent of the read-only collector and semantic Manager; it enables authenticated remote input. Deploy the compatible Worker before starting upgraded bridges. Agents older than v0.5.0 continue ordinary reporting but cannot provide realtime mode.
+Use absolute executable paths and a PATH containing Herdr, as with `watch`. Default to direct connections; enable a proxy only through the [optional reporting proxy](../agent/README.md#optional-reporting-proxy) settings, with Node.js 24.5+ for WebSocket proxy support. Keep only one realtime bridge per machine configuration. This service is independent of the read-only collector and semantic Manager; it enables authenticated remote input. Deploy the compatible Worker before starting upgraded bridges. Agents older than v0.5.0 continue ordinary reporting but cannot provide realtime mode.
 
 ## Upgrade existing machines
 

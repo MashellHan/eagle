@@ -789,6 +789,14 @@ test("Connect manages machines and creates a one-time onboarding prompt without 
     `npm install -g @nocoo/eagle-agent@${pkg.version} --registry=https://mirrors.cloud.tencent.com/npm/`,
   );
   await expect(page.getByLabel("提示词预览")).toContainText("首选腾讯云镜像");
+  await expect(page.getByLabel("提示词预览")).toContainText("默认直连");
+  await expect(page.getByLabel("提示词预览")).toContainText(
+    "NODE_USE_ENV_PROXY=1",
+  );
+  await expect(page.getByLabel("提示词预览")).toContainText("HTTPS_PROXY");
+  await expect(page.getByLabel("提示词预览")).not.toContainText(
+    "127.0.0.1:7890",
+  );
   await expect(page.getByLabel("提示词预览")).toContainText(
     "eagle-agent --version",
   );

@@ -101,7 +101,7 @@ launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.hexly.eagle-agent.plist
 
 These commands are for this machine's user ID 501. Other machines need their own token, identity, checkout path and service configuration. A valid success acknowledgement is required before a queued report is removed; malformed responses preserve the report for an idempotent retry.
 
-On this Mac, launchd follows the existing macOS HTTPS proxy through `HTTPS_PROXY` and Node’s `NODE_USE_ENV_PROXY=1`. Other machines do not require a proxy. This avoids the OS resolver retaining a negative answer after a new reporting hostname is provisioned.
+All three Eagle LaunchAgents on this Mac use direct connections by default. Proxying is an explicit per-machine option through `NODE_USE_ENV_PROXY=1` and a verified `HTTPS_PROXY` URL; no proxy host or port is fixed. See [optional reporting proxy](../agent/README.md#optional-reporting-proxy) for enabling it or returning to direct connections. Preserve the spool and Manager state when reloading services.
 
 ## Live semantic Manager
 
