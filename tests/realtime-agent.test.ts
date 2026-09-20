@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -35,6 +36,7 @@ test("live bridge shares subscriptions, rejects replaced terminals, and stops al
                     tab_id: "t1",
                     pane_id: "p1",
                     terminal_id: terminalId,
+                    title: `${".".repeat(224)}machine-credential`,
                     revision: 0,
                   },
                 ],
@@ -79,6 +81,10 @@ test("live bridge shares subscriptions, rejects replaced terminals, and stops al
       messages.some(
         (m) => m.type === "frame" && m.text?.includes("[REDACTED]"),
       ),
+    );
+    assert(
+      !JSON.stringify(messages).includes("machine-credenti"),
+      "Topology must redact credentials before truncating pane titles",
     );
     bridge.receive({
       type: "subscriptions",
@@ -145,6 +151,30 @@ test("screen redaction covers wrapping and visible credential fragments", () => 
     assert(!screen.includes(value.replace(/\s/g, "")));
     assert(!screen.includes(token.slice(12, 24)));
   }
+});
+
+test("screen redaction hides private key bodies when either or both PEM boundaries are offscreen", () => {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const lines = privateKey
+    .export({ type: "pkcs8", format: "pem" })
+    .toString()
+    .trim()
+    .split("\n");
+  for (const viewport of [
+    lines,
+    lines.slice(0, 12),
+    lines.slice(-12),
+    lines.slice(4, 16),
+    lines.slice(4, 16).flatMap((line) => line.match(/.{1,32}/g) ?? []),
+  ]) {
+    const screen = redactScreen(viewport.join("\n"), []);
+    for (const line of viewport.filter((line) => !line.startsWith("-----")))
+      assert(!screen.includes(line), "Private key body escaped redaction");
+  }
+  assert.equal(
+    redactScreen("build passed\nnext step: deploy", []),
+    "build passed\nnext step: deploy",
+  );
 });
 
 test("input never falls back to pane routing after the validated terminal is replaced", async () => {

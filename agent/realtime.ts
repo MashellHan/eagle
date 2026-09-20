@@ -21,7 +21,12 @@ import {
 import { submitTerminalInput } from "./terminal-input.ts";
 
 export function redactScreen(value: string, secrets: string[]) {
-  const text = redact(value, secrets);
+  // A viewport can contain only a PEM body. Conservatively hide base64 line runs,
+  // including narrow terminal wraps, even when neither boundary is visible.
+  const text = redact(value, secrets).replace(
+    /(?:^[ \t]*[A-Za-z0-9+/]{16,}={0,2}[ \t]*(?:\r?\n|$)){2,}/gm,
+    "[REDACTED KEY]\n",
+  );
   const positions: number[] = [];
   let compact = "";
   for (let i = 0; i < text.length; i++)
@@ -265,7 +270,7 @@ export class LiveBridge {
         const raw = result.snapshot as Omit<Snapshot, "panes"> & {
           panes: (Snapshot["panes"][number] & { revision: number })[];
         };
-        const space = normalizeSnapshot(raw, session).find(
+        const space = normalizeSnapshot(raw, session, this.secrets).find(
           (s) => s.id === spaceId,
         );
         if (!space) throw new Error("Space unavailable");
@@ -274,12 +279,12 @@ export class LiveBridge {
           ...watch.subscription,
           tabs: space.tabs.map((t) => ({
             id: t.id,
-            name: redact(t.name, this.secrets).slice(0, 240),
+            name: redactScreen(t.name, this.secrets).slice(0, 240),
             panes: t.panes.map((p) => ({
               id: p.id,
               terminalId: raw.panes.find((r) => r.pane_id === p.id)
                 ?.terminal_id,
-              title: redact(p.title, this.secrets).slice(0, 240),
+              title: redactScreen(p.title, this.secrets).slice(0, 240),
               rect: p.rect,
             })),
           })),

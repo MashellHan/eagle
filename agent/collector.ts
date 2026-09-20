@@ -29,7 +29,11 @@ const exec = promisify(execFile);
 export function redact(text: string, secrets: string[] = []) {
   let clean = stripVTControlCharacters(text)
     .replace(
-      /-----BEGIN [\w ]*PRIVATE KEY-----[\s\S]*?-----END [\w ]*PRIVATE KEY-----/g,
+      /-----BEGIN [\w ]*PRIVATE KEY-----[\s\S]*?(?:-----END [\w ]*PRIVATE KEY-----|$)/g,
+      "[REDACTED KEY]",
+    )
+    .replace(
+      /(?:^[ \t]*[A-Za-z0-9+/]+={0,2}[ \t]*\r?\n)+[ \t]*-----END [\w ]*PRIVATE KEY-----/gm,
       "[REDACTED KEY]",
     )
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
@@ -76,6 +80,7 @@ export type Snapshot = {
 export function normalizeSnapshot(
   snapshot: Snapshot,
   session: string,
+  secrets: string[] = [],
 ): Space[] {
   if (
     !Array.isArray(snapshot.workspaces) ||
@@ -102,10 +107,11 @@ export function normalizeSnapshot(
               (r) => r.pane_id === p.pane_id,
             )?.rect;
             const area = layout?.area;
-            const title = (
+            const title = redact(
               p.title ||
-              p.terminal_title_stripped ||
-              `${p.agent || "终端"} · ${w.label}`
+                p.terminal_title_stripped ||
+                `${p.agent || "终端"} · ${w.label}`,
+              secrets,
             ).slice(0, 240);
             return {
               id: p.pane_id,
@@ -460,7 +466,7 @@ export async function collect(config: AgentConfig): Promise<Report> {
       // Any session failure aborts the whole snapshot, so a partial inventory never closes Spaces.
       const raw = JSON.parse(await herdr(["api", "snapshot"], session.name))
         .result.snapshot as Snapshot;
-      const normalized = normalizeSnapshot(raw, session.name);
+      const normalized = normalizeSnapshot(raw, session.name, [config.token]);
       for (const space of normalized) {
         for (const pane of space.tabs.flatMap((t) => t.panes)) {
           const original = raw.panes.find((p) => p.pane_id === pane.id);
