@@ -297,3 +297,78 @@ test("explicit Manager command uses stdin and preserves its own identity without
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("Manager rejects verbose interpretations without publishing or refreshing them", async () => {
+  const summary = {
+    task: "核验任务",
+    phase: "verify",
+    progress: "正在核验",
+    outcomes: [],
+    blocker: null,
+    nextStep: "核对证据",
+    rationale: "尚无独立回执",
+    evidenceRefs: [],
+  };
+  for (const changes of [
+    { task: "长".repeat(81) },
+    { progress: "长".repeat(121) },
+    {
+      outcomes: Array.from({ length: 4 }, () => ({
+        kind: "result",
+        text: "成果待核实",
+        evidenceRefs: [],
+      })),
+    },
+    {
+      task: "长".repeat(80),
+      progress: "长".repeat(120),
+      blocker: "长".repeat(80),
+      nextStep: "长".repeat(80),
+      rationale: "长".repeat(100),
+      outcomes: [
+        { kind: "result", text: "长".repeat(100), evidenceRefs: [] },
+        { kind: "result", text: "长".repeat(100), evidenceRefs: [] },
+      ],
+    },
+  ]) {
+    const directory = await mkdtemp(join(tmpdir(), "eagle-manager-bound-"));
+    const snapshot = report("bounded", new Date().toISOString());
+    const batches: SummaryBatch[] = [];
+    try {
+      await assert.rejects(
+        managerTick(
+          {
+            url: "http://127.0.0.1:37053",
+            token: "test-token-at-least-32-characters",
+            machineId: "mac-one",
+            machineName: "Mac One",
+          },
+          directory,
+          {
+            readPane: async () => "Current output",
+            analyze: async (inputs) =>
+              inputs.map(({ key }) => ({
+                key,
+                summary: { ...summary, ...changes },
+              })),
+            transport: (async (url, options) => {
+              if (String(url).endsWith("agent-state"))
+                return Response.json({ report: snapshot });
+              const batch = JSON.parse(String(options?.body));
+              batches.push(batch);
+              return Response.json({
+                accepted: true,
+                sequence: batch.sequence,
+              });
+            }) as typeof fetch,
+          },
+        ),
+      );
+      assert(
+        batches.every((batch) => !batch.updates.length && !batch.checks.length),
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+});
