@@ -1,5 +1,17 @@
 # 用户视角检查点
 
+## 2026-09-21 — Cross-deployment onboarding regression
+
+- Three prompt-contract regressions first failed: checking only the machine ID,
+  leaving cross-origin cache/queue isolation unspecified, and falling back to a
+  different config in background services. Connect now distinguishes rotation
+  from migration and requires explicit config/spool isolation and a verified
+  cutover. Published Agent behavior and wire formats are unchanged.
+- This contribution uses synthetic credentials only. No real registration,
+  rotation, upload, service restart or deployment was performed. Full local
+  gates passed: 83 unit/API tests, TypeScript, lint/build and 62 desktop/mobile
+  browser tests. This is not a claim of live deployment verification.
+
 ## 2026-09-20 07:14 +08 — Space realtime local round trip
 
 - Actual Herdr 0.9.1 socket collection and machine-Bearer upload reach the local machine DO. The real local site renders live Space layout and terminal text; a browser-controlled temporary shell printed the verification marker and returned it in 822 ms.
