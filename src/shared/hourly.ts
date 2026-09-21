@@ -47,7 +47,7 @@ export const REPORT_SECTIONS = {
   nextSteps: "下一步行动",
   evidence: "判断依据与数据覆盖",
 } as const;
-export const TEMPLATE_VERSION = "eagle-hourly-zh-v3";
+export const TEMPLATE_VERSION = "eagle-hourly-zh-v4";
 const section = z
   .string()
   .trim()
@@ -87,6 +87,49 @@ export type HourlyRecord = {
   observations: string[];
   value: string;
 };
+
+export function projectHour(records: HourlyRecord[]) {
+  const groups = new Map<string, HourlyRecord[]>();
+  const terminalIds = new Set<string>();
+  for (const record of records) {
+    if (record.kind !== "evidence") continue;
+    const value = JSON.parse(record.value);
+    if (!value.source?.startsWith("herdr:visible")) continue;
+    const key = JSON.stringify([
+      value.spaceId,
+      value.tabId,
+      value.paneId,
+      value.taskId,
+      value.source,
+      value.status,
+    ]);
+    const group = groups.get(key) ?? [];
+    group.push(record);
+    groups.set(key, group);
+    terminalIds.add(record.id);
+  }
+  const retained = new Set<string>();
+  for (const group of groups.values()) {
+    const first = group.toSorted((a, b) =>
+      (a.observations[0] ?? "").localeCompare(b.observations[0] ?? ""),
+    )[0];
+    const last = group.toSorted((a, b) =>
+      (b.observations.at(-1) ?? "").localeCompare(a.observations.at(-1) ?? ""),
+    )[0];
+    retained.add(first.id);
+    retained.add(last.id);
+  }
+  return {
+    records: records.filter(
+      (record) => !terminalIds.has(record.id) || retained.has(record.id),
+    ),
+    terminalSampling: {
+      method: "first_and_latest_per_task",
+      sourceRecords: terminalIds.size,
+      retainedRecords: retained.size,
+    },
+  };
+}
 
 /** Coalesce identical observations, preserving every timestamp and all closed tasks. */
 export function compactHour(
@@ -224,7 +267,7 @@ export const reportPrompt = (
       : "executiveSummary：最多三句，一段约 120～220 字，含引用绝不超过 400 字；先结果与关键变化，再最重要的风险和下一步。不要逐个列项目或 Pane，不堆砌机器编号、时间戳、观测缺失清单。workspaces：按 Space 分组，每个 Pane/taskId 约 40～120 字，写任务、阶段、实质进展、变化；相同任务合并重复语义记录，保留冲突和转折，覆盖全部输入身份。deliveries：仅列具体成果，分已验证、Manager 报告待验证和历史背景；有 revision 时说明测试/部署是否对应。resources：写 CPU/内存/磁盘和关注端口的采样变化，缺数据只需一句话。risks：真实阻塞与待核实事项分开，缺观测不要膨胀为假设风险。nextSteps：最多 5 条，按影响排序，明确对象、动作；区分输入已有计划和报告建议，不虚构负责人或紧迫性。evidence：简述来源层级、覆盖起止和采样空档，不重抄其他章节。全文按信息量缩放，通常 2000～4500 字，小样本应更短；同一事实只在最相关章节详述，缺失项集中说明，不反复列 Git/测试/部署清单。",
     scope: partial
       ? "分块整理，只处理当前块，其他块不可见。此阶段不写高管摘要，executiveSummary 固定填字符串『本块证据已整理。』，其余字段仍按上述规则保留任务变化和原始引用，供最终报告整合"
-      : "最终小时报告，已提供该小时全部已收到的记录或分块整理结果；采样稀疏不代表这是分块，按 coverage 说明覆盖",
+      : "最终小时报告，已提供该小时的模型输入或分块整理结果；coverage.terminalSampling 表示每个任务的终端画面仅保留首尾抽样，不能据此断言中间没有变化。其他事实和语义记录完整保留，原始画面仍在原始采集记录中。采样稀疏不代表这是分块，按 coverage 说明覆盖",
   });
 export function parseHourlyReport(
   text: string,

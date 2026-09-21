@@ -7,6 +7,7 @@ import {
   type HourlyReport,
   type HourlySettings,
   parseHourlyReport,
+  projectHour,
   reportPrompt,
   TEMPLATE_VERSION,
 } from "../shared/hourly.ts";
@@ -149,10 +150,11 @@ export async function generateHour(
     let result = claim.pending;
     if (!result) {
       const input = await object.hourInput(hour);
+      const projected = projectHour(input.records);
       const chunks: (typeof input.records)[] = [];
       let chunk: typeof input.records = [];
       let size = 0;
-      for (const record of input.records) {
+      for (const record of projected.records) {
         const line = JSON.stringify(record);
         if (line.length > 180000) throw new Error("Input record too large");
         if (chunk.length && size + line.length > 48000) {
@@ -211,6 +213,7 @@ export async function generateHour(
               semanticRecords: input.semanticRecords,
               firstObservedAt: input.firstObservedAt,
               lastObservedAt: input.lastObservedAt,
+              terminalSampling: projected.terminalSampling,
             },
             data,
           }),
