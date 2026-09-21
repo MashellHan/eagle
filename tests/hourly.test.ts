@@ -270,7 +270,7 @@ test("truncated model responses fail explicitly before partial JSON can be archi
   );
 });
 
-test("only an oversized summary gets one bounded rewrite; invalid evidence never gets repaired", async (t) => {
+test("oversized reports get one bounded rewrite; invalid evidence never gets repaired", async (t) => {
   const original = {
     ...Object.fromEntries(
       Object.keys(REPORT_SECTIONS).map((key) => [
@@ -296,7 +296,9 @@ test("only an oversized summary gets one bounded rewrite; invalid evidence never
           finish_reason: "stop",
           message: {
             role: "assistant",
-            content: calls % 2 ? JSON.stringify(original) : short,
+            content: JSON.stringify(
+              calls % 2 ? original : { ...original, executiveSummary: short },
+            ),
           },
         },
       ],
@@ -339,4 +341,83 @@ test("long cadences keep the last due boundary open for catch-up and semantic-on
   assert.equal(input.firstObservedAt, observedAt);
   assert.equal(input.lastObservedAt, observedAt);
   assert.deepEqual(input.records[0].observations, [observedAt]);
+});
+
+test("hourly final sections and total text are bounded, including citations", () => {
+  const brief = Object.fromEntries(
+    Object.keys(REPORT_SECTIONS).map((key) => [key, "待核实。[F1]"]),
+  );
+  for (const changes of [
+    { workspaces: "长".repeat(1801) },
+    { executiveSummary: "长".repeat(201) },
+    { deliveries: "长".repeat(801) },
+    { resources: "长".repeat(301) },
+    { risks: "长".repeat(501) },
+    { nextSteps: "长".repeat(301) },
+    { evidence: "长".repeat(301) },
+  ]) {
+    assert.throws(() =>
+      parseHourlyReport(
+        JSON.stringify({ ...brief, ...changes, evidenceIds: ["F1"] }),
+        new Set(["F1"]),
+      ),
+    );
+  }
+});
+
+test("oversized workspace composition is compressed once with validated original citations", async (t) => {
+  const brief = {
+    ...Object.fromEntries(
+      Object.keys(REPORT_SECTIONS).map((key) => [
+        key,
+        "Manager 报告待核实。[F1]",
+      ]),
+    ),
+    evidenceIds: ["F1"],
+  };
+  const original = {
+    ...brief,
+    workspaces: `${"尚未独立验证。".repeat(2400)}[F1]`,
+  };
+  let calls = 0;
+  let compressed: Record<string, unknown> = brief;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++;
+    return Response.json({
+      id: "bounded",
+      object: "chat.completion",
+      created: 1,
+      model: "test",
+      choices: [
+        {
+          index: 0,
+          finish_reason: "stop",
+          message: {
+            role: "assistant",
+            content: JSON.stringify(calls % 2 ? original : compressed),
+          },
+        },
+      ],
+      usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+    });
+  });
+  const settings = HourlySettingsSchema.parse({
+    provider: "custom",
+    model: "test",
+    baseURL: "https://api.ai.example/v1",
+  });
+  const env = { AI_API_KEY: "isolated-test-key" } as Env;
+  assert.deepEqual(
+    await completeReport(settings, env, "测试", new Set(["F1", "F2"])),
+    brief,
+  );
+  assert.equal(calls, 2);
+  compressed = original;
+  await assert.rejects(completeReport(settings, env, "测试", new Set(["F1"])));
+  assert.equal(calls, 4);
+  compressed = { ...brief, workspaces: "捏造来源。[F2]", evidenceIds: ["F2"] };
+  await assert.rejects(
+    completeReport(settings, env, "测试", new Set(["F1", "F2"])),
+  );
+  assert.equal(calls, 6);
 });

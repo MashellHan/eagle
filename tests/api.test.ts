@@ -133,7 +133,7 @@ before(async () => {
                       ...Object.fromEntries(
                         Object.keys(REPORT_SECTIONS).map((k) => [
                           k,
-                          `${"本小时任务持续推进，生产部署尚无验证证据。".repeat(aiVerbose && k !== "executiveSummary" ? 110 : 1)}${evidenceId ? `[${evidenceId}]` : ""}`,
+                          `${"本小时任务持续推进，生产部署尚无验证证据。".repeat(aiVerbose && k === "workspaces" && prompt.includes("输入阶段：分块整理") ? 450 : 1)}${evidenceId ? `[${evidenceId}]` : ""}`,
                         ]),
                       ),
                       evidenceIds: evidenceId ? [evidenceId] : [],
