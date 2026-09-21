@@ -1638,17 +1638,17 @@ test("hourly AI reports are leased, durable, idempotent and retry D1 without ano
     "MachineState",
     { name: "mac-one" },
   );
-  // A v1 job used only the input fingerprint. Upgrading the template must rerun unchanged inputs.
+  // A template update must not rewrite already archived reports.
   await versionStorage.exec(
-    `UPDATE hourly_jobs SET completed_version=replace(completed_version,'${TEMPLATE_VERSION}:','') WHERE hour='${hour}'`,
+    `UPDATE hourly_jobs SET completed_version=replace(completed_version,'${TEMPLATE_VERSION}:','eagle-hourly-zh-v4:') WHERE hour='${hour}'`,
   );
   const upgraded = await request("/api/v1/hourly-reports/run", params, viewer);
   assert.equal(
-    ((await upgraded.json()) as { results: { generated: boolean }[] })
-      .results[0].generated,
-    true,
+    ((await upgraded.json()) as { results: { skipped: string }[] }).results[0]
+      .skipped,
+    "unchanged",
   );
-  assert.equal(aiCalls, calls + 2);
+  assert.equal(aiCalls, calls + 1);
   const versionDuplicate = await request(
     "/api/v1/hourly-reports/run",
     params,
@@ -2596,4 +2596,111 @@ test("abrupt viewer termination promptly removes its last subscription", async (
     client.terminate();
     agent.terminate();
   }
+});
+
+test("discarded hours retain raw input, cancel in-flight work and stay discarded after late input", async () => {
+  const machine = "hourly-discard";
+  const credential = await hourlyMachine(machine);
+  const hour = utcHour(Date.now() - 5 * 3600000);
+  const value = largeHourReport("discard-first", machine, hour, 1);
+  await request("/api/v1/reports", value, credential);
+  const params = { machine, hours: [hour] };
+  assert.equal(
+    (await request("/api/v1/hourly-reports/discard", params, credential))
+      .status,
+    401,
+  );
+  assert.equal(
+    (
+      await request(
+        "/api/v1/hourly-reports/discard",
+        { machine, hours: [utcHour(Date.now())] },
+        viewer,
+      )
+    ).status,
+    400,
+  );
+  let release = () => {};
+  aiHold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const calls = aiCalls;
+  const running = request(
+    "/api/v1/hourly-reports/run",
+    { machine, hour },
+    viewer,
+  );
+  try {
+    const deadline = Date.now() + 3000;
+    while (aiCalls === calls && Date.now() < deadline)
+      await new Promise((r) => setTimeout(r, 10));
+    const response = await request(
+      "/api/v1/hourly-reports/discard",
+      params,
+      viewer,
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      results: [{ hour, discarded: true }],
+    });
+  } finally {
+    release();
+    aiHold = undefined;
+    await running;
+  }
+  const storage = await mf.unsafeGetDurableObjectStorage(
+    "eagle",
+    "MachineState",
+    { name: machine },
+  );
+  const raw = await storage.exec(
+    `SELECT count(*) AS n FROM hourly_facts WHERE hour='${hour}'`,
+  );
+  assert(Number(raw[0].n) > 0);
+  await request(
+    "/api/v1/reports",
+    largeHourReport("discard-late", machine, hour, 2),
+    credential,
+  );
+  await mf.unsafeEvictDurableObject("eagle", "MachineState", { name: machine });
+  const skipped = await request(
+    "/api/v1/hourly-reports/run",
+    { machine, hour },
+    viewer,
+  );
+  assert.equal(
+    ((await skipped.json()) as { results: { skipped: string }[] }).results[0]
+      .skipped,
+    "discarded",
+  );
+  const history = await request(
+    `/api/v1/hourly-reports?machine=${machine}`,
+    undefined,
+    viewer,
+  );
+  const data = (await history.json()) as {
+    entries: unknown[];
+    jobs: { status: string }[];
+  };
+  assert.equal(data.entries.length, 0);
+  assert.equal(data.jobs[0].status, "discarded");
+  const completed = utcHour(Date.now() - 4 * 3600000);
+  await request(
+    "/api/v1/reports",
+    largeHourReport("discard-complete", machine, completed, 1),
+    credential,
+  );
+  await request(
+    "/api/v1/hourly-reports/run",
+    { machine, hour: completed },
+    viewer,
+  );
+  const preserved = await request(
+    "/api/v1/hourly-reports/discard",
+    { machine, hours: [completed] },
+    viewer,
+  );
+  assert.deepEqual(await preserved.json(), {
+    results: [{ hour: completed, skipped: "has_report" }],
+  });
 });

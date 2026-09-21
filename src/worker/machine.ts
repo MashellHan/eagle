@@ -8,6 +8,7 @@ import {
   type HourlyReport,
   TEMPLATE_VERSION,
   utcHour,
+  validHour,
 } from "../shared/hourly.ts";
 import type { MachineView, Report } from "../shared/schema.ts";
 import {
@@ -44,6 +45,8 @@ type SemanticRow = {
   received_at: string;
   payload: string;
 };
+const sameHourInput = (a: string | null | undefined, b: string) =>
+  a?.slice(a.indexOf(":") + 1) === b.slice(b.indexOf(":") + 1);
 const RETENTION_DAYS = 30;
 const MAX_RECORDS = 10000;
 const unpack = (row: SemanticRow) => ({
@@ -373,6 +376,35 @@ export class MachineState extends DurableObject<Env> {
     if (job.version !== this.hourVersion(hour)) return "input_changed" as const;
     return null;
   }
+  private hourDiscarded(hour: string) {
+    return (
+      this.ctx.storage.sql
+        .exec(
+          "SELECT 1 FROM hourly_steps WHERE hour=? AND step='discarded'",
+          hour,
+        )
+        .toArray().length > 0
+    );
+  }
+  discardHour(hour: string) {
+    if (!validHour(hour) || Date.parse(hour) + 3600000 > Date.now() - 300000)
+      throw new Error("Expected a closed UTC hour");
+    return this.ctx.storage.transactionSync(() => {
+      const job = this.hourLease(hour);
+      if (job?.pending || job?.completed_version)
+        return { hour, skipped: "has_report" } as const;
+      if (this.hourVersion(hour) === `${TEMPLATE_VERSION}:0:0:0:0`)
+        return { hour, skipped: "no_data" } as const;
+      this.ctx.storage.sql.exec("DELETE FROM hourly_jobs WHERE hour=?", hour);
+      this.ctx.storage.sql.exec("DELETE FROM hourly_steps WHERE hour=?", hour);
+      this.ctx.storage.sql.exec(
+        "INSERT INTO hourly_steps VALUES(?,'discarded',?)",
+        hour,
+        JSON.stringify({ discardedAt: new Date().toISOString() }),
+      );
+      return { hour, discarded: true } as const;
+    });
+  }
   hourJobs(at: number, before = utcHour(at - 300000)): HourlyJob[] {
     const cutoff = utcHour(at - 48 * 3600000);
     return this.ctx.storage.sql
@@ -392,10 +424,11 @@ export class MachineState extends DurableObject<Env> {
         const work = saved?.version === version ? saved : undefined;
         return {
           hour,
-          status:
-            job && job.expires > at
+          status: this.hourDiscarded(hour)
+            ? "discarded"
+            : job && job.expires > at
               ? "running"
-              : job?.completed_version === version
+              : sameHourInput(job?.completed_version, version)
                 ? "complete"
                 : work?.blocked
                   ? "blocked"
@@ -442,6 +475,7 @@ export class MachineState extends DurableObject<Env> {
   claimHour(hour: string, force = false) {
     return this.ctx.storage.transactionSync(() => {
       const sql = this.ctx.storage.sql;
+      if (this.hourDiscarded(hour)) return { skipped: "discarded" } as const;
       const previous = this.hourLease(hour);
       if (previous?.expires > Date.now())
         return { skipped: "in_progress" } as const;
@@ -452,7 +486,7 @@ export class MachineState extends DurableObject<Env> {
         : this.hourVersion(hour);
       if (version === `${TEMPLATE_VERSION}:0:0:0:0`)
         return { skipped: "no_data" } as const;
-      if (version === previous?.completed_version)
+      if (sameHourInput(previous?.completed_version, version))
         return { skipped: "unchanged" } as const;
       const saved = this.hourWork(hour);
       const work = saved?.version === version ? saved : undefined;

@@ -110,7 +110,13 @@ export type HourlyReport = {
 };
 export type HourlyJob = {
   hour: string;
-  status: "pending" | "running" | "retrying" | "blocked" | "complete";
+  status:
+    | "pending"
+    | "running"
+    | "retrying"
+    | "blocked"
+    | "complete"
+    | "discarded";
   attempts: number;
   completedParts: number;
   totalParts: number;

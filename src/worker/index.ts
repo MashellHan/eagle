@@ -396,6 +396,40 @@ async function route(request: Request, env: Env): Promise<Response> {
       configuredEnv.AI_API_KEY = input.apiKey ?? "";
     return json(await testAi(input.settings, configuredEnv));
   }
+  if (path === "/api/v1/hourly-reports/discard" && request.method === "POST") {
+    const input = await body(request);
+    if (
+      !input ||
+      typeof input !== "object" ||
+      Object.keys(input).some((key) => !["machine", "hours"].includes(key)) ||
+      typeof input.machine !== "string" ||
+      !Array.isArray(input.hours) ||
+      input.hours.length < 1 ||
+      input.hours.length > 48 ||
+      input.hours.some(
+        (hour: unknown) =>
+          typeof hour !== "string" ||
+          !validHour(hour) ||
+          Date.parse(hour) + 3600000 > Date.now() - 300000 ||
+          Date.parse(hour) < Date.now() - 48 * 3600000,
+      )
+    )
+      throw new HttpError(
+        400,
+        "Expected machine and closed UTC hours within retention",
+      );
+    if (
+      !(await registrations(env)).some(
+        (machine) => machine.id === input.machine,
+      )
+    )
+      throw new HttpError(404, "Machine not found");
+    const object = env.MACHINES.getByName(input.machine);
+    const results = [];
+    for (const hour of new Set<string>(input.hours))
+      results.push(await object.discardHour(hour));
+    return json({ results });
+  }
   if (path === "/api/v1/hourly-reports/run" && request.method === "POST") {
     const input = await body(request);
     if (

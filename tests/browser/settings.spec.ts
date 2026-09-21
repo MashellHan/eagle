@@ -243,6 +243,11 @@ test("hourly history exposes missing-hour progress, retry timing and last succes
   await expect(state).toContainText("生成报告：模型响应超时");
   await expect(state).toContainText("下次重试不早于");
   await expect(state).toContainText("最近成功");
+  jobs[0] = { ...jobs[0], status: "discarded", error: "", retryAt: 0 };
+  await page.getByRole("button", { name: "刷新小时报告" }).click();
+  await expect(state).toContainText("当前无待生成小时");
+  await expect(state).toContainText("1 个小时已取消（原始数据保留）");
+  await expect(state).not.toContainText("等待重试");
   jobs[0] = {
     ...jobs[0],
     status: "complete",

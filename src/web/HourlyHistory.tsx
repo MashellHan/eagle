@@ -116,6 +116,8 @@ function GenerationStatus({ jobs }: { jobs: HourlyJobView[] }) {
   const pending = jobs
     .filter((job) => job.status !== "complete")
     .sort((a, b) => b.hour.localeCompare(a.hour));
+  const waiting = pending.filter((job) => job.status !== "discarded");
+  const discarded = pending.length - waiting.length;
   const lastSuccess = jobs
     .flatMap((job) => (job.lastSuccessAt ? [job.lastSuccessAt] : []))
     .sort()
@@ -140,9 +142,10 @@ function GenerationStatus({ jobs }: { jobs: HourlyJobView[] }) {
     <LayerCard role="region" aria-label="报告生成状态">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <span className="font-medium">
-          {pending.length
-            ? `${pending.length} 个小时待生成`
+          {waiting.length
+            ? `${waiting.length} 个小时待生成`
             : "当前无待生成小时"}
+          {discarded > 0 && ` · ${discarded} 个小时已取消（原始数据保留）`}
         </span>
         {lastSuccess && (
           <span className="text-basalt-muted-foreground">
@@ -174,6 +177,7 @@ function GenerationStatus({ jobs }: { jobs: HourlyJobView[] }) {
                     retrying: "等待重试",
                     blocked: "需要处理",
                     complete: "已生成",
+                    discarded: "已取消",
                   }[job.status]
                 }
               </Badge>
