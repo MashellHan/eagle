@@ -133,3 +133,11 @@ The fixed incident window now has **MBP 23/24 and Mac Studio 24/24**, recovering
 **MBP September 21 13:00 remains unresolved.** All 23/23 chunks are persisted, but final synthesis encounters model timeouts or invalid output. A 90-second diagnostic reproduced `TimeoutError`. Two diagnostic-only attempts extended the individual model limit to 180 seconds and the hour budget to 240 seconds: both returned after approximately 95–99 seconds and failed `ZodError`, `too_big`, on the `workspaces` field, whose maximum is 16,000 characters. Extending the timeout alone does not fix this report. These attempts preserved the same prompt, evidence and validation rules; no invalid report was archived. Production retains its documented 90-second model limit and two-minute hour turns. The pending job retains its progress and retry backoff.
 
 Temporary previews and log watchers are stopped. Sanitized release, registry, archive, Cron and final-stage diagnostic receipts are under `.local/release-v0.5.1-GbSnfD/`. Complete recovery is not claimed; bounded final composition for this oversized output remains follow-up work.
+
+## Follow-up: concise output and explicit cancellation (2026-09-22)
+
+The owner authorized abandoning the remaining backlog and limiting both Manager and cloud narrative output. Release v0.6.0 (`493b671`) adds Manager field/total budgets, v5 hourly section budgets and one bounded compression attempt. It also adds explicit unfinished-job cancellation while preserving raw inputs and completed reports; template-only changes no longer rewrite completed hours.
+
+At 06:15 +08, MBP September 21 13:00 was cancelled, not recovered. Its 114 snapshots, 125 semantic changes and 1,179 input records remained readable after generation checkpoints were cleared. A forced retry returned `discarded`; production history displays cancellation on desktop and mobile. The original audit remains MBP 23/24 and Studio 24/24, with the one missing report deliberately abandoned.
+
+The local Manager was restarted and 24 new bounded summaries were verified in cloud state. Mac Studio's Manager still requires its local package upgrade because SSH authentication was unavailable. Cloud limits apply to reports from both machines. Full verification and the non-archiving real-model sample are recorded in [CHECKPOINTS](CHECKPOINTS.md).
