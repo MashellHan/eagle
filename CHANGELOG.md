@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.1 — 2026-09-21
+
+- Fix missing hourly reports caused by repetitive terminal input, a 32-chunk rejection and lost progress after model timeouts. Sample weak terminal screens per task while preserving raw evidence; validate and checkpoint chunks, bounded reductions and final synthesis in the existing machine Durable Object.
+- Resume eligible hours every five minutes with bounded concurrency, fair scheduling and persisted retry backoff. Reject obsolete leases and late-input races, retain completed reports through D1 outages, and expose progress, failure stage, retry timing and last success in history.
+- Make collector, semantic Manager and realtime proxy use opt-in. Default to direct networking and document per-machine proxy selection without a fixed host or port.
+- Keep the website, standalone Agent, onboarding and installation guides synchronized at v0.5.1.
+
 ## v0.5.0 — 2026-09-20
 
 - Unify the website, health endpoint, standalone Agent and onboarding version. Runtime versions derive from the root package manifest; package tests reject version drift in manifests, the lockfile and the installed CLI.

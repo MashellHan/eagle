@@ -113,3 +113,11 @@ Raising the 32-chunk cap alone does not address sequential latency, lost progres
 Sanitized local evidence is retained under `.local/root-cause-24h/`: D1 archive and semantic metadata, 96 retained machine-hour input summaries, the input-size breakdown, analytics invocation timings, power events, current health and replay stage logs. Raw terminal content, AI credentials and request authentication headers are excluded from these evidence files.
 
 This investigation did not deploy application changes, alter production settings, or backfill archived reports. Temporary diagnostic previews and tail sessions are stopped at closeout. Runtime changes remain a separate implementation task.
+
+## v0.5.1 correction
+
+The follow-up implementation retains raw inputs and all non-terminal facts/semantic records, while projecting the first/latest weak terminal screen per task/source/status for the model. A read-only production projection check reduced MBP 08:00 from 44 chunks to 24 (2,049,814 to 1,080,015 characters) and 07:00 from 31 to 21. The original snapshot/semantic counts and evidence IDs remain unchanged; screen sampling is disclosed in template v4.
+
+Validated chunks, recursive reductions and final synthesis now have durable input/model fingerprints and lease checks. Every five-minute tick resumes eligible work with two independent hour workers, two-minute hour turns, a four-minute run budget and persisted retry backoff. Late input cannot certify an obsolete generation. Pending/error/progress state is included in authenticated history queries and displayed beside archived reports. Full behavior and verification are in [HOURLY-REPORTS.md](HOURLY-REPORTS.md).
+
+Pre-release validation passed the isolated eviction/resume, oversized-hour, reduction, fairness, late-input, backoff and stale-lease regressions. Release/deployment and real archive recovery require separate post-release evidence; these implementation checks alone do not establish that historical gaps have been filled.
