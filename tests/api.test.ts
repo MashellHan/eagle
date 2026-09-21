@@ -34,6 +34,10 @@ let profileAvailable = true;
 let aiCalls = 0;
 let aiFailure = false;
 let aiHold: Promise<void> | undefined;
+let aiHoldMatch: string | undefined;
+let aiFailFinal = false;
+let aiVerbose = false;
+let aiRequests: string[] | undefined;
 const issuer = "https://nocoo.cloudflareaccess.com";
 const audience =
   "d1ffdb7fe2787e2a9e8f957a68ed5feec2b944c44c6fdbfd54341887eab6f873";
@@ -101,11 +105,15 @@ before(async () => {
             assert.equal(request.headers.get("x-api-key"), null);
             const prompt = JSON.stringify(await request.json());
             assert(!prompt.includes("isolated-ai-test-secret"));
+            aiRequests?.push(prompt);
             const evidenceId = prompt
               .slice(prompt.lastIndexOf("以下是待分析的数据材料"))
               .match(/\b[FS]\d+\b/)?.[0];
-            await aiHold;
-            if (aiFailure)
+            if (!aiHoldMatch || prompt.includes(aiHoldMatch)) await aiHold;
+            if (
+              aiFailure ||
+              (aiFailFinal && prompt.includes("输入阶段：最终小时报告"))
+            )
               return new Response(
                 "Upstream failed with isolated-ai-test-secret",
                 { status: 500 },
@@ -125,7 +133,7 @@ before(async () => {
                       ...Object.fromEntries(
                         Object.keys(REPORT_SECTIONS).map((k) => [
                           k,
-                          `本小时任务持续推进，生产部署尚无验证证据。${evidenceId ? `[${evidenceId}]` : ""}`,
+                          `${"本小时任务持续推进，生产部署尚无验证证据。".repeat(aiVerbose && k !== "executiveSummary" ? 110 : 1)}${evidenceId ? `[${evidenceId}]` : ""}`,
                         ]),
                       ),
                       evidenceIds: evidenceId ? [evidenceId] : [],
@@ -1828,6 +1836,400 @@ test("hourly AI reports are leased, durable, idempotent and retry D1 without ano
     aiCalls > beforeChunks + 1,
     "Large hours validate partial templates before final reduction",
   );
+});
+
+async function hourlyMachine(id: string) {
+  await request(
+    "/api/v1/settings",
+    {
+      provider: "custom",
+      model: "test-model",
+      baseURL: "https://api.ai.example/v1",
+      sdkType: "openai",
+      authType: "bearer",
+      enabled: true,
+      intervalHours: 1,
+      apiKey: "isolated-ai-test-secret",
+    },
+    viewer,
+  );
+  const created = await request("/api/v1/machines", { id, name: id }, viewer);
+  assert.equal(created.status, 201);
+  return ((await created.json()) as { token: string }).token;
+}
+
+function largeHourReport(
+  id: string,
+  machine: string,
+  hour: string,
+  minute = 1,
+) {
+  const value = report(
+    id,
+    new Date(Date.parse(hour) + minute * 60000).toISOString(),
+  );
+  value.machine.id = machine;
+  const pane = value.spaces[0].tabs[0].panes[0];
+  value.spaces[0].tabs[0].panes = [0, 1].map((n) => ({
+    ...pane,
+    id: `pane-${n}`,
+    evidence: Array.from({ length: 30 }, (_, i) => ({
+      kind: "summary" as const,
+      status: "unknown" as const,
+      source: `native:${n}:${i}`,
+      observedAt: value.capturedAt,
+      taskId: pane.task.id,
+      summary: `${id}:${n}:${i} ${"Unverified evidence. ".repeat(90)}`,
+    })),
+  }));
+  return value;
+}
+
+test("hourly checkpoints survive eviction and a failed final synthesis without repeating validated chunks", async () => {
+  const machine = "hourly-resume";
+  const credential = await hourlyMachine(machine);
+  const hour = utcHour(Date.now() - 6 * 3600000);
+  assert.equal(
+    (
+      await request(
+        "/api/v1/reports",
+        largeHourReport("resume-input", machine, hour),
+        credential,
+      )
+    ).status,
+    201,
+  );
+  aiFailFinal = true;
+  try {
+    const failed = await request(
+      "/api/v1/hourly-reports/run",
+      { machine, hour },
+      viewer,
+    );
+    assert.equal(
+      ((await failed.json()) as { results: { error: string }[] }).results[0]
+        .error,
+      "generation_failed",
+    );
+  } finally {
+    aiFailFinal = false;
+  }
+  await mf.unsafeEvictDurableObject("eagle", "MachineState", { name: machine });
+  const calls = aiCalls;
+  const retried = await request(
+    "/api/v1/hourly-reports/run",
+    { machine, hour },
+    viewer,
+  );
+  assert.equal(
+    ((await retried.json()) as { results: { generated: boolean }[] }).results[0]
+      .generated,
+    true,
+  );
+  assert.equal(
+    aiCalls - calls,
+    1,
+    "Only the failed final synthesis may call the model again",
+  );
+});
+
+test("hourly generation handles more than 32 chunks and bounds recursive reduction prompts", async () => {
+  const machine = "hourly-large";
+  const credential = await hourlyMachine(machine);
+  const hour = utcHour(Date.now() - 7 * 3600000);
+  for (let i = 0; i < 16; i++) {
+    const value = largeHourReport(`large-${i}`, machine, hour, i + 1);
+    assert.equal(
+      (await request("/api/v1/reports", value, credential)).status,
+      201,
+    );
+  }
+  aiVerbose = true;
+  aiRequests = [];
+  try {
+    const result = await request(
+      "/api/v1/hourly-reports/run",
+      { machine, hour },
+      viewer,
+    );
+    assert.equal(
+      ((await result.json()) as { results: { generated: boolean }[] })
+        .results[0].generated,
+      true,
+    );
+    assert(aiRequests.length > 32);
+    assert(
+      aiRequests.every((prompt) => prompt.length < 190000),
+      "Every reduction must fit a bounded prompt",
+    );
+    const db = await mf.getD1Database("DB");
+    const payload = await db
+      .prepare(
+        "SELECT payload FROM machine_hour_reports WHERE machine_id=? AND hour=?",
+      )
+      .bind(machine, hour)
+      .first<string>("payload");
+    assert(payload);
+    assert.equal(JSON.parse(payload).snapshots, 16);
+  } finally {
+    aiVerbose = false;
+    aiRequests = undefined;
+  }
+});
+
+test("hourly scheduling gives recent work priority and a free worker continues past a slow hour", async () => {
+  const machine = "hourly-fair";
+  const credential = await hourlyMachine(machine);
+  const hours = [4, 3, 2].map((n) => utcHour(Date.now() - n * 3600000));
+  for (const [i, hour] of hours.entries()) {
+    const value = report(
+      `fair-${i}`,
+      new Date(Date.parse(hour) + 60000).toISOString(),
+    );
+    value.machine.id = machine;
+    assert.equal(
+      (await request("/api/v1/reports", value, credential)).status,
+      201,
+    );
+  }
+  let release = () => {};
+  aiHold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  aiHoldMatch = hours[2];
+  aiRequests = [];
+  const running = request("/api/v1/hourly-reports/run", { machine }, viewer);
+  try {
+    const deadline = Date.now() + 3000;
+    while (aiRequests.length < 3 && Date.now() < deadline)
+      await new Promise((r) => setTimeout(r, 10));
+    assert.equal(
+      aiRequests.length,
+      3,
+      "The free worker must start the third hour before the slow one finishes",
+    );
+    assert(
+      aiRequests[0].includes(hours[2]),
+      "Unattempted recent hours run before old backlog",
+    );
+  } finally {
+    release();
+    aiHold = undefined;
+    aiHoldMatch = undefined;
+    aiRequests = undefined;
+    await running;
+  }
+});
+
+test("hourly late input invalidates in-flight checkpoints and cannot be archived as a completed hour", async () => {
+  const machine = "hourly-changing";
+  const credential = await hourlyMachine(machine);
+  const hour = utcHour(Date.now() - 8 * 3600000);
+  const value = report(
+    "changing-first",
+    new Date(Date.parse(hour) + 60000).toISOString(),
+  );
+  value.machine.id = machine;
+  await request("/api/v1/reports", value, credential);
+  let release = () => {};
+  aiHold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const calls = aiCalls;
+  const running = request(
+    "/api/v1/hourly-reports/run",
+    { machine, hour },
+    viewer,
+  );
+  try {
+    const deadline = Date.now() + 3000;
+    while (aiCalls === calls && Date.now() < deadline)
+      await new Promise((r) => setTimeout(r, 10));
+    assert.equal(aiCalls, calls + 1);
+    await request(
+      "/api/v1/reports",
+      {
+        ...value,
+        reportId: "changing-late",
+        capturedAt: new Date(Date.parse(hour) + 2 * 60000).toISOString(),
+      },
+      credential,
+    );
+  } finally {
+    release();
+    aiHold = undefined;
+  }
+  const result = (await (await running).json()) as {
+    results: { skipped?: string }[];
+  };
+  assert.equal(result.results[0].skipped, "input_changed");
+  const db = await mf.getD1Database("DB");
+  assert.equal(
+    await db
+      .prepare("SELECT count(*) n FROM machine_hour_reports WHERE machine_id=?")
+      .bind(machine)
+      .first("n"),
+    0,
+  );
+  const retry = await request(
+    "/api/v1/hourly-reports/run",
+    { machine, hour },
+    viewer,
+  );
+  assert.equal(
+    ((await retry.json()) as { results: { generated: boolean }[] }).results[0]
+      .generated,
+    true,
+  );
+});
+
+test("hourly failures expose retry state, back off unchanged failures and keep fresh hours runnable", async () => {
+  const machine = "hourly-retry";
+  const credential = await hourlyMachine(machine);
+  const hour = utcHour(Date.now() - 3 * 3600000);
+  const value = report(
+    "retry-first",
+    new Date(Date.parse(hour) + 60000).toISOString(),
+  );
+  value.machine.id = machine;
+  await request("/api/v1/reports", value, credential);
+  aiFailure = true;
+  try {
+    await request("/api/v1/hourly-reports/run", { machine, hour }, viewer);
+  } finally {
+    aiFailure = false;
+  }
+  const status = async () => {
+    const response = await request(
+      `/api/v1/hourly-reports?machine=${machine}`,
+      undefined,
+      viewer,
+    );
+    const text = await response.text();
+    assert(!text.includes("isolated-ai-test-secret"));
+    return JSON.parse(text) as {
+      jobs: import("../src/shared/hourly.ts").HourlyJob[];
+    };
+  };
+  const first = (await status()).jobs.find((job) => job.hour === hour);
+  assert(first);
+  assert.equal(first.status, "retrying");
+  assert.equal(first.attempts, 1);
+  assert.equal(first.stage, "model_final");
+  assert(first.retryAt > Date.now());
+  const calls = aiCalls;
+  await request("/api/v1/hourly-reports/run", { machine }, viewer);
+  assert.equal(aiCalls, calls, "Automatic runs respect persisted retry delay");
+  const recent = utcHour(Date.now() - 2 * 3600000);
+  await request(
+    "/api/v1/reports",
+    {
+      ...value,
+      reportId: "retry-recent",
+      capturedAt: new Date(Date.parse(recent) + 60000).toISOString(),
+    },
+    credential,
+  );
+  const fresh = (await (
+    await request("/api/v1/hourly-reports/run", { machine }, viewer)
+  ).json()) as { results: { generated: boolean; hour: string }[] };
+  assert.deepEqual(
+    fresh.results.map((result) => [result.hour, result.generated]),
+    [[recent, true]],
+  );
+  await request("/api/v1/hourly-reports/run", { machine, hour }, viewer);
+  const completed = (await status()).jobs.find((job) => job.hour === hour);
+  assert.equal(completed?.status, "complete");
+  assert.equal(completed.attempts, 2);
+  assert.equal(completed.error, null);
+  assert(completed.lastSuccessAt);
+});
+
+test("hourly deterministic input rejection stays visible and does not monopolize automatic retries", async () => {
+  const machine = "hourly-blocked";
+  const credential = await hourlyMachine(machine);
+  const hour = utcHour(Date.now() - 4 * 3600000);
+  const value = report(
+    "oversized-inventory",
+    new Date(Date.parse(hour) + 60000).toISOString(),
+  );
+  value.machine.id = machine;
+  value.spaces = Array.from({ length: 200 }, (_, i) => ({
+    id: `space-${i}`,
+    name: "Large space",
+    session: "default",
+    objective: "x".repeat(1000),
+    tabs: [],
+  }));
+  assert.equal(
+    (await request("/api/v1/reports", value, credential)).status,
+    201,
+  );
+  const calls = aiCalls;
+  await request("/api/v1/hourly-reports/run", { machine }, viewer);
+  await mf.unsafeEvictDurableObject("eagle", "MachineState", { name: machine });
+  await request("/api/v1/hourly-reports/run", { machine }, viewer);
+  const state = (await (
+    await request(
+      `/api/v1/hourly-reports?machine=${machine}`,
+      undefined,
+      viewer,
+    )
+  ).json()) as { jobs: import("../src/shared/hourly.ts").HourlyJob[] };
+  const job = state.jobs.find((job) => job.hour === hour);
+  assert.equal(job?.status, "blocked");
+  assert.equal(job.attempts, 1);
+  assert.equal(job.error, "input_too_large");
+  assert.equal(aiCalls, calls);
+});
+
+test("hourly obsolete leases cannot write checkpoints or clear the replacement lease", async () => {
+  const machine = "hourly-lease";
+  const credential = await hourlyMachine(machine);
+  const hour = utcHour(Date.now() - 5 * 3600000);
+  const value = report(
+    "lease-first",
+    new Date(Date.parse(hour) + 60000).toISOString(),
+  );
+  value.machine.id = machine;
+  await request("/api/v1/reports", value, credential);
+  let release = () => {};
+  aiHold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const calls = aiCalls;
+  const running = request(
+    "/api/v1/hourly-reports/run",
+    { machine, hour },
+    viewer,
+  );
+  const storage = await mf.unsafeGetDurableObjectStorage(
+    "eagle",
+    "MachineState",
+    { name: machine },
+  );
+  try {
+    const deadline = Date.now() + 3000;
+    while (aiCalls === calls && Date.now() < deadline)
+      await new Promise((r) => setTimeout(r, 10));
+    assert.equal(aiCalls, calls + 1);
+    await storage.exec(
+      `UPDATE hourly_jobs SET lease='replacement' WHERE hour='${hour}'`,
+    );
+  } finally {
+    release();
+    aiHold = undefined;
+  }
+  const result = (await (await running).json()) as {
+    results: { skipped: string }[];
+  };
+  assert.equal(result.results[0].skipped, "lease_lost");
+  const state = await storage.exec("SELECT lease FROM hourly_jobs");
+  assert.match(JSON.stringify(state), /replacement/);
+  const parts = await storage.exec(
+    "SELECT step FROM hourly_steps WHERE step<>'state'",
+  );
+  assert(!JSON.stringify(parts).includes('"final"'));
 });
 
 test("realtime bridge rejects missing or mismatched configured machine identity", async () => {

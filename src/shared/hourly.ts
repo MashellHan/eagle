@@ -81,6 +81,18 @@ export type HourlyReport = {
   lastObservedAt: string | null;
   content: HourlyContent;
 };
+export type HourlyJob = {
+  hour: string;
+  status: "pending" | "running" | "retrying" | "blocked" | "complete";
+  attempts: number;
+  completedParts: number;
+  totalParts: number;
+  stage: string;
+  error: string | null;
+  lastAttemptAt: number;
+  retryAt: number;
+  lastSuccessAt: string | null;
+};
 export type HourlyRecord = {
   id: string;
   kind: string;

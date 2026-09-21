@@ -507,8 +507,28 @@ async function route(request: Request, env: Env): Promise<Response> {
     const entries = results
       .slice(0, limit)
       .map((r) => ({ seq: r.seq, report: JSON.parse(r.payload) }));
+    const now = Date.now();
+    const machines = (await registrations(env)).filter(
+      (entry) => entry.enabled && (!machine || entry.id === machine),
+    );
+    const jobs = (
+      await Promise.all(
+        machines.map(async (entry) =>
+          (
+            await env.MACHINES.getByName(entry.id).hourJobs(now)
+          )
+            .filter((job) => !hour || job.hour === hour)
+            .map((job) => ({
+              ...job,
+              machineId: entry.id,
+              machineName: entry.name,
+            })),
+        ),
+      )
+    ).flat();
     return json({
       entries,
+      jobs,
       nextCursor:
         results.length > limit
           ? `${results[limit - 1].hour}|${results[limit - 1].seq}`
@@ -636,6 +656,16 @@ export default {
       .filter((m) => m.enabled)
       .map((m) => m.id);
     const result = await runHourly(env, ids, controller.scheduledTime);
+    console.log(
+      JSON.stringify({
+        event: "hourly_run",
+        generated: result.results.filter((entry) => "generated" in entry)
+          .length,
+        deferred: result.results.filter((entry) => "deferred" in entry).length,
+        failed: result.results.filter((entry) => "error" in entry).length,
+        pending: "deferred" in result && result.deferred,
+      }),
+    );
     if (result.results.some((r) => "error" in r))
       throw new Error("Hourly report generation failed");
   },
