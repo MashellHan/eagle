@@ -93,6 +93,8 @@ export type HourlyJob = {
   retryAt: number;
   lastSuccessAt: string | null;
 };
+export type HourlyJobView = HourlyJob &
+  Pick<HourlyReport, "machineId" | "machineName">;
 export type HourlyRecord = {
   id: string;
   kind: string;
