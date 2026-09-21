@@ -370,3 +370,12 @@ serving and the first catalogue-derived production Cron observation.
 - Real archive queries confirm 13/14 original missing hours recovered: MBP 23/24 and Studio 24/24. The original large 07:00/08:00 MBP cases are archived with their snapshot/semantic counts preserved. Automatic Cron was captured completing three reports and preserving three deferred hours with zero failures.
 - The next broken hop is MBP September 21 13:00 final composition. All 23/23 chunks remain durable. The normal diagnostic reproduced a 90-second timeout; two diagnostic-only longer-budget attempts instead reached validation and rejected a `workspaces` field above 16,000 characters. No invalid report was written, no production budget/validator was changed, and the job remains retryable with persisted backoff. The incident document records this remaining limitation explicitly.
 - Temporary diagnostic previews and log watchers are stopped. The release is published and verified; complete historical backfill is not claimed. No production machine daemon was replaced as part of this cloud release.
+
+## 2026-09-22 06:14 +08 — concise report limits
+
+- Manager generation now has field budgets, at most three outcomes and a 600-character narrative ceiling. Versioned input fingerprints refresh old cached interpretations without resetting writer identity.
+- Cloud v5 reports target 800–1,500 characters with explicit section ceilings and one citation-validated compression attempt. Discarded hours retain raw evidence, invalidate active generation and do not requeue after late input or eviction. Existing archives survive template-only changes.
+- TDD reproduced acceptance of oversized Manager output, unbounded hourly fields and the original oversized-workspace failure before fixes. All 93 unit/API tests and 64 desktop/mobile browser tests passed.
+- Real local verification at 06:11:56 +08 passed authenticated collection, duplicate ingestion, DO state, D1 behavior and desktop/mobile rendering for 16 Spaces / 31 Panes, using the existing mkcert root CA.
+- Production audit still has one unfinished MBP hour (September 21 13:00 +08); Studio has no unfinished hours. Source data and archived reports remain intact. Production deployment, explicit cancellation and Manager restart are next.
+- Release preparation uses v0.6.0: the reviewed diff from pre-change main 1b55958 is 468 additions / 45 deletions and includes an authenticated cancellation endpoint. npm identity is valid; publication has not yet occurred.

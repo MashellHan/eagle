@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.0 — 2026-09-22
+
+- Bound Manager summaries to 600 narrative characters, three outcomes and explicit per-field budgets; retain source evidence and verification qualifiers.
+- Generate concise v5 hourly reports with per-section limits and one validated compression attempt for oversized output. Preserve raw records for detailed inspection.
+- Allow authenticated cancellation of unfinished hourly jobs without deleting source data or archived reports. Cancellation survives late input and restarts and is visible in history.
+- Preserve completed archives when only the report template changes.
+
+
 ## v0.5.1 — 2026-09-21
 
 - Fix missing hourly reports caused by repetitive terminal input, a 32-chunk rejection and lost progress after model timeouts. Sample weak terminal screens per task while preserving raw evidence; validate and checkpoint chunks, bounded reductions and final synthesis in the existing machine Durable Object.
