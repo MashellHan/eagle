@@ -2038,6 +2038,109 @@ test("realtime has one controller, rejects stale identities and sequences, and c
   await close;
 });
 
+test("styled realtime is negotiated independently for agents and viewers", async () => {
+  await request("/api/v1/reports", currentReport("styled-realtime"));
+  const sockets: WebSocket[] = [];
+  type Message = {
+    type: string;
+    format?: string;
+    spaces?: { spaceId: string; subscriptionId: string }[];
+    text?: string;
+    runs?: unknown[];
+  };
+  const open = async (path: string, headers: Record<string, string>) => {
+    const response = await mf.dispatchFetch(`https://eagle.test${path}`, {
+      headers: { Upgrade: "websocket", ...headers },
+    });
+    assert.equal(response.status, 101);
+    const ws = response.webSocket;
+    assert(ws);
+    sockets.push(ws as unknown as WebSocket);
+    const messages: Message[] = [];
+    ws.addEventListener("message", (event) =>
+      messages.push(JSON.parse(String(event.data))),
+    );
+    ws.accept();
+    ws.send(JSON.stringify({ type: "ping" }));
+    return { ws, messages };
+  };
+  const until = async (condition: () => boolean) => {
+    const deadline = Date.now() + 2000;
+    while (!condition() && Date.now() < deadline)
+      await new Promise((r) => setTimeout(r, 10));
+    assert(condition(), "Expected realtime message was not received");
+  };
+  try {
+    const agent = await open("/api/v1/realtime-agent", {
+      Authorization: `Bearer ${token}`,
+      "X-Eagle-Machine": "mac-one",
+      "X-Eagle-Realtime-Format": "styled-text-v1",
+    });
+    const headers = {
+      "Cf-Access-Jwt-Assertion": viewer,
+      Origin: "https://eagle.test",
+    };
+    const path = "/api/v1/realtime?machine=mac-one&space=default%3Aw1";
+    const legacy = await open(path, headers);
+    const styled = await open(`${path}&format=styled-text-v1`, headers);
+    await until(() => !!agent.messages.find((m) => m.spaces?.length));
+    const subscriptionMessage = agent.messages.find((m) => m.spaces?.length);
+    assert.equal(subscriptionMessage?.format, "styled-text-v1");
+    const subscription = subscriptionMessage?.spaces?.[0];
+    assert(subscription);
+    agent.ws.send(
+      JSON.stringify({
+        type: "topology",
+        ...subscription,
+        tabs: [
+          {
+            id: "tab",
+            name: "Test",
+            panes: [
+              {
+                id: "pane",
+                terminalId: "terminal",
+                title: "Test",
+                rect: { x: 0, y: 0, width: 1, height: 1 },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const runs = [{ text: "PASS", fg: 2, bold: true }];
+    agent.ws.send(
+      JSON.stringify({
+        type: "frame",
+        ...subscription,
+        paneId: "pane",
+        terminalId: "terminal",
+        text: "PASS",
+        runs,
+        revision: 1,
+        observedAt: new Date().toISOString(),
+      }),
+    );
+    await until(
+      () =>
+        !!styled.messages.find((m) => m.type === "frame") &&
+        !!legacy.messages.find((m) => m.type === "frame"),
+    );
+    assert.deepEqual(
+      styled.messages.find((m) => m.type === "frame")?.runs,
+      runs,
+    );
+    assert.equal(
+      legacy.messages.find((m) => m.type === "frame")?.runs,
+      undefined,
+    );
+    assert.equal(legacy.messages.find((m) => m.type === "frame")?.text, "PASS");
+  } finally {
+    for (const socket of sockets) socket.close(1000);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+});
+
 async function liveSocket(path: string, headers: Record<string, string>) {
   const url = new URL(path, await mf.ready);
   const origin = url.origin;

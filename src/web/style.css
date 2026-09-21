@@ -1625,6 +1625,56 @@
     monospace;
   white-space: pre;
   tab-size: 4;
+  overflow-anchor: none;
+}
+.live-output {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.live-output > pre {
+  min-width: 0;
+  width: 100%;
+}
+.live-follow {
+  position: absolute;
+  bottom: 10px;
+  right: 12px;
+  gap: 5px;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.4);
+  font-size: 11px;
+}
+.live-output-activity {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 18px;
+  margin-bottom: 6px;
+  font-size: 10px;
+  color: hsl(var(--basalt-muted-foreground));
+}
+.live-output-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: hsl(var(--basalt-muted-foreground));
+  flex: none;
+}
+.live-output-pulse[data-active="true"] {
+  background: hsl(var(--basalt-accent-4));
+  animation: live-output-pulse 1.2s ease-in-out infinite;
+}
+@keyframes live-output-pulse {
+  50% {
+    box-shadow: 0 0 0 4px hsl(var(--basalt-accent-4) / 0.12);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-output-pulse[data-active="true"] {
+    animation: none;
+  }
 }
 .live-pane pre:focus-visible {
   outline: 1px solid hsl(var(--basalt-ring));

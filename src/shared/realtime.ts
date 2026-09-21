@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TerminalRunSchema } from "./terminal.ts";
 
 const id = z.string().min(1).max(160);
 export const SubscriptionSchema = z.strictObject({
@@ -70,10 +71,17 @@ export const FrameSchema = SubscriptionSchema.extend({
   terminalId: id,
   revision: z.number().int().nonnegative(),
   text: z.string().max(32000),
+  runs: z.array(TerminalRunSchema).max(512).optional(),
   observedAt: z.string().datetime(),
   deliveryId: z.number().int().positive().optional(),
   deliveryBytes: z.number().int().positive().optional(),
-});
+}).refine(
+  (v) =>
+    !v.runs ||
+    (v.runs.map((r) => r.text).join("") === v.text &&
+      new TextEncoder().encode(JSON.stringify(v.runs)).length <= 64000),
+  "Styled runs must match the redacted text and stay within the transport budget",
+);
 export const AckSchema = z.strictObject({
   type: z.literal("ack"),
   clientId: id,
@@ -91,6 +99,7 @@ export const BridgeMessageSchema = z.union([
   z.strictObject({
     type: z.literal("subscriptions"),
     spaces: z.array(SubscriptionSchema).max(4),
+    format: z.literal("styled-text-v1").optional(),
   }),
   InputSchema.safeExtend({ ...SubscriptionSchema.shape, clientId: id }),
   z.strictObject({ type: z.literal("pong") }),

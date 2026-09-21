@@ -1,5 +1,23 @@
 # 用户视角检查点
 
+## 2026-09-21 — Realtime terminal contribution in isolation
+
+- New regressions reproduced missing colors and the initial/top-follow scrolling
+  defect. Desktop/mobile fixtures now cover follow, pause, resume, replacement
+  reset, escaped text and activity semantics. Synthetic terminal parser tests
+  cover redaction across SGR boundaries, OSC/clipboard removal and payload bounds.
+- A real isolated Miniflare/DO test first reproduced rejection of styled format
+  negotiation. Compatibility work now keeps legacy viewers/agents on plain
+  frames and explicitly opts new peers into validated style runs.
+- Full gates passed: 86 unit/API tests, TypeScript, lint/build and 70 browser
+  tests. Desktop/mobile dark/light fixture screenshots were generated; mobile
+  dark and desktop light were visually inspected. Input controls, reduced motion,
+  bounded layout and existing realtime security/lifecycle regressions pass.
+- No real terminal was inspected/controlled and no production service/config was
+  changed. Real local/public terminal roundtrip verification was not performed;
+  it must be run from a permitted Herdr environment before release. No package
+  was published and no production deployment is implied by these checks.
+
 ## 2026-09-20 07:14 +08 — Space realtime local round trip
 
 - Actual Herdr 0.9.1 socket collection and machine-Bearer upload reach the local machine DO. The real local site renders live Space layout and terminal text; a browser-controlled temporary shell printed the verification marker and returned it in 822 ms.

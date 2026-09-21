@@ -1,6 +1,32 @@
 # Space realtime mode
 
-Open a machine, open a Space, then select **实时模式**. Eagle mirrors the current terminal text and tab/pane layout. **接管输入** grants one browser control of that Space; other browsers can watch. Select a pane, send text with or without Enter, or use the common key buttons. The local Herdr client remains able to operate concurrently. This release mirrors text screens; terminal colors, mouse reporting, pixel graphics and arbitrary PTY resize are not implemented.
+Open a machine, open a Space, then select **实时模式**. Eagle mirrors the current terminal text and tab/pane layout. **接管输入** grants one browser control of that Space; other browsers can watch. Select a pane, send text with or without Enter, or use the common key buttons. The local Herdr client remains able to operate concurrently. Terminal snapshots support SGR colors (16/256/RGB), bold, dim, italic, underline and inverse. Mouse reporting, pixel graphics and arbitrary PTY resize are not implemented.
+
+Output follows the bottom on first display, target switch/replacement and while
+already at the bottom. Scrolling up pauses following independently for each pane;
+new output offers **新输出 · 回到底部**. Clicking it or scrolling back to the bottom
+resumes following. This navigates the current visible-screen snapshot, not an
+unbounded terminal scrollback archive.
+
+The hint above the input briefly pulses on changed screen content, then displays
+**已连接 · 等待新输出**. Repeated frames/heartbeats do not renew it. It never claims
+the task is still running or has completed; reduced-motion preferences disable
+the pulse. Inputs and completion evidence are unchanged.
+
+Colors are parsed on the machine into bounded, typed text runs. Redaction is
+applied to the combined plain text before any runs leave the machine. If
+redaction changes text, the entire frame falls back to plain text; no unredacted
+styling copy survives. OSC links/clipboard operations and executable controls are
+discarded; concealed text is masked. The browser renders escaped React text,
+never terminal HTML, URLs or escape commands. Screens with excessive styling
+also fall back to text (512 runs / 64 KiB styling budget, 32,000 text characters).
+
+Deploy the Worker and its matching frontend together. New bridges advertise
+`X-Eagle-Realtime-Format: styled-text-v1`, and send runs only after the relay
+confirms that format in subscriptions. Older relays/agents continue using plain
+frames. New viewers request `format=styled-text-v1`; viewers without that option
+receive the original plain frame shape, even when another viewer uses colors.
+There are no new dependencies, persistent terminal archives or input permissions.
 
 The Basalt workspace sheet overlays the dashboard and widens for realtime mode. Pick a tab and a target pane in the controls above the black terminal canvas. Desktop retains the selected tab's pane layout; mobile shows the selected pane. Terminal output scrolls internally while the composer remains visible, including when the visual viewport shrinks for the keyboard. Enter submits the draft; switching targets clears the draft and releases input control. Reduced-motion preferences disable the sheet motion.
 

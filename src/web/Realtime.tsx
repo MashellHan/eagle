@@ -31,6 +31,7 @@ import {
   LiveServerMessageSchema,
   type LiveTopology,
 } from "../shared/realtime.ts";
+import { OutputActivity, TerminalOutput } from "./TerminalOutput.tsx";
 import { useTimezone } from "./Timezone.tsx";
 
 export function Realtime({
@@ -94,6 +95,7 @@ export function Realtime({
       url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
       url.searchParams.set("machine", machineId);
       url.searchParams.set("space", spaceId);
+      url.searchParams.set("format", "styled-text-v1");
       const ws = new WebSocket(url);
       socket.current = ws;
       let last = Date.now();
@@ -362,7 +364,7 @@ export function Realtime({
           <section className="live-panes" aria-label={tab.name}>
             {tab.panes.map((p) => (
               <div
-                key={p.id}
+                key={`${p.id}/${p.terminalId}`}
                 className="live-pane"
                 data-selected={pane?.id === p.id}
                 style={{
@@ -382,12 +384,10 @@ export function Realtime({
                   <span>{p.title}</span>
                   <span className="mono">{p.id}</span>
                 </Button>
-                <pre
-                  // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to scroll terminal output.
-                  tabIndex={0}
-                >
-                  {frames[p.id]?.text ?? "等待画面…"}
-                </pre>
+                <TerminalOutput
+                  frame={frames[p.id]}
+                  selected={pane?.id === p.id}
+                />
                 <div className="live-pane-footer mono">
                   <span>{pane?.id === p.id ? "当前目标" : "只读画面"}</span>
                   <span>
@@ -414,6 +414,10 @@ export function Realtime({
           if (text) send(["enter"], text);
         }}
       >
+        <OutputActivity
+          frame={pane ? frames[pane.id] : undefined}
+          online={online}
+        />
         <div className="live-composer-meta">
           <label htmlFor="live-input">
             <span className="live-target-dot" data-control={control} />
