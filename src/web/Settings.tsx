@@ -18,7 +18,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { type HourlySettings, REPORT_SECTIONS } from "../shared/hourly.ts";
+import {
+  type HourlySettings,
+  REPORT_SECTIONS,
+  TEMPLATE_VERSION,
+} from "../shared/hourly.ts";
 import { AuthError, api } from "./api.ts";
 import { TIMEZONE_OFFSETS, timezoneLabel, useTimezone } from "./Timezone.tsx";
 
@@ -454,7 +458,7 @@ export function Settings({ onAuthError }: { onAuthError: () => void }) {
           </p>
         )}
       </div>
-      <SectionRule title="中文报告模板" hint="固定结构 · eagle-hourly-zh-v1">
+      <SectionRule title="中文报告模板" hint={`固定结构 · ${TEMPLATE_VERSION}`}>
         <LayerCard className="space-y-4">
           <p className="text-xs leading-relaxed text-basalt-muted-foreground">
             先读总览，再展开具体进展。报告覆盖本小时的事实采集与语义解释，区分已验证成果和推断，并注明缺失证据。

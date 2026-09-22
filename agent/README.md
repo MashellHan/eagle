@@ -6,16 +6,16 @@ Read-only Herdr inventory, task evidence, machine resources and named TCP port c
 
 Check `node --version`, `npm --version` and `herdr --version` first. Install Node.js 24+ from https://nodejs.org/en/download if needed, and have Herdr installed and running. No Eagle repository checkout, TypeScript compiler or npm login is required to install this public package.
 
-Install Agent v0.5.0 from npm. The Agent and Eagle website share the same release version:
+Install Agent v0.6.0 from npm. The Agent and Eagle website share the same release version:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.5.0 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.6.0 --registry=https://registry.npmjs.org
 ```
 
 **If npm downloads time out, use the Tencent Cloud mirror / 下载超时时首选腾讯云镜像：**
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.5.0 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g @nocoo/eagle-agent@0.6.0 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
 `--registry` applies only to this installation; it does not change your global npm configuration. Mirrors may lag (`404` / `ETARGET`); retry later or use the official registry when reachable. Keep the pinned version, HTTPS and certificate verification. Eagle credentials are unrelated to npm and must never be sent to a registry.
@@ -23,7 +23,7 @@ npm install -g @nocoo/eagle-agent@0.5.0 --registry=https://mirrors.cloud.tencent
 Verify the installation before configuring the agent:
 
 ```sh
-eagle-agent --version # expected: 0.5.0
+eagle-agent --version # expected: 0.6.0
 eagle-agent --help
 ```
 
@@ -58,6 +58,16 @@ The machine's Durable Object maintains current state. Unacknowledged reports rem
 Optional `watchPorts`: `[{ "name": "Raven", "port": 7024 }]`. Only loopback TCP checks are supported; a listening port does not prove service or task health. CPU, RAM, disk and uptime are sampled automatically. Task status combines terminal summaries, goals, Git, tests, processes and deployment evidence; pane lifecycle badges are weak hints.
 
 Detailed configuration and manager evidence format: https://github.com/nocoo/eagle/blob/main/docs/AGENT.md
+
+## Optional reporting proxy
+
+Direct connections are the default. Set `NODE_USE_ENV_PROXY=0` in the service environment and leave proxy addresses unset. A local proxy is not a prerequisite for Eagle.
+
+Only when the machine needs a proxy, set `NODE_USE_ENV_PROXY=1` and `HTTPS_PROXY` to the user's verified HTTP(S) proxy URL. Use `HTTP_PROXY` for HTTP destinations and `NO_PROXY` for destinations that should bypass the proxy. Do not assume a host or port. These are Node environment settings, not fields in `agent.json`; no new Agent package is required. Node.js 24.5+ is required for proxying the `realtime-watch` WebSocket connection.
+
+Apply the selected environment to each Eagle service (`watch`, `manager-watch`, and `realtime-watch`) and to any foreground verification command. On macOS, use the LaunchAgent's `EnvironmentVariables`; on Linux, use the user systemd unit's environment. Keep proxy credentials, if needed, in protected service configuration, never in command arguments or reports.
+
+To return to direct connections, remove the service's proxy address variables and set `NODE_USE_ENV_PROXY=0`. Reload the service definition and restart it; restarting alone does not reload a changed launchd plist. Wait until the old service has fully stopped before registering it again. Preserve the secure Agent config, spool and Manager state. Confirm a fresh successful report and an empty pending spool; a running process alone does not prove connectivity. An explicitly selected proxy remains required until disabled; there is no automatic direct fallback.
 
 ## Continuous Pane summaries
 

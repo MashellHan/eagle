@@ -3,9 +3,12 @@ import { changesBetween } from "../shared/assessment.ts";
 import type { Registration } from "../shared/connect.ts";
 import {
   compactHour,
+  type HourlyContent,
+  type HourlyJob,
   type HourlyReport,
   TEMPLATE_VERSION,
   utcHour,
+  validHour,
 } from "../shared/hourly.ts";
 import type { MachineView, Report } from "../shared/schema.ts";
 import {
@@ -21,6 +24,19 @@ import { agentTokens } from "./auth.ts";
 import { LiveRelay, scheduleEarlier } from "./realtime.ts";
 
 type Facts = Record<string, import("../shared/schema.ts").Evidence>;
+type HourWork = Omit<HourlyJob, "hour" | "status"> & {
+  version: string;
+  fingerprint: string | null;
+  failures: number;
+  blocked: boolean;
+};
+type HourLease = {
+  version: string;
+  lease: string | null;
+  expires: number;
+  pending: string | null;
+  completed_version: string | null;
+};
 type SemanticRow = {
   seq: number;
   hour: string;
@@ -29,6 +45,8 @@ type SemanticRow = {
   received_at: string;
   payload: string;
 };
+const sameHourInput = (a: string | null | undefined, b: string) =>
+  a?.slice(a.indexOf(":") + 1) === b.slice(b.indexOf(":") + 1);
 const RETENTION_DAYS = 30;
 const MAX_RECORDS = 10000;
 const unpack = (row: SemanticRow) => ({
@@ -113,6 +131,10 @@ export class MachineState extends DurableObject<Env> {
     CREATE TABLE IF NOT EXISTS hourly_jobs (
       hour TEXT PRIMARY KEY, version TEXT, lease TEXT, expires INTEGER,
       pending TEXT, completed_version TEXT, last_error TEXT
+    );
+    CREATE TABLE IF NOT EXISTS hourly_steps (
+      hour TEXT NOT NULL, step TEXT NOT NULL, payload TEXT NOT NULL,
+      PRIMARY KEY(hour,step)
     );`);
   }
 
@@ -326,6 +348,104 @@ export class MachineState extends DurableObject<Env> {
       .one();
     return `${TEMPLATE_VERSION}:${facts.n}:${facts.last}:${semantics.n}:${semantics.last}`;
   }
+  private hourWork(hour: string): HourWork | undefined {
+    const row = this.ctx.storage.sql
+      .exec<{ payload: string }>(
+        "SELECT payload FROM hourly_steps WHERE hour=? AND step='state'",
+        hour,
+      )
+      .toArray()[0];
+    return row ? JSON.parse(row.payload) : undefined;
+  }
+  private storeHourWork(hour: string, work: HourWork) {
+    this.ctx.storage.sql.exec(
+      "INSERT INTO hourly_steps VALUES(?,'state',?) ON CONFLICT(hour,step) DO UPDATE SET payload=excluded.payload",
+      hour,
+      JSON.stringify(work),
+    );
+  }
+  private hourLease(hour: string) {
+    return this.ctx.storage.sql
+      .exec<HourLease>("SELECT * FROM hourly_jobs WHERE hour=?", hour)
+      .toArray()[0];
+  }
+  private checkHourLease(hour: string, lease: string) {
+    const job = this.hourLease(hour);
+    if (!job || job.lease !== lease || job.expires <= Date.now())
+      return "lease_lost" as const;
+    if (job.version !== this.hourVersion(hour)) return "input_changed" as const;
+    return null;
+  }
+  private hourDiscarded(hour: string) {
+    return (
+      this.ctx.storage.sql
+        .exec(
+          "SELECT 1 FROM hourly_steps WHERE hour=? AND step='discarded'",
+          hour,
+        )
+        .toArray().length > 0
+    );
+  }
+  discardHour(hour: string) {
+    if (!validHour(hour) || Date.parse(hour) + 3600000 > Date.now() - 300000)
+      throw new Error("Expected a closed UTC hour");
+    return this.ctx.storage.transactionSync(() => {
+      const job = this.hourLease(hour);
+      if (job?.pending || job?.completed_version)
+        return { hour, skipped: "has_report" } as const;
+      if (this.hourVersion(hour) === `${TEMPLATE_VERSION}:0:0:0:0`)
+        return { hour, skipped: "no_data" } as const;
+      this.ctx.storage.sql.exec("DELETE FROM hourly_jobs WHERE hour=?", hour);
+      this.ctx.storage.sql.exec("DELETE FROM hourly_steps WHERE hour=?", hour);
+      this.ctx.storage.sql.exec(
+        "INSERT INTO hourly_steps VALUES(?,'discarded',?)",
+        hour,
+        JSON.stringify({ discardedAt: new Date().toISOString() }),
+      );
+      return { hour, discarded: true } as const;
+    });
+  }
+  hourJobs(at: number, before = utcHour(at - 300000)): HourlyJob[] {
+    const cutoff = utcHour(at - 48 * 3600000);
+    return this.ctx.storage.sql
+      .exec<{ hour: string }>(
+        `SELECT hour FROM hourly_facts WHERE hour>=? AND hour<? UNION SELECT hour FROM semantic_records WHERE hour>=? AND hour<? UNION SELECT hour FROM hourly_jobs WHERE pending IS NOT NULL ORDER BY hour`,
+        cutoff,
+        before,
+        cutoff,
+        before,
+      )
+      .toArray()
+      .map(({ hour }) => {
+        const job = this.hourLease(hour);
+        const version =
+          job?.pending && hour < cutoff ? job.version : this.hourVersion(hour);
+        const saved = this.hourWork(hour);
+        const work = saved?.version === version ? saved : undefined;
+        return {
+          hour,
+          status: this.hourDiscarded(hour)
+            ? "discarded"
+            : job && job.expires > at
+              ? "running"
+              : sameHourInput(job?.completed_version, version)
+                ? "complete"
+                : work?.blocked
+                  ? "blocked"
+                  : work?.error
+                    ? "retrying"
+                    : "pending",
+          attempts: work?.attempts ?? 0,
+          completedParts: work?.completedParts ?? 0,
+          totalParts: work?.totalParts ?? 0,
+          stage: work?.stage ?? "input",
+          error: work?.error ?? null,
+          lastAttemptAt: work?.lastAttemptAt ?? 0,
+          retryAt: work?.retryAt ?? 0,
+          lastSuccessAt: saved?.lastSuccessAt ?? null,
+        };
+      });
+  }
   pendingHours(at: number, before = utcHour(at - 300000)): string[] {
     const cutoff = utcHour(at - 48 * 3600000);
     this.ctx.storage.sql.exec(
@@ -336,58 +456,72 @@ export class MachineState extends DurableObject<Env> {
       "DELETE FROM hourly_jobs WHERE hour < ? AND pending IS NULL",
       cutoff,
     );
-    return this.ctx.storage.sql
-      .exec<{ hour: string }>(
-        `SELECT hour FROM hourly_facts WHERE hour>=? AND hour<? UNION SELECT hour FROM semantic_records WHERE hour>=? AND hour<? UNION SELECT hour FROM hourly_jobs WHERE pending IS NOT NULL ORDER BY hour`,
-        cutoff,
-        before,
-        cutoff,
-        before,
-      )
-      .toArray()
-      .map((r) => r.hour)
-      .filter((hour) => {
-        const done = this.ctx.storage.sql
-          .exec<{ completed_version: string | null }>(
-            "SELECT completed_version FROM hourly_jobs WHERE hour=?",
-            hour,
-          )
-          .toArray()[0];
-        return this.hourVersion(hour) !== done?.completed_version;
-      });
-  }
-  claimHour(hour: string) {
-    const sql = this.ctx.storage.sql;
-    const previous = sql
-      .exec<{
-        expires: number;
-        pending: string | null;
-        version: string;
-        completed_version: string | null;
-      }>("SELECT * FROM hourly_jobs WHERE hour=?", hour)
-      .toArray()[0];
-    if (previous?.expires > Date.now())
-      return { skipped: "in_progress" } as const;
-    const expiredPending =
-      previous?.pending && hour < utcHour(Date.now() - 48 * 3600000);
-    const version = expiredPending ? previous.version : this.hourVersion(hour);
-    if (version === `${TEMPLATE_VERSION}:0:0:0:0`)
-      return { skipped: "no_data" } as const;
-    if (version === previous?.completed_version)
-      return { skipped: "unchanged" } as const;
-    const lease = crypto.randomUUID();
-    sql.exec(
-      `INSERT INTO hourly_jobs(hour,version,lease,expires) VALUES(?,?,?,?) ON CONFLICT(hour) DO UPDATE SET pending=CASE WHEN hourly_jobs.version=excluded.version THEN hourly_jobs.pending ELSE NULL END,version=excluded.version,lease=excluded.lease,expires=excluded.expires,last_error=NULL`,
-      hour,
-      version,
-      lease,
-      Date.now() + 14 * 60000,
+    this.ctx.storage.sql.exec(
+      "DELETE FROM hourly_steps WHERE hour < ? AND hour NOT IN (SELECT hour FROM hourly_jobs WHERE pending IS NOT NULL)",
+      cutoff,
     );
-    const pending =
-      previous?.pending && previous.version === version
-        ? (JSON.parse(previous.pending) as HourlyReport)
-        : null;
-    return { lease, version, pending };
+    return this.hourJobs(at, before)
+      .filter(
+        (job) =>
+          (job.status === "pending" || job.status === "retrying") &&
+          job.retryAt <= at,
+      )
+      .sort(
+        (a, b) =>
+          a.lastAttemptAt - b.lastAttemptAt || b.hour.localeCompare(a.hour),
+      )
+      .map((job) => job.hour);
+  }
+  claimHour(hour: string, force = false) {
+    return this.ctx.storage.transactionSync(() => {
+      const sql = this.ctx.storage.sql;
+      if (this.hourDiscarded(hour)) return { skipped: "discarded" } as const;
+      const previous = this.hourLease(hour);
+      if (previous?.expires > Date.now())
+        return { skipped: "in_progress" } as const;
+      const expiredPending =
+        previous?.pending && hour < utcHour(Date.now() - 48 * 3600000);
+      const version = expiredPending
+        ? previous.version
+        : this.hourVersion(hour);
+      if (version === `${TEMPLATE_VERSION}:0:0:0:0`)
+        return { skipped: "no_data" } as const;
+      if (sameHourInput(previous?.completed_version, version))
+        return { skipped: "unchanged" } as const;
+      const saved = this.hourWork(hour);
+      const work = saved?.version === version ? saved : undefined;
+      if (!force && work?.blocked) return { skipped: "blocked" } as const;
+      if (!force && work && work.retryAt > Date.now())
+        return { skipped: "backoff" } as const;
+      const lease = crypto.randomUUID();
+      sql.exec(
+        `INSERT INTO hourly_jobs(hour,version,lease,expires) VALUES(?,?,?,?) ON CONFLICT(hour) DO UPDATE SET pending=CASE WHEN hourly_jobs.version=excluded.version THEN hourly_jobs.pending ELSE NULL END,version=excluded.version,lease=excluded.lease,expires=excluded.expires,last_error=NULL`,
+        hour,
+        version,
+        lease,
+        Date.now() + 5 * 60000,
+      );
+      if (!work) sql.exec("DELETE FROM hourly_steps WHERE hour=?", hour);
+      this.storeHourWork(hour, {
+        version,
+        fingerprint: work?.fingerprint ?? null,
+        attempts: (work?.attempts ?? 0) + 1,
+        failures: work?.failures ?? 0,
+        lastAttemptAt: Date.now(),
+        retryAt: 0,
+        stage: previous?.pending ? "archive" : "input",
+        error: null,
+        blocked: false,
+        completedParts: work?.completedParts ?? 0,
+        totalParts: work?.totalParts ?? 0,
+        lastSuccessAt: saved?.lastSuccessAt ?? null,
+      });
+      const pending =
+        previous?.pending && previous.version === version
+          ? (JSON.parse(previous.pending) as HourlyReport)
+          : null;
+      return { lease, version, pending };
+    });
   }
   hourInput(hour: string) {
     const sql = this.ctx.storage.sql;
@@ -408,9 +542,76 @@ export class MachineState extends DurableObject<Env> {
     return {
       ...compactHour(reports(), semantic),
       machineName: this.current()?.name ?? "",
+      version: this.hourVersion(hour),
     };
   }
+  prepareHour(
+    hour: string,
+    lease: string,
+    fingerprint: string,
+    totalParts: number,
+  ) {
+    return this.ctx.storage.transactionSync(() => {
+      const skipped = this.checkHourLease(hour, lease);
+      if (skipped) return { skipped };
+      const work = this.hourWork(hour);
+      if (!work) return { skipped: "lease_lost" } as const;
+      if (work.fingerprint !== fingerprint) {
+        this.ctx.storage.sql.exec(
+          "DELETE FROM hourly_steps WHERE hour=? AND step<>'state'",
+          hour,
+        );
+        work.completedParts = 0;
+        work.fingerprint = fingerprint;
+      }
+      work.totalParts = totalParts;
+      this.storeHourWork(hour, work);
+      return { ready: true } as const;
+    });
+  }
+  hourPart(hour: string, lease: string, step: string, stage: string) {
+    const skipped = this.checkHourLease(hour, lease);
+    if (skipped) return { skipped };
+    const work = this.hourWork(hour);
+    if (!work) return { skipped: "lease_lost" } as const;
+    work.stage = stage;
+    this.storeHourWork(hour, work);
+    const row = this.ctx.storage.sql
+      .exec<{ payload: string }>(
+        "SELECT payload FROM hourly_steps WHERE hour=? AND step=?",
+        hour,
+        step,
+      )
+      .toArray()[0];
+    return { content: row ? (JSON.parse(row.payload) as HourlyContent) : null };
+  }
+  saveHourPart(
+    hour: string,
+    lease: string,
+    step: string,
+    content: HourlyContent,
+  ) {
+    return this.ctx.storage.transactionSync(() => {
+      const skipped = this.checkHourLease(hour, lease);
+      if (skipped) return { skipped };
+      const work = this.hourWork(hour);
+      if (!work) return { skipped: "lease_lost" } as const;
+      const inserted = this.ctx.storage.sql
+        .exec(
+          "INSERT OR IGNORE INTO hourly_steps VALUES(?,?,?) RETURNING step",
+          hour,
+          step,
+          JSON.stringify(content),
+        )
+        .toArray().length;
+      if (step.startsWith("chunk:")) work.completedParts += inserted;
+      work.failures = 0;
+      this.storeHourWork(hour, work);
+      return { saved: true } as const;
+    });
+  }
   cacheHour(hour: string, lease: string, result: HourlyReport) {
+    if (this.checkHourLease(hour, lease)) return false;
     return (
       this.ctx.storage.sql
         .exec(
@@ -422,15 +623,52 @@ export class MachineState extends DurableObject<Env> {
         .toArray().length === 1
     );
   }
-  finishHour(hour: string, lease: string, error: string | null) {
-    this.ctx.storage.sql.exec(
-      `UPDATE hourly_jobs SET expires=0,lease=NULL,last_error=?,completed_version=CASE WHEN ? IS NULL THEN version ELSE completed_version END,pending=CASE WHEN ? IS NULL THEN NULL ELSE pending END WHERE hour=? AND lease=?`,
-      error,
-      error,
-      error,
-      hour,
-      lease,
-    );
+  finishHour(
+    hour: string,
+    lease: string,
+    outcome: {
+      status: "complete" | "deferred" | "failed";
+      stage: string;
+      error?: string;
+      blocked?: boolean;
+    },
+  ) {
+    return this.ctx.storage.transactionSync(() => {
+      const job = this.hourLease(hour);
+      if (!job || job.lease !== lease || job.expires <= Date.now())
+        return false;
+      if (outcome.status === "complete" && !job.pending) return false;
+      const complete = outcome.status === "complete";
+      this.ctx.storage.sql.exec(
+        `UPDATE hourly_jobs SET expires=0,lease=NULL,last_error=?,completed_version=CASE WHEN ? THEN version ELSE completed_version END,pending=CASE WHEN ? THEN NULL ELSE pending END WHERE hour=? AND lease=?`,
+        outcome.error ?? null,
+        complete ? 1 : 0,
+        complete ? 1 : 0,
+        hour,
+        lease,
+      );
+      const work = this.hourWork(hour);
+      if (work) {
+        work.stage = outcome.stage;
+        work.error = outcome.error ?? null;
+        work.blocked = outcome.blocked ?? false;
+        work.failures = outcome.status === "failed" ? work.failures + 1 : 0;
+        work.retryAt =
+          outcome.status === "failed"
+            ? Date.now() +
+              Math.min(3600000, 60000 * 2 ** Math.min(work.failures - 1, 6))
+            : 0;
+        if (complete) {
+          work.lastSuccessAt = new Date().toISOString();
+          this.ctx.storage.sql.exec(
+            "DELETE FROM hourly_steps WHERE hour=? AND step<>'state'",
+            hour,
+          );
+        }
+        this.storeHourWork(hour, work);
+      }
+      return true;
+    });
   }
 
   private latest(

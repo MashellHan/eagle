@@ -114,3 +114,8 @@ Protocol, independent DO streams, hourly history and retention: https://github.c
 Reusable Skill: https://github.com/nocoo/eagle/blob/main/skills/eagle-report/SKILL.md
 
 Only semantic Pane history is enabled. Hourly machine summaries and historical whole-report writes remain paused.
+
+
+## Concise Manager output
+
+New Manager interpretations target 200–350 Chinese characters with a hard 600-character total across narrative fields, excluding evidence hashes. Field limits are task 80, progress 120, blocker 80, next step 80 and rationale 100; at most three outcomes may each contain 100 characters. Prompts ask for one sentence per field and preserve verification qualifiers. Oversized output fails before publication or freshness updates and follows the existing retry debounce. The generation policy is included in the input fingerprint; an oversized cached summary is not supplied as the previous interpretation. Original evidence, archived semantic records and writer identities remain unchanged.

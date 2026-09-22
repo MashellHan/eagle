@@ -396,6 +396,40 @@ async function route(request: Request, env: Env): Promise<Response> {
       configuredEnv.AI_API_KEY = input.apiKey ?? "";
     return json(await testAi(input.settings, configuredEnv));
   }
+  if (path === "/api/v1/hourly-reports/discard" && request.method === "POST") {
+    const input = await body(request);
+    if (
+      !input ||
+      typeof input !== "object" ||
+      Object.keys(input).some((key) => !["machine", "hours"].includes(key)) ||
+      typeof input.machine !== "string" ||
+      !Array.isArray(input.hours) ||
+      input.hours.length < 1 ||
+      input.hours.length > 48 ||
+      input.hours.some(
+        (hour: unknown) =>
+          typeof hour !== "string" ||
+          !validHour(hour) ||
+          Date.parse(hour) + 3600000 > Date.now() - 300000 ||
+          Date.parse(hour) < Date.now() - 48 * 3600000,
+      )
+    )
+      throw new HttpError(
+        400,
+        "Expected machine and closed UTC hours within retention",
+      );
+    if (
+      !(await registrations(env)).some(
+        (machine) => machine.id === input.machine,
+      )
+    )
+      throw new HttpError(404, "Machine not found");
+    const object = env.MACHINES.getByName(input.machine);
+    const results = [];
+    for (const hour of new Set<string>(input.hours))
+      results.push(await object.discardHour(hour));
+    return json({ results });
+  }
   if (path === "/api/v1/hourly-reports/run" && request.method === "POST") {
     const input = await body(request);
     if (
@@ -507,8 +541,28 @@ async function route(request: Request, env: Env): Promise<Response> {
     const entries = results
       .slice(0, limit)
       .map((r) => ({ seq: r.seq, report: JSON.parse(r.payload) }));
+    const now = Date.now();
+    const machines = (await registrations(env)).filter(
+      (entry) => entry.enabled && (!machine || entry.id === machine),
+    );
+    const jobs = (
+      await Promise.all(
+        machines.map(async (entry) =>
+          (
+            await env.MACHINES.getByName(entry.id).hourJobs(now)
+          )
+            .filter((job) => !hour || job.hour === hour)
+            .map((job) => ({
+              ...job,
+              machineId: entry.id,
+              machineName: entry.name,
+            })),
+        ),
+      )
+    ).flat();
     return json({
       entries,
+      jobs,
       nextCursor:
         results.length > limit
           ? `${results[limit - 1].hour}|${results[limit - 1].seq}`
@@ -636,6 +690,16 @@ export default {
       .filter((m) => m.enabled)
       .map((m) => m.id);
     const result = await runHourly(env, ids, controller.scheduledTime);
+    console.log(
+      JSON.stringify({
+        event: "hourly_run",
+        generated: result.results.filter((entry) => "generated" in entry)
+          .length,
+        deferred: result.results.filter((entry) => "deferred" in entry).length,
+        failed: result.results.filter((entry) => "error" in entry).length,
+        pending: "deferred" in result && result.deferred,
+      }),
+    );
     if (result.results.some((r) => "error" in r))
       throw new Error("Hourly report generation failed");
   },

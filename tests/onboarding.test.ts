@@ -60,3 +60,18 @@ test("every command and supervised service uses the chosen configuration", () =>
   assert.match(prompt, /launchd\/systemd 的环境中显式设置 EAGLE_CONFIG/);
   assert.match(prompt, /不覆盖旧配置，不删除旧队列/);
 });
+
+test("same-origin rotation restarts only existing services using the selected config", () => {
+  const prompt = onboardingPrompt(
+    machine,
+    "fixture-token",
+    "https://ingest.example.test",
+    [],
+  );
+  const rotation = prompt.split("- 同环境轮换：")[1]?.split("\n")[0] ?? "";
+  assert.match(
+    rotation,
+    /重启使用该配置且已启用的 watch、manager-watch、realtime-watch 服务/,
+  );
+  assert.match(rotation, /不要因此启动尚未启用的可选服务/);
+});

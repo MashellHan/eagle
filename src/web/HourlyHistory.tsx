@@ -17,7 +17,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type HourlyReport, REPORT_SECTIONS } from "../shared/hourly.ts";
+import {
+  type HourlyJobView,
+  type HourlyReport,
+  REPORT_SECTIONS,
+} from "../shared/hourly.ts";
 import { api } from "./api.ts";
 import { useTimezone } from "./Timezone.tsx";
 
@@ -106,12 +110,113 @@ function ReportCard({ report }: { report: HourlyReport }) {
   );
 }
 
+function GenerationStatus({ jobs }: { jobs: HourlyJobView[] }) {
+  const { time } = useTimezone();
+  if (!jobs.length) return null;
+  const pending = jobs
+    .filter((job) => job.status !== "complete")
+    .sort((a, b) => b.hour.localeCompare(a.hour));
+  const waiting = pending.filter((job) => job.status !== "discarded");
+  const discarded = pending.length - waiting.length;
+  const lastSuccess = jobs
+    .flatMap((job) => (job.lastSuccessAt ? [job.lastSuccessAt] : []))
+    .sort()
+    .at(-1);
+  const stages: Record<string, string> = {
+    input: "整理输入",
+    model_chunk: "整理材料",
+    model_reduce: "合并材料",
+    model_final: "生成报告",
+    validation: "校验报告",
+    archive: "保存报告",
+  };
+  const errors: Record<string, string> = {
+    timeout: "模型响应超时",
+    input_too_large: "单条材料超过处理上限",
+    invalid_output: "模型结果未通过校验",
+    archive_unavailable: "报告保存失败",
+    generation_failed: "模型调用失败",
+    storage_unavailable: "存储暂不可用",
+  };
+  return (
+    <LayerCard role="region" aria-label="报告生成状态">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span className="font-medium">
+          {waiting.length
+            ? `${waiting.length} 个小时待生成`
+            : "当前无待生成小时"}
+          {discarded > 0 && ` · ${discarded} 个小时已取消（原始数据保留）`}
+        </span>
+        {lastSuccess && (
+          <span className="text-basalt-muted-foreground">
+            最近成功 {time(lastSuccess)}
+          </span>
+        )}
+      </div>
+      {pending.length > 0 && (
+        <ul className="mt-2 max-h-64 divide-y divide-basalt-border overflow-y-auto">
+          {pending.map((job) => (
+            <li
+              key={`${job.machineId}:${job.hour}`}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-xs"
+            >
+              <span>
+                {job.machineName} · {time(job.hour).slice(0, -3)}
+              </span>
+              <Badge
+                variant={
+                  job.status === "blocked" || job.status === "retrying"
+                    ? "warning"
+                    : "info"
+                }
+              >
+                {
+                  {
+                    pending: "等待生成",
+                    running: "正在生成",
+                    retrying: "等待重试",
+                    blocked: "需要处理",
+                    complete: "已生成",
+                    discarded: "已取消",
+                  }[job.status]
+                }
+              </Badge>
+              {job.totalParts > 0 && (
+                <span>
+                  {job.completedParts} / {job.totalParts} 份材料已整理
+                </span>
+              )}
+              {job.attempts > 0 && (
+                <span className="text-basalt-muted-foreground">
+                  已尝试 {job.attempts} 次
+                </span>
+              )}
+              {job.error && (
+                <span className="text-basalt-muted-foreground">
+                  {stages[job.stage] ?? "生成报告"}：
+                  {errors[job.error] ?? "生成失败"}
+                </span>
+              )}
+              {job.retryAt > 0 && job.status === "retrying" && (
+                <span className="text-basalt-muted-foreground">
+                  下次重试不早于 {time(new Date(job.retryAt).toISOString())}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </LayerCard>
+  );
+}
+
 export function HourlyHistory({ machine }: { machine: string }) {
   const { offset, zone } = useTimezone();
   const minute = String(((offset % 60) + 60) % 60).padStart(2, "0");
   const [entries, setEntries] = useState<
     { seq: number; report: HourlyReport }[]
   >([]);
+  const [jobs, setJobs] = useState<HourlyJobView[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [date, setDate] = useState("");
   const [localHour, setLocalHour] = useState("00");
@@ -137,6 +242,7 @@ export function HourlyHistory({ machine }: { machine: string }) {
       try {
         const result = await api<{
           entries: { seq: number; report: HourlyReport }[];
+          jobs: HourlyJobView[];
           nextCursor: string | null;
         }>(`/api/v1/hourly-reports?${query}`, { signal: controller.signal });
         if (!controller.signal.aborted) {
@@ -146,6 +252,7 @@ export function HourlyHistory({ machine }: { machine: string }) {
               : (result.entries ?? []),
           );
           setCursor(result.nextCursor);
+          setJobs(result.jobs ?? []);
         }
       } catch {
         if (!controller.signal.aborted)
@@ -158,6 +265,7 @@ export function HourlyHistory({ machine }: { machine: string }) {
   );
   useEffect(() => {
     setEntries([]);
+    setJobs([]);
     void load();
     return () => active.current?.abort();
   }, [load]);
@@ -236,6 +344,7 @@ export function HourlyHistory({ machine }: { machine: string }) {
             刷新报告
           </Button>
         </div>
+        <GenerationStatus jobs={jobs} />
         {error && (
           <p role="alert" className="text-sm text-basalt-destructive">
             {error}

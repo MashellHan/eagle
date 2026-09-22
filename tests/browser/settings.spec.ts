@@ -207,6 +207,64 @@ test("history expands a persisted Chinese hourly report and keeps it mounted dur
   ).toBeVisible();
 });
 
+test("hourly history exposes missing-hour progress, retry timing and last success", async ({
+  page,
+}) => {
+  await page.route("**/api/**", (route) =>
+    route.fulfill({
+      json: { now: new Date().toISOString(), machines: [], entries: [] },
+    }),
+  );
+  const jobs = [
+    {
+      machineId: "mbp",
+      machineName: "MBP",
+      hour: "2026-09-21T07:00:00.000Z",
+      status: "retrying",
+      attempts: 2,
+      completedParts: 12,
+      totalParts: 20,
+      stage: "model_final",
+      error: "timeout",
+      lastAttemptAt: Date.parse("2026-09-21T08:05:00Z"),
+      retryAt: Date.parse("2026-09-21T08:10:00Z"),
+      lastSuccessAt: "2026-09-21T06:05:00.000Z",
+    },
+  ];
+  await page.route("**/api/v1/hourly-reports?**", (route) =>
+    route.fulfill({ json: { entries: [], jobs, nextCursor: null } }),
+  );
+  await page.goto("/history");
+  const state = page.getByRole("region", { name: "报告生成状态" });
+  await expect(state).toContainText("1 个小时待生成");
+  await expect(state).toContainText("等待重试");
+  await expect(state).toContainText("12 / 20 份材料已整理");
+  await expect(state).toContainText("已尝试 2 次");
+  await expect(state).toContainText("生成报告：模型响应超时");
+  await expect(state).toContainText("下次重试不早于");
+  await expect(state).toContainText("最近成功");
+  jobs[0] = { ...jobs[0], status: "discarded", error: "", retryAt: 0 };
+  await page.getByRole("button", { name: "刷新小时报告" }).click();
+  await expect(state).toContainText("当前无待生成小时");
+  await expect(state).toContainText("1 个小时已取消（原始数据保留）");
+  await expect(state).not.toContainText("等待重试");
+  jobs[0] = {
+    ...jobs[0],
+    status: "complete",
+    error: "",
+    retryAt: 0,
+    lastSuccessAt: "2026-09-21T08:12:00.000Z",
+  };
+  await page.getByRole("button", { name: "刷新小时报告" }).click();
+  await expect(state).toContainText("当前无待生成小时");
+  await expect(state).not.toContainText("等待重试");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
 test.describe("hourly history filter", () => {
   test.use({ timezoneId: "Asia/Shanghai" });
 

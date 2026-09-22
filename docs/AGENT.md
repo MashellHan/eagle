@@ -49,22 +49,22 @@ Open **Connect** on the Eagle website. Add a machine ID, display name and option
 
 The platform signs machine-scoped tokens using the `AGENT_SIGNING_KEY` Worker secret (at least 32 random characters). Raw tokens and the signing key never enter a database. Each machine DO stores only its configuration, public credential ID, enabled state and expiry. Tokens expire after one year. The directory DO indexes machine IDs only; ingestion goes directly to the corresponding machine DO. The old `AGENT_TOKENS` secret remains compatible; Connect can rotate a legacy machine to signed credentials or disable it. Removing a legacy secret alone does not disable a machine already migrated to signed credentials; use Connect.
 
-Install Agent v0.5.0 from npm. Website and Agent releases use the same version from the root package manifest. Check `node --version`, `npm --version` and `herdr --version`: Node 24+ and a running Herdr installation are required. Node downloads: https://nodejs.org/en/download. The installed Agent needs no Eagle checkout or TypeScript compiler.
+Install Agent v0.6.0 from npm. Website and Agent releases use the same version from the root package manifest. Check `node --version`, `npm --version` and `herdr --version`: Node 24+ and a running Herdr installation are required. Node downloads: https://nodejs.org/en/download. The installed Agent needs no Eagle checkout or TypeScript compiler.
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.5.0 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.6.0 --registry=https://registry.npmjs.org
 ```
 
 If npm downloads are unreachable, **Tencent Cloud is the preferred mirror**:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.5.0 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g @nocoo/eagle-agent@0.6.0 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
 This changes the registry for this command only. A new version may not have synchronized yet (`404` / `ETARGET`); retry later or use the official registry when reachable, keeping the pinned version. Public installation needs no npm login. Never send an Eagle token to npm or a mirror, or disable HTTPS certificate verification.
 
 ```sh
-eagle-agent --version # expected: 0.5.0
+eagle-agent --version # expected: 0.6.0
 eagle-agent --help
 ```
 
@@ -126,7 +126,7 @@ launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.hexly.eagle-agent.plist
 
 These commands are for this machine's user ID 501. Other machines need their own token, identity, checkout path and service configuration. A valid success acknowledgement is required before a queued report is removed; malformed responses preserve the report for an idempotent retry.
 
-On this Mac, launchd follows the existing macOS HTTPS proxy through `HTTPS_PROXY` and Node’s `NODE_USE_ENV_PROXY=1`. Other machines do not require a proxy. This avoids the OS resolver retaining a negative answer after a new reporting hostname is provisioned.
+All three Eagle LaunchAgents on this Mac use direct connections by default. Proxying is an explicit per-machine option through `NODE_USE_ENV_PROXY=1` and a verified `HTTPS_PROXY` URL; no proxy host or port is fixed. See [optional reporting proxy](../agent/README.md#optional-reporting-proxy) for enabling it or returning to direct connections. Preserve the spool and Manager state when reloading services.
 
 ## Live semantic Manager
 

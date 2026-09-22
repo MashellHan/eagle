@@ -1,17 +1,5 @@
 # 用户视角检查点
 
-## 2026-09-21 — Cross-deployment onboarding regression
-
-- Three prompt-contract regressions first failed: checking only the machine ID,
-  leaving cross-origin cache/queue isolation unspecified, and falling back to a
-  different config in background services. Connect now distinguishes rotation
-  from migration and requires explicit config/spool isolation and a verified
-  cutover. Published Agent behavior and wire formats are unchanged.
-- This contribution uses synthetic credentials only. No real registration,
-  rotation, upload, service restart or deployment was performed. Full local
-  gates passed: 83 unit/API tests, TypeScript, lint/build and 62 desktop/mobile
-  browser tests. This is not a claim of live deployment verification.
-
 ## 2026-09-20 07:14 +08 — Space realtime local round trip
 
 - Actual Herdr 0.9.1 socket collection and machine-Bearer upload reach the local machine DO. The real local site renders live Space layout and terminal text; a browser-controlled temporary shell printed the verification marker and returned it in 822 ms.
@@ -353,3 +341,78 @@ serving and the first catalogue-derived production Cron observation.
 - The deployed design passed visual inspection in desktop dark/light and mobile dark modes: version badge, black terminal, visible composer, bounded sheet and no horizontal overflow. Settings defaults to UTC+08:00. Desktop sheet closure produced socket-close events. On mobile full-page navigation, Playwright did not observe the close event; a separate server-side control probe confirmed the former controller was released within 3,359 ms including navigation, without submitting terminal input.
 - The existing local production realtime LaunchAgent remains running with Agent v0.5.0. A read-only production probe found current ordinary reports for `mac-studio` (`MacStudio.LZ`) but no connected realtime bridge. Each machine needs a separate `realtime-watch` service using its collector configuration; installing the npm upgrade does not start it. Upgrade instructions are in `docs/REALTIME.md`; no remote machine configuration was changed.
 - Sanitized receipts, deployment log and screenshots are under `.local/site-v0.5.0-83drj7a3/`. There is no remaining website release blocker. Connecting the Mac Studio realtime service is the remaining machine-specific setup step.
+
+## 2026-09-21 20:04 +08 — Hourly recovery implementation
+
+- The terminal-growth regression first failed with 120 screen records instead of four task-scoped samples. Model projection now keeps the first/latest visible screen per task, source and status, retaining every other fact, semantic change and original record ID. Raw hourly inputs remain unchanged. Template v4 explicitly discloses this sampling.
+- All 82 unit/API tests, TypeScript, Biome and build pass. Resumable generation, bounded scheduling and visible retry state are the next broken hops; this input correction alone does not complete the incident fix.
+- Real Herdr collection ran, but local verification could not upload because the development Worker was not running after reboot. Ports 7053/37053 were closed. Restarting the existing local services and rerunning authenticated ingestion, D1 and browser verification is pending. No certificate configuration was changed.
+- Public health still reports v0.5.0 at `1a1baa6969549d02930014b7a0188661145f02f3`; production has not been changed. The user authorized deploying and publishing v0.5.1 after verification.
+
+## 2026-09-21 20:18 +08 — Recovery checks and v0.5.1 preparation
+
+- Real local verification at 20:06:51 passed collection of 14 Spaces / 29 Panes, Bearer ingestion, DO revisions, resource/port values, idempotency, full desktop/mobile rendering and stable refresh. Whole-machine uploads still add no D1 snapshot history. Existing development servers were restarted; the existing mkcert root was read for the verifier without changing certificate configuration.
+- All 89 unit/API tests, typecheck, lint and build pass. The seven new real Miniflare regressions cover eviction/resume, more than 32 chunks and bounded reduction, scheduler fairness, late input, persisted retry delay, deterministic rejection and obsolete leases. Twelve affected desktop/mobile browser checks pass, including visible unfinished-hour state.
+- A read-only remote preview applied the exact new projection to production inputs. MBP 08:00 shrank from 44 chunks / 2,049,814 characters to 24 chunks / 1,080,015 characters; its 141 semantic changes remain intact. MBP 07:00 fell from 31 to 21 chunks; the other checked oversized MBP hours fell from 47/34/37/43 to 25/21/23/27. The preview was stopped after saving sanitized counts.
+- v0.5.1 preparation includes the optional-proxy fix and all report recovery work. The final release gates, exact package artifact, public deployment and real backfill verification remain pending. npm identity currently returns E401; the tested release artifact will be prepared before requesting the required browser authentication. Production remains on v0.5.0.
+
+## 2026-09-21 20:42 +08 — v0.5.1 deployed, archive recovery in progress
+
+- Deployed `31ab65ece258fe2995782f842710a08ebe0dfcff` as Worker version `fef9e222-08a1-4269-af79-e2d19c587a77`, with the five-minute Cron schedule. Both public health endpoints report v0.5.1 and template v4. The post-deployment follow-up at 20:39:50 confirmed HTTP 200 and the intended revision; exact-revision CI `35599230216` passed.
+- Final gates passed all 89 unit/API tests, TypeScript, Biome, build and 64 browser checks. Real local verification at 20:23:29 and public verification at 20:30:34 passed collection of 14 Spaces / 30 Panes, Bearer ingestion, Access behavior, DO revisions, resources, idempotency, stable desktop/mobile rendering and no additional D1 snapshot history writes. Public hourly history verification passed at 20:33:10.
+- The unchanged audit window now has Mac Studio 24/24 and MBP 13/24 archived hours, checked at 20:41:35. Both missing Studio hours and MBP 16:00 are archived under template v4. MBP 07:00 and 08:00 have durably retained all 21/21 and 24/24 chunks across two-minute turns and reached reduction; these hours are not yet archived. Other model failures are visible and retained successful chunks continue to be reused.
+- The tested 14-file Agent v0.5.1 tarball is retained with SHA-1 `fed657f045af563434d4d4074964c178c2bca92f`. A fresh npm web login succeeded after the previous session was cancelled at the user's request. The next hops are final archive recovery, GitHub tag/Release, npm publication and independent public-registry installation verification. No production machine service was replaced during this deployment.
+
+## 2026-09-22 05:58 +08 — v0.5.1 published, one report still unresolved
+
+- GitHub tag/Release v0.5.1 points to `31ab65ece258fe2995782f842710a08ebe0dfcff`; the attached Agent archive matches the tested artifact and the publicly available npm package. Official anonymous metadata, `latest`, SHA-1/SHA-512 and an independent fresh Tencent mirror installation passed. Both npm browser authentication steps completed; no authentication is pending.
+- Exact-release CI `35599230216` and documentation CI `35602476919` passed. The five-minute follow-up after GitHub publication at 05:52:55 confirmed HTTP 200, v0.5.1 and the intended revision on both public origins. Previous real local/public Herdr collection, authentication, D1/DO and desktop/mobile rendering receipts remain valid; this closeout introduced no application changes.
+- Real archive queries confirm 13/14 original missing hours recovered: MBP 23/24 and Studio 24/24. The original large 07:00/08:00 MBP cases are archived with their snapshot/semantic counts preserved. Automatic Cron was captured completing three reports and preserving three deferred hours with zero failures.
+- The next broken hop is MBP September 21 13:00 final composition. All 23/23 chunks remain durable. The normal diagnostic reproduced a 90-second timeout; two diagnostic-only longer-budget attempts instead reached validation and rejected a `workspaces` field above 16,000 characters. No invalid report was written, no production budget/validator was changed, and the job remains retryable with persisted backoff. The incident document records this remaining limitation explicitly.
+- Temporary diagnostic previews and log watchers are stopped. The release is published and verified; complete historical backfill is not claimed. No production machine daemon was replaced as part of this cloud release.
+
+## 2026-09-22 06:14 +08 — concise report limits
+
+- Manager generation now has field budgets, at most three outcomes and a 600-character narrative ceiling. Versioned input fingerprints refresh old cached interpretations without resetting writer identity.
+- Cloud v5 reports target 800–1,500 characters with explicit section ceilings and one citation-validated compression attempt. Discarded hours retain raw evidence, invalidate active generation and do not requeue after late input or eviction. Existing archives survive template-only changes.
+- TDD reproduced acceptance of oversized Manager output, unbounded hourly fields and the original oversized-workspace failure before fixes. All 93 unit/API tests and 64 desktop/mobile browser tests passed.
+- Real local verification at 06:11:56 +08 passed authenticated collection, duplicate ingestion, DO state, D1 behavior and desktop/mobile rendering for 16 Spaces / 31 Panes, using the existing mkcert root CA.
+- Production audit still has one unfinished MBP hour (September 21 13:00 +08); Studio has no unfinished hours. Source data and archived reports remain intact. Production deployment, explicit cancellation and Manager restart are next.
+- Release preparation uses v0.6.0: the reviewed diff from pre-change main 1b55958 is 468 additions / 45 deletions and includes an authenticated cancellation endpoint. npm identity is valid; publication has not yet occurred.
+
+## 2026-09-22 06:19 +08 — v0.6.0 deployed and backlog cancelled
+
+- Release/tag/source: `v0.6.0` / `493b671311825912ec14ad29a2a14af53731675f`. Exact-revision CI `35661496199` passed. Worker version `150b3a56-506f-4ad5-8592-720cff73593c`; both public health endpoints returned the matching version, revision and v5 template.
+- npm publication and browser authentication completed. Anonymous official metadata, `latest`, Tencent download, SHA-1/SHA-512 and an independent clean installation matched the tested artifact. The GitHub release download also matched. The local global CLI now reports 0.6.0.
+- Real public verification at 06:16:15 +08 passed authenticated collection, duplicate ingestion, DO/D1 behavior and desktop/mobile rendering. Both production history layouts display the cancelled hour. All 100 previously sampled archived reports retain their original generation timestamps.
+- MBP September 21 13:00 +08 was explicitly cancelled: checkpoints were removed, status is `discarded`, and a forced generation request returned `skipped: discarded`. Its 114 snapshots, 125 semantic records and 1,179 input records remained readable. Cancellation does not recover the missing report or change its coverage.
+- The local Manager restarted at 06:13:59 +08 without changing writer `cherry`. At 06:17:53, 24 new summaries were confirmed in cloud state, with 56–314 narrative characters and at most three outcomes. All three local LaunchAgents remain running.
+- A non-archiving model check used eight actual current semantic records and the deployed v5 prompt/completion implementation. It completed in 15.486 seconds; all seven sections passed their budgets (165/989/347/116/227/169/164 characters including identities and citations), with eight validated references. This sample is not an archived complete-hour report; no complete-hour v5 report existed at the verification time because prior completed hours were preserved.
+- Mac Studio's local Manager has not been upgraded: the existing SSH path rejected authentication. Fleet-wide cloud output limits are deployed, and the new Agent package is available for its local upgrade.
+- Evidence: `.local/release-v0.6.0/`. Temporary remote inspection is stopped after verification; no authentication remains pending.
+
+## 2026-09-21 — Cross-deployment onboarding regression
+
+- Three prompt-contract regressions first failed: checking only the machine ID,
+  leaving cross-origin cache/queue isolation unspecified, and falling back to a
+  different config in background services. Connect now distinguishes rotation
+  from migration and requires explicit config/spool isolation and a verified
+  cutover. Published Agent behavior and wire formats are unchanged.
+- This contribution uses synthetic credentials only. No real registration,
+  rotation, upload, service restart or deployment was performed. Full local
+  gates passed: 83 unit/API tests, TypeScript, lint/build and 62 desktop/mobile
+  browser tests. This is not a claim of live deployment verification.
+
+## 2026-09-22 — Onboarding review and upstream conflict resolution
+
+- Integrated upstream main `789bdff` without replacing its network/proxy
+  guidance. Independent review found the same-origin rotation prompt had lost
+  the requirement to restart existing services; restored it for only enabled
+  services using the selected config and added a failing-then-passing regression.
+- All four onboarding regressions, TypeScript, lint/build and 64 desktop/mobile
+  browser tests pass. Full unit/API run: 96 of 97 pass; the environment-proxy
+  test times out after five seconds. The same test also fails in an isolated,
+  unmodified `789bdff` checkout on Node 24.13.0. No exclusion or timeout change
+  was applied; the full release gate is not claimed green.
+- No real credential rotation, service restart, upload or production deployment
+  occurred. Kept this contribution separate from the realtime UI PR.

@@ -47,12 +47,39 @@ export const REPORT_SECTIONS = {
   nextSteps: "下一步行动",
   evidence: "判断依据与数据覆盖",
 } as const;
-export const TEMPLATE_VERSION = "eagle-hourly-zh-v3";
+export const TEMPLATE_VERSION = "eagle-hourly-zh-v5";
+export const FINAL_SECTION_LIMITS = {
+  executiveSummary: 200,
+  workspaces: 1800,
+  deliveries: 800,
+  resources: 300,
+  risks: 500,
+  nextSteps: 300,
+  evidence: 300,
+} as const;
+export const PARTIAL_SECTION_LIMITS = {
+  executiveSummary: 200,
+  workspaces: 12000,
+  deliveries: 1200,
+  resources: 1200,
+  risks: 1200,
+  nextSteps: 200,
+  evidence: 1200,
+} as const;
+export function reportLengthRules(partial = false) {
+  return `各字段字符上限（含空格、标点、身份和引用）：${JSON.stringify(partial ? PARTIAL_SECTION_LIMITS : FINAL_SECTION_LIMITS)}。不得截断句子、身份或引用；通过合并重复内容、缩短叙述满足预算。`;
+}
+export function oversizedSections(content: HourlyContent, partial = false) {
+  const limits = partial ? PARTIAL_SECTION_LIMITS : FINAL_SECTION_LIMITS;
+  return (Object.keys(limits) as (keyof typeof limits)[]).filter(
+    (key) => content[key].length > limits[key],
+  );
+}
 const section = z
   .string()
   .trim()
   .min(1)
-  .max(16000)
+  .max(65536)
   .refine((v) => /\p{Script=Han}/u.test(v), "Chinese report required");
 const ReportOutput = z.strictObject({
   executiveSummary: section,
@@ -81,12 +108,75 @@ export type HourlyReport = {
   lastObservedAt: string | null;
   content: HourlyContent;
 };
+export type HourlyJob = {
+  hour: string;
+  status:
+    | "pending"
+    | "running"
+    | "retrying"
+    | "blocked"
+    | "complete"
+    | "discarded";
+  attempts: number;
+  completedParts: number;
+  totalParts: number;
+  stage: string;
+  error: string | null;
+  lastAttemptAt: number;
+  retryAt: number;
+  lastSuccessAt: string | null;
+};
+export type HourlyJobView = HourlyJob &
+  Pick<HourlyReport, "machineId" | "machineName">;
 export type HourlyRecord = {
   id: string;
   kind: string;
   observations: string[];
   value: string;
 };
+
+export function projectHour(records: HourlyRecord[]) {
+  const groups = new Map<string, HourlyRecord[]>();
+  const terminalIds = new Set<string>();
+  for (const record of records) {
+    if (record.kind !== "evidence") continue;
+    const value = JSON.parse(record.value);
+    if (!value.source?.startsWith("herdr:visible")) continue;
+    const key = JSON.stringify([
+      value.spaceId,
+      value.tabId,
+      value.paneId,
+      value.taskId,
+      value.source,
+      value.status,
+    ]);
+    const group = groups.get(key) ?? [];
+    group.push(record);
+    groups.set(key, group);
+    terminalIds.add(record.id);
+  }
+  const retained = new Set<string>();
+  for (const group of groups.values()) {
+    const first = group.toSorted((a, b) =>
+      (a.observations[0] ?? "").localeCompare(b.observations[0] ?? ""),
+    )[0];
+    const last = group.toSorted((a, b) =>
+      (b.observations.at(-1) ?? "").localeCompare(a.observations.at(-1) ?? ""),
+    )[0];
+    retained.add(first.id);
+    retained.add(last.id);
+  }
+  return {
+    records: records.filter(
+      (record) => !terminalIds.has(record.id) || retained.has(record.id),
+    ),
+    terminalSampling: {
+      method: "first_and_latest_per_task",
+      sourceRecords: terminalIds.size,
+      retainedRecords: retained.size,
+    },
+  };
+}
 
 /** Coalesce identical observations, preserving every timestamp and all closed tasks. */
 export function compactHour(
@@ -219,17 +309,20 @@ export const reportPrompt = (
     machine,
     hour,
     data,
-    sectionRules: partial
-      ? "这是供机器合并的中间证据整理，不撰写面向用户的详细报告。executiveSummary 固定填『本块证据已整理。』。workspaces 按 Space/Pane/taskId 合并相同任务，每个任务一行，只保留身份、关键变化、最新结论及引用；禁止复制原始长总结。deliveries 仅保留本块新增的提交/测试/部署及 revision 绑定、来源和时间；无对应事实则一句话说明。resources 仅保留采样范围、峰值/最新值、端口状态变化及引用，不逐条抄数列。risks 区分已确认阻塞和来源陈述：保留嵌套证据原始时间，过期 CI/错误只记历史线索，缺少更新不能证明仍未解除。nextSteps 固定填『由最终报告综合确定。』。evidence 只简述本块时间范围和来源，不重抄正文。没有相关内容的字段写『本块无此类证据。』。不添加通用建议、背景介绍或缺失清单。全文目标不超过 1800 字，精简叙述但保留全部任务身份、关键差异与原始引用。"
-      : "executiveSummary：最多三句，一段约 120～220 字，含引用绝不超过 400 字；先结果与关键变化，再最重要的风险和下一步。不要逐个列项目或 Pane，不堆砌机器编号、时间戳、观测缺失清单。workspaces：按 Space 分组，每个 Pane/taskId 约 40～120 字，写任务、阶段、实质进展、变化；相同任务合并重复语义记录，保留冲突和转折，覆盖全部输入身份。deliveries：仅列具体成果，分已验证、Manager 报告待验证和历史背景；有 revision 时说明测试/部署是否对应。resources：写 CPU/内存/磁盘和关注端口的采样变化，缺数据只需一句话。risks：真实阻塞与待核实事项分开，缺观测不要膨胀为假设风险。nextSteps：最多 5 条，按影响排序，明确对象、动作；区分输入已有计划和报告建议，不虚构负责人或紧迫性。evidence：简述来源层级、覆盖起止和采样空档，不重抄其他章节。全文按信息量缩放，通常 2000～4500 字，小样本应更短；同一事实只在最相关章节详述，缺失项集中说明，不反复列 Git/测试/部署清单。",
+    sectionRules:
+      reportLengthRules(partial) +
+      (partial
+        ? "这是供机器合并的中间证据整理，不撰写面向用户的详细报告。executiveSummary 固定填『本块证据已整理。』。workspaces 按 Space/Pane/taskId 合并相同任务，每个任务一行，只保留身份、关键变化、最新结论及引用；禁止复制原始长总结。deliveries 仅保留本块新增的提交/测试/部署及 revision 绑定、来源和时间；无对应事实则一句话说明。resources 仅保留采样范围、峰值/最新值、端口状态变化及引用，不逐条抄数列。risks 区分已确认阻塞和来源陈述：保留嵌套证据原始时间，过期 CI/错误只记历史线索，缺少更新不能证明仍未解除。nextSteps 固定填『由最终报告综合确定。』。evidence 只简述本块时间范围和来源，不重抄正文。没有相关内容的字段写『本块无此类证据。』。不添加通用建议、背景介绍或缺失清单。全文目标不超过 1800 字，精简叙述但保留全部任务身份、关键差异与原始引用。"
+        : "executiveSummary：最多两句，约 80～120 字，只写本小时结果与关键变化。workspaces：按 Space 分组，有实质变化的任务每项一句约 20～50 字，保留对应 Pane/taskId，优先结果、转折和真实阻塞；无实质变化的任务按 Space 简要归组。任务很多时合并同类项，只展开最重要的变化，明确其余任务详见原始语义记录，不声称正文逐项覆盖了全部任务，不拼接完整历史。deliveries：仅列本小时重要成果及关键 revision，区分独立验证、Manager 声称和历史背景。resources：最多两句，只写采样变化或异常，不逐项抄数值。risks：只写真正阻塞及重要待核实事项，保留来源和事实时间限定。nextSteps：最多三条，区分已有计划与建议，不虚构负责人或紧迫性。evidence：简述覆盖时间、来源和空档，不重复其他章节。全文目标 800～1500 字，小样本更短，不为凑字数补充背景。每个结论只放一个最相关章节，引用保留最直接的原始记录即可，不堆砌重复引用。"),
     scope: partial
       ? "分块整理，只处理当前块，其他块不可见。此阶段不写高管摘要，executiveSummary 固定填字符串『本块证据已整理。』，其余字段仍按上述规则保留任务变化和原始引用，供最终报告整合"
-      : "最终小时报告，已提供该小时全部已收到的记录或分块整理结果；采样稀疏不代表这是分块，按 coverage 说明覆盖",
+      : "最终小时报告，已提供该小时的模型输入或分块整理结果；coverage.terminalSampling 表示每个任务的终端画面仅保留首尾抽样，不能据此断言中间没有变化。其他事实和语义记录完整保留，原始画面仍在原始采集记录中。采样稀疏不代表这是分块，按 coverage 说明覆盖",
   });
 export function parseHourlyReport(
   text: string,
   ids: Set<string>,
-  allowLongSummary = false,
+  allowOversized = false,
+  partial = false,
 ): HourlyContent {
   const result = ReportOutput.parse(
     JSON.parse(
@@ -258,9 +351,9 @@ export function parseHourlyReport(
       if (!result.evidenceIds.includes(id)) result.evidenceIds.push(id);
     }
   }
-  if (!allowLongSummary && result.executiveSummary.length > 600)
-    throw Object.assign(new Error("Report summary exceeds 600 characters"), {
-      name: "HourlySummaryLengthError",
+  if (!allowOversized && oversizedSections(result, partial).length)
+    throw Object.assign(new Error("Report exceeds section character budgets"), {
+      name: "HourlyLengthError",
     });
   return result;
 }
