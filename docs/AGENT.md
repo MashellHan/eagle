@@ -16,7 +16,7 @@ deployments is not an equal credential scope.
 - **Different identity:** stop and ask; do not overwrite an unrelated machine.
 - **Different origin:** confirm the destination, preserve the old configuration
   and create a new private configuration directory. Set the new URL/token and
-  an explicit `spoolDir` inside that directory. In Agent 0.5.0, an alternate
+  an explicit `spoolDir` inside that directory. An alternate
   `EAGLE_CONFIG` alone does not relocate the collector cache; explicit `spoolDir`
   also isolates `latest-report.json`. Never point the new deployment at the old
   spool, evidence file or Manager pending/sequence directory. History transfer
