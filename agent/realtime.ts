@@ -13,6 +13,7 @@ import {
 } from "../src/shared/realtime.ts";
 import {
   parseTerminalScreen,
+  restyleRedactedText,
   type TerminalRun,
 } from "../src/shared/terminal.ts";
 import {
@@ -76,23 +77,39 @@ export function terminalScreen(
   const parsed = parseTerminalScreen(value);
   const redacted = redactScreen(parsed.text, secrets);
   const text = redacted.slice(-32000);
-  // Never retain an unredacted copy in styling. Redaction changes offsets, so
-  // fall back to plain text for the entire screen instead of guessing a mapping.
-  if (redacted !== parsed.text || parsed.runs.length > 512) return { text };
-  let skip = Math.max(0, parsed.text.length - 32000);
-  const runs = parsed.runs.flatMap((run) => {
+  // Rebuild runs from already redacted characters, copying only style metadata.
+  // The schema also enforces that joined runs equal the safe plain text.
+  const styled = restyleRedactedText(parsed.runs, redacted);
+  let skip = Math.max(0, redacted.length - 32000);
+  const runs = styled.flatMap((run) => {
     const cut = Math.min(skip, run.text.length);
     skip -= cut;
     return cut === run.text.length
       ? []
       : [{ ...run, text: run.text.slice(cut) }];
   });
-  if (
-    !runs.some((run) => Object.keys(run).length > 1) ||
-    new TextEncoder().encode(JSON.stringify(runs)).length > 64000
-  )
-    return { text };
-  return { text, runs };
+  // Keep the newest visible styles first; simplify older styling rather than
+  // dropping all colors because one screen exceeds the run/byte budget.
+  let keep = Math.min(runs.length, 512);
+  while (keep > 0) {
+    const bounded =
+      keep === runs.length
+        ? runs
+        : [
+            {
+              text: runs
+                .slice(0, runs.length - keep + 1)
+                .map((run) => run.text)
+                .join(""),
+            },
+            ...runs.slice(runs.length - keep + 1),
+          ];
+    if (!bounded.some((run) => Object.keys(run).length > 1)) break;
+    if (new TextEncoder().encode(JSON.stringify(bounded)).length <= 64000)
+      return { text, runs: bounded };
+    keep = Math.floor(keep / 2);
+  }
+  return { text };
 }
 
 export function socketRequest(

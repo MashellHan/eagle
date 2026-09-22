@@ -1509,7 +1509,69 @@
   padding: 16px 20px max(12px, env(safe-area-inset-bottom));
   background: hsl(var(--basalt-background));
   color: hsl(var(--basalt-foreground));
-  color-scheme: dark;
+}
+.live-space[data-terminal-theme="classic"] {
+  --terminal-bg: #000000;
+  --terminal-fg: #ededed;
+}
+.live-space[data-terminal-theme="dark"] {
+  --terminal-bg: #1e1e2e;
+  --terminal-fg: #cdd6f4;
+  --terminal-color-0: #45475a;
+  --terminal-color-1: #f38ba8;
+  --terminal-color-2: #a6e3a1;
+  --terminal-color-3: #f9e2af;
+  --terminal-color-4: #89b4fa;
+  --terminal-color-5: #cba6f7;
+  --terminal-color-6: #94e2d5;
+  --terminal-color-7: #bac2de;
+  --terminal-color-8: #585b70;
+  --terminal-color-9: #f38ba8;
+  --terminal-color-10: #a6e3a1;
+  --terminal-color-11: #f9e2af;
+  --terminal-color-12: #89b4fa;
+  --terminal-color-13: #cba6f7;
+  --terminal-color-14: #94e2d5;
+  --terminal-color-15: #a6adc8;
+}
+.live-space[data-terminal-theme="light"] {
+  --terminal-bg: #fafafa;
+  --terminal-fg: #282c34;
+  --terminal-color-0: #383a42;
+  --terminal-color-1: #a626a4;
+  --terminal-color-2: #407334;
+  --terminal-color-3: #986801;
+  --terminal-color-4: #4078f2;
+  --terminal-color-5: #a626a4;
+  --terminal-color-6: #0184bc;
+  --terminal-color-7: #383a42;
+  --terminal-color-8: #696c77;
+  --terminal-color-9: #c3293d;
+  --terminal-color-10: #407334;
+  --terminal-color-11: #986801;
+  --terminal-color-12: #315ec1;
+  --terminal-color-13: #912293;
+  --terminal-color-14: #006b94;
+  --terminal-color-15: #202227;
+}
+.live-actions > .live-theme-select[aria-label] {
+  width: 142px;
+  gap: 6px;
+  font-size: 11px;
+}
+.live-theme-warning {
+  font-size: 10px;
+  color: hsl(var(--basalt-muted-foreground));
+}
+@media (max-width: 767px) {
+  .live-actions > .live-theme-select[aria-label] {
+    width: 32px;
+    padding: 7px;
+  }
+  .live-theme-select > span,
+  .live-theme-select > svg:last-child {
+    display: none;
+  }
 }
 .live-toolbar,
 .live-connection,
@@ -1616,8 +1678,8 @@
   scrollbar-color: hsl(var(--basalt-border)) transparent;
   margin: 0;
   padding: 16px;
-  background: black;
-  color: hsl(var(--basalt-foreground));
+  background: var(--terminal-bg, #000000);
+  color: var(--terminal-fg, #ededed);
   font:
     12px / 1.65 ui-monospace,
     SFMono-Regular,

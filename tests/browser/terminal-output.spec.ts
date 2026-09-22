@@ -138,7 +138,7 @@ test("safe colors render as text, and output activity is not a running-task clai
   const pass = page
     .locator(".live-pane pre span")
     .filter({ hasText: /^PASS$/ });
-  await expect(pass).toHaveCSS("color", "rgb(13, 188, 121)");
+  await expect(pass).toHaveCSS("color", "rgb(166, 227, 161)");
   await expect(pass).toHaveCSS("font-weight", "700");
   await expect(page.locator(".live-pane pre img")).toHaveCount(0);
   await expect(
@@ -160,6 +160,59 @@ test("safe colors render as text, and output activity is not a running-task clai
   await expect(
     page.getByRole("status", { name: "终端输出状态" }),
   ).toContainText("连接未就绪");
+});
+
+test("terminal theme controls default colors and persists without reconnecting", async ({
+  page,
+}) => {
+  await page.addInitScript(() => localStorage.setItem("theme", "light"));
+  const stream = await openTerminal(page);
+  stream.frame("default PASS", [
+    { text: "default " },
+    { text: "PASS", fg: 2, bold: true },
+  ]);
+  const screen = page.locator(".live-pane pre");
+  await expect(screen).toHaveCSS("background-color", "rgb(250, 250, 250)");
+  await expect(screen).toHaveCSS("color", "rgb(40, 44, 52)");
+  await page.getByRole("combobox", { name: "终端配色" }).click();
+  await page.getByRole("option", { name: "深色终端", exact: true }).click();
+  await expect(screen).toHaveCSS("background-color", "rgb(30, 30, 46)");
+  await expect(screen).toHaveCSS("color", "rgb(205, 214, 244)");
+  await expect(screen).toContainText("default PASS");
+  expect(
+    await page.evaluate(() => localStorage.getItem("eagle-terminal-theme")),
+  ).toBe("dark");
+  await page.getByRole("combobox", { name: "终端配色" }).click();
+  await page.getByRole("option", { name: "经典黑底", exact: true }).click();
+  await expect(screen).toHaveCSS("background-color", "rgb(0, 0, 0)");
+  await page.getByRole("button", { name: "当前任务", exact: true }).click();
+  await page.getByRole("button", { name: "实时模式", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "终端配色" })).toContainText(
+    "经典黑底",
+  );
+  await expect(page.getByRole("button", { name: "发送并回车" })).toBeDisabled();
+});
+
+test("terminal theme works when browser storage is blocked", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = () => {
+      throw new Error("Blocked");
+    };
+    Storage.prototype.getItem = () => {
+      throw new Error("Blocked");
+    };
+  });
+  const stream = await openTerminal(page);
+  stream.frame("output");
+  await page.getByRole("combobox", { name: "终端配色" }).click();
+  await page.getByRole("option", { name: "浅色终端", exact: true }).click();
+  await expect(page.locator(".live-pane pre")).toHaveCSS(
+    "background-color",
+    "rgb(250, 250, 250)",
+  );
+  await expect(page.getByText("配色仅在本次打开时有效")).toBeVisible();
 });
 
 for (const theme of ["dark", "light"]) {

@@ -19,6 +19,7 @@ import {
   CornerDownLeft,
   Eye,
   Keyboard,
+  Palette,
   Radio,
   RefreshCw,
   ShieldAlert,
@@ -32,6 +33,7 @@ import {
   type LiveTopology,
 } from "../shared/realtime.ts";
 import { OutputActivity, TerminalOutput } from "./TerminalOutput.tsx";
+import { TERMINAL_THEMES, useTerminalTheme } from "./TerminalTheme.ts";
 import { useTimezone } from "./Timezone.tsx";
 
 export function Realtime({
@@ -42,6 +44,7 @@ export function Realtime({
   spaceId: string;
 }) {
   const { time, zone } = useTimezone();
+  const appearance = useTerminalTheme();
   const socket = useRef<WebSocket | null>(null);
   const sequence = useRef(0);
   const pending = useRef<{ seq: number; at: number } | null>(null);
@@ -276,8 +279,8 @@ export function Realtime({
   return (
     <section
       aria-label="Space 实时终端"
-      className="live-space dark"
-      data-mode="dark"
+      className="live-space"
+      data-terminal-theme={appearance.resolved}
     >
       <div className="live-toolbar">
         <div className="live-connection">
@@ -287,6 +290,19 @@ export function Realtime({
           </Badge>
         </div>
         <div className="live-actions">
+          <Select value={appearance.theme} onValueChange={appearance.select}>
+            <SelectTrigger aria-label="终端配色" className="live-theme-select">
+              <Palette size={14} aria-hidden="true" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(TERMINAL_THEMES).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             size="sm"
             variant={control ? "default" : "secondary"}
@@ -322,6 +338,11 @@ export function Realtime({
           </Tooltip>
         </div>
       </div>
+      {!appearance.persisted && (
+        <p className="live-theme-warning" role="status">
+          配色仅在本次打开时有效
+        </p>
+      )}
       <div className="live-navigation">
         <Select
           value={tab?.id ?? ""}

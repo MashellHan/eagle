@@ -13,13 +13,25 @@ The hint above the input briefly pulses on changed screen content, then displays
 the task is still running or has completed; reduced-motion preferences disable
 the pulse. Inputs and completion evidence are unchanged.
 
+The **终端配色** selector controls the screen's default foreground/background
+and indexed ANSI palette: follow the webpage, dark terminal, classic black or
+light terminal. The default follows the webpage. Explicit RGB colors from the
+terminal remain unchanged. This is a viewer palette, not automatic replication
+of the native terminal's theme configuration. Only the preference is stored in
+browser storage; if storage is blocked, switching still works for that view.
+
 Colors are parsed on the machine into bounded, typed text runs. Redaction is
-applied to the combined plain text before any runs leave the machine. If
-redaction changes text, the entire frame falls back to plain text; no unredacted
-styling copy survives. OSC links/clipboard operations and executable controls are
+applied to the combined plain text before any runs leave the machine. Surviving
+text reuses matching source style metadata; every emitted character still comes
+from the redacted result, and replacement markers use neutral styling. The
+joined runs must exactly equal the safe plain text. One masked field therefore
+does not strip the entire screen's colors. Adjacent equal styles are coalesced
+before the frame budget is applied. OSC links/clipboard operations and controls are
 discarded; concealed text is masked. The browser renders escaped React text,
 never terminal HTML, URLs or escape commands. Screens with excessive styling
-also fall back to text (512 runs / 64 KiB styling budget, 32,000 text characters).
+first simplify older styles while retaining recent output colors. If even that
+cannot fit, they fall back to text (512 runs / 64 KiB styling budget, 32,000 text
+characters). These limits are unchanged.
 
 Deploy the Worker and its matching frontend together. New bridges advertise
 `X-Eagle-Realtime-Format: styled-text-v1`, and send runs only after the relay

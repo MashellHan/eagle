@@ -65,9 +65,9 @@ export function TerminalOutput({
                 <span
                   key={key}
                   style={{
-                    color: run.inverse ? (bg ?? "#000000") : fg,
+                    color: run.inverse ? (bg ?? "var(--terminal-bg)") : fg,
                     backgroundColor: run.inverse
-                      ? (fg ?? "hsl(var(--basalt-foreground))")
+                      ? (fg ?? "var(--terminal-fg)")
                       : bg,
                     fontWeight: run.bold ? 700 : undefined,
                     opacity: run.dim ? 0.7 : undefined,

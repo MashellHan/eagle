@@ -18,6 +18,62 @@ export const TerminalRunSchema = z.strictObject({
 export type TerminalRun = z.infer<typeof TerminalRunSchema>;
 export type TerminalColor = z.infer<typeof TerminalColorSchema>;
 
+/** Reuse styles only. Every emitted character comes from the redacted string. */
+export function restyleRedactedText(
+  original: TerminalRun[],
+  redacted: string,
+): TerminalRun[] {
+  let boundary = 0;
+  const source = original.map((run) => {
+    const start = boundary;
+    boundary += run.text.length;
+    const { text: _text, ...style } = run;
+    return { start, end: boundary, style };
+  });
+  const plain = original.map((run) => run.text).join("");
+  const output: TerminalRun[] = [];
+  let cursor = 0,
+    runIndex = 0;
+  const append = (text: string, style: Omit<TerminalRun, "text"> = {}) => {
+    if (!text) return;
+    const previous = output.at(-1);
+    const { text: _text, ...previousStyle } = previous ?? { text: "" };
+    if (previous && JSON.stringify(previousStyle) === JSON.stringify(style))
+      previous.text += text;
+    else output.push({ ...style, text });
+  };
+  if (plain === redacted) {
+    for (let i = 0; i < original.length; i++)
+      append(original[i].text, source[i].style);
+    return output;
+  }
+  // Replacement markers have neutral styling. Exact surviving segments may
+  // borrow source styling, but never source text (even for ambiguous matches).
+  for (const part of redacted.split(/(\[REDACTED(?: KEY)?\]|\*+)/g)) {
+    if (!part) continue;
+    if (/^(?:\[REDACTED(?: KEY)?\]|\*+)$/.test(part)) {
+      append(part);
+      continue;
+    }
+    const start = plain.indexOf(part, cursor);
+    if (start < 0) {
+      append(part);
+      continue;
+    }
+    let at = start;
+    const end = start + part.length;
+    while (at < end) {
+      while (runIndex < source.length && source[runIndex].end <= at) runIndex++;
+      const run = source[runIndex];
+      const next = Math.min(end, run?.end ?? end);
+      append(part.slice(at - start, next - start), run?.style);
+      at = next;
+    }
+    cursor = end;
+  }
+  return output;
+}
+
 /** Parse styling only: OSC, cursor commands and all executable controls are discarded. */
 export function parseTerminalScreen(value: string) {
   let style: Omit<TerminalRun, "text"> = {};
@@ -116,7 +172,7 @@ export function terminalColor(
     "#29b8db",
     "#ffffff",
   ];
-  if (color < 16) return basic[color];
+  if (color < 16) return `var(--terminal-color-${color}, ${basic[color]})`;
   if (color >= 232)
     return `rgb(${Array(3)
       .fill(8 + (color - 232) * 10)
