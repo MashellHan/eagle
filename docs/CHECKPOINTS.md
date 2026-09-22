@@ -1,5 +1,18 @@
 # 用户视角检查点
 
+## 2026-09-22 — Compact terminal footer spacing
+
+- Moved visual separation above the recognized idle Codex model/directory
+  footer: one blank line after output, no trailing blank lines or extra bottom
+  padding. Ordinary screens and typed input retain their existing spacing.
+- Regression tests first reproduced the missing separator; all 96 unit/API
+  tests, TypeScript, lint/build and 80 desktop/mobile browser checks now pass.
+  Retained style runs and original terminal frames remain unchanged.
+- Read-only verification against the real local Herdr preview confirmed the
+  separator, zero bottom padding, styled output, bottom-follow and no page
+  overflow or errors on desktop/mobile. No control lease or terminal input was
+  sent. Existing collector/bridge and production deployment are untouched.
+
 ## 2026-09-22 — Consolidating realtime UI work into PR2
 
 - User superseded the earlier separate-PR request: all UI work belongs in PR2;

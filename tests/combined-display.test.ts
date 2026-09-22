@@ -23,7 +23,7 @@ test("compact display hides idle chrome without losing body or footer colors", (
     runs,
   };
   const display = compactRenderedFrame(frame);
-  assert.equal(display.text, "PASS\ngpt-6-astra max · ~/workspace/demo");
+  assert.equal(display.text, "PASS\n\ngpt-6-astra max · ~/workspace/demo");
   assert.equal(display.runs?.map((r) => r.text).join(""), display.text);
   assert(display.runs?.some((r) => r.text === "PASS" && r.fg === 2));
   assert(display.runs?.some((r) => r.text === "gpt-6-astra max" && r.fg === 6));

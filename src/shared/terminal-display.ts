@@ -20,6 +20,7 @@ export function compactTerminalText(text: string): string {
   while (bodyEnd >= 0 && !lines[bodyEnd].trim()) bodyEnd--;
   return [
     ...lines.slice(0, bodyEnd + 1),
+    ...(bodyEnd >= 0 ? [""] : []),
     `${model[1]} · ${model[2].trim()}`,
   ].join("\n");
 }

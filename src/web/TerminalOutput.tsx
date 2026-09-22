@@ -47,6 +47,7 @@ export function TerminalOutput({
     <div className="live-output">
       <pre
         ref={screen}
+        data-compact-footer={!!frame && display?.text !== frame.text}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: Output is a keyboard-scrollable region, not an input control.
         tabIndex={0}
         onScroll={() => {

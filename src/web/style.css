@@ -1689,6 +1689,9 @@
   tab-size: 4;
   overflow-anchor: none;
 }
+.live-pane pre[data-compact-footer="true"] {
+  padding-bottom: 0;
+}
 .live-output {
   position: relative;
   display: flex;

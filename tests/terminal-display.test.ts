@@ -7,7 +7,7 @@ test("compact only the trailing idle Codex prompt and keep model plus directory"
     "First output\n\nSecond output\n\n› Ask Codex to do anything      \n     \n  gpt-6-astra max · ~/workspace/demo · Main [default] \n\n";
   assert.equal(
     compactTerminalText(text),
-    "First output\n\nSecond output\ngpt-6-astra max · ~/workspace/demo",
+    "First output\n\nSecond output\n\ngpt-6-astra max · ~/workspace/demo",
   );
 });
 
@@ -26,6 +26,15 @@ test("compact Windows and spaced paths without changing interior output formatti
     "    indented code\r\n\r\n› Ask Codex to do anything\r\n\r\n  gpt-6-astra high · C:\\Work Folder\\repo · Main [default]\r\n";
   assert.equal(
     compactTerminalText(text),
-    "    indented code\ngpt-6-astra high · C:\\Work Folder\\repo",
+    "    indented code\n\ngpt-6-astra high · C:\\Work Folder\\repo",
+  );
+});
+
+test("an idle footer without body output gains neither leading nor trailing blank lines", () => {
+  assert.equal(
+    compactTerminalText(
+      "\n› Ask Codex to do anything\n\n  gpt-6-astra max · ~/demo · Main [default]\n",
+    ),
+    "gpt-6-astra max · ~/demo",
   );
 });

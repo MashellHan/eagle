@@ -118,13 +118,20 @@ test("idle Codex footer is compacted only in the displayed terminal", async ({
     "Actual output\n\n› Ask Codex to do anything\n\n  gpt-6-astra max · ~/workspace/demo · Main [default]\n\n",
   );
   await expect(screen).toHaveText(
-    "Actual output\ngpt-6-astra max · ~/workspace/demo",
+    "Actual output\n\ngpt-6-astra max · ~/workspace/demo",
   );
   await expect(screen).not.toContainText("Ask Codex");
+  await expect(screen).toHaveCSS("padding-bottom", "0px");
+  expect(await screen.textContent()).not.toMatch(/\n$/);
   stream.frame(
     "Actual output\n› fix this bug\n  gpt-6-astra max · ~/workspace/demo · Main [default]",
   );
   await expect(screen).toContainText("› fix this bug");
+  expect(
+    await screen.evaluate((el) =>
+      Number.parseFloat(getComputedStyle(el).paddingBottom),
+    ),
+  ).toBeGreaterThan(0);
   expect(stream.controls()).toBe(0);
   expect(stream.inputs()).toBe(0);
 });
