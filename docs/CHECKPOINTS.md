@@ -1,5 +1,28 @@
 # 用户视角检查点
 
+## 2026-09-22 — Compact composer and default realtime contribution
+
+- Based independently on upstream main, without importing another contribution's
+  Agent, transport, theme or deployment changes. New browser regressions first
+  failed on the old tab order/default and missing inline status indicator.
+- Workspace now opens its first realtime tab as a read-only viewer, never sending
+  a control/input request automatically. One24pxcomposer row holds an accessible
+  status icon, ellipsized target name, pane ID and viewing/control mode. Tooltip,
+  offline/waiting/recent states and reduced motion are covered on desktop/mobile.
+- Final browser run passed70desktop/mobile tests; online fixture screenshots
+  were visually inspected on both layouts. TypeScript, lint and build pass.
+  Full npm run check is NOT green: the unchanged agent-network proxy test times
+  out after5seconds under Node24.13.0. The same failure was reproduced in a clean
+  upstream789bdff checkout. A separately reported run excluding only that named
+  test passed; it does not replace the failed full gate.
+- No actual terminal input, real-machine data, credentials or production service
+  was used or changed. This UI contribution will be offered as a draft pending
+  the full gate and authorized real-origin verification, not as a released build.
+- Added the requested display-only cleanup for a precisely recognized trailing
+  Codex idle placeholder/footer: remove padding and placeholder while retaining
+  model/effort and directory. Three pure tests first reproduced missing cleanup;
+  typed input, ordinary output formatting and unrecognized footers are preserved.
+
 ## 2026-09-20 07:14 +08 — Space realtime local round trip
 
 - Actual Herdr 0.9.1 socket collection and machine-Bearer upload reach the local machine DO. The real local site renders live Space layout and terminal text; a browser-controlled temporary shell printed the verification marker and returned it in 822 ms.

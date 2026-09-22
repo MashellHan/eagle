@@ -31,6 +31,8 @@ import {
   LiveServerMessageSchema,
   type LiveTopology,
 } from "../shared/realtime.ts";
+import { compactTerminalText } from "../shared/terminal-display.ts";
+import { RealtimeActivity } from "./RealtimeActivity.tsx";
 import { useTimezone } from "./Timezone.tsx";
 
 export function Realtime({
@@ -386,7 +388,9 @@ export function Realtime({
                   // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to scroll terminal output.
                   tabIndex={0}
                 >
-                  {frames[p.id]?.text ?? "等待画面…"}
+                  {frames[p.id]
+                    ? compactTerminalText(frames[p.id].text)
+                    : "等待画面…"}
                 </pre>
                 <div className="live-pane-footer mono">
                   <span>{pane?.id === p.id ? "当前目标" : "只读画面"}</span>
@@ -415,12 +419,22 @@ export function Realtime({
         }}
       >
         <div className="live-composer-meta">
+          <RealtimeActivity
+            frame={pane ? frames[pane.id] : undefined}
+            online={online}
+            connection={connection}
+          />
           <label htmlFor="live-input">
-            <span className="live-target-dot" data-control={control} />
-            {pane ? `发送到 ${pane.title}` : "等待终端"}
-            <span className="mono">{pane?.id}</span>
+            <span className="live-target-name" title={pane?.title}>
+              {pane ? `发送到 ${pane.title}` : "等待终端"}
+            </span>
+            <span className="mono" title={pane?.id}>
+              {pane?.id}
+            </span>
           </label>
-          <span>{control ? "你正在控制" : "观看模式"}</span>
+          <span className="live-control-mode">
+            {control ? "你正在控制" : "观看模式"}
+          </span>
         </div>
         <div className="live-input-row">
           <span className="live-prompt mono" aria-hidden="true">

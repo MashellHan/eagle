@@ -1,6 +1,27 @@
 # Space realtime mode
 
-Open a machine, open a Space, then select **实时模式**. Eagle mirrors the current terminal text and tab/pane layout. **接管输入** grants one browser control of that Space; other browsers can watch. Select a pane, send text with or without Enter, or use the common key buttons. The local Herdr client remains able to operate concurrently. This release mirrors text screens; terminal colors, mouse reporting, pixel graphics and arbitrary PTY resize are not implemented.
+Open a machine and open a Space. **实时模式** is the first tab and opens by default
+in read-only viewing mode; it never requests input control automatically. Switching
+to **当前任务** or **Space 历史** closes the realtime subscription. **接管输入** is
+still a separate explicit action and grants one browser control of that Space;
+other browsers can watch. Select a pane, send text with or without Enter, or use
+the common key buttons. The local Herdr client remains able to operate
+concurrently. This release mirrors text screens; terminal colors, mouse
+reporting, pixel graphics and arbitrary PTY resize are not implemented.
+
+Above the input, a single compact row contains an output-status icon, the target
+name and pane ID, and viewing/control mode. Long names ellipsize instead of
+wrapping. Hover or keyboard-focus the icon for its explanation: recent output,
+connected/waiting, or a connection problem. The icon briefly pulses only when
+screen text changes; heartbeats do not renew it. Reduced-motion users get a
+static icon. Connection/output activity never certifies task completion.
+
+For a recognized trailing Codex idle footer, the web mirror hides the exact
+empty-input placeholder `› Ask Codex to do anything` and adjacent padding,
+retaining only the model/effort and working directory. Typed input, unknown
+footer formats and blank lines inside ordinary output remain unchanged. This
+is display-only: source frames, collection, the actual CLI, and input routing
+are not modified.
 
 The Basalt workspace sheet overlays the dashboard and widens for realtime mode. Pick a tab and a target pane in the controls above the black terminal canvas. Desktop retains the selected tab's pane layout; mobile shows the selected pane. Terminal output scrolls internally while the composer remains visible, including when the visual viewport shrinks for the keyboard. Enter submits the draft; switching targets clears the draft and releases input control. Reduced-motion preferences disable the sheet motion.
 
