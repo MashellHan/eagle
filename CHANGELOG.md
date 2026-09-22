@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.0 — 2026-09-22
+
+- Preserve safe terminal colors and emphasis through redaction, negotiate bounded styled frames, and offer persistent terminal palettes.
+- Follow live output at the bottom, pause while inspecting earlier output, and compact recognized idle Codex chrome without changing source frames or input routing.
+- Open Spaces in realtime mode and request input control once by default. Keep server-granted exclusive control, explicit release, target replacement and reconnect protections.
+- Distinguish same-origin credential rotation from cross-origin onboarding migration. Isolate config, spool, cache and Manager state, and restart only already-enabled services.
+- Keep the website, standalone Agent and installation guides synchronized at v0.7.0.
+
 ## v0.6.0 — 2026-09-22
 
 - Bound Manager summaries to 600 narrative characters, three outcomes and explicit per-field budgets; retain source evidence and verification qualifiers.
