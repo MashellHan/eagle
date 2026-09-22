@@ -66,7 +66,7 @@ try {
     .getByRole("button", { name: `查看 ${space.name}`, exact: true })
     .click();
   await page.getByRole("button", { name: "实时模式", exact: true }).click();
-  await expect(page.getByRole("button", { name: "接管输入" })).toBeEnabled({
+  await expect(page.getByRole("button", { name: "释放输入" })).toBeEnabled({
     timeout: 15000,
   });
   const pane = page.locator(".live-pane").filter({
@@ -78,7 +78,10 @@ try {
     timeout: 15000,
   });
   await pane.getByRole("button").click();
-  await page.getByRole("button", { name: "接管输入" }).click();
+  await expect(pane).toHaveAttribute("data-selected", "true");
+  // Selecting another pane releases the default lease; reacquire only for our shell.
+  if (await page.getByLabel("发送到当前 Pane", { exact: true }).isDisabled())
+    await page.getByRole("button", { name: "接管输入" }).click();
   const marker = `EAGLE_REALTIME_${randomUUID().replaceAll("-", "")}`;
   // Only our newly created shell receives this harmless command. No other pane is controlled.
   await page

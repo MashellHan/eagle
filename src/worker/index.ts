@@ -223,6 +223,11 @@ async function route(request: Request, env: Env): Promise<Response> {
           headers: {
             Upgrade: "websocket",
             "x-live-role": "agent",
+            "x-live-format":
+              request.headers.get("X-Eagle-Realtime-Format") ===
+              "styled-text-v1"
+                ? "styled-text-v1"
+                : "text",
             "x-live-expires": String(
               Math.min(expires, identity.expires ?? expires),
             ),
@@ -239,13 +244,15 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(403, "Origin not allowed");
     const machine = url.searchParams.get("machine");
     const space = url.searchParams.get("space");
+    const format = url.searchParams.get("format");
     if (
       !machine ||
       !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(machine) ||
       !space ||
       space.length > 160 ||
+      (format !== null && format !== "styled-text-v1") ||
       [...url.searchParams.keys()].some(
-        (k) => !["machine", "space"].includes(k),
+        (k) => !["machine", "space", "format"].includes(k),
       )
     )
       throw new HttpError(400, "Invalid subscription");
@@ -261,6 +268,7 @@ async function route(request: Request, env: Env): Promise<Response> {
           "x-live-role": "viewer",
           "x-live-expires": String(Math.min(expires, expiry)),
           "x-live-space": space,
+          "x-live-format": format ?? "text",
         },
       }),
     );

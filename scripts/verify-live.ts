@@ -150,6 +150,7 @@ try {
     "Current uploads must not append D1 history",
   );
   await currentCard.getByRole("button", { name: /^查看 / }).click();
+  await page.getByRole("button", { name: "当前任务", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("Herdr 弱提示");
   await page.screenshot({
     animations: "disabled",

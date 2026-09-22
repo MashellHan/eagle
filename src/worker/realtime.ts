@@ -12,6 +12,7 @@ type Attachment = {
   expires: number;
   seen: number;
   credentialId: string | null;
+  styledFrames?: boolean;
   spaceId?: string;
   subscriptionId?: string;
   control?: boolean;
@@ -50,6 +51,14 @@ export class LiveRelay {
   }
   private send(s: WebSocket, value: unknown) {
     const meta = this.meta(s);
+    if (
+      meta.role === "viewer" &&
+      !meta.styledFrames &&
+      (value as { type?: string }).type === "frame"
+    ) {
+      const { runs: _runs, ...plain } = value as Record<string, unknown>;
+      value = plain;
+    }
     let payload = JSON.stringify(value);
     if (
       meta.role === "viewer" &&
@@ -112,7 +121,11 @@ export class LiveRelay {
     }
     const agent = this.agent();
     if (agent)
-      this.send(agent, { type: "subscriptions", spaces: [...spaces.values()] });
+      this.send(agent, {
+        type: "subscriptions",
+        spaces: [...spaces.values()],
+        ...(this.meta(agent).styledFrames ? { format: "styled-text-v1" } : {}),
+      });
   }
   private prune() {
     for (const s of this.sockets()) {
@@ -144,6 +157,7 @@ export class LiveRelay {
     expires: number,
     credentialId: string | null,
     spaceId?: string,
+    styledFrames = false,
   ) {
     this.prune();
     if (role === "agent" && !this.authorized(credentialId))
@@ -167,6 +181,7 @@ export class LiveRelay {
       expires,
       seen: Date.now(),
       credentialId,
+      styledFrames,
       ...(role === "viewer"
         ? {
             spaceId,

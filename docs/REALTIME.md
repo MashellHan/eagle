@@ -1,6 +1,61 @@
 # Space realtime mode
 
-Open a machine, open a Space, then select **实时模式**. Eagle mirrors the current terminal text and tab/pane layout. **接管输入** grants one browser control of that Space; other browsers can watch. Select a pane, send text with or without Enter, or use the common key buttons. The local Herdr client remains able to operate concurrently. This release mirrors text screens; terminal colors, mouse reporting, pixel graphics and arbitrary PTY resize are not implemented.
+Open a machine and a Space; **实时模式** opens by default and requests input control once. Eagle mirrors the current terminal text and tab/pane layout. Only the browser granted control by the server can send input; other browsers can watch. Select a pane, send text with or without Enter, or use the common key buttons. The local Herdr client remains able to operate concurrently. Terminal snapshots support SGR colors (16/256/RGB), bold, dim, italic, underline and inverse. Mouse reporting, pixel graphics and arbitrary PTY resize are not implemented.
+
+Output follows the bottom on first display, target switch/replacement and while
+already at the bottom. Scrolling up pauses following independently for each pane;
+new output offers **新输出 · 回到底部**. Clicking it or scrolling back to the bottom
+resumes following. This navigates the current visible-screen snapshot, not an
+unbounded terminal scrollback archive.
+
+Opening a workspace selects **实时模式**, the first tab. Once the bridge is online
+and a valid target exists, the view requests control once; input remains disabled
+until the server grants the single-controller lease. The request sends no text or
+keys and does not attach to the terminal. A denied request is not retried
+automatically. **释放输入** opts back into viewing; **接管输入** can request control
+again explicitly. Target changes/replacements and reconnects clear drafts and
+require manual reacquisition; uncertain inputs are never replayed. Switching to
+**当前任务** or **Space 历史** releases the realtime subscription. Opening a fresh
+realtime view makes a new default request.
+
+One compact row above the input contains an output-status icon, ellipsized target
+name, pane ID and viewing/control mode. Hover or focus the icon for its recent,
+waiting or connection-error explanation. Repeated frames/heartbeats do not renew
+the activity pulse, and reduced motion disables animation. Output activity never
+claims task completion. There is no separate visible output-status text row.
+
+Recognized trailing Codex idle chrome is compacted in the web view: remove the
+exact `› Ask Codex to do anything` placeholder and adjacent blank padding, and
+retain model/effort plus directory. Body formatting, typed input and unknown
+footer forms remain intact. Colors are preserved in retained text. This changes
+neither the source frames/actual CLI nor input routing.
+
+The **终端配色** selector controls the screen's default foreground/background
+and indexed ANSI palette: follow the webpage, dark terminal, classic black or
+light terminal. The default follows the webpage. Explicit RGB colors from the
+terminal remain unchanged. This is a viewer palette, not automatic replication
+of the native terminal's theme configuration. Only the preference is stored in
+browser storage; if storage is blocked, switching still works for that view.
+
+Colors are parsed on the machine into bounded, typed text runs. Redaction is
+applied to the combined plain text before any runs leave the machine. Surviving
+text reuses matching source style metadata; every emitted character still comes
+from the redacted result, and replacement markers use neutral styling. The
+joined runs must exactly equal the safe plain text. One masked field therefore
+does not strip the entire screen's colors. Adjacent equal styles are coalesced
+before the frame budget is applied. OSC links/clipboard operations and controls are
+discarded; concealed text is masked. The browser renders escaped React text,
+never terminal HTML, URLs or escape commands. Screens with excessive styling
+first simplify older styles while retaining recent output colors. If even that
+cannot fit, they fall back to text (512 runs / 64 KiB styling budget, 32,000 text
+characters). These limits are unchanged.
+
+Deploy the Worker and its matching frontend together. New bridges advertise
+`X-Eagle-Realtime-Format: styled-text-v1`, and send runs only after the relay
+confirms that format in subscriptions. Older relays/agents continue using plain
+frames. New viewers request `format=styled-text-v1`; viewers without that option
+receive the original plain frame shape, even when another viewer uses colors.
+There are no new dependencies, persistent terminal archives or input permissions.
 
 The Basalt workspace sheet overlays the dashboard and widens for realtime mode. Pick a tab and a target pane in the controls above the black terminal canvas. Desktop retains the selected tab's pane layout; mobile shows the selected pane. Terminal output scrolls internally while the composer remains visible, including when the visual viewport shrinks for the keyboard. Enter submits the draft; switching targets clears the draft and releases input control. Reduced-motion preferences disable the sheet motion.
 
@@ -22,7 +77,7 @@ Installing a new npm version updates the executable; it does not create or start
 2. Reuse the existing collector's secure configuration, including its machine ID, token and ingestion URL. The default is `~/.config/eagle/agent.json`; preserve an existing custom `EAGLE_CONFIG` path. There are no additional realtime fields to add to that file.
 3. If no realtime service is running, test `eagle-agent realtime-watch` in the foreground. For a custom config, use `EAGLE_CONFIG=/absolute/path/agent.json eagle-agent realtime-watch`. If authentication fails, correct that existing configuration; do not create a replacement machine or discard Manager state.
 4. Stop the foreground test before enabling a separate user service with launchd on macOS or systemd on Linux. Use absolute executable paths and the same configuration/PATH as the working collector so the service can find Node and Herdr. Give it its own label/unit and preserve the collector and Manager services. If a realtime service already exists, restart that service after upgrading instead of adding a duplicate.
-5. Reopen the Space in Eagle. `等待本机实时服务` means the machine's realtime bridge is not connected, even when ordinary snapshots are current. Once connected, viewing is available; select `接管输入` separately when input is intended.
+5. Reopen the Space in Eagle. `等待本机实时服务` means the machine's realtime bridge is not connected, even when ordinary snapshots are current. Once connected, the view requests input control by default. If another viewer owns control, input stays disabled; use `接管输入` after it becomes available. Use `释放输入` to remain a viewer.
 
 ## Transport and lifecycle
 

@@ -1,5 +1,65 @@
 # 用户视角检查点
 
+## 2026-09-22 — Default input control requested on opening realtime
+
+- User superseded the earlier read-only default: a fresh realtime view now
+  requests input control once, after the bridge is online and a target exists.
+  Input remains gated by the server's single-controller grant. Denial, explicit
+  release, target replacement and reconnect do not trigger automatic retries;
+  drafts still clear and uncertain inputs never replay.
+- First reproduced the disabled default in desktop/mobile regressions. Updated
+  release/reacquisition and delayed/denied-grant checks, retained terminal
+  replacement and reconnect protections, and aligned the real verifier/docs.
+  All 96 unit/API tests, TypeScript, lint/build and 84 browser tests pass.
+- Actual local Herdr preview on desktop/mobile granted one default request and
+  disabled input after explicit release, with zero input messages or page errors.
+  No terminal commands, production deployment or collector/bridge restart occurred.
+
+## 2026-09-22 — Compact terminal footer spacing
+
+- Moved visual separation above the recognized idle Codex model/directory
+  footer: one blank line after output, no trailing blank lines or extra bottom
+  padding. Ordinary screens and typed input retain their existing spacing.
+- Regression tests first reproduced the missing separator; all 96 unit/API
+  tests, TypeScript, lint/build and 80 desktop/mobile browser checks now pass.
+  Retained style runs and original terminal frames remain unchanged.
+- Read-only verification against the real local Herdr preview confirmed the
+  separator, zero bottom padding, styled output, bottom-follow and no page
+  overflow or errors on desktop/mobile. No control lease or terminal input was
+  sent. Existing collector/bridge and production deployment are untouched.
+
+## 2026-09-22 — Consolidating realtime UI work into PR2
+
+- User superseded the earlier separate-PR request: all UI work belongs in PR2;
+  PR3 is to be closed after the consolidated PR2 update is verified and pushed.
+- Combined existing styled text/themes/follow behavior with first/default
+  read-only realtime, an inline icon/target row, and narrowly scoped idle Codex
+  footer cleanup. Removed the superseded separate output-status row rather than
+  rendering two indicators. A regression verifies retained body/footer colors
+  and that original frames are not mutated.
+- Full gates pass95unit/API tests, TypeScript, lint/build and80desktop/mobile
+  browser tests. Synthetic mobile screenshot visually confirms colors, first
+  realtime tab and one compact icon/target row. No production change or terminal
+  input is authorized by this consolidation; local preview readback follows.
+
+## 2026-09-21 — Realtime terminal contribution in isolation
+
+- New regressions reproduced missing colors and the initial/top-follow scrolling
+  defect. Desktop/mobile fixtures now cover follow, pause, resume, replacement
+  reset, escaped text and activity semantics. Synthetic terminal parser tests
+  cover redaction across SGR boundaries, OSC/clipboard removal and payload bounds.
+- A real isolated Miniflare/DO test first reproduced rejection of styled format
+  negotiation. Compatibility work now keeps legacy viewers/agents on plain
+  frames and explicitly opts new peers into validated style runs.
+- Full gates passed: 86 unit/API tests, TypeScript, lint/build and 70 browser
+  tests. Desktop/mobile dark/light fixture screenshots were generated; mobile
+  dark and desktop light were visually inspected. Input controls, reduced motion,
+  bounded layout and existing realtime security/lifecycle regressions pass.
+- No real terminal was inspected/controlled and no production service/config was
+  changed. Real local/public terminal roundtrip verification was not performed;
+  it must be run from a permitted Herdr environment before release. No package
+  was published and no production deployment is implied by these checks.
+
 ## 2026-09-20 07:14 +08 — Space realtime local round trip
 
 - Actual Herdr 0.9.1 socket collection and machine-Bearer upload reach the local machine DO. The real local site renders live Space layout and terminal text; a browser-controlled temporary shell printed the verification marker and returned it in 822 ms.

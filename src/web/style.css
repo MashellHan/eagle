@@ -1509,7 +1509,69 @@
   padding: 16px 20px max(12px, env(safe-area-inset-bottom));
   background: hsl(var(--basalt-background));
   color: hsl(var(--basalt-foreground));
-  color-scheme: dark;
+}
+.live-space[data-terminal-theme="classic"] {
+  --terminal-bg: #000000;
+  --terminal-fg: #ededed;
+}
+.live-space[data-terminal-theme="dark"] {
+  --terminal-bg: #1e1e2e;
+  --terminal-fg: #cdd6f4;
+  --terminal-color-0: #45475a;
+  --terminal-color-1: #f38ba8;
+  --terminal-color-2: #a6e3a1;
+  --terminal-color-3: #f9e2af;
+  --terminal-color-4: #89b4fa;
+  --terminal-color-5: #cba6f7;
+  --terminal-color-6: #94e2d5;
+  --terminal-color-7: #bac2de;
+  --terminal-color-8: #585b70;
+  --terminal-color-9: #f38ba8;
+  --terminal-color-10: #a6e3a1;
+  --terminal-color-11: #f9e2af;
+  --terminal-color-12: #89b4fa;
+  --terminal-color-13: #cba6f7;
+  --terminal-color-14: #94e2d5;
+  --terminal-color-15: #a6adc8;
+}
+.live-space[data-terminal-theme="light"] {
+  --terminal-bg: #fafafa;
+  --terminal-fg: #282c34;
+  --terminal-color-0: #383a42;
+  --terminal-color-1: #a626a4;
+  --terminal-color-2: #407334;
+  --terminal-color-3: #986801;
+  --terminal-color-4: #4078f2;
+  --terminal-color-5: #a626a4;
+  --terminal-color-6: #0184bc;
+  --terminal-color-7: #383a42;
+  --terminal-color-8: #696c77;
+  --terminal-color-9: #c3293d;
+  --terminal-color-10: #407334;
+  --terminal-color-11: #986801;
+  --terminal-color-12: #315ec1;
+  --terminal-color-13: #912293;
+  --terminal-color-14: #006b94;
+  --terminal-color-15: #202227;
+}
+.live-actions > .live-theme-select[aria-label] {
+  width: 142px;
+  gap: 6px;
+  font-size: 11px;
+}
+.live-theme-warning {
+  font-size: 10px;
+  color: hsl(var(--basalt-muted-foreground));
+}
+@media (max-width: 767px) {
+  .live-actions > .live-theme-select[aria-label] {
+    width: 32px;
+    padding: 7px;
+  }
+  .live-theme-select > span,
+  .live-theme-select > svg:last-child {
+    display: none;
+  }
 }
 .live-toolbar,
 .live-connection,
@@ -1616,8 +1678,8 @@
   scrollbar-color: hsl(var(--basalt-border)) transparent;
   margin: 0;
   padding: 16px;
-  background: black;
-  color: hsl(var(--basalt-foreground));
+  background: var(--terminal-bg, #000000);
+  color: var(--terminal-fg, #ededed);
   font:
     12px / 1.65 ui-monospace,
     SFMono-Regular,
@@ -1625,6 +1687,29 @@
     monospace;
   white-space: pre;
   tab-size: 4;
+  overflow-anchor: none;
+}
+.live-pane pre[data-compact-footer="true"] {
+  padding-bottom: 0;
+}
+.live-output {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.live-output > pre {
+  min-width: 0;
+  width: 100%;
+}
+.live-follow {
+  position: absolute;
+  bottom: 10px;
+  right: 12px;
+  gap: 5px;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.4);
+  font-size: 11px;
 }
 .live-pane pre:focus-visible {
   outline: 1px solid hsl(var(--basalt-ring));
@@ -1675,11 +1760,15 @@
 }
 .live-composer-meta {
   justify-content: space-between;
+  flex-wrap: nowrap;
+  height: 24px;
+  gap: 6px;
   margin-bottom: 8px;
   color: hsl(var(--basalt-muted-foreground));
   font-size: 10px;
 }
 .live-composer-meta > label {
+  flex: 1;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -1687,19 +1776,41 @@
   flex: none;
 }
 .live-composer-meta .mono {
+  flex: none;
+  max-width: 30%;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.live-target-dot {
-  height: 5px;
-  width: 5px;
-  border-radius: 50%;
-  background: hsl(var(--basalt-muted-foreground));
-  flex: none;
+.live-target-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.live-target-dot[data-control="true"] {
-  background: hsl(var(--basalt-accent-4));
-  box-shadow: 0 0 8px hsl(var(--basalt-accent-4) / 0.5);
+.live-composer-meta > .live-control-mode {
+  white-space: nowrap;
+}
+.live-composer-meta .live-output-status {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  color: hsl(var(--basalt-muted-foreground));
+}
+.live-output-status[data-state="recent"] {
+  color: hsl(var(--basalt-accent-4));
+  animation: live-output-status-pulse 1.2s ease-in-out infinite;
+}
+.live-output-status[data-state="offline"] {
+  color: hsl(var(--basalt-accent-6));
+}
+@keyframes live-output-status-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-output-status[data-state="recent"] {
+    animation: none;
+  }
 }
 .live-input-row {
   position: relative;

@@ -86,7 +86,7 @@ test("Space realtime receives screens, gates input, and closes sockets on leavin
   await expect(page.getByText("ready from Herdr")).toBeVisible();
   await expect.poll(() => greetings, { timeout: 1000 }).toBeGreaterThan(0);
   await expect(page.getByRole("button", { name: "发送并回车" })).toBeDisabled();
-  await page.getByRole("button", { name: "接管输入" }).click();
+  await expect(page.getByLabel("发送到当前 Pane")).toBeEnabled();
   await page.getByLabel("发送到当前 Pane").fill("hello");
   await page.getByRole("button", { name: "发送并回车" }).click();
   await expect.poll(() => inputs.length).toBe(1);
@@ -95,7 +95,7 @@ test("Space realtime receives screens, gates input, and closes sockets on leavin
   await page.getByRole("button", { name: "实时模式", exact: true }).click();
   await expect(page.getByText("ready from Herdr")).toBeVisible();
   acknowledge = false;
-  await page.getByRole("button", { name: "接管输入" }).click();
+  await expect(page.getByLabel("发送到当前 Pane")).toBeEnabled();
   await page.getByLabel("发送到当前 Pane").fill("never-replay-this");
   await page.getByRole("button", { name: "发送并回车" }).click();
   await expect.poll(() => inputs.length).toBe(2);
@@ -151,6 +151,7 @@ test("terminal replacement clears drafts and renewable lease reconnect never rec
   let latest: import("@playwright/test").WebSocketRoute | undefined;
   let connections = 0,
     releases = 0,
+    controls = 0,
     inputs = 0;
   const topology = (terminalId: string) =>
     JSON.stringify({
@@ -181,6 +182,7 @@ test("terminal replacement clears drafts and renewable lease reconnect never rec
       const m = JSON.parse(String(data));
       if (m.type === "input") inputs++;
       if (m.type === "release") releases++;
+      if (m.type === "control") controls++;
       if (m.type === "control" || m.type === "release")
         ws.send(
           JSON.stringify({
@@ -195,17 +197,17 @@ test("terminal replacement clears drafts and renewable lease reconnect never rec
   await page.getByRole("button", { name: "打开机器 Mac One" }).click();
   await page.getByRole("button", { name: "查看 Eagle", exact: true }).click();
   await page.getByRole("button", { name: "实时模式", exact: true }).click();
-  await expect(page.getByRole("button", { name: "接管输入" })).toBeEnabled();
+  await expect(page.getByLabel("发送到当前 Pane")).toBeEnabled();
   await page.evaluate(() => window.dispatchEvent(new Event("pageshow")));
   await page.waitForTimeout(100);
   expect(connections).toBe(1);
-  await page.getByRole("button", { name: "接管输入" }).click();
   await page.getByLabel("发送到当前 Pane").fill("old-target-draft");
   assert(latest);
   latest.send(topology("replacement"));
   await expect(page.getByLabel("发送到当前 Pane")).toHaveValue("");
   await expect(page.getByLabel("发送到当前 Pane")).toBeDisabled();
   await expect.poll(() => releases).toBe(1);
+  expect(controls).toBe(1);
   await page.getByRole("button", { name: "接管输入" }).click();
   await page.getByLabel("发送到当前 Pane").fill("lease-draft");
   latest.close({ code: 4002, reason: "Renew authorization" });
@@ -213,5 +215,6 @@ test("terminal replacement clears drafts and renewable lease reconnect never rec
   await expect(page.getByRole("button", { name: "接管输入" })).toBeEnabled();
   await expect(page.getByLabel("发送到当前 Pane")).toBeDisabled();
   await expect(page.getByLabel("发送到当前 Pane")).toHaveValue("");
+  expect(controls).toBe(2);
   expect(inputs).toBe(0);
 });

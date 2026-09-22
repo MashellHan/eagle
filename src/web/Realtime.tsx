@@ -19,6 +19,7 @@ import {
   CornerDownLeft,
   Eye,
   Keyboard,
+  Palette,
   Radio,
   RefreshCw,
   ShieldAlert,
@@ -31,6 +32,9 @@ import {
   LiveServerMessageSchema,
   type LiveTopology,
 } from "../shared/realtime.ts";
+import { RealtimeActivity } from "./RealtimeActivity.tsx";
+import { TerminalOutput } from "./TerminalOutput.tsx";
+import { TERMINAL_THEMES, useTerminalTheme } from "./TerminalTheme.ts";
 import { useTimezone } from "./Timezone.tsx";
 
 export function Realtime({
@@ -41,9 +45,11 @@ export function Realtime({
   spaceId: string;
 }) {
   const { time, zone } = useTimezone();
+  const appearance = useTerminalTheme();
   const socket = useRef<WebSocket | null>(null);
   const sequence = useRef(0);
   const pending = useRef<{ seq: number; at: number } | null>(null);
+  const initialControlRequested = useRef(false);
   const [connection, setConnection] = useState("正在连接");
   const [online, setOnline] = useState(false);
   const [control, setControl] = useState(false);
@@ -94,6 +100,7 @@ export function Realtime({
       url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
       url.searchParams.set("machine", machineId);
       url.searchParams.set("space", spaceId);
+      url.searchParams.set("format", "styled-text-v1");
       const ws = new WebSocket(url);
       socket.current = ws;
       let last = Date.now();
@@ -243,6 +250,21 @@ export function Realtime({
     }
     previousTarget.current = targetIdentity;
   }, [targetIdentity]);
+  useEffect(() => {
+    const ws = socket.current;
+    if (
+      initialControlRequested.current ||
+      !online ||
+      !targetIdentity ||
+      ws?.readyState !== WebSocket.OPEN
+    )
+      return;
+    // Request once per opened view; only the server can grant the lease.
+    // Rejection, release, target replacement and reconnect never retry it.
+    initialControlRequested.current = true;
+    setAuthority(targetIdentity);
+    ws.send(JSON.stringify({ type: "control" }));
+  }, [online, targetIdentity]);
   const send = (keys: LiveInput["keys"], value = "") => {
     const ws = socket.current;
     if (
@@ -274,8 +296,8 @@ export function Realtime({
   return (
     <section
       aria-label="Space 实时终端"
-      className="live-space dark"
-      data-mode="dark"
+      className="live-space"
+      data-terminal-theme={appearance.resolved}
     >
       <div className="live-toolbar">
         <div className="live-connection">
@@ -285,11 +307,25 @@ export function Realtime({
           </Badge>
         </div>
         <div className="live-actions">
+          <Select value={appearance.theme} onValueChange={appearance.select}>
+            <SelectTrigger aria-label="终端配色" className="live-theme-select">
+              <Palette size={14} aria-hidden="true" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(TERMINAL_THEMES).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             size="sm"
             variant={control ? "default" : "secondary"}
             disabled={!online || !pane}
             onClick={() => {
+              initialControlRequested.current = true;
               setAuthority(control ? "" : targetIdentity);
               socket.current?.send(
                 JSON.stringify({ type: control ? "release" : "control" }),
@@ -320,6 +356,11 @@ export function Realtime({
           </Tooltip>
         </div>
       </div>
+      {!appearance.persisted && (
+        <p className="live-theme-warning" role="status">
+          配色仅在本次打开时有效
+        </p>
+      )}
       <div className="live-navigation">
         <Select
           value={tab?.id ?? ""}
@@ -362,7 +403,7 @@ export function Realtime({
           <section className="live-panes" aria-label={tab.name}>
             {tab.panes.map((p) => (
               <div
-                key={p.id}
+                key={`${p.id}/${p.terminalId}`}
                 className="live-pane"
                 data-selected={pane?.id === p.id}
                 style={{
@@ -382,12 +423,10 @@ export function Realtime({
                   <span>{p.title}</span>
                   <span className="mono">{p.id}</span>
                 </Button>
-                <pre
-                  // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to scroll terminal output.
-                  tabIndex={0}
-                >
-                  {frames[p.id]?.text ?? "等待画面…"}
-                </pre>
+                <TerminalOutput
+                  frame={frames[p.id]}
+                  selected={pane?.id === p.id}
+                />
                 <div className="live-pane-footer mono">
                   <span>{pane?.id === p.id ? "当前目标" : "只读画面"}</span>
                   <span>
@@ -415,12 +454,22 @@ export function Realtime({
         }}
       >
         <div className="live-composer-meta">
+          <RealtimeActivity
+            frame={pane ? frames[pane.id] : undefined}
+            online={online}
+            connection={connection}
+          />
           <label htmlFor="live-input">
-            <span className="live-target-dot" data-control={control} />
-            {pane ? `发送到 ${pane.title}` : "等待终端"}
-            <span className="mono">{pane?.id}</span>
+            <span className="live-target-name" title={pane?.title}>
+              {pane ? `发送到 ${pane.title}` : "等待终端"}
+            </span>
+            <span className="mono" title={pane?.id}>
+              {pane?.id}
+            </span>
           </label>
-          <span>{control ? "你正在控制" : "观看模式"}</span>
+          <span className="live-control-mode">
+            {control ? "你正在控制" : "观看模式"}
+          </span>
         </div>
         <div className="live-input-row">
           <span className="live-prompt mono" aria-hidden="true">

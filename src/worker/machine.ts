@@ -77,7 +77,13 @@ export class MachineState extends DurableObject<Env> {
       )
         return new Response(null, { status: 404 });
     }
-    return this.live.connect(role, expires, credentialId, spaceId);
+    return this.live.connect(
+      role,
+      expires,
+      credentialId,
+      spaceId,
+      request.headers.get("x-live-format") === "styled-text-v1",
+    );
   }
   webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
     this.live.message(socket, message);

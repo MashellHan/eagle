@@ -12,6 +12,11 @@ import {
   TopologySchema,
 } from "../src/shared/realtime.ts";
 import {
+  parseTerminalScreen,
+  restyleRedactedText,
+  type TerminalRun,
+} from "../src/shared/terminal.ts";
+import {
   type AgentConfig,
   checkUrl,
   normalizeSnapshot,
@@ -60,6 +65,51 @@ export function redactScreen(value: string, secrets: string[]) {
     .map((c, i) => (masked.has(i) ? "*" : c))
     .join("")
     .replace(/\*{8,}/g, "[REDACTED]");
+}
+
+export function terminalScreen(
+  value: string,
+  secrets: string[],
+): {
+  text: string;
+  runs?: TerminalRun[];
+} {
+  const parsed = parseTerminalScreen(value);
+  const redacted = redactScreen(parsed.text, secrets);
+  const text = redacted.slice(-32000);
+  // Rebuild runs from already redacted characters, copying only style metadata.
+  // The schema also enforces that joined runs equal the safe plain text.
+  const styled = restyleRedactedText(parsed.runs, redacted);
+  let skip = Math.max(0, redacted.length - 32000);
+  const runs = styled.flatMap((run) => {
+    const cut = Math.min(skip, run.text.length);
+    skip -= cut;
+    return cut === run.text.length
+      ? []
+      : [{ ...run, text: run.text.slice(cut) }];
+  });
+  // Keep the newest visible styles first; simplify older styling rather than
+  // dropping all colors because one screen exceeds the run/byte budget.
+  let keep = Math.min(runs.length, 512);
+  while (keep > 0) {
+    const bounded =
+      keep === runs.length
+        ? runs
+        : [
+            {
+              text: runs
+                .slice(0, runs.length - keep + 1)
+                .map((run) => run.text)
+                .join(""),
+            },
+            ...runs.slice(runs.length - keep + 1),
+          ];
+    if (!bounded.some((run) => Object.keys(run).length > 1)) break;
+    if (new TextEncoder().encode(JSON.stringify(bounded)).length <= 64000)
+      return { text, runs: bounded };
+    keep = Math.floor(keep / 2);
+  }
+  return { text };
 }
 
 export function socketRequest(
@@ -127,6 +177,7 @@ type Watch = {
   queue: Promise<void>;
 };
 export class LiveBridge {
+  private styledFrames = false;
   private watches = new Map<string, Watch>();
   private secrets: string[];
   private send: (
@@ -147,6 +198,7 @@ export class LiveBridge {
     if (!parsed.success) throw new Error("Invalid relay message");
     const message = parsed.data;
     if (message.type === "subscriptions") {
+      this.styledFrames = message.format === "styled-text-v1";
       const wanted = new Map(message.spaces.map((s) => [s.spaceId, s]));
       for (const [key, watch] of this.watches)
         if (
@@ -301,7 +353,7 @@ export class LiveBridge {
         const panes = topology.tabs.flatMap((t) => t.panes);
         const pending: {
           pane: (typeof panes)[number];
-          text: string;
+          screen: ReturnType<typeof terminalScreen>;
           tab: string;
         }[] = [];
         // Herdr 0.9.1 screen revisions can be zero. Compare content after bounded reads.
@@ -314,8 +366,8 @@ export class LiveBridge {
                 {
                   pane_id: p.id,
                   source: "visible",
-                  format: "text",
-                  strip_ansi: true,
+                  format: "ansi",
+                  strip_ansi: false,
                 },
                 signal,
               );
@@ -334,7 +386,7 @@ export class LiveBridge {
                 return;
               pending.push({
                 pane: p,
-                text: redactScreen(read.text, this.secrets).slice(-32000),
+                screen: terminalScreen(read.text, this.secrets),
                 tab: read.tab_id,
               });
             }),
@@ -343,7 +395,7 @@ export class LiveBridge {
           await socketRequest(watch.path, "session.snapshot", {}, signal)
         ).snapshot as Snapshot;
         if (signal.aborted) return;
-        for (const { pane: p, text, tab } of pending) {
+        for (const { pane: p, screen, tab } of pending) {
           const current = after.panes.find(
             (r) =>
               r.pane_id === p.id &&
@@ -355,7 +407,9 @@ export class LiveBridge {
             watch.force = true;
             continue;
           }
-          if (!force && watch.screens.get(p.terminalId) === text) continue;
+          const fingerprint = JSON.stringify(screen);
+          if (!force && watch.screens.get(p.terminalId) === fingerprint)
+            continue;
           this.send(
             AgentMessageSchema.parse({
               type: "frame",
@@ -363,11 +417,11 @@ export class LiveBridge {
               paneId: p.id,
               terminalId: p.terminalId,
               revision: ++watch.frameSequence,
-              text,
+              ...(this.styledFrames ? screen : { text: screen.text }),
               observedAt: new Date().toISOString(),
             }),
           );
-          watch.screens.set(p.terminalId, text);
+          watch.screens.set(p.terminalId, fingerprint);
         }
         for (const key of watch.screens.keys())
           if (!panes.some((p) => p.terminalId === key))
@@ -399,6 +453,7 @@ export async function realtimeWatch(config: AgentConfig, signal: AbortSignal) {
         headers: {
           Authorization: `Bearer ${config.token}`,
           "X-Eagle-Machine": config.machineId,
+          "X-Eagle-Realtime-Format": "styled-text-v1",
         },
         handshakeTimeout: 10000,
         maxPayload: 262144,

@@ -61,7 +61,12 @@ test("live bridge shares subscriptions, rejects replaced terminals, and stops al
     });
   });
   await new Promise<void>((r) => server.listen(path, r));
-  const messages: { type: string; text?: string; status?: string }[] = [];
+  const messages: {
+    type: string;
+    text?: string;
+    status?: string;
+    runs?: unknown[];
+  }[] = [];
   let resolutions = 0;
   const bridge = new LiveBridge(
     ["machine-credential"],
@@ -99,6 +104,28 @@ test("live bridge shares subscriptions, rejects replaced terminals, and stops al
     output = "output changed with revision zero";
     await new Promise((r) => setTimeout(r, 420));
     assert(messages.some((m) => m.type === "frame" && m.text === output));
+    output = "\u001b[32mstyled output\u001b[0m";
+    await new Promise((r) => setTimeout(r, 420));
+    const plain = messages.find(
+      (m) => m.type === "frame" && m.text === "styled output",
+    );
+    assert(plain);
+    assert.equal(
+      plain.runs,
+      undefined,
+      "An older relay never receives new frame fields",
+    );
+    bridge.receive({
+      type: "subscriptions",
+      format: "styled-text-v1",
+      spaces: [{ spaceId: "default:w1", subscriptionId: "epoch" }],
+    });
+    await new Promise((r) => setTimeout(r, 420));
+    assert(
+      messages.some(
+        (m) => m.type === "frame" && m.text === "styled output" && !!m.runs,
+      ),
+    );
     output = "racy old capture";
     replaceDuringRead = true;
     await new Promise((r) => setTimeout(r, 800));
