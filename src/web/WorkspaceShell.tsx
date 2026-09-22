@@ -1,25 +1,19 @@
-import { Badge, Button, LayerCard, SheetClose } from "@nocoo/basalt";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@nocoo/basalt/components/tabs";
+import { Button, SheetClose } from "@nocoo/basalt";
 import {
   ArrowLeft,
   ArrowUpRight,
   Layers3,
-  Monitor,
   RefreshCw,
   TerminalSquare,
   X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useId, useState } from "react";
 import { assessPane } from "../shared/assessment.ts";
 import type { MachineView, Space } from "../shared/schema.ts";
 import { useCurrentTaskSnapshot } from "./CurrentTaskSnapshot.ts";
-import { machineConnection, Status } from "./Dashboard.tsx";
+import { MachineResources, machineConnection, Status } from "./Dashboard.tsx";
 import { useTimezone } from "./Timezone.tsx";
+import { WorkspaceNavigation } from "./WorkspaceNavigation.tsx";
 
 function WorkspaceSnapshot({
   machine,
@@ -50,25 +44,6 @@ function WorkspaceSnapshot({
       aria-busy={current.busy}
       data-read-at={current.readAt}
     >
-      <LayerCard className="workspace-machine">
-        <div className="workspace-machine-name">
-          <Monitor size={16} />
-          <strong>{current.machine.name}</strong>
-          <Badge variant={connection === "online" ? "success" : "warning"}>
-            {connection === "online" ? "在线快照" : "等待更新"}
-          </Badge>
-        </div>
-        <p className="workspace-machine-meta">
-          {current.machine.report.machine.platform} ·{" "}
-          {current.machine.report.spaces.length} 个工作区 ·{" "}
-          {
-            current.machine.report.spaces.flatMap((s) =>
-              s.tabs.flatMap((t) => t.panes),
-            ).length
-          }{" "}
-          个终端
-        </p>
-      </LayerCard>
       <div className="workspace-snapshot-heading">
         <div>
           <span className="workspace-eyebrow">WORKSPACE SNAPSHOT</span>
@@ -150,6 +125,23 @@ function WorkspaceSnapshot({
           );
         })}
       </div>
+      <section className="workspace-machine-snapshot" aria-label="机器快照">
+        <div className="workspace-snapshot-heading">
+          <div>
+            <span className="workspace-eyebrow">MACHINE SNAPSHOT</span>
+            <h2>机器快照</h2>
+          </div>
+        </div>
+        <p className="workspace-machine-meta">
+          {current.machine.name} · {current.machine.report.machine.platform} ·{" "}
+          {current.machine.report.spaces.length} 个工作区
+        </p>
+        <MachineResources
+          machine={current.machine}
+          now={current.readAt ?? new Date().toISOString()}
+          snapshot
+        />
+      </section>
     </section>
   );
 }
@@ -173,22 +165,27 @@ export function WorkspaceShell({
   onAuthError: () => void;
   children: ReactNode;
 }) {
+  const panelId = useId();
+  const [mobile, setMobile] = useState(
+    () => matchMedia("(max-width: 767px)").matches,
+  );
   const [wide, setWide] = useState(
     () => matchMedia("(min-width: 1024px)").matches,
   );
   useEffect(() => {
     const media = matchMedia("(min-width: 1024px)");
+    const narrow = matchMedia("(max-width: 767px)");
     const changed = () => setWide(media.matches);
+    const mobileChanged = () => setMobile(narrow.matches);
     media.addEventListener("change", changed);
-    return () => media.removeEventListener("change", changed);
+    narrow.addEventListener("change", mobileChanged);
+    return () => {
+      media.removeEventListener("change", changed);
+      narrow.removeEventListener("change", mobileChanged);
+    };
   }, []);
   return (
-    <Tabs
-      value={space.id}
-      onValueChange={onWorkspace}
-      className="workspace-shell"
-      data-wide={wide}
-    >
+    <div className="workspace-shell" data-wide={wide}>
       <div className="workspace-window-bar">
         <Button
           size="icon"
@@ -199,30 +196,26 @@ export function WorkspaceShell({
         >
           <ArrowLeft size={17} />
         </Button>
-        <div className="workspace-tabs-scroll">
-          <TabsList aria-label="切换工作区" className="workspace-tabs">
-            {machine.report.spaces.map((item) => (
-              <TabsTrigger
-                key={item.id}
-                value={item.id}
-                aria-label={item.name}
-                title={item.name}
-                className="workspace-tab"
-              >
-                <Layers3 size={13} />
-                <span>{item.name}</span>
-                <small>{item.tabs.flatMap((t) => t.panes).length}</small>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
+        <WorkspaceNavigation
+          spaces={machine.report.spaces}
+          space={space}
+          panelId={panelId}
+          mobile={mobile}
+          onWorkspace={onWorkspace}
+        />
         <SheetClose asChild>
           <Button size="icon" variant="ghost" aria-label="关闭工作区">
             <X size={18} />
           </Button>
         </SheetClose>
       </div>
-      <TabsContent value={space.id} className="workspace-columns">
+      <section
+        id={panelId}
+        role={mobile ? "region" : "tabpanel"}
+        aria-label={mobile ? space.name : undefined}
+        aria-labelledby={mobile ? undefined : `${panelId}-tab-${space.id}`}
+        className="workspace-columns"
+      >
         <aside className="workspace-sidebar">
           {wide && (
             <WorkspaceSnapshot
@@ -236,7 +229,7 @@ export function WorkspaceShell({
           )}
         </aside>
         <div className="workspace-detail">{children}</div>
-      </TabsContent>
-    </Tabs>
+      </section>
+    </div>
   );
 }

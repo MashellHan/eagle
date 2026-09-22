@@ -1,5 +1,29 @@
 # 用户视角检查点
 
+## 2026-09-22 — Workspace overflow and machine snapshot placement
+
+- Reproduced missing desktop overflow, mobile picker and machine snapshot in
+  browser regressions before implementation. Workspace tabs now fold by measured
+  width, retain the active workspace, and expose a searchable Basalt popover.
+  Mobile uses a current-name picker. Keyboard, IME, draft and socket boundaries
+  are covered. A full-suite resize case caught a picker reopening after growing
+  then shrinking; the availability transition now clears its open/search state.
+- Removed the separate top machine-name/status card. Existing machine resources
+  appear below task cards, from the same frozen on-entry/manual-refresh snapshot.
+  Missing and historical data stay explicit; no new telemetry, persistence or
+  continuous rendering is introduced. Synthetic desktop dark/light and mobile
+  screenshots were inspected.
+- Actual loopback Worker/Herdr preview verified task cards, machine resources
+  below tasks, retained terminal colors and the mobile picker, with no document
+  overflow or page errors. Resize retained one realtime connection. The isolated
+  verifier suppressed control/input requests and sent zero terminal input. No
+  collector restart, authentication/D1 mutation or cloud deployment occurred.
+- TypeScript/lint/build pass. Unit/API: 114/115 pass; the inherited Node 24.13.0
+  environment-proxy fixture still times out. It was not changed or excluded.
+  Full browser revalidation after the resize correction: 113 passed, with nine
+  viewport-specific cases skipped only in the opposite viewport. The overall
+  check gate is not claimed green because of the unchanged proxy test above.
+
 ## 2026-09-22 — Machine-first navigation and desktop workspace follow-up
 
 - Separate follow-up to PR4: root selects the first available machine once,

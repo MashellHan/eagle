@@ -5,13 +5,23 @@ explicit machine link is preserved. Machine navigation appears first. The global
 fleet remains available at `/overview`, including after refresh/back/forward.
 
 On desktop (1024px and wider), opening a workspace uses an opaque full-window
-split surface. The left side shows machine context and an on-entry/manual-refresh
-workspace snapshot, with one or two task-card columns according to available
-width. The right side retains the realtime/task/history controls. Cards target
-the exact live terminal. Workspace tabs at the top switch in place, close the
-previous subscription and clear drafts; back returns to the machine and close
-returns to the previous page. Smaller screens keep one detail column and the
-workspace tabs; resizing does not remount the live connection.
+split surface. The left side starts with an on-entry/manual-refresh workspace
+snapshot, with one or two task-card columns according to available width. Below
+the tasks, a machine snapshot reuses existing CPU, memory, disk, uptime and TCP
+port observations from the same frozen report. Missing/stale readings stay
+explicit; this view neither collects more data nor claims continuous sampling.
+The former separate machine-name/status panel is removed. The right side retains
+the realtime/task/history controls. Cards target the exact live terminal.
+
+Workspace tabs at the top switch in place. Tabs that do not fit fold into
+**更多**, while the selected workspace stays visible. The picker searches all
+workspaces by name or ID. Below 768px it replaces the tab row with the current
+workspace name and a searchable dropdown; screens below 1024px retain one detail
+column. Arrow keys/Home/End navigate desktop tabs and picker results, and Escape
+closes only the picker. Selecting another workspace closes the previous realtime
+subscription and clears drafts; selecting the current item, opening/closing the
+picker or resizing does not. Back returns to the machine and close returns to
+the previous page.
 
 Fleet statistics use available, fresh snapshots. A `working` lifecycle hint can
 fill the activity gap before native execution evidence arrives, but is explicitly
