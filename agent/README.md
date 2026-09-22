@@ -31,6 +31,14 @@ If the command is missing, ensure npm's global `bin` directory is on your PATH. 
 
 ## Connect a machine
 
+When an Agent is already configured, check the service's `EAGLE_CONFIG`, machine
+ID **and URL origin** first. Only a matching ID and origin permits token-only
+rotation. Moving to another deployment requires a separate private config
+directory and explicit new `spoolDir`; preserve, but do not replay, the old queue,
+cache or Manager state. Verify the new destination before switching the service,
+and set its `EAGLE_CONFIG` explicitly. See `docs/AGENT.md` in the repository for
+the rotation/migration procedure. Do not overwrite a different machine identity.
+
 Open Eagle's **Connect** page, create a machine and copy its onboarding prompt. Give the prompt to the management agent on that machine. It contains a machine-scoped credential shown only once.
 
 Store configuration at `~/.config/eagle/agent.json` (directory 0700, file 0600). `EAGLE_CONFIG` selects another file. `eagle-agent init` reads JSON from stdin and creates this file securely; it refuses to overwrite an existing file. Never pass a token in command arguments, commit it, print it, or include it in reports. Rotation requires updating the token in the existing secure configuration.

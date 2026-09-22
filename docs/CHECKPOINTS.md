@@ -390,3 +390,29 @@ serving and the first catalogue-derived production Cron observation.
 - A non-archiving model check used eight actual current semantic records and the deployed v5 prompt/completion implementation. It completed in 15.486 seconds; all seven sections passed their budgets (165/989/347/116/227/169/164 characters including identities and citations), with eight validated references. This sample is not an archived complete-hour report; no complete-hour v5 report existed at the verification time because prior completed hours were preserved.
 - Mac Studio's local Manager has not been upgraded: the existing SSH path rejected authentication. Fleet-wide cloud output limits are deployed, and the new Agent package is available for its local upgrade.
 - Evidence: `.local/release-v0.6.0/`. Temporary remote inspection is stopped after verification; no authentication remains pending.
+
+## 2026-09-21 — Cross-deployment onboarding regression
+
+- Three prompt-contract regressions first failed: checking only the machine ID,
+  leaving cross-origin cache/queue isolation unspecified, and falling back to a
+  different config in background services. Connect now distinguishes rotation
+  from migration and requires explicit config/spool isolation and a verified
+  cutover. Published Agent behavior and wire formats are unchanged.
+- This contribution uses synthetic credentials only. No real registration,
+  rotation, upload, service restart or deployment was performed. Full local
+  gates passed: 83 unit/API tests, TypeScript, lint/build and 62 desktop/mobile
+  browser tests. This is not a claim of live deployment verification.
+
+## 2026-09-22 — Onboarding review and upstream conflict resolution
+
+- Integrated upstream main `789bdff` without replacing its network/proxy
+  guidance. Independent review found the same-origin rotation prompt had lost
+  the requirement to restart existing services; restored it for only enabled
+  services using the selected config and added a failing-then-passing regression.
+- All four onboarding regressions, TypeScript, lint/build and 64 desktop/mobile
+  browser tests pass. Full unit/API run: 96 of 97 pass; the environment-proxy
+  test times out after five seconds. The same test also fails in an isolated,
+  unmodified `789bdff` checkout on Node 24.13.0. No exclusion or timeout change
+  was applied; the full release gate is not claimed green.
+- No real credential rotation, service restart, upload or production deployment
+  occurred. Kept this contribution separate from the realtime UI PR.

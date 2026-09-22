@@ -4,6 +4,31 @@ The collector is read-only toward Herdr/Git. It never prompts agents, presses ke
 
 ## Secure config
 
+### Credential rotation versus moving to another deployment
+
+Resolve the config used by the existing service (`EAGLE_CONFIG`, otherwise the
+default below) before changing anything. Compare **both** `machineId` and the
+parsed URL origin (scheme, hostname and port). An equal machine ID on two
+deployments is not an equal credential scope.
+
+- **Same identity and origin:** back up securely, rotate only the credential,
+  preserve all other settings and Manager state, then restart that service.
+- **Different identity:** stop and ask; do not overwrite an unrelated machine.
+- **Different origin:** confirm the destination, preserve the old configuration
+  and create a new private configuration directory. Set the new URL/token and
+  an explicit `spoolDir` inside that directory. In Agent 0.5.0, an alternate
+  `EAGLE_CONFIG` alone does not relocate the collector cache; explicit `spoolDir`
+  also isolates `latest-report.json`. Never point the new deployment at the old
+  spool, evidence file or Manager pending/sequence directory. History transfer
+  requires a separate decision, not an incidental `once` replay.
+
+Use the same absolute `EAGLE_CONFIG` for `init`, `once`, `watch` and any explicitly
+enabled Manager/realtime command, including the supervised service environment.
+Validate a fresh snapshot and the destination dashboard before stopping the
+identified old collector and switching continuous collection. Preserve the old
+config/queue for rollback; do not rotate credentials or delete pending reports
+merely to recover from an uncertain response. Avoid duplicate service instances.
+
 Create `~/.config/eagle/agent.json`, directory mode 0700 and file mode 0600:
 
 ```json
