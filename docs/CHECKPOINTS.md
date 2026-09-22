@@ -1,5 +1,27 @@
 # 用户视角检查点
 
+## 2026-09-22 — Machine-first navigation and desktop workspace follow-up
+
+- Separate follow-up to PR4: root selects the first available machine once,
+  machine navigation leads the sidebar, and explicit fleet overview has its own
+  route so refresh/back/forward cannot force it back to a machine.
+- Desktop workspace uses an opaque snapshot sidebar with responsive one/two-card
+  columns and the existing realtime controls on the right. Workspace tabs switch
+  in-place; previous subscriptions close, drafts do not carry across workspaces,
+  and back/close controls remain available. Mobile keeps a single detail column.
+- Reproduced the working-hint/no-native-execution-evidence activity gap. The
+  fallback is activity only, not delivery verification; failures retain priority
+  and stale/unavailable data stays unverified. A live read-only sample already
+  had native running evidence, so the earlier user-visible instant is not claimed
+  reproduced from that sample. TypeScript/lint/build pass; 108 browser tests pass
+  with four viewport-specific skips. Unit/API: 113/114 pass; the unchanged Node
+  24.13.0 proxy-fixture timeout remains, with no test exclusion or timeout change.
+- Desktop dark/light and mobile fixtures were visually inspected. Real loopback
+  preview confirmed default machine selection, a two-column snapshot, exact pane
+  routing and in-place workspace tabs with zero input messages, page errors or
+  overflow. Only one local snapshot was refreshed for this verification; no
+  persistent collector, production service or cloud deployment was changed.
+
 ## 2026-09-22 — Current task navigation and snapshot freshness
 
 - Current tasks match realtime sheet/header geometry; cards open their exact
