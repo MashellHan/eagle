@@ -1,7 +1,10 @@
 import { expect, type Page, test, type WebSocketRoute } from "@playwright/test";
 import { report } from "../fixtures.ts";
 
-async function openWorkspace(page: Page) {
+async function openWorkspace(
+  page: Page,
+  { online = true, grantControl = true } = {},
+) {
   const now = new Date().toISOString();
   await page.route("**/api/**", (route) =>
     route.fulfill({
@@ -39,7 +42,7 @@ async function openWorkspace(page: Page) {
     );
   await page.routeWebSocket("**/api/v1/realtime?*", (ws) => {
     socket = ws;
-    ws.send(JSON.stringify({ type: "status", online: true, control: false }));
+    ws.send(JSON.stringify({ type: "status", online, control: false }));
     ws.send(
       JSON.stringify({
         type: "topology",
@@ -64,7 +67,17 @@ async function openWorkspace(page: Page) {
     frame();
     ws.onMessage((data) => {
       const m = JSON.parse(String(data));
-      if (m.type === "control") controls++;
+      if (m.type === "control") {
+        controls++;
+        if (grantControl)
+          ws.send(
+            JSON.stringify({ type: "status", online: true, control: true }),
+          );
+      }
+      if (m.type === "release")
+        ws.send(
+          JSON.stringify({ type: "status", online: true, control: false }),
+        );
       if (m.type === "input") inputs++;
     });
     ws.onClose(() => closed++);
@@ -74,6 +87,8 @@ async function openWorkspace(page: Page) {
   await page.getByRole("button", { name: "查看 Eagle", exact: true }).click();
   return {
     frame,
+    status: (online: boolean, control: boolean) =>
+      socket.send(JSON.stringify({ type: "status", online, control })),
     offline: () =>
       socket.send(
         JSON.stringify({ type: "status", online: false, control: false }),
@@ -84,7 +99,7 @@ async function openWorkspace(page: Page) {
   };
 }
 
-test("realtime is first and opens by default without requesting input control", async ({
+test("realtime is first and enables input by default after the control grant", async ({
   page,
 }) => {
   const stream = await openWorkspace(page);
@@ -97,7 +112,8 @@ test("realtime is first and opens by default without requesting input control", 
     "Synthetic terminal output",
   );
   await expect(page.getByRole("button", { name: "发送并回车" })).toBeDisabled();
-  expect(stream.controls()).toBe(0);
+  await expect(page.getByLabel("发送到当前 Pane")).toBeEnabled();
+  expect(stream.controls()).toBe(1);
   expect(stream.inputs()).toBe(0);
   await page.getByRole("button", { name: "当前任务", exact: true }).click();
   await expect.poll(stream.closed).toBe(1);
@@ -105,7 +121,50 @@ test("realtime is first and opens by default without requesting input control", 
   await page.getByRole("button", { name: "关闭工作区", exact: true }).click();
   await page.getByRole("button", { name: "查看 Eagle", exact: true }).click();
   await expect(tabs.first()).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("发送到当前 Pane")).toBeEnabled();
+  expect(stream.controls()).toBe(2);
+  expect(stream.inputs()).toBe(0);
+});
+
+test("initial input waits for online and the server grant without retrying denied control", async ({
+  page,
+}) => {
+  const stream = await openWorkspace(page, {
+    online: false,
+    grantControl: false,
+  });
+  const input = page.getByLabel("发送到当前 Pane");
+  await expect(input).toBeDisabled();
   expect(stream.controls()).toBe(0);
+  stream.status(true, false);
+  await expect.poll(stream.controls).toBe(1);
+  await expect(input).toBeDisabled();
+  stream.status(true, false);
+  stream.frame("Another viewer still controls this Space");
+  await expect(page.locator(".live-pane pre")).toContainText("Another viewer");
+  expect(stream.controls()).toBe(1);
+  await expect(input).toBeDisabled();
+  stream.status(true, true);
+  await expect(input).toBeEnabled();
+  expect(stream.inputs()).toBe(0);
+});
+
+test("releasing default input control is respected until manual reacquisition", async ({
+  page,
+}) => {
+  const stream = await openWorkspace(page);
+  const input = page.getByLabel("发送到当前 Pane");
+  await expect(input).toBeEnabled();
+  await page.getByRole("button", { name: "释放输入", exact: true }).click();
+  await expect(input).toBeDisabled();
+  stream.status(true, false);
+  stream.frame("Still viewing after release");
+  await expect(page.locator(".live-pane pre")).toContainText("Still viewing");
+  expect(stream.controls()).toBe(1);
+  await page.getByRole("button", { name: "接管输入", exact: true }).click();
+  await expect(input).toBeEnabled();
+  expect(stream.controls()).toBe(2);
+  expect(stream.inputs()).toBe(0);
 });
 
 test("idle Codex footer is compacted only in the displayed terminal", async ({
@@ -132,7 +191,7 @@ test("idle Codex footer is compacted only in the displayed terminal", async ({
       Number.parseFloat(getComputedStyle(el).paddingBottom),
     ),
   ).toBeGreaterThan(0);
-  expect(stream.controls()).toBe(0);
+  expect(stream.controls()).toBe(1);
   expect(stream.inputs()).toBe(0);
 });
 

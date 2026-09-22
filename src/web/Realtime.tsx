@@ -49,6 +49,7 @@ export function Realtime({
   const socket = useRef<WebSocket | null>(null);
   const sequence = useRef(0);
   const pending = useRef<{ seq: number; at: number } | null>(null);
+  const initialControlRequested = useRef(false);
   const [connection, setConnection] = useState("正在连接");
   const [online, setOnline] = useState(false);
   const [control, setControl] = useState(false);
@@ -249,6 +250,21 @@ export function Realtime({
     }
     previousTarget.current = targetIdentity;
   }, [targetIdentity]);
+  useEffect(() => {
+    const ws = socket.current;
+    if (
+      initialControlRequested.current ||
+      !online ||
+      !targetIdentity ||
+      ws?.readyState !== WebSocket.OPEN
+    )
+      return;
+    // Request once per opened view; only the server can grant the lease.
+    // Rejection, release, target replacement and reconnect never retry it.
+    initialControlRequested.current = true;
+    setAuthority(targetIdentity);
+    ws.send(JSON.stringify({ type: "control" }));
+  }, [online, targetIdentity]);
   const send = (keys: LiveInput["keys"], value = "") => {
     const ws = socket.current;
     if (
@@ -309,6 +325,7 @@ export function Realtime({
             variant={control ? "default" : "secondary"}
             disabled={!online || !pane}
             onClick={() => {
+              initialControlRequested.current = true;
               setAuthority(control ? "" : targetIdentity);
               socket.current?.send(
                 JSON.stringify({ type: control ? "release" : "control" }),

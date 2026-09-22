@@ -178,7 +178,7 @@ for (const theme of ["dark", "light"] as const) {
       node.scrollTop = node.scrollHeight;
     });
     await expect(composer).toBeInViewport({ ratio: 1 });
-    await page.getByRole("button", { name: "接管输入", exact: true }).click();
+    await expect(composer).toBeEnabled();
     await composer.fill("printf hello");
     await composer.press("Enter");
     await expect.poll(() => inputs.length).toBe(1);

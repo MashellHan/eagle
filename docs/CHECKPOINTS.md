@@ -1,5 +1,20 @@
 # 用户视角检查点
 
+## 2026-09-22 — Default input control requested on opening realtime
+
+- User superseded the earlier read-only default: a fresh realtime view now
+  requests input control once, after the bridge is online and a target exists.
+  Input remains gated by the server's single-controller grant. Denial, explicit
+  release, target replacement and reconnect do not trigger automatic retries;
+  drafts still clear and uncertain inputs never replay.
+- First reproduced the disabled default in desktop/mobile regressions. Updated
+  release/reacquisition and delayed/denied-grant checks, retained terminal
+  replacement and reconnect protections, and aligned the real verifier/docs.
+  All 96 unit/API tests, TypeScript, lint/build and 84 browser tests pass.
+- Actual local Herdr preview on desktop/mobile granted one default request and
+  disabled input after explicit release, with zero input messages or page errors.
+  No terminal commands, production deployment or collector/bridge restart occurred.
+
 ## 2026-09-22 — Compact terminal footer spacing
 
 - Moved visual separation above the recognized idle Codex model/directory

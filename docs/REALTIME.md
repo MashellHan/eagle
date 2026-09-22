@@ -1,6 +1,6 @@
 # Space realtime mode
 
-Open a machine and a Space; **实时模式** opens by default. Eagle mirrors the current terminal text and tab/pane layout. **接管输入** grants one browser control of that Space; other browsers can watch. Select a pane, send text with or without Enter, or use the common key buttons. The local Herdr client remains able to operate concurrently. Terminal snapshots support SGR colors (16/256/RGB), bold, dim, italic, underline and inverse. Mouse reporting, pixel graphics and arbitrary PTY resize are not implemented.
+Open a machine and a Space; **实时模式** opens by default and requests input control once. Eagle mirrors the current terminal text and tab/pane layout. Only the browser granted control by the server can send input; other browsers can watch. Select a pane, send text with or without Enter, or use the common key buttons. The local Herdr client remains able to operate concurrently. Terminal snapshots support SGR colors (16/256/RGB), bold, dim, italic, underline and inverse. Mouse reporting, pixel graphics and arbitrary PTY resize are not implemented.
 
 Output follows the bottom on first display, target switch/replacement and while
 already at the bottom. Scrolling up pauses following independently for each pane;
@@ -8,9 +8,15 @@ new output offers **新输出 · 回到底部**. Clicking it or scrolling back t
 resumes following. This navigates the current visible-screen snapshot, not an
 unbounded terminal scrollback archive.
 
-Opening a workspace selects **实时模式**, the first tab, as a read-only viewer.
-It never requests input control automatically. Switching to **当前任务** or
-**Space 历史** releases the realtime subscription.
+Opening a workspace selects **实时模式**, the first tab. Once the bridge is online
+and a valid target exists, the view requests control once; input remains disabled
+until the server grants the single-controller lease. The request sends no text or
+keys and does not attach to the terminal. A denied request is not retried
+automatically. **释放输入** opts back into viewing; **接管输入** can request control
+again explicitly. Target changes/replacements and reconnects clear drafts and
+require manual reacquisition; uncertain inputs are never replayed. Switching to
+**当前任务** or **Space 历史** releases the realtime subscription. Opening a fresh
+realtime view makes a new default request.
 
 One compact row above the input contains an output-status icon, ellipsized target
 name, pane ID and viewing/control mode. Hover or focus the icon for its recent,
@@ -71,7 +77,7 @@ Installing a new npm version updates the executable; it does not create or start
 2. Reuse the existing collector's secure configuration, including its machine ID, token and ingestion URL. The default is `~/.config/eagle/agent.json`; preserve an existing custom `EAGLE_CONFIG` path. There are no additional realtime fields to add to that file.
 3. If no realtime service is running, test `eagle-agent realtime-watch` in the foreground. For a custom config, use `EAGLE_CONFIG=/absolute/path/agent.json eagle-agent realtime-watch`. If authentication fails, correct that existing configuration; do not create a replacement machine or discard Manager state.
 4. Stop the foreground test before enabling a separate user service with launchd on macOS or systemd on Linux. Use absolute executable paths and the same configuration/PATH as the working collector so the service can find Node and Herdr. Give it its own label/unit and preserve the collector and Manager services. If a realtime service already exists, restart that service after upgrading instead of adding a duplicate.
-5. Reopen the Space in Eagle. `等待本机实时服务` means the machine's realtime bridge is not connected, even when ordinary snapshots are current. Once connected, viewing is available; select `接管输入` separately when input is intended.
+5. Reopen the Space in Eagle. `等待本机实时服务` means the machine's realtime bridge is not connected, even when ordinary snapshots are current. Once connected, the view requests input control by default. If another viewer owns control, input stays disabled; use `接管输入` after it becomes available. Use `释放输入` to remain a viewer.
 
 ## Transport and lifecycle
 
