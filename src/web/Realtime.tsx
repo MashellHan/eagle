@@ -32,7 +32,8 @@ import {
   LiveServerMessageSchema,
   type LiveTopology,
 } from "../shared/realtime.ts";
-import { OutputActivity, TerminalOutput } from "./TerminalOutput.tsx";
+import { RealtimeActivity } from "./RealtimeActivity.tsx";
+import { TerminalOutput } from "./TerminalOutput.tsx";
 import { TERMINAL_THEMES, useTerminalTheme } from "./TerminalTheme.ts";
 import { useTimezone } from "./Timezone.tsx";
 
@@ -435,17 +436,23 @@ export function Realtime({
           if (text) send(["enter"], text);
         }}
       >
-        <OutputActivity
-          frame={pane ? frames[pane.id] : undefined}
-          online={online}
-        />
         <div className="live-composer-meta">
+          <RealtimeActivity
+            frame={pane ? frames[pane.id] : undefined}
+            online={online}
+            connection={connection}
+          />
           <label htmlFor="live-input">
-            <span className="live-target-dot" data-control={control} />
-            {pane ? `发送到 ${pane.title}` : "等待终端"}
-            <span className="mono">{pane?.id}</span>
+            <span className="live-target-name" title={pane?.title}>
+              {pane ? `发送到 ${pane.title}` : "等待终端"}
+            </span>
+            <span className="mono" title={pane?.id}>
+              {pane?.id}
+            </span>
           </label>
-          <span>{control ? "你正在控制" : "观看模式"}</span>
+          <span className="live-control-mode">
+            {control ? "你正在控制" : "观看模式"}
+          </span>
         </div>
         <div className="live-input-row">
           <span className="live-prompt mono" aria-hidden="true">

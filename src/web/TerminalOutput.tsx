@@ -1,8 +1,9 @@
 import { Button } from "@nocoo/basalt";
 import { ArrowDown } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { LiveFrame } from "../shared/realtime.ts";
 import { terminalColor } from "../shared/terminal.ts";
+import { compactRenderedFrame } from "../shared/terminal-display.ts";
 
 export function TerminalOutput({
   frame,
@@ -16,7 +17,8 @@ export function TerminalOutput({
   const wasSelected = useRef(selected);
   const previous = useRef("");
   const [unread, setUnread] = useState(false);
-  const content = JSON.stringify([frame?.text, frame?.runs]);
+  const display = frame ? compactRenderedFrame(frame) : undefined;
+  const content = JSON.stringify([display?.text, display?.runs]);
   const toBottom = () => {
     const el = screen.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -55,8 +57,8 @@ export function TerminalOutput({
           if (following.current) setUnread(false);
         }}
       >
-        {frame?.runs
-          ? frame.runs.map((run) => {
+        {display?.runs
+          ? display.runs.map((run) => {
               const key = offset;
               offset += run.text.length;
               const fg = terminalColor(run.fg),
@@ -79,7 +81,7 @@ export function TerminalOutput({
                 </span>
               );
             })
-          : (frame?.text ?? "等待画面…")}
+          : (display?.text ?? "等待画面…")}
       </pre>
       {unread && (
         <Button
@@ -97,51 +99,6 @@ export function TerminalOutput({
           新输出 · 回到底部
         </Button>
       )}
-    </div>
-  );
-}
-
-export function OutputActivity({
-  frame,
-  online,
-}: {
-  frame?: LiveFrame;
-  online: boolean;
-}) {
-  const [recent, setRecent] = useState(false);
-  const content = frame
-    ? JSON.stringify([
-        frame.subscriptionId,
-        frame.terminalId,
-        frame.text,
-        frame.runs,
-      ])
-    : "";
-  useEffect(() => {
-    setRecent(!!content && online);
-    if (!content || !online) return;
-    const timer = setTimeout(() => setRecent(false), 3000);
-    return () => clearTimeout(timer);
-  }, [content, online]);
-  return (
-    <div
-      className="live-output-activity"
-      role="status"
-      aria-label="终端输出状态"
-      title="仅表示画面内容变化；连接在线或暂时无输出都不能证明任务完成。"
-    >
-      <span
-        className="live-output-pulse"
-        data-active={recent && online}
-        aria-hidden="true"
-      />
-      {!online
-        ? "连接未就绪"
-        : !frame
-          ? "已连接 · 等待画面"
-          : recent
-            ? "刚有新输出"
-            : "已连接 · 等待新输出"}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 # Space realtime mode
 
-Open a machine, open a Space, then select **实时模式**. Eagle mirrors the current terminal text and tab/pane layout. **接管输入** grants one browser control of that Space; other browsers can watch. Select a pane, send text with or without Enter, or use the common key buttons. The local Herdr client remains able to operate concurrently. Terminal snapshots support SGR colors (16/256/RGB), bold, dim, italic, underline and inverse. Mouse reporting, pixel graphics and arbitrary PTY resize are not implemented.
+Open a machine and a Space; **实时模式** opens by default. Eagle mirrors the current terminal text and tab/pane layout. **接管输入** grants one browser control of that Space; other browsers can watch. Select a pane, send text with or without Enter, or use the common key buttons. The local Herdr client remains able to operate concurrently. Terminal snapshots support SGR colors (16/256/RGB), bold, dim, italic, underline and inverse. Mouse reporting, pixel graphics and arbitrary PTY resize are not implemented.
 
 Output follows the bottom on first display, target switch/replacement and while
 already at the bottom. Scrolling up pauses following independently for each pane;
@@ -8,10 +8,21 @@ new output offers **新输出 · 回到底部**. Clicking it or scrolling back t
 resumes following. This navigates the current visible-screen snapshot, not an
 unbounded terminal scrollback archive.
 
-The hint above the input briefly pulses on changed screen content, then displays
-**已连接 · 等待新输出**. Repeated frames/heartbeats do not renew it. It never claims
-the task is still running or has completed; reduced-motion preferences disable
-the pulse. Inputs and completion evidence are unchanged.
+Opening a workspace selects **实时模式**, the first tab, as a read-only viewer.
+It never requests input control automatically. Switching to **当前任务** or
+**Space 历史** releases the realtime subscription.
+
+One compact row above the input contains an output-status icon, ellipsized target
+name, pane ID and viewing/control mode. Hover or focus the icon for its recent,
+waiting or connection-error explanation. Repeated frames/heartbeats do not renew
+the activity pulse, and reduced motion disables animation. Output activity never
+claims task completion. There is no separate visible output-status text row.
+
+Recognized trailing Codex idle chrome is compacted in the web view: remove the
+exact `› Ask Codex to do anything` placeholder and adjacent blank padding, and
+retain model/effort plus directory. Body formatting, typed input and unknown
+footer forms remain intact. Colors are preserved in retained text. This changes
+neither the source frames/actual CLI nor input routing.
 
 The **终端配色** selector controls the screen's default foreground/background
 and indexed ANSI palette: follow the webpage, dark terminal, classic black or

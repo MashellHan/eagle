@@ -3,6 +3,14 @@ import { expect, test } from "@playwright/test";
 import pkg from "../../package.json" with { type: "json" };
 import { report, telemetry } from "../fixtures.ts";
 
+// Workspace sheets now open realtime by default. Keep these task/overview
+// fixtures isolated from any actual local Worker behind the dev proxy.
+test.beforeEach(async ({ page }) => {
+  await page.routeWebSocket("**/api/v1/realtime?*", (ws) => {
+    ws.send(JSON.stringify({ type: "status", online: false, control: false }));
+  });
+});
+
 test("global overview summarizes the fleet and opens only the selected machine", async ({
   page,
   isMobile,
@@ -323,6 +331,7 @@ test("token-free overview, topology evidence, history and empty search", async (
   }
   await page.getByRole("button", { name: "查看 Eagle" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button", { name: "当前任务", exact: true }).click();
   await expect(page.getByText("Herdr 弱提示：done")).toBeVisible();
   await expect(page.getByText(/待补充或核对/).first()).toBeVisible();
   await page.keyboard.press("Escape");
@@ -964,6 +973,7 @@ test("Pane semantic summary and timeline survive refresh, and stale manager neve
   await page.goto("/?machine=mac-one");
   await page.getByRole("button", { name: "查看 Eagle" }).click();
   const panel = page.getByRole("region", { name: "Pane 实时总结" });
+  await page.getByRole("button", { name: "当前任务", exact: true }).click();
   await expect(panel).toContainText("实时摘要已经连通");
   await expect(panel).toContainText("语义在线");
   await expect(panel).toContainText("核验生产链路");
@@ -1066,6 +1076,7 @@ test("Pane history groups UTC hours and expands every semantic record in that ho
   });
   await page.goto("/?machine=mac-one");
   await page.getByRole("button", { name: "查看 Eagle" }).click();
+  await page.getByRole("button", { name: "当前任务", exact: true }).click();
   await expect(page.getByText("小时时间线 · UTC+08:00")).toBeVisible();
   await page.getByRole("button", { name: /展开.*2 条/ }).click();
   await expect(page.getByText("该小时更早的语义记录")).toBeVisible();

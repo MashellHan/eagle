@@ -1,5 +1,19 @@
 # 用户视角检查点
 
+## 2026-09-22 — Consolidating realtime UI work into PR2
+
+- User superseded the earlier separate-PR request: all UI work belongs in PR2;
+  PR3 is to be closed after the consolidated PR2 update is verified and pushed.
+- Combined existing styled text/themes/follow behavior with first/default
+  read-only realtime, an inline icon/target row, and narrowly scoped idle Codex
+  footer cleanup. Removed the superseded separate output-status row rather than
+  rendering two indicators. A regression verifies retained body/footer colors
+  and that original frames are not mutated.
+- Full gates pass95unit/API tests, TypeScript, lint/build and80desktop/mobile
+  browser tests. Synthetic mobile screenshot visually confirms colors, first
+  realtime tab and one compact icon/target row. No production change or terminal
+  input is authorized by this consolidation; local preview readback follows.
+
 ## 2026-09-21 — Realtime terminal contribution in isolation
 
 - New regressions reproduced missing colors and the initial/top-follow scrolling

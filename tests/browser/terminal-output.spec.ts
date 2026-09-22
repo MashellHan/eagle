@@ -141,25 +141,24 @@ test("safe colors render as text, and output activity is not a running-task clai
   await expect(pass).toHaveCSS("color", "rgb(166, 227, 161)");
   await expect(pass).toHaveCSS("font-weight", "700");
   await expect(page.locator(".live-pane pre img")).toHaveCount(0);
-  await expect(
-    page.getByRole("status", { name: "终端输出状态" }),
-  ).toContainText("刚有新输出");
+  const activity = page.getByRole("button", { name: /终端输出：/ });
+  await expect(activity).toHaveAttribute("aria-label", "终端输出：刚有新输出");
   await page.clock.fastForward(4000);
-  await expect(
-    page.getByRole("status", { name: "终端输出状态" }),
-  ).toContainText("等待新输出");
+  await expect(activity).toHaveAttribute(
+    "aria-label",
+    "终端输出：已连接，等待新输出",
+  );
   stream.frame(text, [
     { text: "PASS", fg: 2, bold: true },
     { text: text.slice(4) },
   ]);
   await page.clock.fastForward(100);
-  await expect(
-    page.getByRole("status", { name: "终端输出状态" }),
-  ).toContainText("等待新输出");
+  await expect(activity).toHaveAttribute(
+    "aria-label",
+    "终端输出：已连接，等待新输出",
+  );
   stream.offline();
-  await expect(
-    page.getByRole("status", { name: "终端输出状态" }),
-  ).toContainText("连接未就绪");
+  await expect(activity).toHaveAttribute("data-state", "offline");
 });
 
 test("terminal theme controls default colors and persists without reconnecting", async ({
@@ -243,7 +242,7 @@ for (const theme of ["dark", "light"]) {
     await expect(page.locator(".live-pane pre")).toContainText(
       "watching for changes",
     );
-    await expect(page.locator(".live-output-pulse")).toHaveCSS(
+    await expect(page.locator(".live-output-status")).toHaveCSS(
       "animation-name",
       "none",
     );
@@ -253,7 +252,7 @@ for (const theme of ["dark", "light"]) {
       ),
     ).toBe(true);
     const status = await page
-      .getByRole("status", { name: "终端输出状态" })
+      .getByRole("button", { name: /终端输出：/ })
       .boundingBox();
     const input = await page
       .getByLabel("发送到当前 Pane", { exact: true })

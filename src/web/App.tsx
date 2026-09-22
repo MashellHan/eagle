@@ -256,7 +256,7 @@ function SpaceDetail({
   }, []);
   const [paneId, setPaneId] = useState(initialPane);
   const [history, setHistory] = useState(false);
-  const [realtime, setRealtime] = useState(false);
+  const [realtime, setRealtime] = useState(true);
   const panes = space.tabs.flatMap((t) => t.panes);
   const pane = panes.find((p) => p.id === paneId) ?? panes[0];
   const assessment = pane ? assessPane(pane, machine.report.capturedAt) : null;
@@ -292,6 +292,18 @@ function SpaceDetail({
         <fieldset className="space-mode-switch" aria-label="工作区视图">
           <Button
             size="sm"
+            variant={realtime ? "default" : "outline"}
+            aria-pressed={realtime}
+            onClick={() => {
+              setRealtime(true);
+              setHistory(false);
+            }}
+          >
+            <TerminalSquare size={14} />
+            实时模式
+          </Button>
+          <Button
+            size="sm"
             variant={history || realtime ? "outline" : "default"}
             aria-pressed={!history && !realtime}
             onClick={() => {
@@ -313,18 +325,6 @@ function SpaceDetail({
           >
             <HistoryIcon size={14} />
             Space 历史
-          </Button>
-          <Button
-            size="sm"
-            variant={realtime ? "default" : "outline"}
-            aria-pressed={realtime}
-            onClick={() => {
-              setRealtime(true);
-              setHistory(false);
-            }}
-          >
-            <TerminalSquare size={14} />
-            实时模式
           </Button>
         </fieldset>
       </header>

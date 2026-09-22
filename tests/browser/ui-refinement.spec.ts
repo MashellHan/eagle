@@ -141,6 +141,11 @@ for (const theme of ["dark", "light"] as const) {
     await expect(sheet).toBeVisible();
     await expect(sheet).not.toHaveCSS("animation-name", "none");
     expect(await page.locator("#eagle-content").boundingBox()).toEqual(island);
+    await expect(page.locator(".live-pane pre").first()).toContainText(
+      "line 179",
+    );
+    await page.getByRole("button", { name: "当前任务", exact: true }).click();
+    await expect.poll(() => closed).toBe(1);
     await sheet.screenshot({ path: test.info().outputPath("workspace.png") });
     const before = await sheet.boundingBox();
     await page.getByRole("button", { name: "实时模式", exact: true }).click();
@@ -202,7 +207,7 @@ for (const theme of ["dark", "light"] as const) {
     await expect(sheet).toHaveCSS("animation-name", "none");
     await page.getByRole("button", { name: "关闭工作区" }).click();
     await expect(sheet).toBeHidden();
-    await expect.poll(() => closed).toBe(1);
+    await expect.poll(() => closed).toBe(2);
   });
 }
 

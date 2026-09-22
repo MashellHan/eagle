@@ -1708,36 +1708,6 @@
   box-shadow: 0 2px 12px rgb(0 0 0 / 0.4);
   font-size: 11px;
 }
-.live-output-activity {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 18px;
-  margin-bottom: 6px;
-  font-size: 10px;
-  color: hsl(var(--basalt-muted-foreground));
-}
-.live-output-pulse {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: hsl(var(--basalt-muted-foreground));
-  flex: none;
-}
-.live-output-pulse[data-active="true"] {
-  background: hsl(var(--basalt-accent-4));
-  animation: live-output-pulse 1.2s ease-in-out infinite;
-}
-@keyframes live-output-pulse {
-  50% {
-    box-shadow: 0 0 0 4px hsl(var(--basalt-accent-4) / 0.12);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .live-output-pulse[data-active="true"] {
-    animation: none;
-  }
-}
 .live-pane pre:focus-visible {
   outline: 1px solid hsl(var(--basalt-ring));
   outline-offset: -2px;
@@ -1787,11 +1757,15 @@
 }
 .live-composer-meta {
   justify-content: space-between;
+  flex-wrap: nowrap;
+  height: 24px;
+  gap: 6px;
   margin-bottom: 8px;
   color: hsl(var(--basalt-muted-foreground));
   font-size: 10px;
 }
 .live-composer-meta > label {
+  flex: 1;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -1799,19 +1773,41 @@
   flex: none;
 }
 .live-composer-meta .mono {
+  flex: none;
+  max-width: 30%;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.live-target-dot {
-  height: 5px;
-  width: 5px;
-  border-radius: 50%;
-  background: hsl(var(--basalt-muted-foreground));
-  flex: none;
+.live-target-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.live-target-dot[data-control="true"] {
-  background: hsl(var(--basalt-accent-4));
-  box-shadow: 0 0 8px hsl(var(--basalt-accent-4) / 0.5);
+.live-composer-meta > .live-control-mode {
+  white-space: nowrap;
+}
+.live-composer-meta .live-output-status {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  color: hsl(var(--basalt-muted-foreground));
+}
+.live-output-status[data-state="recent"] {
+  color: hsl(var(--basalt-accent-4));
+  animation: live-output-status-pulse 1.2s ease-in-out infinite;
+}
+.live-output-status[data-state="offline"] {
+  color: hsl(var(--basalt-accent-6));
+}
+@keyframes live-output-status-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-output-status[data-state="recent"] {
+    animation: none;
+  }
 }
 .live-input-row {
   position: relative;
