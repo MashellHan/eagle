@@ -48,7 +48,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@types/ws": "8.18.2",
-    "@vitejs/plugin-react": "^6.1.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "miniflare": "5.20260918.0-alpha",
     "tailwindcss": "^4.3.3",
     "typescript": "7.0.2",
