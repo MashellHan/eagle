@@ -1132,3 +1132,12 @@ serving and the first catalogue-derived production Cron observation.
 - Root Node 26 check passed 133 tests, types, strict lint and build with owned local fixture state. Node 24 exposed a CONNECT request missing from the proxy fixture; preserve route, Host, token and report-count assertions while repairing the fixture.
 - Packed and installed Agent 0.8.2 was verified locally; published onboarding remains 0.8.1. No live Herdr collection, public authentication, production D1, rendering or npm publication was performed. Local Miniflare tests use owned temporary state.
 - Next hop: Node 24/26 fixture and complete checks, website dependency fixes, independent reviews and current-head CI/browser verification.
+
+## 2026-10-21 06:27 +08 — Minor dependency patch preparation
+
+- Source: `chore/deps-minor` starts at `4a781c5`; eight dependency commits each update one package group and its lockfile tree, with React/React DOM paired. Website/Worker version is 0.10.3; Agent source 0.8.3 and published onboarding 0.8.1 are unchanged.
+- Validation: each dependency commit passed `npm run check` on Node 26.12.0/npm 11.20.0: 180 tests, strict types, warning-rejecting lint and build. Four existing Biome informational diagnostics and the existing Vite chunk-size warning remain. Chromium installation for Playwright 1.64.1 succeeded.
+- One intermediate lucide check failed at the existing 150ms frame assertion in `tests/realtime-agent.test.ts:109`. Its six-test focused rerun and the unchanged full 180-test rerun passed; no assertion, timeout, source or gate was changed, and no dependency compatibility repair was required.
+- Herdr collection and authentication: only controller/pane metadata was inspected; no installed collector, secure configuration or live Access/ingestion flow was exercised. Local authentication and D1 behavior passed isolated Miniflare/API fixtures; production D1 and public rendering were not accessed.
+- Installation uses the allowed Tencent mirror temporarily; every committed lockfile URL remains on `https://registry.npmjs.org/`. Normal Git commits use the existing hook configuration without bypasses; no active project hooks are installed.
+- Next hop: clean `npm ci`, final `npm run check`, serial `npm run test:browser` on port 27053 and independent read-only Codex review after refreshing `origin/main`. No push, PR, tag, publication or deployment is authorized.
