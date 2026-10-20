@@ -50,6 +50,28 @@
   used the authorized temporary mirror after a feed 404; lockfiles did not
   change. No executable Git hooks are installed; commits bypass no hooks.
 
+## 2026-10-20 — Clickable visible terminal URLs
+
+- Visible HTTP(S) URLs now use Basalt links and open a separate tab with
+  noopener/noreferrer/no-referrer. Their original text and ANSI styles remain
+  intact, including links crossing style-run boundaries. Selection clicks do
+  not navigate. Hidden OSC destinations and cross-line reconstruction remain off.
+- Only already-redacted text is considered. Credential-bearing URLs, invalid
+  schemes, control/bidi characters, backslashes and masking markers stay text.
+  At most 128 links per bounded frame and 4096 characters per URL are considered.
+- Desktop/mobile TDD first reproduced absent links. Review found a whitespace
+  boundary in `[REDACTED KEY]`; a failing regression now passes with prefix
+  rejection. Final Copilot delta review: no findings.
+- 137 Node tests passed; final types/check-only lint/build passed after formatting
+  corrections. Full browser baseline: 175 pass/11 existing viewport skips;
+  18 focused cases and the final two marker/new-tab regressions pass. Existing
+  lint infos/bundle advisory are unchanged.
+- Actual isolated Edge 390x600 render shows only the safe URL as a dotted link;
+  opening it retains Eagle, with null opener and empty referrer. The first QA
+  read raced popup navigation; the existing synthetic target was reconciled
+  and verified without replaying the click. No live input/production writes,
+  release version changes, service changes or deployment.
+
 ## 2026-10-19 — Realtime status-label redaction regression
 
 - Four synthetic regressions reproduced ordinary `Token usage:` labels masking
