@@ -90,7 +90,9 @@ export function redactScreen(value: string, secrets: string[]) {
     const key = compact.slice(start, end);
     const sensitive = key.search(/TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL/i);
     if (sensitive < 0) continue;
-    const value = compact.slice(end + 1).match(/^[^,;"']+/)?.[0];
+    const value = compact
+      .slice(end + 1)
+      .match(/^(?:"[^"]*(?:"|$)|'[^']*(?:'|$)|[^,;"']+)/)?.[0];
     if (!value) continue;
     assignmentEnd = end + 1 + value.length;
     mask(start + sensitive, assignmentEnd - start - sensitive);

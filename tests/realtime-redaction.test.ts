@@ -103,6 +103,14 @@ const assignmentProbes = [
   "Token usage API_\nKEY=private-fixture-value",
   "API_\nKEY=private-fixture-value;",
   "Token usage API_\nKEY=private-fixture-value; Token count: 42;",
+  'Token usage API_\nKEY="private-fixture-value";',
+  "Token usage API_\nKEY='private-fixture-value';",
+  'Token usage API_\nKEY="private-fixture-\nvalue";',
+  "Token usage API_\r\nKEY='private-fixture-\r\nvalue';",
+  'Token usage API_\nKEY="private-fixture-;value";',
+  "Token usage API_\nKEY='private-fixture-;value';",
+  'Token usage API_\nKEY="private-fixture-value',
+  "Token usage API_\nKEY='private-fixture-value",
 ];
 
 for (const [index, probe] of assignmentProbes.entries()) {
