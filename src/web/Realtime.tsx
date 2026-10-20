@@ -24,7 +24,7 @@ import {
   ShieldAlert,
   TerminalSquare,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   type LiveFrame,
@@ -35,9 +35,21 @@ import {
 import { apiPath, environment } from "./environment.ts";
 import { useInputDraft } from "./InputDraft.ts";
 import { RealtimeActivity } from "./RealtimeActivity.tsx";
-import { TerminalOutput } from "./TerminalOutput.tsx";
+import { TerminalOutput, type TerminalPosition } from "./TerminalOutput.tsx";
 import { TERMINAL_THEMES, useTerminalTheme } from "./TerminalTheme.ts";
 import { useTimezone } from "./Timezone.tsx";
+
+// Owned by the open workspace, never browser storage. At most one frame per
+// topology pane (32), each bounded by the validated realtime message schema.
+export function createRealtimeView() {
+  return {
+    topology: null as LiveTopology | null,
+    frames: {} as Record<string, LiveFrame>,
+    positions: {} as Record<string, TerminalPosition>,
+    controlRequested: false,
+    receipt: "",
+  };
+}
 
 export function Realtime({
   machineId,
@@ -47,7 +59,9 @@ export function Realtime({
   onPaneChange,
   onObservedAt,
   statusTarget,
+  view,
 }: {
+  view: { current: ReturnType<typeof createRealtimeView> };
   statusTarget: HTMLElement | null;
   machineId: string;
   spaceId: string;
@@ -61,15 +75,15 @@ export function Realtime({
   const socket = useRef<WebSocket | null>(null);
   const sequence = useRef(0);
   const pending = useRef<{ seq: number; at: number } | null>(null);
-  const initialControlRequested = useRef(false);
+  const initialControlRequested = useRef(view.current.controlRequested);
   const [connection, setConnection] = useState("正在连接");
   const [online, setOnline] = useState(false);
   const [ready, setReady] = useState(false);
   const [retrying, setRetrying] = useState(true);
   const [control, setControl] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [topology, setTopology] = useState<LiveTopology | null>(null);
-  const [frames, setFrames] = useState<Record<string, LiveFrame>>({});
+  const [topology, setTopology] = useState(view.current.topology);
+  const [frames, setFrames] = useState(view.current.frames);
   const [localSelected, setLocalSelected] = useState(initialPane);
   const selected = selectedPane ?? localSelected;
   const setSelected = (id: string) => {
@@ -77,8 +91,13 @@ export function Realtime({
     onPaneChange?.(id);
   };
   const [authority, setAuthority] = useState("");
-  const [receipt, setReceipt] = useState("");
+  const [receipt, setReceipt] = useState(view.current.receipt);
   const [attempt, setAttempt] = useState(0);
+  useLayoutEffect(() => {
+    view.current.topology = topology;
+    view.current.frames = frames;
+    view.current.receipt = receipt;
+  }, [view, topology, frames, receipt]);
   useEffect(() => {
     let disposed = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -98,7 +117,8 @@ export function Realtime({
         ws.close(1000, "View left");
       }
       if (pending.current) {
-        setReceipt("连接中断，输入结果未知；不会自动重发");
+        view.current.receipt = "连接中断，输入结果未知；不会自动重发";
+        setReceipt(view.current.receipt);
         pending.current = null;
       }
       setOnline(false);
@@ -150,6 +170,16 @@ export function Realtime({
         }
         if (m.type === "topology" && m.spaceId === spaceId) {
           current = m;
+          const identities = new Set(
+            m.tabs.flatMap((t) =>
+              t.panes.map((p) => `${p.id}/${p.terminalId}`),
+            ),
+          );
+          view.current.positions = Object.fromEntries(
+            Object.entries(view.current.positions).filter(([id]) =>
+              identities.has(id),
+            ),
+          );
           setTopology(m);
           setReady(true);
           setFrames((old) =>
@@ -208,7 +238,12 @@ export function Realtime({
         disconnect();
         const canRetry = ![1008, 4001, 4004, 4008].includes(e.code);
         setRetrying(canRetry && !document.hidden);
-        if (!canRetry) setFrames({});
+        if (!canRetry) {
+          view.current = { ...createRealtimeView(), controlRequested: true };
+          initialControlRequested.current = true;
+          setTopology(null);
+          setFrames({});
+        }
         setConnection(
           e.code === 4001
             ? "连接授权已过期，请重新连接"
@@ -255,7 +290,7 @@ export function Realtime({
       window.removeEventListener("pagehide", leave);
       window.removeEventListener("pageshow", visibility);
     };
-  }, [machineId, spaceId, attempt, onObservedAt]);
+  }, [machineId, spaceId, attempt, onObservedAt, view]);
   const panes = topology?.tabs.flatMap((t) => t.panes) ?? [];
   const pane =
     panes.find((p) => p.id === selected) ?? (!selected ? panes[0] : undefined);
@@ -296,9 +331,10 @@ export function Realtime({
     // Request once per opened view; only the server can grant the lease.
     // Rejection, release, target replacement and reconnect never retry it.
     initialControlRequested.current = true;
+    view.current.controlRequested = true;
     setAuthority(targetIdentity);
     ws.send(JSON.stringify({ type: "control" }));
-  }, [online, ready, targetIdentity]);
+  }, [online, ready, targetIdentity, view]);
   const send = (keys: LiveInput["keys"], value = "") => {
     const ws = socket.current;
     if (
@@ -480,6 +516,11 @@ export function Realtime({
                 <TerminalOutput
                   frame={frames[p.id]}
                   selected={pane?.id === p.id}
+                  position={view.current.positions[`${p.id}/${p.terminalId}`]}
+                  onPosition={(position) => {
+                    view.current.positions[`${p.id}/${p.terminalId}`] =
+                      position;
+                  }}
                 />
                 <div className="live-pane-footer mono">
                   <span>{pane?.id === p.id ? "当前目标" : "只读画面"}</span>
@@ -563,6 +604,7 @@ export function Realtime({
             disabled={!online || !ready || !pane}
             onClick={() => {
               initialControlRequested.current = true;
+              view.current.controlRequested = true;
               setAuthority(control ? "" : targetIdentity);
               socket.current?.send(
                 JSON.stringify({ type: control ? "release" : "control" }),

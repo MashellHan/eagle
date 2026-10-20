@@ -1,5 +1,23 @@
 # 用户视角检查点
 
+## 2026-10-20 — Open-workspace realtime continuity
+
+- Switching between realtime/task/history views retains the latest bounded
+  terminal frames, scroll positions and unknown-input receipt in the open
+  workspace's memory. Closing the workspace, reloading or Access expiry destroys
+  that memory; no screen text enters browser storage.
+- Sockets still close on leaving; reconnect requires fresh topology, never
+  reclaims input control or replays an unknown input. The existing 15-minute
+  authorization renewal (4002) remains; terminal replacement and terminal
+  authorization/protocol failures discard incompatible/protected state.
+- New desktop/mobile regressions first failed on lost output. Copilot review
+  found hidden mobile panes initializing before layout; a two-pane regression
+  reproduced that loss and now passes after deferred restoration.
+- Verification: 133 Node tests; final types/check-only lint/build pass; final
+  full browser suite 175 passed / 11 existing viewport-specific skips. Follow-up
+  GitHub Copilot CLI read-only review: no findings. No live capture/input,
+  authentication changes, cloud writes, service restart or deployment.
+
 ## 2026-10-03 06:40 +08 — resource windows and usage meters
 
 - Resource history defaults to six hours with 6h/12h/24h controls and a fixed

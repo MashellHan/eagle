@@ -173,6 +173,12 @@ Installing a new npm version updates the executable; it does not create or start
 ## Input and evidence
 
 A temporary disconnect preserves the last terminal screen with a retry indicator.
+Switching task/history/realtime views within the same open workspace also keeps
+the latest validated frames, per-terminal scroll/follow position and unknown-input
+receipt in workspace-owned memory (at most the topology's 32 bounded frames).
+Closing the workspace, reloading or losing Access clears this memory. It never
+enters browser storage and does not retain or reacquire input control. Hidden
+mobile panes restore their position only once they have layout dimensions.
 The composer keeps its focus and remains editable while offline, viewing or
 waiting for a receipt. Sending and terminal shortcuts remain gated by a fresh
 connection/topology and an explicit controller lease. Authentication/protocol

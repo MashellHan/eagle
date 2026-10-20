@@ -5,38 +5,75 @@ import type { LiveFrame } from "../shared/realtime.ts";
 import { terminalColor } from "../shared/terminal.ts";
 import { compactRenderedFrame } from "../shared/terminal-display.ts";
 
+export interface TerminalPosition {
+  top: number;
+  left: number;
+  following: boolean;
+  unread: boolean;
+}
+
 export function TerminalOutput({
   frame,
   selected,
+  position,
+  onPosition,
 }: {
   frame?: LiveFrame;
   selected: boolean;
+  position?: TerminalPosition;
+  onPosition?: (position: TerminalPosition) => void;
 }) {
   const screen = useRef<HTMLPreElement>(null);
-  const following = useRef(true);
-  const wasSelected = useRef(selected);
-  const previous = useRef("");
-  const [unread, setUnread] = useState(false);
+  const following = useRef(position?.following ?? true);
+  const initialPosition = useRef(position);
+  const initialized = useRef(false);
+  const [unread, setUnread] = useState(position?.unread ?? false);
   const display = frame ? compactRenderedFrame(frame) : undefined;
   const content = JSON.stringify([display?.text, display?.runs]);
+  const previous = useRef(content);
+  const save = useRef(onPosition);
+  save.current = onPosition;
   const toBottom = () => {
     const el = screen.current;
     if (el) el.scrollTop = el.scrollHeight;
   };
+  const restore = () => {
+    const el = screen.current;
+    if (!initialized.current && el?.clientHeight) {
+      initialized.current = true;
+      el.scrollTop = initialPosition.current?.top ?? 0;
+      el.scrollLeft = initialPosition.current?.left ?? 0;
+    }
+  };
   useLayoutEffect(() => {
-    if (selected && !wasSelected.current) following.current = true;
-    wasSelected.current = selected;
+    restore();
     const changed = previous.current !== content;
     previous.current = content;
     if (following.current) {
       toBottom();
       setUnread(false);
-    } else if (changed && frame) setUnread(true);
-  }, [content, selected, frame]);
+    } else if (changed) setUnread(true);
+  }, [content, selected]);
+  useLayoutEffect(() => {
+    const el = screen.current;
+    if (!el) return;
+    const record = () => {
+      if (!el.clientHeight) return;
+      save.current?.({
+        top: el.scrollTop,
+        left: el.scrollLeft,
+        following: following.current,
+        unread,
+      });
+    };
+    record();
+    return record;
+  }, [unread]);
   useLayoutEffect(() => {
     const el = screen.current;
     if (!el) return;
     const observer = new ResizeObserver(() => {
+      restore();
       if (following.current) toBottom();
     });
     observer.observe(el);
@@ -52,9 +89,15 @@ export function TerminalOutput({
         tabIndex={0}
         onScroll={() => {
           const el = screen.current;
-          if (!el) return;
+          if (!el?.clientHeight) return;
           following.current =
             el.scrollHeight - el.clientHeight - el.scrollTop <= 12;
+          save.current?.({
+            top: el.scrollTop,
+            left: el.scrollLeft,
+            following: following.current,
+            unread: following.current ? false : unread,
+          });
           if (following.current) setUnread(false);
         }}
       >
