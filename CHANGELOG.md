@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Agent 0.8.3
+
+- Prevent status labels from hiding independent wrapped secret assignments in
+  realtime plain text or styled runs, while preserving ordinary status output.
+- Remove repeated scanning of horizontal whitespace, assignment names and
+  footerless base64 line runs before terminal screen truncation.
+- Keep this repair in the unpublished Agent 0.8.3 candidate; website and
+  published-Agent onboarding versions are unchanged.
+
 ## v0.10.1 — 2026-10-03
 
 - Organize machine resources into six compact Basalt cards for CPU, GPU, memory, disk, network and fans, with equal-width meters, per-card help and responsive layouts.
