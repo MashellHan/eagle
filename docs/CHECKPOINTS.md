@@ -1,5 +1,23 @@
 # 用户视角检查点
 
+## 2026-10-21 05:39 +08 — deterministic context-menu regression
+
+- PR76 CI run `39500894779` failed on Ubuntu headless Chromium when CDP touch
+  synthesis emitted no context menu. Local macOS repetition did not establish
+  portable long-press recognition. Mobile now dispatches cancelable, bubbling
+  touch-pointer/context-menu events; desktop retains a real right-click.
+- Cancellation is observed above React's root and mobile dispatch results are
+  checked after propagation. Temporary ancestor cancellation failed both
+  projects before its removal. Selection still freezes incoming output,
+  preserves the selected URL, blocks navigation and resumes via the unread
+  button. Native callout appearance and physical-device recognition are manual.
+- Herdr evidence is pane inventory only; no actual collection, production
+  authentication, D1 or public rendering was exercised. Browser rendering uses
+  local HTTP/WebSocket fixtures. No production, version or dependency changes.
+- Focused desktop/mobile repetition passed 30/30 with four workers on macOS.
+  Next hop: full local gates and read-only Codex max delta review. Linux CI
+  rerun remains external; this task will not push.
+
 ## 2026-10-21 05:14 +08 — cleanup and simplification ready for review
 
 - Authorization-revocation/reconnect regressed on desktop and mobile: old
@@ -31,9 +49,10 @@
   exact-byte assertions; unsupported modes still reject before input writes.
 - A second desktop/mobile regression reproduced native URL dragging swallowing
   text selection. Disabling link dragging preserves selection, frozen snapshots,
-  styled destinations and ordinary clicks/taps. Native context-menu gestures,
-  including Chromium-emulated touch long-press, are covered without suppressing
-  the browser callout. This is not an iOS-device verification claim.
+  styled destinations and ordinary clicks/taps. Local macOS Chromium accepted
+  right-click and emulated touch long-press without event cancellation; native
+  callout appearance and physical iOS were not verified. The newer checkpoint
+  records the subsequent Linux synthesis failure and revised test boundary.
 - Checks: 6 realtime Agent tests, strict types, focused lint, build, 26 focused
   retention/output cases and the expanded 24-case output suite passed.
 - Actual Herdr evidence is controller-pane inventory only; no live collection,

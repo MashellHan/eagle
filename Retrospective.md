@@ -269,3 +269,17 @@ not prove retained memory was cleared.
 During test formatting, a generated numbered unified diff was rejected by the
 patch tool without changing files. Convert hunk headers to the tool's context
 format before applying formatter output; do not bypass check-only lint or hooks.
+
+## 2026-10-21 — synthetic long-press recognition is platform-dependent
+
+PR76's Ubuntu headless Chromium run failed because CDP's 800 ms touch tap did
+not emit `contextmenu`, although repeated macOS runs passed. The test coupled
+Eagle's event contract to the host's gesture recognizer. Dispatch a cancelable,
+bubbling touch-pointer/context-menu sequence instead, while retaining the real
+desktop right-click and the selection, frozen-output and navigation assertions.
+Observe context-menu cancellation above React's root, not at the target before
+application handlers run; check touch dispatch results after propagation too.
+A temporary ancestor `preventDefault()` made both projects fail, proving the
+replacement catches suppression; the fault injection is not retained. These
+checks establish application behavior, not native OS callout appearance or
+physical-device long-press recognition. Verify those separately when needed.

@@ -150,7 +150,7 @@ test("dragging terminal links selects text instead of dragging URLs", async ({
   await popup.close();
 });
 
-test("terminal link context menus preserve native gestures and selection safety", async ({
+test("terminal link context menus remain uncanceled and selection stays safe", async ({
   page,
   isMobile,
 }) => {
@@ -159,22 +159,32 @@ test("terminal link context menus preserve native gestures and selection safety"
   stream.frame(`copy ${url}`);
   const link = page.getByRole("link", { name: url, exact: true });
   await link.evaluate((element) => {
-    element.addEventListener("contextmenu", (event) => {
-      element.setAttribute("data-context-menu", String(event.defaultPrevented));
+    document.addEventListener("contextmenu", (event) => {
+      if (event.target instanceof Node && element.contains(event.target))
+        element.setAttribute(
+          "data-context-menu",
+          String(event.defaultPrevented),
+        );
     });
   });
   const pages = page.context().pages().length;
   if (isMobile) {
-    const box = await link.boundingBox();
-    if (!box) throw new Error("Missing terminal link");
-    const client = await page.context().newCDPSession(page);
-    await client.send("Input.synthesizeTapGesture", {
-      x: box.x + box.width / 2,
-      y: box.y + box.height / 2,
-      duration: 800,
-      gestureSourceType: "touch",
-    });
-    await client.detach();
+    expect(
+      await link.evaluate((element) =>
+        ["pointerdown", "contextmenu", "pointerup"].map((type) =>
+          element.dispatchEvent(
+            new PointerEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              pointerType: "touch",
+              isPrimary: true,
+              button: type === "contextmenu" ? 2 : 0,
+              buttons: type === "pointerdown" ? 1 : 0,
+            }),
+          ),
+        ),
+      ),
+    ).toEqual([true, true, true]);
   } else await link.click({ button: "right" });
   await expect(link).toHaveAttribute("data-context-menu", "false");
   expect(page.context().pages()).toHaveLength(pages);
