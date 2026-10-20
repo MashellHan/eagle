@@ -33,12 +33,36 @@ export function redactScreen(value: string, secrets: string[]) {
     "[REDACTED KEY]\n",
   );
   const positions: number[] = [];
+  const assignments: [number, number][] = [];
   let compact = "";
-  for (let i = 0; i < text.length; i++)
-    if (!/\s/.test(text[i])) {
-      positions.push(i);
-      compact += text[i];
+  let identifierStart = 0;
+  let wordBreak = false;
+  for (let offset = 0; offset < text.length; offset++) {
+    if (/\s/.test(text[offset])) {
+      let wrapped = false;
+      let bareCarriageReturn = false;
+      while (offset < text.length && /\s/.test(text[offset])) {
+        wrapped ||= text[offset] === "\n";
+        bareCarriageReturn ||=
+          text[offset] === "\r" && text[offset + 1] !== "\n";
+        offset++;
+      }
+      wordBreak = !wrapped || bareCarriageReturn;
+      offset--;
+      continue;
     }
+    const character = text[offset];
+    if (/\w/.test(character)) {
+      if (wordBreak) identifierStart = compact.length;
+    } else {
+      if (/[=:]/.test(character) && identifierStart < compact.length)
+        assignments.push([identifierStart, compact.length]);
+      identifierStart = compact.length + 1;
+    }
+    wordBreak = false;
+    positions.push(offset);
+    compact += character;
+  }
   const masked = new Set<number>();
   const mask = (start: number, length: number) => {
     for (let i = start; i < start + length; i++) masked.add(positions[i]);
@@ -61,24 +85,17 @@ export function redactScreen(value: string, secrets: string[]) {
   ))
     mask(match.index, match[0].length);
   let assignmentEnd = 0;
-  for (const match of compact.matchAll(
-    /((?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL)[\w]*)[=:]/gi,
-  )) {
-    if (match.index < assignmentEnd) continue;
-    const key = text.slice(
-      positions[match.index],
-      positions[match.index + match[1].length - 1] + 1,
-    );
-    // Preserve wrapped identifiers and continuation padding, but never join
-    // words on the same line (for example "Token usage") into a secret name.
-    // Scan keys separately so rejecting a heading cannot consume later secrets.
-    if (key.replace(/[^\S\r\n]*\r?\n[^\S\r\n]*/g, "") !== match[1]) continue;
+  for (const [start, end] of assignments) {
+    if (start < assignmentEnd) continue;
+    const key = compact.slice(start, end);
+    const sensitive = key.search(/TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL/i);
+    if (sensitive < 0) continue;
     const value = compact
-      .slice(match.index + match[0].length)
-      .match(/^[^,;"']+/)?.[0];
+      .slice(end + 1)
+      .match(/^(?:"[^"]*(?:"|$)|'[^']*(?:'|$)|[^,;"']+)/)?.[0];
     if (!value) continue;
-    assignmentEnd = match.index + match[0].length + value.length;
-    mask(match.index, assignmentEnd - match.index);
+    assignmentEnd = end + 1 + value.length;
+    mask(start + sensitive, assignmentEnd - start - sensitive);
   }
   return text
     .split("")

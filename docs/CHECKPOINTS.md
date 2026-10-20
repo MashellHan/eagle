@@ -1,5 +1,55 @@
 # 用户视角检查点
 
+## 2026-10-20 13:55 +08 — Independent review follow-up
+
+- The read-only reviewer identified two pre-existing boundaries within this
+  repair's scope: quoted wrapped assignments leaked, and case-changing Bearer
+  replacement made styled reconstruction repeatedly search for missing text.
+  Eight quoted probes and two Bearer correctness/performance tests failed
+  before their respective fixes; 64 affected tests now pass. The assignment
+  probe set now contains 31 cases, all passing in plain and styled output.
+- Quoted values are masked through their closing quote or viewport end,
+  including value wraps and embedded semicolons. Bearer replacement preserves
+  source case and whitespace, so style anchors remain findable. The full
+  `terminalScreen` path is now timed before output truncation: 128K/256K
+  lowercase-Bearer frames improve from 171.79/630.95ms to 24.62/35.99ms.
+- Herdr collection, live authentication and production D1 remain untouched;
+  rendering and API evidence remains fixture-only. The prior rebased gate run
+  passed 165 checks and 173 browser cases (11 existing platform skips), before
+  these follow-ups. Their full gates and final independent review are next.
+- Fetched and rebased again on `67712d36a75590b3265b24a8380e9c521e742ff2`;
+  the branch was already current. No version, registry, lockfile, publication,
+  deployment or remote-write changes were made.
+
+## 2026-10-20 13:46 +08 — Redaction regression repair
+
+- Synthetic evidence: 19 of 23 new adversarial assignment probes failed before
+  the fix; all 23 now pass in plain text and styled runs. The original four
+  status-label regressions still pass. The focused suite passes 59 tests.
+- Performance: reproduced long-whitespace backtracking and additional shared
+  preprocessing slow paths for repeated key words and footerless base64 lines.
+  The scanner now preserves source word boundaries without rescanning rejected
+  headings; shared preprocessing consumes each word or line run once.
+- Herdr: controller and a read-only Codex reviewer occupy this task's Space.
+  No installed Eagle collector, credential, service or live collection changed.
+  Authentication, D1 and rendering evidence is local fixture coverage only;
+  public Access, ingestion and browser rendering are not verified by this task.
+- Gates: `npm run check` passes 165 tests, strict types, check-only lint and
+  production build. `npm run test:browser` passes 173 tests; 11 existing
+  platform-specific cases remain skipped, with no new skips or gate changes.
+- Controlled comparison on Node 26.12.0, original `67712d3` versus this fix,
+  one warm-up and five-sample medians, milliseconds (before -> after): spaces
+  8K 52.88 -> 0.44, 16K 214.15 -> 1.11, 32K 789.36 -> 2.36,
+  64K 3523.16 -> 4.52; tabs 8K 45.82 -> 0.19, 16K 208.37 -> 0.80,
+  32K 580.32 -> 0.73, 64K 2075.31 -> 1.48. A 77,824-character status
+  frame takes 2.84 -> 3.94ms. Performance gates retain a generous absolute cap
+  and doubling-ratio check with a small-runtime noise floor.
+- Next hop: obtain independent approval, fetch and rebase on current
+  origin/main, then re-review. Agent 0.8.3 stays unpublished; website 0.10.2 and
+  published-Agent onboarding 0.8.1 remain unchanged. Dependency installation
+  used the authorized temporary mirror after a feed 404; lockfiles did not
+  change. No executable Git hooks are installed; commits bypass no hooks.
+
 ## 2026-10-19 — Realtime status-label redaction regression
 
 - Four synthetic regressions reproduced ordinary `Token usage:` labels masking

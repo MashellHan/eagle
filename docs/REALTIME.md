@@ -176,7 +176,15 @@ Secret assignment names keep word boundaries within each source line. Labels
 such as `Token usage:` must not become secret fields when whitespace is folded
 for wrapped-credential detection. Line-wrapped identifiers, including their
 continuation padding, remain conservatively protected. A rejected label cannot
-hide a later credential match.
+hide a later credential match, including an independent assignment inside the
+same whitespace-compacted candidate. Assignment scanning records source word
+boundaries in one pass; horizontal whitespace without a line wrap never joins
+label words. For a fixed configured credential set, redaction work scales
+linearly with the input frame, before the 32,000-character screen limit.
+Quoted wrapped values remain masked through the closing quote or viewport end.
+Bearer redaction preserves the original prefix's case and whitespace, keeping
+safe styled-text anchors unchanged rather than repeatedly searching for
+rewritten text.
 
 A temporary disconnect preserves the last terminal screen with a retry indicator.
 The composer keeps its focus and remains editable while offline, viewing or
