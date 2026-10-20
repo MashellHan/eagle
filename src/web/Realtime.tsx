@@ -415,7 +415,7 @@ export function Realtime({
               )
             }
           >
-            <SelectTrigger aria-label="实时标签页">
+            <SelectTrigger size="sm" aria-label="实时标签页">
               <SelectValue placeholder="等待标签页" />
             </SelectTrigger>
             <SelectContent className="live-select-content" collisionPadding={8}>
@@ -428,7 +428,7 @@ export function Realtime({
           </Select>
           <ChevronRight size={13} aria-hidden="true" />
           <Select value={pane?.id ?? ""} onValueChange={setSelected}>
-            <SelectTrigger aria-label="当前终端">
+            <SelectTrigger size="sm" aria-label="当前终端">
               <SelectValue placeholder="等待终端" />
             </SelectTrigger>
             <SelectContent className="live-select-content" collisionPadding={8}>
@@ -442,7 +442,11 @@ export function Realtime({
         </div>
         <div className="live-actions">
           <Select value={appearance.theme} onValueChange={appearance.select}>
-            <SelectTrigger aria-label="终端配色" className="live-theme-select">
+            <SelectTrigger
+              size="sm"
+              aria-label="终端配色"
+              className="live-theme-select"
+            >
               <Palette size={14} aria-hidden="true" />
               <SelectValue />
             </SelectTrigger>
@@ -455,7 +459,7 @@ export function Realtime({
             </SelectContent>
           </Select>
           <Button
-            size="icon"
+            size="sm"
             variant="outline"
             aria-label="重新连接"
             onClick={() => setAttempt((n) => n + 1)}
@@ -464,7 +468,7 @@ export function Realtime({
           </Button>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="icon" variant="outline" aria-label="实时输入说明">
+              <Button size="sm" variant="outline" aria-label="实时输入说明">
                 <ShieldAlert size={14} />
               </Button>
             </TooltipTrigger>

@@ -283,3 +283,42 @@ A temporary ancestor `preventDefault()` made both projects fail, proving the
 replacement catches suppression; the fault injection is not retained. These
 checks establish application behavior, not native OS callout appearance or
 physical-device long-press recognition. Verify those separately when needed.
+
+## 2026-10-21 — isolate timing-sensitive migration gates
+
+During the Basalt major upgrade, the controller started the Node and browser
+gates concurrently. The existing 100ms Manager lock assertion reported `lock
+missing` while 179 other Node tests passed. The unchanged six-test Manager rerun
+passed in isolation. This establishes a scheduling-sensitive observation, not
+proof of a dependency defect or proof that concurrency alone caused it. Run the
+remaining full gates serially and keep the original assertions and timeouts.
+
+Herdr's `pane resize --current` unexpectedly resolved to another focused Space;
+the response reported no change. The controller then used its previously
+verified explicit pane ID and changed only its own split. Check the returned
+Space and pane IDs on layout operations; use explicit IDs for resizing.
+
+## 2026-10-21 — terminal migration approval missed horizontal panning
+
+The first Basalt 3 migration signoff passed its local gates but independent bot
+verification subsequently failed the mobile terminal viewport assertion in five
+of five repeats. The controller reproduced intermittent failures and initially
+investigated control height; the retained screenshot instead showed horizontal
+displacement. A scroll listener captured the application-owned workspace column
+container at scrollLeft 70 while the header remained stationary. Its hidden,
+translated inspector extends the scroll area: `overflow: hidden` clips painting
+but still permits programmatic scrolling. Use `overflow: clip` for this
+non-scrolling layout boundary rather than shrinking Basalt controls or resetting
+scroll position in JavaScript. Keep real terminal and inspector scrollers intact.
+
+The unchanged test passed 40 repeats after the one-line repair. An additive
+scroll-displacement assertion deterministically failed five of five mobile runs
+with the old rule. Preserve failure evidence and repeat the complete gates;
+one green run and an independent review do not establish absence of timing
+failures. Distinguish observed horizontal movement from an unproven assumption
+about which browser focus/selection event initiated it.
+
+While inspecting the retained Playwright trace, the controller initially assumed
+screencast records used a `sha1` field; this installed trace format uses `file`.
+The archive read failed without changing tracked files. Inspect record keys
+before extracting artifacts rather than assuming a trace-version schema.

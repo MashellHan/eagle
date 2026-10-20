@@ -174,6 +174,11 @@ test("mobile terminal keeps primary keys visible and selected output stable", as
     page.getByRole("button", { name: "新输出，回到底部" }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "释放输入" }).click();
+  const workspace = page.locator(".workspace-columns");
+  await workspace.evaluate((element) =>
+    element.scrollTo({ left: element.clientWidth }),
+  );
+  expect(await workspace.evaluate((element) => element.scrollLeft)).toBe(0);
   for (const name of [
     "Ctrl+C",
     "Ctrl+D",

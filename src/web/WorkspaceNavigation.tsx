@@ -77,10 +77,11 @@ export function WorkspaceNavigation({
             if (node) items.current.set(item.id, node);
             else items.current.delete(item.id);
           }}
-          variant={item.id === space.id ? "secondary" : "ghost"}
+          variant="ghost"
           role="tab"
           aria-controls={panelId}
           aria-selected={item.id === space.id}
+          aria-current={item.id === space.id ? "true" : undefined}
           tabIndex={
             item.id === space.id ||
             (!filtered.some((s) => s.id === space.id) && index === 0)
