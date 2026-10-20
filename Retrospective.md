@@ -253,3 +253,19 @@ The integrated candidate passed layout assertions in CI, but Chromium refused th
 ## 2026-10-04: Audit Agent declarations separately from the root lock
 
 Dependency issue #26 targets the independent Agent manifest and its ignored generated copy in `agent/dist/agent/`. The root npm lock already resolved Zod 4.6.5, but the source Agent still declared ^4.1.0. The source minimum now requires ^4.6.5 and the independent source version is 0.8.2. Build and pack must regenerate and verify both manifest copies; never edit the ignored distribution as a source. This duty does not publish npm or change onboarding: the verified install pin stays 0.8.1 until separately authorized publication.
+## 2026-10-21 — retained output cleanup must keep its original owner
+
+The tab-unread fix added a content baseline to saved reading positions. A follow-up
+audit found that the existing unmount callback dereferenced `view.current` at
+cleanup time: authorization failure replaced that view, then cleanup wrote old
+positions into the fresh cache. The new baseline would also retain old redacted
+screen content there. Desktop/mobile regressions proved the issue by revoking
+authorization, reconnecting and observing the old history offset instead of a
+fresh bottom-following view. Capturing the rendered position map keeps cleanup
+on its original, discarded owner rather than adding another authentication guard.
+Test both the blank revoked view and a fresh connection; an empty DOM alone does
+not prove retained memory was cleared.
+
+During test formatting, a generated numbered unified diff was rejected by the
+patch tool without changing files. Convert hunk headers to the tool's context
+format before applying formatter output; do not bypass check-only lint or hooks.

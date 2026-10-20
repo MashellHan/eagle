@@ -76,6 +76,7 @@ export function Realtime({
 }) {
   const { time, zone } = useTimezone();
   const appearance = useTerminalTheme();
+  const positions = view.current.positions;
   const socket = useRef<WebSocket | null>(null);
   const sequence = useRef(0);
   const pending = useRef<{ seq: number; at: number } | null>(null);
@@ -520,10 +521,9 @@ export function Realtime({
                 <TerminalOutput
                   frame={frames[p.id]}
                   selected={pane?.id === p.id}
-                  position={view.current.positions[`${p.id}/${p.terminalId}`]}
+                  position={positions[`${p.id}/${p.terminalId}`]}
                   onPosition={(position) => {
-                    view.current.positions[`${p.id}/${p.terminalId}`] =
-                      position;
+                    positions[`${p.id}/${p.terminalId}`] = position;
                   }}
                 />
                 <div className="live-pane-footer mono">

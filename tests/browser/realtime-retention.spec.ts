@@ -25,6 +25,8 @@ test("tab switches retain history and unread output received while unmounted", a
     }),
   );
   let socket: WebSocketRoute;
+  const revoke = () =>
+    socket.close({ code: 4001, reason: "Authorization revoked" });
   let revision = 0;
   const subscription = {
     spaceId: "default:w1",
@@ -131,6 +133,23 @@ test("tab switches retain history and unread output received while unmounted", a
       ),
     )
     .toBeLessThan(3);
+  await screen.evaluate((element) => {
+    element.scrollTop = 100;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  revoke();
+  await expect(screen).toHaveCount(0);
+  await page.getByRole("button", { name: "重新连接", exact: true }).click();
+  await expect(screen).toHaveText(text);
+  await expect
+    .poll(() =>
+      screen.evaluate(
+        (element) =>
+          element.scrollHeight - element.clientHeight - element.scrollTop,
+      ),
+    )
+    .toBeLessThan(3);
+  await expect(unread).toHaveCount(0);
 });
 
 test("view switches preserve output, history position and unknown input without reclaiming control", async ({
