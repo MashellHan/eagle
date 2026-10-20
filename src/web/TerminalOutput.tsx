@@ -10,6 +10,7 @@ export interface TerminalPosition {
   left: number;
   following: boolean;
   unread: boolean;
+  content: string;
 }
 
 export function TerminalOutput({
@@ -65,7 +66,7 @@ export function TerminalOutput({
   }, []);
   const content = JSON.stringify([incoming?.text, incoming?.runs]);
   const renderedContent = JSON.stringify([display?.text, display?.runs]);
-  const previous = useRef(content);
+  const previous = useRef(position?.content ?? content);
   const save = useRef(onPosition);
   save.current = onPosition;
   const toBottom = () => {
@@ -106,6 +107,7 @@ export function TerminalOutput({
         ...coordinates.current,
         following: following.current,
         unread,
+        content: previous.current,
       });
     };
     record();
@@ -191,6 +193,7 @@ export function TerminalOutput({
             ...coordinates.current,
             following: following.current,
             unread: following.current ? false : unread,
+            content: previous.current,
           });
           if (following.current) setUnread(false);
         }}

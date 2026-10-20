@@ -54,7 +54,10 @@ Open a machine and a Space; **实时模式** opens by default and requests input
 
 Output follows the bottom on first display, terminal replacement and while
 already at the bottom. Switching back to a known pane preserves its reading
-position. Scrolling up pauses following independently for each pane;
+position, including after switching tabs. A retained content baseline detects
+updates received while that tab's output is unmounted; identical text/styles
+with a newer frame revision do not create unread notifications.
+Scrolling up pauses following independently for each pane;
 new output offers **新输出 · 回到底部**. Clicking it or scrolling back to the bottom
 resumes following. This navigates the current visible-screen snapshot, not an
 unbounded terminal scrollback archive.

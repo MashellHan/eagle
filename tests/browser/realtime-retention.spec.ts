@@ -1,6 +1,138 @@
 import { expect, test, type WebSocketRoute } from "@playwright/test";
 import { report } from "../fixtures.ts";
 
+test("tab switches retain history and unread output received while unmounted", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  const now = new Date().toISOString();
+  await page.route("**/api/**", (route) =>
+    route.fulfill({
+      json: {
+        now,
+        machines: [
+          {
+            id: "mac-one",
+            name: "Mac One",
+            report: report("tab-retention", now),
+            lastSeen: now,
+            receivedAt: now,
+            warning: null,
+          },
+        ],
+      },
+    }),
+  );
+  let socket: WebSocketRoute;
+  let revision = 0;
+  const subscription = {
+    spaceId: "default:w1",
+    subscriptionId: "tab-retention",
+  };
+  const text = Array.from(
+    { length: 150 },
+    (_, index) => `history ${index} https://example.test/history/${index}`,
+  ).join("\n");
+  const frame = (paneId: string, value: string) =>
+    socket.send(
+      JSON.stringify({
+        type: "frame",
+        ...subscription,
+        paneId,
+        terminalId: `${paneId}-terminal`,
+        revision: ++revision,
+        observedAt: now,
+        text: value,
+      }),
+    );
+  await page.routeWebSocket("**/api/v1/realtime?*", (ws) => {
+    socket = ws;
+    ws.send(JSON.stringify({ type: "status", online: true, control: false }));
+    ws.send(
+      JSON.stringify({
+        type: "topology",
+        ...subscription,
+        tabs: ["Build", "Tools"].map((name) => ({
+          id: name,
+          name,
+          panes: [
+            {
+              id: name,
+              title: name,
+              terminalId: `${name}-terminal`,
+              rect: { x: 0, y: 0, width: 1, height: 1 },
+            },
+          ],
+        })),
+      }),
+    );
+    frame("Build", text);
+    frame("Tools", "other tab");
+    ws.onMessage(() => {});
+  });
+  await page.goto("/overview");
+  await page.getByRole("button", { name: "打开机器 Mac One" }).click();
+  await page.getByRole("button", { name: "查看 Eagle", exact: true }).click();
+  const screen = page.locator(".live-pane pre");
+  const unread = page.getByRole("button", { name: "新输出，回到底部" });
+  const selectTab = async (name: string) => {
+    await page.getByRole("combobox", { name: "实时标签页" }).click();
+    await page.getByRole("option", { name, exact: true }).click();
+  };
+  await expect(screen).toHaveText(text);
+  await screen.evaluate((element) => {
+    element.scrollTop = 100;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  await selectTab("Tools");
+  await expect(screen).toHaveText("other tab");
+  frame("Build", text);
+  await selectTab("Build");
+  await expect
+    .poll(() => screen.evaluate((element) => element.scrollTop))
+    .toBe(100);
+  await expect(unread).toHaveCount(0);
+  await selectTab("Tools");
+  const latest = text.replace("history 0", "updated 0");
+  frame("Build", latest);
+  await selectTab("Build");
+  await expect(screen).toHaveText(latest);
+  await expect
+    .poll(() => screen.evaluate((element) => element.scrollTop))
+    .toBe(100);
+  await expect(unread).toBeVisible();
+  await expect(
+    screen.getByRole("link", {
+      name: "https://example.test/history/5",
+      exact: true,
+    }),
+  ).toHaveAttribute("href", "https://example.test/history/5");
+  await unread.click();
+  await expect(unread).toHaveCount(0);
+  await expect
+    .poll(() =>
+      screen.evaluate(
+        (element) =>
+          element.scrollHeight - element.clientHeight - element.scrollTop,
+      ),
+    )
+    .toBeLessThan(3);
+  await selectTab("Tools");
+  frame("Build", `${latest}\nnew bottom`);
+  await selectTab("Build");
+  await expect(screen).toContainText("new bottom");
+  await expect(unread).toHaveCount(0);
+  await expect
+    .poll(() =>
+      screen.evaluate(
+        (element) =>
+          element.scrollHeight - element.clientHeight - element.scrollTop,
+      ),
+    )
+    .toBeLessThan(3);
+});
+
 test("view switches preserve output, history position and unknown input without reclaiming control", async ({
   page,
 }) => {
