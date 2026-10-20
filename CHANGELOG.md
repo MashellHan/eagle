@@ -12,6 +12,23 @@
 - Keep this repair in the unpublished Agent 0.8.3 candidate; website and
   published-Agent onboarding versions are unchanged.
 
+## v0.11.0 — 2026-10-21
+
+- Upgrade Basalt to 3.2.0 and adopt its native control sizing, surfaces and
+  workspace selection. Remove conflicting Eagle overrides instead of adding
+  a compatibility layer; retain mobile target sizes with short text actions.
+- Upgrade Node types to 26.6.5 with a caret range and fix strict summary-verifier
+  inference using the existing domain type, without changing runtime behavior.
+- Preserve original browser thresholds and strengthen selection and tooltip
+  dismissal checks. Record the complete removed-override list and local visual
+  evidence in [the migration notes](docs/DEPENDENCY-MIGRATION-0.11.0.md).
+- Keep the terminal workspace stationary when its closed inspector extends
+  beyond the viewport; clip the non-scrolling layout boundary and verify that
+  attempted horizontal scrolling cannot hide the primary terminal keys.
+- Prepare a website/Worker-only minor release. Agent source stays at unpublished
+  0.8.3 and onboarding stays at published 0.8.1; no tag, publication or deployment
+  is included.
+
 ## v0.10.3 — 2026-10-21
 
 - Update jose to 6.2.13, OpenAI SDK to 4.0.98, Anthropic SDK to 4.0.84 and AI SDK to 7.0.147, including their required shared provider dependencies.

@@ -1,6 +1,6 @@
 {
   "name": "eagle",
-  "version": "0.10.3",
+  "version": "0.11.0",
   "config": {
     "publishedAgentVersion": "0.8.1"
   },
