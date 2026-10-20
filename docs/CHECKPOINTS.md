@@ -1,5 +1,21 @@
 # 用户视角检查点
 
+## 2026-10-19 — Realtime status-label redaction regression
+
+- Four synthetic regressions reproduced ordinary `Token usage:` labels masking
+  the rest of a terminal snapshot. The fix retains original assignment-name
+  word boundaries while preserving wrapped identifiers, known credentials and
+  independent common-token detection.
+- The four regressions and existing collector/realtime/terminal checks pass:
+  31 tests, including PEM, wrapped secrets, style preservation and input binding.
+  Agent source candidate is 0.8.3; the published onboarding pin remains 0.8.1.
+- Oct20 verification: `npm run check` passes all 137 Node tests, strict types,
+  check-only lint and build; browser gates pass 173 tests with 11 existing
+  viewport-specific skips. GitHub Copilot CLI read-only review found no findings.
+  Existing four lint infos and bundle-size advisory remain unchanged. No live collection,
+  authentication, D1 write, realtime input, service restart or deployment was
+  performed; browser rendering and the actual cloud path are not yet accepted.
+
 ## 2026-10-03 06:40 +08 — resource windows and usage meters
 
 - Resource history defaults to six hours with 6h/12h/24h controls and a fixed

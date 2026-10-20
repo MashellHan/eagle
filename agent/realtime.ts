@@ -57,9 +57,29 @@ export function redactScreen(value: string, secrets: string[]) {
     }
   }
   for (const match of compact.matchAll(
-    /(?:eag1\.[A-Za-z0-9_.-]+|sk-[\w-]{16,}|gh[pousr]_[\w]{20,}|github_pat_[\w]{20,}|(?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL)[\w]*[=:][^,;"']+)/gi,
+    /(?:eag1\.[A-Za-z0-9_.-]+|sk-[\w-]{16,}|gh[pousr]_[\w]{20,}|github_pat_[\w]{20,})/gi,
   ))
     mask(match.index, match[0].length);
+  let assignmentEnd = 0;
+  for (const match of compact.matchAll(
+    /((?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL)[\w]*)[=:]/gi,
+  )) {
+    if (match.index < assignmentEnd) continue;
+    const key = text.slice(
+      positions[match.index],
+      positions[match.index + match[1].length - 1] + 1,
+    );
+    // Preserve wrapped identifiers and continuation padding, but never join
+    // words on the same line (for example "Token usage") into a secret name.
+    // Scan keys separately so rejecting a heading cannot consume later secrets.
+    if (key.replace(/[^\S\r\n]*\r?\n[^\S\r\n]*/g, "") !== match[1]) continue;
+    const value = compact
+      .slice(match.index + match[0].length)
+      .match(/^[^,;"']+/)?.[0];
+    if (!value) continue;
+    assignmentEnd = match.index + match[0].length + value.length;
+    mask(match.index, assignmentEnd - match.index);
+  }
   return text
     .split("")
     .map((c, i) => (masked.has(i) ? "*" : c))
