@@ -58,6 +58,15 @@ new output offers **新输出 · 回到底部**. Clicking it or scrolling back t
 resumes following. This navigates the current visible-screen snapshot, not an
 unbounded terminal scrollback archive.
 
+Visible HTTP/HTTPS URLs in terminal output are clickable and open in a new tab;
+the workspace stays open. Links preserve the displayed text and ANSI styling,
+use `noopener noreferrer` and no referrer, and do not navigate when the link
+intersects an active text selection. Hidden OSC destinations are never restored.
+Only the already-redacted visible URL is used: masked/credential-bearing or
+malformed URLs and unsupported schemes remain ordinary text. Terminal line
+breaks are not joined to guess a longer destination. Linkification is bounded
+to 128 links per frame and 4096 characters per candidate.
+
 Opening a workspace selects **实时模式**, the first tab. Once the bridge is online
 and a valid target exists, the view requests control once; sending remains disabled
 until the server grants the single-controller lease. Draft editing stays available. The request sends no text or
