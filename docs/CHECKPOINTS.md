@@ -1,5 +1,26 @@
 # 用户视角检查点
 
+## 2026-10-20 13:55 +08 — Independent review follow-up
+
+- The read-only reviewer identified two pre-existing boundaries within this
+  repair's scope: quoted wrapped assignments leaked, and case-changing Bearer
+  replacement made styled reconstruction repeatedly search for missing text.
+  Eight quoted probes and two Bearer correctness/performance tests failed
+  before their respective fixes; 64 affected tests now pass. The assignment
+  probe set now contains 31 cases, all passing in plain and styled output.
+- Quoted values are masked through their closing quote or viewport end,
+  including value wraps and embedded semicolons. Bearer replacement preserves
+  source case and whitespace, so style anchors remain findable. The full
+  `terminalScreen` path is now timed before output truncation: 128K/256K
+  lowercase-Bearer frames improve from 171.79/630.95ms to 24.62/35.99ms.
+- Herdr collection, live authentication and production D1 remain untouched;
+  rendering and API evidence remains fixture-only. The prior rebased gate run
+  passed 165 checks and 173 browser cases (11 existing platform skips), before
+  these follow-ups. Their full gates and final independent review are next.
+- Fetched and rebased again on `67712d36a75590b3265b24a8380e9c521e742ff2`;
+  the branch was already current. No version, registry, lockfile, publication,
+  deployment or remote-write changes were made.
+
 ## 2026-10-20 13:46 +08 — Redaction regression repair
 
 - Synthetic evidence: 19 of 23 new adversarial assignment probes failed before

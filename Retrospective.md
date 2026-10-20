@@ -12,6 +12,14 @@ and bounded word/line-run matching remove those repeated scans. Plain output and
 styled runs must both be asserted; a preserved status label alone does not
 establish that the following output is safe.
 
+Independent review then found two pre-existing gaps within the same objective:
+quoted wrapped assignments were skipped by an unquoted-only value matcher, and
+normalizing `bearer` to `Bearer` made style reconstruction repeatedly search for
+nonexistent anchors. Both received failing synthetic regressions before their
+fixes. Value parsing now accepts quoted viewport fragments; Bearer redaction
+retains the exact source prefix. End-to-end performance tests must include
+`terminalScreen`, not only the intermediate redactor.
+
 During investigation, an unbounded repeated-key benchmark stalled its local
 Node process; only that process was terminated. Subsequent exploratory probes
 used child-process timeouts and smaller inputs before increasing sizes. Timing

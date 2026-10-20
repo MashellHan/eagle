@@ -6,6 +6,9 @@
   realtime plain text or styled runs, while preserving ordinary status output.
 - Remove repeated scanning of horizontal whitespace, assignment names and
   footerless base64 line runs before terminal screen truncation.
+- Protect quoted wrapped values and preserve Bearer prefix spelling and
+  whitespace so styled reconstruction does not repeatedly search for changed
+  source text.
 - Keep this repair in the unpublished Agent 0.8.3 candidate; website and
   published-Agent onboarding versions are unchanged.
 
