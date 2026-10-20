@@ -12,6 +12,12 @@
 - Keep this repair in the unpublished Agent 0.8.3 candidate; website and
   published-Agent onboarding versions are unchanged.
 
+## v0.10.3 — 2026-10-21
+
+- Update jose to 6.2.13, OpenAI SDK to 4.0.98, Anthropic SDK to 4.0.84 and AI SDK to 7.0.147, including their required shared provider dependencies.
+- Update React and React DOM together to 19.3.1, lucide-react to 1.60.0, Wrangler to 4.151.3 and Playwright to 1.64.1; preserve existing exact/caret specifiers and official npm lockfile URLs.
+- Prepare a website/Worker-only dependency patch. Agent source remains the unpublished 0.8.3 candidate and onboarding remains pinned to published Agent 0.8.1; no publication or deployment is included.
+
 ## v0.10.1 — 2026-10-03
 
 - Organize machine resources into six compact Basalt cards for CPU, GPU, memory, disk, network and fans, with equal-width meters, per-card help and responsive layouts.

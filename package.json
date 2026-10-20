@@ -1,6 +1,6 @@
 {
   "name": "eagle",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "config": {
     "publishedAgentVersion": "0.8.1"
   },
@@ -22,15 +22,15 @@
     "db:remote": "wrangler d1 migrations apply eagle --remote"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "4.0.79",
-    "@ai-sdk/openai": "4.0.93",
+    "@ai-sdk/anthropic": "4.0.84",
+    "@ai-sdk/openai": "4.0.98",
     "@nocoo/basalt": "2.2.0",
     "@nocoo/next-ai": "^0.4.0",
-    "ai": "7.0.139",
-    "jose": "^6.2.12",
-    "lucide-react": "1.56.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "ai": "7.0.147",
+    "jose": "^6.2.13",
+    "lucide-react": "1.60.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "recharts": "^3.10.1",
     "ws": "8.22.0",
     "zod": "^4.6.7"
@@ -42,7 +42,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
-    "@playwright/test": "^1.64.0",
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^25.0.0",
     "@types/react": "^19.2.18",
@@ -53,6 +53,6 @@
     "tailwindcss": "^4.3.3",
     "typescript": "7.0.2",
     "vite": "8.3.4",
-    "wrangler": "4.150.0"
+    "wrangler": "4.151.3"
   }
 }
