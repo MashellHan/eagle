@@ -92,6 +92,124 @@ const distance = (page: Page) =>
     .locator(".live-pane pre")
     .evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop);
 
+test("dragging terminal links selects text instead of dragging URLs", async ({
+  page,
+  isMobile,
+}) => {
+  await page
+    .context()
+    .route("https://example.test/**", (route) =>
+      route.fulfill({ body: "Synthetic link destination" }),
+    );
+  const stream = await openTerminal(page);
+  const url = "https://example.test/select";
+  stream.frame(`copy ${url} now`);
+  const link = page.getByRole("link", { name: url, exact: true });
+  const box = await link.boundingBox();
+  if (!box) throw new Error("Missing terminal link");
+  const pages = page.context().pages().length;
+  await page.mouse.move(box.x + 5, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 5, box.y + box.height / 2, {
+    steps: 12,
+  });
+  await page.mouse.up();
+  await expect
+    .poll(() => page.evaluate(() => document.getSelection()?.toString()))
+    .toContain("example.test");
+  await expect(page.getByText("选择文字中，画面已暂停更新")).toBeVisible();
+  const selection = await page.evaluate(() =>
+    document.getSelection()?.toString(),
+  );
+  const latest = "https://example.test/latest";
+  stream.frame(`copy ${latest} now`, [
+    { text: "copy " },
+    { text: latest, fg: 2, bold: true },
+    { text: " now" },
+  ]);
+  await expect(
+    page.getByRole("button", { name: "新输出，回到底部" }),
+  ).toBeVisible();
+  await expect(link).toHaveAttribute("href", url);
+  await expect(
+    page.getByRole("link", { name: latest, exact: true }),
+  ).toHaveCount(0);
+  expect(await page.evaluate(() => document.getSelection()?.toString())).toBe(
+    selection,
+  );
+  expect(page.context().pages()).toHaveLength(pages);
+  await page.evaluate(() => document.getSelection()?.removeAllRanges());
+  const updated = page.getByRole("link", { name: latest, exact: true });
+  await expect(updated).toHaveAttribute("href", latest);
+  await expect(updated.locator("span")).toHaveCSS("font-weight", "700");
+  const opened = page.waitForEvent("popup");
+  if (isMobile) await updated.tap();
+  else await updated.click();
+  const popup = await opened;
+  await popup.waitForURL(latest);
+  await popup.close();
+});
+
+test("terminal link context menus preserve native gestures and selection safety", async ({
+  page,
+  isMobile,
+}) => {
+  const stream = await openTerminal(page);
+  const url = "https://example.test/hold";
+  stream.frame(`copy ${url}`);
+  const link = page.getByRole("link", { name: url, exact: true });
+  await link.evaluate((element) => {
+    element.addEventListener("contextmenu", (event) => {
+      element.setAttribute("data-context-menu", String(event.defaultPrevented));
+    });
+  });
+  const pages = page.context().pages().length;
+  if (isMobile) {
+    const box = await link.boundingBox();
+    if (!box) throw new Error("Missing terminal link");
+    const client = await page.context().newCDPSession(page);
+    await client.send("Input.synthesizeTapGesture", {
+      x: box.x + box.width / 2,
+      y: box.y + box.height / 2,
+      duration: 800,
+      gestureSourceType: "touch",
+    });
+    await client.detach();
+  } else await link.click({ button: "right" });
+  await expect(link).toHaveAttribute("data-context-menu", "false");
+  expect(page.context().pages()).toHaveLength(pages);
+  await link.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+  await expect(page.getByText("选择文字中，画面已暂停更新")).toBeVisible();
+  stream.frame("copy https://example.test/next");
+  await expect(
+    page.getByRole("button", { name: "新输出，回到底部" }),
+  ).toBeVisible();
+  await expect(link).toHaveAttribute("href", url);
+  expect(await page.evaluate(() => document.getSelection()?.toString())).toBe(
+    url,
+  );
+  expect(
+    await link.evaluate((element) =>
+      element.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      ),
+    ),
+  ).toBe(false);
+  expect(page.context().pages()).toHaveLength(pages);
+  await page.getByRole("button", { name: "新输出，回到底部" }).click();
+  await expect(
+    page.getByRole("link", { name: "https://example.test/next", exact: true }),
+  ).toHaveAttribute("href", "https://example.test/next");
+  await expect(page.getByText("选择文字中，画面已暂停更新")).toHaveCount(0);
+});
+
 test("visible terminal URLs open safely without losing styling or selection", async ({
   page,
 }) => {

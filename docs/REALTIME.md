@@ -80,6 +80,8 @@ Visible HTTP/HTTPS URLs in terminal output are clickable and open in a new tab;
 the workspace stays open. Links preserve the displayed text and ANSI styling,
 use `noopener noreferrer` and no referrer, and do not navigate when the link
 intersects an active text selection. Hidden OSC destinations are never restored.
+Links disable native URL dragging so a pointer drag selects terminal text;
+ordinary clicks/taps still open the visible destination after selection clears.
 Only the already-redacted visible URL is used: masked/credential-bearing or
 malformed URLs and unsupported schemes remain ordinary text. Terminal line
 breaks are not joined to guess a longer destination. Linkification is bounded

@@ -37,6 +37,7 @@ export function TerminalText({
         key={part.start}
         className="live-terminal-link"
         href={part.href}
+        draggable={false}
         target="_blank"
         rel="noopener noreferrer"
         referrerPolicy="no-referrer"
