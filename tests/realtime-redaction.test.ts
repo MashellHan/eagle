@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { stripVTControlCharacters } from "node:util";
 import { redactScreen, terminalScreen } from "../agent/realtime.ts";
 
 test("screen redaction preserves status labels instead of joining words into secret names", () => {
@@ -77,3 +78,55 @@ test("known wrapped credentials remain hidden next to a safe status label", () =
   assert(frame.text.endsWith("\nDone."));
   assert(!JSON.stringify(frame).includes(secret.slice(23)));
 });
+
+const assignmentProbes = [
+  "Token usage API_\nKEY=private-fixture-value;",
+  "Token usage API_\n  KEY=private-fixture-value;",
+  "Token usage API_\r\n\tKEY=private-fixture-value;",
+  "Token usage API_\nKEY=private-fixture-\nvalue;",
+  "Token usage API_\r\nKEY=private-fixture-\r\nvalue;",
+  "Token usage \u001b[31mAPI_\nKEY\u001b[0m=private-fixture-value;",
+  "Token usage A\u001b[31mPI_\nK\u001b[1mEY=private-fixture-value;",
+  "Token usage \u001b[31m\u001b[0mAPI_\nKEY:private-fixture-value;",
+  "Token usage api_\nkey=private-fixture-value;",
+  "Token usage ApI_\nKeY:private-fixture-value;",
+  "Token usage API_KEY=private-fixture-value;",
+  "Token usage\nAPI_KEY=private-fixture-value;",
+  "Token usage\nAPI_\nKEY=private-fixture-value;",
+  "Secret scanning TOK\nEN=private-fixture-value;",
+  "Password policy SEC\nRET:private-fixture-value;",
+  "API_KEY status PASS\nWORD=private-fixture-value;",
+  "Credential count CRED\nENTIAL:private-fixture-value;",
+  "Token usage MY_API_\nKEY=private-fixture-value;",
+  "Token usage API_\nKEY=private-fixture-value; SEC\nRET=other-fixture-value;",
+  "Token usage: 42; API_\nKEY=private-fixture-value;",
+  "Token usage API_\nKEY=private-fixture-value",
+  "API_\nKEY=private-fixture-value;",
+  "Token usage API_\nKEY=private-fixture-value; Token count: 42;",
+];
+
+for (const [index, probe] of assignmentProbes.entries()) {
+  test(`assignment probe ${index + 1} hides values in plain and styled frames`, () => {
+    const plain = stripVTControlCharacters(probe);
+    const redacted = redactScreen(plain, []);
+    const frame = terminalScreen(
+      `\u001b[32mREADY\u001b[0m\n${probe}\n\u001b[36mDONE\u001b[0m`,
+      [],
+    );
+    assert(frame.runs?.some((run) => run.text === "READY" && run.fg === 2));
+    assert.equal(frame.runs?.map((run) => run.text).join(""), frame.text);
+    for (const output of [
+      redacted,
+      terminalScreen(probe, []).text,
+      frame.text,
+      frame.runs?.map((run) => run.text).join("") ?? "",
+    ]) {
+      for (const fragment of ["private-fixture-", "value", "other-fixture-"])
+        assert(
+          !output.replace(/\s/g, "").includes(fragment),
+          `${index + 1}: ${fragment}`,
+        );
+      assert.match(output, /\[REDACTED\]|\*+/);
+    }
+  });
+}

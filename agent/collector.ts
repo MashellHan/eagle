@@ -33,8 +33,9 @@ export function redact(text: string, secrets: string[] = []) {
       "[REDACTED KEY]",
     )
     .replace(
-      /(?:^[ \t]*[A-Za-z0-9+/]+={0,2}[ \t]*\r?\n)+[ \t]*-----END [\w ]*PRIVATE KEY-----/gm,
-      "[REDACTED KEY]",
+      /(?:^[ \t]*[A-Za-z0-9+/]+={0,2}[ \t]*\r?\n)+[ \t]*(?:-----END [\w ]*PRIVATE KEY-----)?/gm,
+      (block) =>
+        block.endsWith("PRIVATE KEY-----") ? "[REDACTED KEY]" : block,
     )
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
     .replace(
@@ -42,7 +43,7 @@ export function redact(text: string, secrets: string[] = []) {
       "[REDACTED]",
     )
     .replace(
-      /((?:[A-Z_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL)[A-Z_]*)\s*[=:]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;]+)/gi,
+      /(?<![A-Z_])(?=[A-Z_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL))([A-Z_]+\s*[=:]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;]+)/gi,
       "$1[REDACTED]",
     )
     .replace(
