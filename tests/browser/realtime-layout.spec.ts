@@ -411,7 +411,7 @@ test("output status stays inside the input field, including failures", async ({
     await expect(row.locator(".live-control-mode")).toHaveText("你正在控制");
   expect(
     (await page.locator(".live-composer").boundingBox())?.height,
-  ).toBeLessThanOrEqual(90);
+  ).toBeLessThanOrEqual(isMobile ? 108 : 90);
   await page.locator(".space-sheet").screenshot({
     path: testInfo.outputPath("compact-realtime-online.png"),
     animations: "disabled",

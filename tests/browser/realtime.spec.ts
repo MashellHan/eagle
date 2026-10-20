@@ -95,6 +95,8 @@ test("Space realtime receives screens, gates input, and closes sockets on leavin
   await page.getByRole("button", { name: "实时模式", exact: true }).click();
   await expect(page.getByText("ready from Herdr")).toBeVisible();
   acknowledge = false;
+  await expect(page.getByRole("button", { name: "发送并回车" })).toBeDisabled();
+  await page.getByRole("button", { name: "接管输入", exact: true }).click();
   await expect(page.getByLabel("发送到当前 Pane")).toBeEnabled();
   await page.getByLabel("发送到当前 Pane").fill("never-replay-this");
   await page.getByRole("button", { name: "发送并回车" }).click();
