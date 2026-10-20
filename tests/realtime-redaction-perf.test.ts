@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { test } from "node:test";
 import { redact } from "../agent/collector.ts";
-import { redactScreen } from "../agent/realtime.ts";
+import { redactScreen, terminalScreen } from "../agent/realtime.ts";
 
-function medianRuntime(input: string, redactor = redactScreen) {
+function medianRuntime(
+  input: string,
+  redactor: (input: string, secrets: string[]) => unknown = redactScreen,
+) {
   redactor(input, []);
   const samples = Array.from({ length: 5 }, () => {
     const start = performance.now();
@@ -64,4 +67,21 @@ test("shared redaction scans unterminated base64 line runs once", (context) => {
   const elapsed = medianRuntime(input, redact);
   context.diagnostic(`base64 lines 260k ms: ${elapsed.toFixed(2)}`);
   assert(elapsed < 400, `base64 lines: ${elapsed}ms`);
+});
+
+test("styled redaction scales across repeated lowercase bearer prefixes", (context) => {
+  const timings = [8192, 16384].map((rows) =>
+    medianRuntime(
+      `\u001b[32m${"bearer fixture;\n".repeat(rows)}`,
+      terminalScreen,
+    ),
+  );
+  context.diagnostic(
+    `styled bearer 128k/256k ms: ${timings.map((time) => time.toFixed(2)).join(" / ")}`,
+  );
+  assert(timings[1] < 400, `large styled frame: ${timings[1]}ms`);
+  assert(
+    timings[1] < Math.max(60, timings[0] * 3),
+    `doubling ratio: ${timings[1] / timings[0]}`,
+  );
 });

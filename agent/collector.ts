@@ -37,7 +37,7 @@ export function redact(text: string, secrets: string[] = []) {
       (block) =>
         block.endsWith("PRIVATE KEY-----") ? "[REDACTED KEY]" : block,
     )
-    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[REDACTED]")
     .replace(
       /\beag1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
       "[REDACTED]",

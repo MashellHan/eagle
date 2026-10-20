@@ -79,6 +79,15 @@ test("known wrapped credentials remain hidden next to a safe status label", () =
   assert(!JSON.stringify(frame).includes(secret.slice(23)));
 });
 
+test("bearer redaction preserves the original prefix and its style", () => {
+  for (const prefix of ["bearer ", "bEaReR\t ", "BEARER\n"]) {
+    const frame = terminalScreen(`\u001b[32m${prefix}fixture;\u001b[0m`, []);
+    assert.equal(frame.text, `${prefix}[REDACTED];`);
+    assert.equal(frame.runs?.map((run) => run.text).join(""), frame.text);
+    assert.deepEqual(frame.runs?.[0], { fg: 2, text: prefix });
+  }
+});
+
 const assignmentProbes = [
   "Token usage API_\nKEY=private-fixture-value;",
   "Token usage API_\n  KEY=private-fixture-value;",
