@@ -2,8 +2,8 @@ import { Button } from "@nocoo/basalt";
 import { ArrowDown } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { LiveFrame } from "../shared/realtime.ts";
-import { terminalColor } from "../shared/terminal.ts";
 import { compactRenderedFrame } from "../shared/terminal-display.ts";
+import { TerminalText } from "./TerminalText.tsx";
 
 export function TerminalOutput({
   frame,
@@ -42,7 +42,6 @@ export function TerminalOutput({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  let offset = 0;
   return (
     <div className="live-output">
       <pre
@@ -58,31 +57,10 @@ export function TerminalOutput({
           if (following.current) setUnread(false);
         }}
       >
-        {display?.runs
-          ? display.runs.map((run) => {
-              const key = offset;
-              offset += run.text.length;
-              const fg = terminalColor(run.fg),
-                bg = terminalColor(run.bg);
-              return (
-                <span
-                  key={key}
-                  style={{
-                    color: run.inverse ? (bg ?? "var(--terminal-bg)") : fg,
-                    backgroundColor: run.inverse
-                      ? (fg ?? "var(--terminal-fg)")
-                      : bg,
-                    fontWeight: run.bold ? 700 : undefined,
-                    opacity: run.dim ? 0.7 : undefined,
-                    fontStyle: run.italic ? "italic" : undefined,
-                    textDecoration: run.underline ? "underline" : undefined,
-                  }}
-                >
-                  {run.text}
-                </span>
-              );
-            })
-          : (display?.text ?? "等待画面…")}
+        <TerminalText
+          text={display?.text ?? "等待画面…"}
+          runs={display?.runs}
+        />
       </pre>
       {unread && (
         <Button
