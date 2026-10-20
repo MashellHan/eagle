@@ -50,6 +50,9 @@ test("only complete visible HTTP(S) candidates are linked without joining lines"
     "https://example.test/\\evil",
     "https://example.test/\u202eabc",
     "https://example.test:bad",
+    "https://",
+    "http://?query",
+    "https://#fragment",
     `https://example.test/${"x".repeat(4096)}`,
   ])
     assert.deepEqual(hrefs(text), [], text);

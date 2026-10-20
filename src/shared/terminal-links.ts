@@ -42,13 +42,7 @@ export function terminalLinkParts(
     }
     try {
       const url = new URL(candidate);
-      if (
-        !["http:", "https:"].includes(url.protocol) ||
-        !url.hostname ||
-        url.username ||
-        url.password
-      )
-        continue;
+      if (url.username || url.password) continue;
       links.push({
         start: match.index,
         end: match.index + candidate.length,
