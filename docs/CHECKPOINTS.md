@@ -1,5 +1,27 @@
 # 用户视角检查点
 
+## 2026-10-21 05:10 +08 — integrated view-state repairs
+
+- Preserved PR71/72 author history and the existing merge with main's PR73/74
+  work. Root 0.10.2, Agent candidate 0.8.3 and onboarding 0.8.1 are unchanged.
+- Red/green regressions reproduce lost unread state in both browser projects
+  and rejected Kitty flag-8 arrows. All 32 keyboard flag combinations now have
+  exact-byte assertions; unsupported modes still reject before input writes.
+- A second desktop/mobile regression reproduced native URL dragging swallowing
+  text selection. Disabling link dragging preserves selection, frozen snapshots,
+  styled destinations and ordinary clicks/taps. Native context-menu gestures,
+  including Chromium-emulated touch long-press, are covered without suppressing
+  the browser callout. This is not an iOS-device verification claim.
+- Checks: 6 realtime Agent tests, strict types, focused lint, build, 26 focused
+  retention/output cases and the expanded 24-case output suite passed.
+- Actual Herdr evidence is controller-pane inventory only; no live collection,
+  production Access, D1 or public rendering was exercised. Browser data is
+  synthetic and socket tests are disposable/local. No hooks are installed beyond
+  Git's sample files; commits use the normal hook path without bypasses.
+- Next hop: audit retained-state cleanup after authorization failure, simplify
+  redundant renderer work, run full gates and independent max-reasoning review.
+  No push, tag, publication, deployment or installed-service changes are allowed.
+
 ## 2026-10-20 16:48 +08 — PR71 synchronized with latest main
 
 - GitHub reported PR71 as conflicting after main advanced to `181ebf4`.
