@@ -1,5 +1,27 @@
 # 用户视角检查点
 
+## 2026-10-21 05:14 +08 — cleanup and simplification ready for review
+
+- Authorization-revocation/reconnect regressed on desktop and mobile: old
+  unmount callbacks refilled the replacement position map. Callbacks now retain
+  their original owner; the fresh view starts at the bottom without stale unread
+  state. The 4-case retention suite and expanded 30-case focused browser suite
+  pass, as do focused link tests, strict types and check-only lint.
+- Simplification ledger: use native `Selection.containsNode(node, true)` instead
+  of allocating and iterating range arrays in two renderers; use frozen-frame
+  state as the layout dependency instead of serializing displayed text/styles
+  twice; remove duplicate scheme/hostname checks after the HTTP(S) matcher and
+  native URL parser already enforce them. Credential, redaction, malformed-URL,
+  link-count and frame-size restrictions remain intact.
+- Capturing the position map fixes ownership without a new auth fallback or
+  guard. Kitty flag 8 now uses its documented canonical encoding rather than
+  rejecting a supported mode. No dependency, compatibility layer or version
+  change is introduced; PR74 redaction implementations are untouched.
+- `git fetch origin` still reports main at `181ebf4`; no merge is necessary yet.
+  The next hop is full local gates and independent Codex max-reasoning review.
+  Actual Herdr collection, production Access/D1 and public rendering remain
+  unexercised; fixtures do not establish live-service or device acceptance.
+
 ## 2026-10-21 05:10 +08 — integrated view-state repairs
 
 - Preserved PR71/72 author history and the existing merge with main's PR73/74
