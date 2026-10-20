@@ -37,6 +37,7 @@ export function TerminalText({
         key={part.start}
         className="live-terminal-link"
         href={part.href}
+        draggable={false}
         target="_blank"
         rel="noopener noreferrer"
         referrerPolicy="no-referrer"
@@ -46,9 +47,7 @@ export function TerminalText({
           if (
             selection &&
             !selection.isCollapsed &&
-            Array.from({ length: selection.rangeCount }, (_, i) =>
-              selection.getRangeAt(i),
-            ).some((range) => range.intersectsNode(event.currentTarget))
+            selection.containsNode(event.currentTarget, true)
           )
             event.preventDefault();
         }}

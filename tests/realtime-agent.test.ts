@@ -7,6 +7,30 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { LiveBridge, redactScreen } from "../agent/realtime.ts";
 import { submitTerminalInput } from "../agent/terminal-input.ts";
+import { InputSchema } from "../src/shared/realtime.ts";
+
+test("history arrows are validated keys, not raw escape sequences in pasted text", () => {
+  for (const key of ["up", "down", "ctrl+p", "ctrl+n"]) {
+    assert(
+      InputSchema.safeParse({
+        type: "input",
+        seq: 1,
+        paneId: "p",
+        terminalId: "t",
+        keys: [key],
+      }).success,
+    );
+  }
+  assert(
+    !InputSchema.safeParse({
+      type: "input",
+      seq: 1,
+      paneId: "p",
+      terminalId: "t",
+      keys: ["unsafe-key"],
+    }).success,
+  );
+});
 
 test("live bridge shares subscriptions, rejects replaced terminals, and stops all reads on unsubscribe", async () => {
   const directory = await mkdtemp(join(tmpdir(), "eagle-live-"));
@@ -424,6 +448,54 @@ test("native input binds the terminal before paste/keys, confirms only submissio
     assert.deepEqual(
       frames.filter((f) => f[0] === 1).map((f) => f.subarray(2).toString()),
       ["\x03", "\x04", "\x0c"],
+    );
+    for (let mode = 0; mode < 32; mode++) {
+      flags = mode;
+      modify = 2;
+      input.keys = ["up", "down"];
+      frames.length = 0;
+      if (!(mode & 9)) {
+        assert.equal(
+          await submit(),
+          "rejected",
+          "cursor input requires disambiguation or canonical all-keys encoding",
+        );
+        assert(!frames.some((f) => f[0] === 1));
+        continue;
+      }
+      assert.equal(await submit(), "submitted");
+      assert.deepEqual(
+        frames.filter((f) => f[0] === 1).map((f) => f.subarray(2).toString()),
+        mode & 2
+          ? ["\x1b[1;1:1A\x1b[1;1:3A", "\x1b[1;1:1B\x1b[1;1:3B"]
+          : ["\x1b[A", "\x1b[B"],
+      );
+    }
+    for (const [invalidFlags, invalidModify] of [
+      [32, 0],
+      [8, 3],
+    ]) {
+      flags = invalidFlags;
+      modify = invalidModify;
+      frames.length = 0;
+      assert.equal(await submit(), "rejected");
+      assert(!frames.some((frame) => frame[0] === 1));
+    }
+    flags = 0;
+    modify = 1;
+    input.keys = ["ctrl+p", "ctrl+n"] as typeof input.keys;
+    frames.length = 0;
+    assert.equal(await submit(), "submitted");
+    assert.deepEqual(
+      frames.filter((f) => f[0] === 1).map((f) => f.subarray(2).toString()),
+      ["\x10", "\x0e"],
+    );
+    flags = 31;
+    frames.length = 0;
+    assert.equal(await submit(), "submitted");
+    assert.deepEqual(
+      frames.filter((f) => f[0] === 1).map((f) => f.subarray(2).toString()),
+      ["\x1b[112;5:1u\x1b[112;5:3u", "\x1b[110;5:1u\x1b[110;5:3u"],
     );
     frames.length = 0;
     protocol = 23;

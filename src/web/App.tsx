@@ -76,7 +76,7 @@ import {
   localProduction,
 } from "./environment.ts";
 import { PaneSummaryView } from "./PaneSummary.tsx";
-import { Realtime } from "./Realtime.tsx";
+import { createRealtimeView, Realtime } from "./Realtime.tsx";
 import { Settings } from "./Settings.tsx";
 import { useTimezone } from "./Timezone.tsx";
 import { WorkspaceShell } from "./WorkspaceShell.tsx";
@@ -294,6 +294,7 @@ function SpaceDetail({
   }, []);
   const [history, setHistory] = useState(false);
   const [realtime, setRealtime] = useState(true);
+  const realtimeView = useRef(createRealtimeView());
   useEffect(() => {
     if (!selection?.pane) return;
     setPaneId(selection.pane);
@@ -390,6 +391,7 @@ function SpaceDetail({
       >
         {realtime ? (
           <Realtime
+            view={realtimeView}
             statusTarget={statusTarget}
             machineId={machine.id}
             spaceId={space.id}

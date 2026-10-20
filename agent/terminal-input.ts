@@ -63,15 +63,22 @@ const basic = {
   "ctrl+c": [99, "\x03"],
   "ctrl+d": [100, "\x04"],
   "ctrl+l": [108, "\x0c"],
+  "ctrl+p": [112, "\x10"],
+  "ctrl+n": [110, "\x0e"],
 } as const;
 function keyBytes(
   key: LiveInput["keys"][number],
   flags: number,
   modify: number,
 ) {
+  if (modify > 2) throw new Error("Unsupported keyboard mode");
+  if (key === "up" || key === "down") {
+    if (!(flags & 9)) throw new Error("Cursor mode unavailable");
+    const final = key === "up" ? "A" : "B";
+    return flags & 2 ? `\x1b[1;1:1${final}\x1b[1;1:3${final}` : `\x1b[${final}`;
+  }
   const [code, legacy] = basic[key];
   const modifier = key.startsWith("ctrl+") ? 5 : key === "shift+tab" ? 2 : 1;
-  if (modify > 2) throw new Error("Unsupported keyboard mode");
   if (flags && (flags & 8 || modifier !== 1 || key === "esc")) {
     const press = `\x1b[${code};${modifier}${flags & 2 ? ":1" : ""}u`;
     const release =

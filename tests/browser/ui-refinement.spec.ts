@@ -178,6 +178,10 @@ for (const theme of ["dark", "light"] as const) {
     });
     await expect(composer).toBeInViewport({ ratio: 1 });
     await expect(composer).toBeEnabled();
+    await expect(
+      page.getByRole("button", { name: "发送并回车" }),
+    ).toBeDisabled();
+    await page.getByRole("button", { name: "接管输入", exact: true }).click();
     await composer.fill("printf hello");
     await composer.press("Enter");
     await expect.poll(() => inputs.length).toBe(1);

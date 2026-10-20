@@ -52,16 +52,36 @@ certify completion.
 
 Open a machine and a Space; **实时模式** opens by default and requests input control once. Eagle mirrors the current terminal text and tab/pane layout. Only the browser granted control by the server can send input; other browsers can watch. Select a pane, send text with or without Enter, or use the common key buttons. The local Herdr client remains able to operate concurrently. Terminal snapshots support SGR colors (16/256/RGB), bold, dim, italic, underline and inverse. Mouse reporting, pixel graphics and arbitrary PTY resize are not implemented.
 
-Output follows the bottom on first display, target switch/replacement and while
-already at the bottom. Scrolling up pauses following independently for each pane;
+Output follows the bottom on first display, terminal replacement and while
+already at the bottom. Switching back to a known pane preserves its reading
+position, including after switching tabs. A retained content baseline detects
+updates received while that tab's output is unmounted; identical text/styles
+with a newer frame revision do not create unread notifications.
+Scrolling up pauses following independently for each pane;
 new output offers **新输出 · 回到底部**. Clicking it or scrolling back to the bottom
 resumes following. This navigates the current visible-screen snapshot, not an
 unbounded terminal scrollback archive.
+
+Mobile keeps Ctrl+C, Ctrl+D and up/down history buttons visible with 44px hit
+targets. **更多** exposes the remaining keys, including explicit Ctrl+P/N for
+applications that bind them to history. Neither history path sends the draft.
+Text selection/long-press uses the browser's native selection and callout. While
+any selection range intersects an output, its displayed snapshot is frozen;
+incoming frames still update unread notification state. Clearing the selection
+reveals the latest frame; **新输出 · 回到底部** explicitly resumes following.
+Scrolling the frozen snapshot does not mark pending output read. Hidden mobile
+panes retain unread/follow state separately from their last valid coordinates.
+Viewport-induced scrolls can precede resize notifications; unchanged/clamped
+offsets retain following, while reader wheel/pointer/touch/keyboard intent and
+upward offset changes pause it. Mobile shortcuts retain a full row when receipts
+appear, rather than wrapping into a narrow column.
 
 Visible HTTP/HTTPS URLs in terminal output are clickable and open in a new tab;
 the workspace stays open. Links preserve the displayed text and ANSI styling,
 use `noopener noreferrer` and no referrer, and do not navigate when the link
 intersects an active text selection. Hidden OSC destinations are never restored.
+Links disable native URL dragging so a pointer drag selects terminal text;
+ordinary clicks/taps still open the visible destination after selection clears.
 Only the already-redacted visible URL is used: masked/credential-bearing or
 malformed URLs and unsupported schemes remain ordinary text. Terminal line
 breaks are not joined to guess a longer destination. Linkification is bounded
@@ -75,7 +95,8 @@ automatically. **释放输入** opts back into viewing; **接管输入** can req
 again explicitly. Target changes/replacements and reconnects
 require manual reacquisition; uncertain inputs are never replayed. Switching to
 **当前任务** or **Space 历史** releases the realtime subscription. Opening a fresh
-realtime view makes a new default request.
+workspace makes a new default request. Returning to realtime within the same
+open workspace preserves viewing state but requires manual input reacquisition.
 
 The input field contains the output-status icon and desktop viewing/control
 label. Its accessible description and icon tooltip retain the full target name
@@ -197,6 +218,12 @@ safe styled-text anchors unchanged rather than repeatedly searching for
 rewritten text.
 
 A temporary disconnect preserves the last terminal screen with a retry indicator.
+Switching task/history/realtime views within the same open workspace also keeps
+the latest validated frames, per-terminal scroll/follow position and unknown-input
+receipt in workspace-owned memory (at most the topology's 32 bounded frames).
+Closing the workspace, reloading or losing Access clears this memory. It never
+enters browser storage and does not retain or reacquire input control. Hidden
+mobile panes restore their position only once they have layout dimensions.
 The composer keeps its focus and remains editable while offline, viewing or
 waiting for a receipt. Sending and terminal shortcuts remain gated by a fresh
 connection/topology and an explicit controller lease. Authentication/protocol
@@ -207,7 +234,11 @@ Input requires a controller lease and a pane/terminal pair from the live topolog
 
 Screens redact known machine credentials across line wraps and recognizable viewport-edge fragments, common token formats, assignments and private keys. Truncated PEM blocks are masked; screens also conservatively hide consecutive base64 lines when both PEM boundaries are offscreen, which can hide unrelated encoded output. Pane titles are redacted before length limits. Input containing known credentials/recognized secret patterns is rejected by the bridge. Terminal screens and submitted input are not stored in D1, DO storage/attachments, report spools or application logs. Terminal screens never enter browser storage. Unsent input drafts are saved synchronously to localStorage, scoped to the exact machine/Space/pane/terminal. Refreshing, leaving and returning restore that draft; submitting or manually emptying it removes its cache. Recognizable credential patterns are kept only in memory, and blocked storage is explicitly reported. Browser caching is not an input queue: nothing is sent automatically. DO attachments retain only routing, public identity, lease and sequence metadata. A “submitted” receipt means the native control channel completed submission and detach; Herdr provides no per-input PTY acknowledgement. Text and Enter are separate queue entries and can partially fail under load. Check the returned screen; a receipt never certifies command success or Agent completion.
 
-Native attach briefly controls terminal geometry and can resume a pending agent. Layout dimensions are only an estimate; attach/detach can resize the terminal and cause Herdr to reapply other tab geometry. There is no no-resize input API in protocol 22. Text uses a complete bracketed-paste message so Herdr applies the target’s paste mode; embedded escape/control bytes are rejected. Basic keys support legacy, Kitty and modifyOtherKeys modes. Direction keys are deferred because this protocol does not expose application-cursor mode. No terminal mouse/color/graphics/resize emulator is implied. Text containing newlines may execute when the target does not use bracketed paste.
+Native attach briefly controls terminal geometry and can resume a pending agent. Layout dimensions are only an estimate; attach/detach can resize the terminal and cause Herdr to reapply other tab geometry. There is no no-resize input API in protocol 22. Text uses a complete bracketed-paste message so Herdr applies the target’s paste mode; embedded escape/control bytes are rejected. Basic keys support legacy, Kitty and modifyOtherKeys modes. Up/down require Kitty disambiguation flag 1 or report-all-keys flag 8, which both prove canonical CSI encoding ([Kitty protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/#report-all-keys-as-escape-codes)); other modes reject direction input because protocol 22 does not expose application-cursor mode (DECCKM). Event reporting flag 2 adds press/release events in either supported mode. Explicit Ctrl+P/N shortcuts remain available for applications with compatible history bindings; they are not automatically substituted. No terminal mouse/color/graphics/resize emulator is implied. Text containing newlines may execute when the target does not use bracketed paste.
+
+The new keys require a matching upgraded Agent/bridge and Worker. Agent source
+candidate is 0.8.3; onboarding remains pinned to published 0.8.1 until publication
+is independently verified. Do not deploy only the website and claim key support.
 
 ## Verification
 

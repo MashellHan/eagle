@@ -46,9 +46,13 @@ export const InputSchema = z
           "tab",
           "shift+tab",
           "backspace",
+          "up",
+          "down",
           "ctrl+c",
           "ctrl+d",
           "ctrl+l",
+          "ctrl+p",
+          "ctrl+n",
         ]),
       )
       .max(4)
