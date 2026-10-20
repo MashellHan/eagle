@@ -1158,3 +1158,10 @@ serving and the first catalogue-derived production Cron observation.
 - Before/after screenshots are saved under `.local/deps-major/before/` and `.local/deps-major/after/`. Inspected desktop and mobile captures show expected native surface, spacing, meter and typography changes; 390px keeps the machine title, while 320px truncates the secondary title and retains its full name in the application header. The complete selector/removal ledger is `docs/DEPENDENCY-MIGRATION-0.11.0.md`.
 - Herdr collection, live authentication, production D1 and public rendering remain untested and untouched. Local fixture authentication/D1 and browser rendering passed; no credentials or installed collectors were accessed. An independent read-only Codex reviewer is reviewing the migration in the controller's right-hand pane.
 - Next hop: commit Basalt atomically, upgrade Node types separately, then prepare root 0.11.0, clean-install final gates, fetch/rebase if needed and obtain final review. Agent source 0.8.3 and published onboarding 0.8.1 remain unchanged; no publication operations are authorized.
+
+## 2026-10-21 07:05 +08 — Node 26 types verified locally
+
+- Basalt migration is committed as `88413f1`. Node types now use `^26.6.5`, locked to 26.6.5 with required `undici-types` 8.9.0. All resolved package URLs remain official npm URLs; the registry override was temporary.
+- The initial strict typecheck exposed TS7022 in the live summary verifier's lookup. An explicit existing-domain `PaneSummary | undefined` annotation fixes inference without runtime changes, type escapes or compiler-setting changes. `npm run check` then passed all 180 tests, strict types, lint and build.
+- Collection, live authentication, production D1 and public rendering are still untouched. The summary verifier was only typechecked; no live script or production credential was used. Local Miniflare/API and browser fixture evidence remains as recorded above.
+- Next hop: commit Node types atomically, prepare root 0.11.0 separately, perform clean `npm ci` and serial final gates, fetch and obtain explicit independent review. No push, PR, tag, publication or deployment is authorized.

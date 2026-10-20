@@ -25,6 +25,18 @@ tag `v3.2.0`, including the 3.0.0 and 3.1.0 changes.
   expose `aria-current` for Basalt's persistent neutral selected surface. The
   additive browser assertion checks that state and rejects the old accent bar.
 
+## Node types 25 to 26.6.5 (#9)
+
+The manifest keeps caret style (`^26.6.5`) and the lock pins 26.6.5 with its
+required `undici-types` 8.9.0. Strict typechecking initially reported TS7022 for
+the summary lookup in `scripts/verify-summaries.ts`. Annotating the result with
+the existing domain type, `PaneSummary | undefined`, resolves the inference
+cycle without changing runtime behavior, assertion narrowing or TypeScript
+settings. The live verification script was typechecked, not executed.
+
+The repaired Node-types change passed `npm run check`: 180 tests, strict types,
+check-only lint and build. No `any`, suppression or compatibility shim is added.
+
 ## Removed overrides
 
 Use this list in a future PR body; this task does not create a PR.

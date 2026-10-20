@@ -3,7 +3,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
 import type { AgentConfig } from "../agent/collector.ts";
 import type { MachineView } from "../src/shared/schema.ts";
-import type { SemanticHour, SemanticRecord } from "../src/shared/summaries.ts";
+import type {
+  PaneSummary,
+  SemanticHour,
+  SemanticRecord,
+} from "../src/shared/summaries.ts";
 
 const origin = process.env.EAGLE_VERIFY_ORIGIN || "https://eagle.dev.hexly.ai";
 const config: AgentConfig = JSON.parse(
@@ -58,7 +62,7 @@ try {
   await page.goto(`${origin}/?machine=${encodeURIComponent(config.machineId)}`);
   const results = [];
   for (const { space, pane } of live) {
-    const summary = machine.summaries?.find(
+    const summary: PaneSummary | undefined = machine.summaries?.find(
       (s) =>
         s.spaceId === space.id &&
         s.paneId === pane.id &&
