@@ -33,16 +33,17 @@ export function redact(text: string, secrets: string[] = []) {
       "[REDACTED KEY]",
     )
     .replace(
-      /(?:^[ \t]*[A-Za-z0-9+/]+={0,2}[ \t]*\r?\n)+[ \t]*-----END [\w ]*PRIVATE KEY-----/gm,
-      "[REDACTED KEY]",
+      /(?:^[ \t]*[A-Za-z0-9+/]+={0,2}[ \t]*\r?\n)+[ \t]*(?:-----END [\w ]*PRIVATE KEY-----)?/gm,
+      (block) =>
+        block.endsWith("PRIVATE KEY-----") ? "[REDACTED KEY]" : block,
     )
-    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[REDACTED]")
     .replace(
       /\beag1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
       "[REDACTED]",
     )
     .replace(
-      /((?:[A-Z_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL)[A-Z_]*)\s*[=:]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;]+)/gi,
+      /(?<![A-Z_])(?=[A-Z_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL))([A-Z_]+\s*[=:]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;]+)/gi,
       "$1[REDACTED]",
     )
     .replace(

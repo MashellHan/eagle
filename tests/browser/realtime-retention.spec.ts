@@ -59,9 +59,10 @@ test("view switches preserve output, history position and unknown input without 
         ],
       }),
     );
-  const text = Array.from({ length: 150 }, (_, i) => `retained line ${i}`).join(
-    "\n",
-  );
+  const text =
+    Array.from({ length: 150 }, (_, i) => `retained line ${i}`).join("\n") +
+    "\nhttps://example.test/retained";
+  const latestText = `${text}\nnew while selected https://example.test/latest`;
   const frame = (value = text) =>
     socket.send(
       JSON.stringify({
@@ -100,6 +101,12 @@ test("view switches preserve output, history position and unknown input without 
   await page.getByRole("button", { name: "查看 Eagle", exact: true }).click();
   const screen = page.locator('.live-pane[data-selected="true"] pre');
   await expect(screen).toHaveText(text);
+  await expect(
+    screen.getByRole("link", {
+      name: "https://example.test/retained",
+      exact: true,
+    }),
+  ).toHaveAttribute("href", "https://example.test/retained");
   await screen.evaluate((el) => {
     el.scrollTop = 100;
     el.dispatchEvent(new Event("scroll"));
@@ -131,14 +138,26 @@ test("view switches preserve output, history position and unknown input without 
     document.dispatchEvent(new Event("selectionchange"));
   });
   await expect(page.getByText("选择文字中，画面已暂停更新")).toBeVisible();
-  frame(`${text}\nnew while selected`);
+  frame(latestText);
   await expect(screen).toHaveText(text);
+  await expect(
+    screen.getByRole("link", {
+      name: "https://example.test/latest",
+      exact: true,
+    }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "新输出，回到底部" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "当前任务", exact: true }).click();
   await page.getByRole("button", { name: "实时模式", exact: true }).click();
-  await expect(screen).toHaveText(`${text}\nnew while selected`);
+  await expect(screen).toHaveText(latestText);
+  await expect(
+    screen.getByRole("link", {
+      name: "https://example.test/latest",
+      exact: true,
+    }),
+  ).toHaveAttribute("href", "https://example.test/latest");
   await expect.poll(() => screen.evaluate((el) => el.scrollTop)).toBe(100);
   await expect(page.getByText("选择文字中，画面已暂停更新")).toHaveCount(0);
   await expect(

@@ -1,5 +1,36 @@
 # Retrospective
 
+## 2026-10-20 — A rejected redaction label hid a nested assignment
+
+PR #70 preserved ordinary status labels by validating a greedy match after
+whitespace compaction. Rejecting that match also skipped an independent wrapped
+assignment inside it. Its whitespace-normalization regex backtracked over long
+horizontal gaps; shared preprocessing also rescanned repeated key names and
+base64 line runs without a footer. Synthetic regression tests demonstrated the
+leak and slow paths before implementation. Source-aware assignment boundaries
+and bounded word/line-run matching remove those repeated scans. Plain output and
+styled runs must both be asserted; a preserved status label alone does not
+establish that the following output is safe.
+
+Independent review then found two pre-existing gaps within the same objective:
+quoted wrapped assignments were skipped by an unquoted-only value matcher, and
+normalizing `bearer` to `Bearer` made style reconstruction repeatedly search for
+nonexistent anchors. Both received failing synthetic regressions before their
+fixes. Value parsing now accepts quoted viewport fragments; Bearer redaction
+retains the exact source prefix. End-to-end performance tests must include
+`terminalScreen`, not only the intermediate redactor.
+
+During investigation, an unbounded repeated-key benchmark stalled its local
+Node process; only that process was terminated. Subsequent exploratory probes
+used child-process timeouts and smaller inputs before increasing sizes. Timing
+evidence should be collected without competing benchmarks, and performance
+tests use warm-up, medians and generous absolute bounds rather than relying on
+a single fast sample. An initial checkpoint patch also used an unverified
+heading and was rejected without changing the file; verify the exact anchor
+before patching documentation. The scratch benchmark initially imported
+`stripTypeScriptTypes` from `node:util` instead of its documented `node:module`
+export; the corrected harness then completed under a parent-enforced timeout.
+
 ## 2026-09-21 — Reporting depended on an unavailable local proxy
 
 After reboot, all three Eagle services started, but the collector and Manager could not upload because their launchd environments required a local proxy that was not running. Direct Node requests to the ingestion origin succeeded. Removed the fixed proxy environment, reloaded the services, and verified successful collection, Manager reporting, realtime connection and an empty pending spool. Onboarding now specifies direct networking by default and explicit optional proxy configuration.

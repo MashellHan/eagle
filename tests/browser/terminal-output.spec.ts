@@ -92,6 +92,67 @@ const distance = (page: Page) =>
     .locator(".live-pane pre")
     .evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop);
 
+test("visible terminal URLs open safely without losing styling or selection", async ({
+  page,
+}) => {
+  await page.context().route("https://example.test/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<title>Synthetic destination</title>Link test",
+    }),
+  );
+  const stream = await openTerminal(page);
+  const url = "https://example.test/path?q=1&tab=2";
+  const text = `Open (${url}).\nOnly visible text becomes a link.`;
+  stream.frame(text, [
+    { text: "Open (https://exam", fg: 2 },
+    { text: "ple.test/path?q=1&tab=2", bold: true },
+    { text: ").\nOnly visible text becomes a link." },
+  ]);
+  const link = page.getByRole("link", { name: url, exact: true });
+  await expect(link).toHaveCount(1);
+  await expect(link).toHaveAttribute("href", url);
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(link).toHaveAttribute("referrerpolicy", "no-referrer");
+  await expect(link.locator("span").first()).toHaveCSS(
+    "color",
+    "rgb(166, 227, 161)",
+  );
+  await expect(link.locator("span").nth(1)).toHaveCSS("font-weight", "700");
+  await expect(page.locator(".live-pane pre")).toHaveText(text);
+  const before = page.url();
+  const opened = page.waitForEvent("popup");
+  await link.click();
+  const popup = await opened;
+  await popup.waitForURL(url);
+  await popup.waitForLoadState("domcontentloaded");
+  expect(popup.url()).toBe(url);
+  expect(
+    await popup.evaluate(() => [window.opener === null, document.referrer]),
+  ).toEqual([true, ""]);
+  await popup.close();
+  expect(page.url()).toBe(before);
+  expect(
+    await link.evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      return el.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    }),
+  ).toBe(false);
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+  stream.frame(
+    "javascript:alert(1) data:text/html,test file:///etc/hosts https://user:pass@example.test/x https://example.test/[REDACTED] https://example.test/[REDACTED KEY] https://example.test/*** <img src=x onerror=alert(1)>",
+  );
+  await expect(page.locator(".live-pane pre a")).toHaveCount(0);
+  await expect(page.locator(".live-pane pre img")).toHaveCount(0);
+});
+
 for (const longName of [false, true]) {
   test(`realtime dropdowns keep ${longName ? "long" : "short"} labels readable within the viewport`, async ({
     page,

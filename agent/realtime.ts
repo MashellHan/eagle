@@ -33,12 +33,36 @@ export function redactScreen(value: string, secrets: string[]) {
     "[REDACTED KEY]\n",
   );
   const positions: number[] = [];
+  const assignments: [number, number][] = [];
   let compact = "";
-  for (let i = 0; i < text.length; i++)
-    if (!/\s/.test(text[i])) {
-      positions.push(i);
-      compact += text[i];
+  let identifierStart = 0;
+  let wordBreak = false;
+  for (let offset = 0; offset < text.length; offset++) {
+    if (/\s/.test(text[offset])) {
+      let wrapped = false;
+      let bareCarriageReturn = false;
+      while (offset < text.length && /\s/.test(text[offset])) {
+        wrapped ||= text[offset] === "\n";
+        bareCarriageReturn ||=
+          text[offset] === "\r" && text[offset + 1] !== "\n";
+        offset++;
+      }
+      wordBreak = !wrapped || bareCarriageReturn;
+      offset--;
+      continue;
     }
+    const character = text[offset];
+    if (/\w/.test(character)) {
+      if (wordBreak) identifierStart = compact.length;
+    } else {
+      if (/[=:]/.test(character) && identifierStart < compact.length)
+        assignments.push([identifierStart, compact.length]);
+      identifierStart = compact.length + 1;
+    }
+    wordBreak = false;
+    positions.push(offset);
+    compact += character;
+  }
   const masked = new Set<number>();
   const mask = (start: number, length: number) => {
     for (let i = start; i < start + length; i++) masked.add(positions[i]);
@@ -57,9 +81,22 @@ export function redactScreen(value: string, secrets: string[]) {
     }
   }
   for (const match of compact.matchAll(
-    /(?:eag1\.[A-Za-z0-9_.-]+|sk-[\w-]{16,}|gh[pousr]_[\w]{20,}|github_pat_[\w]{20,}|(?:TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL)[\w]*[=:][^,;"']+)/gi,
+    /(?:eag1\.[A-Za-z0-9_.-]+|sk-[\w-]{16,}|gh[pousr]_[\w]{20,}|github_pat_[\w]{20,})/gi,
   ))
     mask(match.index, match[0].length);
+  let assignmentEnd = 0;
+  for (const [start, end] of assignments) {
+    if (start < assignmentEnd) continue;
+    const key = compact.slice(start, end);
+    const sensitive = key.search(/TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL/i);
+    if (sensitive < 0) continue;
+    const value = compact
+      .slice(end + 1)
+      .match(/^(?:"[^"]*(?:"|$)|'[^']*(?:'|$)|[^,;"']+)/)?.[0];
+    if (!value) continue;
+    assignmentEnd = end + 1 + value.length;
+    mask(start + sensitive, assignmentEnd - start - sensitive);
+  }
   return text
     .split("")
     .map((c, i) => (masked.has(i) ? "*" : c))

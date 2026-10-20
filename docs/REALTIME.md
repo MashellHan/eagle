@@ -73,6 +73,15 @@ offsets retain following, while reader wheel/pointer/touch/keyboard intent and
 upward offset changes pause it. Mobile shortcuts retain a full row when receipts
 appear, rather than wrapping into a narrow column.
 
+Visible HTTP/HTTPS URLs in terminal output are clickable and open in a new tab;
+the workspace stays open. Links preserve the displayed text and ANSI styling,
+use `noopener noreferrer` and no referrer, and do not navigate when the link
+intersects an active text selection. Hidden OSC destinations are never restored.
+Only the already-redacted visible URL is used: masked/credential-bearing or
+malformed URLs and unsupported schemes remain ordinary text. Terminal line
+breaks are not joined to guess a longer destination. Linkification is bounded
+to 128 links per frame and 4096 characters per candidate.
+
 Opening a workspace selects **实时模式**, the first tab. Once the bridge is online
 and a valid target exists, the view requests control once; sending remains disabled
 until the server grants the single-controller lease. Draft editing stays available. The request sends no text or
@@ -115,7 +124,8 @@ joined runs must exactly equal the safe plain text. One masked field therefore
 does not strip the entire screen's colors. Adjacent equal styles are coalesced
 before the frame budget is applied. OSC links/clipboard operations and controls are
 discarded; concealed text is masked. The browser renders escaped React text,
-never terminal HTML, URLs or escape commands. Screens with excessive styling
+never terminal HTML, OSC link targets or escape commands; only visible HTTP(S)
+URLs in the redacted text become links (see above). Screens with excessive styling
 first simplify older styles while retaining recent output colors. If even that
 cannot fit, they fall back to text (512 runs / 64 KiB styling budget, 32,000 text
 characters). These limits are unchanged.
@@ -187,6 +197,20 @@ Installing a new npm version updates the executable; it does not create or start
 - Bounds: 12 viewers, four distinct subscribed Spaces per machine; 32 panes/16 tabs per Space, 32,000 characters per screen, 8,000 characters per submitted input. Excess topology closes that live view rather than showing an incomplete control surface. Slow bridge connections abort polling immediately; viewer screen receipts enforce a 2 MiB / 128-frame outstanding budget. Viewers share a Space subscription. Routing attachments store compact identity hashes and cumulative delivery counters, not screen text.
 
 ## Input and evidence
+
+Secret assignment names keep word boundaries within each source line. Labels
+such as `Token usage:` must not become secret fields when whitespace is folded
+for wrapped-credential detection. Line-wrapped identifiers, including their
+continuation padding, remain conservatively protected. A rejected label cannot
+hide a later credential match, including an independent assignment inside the
+same whitespace-compacted candidate. Assignment scanning records source word
+boundaries in one pass; horizontal whitespace without a line wrap never joins
+label words. For a fixed configured credential set, redaction work scales
+linearly with the input frame, before the 32,000-character screen limit.
+Quoted wrapped values remain masked through the closing quote or viewport end.
+Bearer redaction preserves the original prefix's case and whitespace, keeping
+safe styled-text anchors unchanged rather than repeatedly searching for
+rewritten text.
 
 A temporary disconnect preserves the last terminal screen with a retry indicator.
 Switching task/history/realtime views within the same open workspace also keeps

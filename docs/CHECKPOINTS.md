@@ -1,5 +1,24 @@
 # 用户视角检查点
 
+## 2026-10-20 16:48 +08 — PR71 synchronized with latest main
+
+- GitHub reported PR71 as conflicting after main advanced to `181ebf4`.
+  Local merge reproduced conflicts only in CHECKPOINTS and REALTIME docs;
+  both histories/contracts are retained. No maintainer review request or failed
+  old-head CI explained the wait; no inference about maintainer intent is made.
+- Latest main's #74 redaction follow-ups and #75 visible-link implementation
+  remain unchanged. The combined renderer uses TerminalText with the retained
+  selection, reading position, unread and input-authority protections.
+- Extended desktop/mobile coverage confirms frozen selected output does not
+  adopt newer URL targets; reopening the view restores the latest cached frame
+  and links without reclaiming control. Auth revocation still clears it.
+- Validation: 180 Node tests, strict types, check-only lint and build passed;
+  24 focused browser cases and full 181 browser cases passed (11 existing
+  viewport skips). Copilot CLI read-only integration review: no findings.
+- This repairs the existing fork PR branch, preserving both parent histories.
+  No force push, upstream merge, production input, service changes or deployment.
+  Exact-head remote CI/mergeability readback follows the branch update.
+
 ## 2026-10-20 — PR71/72 consolidation
 
 - User requested one retained PR. Mobile commit `95567c8` is integrated into
@@ -66,6 +85,94 @@
 - Final GitHub Copilot CLI delta review reports no findings. Browser selection
   was verified synthetically; physical iOS long-press/callout remains a manual
   acceptance item. No live terminal input, cloud writes or service changes.
+
+## 2026-10-20 13:55 +08 — Independent review follow-up
+
+- The read-only reviewer identified two pre-existing boundaries within this
+  repair's scope: quoted wrapped assignments leaked, and case-changing Bearer
+  replacement made styled reconstruction repeatedly search for missing text.
+  Eight quoted probes and two Bearer correctness/performance tests failed
+  before their respective fixes; 64 affected tests now pass. The assignment
+  probe set now contains 31 cases, all passing in plain and styled output.
+- Quoted values are masked through their closing quote or viewport end,
+  including value wraps and embedded semicolons. Bearer replacement preserves
+  source case and whitespace, so style anchors remain findable. The full
+  `terminalScreen` path is now timed before output truncation: 128K/256K
+  lowercase-Bearer frames improve from 171.79/630.95ms to 24.62/35.99ms.
+- Herdr collection, live authentication and production D1 remain untouched;
+  rendering and API evidence remains fixture-only. The prior rebased gate run
+  passed 165 checks and 173 browser cases (11 existing platform skips), before
+  these follow-ups. Their full gates and final independent review are next.
+- Fetched and rebased again on `67712d36a75590b3265b24a8380e9c521e742ff2`;
+  the branch was already current. No version, registry, lockfile, publication,
+  deployment or remote-write changes were made.
+
+## 2026-10-20 13:46 +08 — Redaction regression repair
+
+- Synthetic evidence: 19 of 23 new adversarial assignment probes failed before
+  the fix; all 23 now pass in plain text and styled runs. The original four
+  status-label regressions still pass. The focused suite passes 59 tests.
+- Performance: reproduced long-whitespace backtracking and additional shared
+  preprocessing slow paths for repeated key words and footerless base64 lines.
+  The scanner now preserves source word boundaries without rescanning rejected
+  headings; shared preprocessing consumes each word or line run once.
+- Herdr: controller and a read-only Codex reviewer occupy this task's Space.
+  No installed Eagle collector, credential, service or live collection changed.
+  Authentication, D1 and rendering evidence is local fixture coverage only;
+  public Access, ingestion and browser rendering are not verified by this task.
+- Gates: `npm run check` passes 165 tests, strict types, check-only lint and
+  production build. `npm run test:browser` passes 173 tests; 11 existing
+  platform-specific cases remain skipped, with no new skips or gate changes.
+- Controlled comparison on Node 26.12.0, original `67712d3` versus this fix,
+  one warm-up and five-sample medians, milliseconds (before -> after): spaces
+  8K 52.88 -> 0.44, 16K 214.15 -> 1.11, 32K 789.36 -> 2.36,
+  64K 3523.16 -> 4.52; tabs 8K 45.82 -> 0.19, 16K 208.37 -> 0.80,
+  32K 580.32 -> 0.73, 64K 2075.31 -> 1.48. A 77,824-character status
+  frame takes 2.84 -> 3.94ms. Performance gates retain a generous absolute cap
+  and doubling-ratio check with a small-runtime noise floor.
+- Next hop: obtain independent approval, fetch and rebase on current
+  origin/main, then re-review. Agent 0.8.3 stays unpublished; website 0.10.2 and
+  published-Agent onboarding 0.8.1 remain unchanged. Dependency installation
+  used the authorized temporary mirror after a feed 404; lockfiles did not
+  change. No executable Git hooks are installed; commits bypass no hooks.
+
+## 2026-10-20 — Clickable visible terminal URLs
+
+- Visible HTTP(S) URLs now use Basalt links and open a separate tab with
+  noopener/noreferrer/no-referrer. Their original text and ANSI styles remain
+  intact, including links crossing style-run boundaries. Selection clicks do
+  not navigate. Hidden OSC destinations and cross-line reconstruction remain off.
+- Only already-redacted text is considered. Credential-bearing URLs, invalid
+  schemes, control/bidi characters, backslashes and masking markers stay text.
+  At most 128 links per bounded frame and 4096 characters per URL are considered.
+- Desktop/mobile TDD first reproduced absent links. Review found a whitespace
+  boundary in `[REDACTED KEY]`; a failing regression now passes with prefix
+  rejection. Final Copilot delta review: no findings.
+- 137 Node tests passed; final types/check-only lint/build passed after formatting
+  corrections. Full browser baseline: 175 pass/11 existing viewport skips;
+  18 focused cases and the final two marker/new-tab regressions pass. Existing
+  lint infos/bundle advisory are unchanged.
+- Actual isolated Edge 390x600 render shows only the safe URL as a dotted link;
+  opening it retains Eagle, with null opener and empty referrer. The first QA
+  read raced popup navigation; the existing synthetic target was reconciled
+  and verified without replaying the click. No live input/production writes,
+  release version changes, service changes or deployment.
+
+## 2026-10-19 — Realtime status-label redaction regression
+
+- Four synthetic regressions reproduced ordinary `Token usage:` labels masking
+  the rest of a terminal snapshot. The fix retains original assignment-name
+  word boundaries while preserving wrapped identifiers, known credentials and
+  independent common-token detection.
+- The four regressions and existing collector/realtime/terminal checks pass:
+  31 tests, including PEM, wrapped secrets, style preservation and input binding.
+  Agent source candidate is 0.8.3; the published onboarding pin remains 0.8.1.
+- Oct20 verification: `npm run check` passes all 137 Node tests, strict types,
+  check-only lint and build; browser gates pass 173 tests with 11 existing
+  viewport-specific skips. GitHub Copilot CLI read-only review found no findings.
+  Existing four lint infos and bundle-size advisory remain unchanged. No live collection,
+  authentication, D1 write, realtime input, service restart or deployment was
+  performed; browser rendering and the actual cloud path are not yet accepted.
 
 ## 2026-10-03 06:40 +08 — resource windows and usage meters
 
