@@ -72,12 +72,8 @@ function keyBytes(
   modify: number,
 ) {
   if (modify > 2) throw new Error("Unsupported keyboard mode");
-  // Cursor keys retain their CSI final byte in Kitty's enhanced protocol;
-  // event reporting adds the press/release parameter, never a pasted escape.
   if (key === "up" || key === "down") {
-    // Protocol 22 does not expose DECCKM. Only Kitty disambiguation proves
-    // the CSI encoding; never guess between CSI and SS3 for legacy apps.
-    if (!(flags & 1)) throw new Error("Cursor mode unavailable");
+    if (!(flags & 9)) throw new Error("Cursor mode unavailable");
     const final = key === "up" ? "A" : "B";
     return flags & 2 ? `\x1b[1;1:1${final}\x1b[1;1:3${final}` : `\x1b[${final}`;
   }

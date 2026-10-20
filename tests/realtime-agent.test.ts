@@ -449,16 +449,16 @@ test("native input binds the terminal before paste/keys, confirms only submissio
       frames.filter((f) => f[0] === 1).map((f) => f.subarray(2).toString()),
       ["\x03", "\x04", "\x0c"],
     );
-    for (const mode of [0, 1, 2, 3, 8, 31]) {
+    for (let mode = 0; mode < 32; mode++) {
       flags = mode;
       modify = 2;
-      input.keys = ["up", "down"] as typeof input.keys;
+      input.keys = ["up", "down"];
       frames.length = 0;
-      if (!(mode & 1)) {
+      if (!(mode & 9)) {
         assert.equal(
           await submit(),
           "rejected",
-          "protocol 22 cannot distinguish normal/application cursor mode without Kitty disambiguation",
+          "cursor input requires disambiguation or canonical all-keys encoding",
         );
         assert(!frames.some((f) => f[0] === 1));
         continue;
@@ -470,6 +470,16 @@ test("native input binds the terminal before paste/keys, confirms only submissio
           ? ["\x1b[1;1:1A\x1b[1;1:3A", "\x1b[1;1:1B\x1b[1;1:3B"]
           : ["\x1b[A", "\x1b[B"],
       );
+    }
+    for (const [invalidFlags, invalidModify] of [
+      [32, 0],
+      [8, 3],
+    ]) {
+      flags = invalidFlags;
+      modify = invalidModify;
+      frames.length = 0;
+      assert.equal(await submit(), "rejected");
+      assert(!frames.some((frame) => frame[0] === 1));
     }
     flags = 0;
     modify = 1;
