@@ -47,9 +47,7 @@ export function TerminalText({
           if (
             selection &&
             !selection.isCollapsed &&
-            Array.from({ length: selection.rangeCount }, (_, i) =>
-              selection.getRangeAt(i),
-            ).some((range) => range.intersectsNode(event.currentTarget))
+            selection.containsNode(event.currentTarget, true)
           )
             event.preventDefault();
         }}

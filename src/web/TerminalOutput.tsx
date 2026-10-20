@@ -50,9 +50,7 @@ export function TerminalOutput({
         selection &&
         !selection.isCollapsed &&
         el &&
-        Array.from({ length: selection.rangeCount }, (_, i) =>
-          selection.getRangeAt(i),
-        ).some((range) => range.intersectsNode(el))
+        selection.containsNode(el, true)
       );
       selecting.current = active;
       if (active) {
@@ -65,7 +63,6 @@ export function TerminalOutput({
       document.removeEventListener("selectionchange", selectionChanged);
   }, []);
   const content = JSON.stringify([incoming?.text, incoming?.runs]);
-  const renderedContent = JSON.stringify([display?.text, display?.runs]);
   const previous = useRef(position?.content ?? content);
   const save = useRef(onPosition);
   save.current = onPosition;
@@ -96,7 +93,7 @@ export function TerminalOutput({
       toBottom();
       setUnread(false);
     } else if (changed && frame) setUnread(true);
-  }, [content, renderedContent, selected]);
+  }, [content, selectedFrame, selected]);
   useLayoutEffect(() => {
     const el = screen.current;
     if (!el) return;
