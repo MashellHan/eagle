@@ -16,7 +16,6 @@ export function CardHelp({
         <Button
           size="icon"
           variant="ghost"
-          className="size-6 shrink-0 text-basalt-muted-foreground"
           aria-label={label}
           onClick={(event) => {
             event.preventDefault();

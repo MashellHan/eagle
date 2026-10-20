@@ -267,7 +267,7 @@ function EvidenceStrip({ panes, at }: { panes: Pane[]; at: string }) {
               <Button
                 variant="ghost"
                 size="sm"
-                className={`evidence-item px-1 text-[10px] [&_svg]:size-3 evidence-${status}`}
+                className={`evidence-item evidence-${status}`}
                 aria-label={`${evidenceNames[kind]}：${entries.length ? "有记录" : "缺少证据"}`}
               >
                 <Icon size={12} />
@@ -843,8 +843,8 @@ export function Dashboard({
             />
             <div className="board-toolbar">
               <div className="board-search">
-                <Search size={14} />
                 <Input
+                  size="sm"
                   aria-label="搜索 Space"
                   value={search}
                   onChange={(e) => onSearch(e.target.value)}

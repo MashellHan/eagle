@@ -55,11 +55,13 @@ test("machine card explanations stay in accessible top-right help controls", asy
     else await help.hover();
     await expect(page.getByRole("tooltip")).toContainText(explanation);
     await page.keyboard.press("Escape");
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
     await help.blur();
     await page.mouse.move(0, 0);
     await help.focus();
     await expect(page.getByRole("tooltip")).toContainText(explanation);
     await page.keyboard.press("Escape");
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
     await help.blur();
   }
   await expect(

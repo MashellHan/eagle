@@ -506,6 +506,12 @@ test("vertical spaces stay searchable and keyboard accessible without losing ter
   await expect(active).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(active).toHaveAttribute("aria-selected", "true");
+  await expect(active).toHaveAttribute("aria-current", "true");
+  expect(
+    await active.evaluate(
+      (node) => getComputedStyle(node, "::before").backgroundColor,
+    ),
+  ).toBe("rgba(0, 0, 0, 0)");
   await expect(input).toHaveValue("");
   await expect.poll(source.closed).toBe(1);
   await expect.poll(source.opened).toBe(2);

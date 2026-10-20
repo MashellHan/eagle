@@ -676,7 +676,6 @@ export function App() {
         <Button
           size="icon"
           variant="ghost"
-          className={!collapsed || mobile ? "h-7 w-7 shrink-0" : undefined}
           aria-label={collapsed && !mobile ? "展开导航" : "收起导航"}
           aria-expanded={!collapsed}
           aria-controls="eagle-navigation"
@@ -734,7 +733,9 @@ export function App() {
               </DialogDescription>
             </>
           )}
-          <SidebarHeader className="gap-3 pl-[22px] pr-3">
+          <SidebarHeader
+            className={collapsed && !mobile ? undefined : "pl-[22px]"}
+          >
             <Mark />
             {(!collapsed || mobile) && (
               <>
@@ -920,17 +921,19 @@ export function App() {
                         <TooltipTrigger asChild>
                           <Button
                             variant="outline"
-                            size={mobile ? "icon" : "sm"}
+                            size={mobile ? "lg" : "sm"}
                             aria-label="刷新"
                             disabled={syncing}
                             onClick={() => void refresh()}
                           >
-                            <RefreshCw
-                              size={14}
-                              aria-hidden="true"
-                              className={syncing ? "eagle-spin" : ""}
-                            />
-                            <span className="hidden md:inline">刷新</span>
+                            {!mobile && (
+                              <RefreshCw
+                                size={14}
+                                aria-hidden="true"
+                                className={syncing ? "eagle-spin" : ""}
+                              />
+                            )}
+                            刷新
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>刷新</TooltipContent>
@@ -938,7 +941,7 @@ export function App() {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
-                            size={mobile ? "icon" : "sm"}
+                            size={mobile ? "lg" : "sm"}
                             onClick={() =>
                               navigate(
                                 page === "overview" ? "history" : "overview",
@@ -946,20 +949,13 @@ export function App() {
                             }
                             aria-label={navigationLabel}
                           >
-                            {page === "overview" ? (
-                              <HistoryIcon
-                                className="md:hidden"
-                                aria-hidden="true"
-                              />
-                            ) : (
-                              <LayoutDashboard
-                                className="md:hidden"
-                                aria-hidden="true"
-                              />
-                            )}
-                            <span className="hidden md:inline">
-                              {page === "overview" ? "最近历史" : "返回总览"}
-                            </span>
+                            {page === "overview"
+                              ? mobile
+                                ? "历史"
+                                : "最近历史"
+                              : mobile
+                                ? "总览"
+                                : "返回总览"}
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>{navigationLabel}</TooltipContent>

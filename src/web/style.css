@@ -285,7 +285,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--basalt-space-md);
 }
 .dashboard-resources {
   grid-area: resources;
@@ -338,31 +338,12 @@
   gap: 10px;
 }
 .board-search {
-  position: relative;
-  flex: 1 1 195px;
-}
-.board-search > svg {
-  position: absolute;
-  z-index: 1;
-  left: 10px;
-  top: 10px;
-  color: hsl(var(--basalt-muted-foreground));
-}
-.board-search input {
-  padding-left: 31px;
-  height: 34px;
-  font-size: 11px;
+  flex: 1 1 160px;
 }
 .state-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
-}
-.state-filters button {
-  font-size: 10px;
-  height: 30px;
-  padding: 0 8px;
-  gap: 5px;
 }
 .state-filters .mono {
   font-size: 9px;
@@ -994,10 +975,6 @@
   .state-filters {
     width: 100%;
     justify-content: space-between;
-  }
-  .state-filters button {
-    padding: 0 6px;
-    font-size: 10px;
   }
   .sync-caption {
     @apply text-xs;
@@ -1633,7 +1610,7 @@
   display: flex;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: clip;
   margin: 0;
 }
 .workspace-detail {
@@ -2029,8 +2006,6 @@
 }
 .live-actions > .live-theme-select[aria-label] {
   width: 142px;
-  gap: 6px;
-  font-size: 11px;
 }
 .live-theme-warning {
   font-size: 10px;
@@ -2069,9 +2044,6 @@
 .live-connection[data-online="true"] {
   color: hsl(var(--basalt-muted-foreground));
 }
-.live-actions > button {
-  height: 32px;
-}
 .live-navigation {
   flex: 1;
   gap: 10px;
@@ -2080,9 +2052,7 @@
   width: auto;
   min-width: 0;
   max-width: 20rem;
-  height: 32px;
   flex: 1;
-  font-size: 12px;
 }
 .live-pane-count {
   white-space: nowrap;
@@ -2579,17 +2549,6 @@
   height: 30px;
   width: 30px;
   flex: none;
-}
-.workspace-tab[aria-selected="true"]::before {
-  content: "";
-  position: absolute;
-  inset: 10px auto 10px 0;
-  width: 2px;
-  border-radius: 2px;
-  background: hsl(var(--basalt-primary));
-}
-.workspace-tab[aria-selected="true"] > svg {
-  color: hsl(var(--basalt-primary));
 }
 @media (max-width: 767px) {
   .live-theme-select > svg:last-child {
