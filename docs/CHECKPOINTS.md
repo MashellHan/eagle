@@ -1,5 +1,30 @@
 # 用户视角检查点
 
+## 2026-10-20 — PR71/72 consolidation
+
+- User requested one retained PR. Mobile commit `95567c8` is integrated into
+  PR71's branch without dropping either implementation or rewriting history;
+  PR72 will be closed as superseded only after the retained PR is verified.
+- Combined regressions cover selection frozen at an older frame while the view
+  cache retains the newest frame, unread state on hidden mobile panes, cross-mode
+  scroll restoration and no input replay/reacquisition. Selection scrolling no
+  longer clears unread or resumes following until selection ends or follow is
+  explicitly requested.
+- The previous intermittent replacement/follow failure was reproduced and
+  instrumented: a mobile receipt collapsed shortcut width, shrinking the terminal
+  from 350px to 150px. A scroll event ran before ResizeObserver and disabled
+  following. Shortcuts now own a full mobile row. Resize/scroll handling retains
+  following only for unchanged/clamped offsets; wheel/pointer/touch/keyboard
+  history intent pauses it. A deterministic mixed resize/user-scroll test failed
+  before the fix and now passes. Temporary diagnostic instrumentation was removed.
+- 134 Node tests passed. Types/check-only lint and browser builds pass; the full
+  combined browser run passed 179 with 11 existing viewport skips, followed by
+  22 passing affected cases after the final input-intent fix. Old failure receipts
+  remain evidence; physical iOS long-press/callout is still a manual check.
+- No production inputs, data/auth changes, service restart, main merge or
+  deployment. Final Copilot CLI delta review reports no findings; exact-head
+  remote CI is the remaining handoff gate before closing PR72.
+
 ## 2026-10-20 — Open-workspace realtime continuity
 
 - Switching between realtime/task/history views retains the latest bounded
@@ -17,6 +42,30 @@
   full browser suite 175 passed / 11 existing viewport-specific skips. Follow-up
   GitHub Copilot CLI read-only review: no findings. No live capture/input,
   authentication changes, cloud writes, service restart or deployment.
+
+## 2026-10-20 — Mobile terminal controls and selection
+
+- Ctrl+C/D and up/down history controls stay visible, with 44px mobile hit
+  targets; additional keys use the installed Basalt Popover. The 320x460 Edge
+  visual check shows no overflow, including the expanded additional-key panel.
+- Text selection is explicitly enabled; intersecting selections freeze displayed
+  output without stopping reception or unread notifications. Clearing selection
+  shows the latest snapshot; follow resumes explicitly. No clipboard contents
+  are read or written by this feature.
+- Up/down are schema-validated native key events, never pasted escape strings.
+  Protocol 22 does not expose DECCKM: arrows fail closed without Kitty flag 1.
+  Explicit Ctrl+P/N compatibility shortcuts support legacy/enhanced encodings;
+  their history behavior remains application-defined, never a silent substitute.
+- TDD covered missing keys, native wire bytes, unsupported cursor modes, selection
+  crossing the output boundary, and frozen unread notifications. Full check:
+  134 Node tests/types/lint/build pass; full browser baseline 175 pass/11 existing
+  viewport skips. After the final unread fix, 35 affected cases passed and one
+  existing mobile replacement/follow case failed intermittently; three isolated
+  reruns and the final 11-case smoke pass. This intermittent result is retained,
+  not hidden as a clean run.
+- Final GitHub Copilot CLI delta review reports no findings. Browser selection
+  was verified synthetically; physical iOS long-press/callout remains a manual
+  acceptance item. No live terminal input, cloud writes or service changes.
 
 ## 2026-10-03 06:40 +08 — resource windows and usage meters
 

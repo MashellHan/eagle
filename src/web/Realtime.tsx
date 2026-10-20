@@ -1,6 +1,9 @@
 import {
   Button,
   Input,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -13,6 +16,7 @@ import {
   SelectValue,
 } from "@nocoo/basalt/components/select";
 import {
+  ArrowDown,
   ArrowUp,
   ChevronRight,
   CornerDownLeft,
@@ -228,7 +232,7 @@ export function Realtime({
               ? "已提交输入；请查看终端执行结果"
               : m.status === "unknown"
                 ? "输入结果未知；不会自动重发"
-                : "输入未发送，请检查控制权和 Pane",
+                : "输入未发送，请检查控制权、Pane 或终端键盘模式",
           );
         }
       };
@@ -628,25 +632,12 @@ export function Realtime({
         </div>
         <div className="live-composer-footer">
           <fieldset className="live-shortcuts" aria-label="终端快捷键">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={disabled || !text}
-              onClick={() => send([], text)}
-            >
-              仅发送文字
-            </Button>
             {(
               [
-                ["enter", "Enter"],
                 ["ctrl+c", "Ctrl+C"],
                 ["ctrl+d", "Ctrl+D"],
-                ["ctrl+l", "Ctrl+L"],
-                ["esc", "Esc"],
-                ["tab", "Tab"],
-                ["shift+tab", "Shift+Tab"],
-                ["backspace", "⌫"],
+                ["up", "上一条历史"],
+                ["down", "下一条历史"],
               ] as const
             ).map(([key, label]) => (
               <Button
@@ -655,12 +646,76 @@ export function Realtime({
                 size="sm"
                 variant="outline"
                 disabled={disabled}
+                aria-label={label}
+                title={label}
                 onClick={() => send([key])}
               >
-                {key === "enter" && <CornerDownLeft size={12} />}
-                {label}
+                {key === "up" ? (
+                  <ArrowUp size={15} />
+                ) : key === "down" ? (
+                  <ArrowDown size={15} />
+                ) : (
+                  label
+                )}
               </Button>
             ))}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  aria-label="更多快捷键"
+                >
+                  更多
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                side="top"
+                align="start"
+                collisionPadding={8}
+                className="live-extra-keys"
+                aria-label="更多终端快捷键"
+              >
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={disabled || !text}
+                  onClick={() => send([], text)}
+                >
+                  仅发送文字
+                </Button>
+                {(
+                  [
+                    ["enter", "Enter"],
+                    ["ctrl+l", "Ctrl+L"],
+                    ["ctrl+p", "Ctrl+P"],
+                    ["ctrl+n", "Ctrl+N"],
+                    ["esc", "Esc"],
+                    ["tab", "Tab"],
+                    ["shift+tab", "Shift+Tab"],
+                    ["backspace", "⌫"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <Button
+                    type="button"
+                    key={key}
+                    size="sm"
+                    variant="outline"
+                    disabled={disabled}
+                    onClick={() => send([key])}
+                  >
+                    {key === "enter" && <CornerDownLeft size={12} />}
+                    {label}
+                  </Button>
+                ))}
+                <p className="live-key-help">
+                  上下方向键需增强键盘模式；普通命令行可尝试 Ctrl+P /
+                  Ctrl+N，具体行为由终端应用决定。
+                </p>
+              </PopoverContent>
+            </Popover>
           </fieldset>
           <p
             role="status"

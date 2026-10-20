@@ -170,6 +170,41 @@ test("terminal output follows the bottom, pauses for history, and resumes explic
   await expect.poll(() => distance(page)).toBeLessThan(3);
 });
 
+test("following distinguishes viewport-induced scroll from reader scroll", async ({
+  page,
+}) => {
+  const stream = await openTerminal(page);
+  stream.frame(lines(150));
+  const screen = page.locator(".live-pane pre");
+  await expect(screen).toContainText("output line 150");
+  await expect.poll(() => distance(page)).toBeLessThan(3);
+  await screen.evaluate((el) => {
+    el.style.maxHeight = `${el.clientHeight - 100}px`;
+    // Browser scroll dispatch can precede ResizeObserver after layout shrinks.
+    el.dispatchEvent(new Event("scroll"));
+  });
+  await expect.poll(() => distance(page)).toBeLessThan(3);
+  const intended = await screen.evaluate((el) => {
+    const top = el.scrollTop - 40;
+    el.style.maxHeight = `${el.clientHeight - 50}px`;
+    el.scrollTop = top;
+    el.dispatchEvent(new Event("scroll"));
+    return top;
+  });
+  await expect.poll(() => screen.evaluate((el) => el.scrollTop)).toBe(intended);
+  await screen.evaluate((el) => {
+    el.scrollTop = 100;
+    el.dispatchEvent(new Event("scroll"));
+    el.style.maxHeight = `${el.clientHeight - 50}px`;
+    el.dispatchEvent(new Event("scroll"));
+  });
+  stream.frame(lines(160));
+  await expect(
+    page.getByRole("button", { name: "新输出，回到底部" }),
+  ).toBeVisible();
+  await expect.poll(() => screen.evaluate((el) => el.scrollTop)).toBe(100);
+});
+
 test("safe colors render as text, and output activity is not a running-task claim", async ({
   page,
 }) => {

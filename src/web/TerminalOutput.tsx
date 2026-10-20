@@ -26,16 +26,58 @@ export function TerminalOutput({
   const screen = useRef<HTMLPreElement>(null);
   const following = useRef(position?.following ?? true);
   const initialPosition = useRef(position);
+  const coordinates = useRef({
+    top: position?.top ?? 0,
+    left: position?.left ?? 0,
+  });
+  const geometry = useRef({ height: 0, client: 0, top: 0 });
+  const touchY = useRef<number | undefined>(undefined);
+  const selecting = useRef(false);
   const initialized = useRef(false);
   const [unread, setUnread] = useState(position?.unread ?? false);
-  const display = frame ? compactRenderedFrame(frame) : undefined;
-  const content = JSON.stringify([display?.text, display?.runs]);
+  const latestFrame = useRef(frame);
+  latestFrame.current = frame;
+  const [selectedFrame, setSelectedFrame] = useState<LiveFrame | null>(null);
+  const incoming = frame ? compactRenderedFrame(frame) : undefined;
+  const display =
+    frame && selectedFrame ? compactRenderedFrame(selectedFrame) : incoming;
+  useLayoutEffect(() => {
+    const selectionChanged = () => {
+      const selection = document.getSelection();
+      const el = screen.current;
+      const active = !!(
+        selection &&
+        !selection.isCollapsed &&
+        el &&
+        Array.from({ length: selection.rangeCount }, (_, i) =>
+          selection.getRangeAt(i),
+        ).some((range) => range.intersectsNode(el))
+      );
+      selecting.current = active;
+      if (active) {
+        following.current = false;
+        setSelectedFrame((old) => old ?? latestFrame.current ?? null);
+      } else setSelectedFrame(null);
+    };
+    document.addEventListener("selectionchange", selectionChanged);
+    return () =>
+      document.removeEventListener("selectionchange", selectionChanged);
+  }, []);
+  const content = JSON.stringify([incoming?.text, incoming?.runs]);
+  const renderedContent = JSON.stringify([display?.text, display?.runs]);
   const previous = useRef(content);
   const save = useRef(onPosition);
   save.current = onPosition;
   const toBottom = () => {
     const el = screen.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el?.clientHeight) {
+      el.scrollTop = el.scrollHeight;
+      geometry.current = {
+        height: el.scrollHeight,
+        client: el.clientHeight,
+        top: el.scrollTop,
+      };
+    }
   };
   const restore = () => {
     const el = screen.current;
@@ -52,16 +94,16 @@ export function TerminalOutput({
     if (following.current) {
       toBottom();
       setUnread(false);
-    } else if (changed) setUnread(true);
-  }, [content, selected]);
+    } else if (changed && frame) setUnread(true);
+  }, [content, renderedContent, selected]);
   useLayoutEffect(() => {
     const el = screen.current;
     if (!el) return;
     const record = () => {
-      if (!el.clientHeight) return;
+      if (el.clientHeight)
+        coordinates.current = { top: el.scrollTop, left: el.scrollLeft };
       save.current?.({
-        top: el.scrollTop,
-        left: el.scrollLeft,
+        ...coordinates.current,
         following: following.current,
         unread,
       });
@@ -87,14 +129,67 @@ export function TerminalOutput({
         data-compact-footer={!!frame && display?.text !== frame.text}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: Output is a keyboard-scrollable region, not an input control.
         tabIndex={0}
+        onWheel={(event) => {
+          if (event.deltaY < 0) following.current = false;
+        }}
+        onPointerDown={(event) => {
+          if (event.pointerType === "mouse") following.current = false;
+        }}
+        onTouchStart={(event) => {
+          touchY.current = event.touches[0]?.clientY;
+        }}
+        onTouchMove={(event) => {
+          const y = event.touches[0]?.clientY;
+          if (
+            y !== undefined &&
+            touchY.current !== undefined &&
+            y > touchY.current
+          )
+            following.current = false;
+          touchY.current = y;
+        }}
+        onTouchEnd={() => {
+          touchY.current = undefined;
+        }}
+        onTouchCancel={() => {
+          touchY.current = undefined;
+        }}
+        onKeyDown={(event) => {
+          if (
+            ["ArrowUp", "PageUp", "Home"].includes(event.key) ||
+            (event.key === " " && event.shiftKey)
+          )
+            following.current = false;
+        }}
         onScroll={() => {
           const el = screen.current;
           if (!el?.clientHeight) return;
-          following.current =
-            el.scrollHeight - el.clientHeight - el.scrollTop <= 12;
-          save.current?.({
+          // A layout-induced scroll can arrive before ResizeObserver. Keep
+          // following across viewport changes, but never across user selection.
+          if (selecting.current) following.current = false;
+          else if (
+            following.current &&
+            (geometry.current.height !== el.scrollHeight ||
+              geometry.current.client !== el.clientHeight) &&
+            el.scrollTop >=
+              Math.min(
+                geometry.current.top,
+                el.scrollHeight - el.clientHeight,
+              ) -
+                1
+          )
+            toBottom();
+          else
+            following.current =
+              el.scrollHeight - el.clientHeight - el.scrollTop <= 12;
+          geometry.current = {
+            height: el.scrollHeight,
+            client: el.clientHeight,
             top: el.scrollTop,
-            left: el.scrollLeft,
+          };
+          coordinates.current = { top: el.scrollTop, left: el.scrollLeft };
+          save.current?.({
+            ...coordinates.current,
             following: following.current,
             unread: following.current ? false : unread,
           });
@@ -127,6 +222,11 @@ export function TerminalOutput({
             })
           : (display?.text ?? "等待画面…")}
       </pre>
+      {selectedFrame && frame && (
+        <span className="live-selection-notice" role="status">
+          选择文字中，画面已暂停更新
+        </span>
+      )}
       {unread && (
         <Button
           className="live-follow"
@@ -134,6 +234,9 @@ export function TerminalOutput({
           variant="secondary"
           aria-label="新输出，回到底部"
           onClick={() => {
+            if (selecting.current) document.getSelection()?.removeAllRanges();
+            selecting.current = false;
+            setSelectedFrame(null);
             following.current = true;
             toBottom();
             setUnread(false);

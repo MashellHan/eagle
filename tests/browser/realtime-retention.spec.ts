@@ -29,7 +29,8 @@ test("view switches preserve output, history position and unknown input without 
     socket.close({ code, reason });
   let connections = 0,
     controls = 0,
-    inputs = 0;
+    inputs = 0,
+    revision = 0;
   const topology = () =>
     socket.send(
       JSON.stringify({
@@ -45,7 +46,7 @@ test("view switches preserve output, history position and unknown input without 
                 id: "pane",
                 terminalId: "terminal",
                 title: "CLI",
-                rect: { x: 0, y: 0, width: 1, height: 1 },
+                rect: { x: 0, y: 0, width: 0.5, height: 1 },
               },
               {
                 id: "pane-2",
@@ -61,7 +62,7 @@ test("view switches preserve output, history position and unknown input without 
   const text = Array.from({ length: 150 }, (_, i) => `retained line ${i}`).join(
     "\n",
   );
-  const frame = () =>
+  const frame = (value = text) =>
     socket.send(
       JSON.stringify({
         type: "frame",
@@ -69,8 +70,8 @@ test("view switches preserve output, history position and unknown input without 
         subscriptionId: `epoch-${connections}`,
         paneId: "pane",
         terminalId: "terminal",
-        revision: 1,
-        text,
+        revision: ++revision,
+        text: value,
         observedAt: now,
       }),
     );
@@ -119,22 +120,63 @@ test("view switches preserve output, history position and unknown input without 
   expect(controls).toBe(1);
   expect(inputs).toBe(1);
   await expect.poll(() => screen.evaluate((el) => el.scrollTop)).toBe(100);
+  // Combined #71/#72: selection freezes only the rendered snapshot. Leaving
+  // the view must retain the latest incoming frame, scroll, unread and safety.
+  await screen.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+  await expect(page.getByText("选择文字中，画面已暂停更新")).toBeVisible();
+  frame(`${text}\nnew while selected`);
+  await expect(screen).toHaveText(text);
+  await expect(
+    page.getByRole("button", { name: "新输出，回到底部" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "当前任务", exact: true }).click();
+  await page.getByRole("button", { name: "实时模式", exact: true }).click();
+  await expect(screen).toHaveText(`${text}\nnew while selected`);
+  await expect.poll(() => screen.evaluate((el) => el.scrollTop)).toBe(100);
+  await expect(page.getByText("选择文字中，画面已暂停更新")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "上一条历史", exact: true }),
+  ).toBeDisabled();
+  expect(controls).toBe(1);
+  expect(inputs).toBe(1);
+  topology();
+  frame();
+  await expect(screen).toHaveText(text);
+  await page.getByRole("button", { name: "新输出，回到底部" }).click();
+  await screen.evaluate((el) => {
+    el.scrollTop = 100;
+    el.dispatchEvent(new Event("scroll"));
+  });
   // The 15-minute lease renews viewing, never input authority.
   await page.getByRole("combobox", { name: "当前终端" }).click();
   await page
     .getByRole("option", { name: "CLI 2 · pane-2", exact: true })
     .click();
+  frame(`${text}\nhidden-pane update`);
+  await expect(
+    page.locator('.live-pane[data-selected="false"] pre'),
+  ).toContainText("hidden-pane update");
   await page.getByRole("button", { name: "当前任务", exact: true }).click();
   await page.getByRole("button", { name: "实时模式", exact: true }).click();
   await page.getByRole("combobox", { name: "当前终端" }).click();
   await page.getByRole("option", { name: "CLI · pane", exact: true }).click();
   await expect.poll(() => screen.evaluate((el) => el.scrollTop)).toBe(100);
+  await expect(
+    page.getByRole("button", { name: "新输出，回到底部" }),
+  ).toBeVisible();
   topology();
   frame();
   close(4002, "Renew authorization");
   await expect(page.locator(".live-reconnecting")).toBeVisible();
   await page.clock.runFor(1100);
-  expect(connections).toBe(4);
+  expect(connections).toBe(5);
   topology();
   frame();
   expect(controls).toBe(1);
