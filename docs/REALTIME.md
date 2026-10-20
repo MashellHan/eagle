@@ -108,7 +108,8 @@ joined runs must exactly equal the safe plain text. One masked field therefore
 does not strip the entire screen's colors. Adjacent equal styles are coalesced
 before the frame budget is applied. OSC links/clipboard operations and controls are
 discarded; concealed text is masked. The browser renders escaped React text,
-never terminal HTML, URLs or escape commands. Screens with excessive styling
+never terminal HTML, OSC link targets or escape commands; only visible HTTP(S)
+URLs in the redacted text become links (see above). Screens with excessive styling
 first simplify older styles while retaining recent output colors. If even that
 cannot fit, they fall back to text (512 runs / 64 KiB styling budget, 32,000 text
 characters). These limits are unchanged.
