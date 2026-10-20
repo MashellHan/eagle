@@ -58,6 +58,14 @@ new output offers **新输出 · 回到底部**. Clicking it or scrolling back t
 resumes following. This navigates the current visible-screen snapshot, not an
 unbounded terminal scrollback archive.
 
+Mobile keeps Ctrl+C, Ctrl+D and up/down history buttons visible with 44px hit
+targets. **更多** exposes the remaining keys, including explicit Ctrl+P/N for
+applications that bind them to history. Neither history path sends the draft.
+Text selection/long-press uses the browser's native selection and callout. While
+any selection range intersects an output, its displayed snapshot is frozen;
+incoming frames still update unread notification state. Clearing the selection
+reveals the latest frame; **新输出 · 回到底部** explicitly resumes following.
+
 Opening a workspace selects **实时模式**, the first tab. Once the bridge is online
 and a valid target exists, the view requests control once; sending remains disabled
 until the server grants the single-controller lease. Draft editing stays available. The request sends no text or
@@ -183,7 +191,11 @@ Input requires a controller lease and a pane/terminal pair from the live topolog
 
 Screens redact known machine credentials across line wraps and recognizable viewport-edge fragments, common token formats, assignments and private keys. Truncated PEM blocks are masked; screens also conservatively hide consecutive base64 lines when both PEM boundaries are offscreen, which can hide unrelated encoded output. Pane titles are redacted before length limits. Input containing known credentials/recognized secret patterns is rejected by the bridge. Terminal screens and submitted input are not stored in D1, DO storage/attachments, report spools or application logs. Terminal screens never enter browser storage. Unsent input drafts are saved synchronously to localStorage, scoped to the exact machine/Space/pane/terminal. Refreshing, leaving and returning restore that draft; submitting or manually emptying it removes its cache. Recognizable credential patterns are kept only in memory, and blocked storage is explicitly reported. Browser caching is not an input queue: nothing is sent automatically. DO attachments retain only routing, public identity, lease and sequence metadata. A “submitted” receipt means the native control channel completed submission and detach; Herdr provides no per-input PTY acknowledgement. Text and Enter are separate queue entries and can partially fail under load. Check the returned screen; a receipt never certifies command success or Agent completion.
 
-Native attach briefly controls terminal geometry and can resume a pending agent. Layout dimensions are only an estimate; attach/detach can resize the terminal and cause Herdr to reapply other tab geometry. There is no no-resize input API in protocol 22. Text uses a complete bracketed-paste message so Herdr applies the target’s paste mode; embedded escape/control bytes are rejected. Basic keys support legacy, Kitty and modifyOtherKeys modes. Direction keys are deferred because this protocol does not expose application-cursor mode. No terminal mouse/color/graphics/resize emulator is implied. Text containing newlines may execute when the target does not use bracketed paste.
+Native attach briefly controls terminal geometry and can resume a pending agent. Layout dimensions are only an estimate; attach/detach can resize the terminal and cause Herdr to reapply other tab geometry. There is no no-resize input API in protocol 22. Text uses a complete bracketed-paste message so Herdr applies the target’s paste mode; embedded escape/control bytes are rejected. Basic keys support legacy, Kitty and modifyOtherKeys modes. Up/down require Kitty disambiguation flag 1, which proves their CSI encoding; other modes reject direction input because protocol 22 does not expose application-cursor mode (DECCKM). Explicit Ctrl+P/N shortcuts remain available for applications with compatible history bindings; they are not automatically substituted. No terminal mouse/color/graphics/resize emulator is implied. Text containing newlines may execute when the target does not use bracketed paste.
+
+The new keys require a matching upgraded Agent/bridge and Worker. Agent source
+candidate is 0.8.3; onboarding remains pinned to published 0.8.1 until publication
+is independently verified. Do not deploy only the website and claim key support.
 
 ## Verification
 

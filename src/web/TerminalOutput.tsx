@@ -17,8 +17,34 @@ export function TerminalOutput({
   const wasSelected = useRef(selected);
   const previous = useRef("");
   const [unread, setUnread] = useState(false);
-  const display = frame ? compactRenderedFrame(frame) : undefined;
-  const content = JSON.stringify([display?.text, display?.runs]);
+  const latestFrame = useRef(frame);
+  latestFrame.current = frame;
+  const [selectedFrame, setSelectedFrame] = useState<LiveFrame | null>(null);
+  const incoming = frame ? compactRenderedFrame(frame) : undefined;
+  const display =
+    frame && selectedFrame ? compactRenderedFrame(selectedFrame) : incoming;
+  useLayoutEffect(() => {
+    const selectionChanged = () => {
+      const selection = document.getSelection();
+      const el = screen.current;
+      if (
+        selection &&
+        !selection.isCollapsed &&
+        el &&
+        Array.from({ length: selection.rangeCount }, (_, i) =>
+          selection.getRangeAt(i),
+        ).some((range) => range.intersectsNode(el))
+      ) {
+        following.current = false;
+        setSelectedFrame((old) => old ?? latestFrame.current ?? null);
+      } else setSelectedFrame(null);
+    };
+    document.addEventListener("selectionchange", selectionChanged);
+    return () =>
+      document.removeEventListener("selectionchange", selectionChanged);
+  }, []);
+  const content = JSON.stringify([incoming?.text, incoming?.runs]);
+  const renderedContent = JSON.stringify([display?.text, display?.runs]);
   const toBottom = () => {
     const el = screen.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -32,7 +58,7 @@ export function TerminalOutput({
       toBottom();
       setUnread(false);
     } else if (changed && frame) setUnread(true);
-  }, [content, selected, frame]);
+  }, [content, renderedContent, selected]);
   useLayoutEffect(() => {
     const el = screen.current;
     if (!el) return;
@@ -84,6 +110,11 @@ export function TerminalOutput({
             })
           : (display?.text ?? "等待画面…")}
       </pre>
+      {selectedFrame && frame && (
+        <span className="live-selection-notice" role="status">
+          选择文字中，画面已暂停更新
+        </span>
+      )}
       {unread && (
         <Button
           className="live-follow"
@@ -91,6 +122,8 @@ export function TerminalOutput({
           variant="secondary"
           aria-label="新输出，回到底部"
           onClick={() => {
+            if (selectedFrame) document.getSelection()?.removeAllRanges();
+            setSelectedFrame(null);
             following.current = true;
             toBottom();
             setUnread(false);

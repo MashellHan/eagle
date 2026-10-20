@@ -2180,6 +2180,9 @@
   white-space: pre;
   tab-size: 4;
   overflow-anchor: none;
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 .live-output {
   position: relative;
@@ -2199,6 +2202,17 @@
   gap: 5px;
   box-shadow: 0 2px 12px rgb(0 0 0 / 0.4);
   font-size: 11px;
+}
+.live-selection-notice {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: hsl(var(--basalt-background) / 0.95);
+  color: hsl(var(--basalt-muted-foreground));
+  font-size: 11px;
+  pointer-events: none;
 }
 .live-pane-footer {
   flex: none;
@@ -2337,10 +2351,25 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  overflow-x: auto;
+  flex-wrap: wrap;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
   padding-block: 8px 4px;
+}
+.live-extra-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: min(300px, calc(100vw - 16px));
+}
+.live-extra-keys button {
+  min-height: 44px;
+}
+.live-key-help {
+  flex-basis: 100%;
+  color: hsl(var(--basalt-muted-foreground));
+  font-size: 11px;
+  line-height: 1.5;
 }
 .live-shortcuts > button {
   flex: none;
@@ -2410,6 +2439,10 @@
   .live-composer-footer {
     flex-wrap: wrap;
     gap: 0;
+  }
+  .live-shortcuts > button {
+    height: 44px;
+    min-width: 44px;
   }
   .live-receipt {
     flex-basis: 100%;

@@ -1,5 +1,29 @@
 # 用户视角检查点
 
+## 2026-10-20 — Mobile terminal controls and selection
+
+- Ctrl+C/D and up/down history controls stay visible, with 44px mobile hit
+  targets; additional keys use the installed Basalt Popover. The 320x460 Edge
+  visual check shows no overflow, including the expanded additional-key panel.
+- Text selection is explicitly enabled; intersecting selections freeze displayed
+  output without stopping reception or unread notifications. Clearing selection
+  shows the latest snapshot; follow resumes explicitly. No clipboard contents
+  are read or written by this feature.
+- Up/down are schema-validated native key events, never pasted escape strings.
+  Protocol 22 does not expose DECCKM: arrows fail closed without Kitty flag 1.
+  Explicit Ctrl+P/N compatibility shortcuts support legacy/enhanced encodings;
+  their history behavior remains application-defined, never a silent substitute.
+- TDD covered missing keys, native wire bytes, unsupported cursor modes, selection
+  crossing the output boundary, and frozen unread notifications. Full check:
+  134 Node tests/types/lint/build pass; full browser baseline 175 pass/11 existing
+  viewport skips. After the final unread fix, 35 affected cases passed and one
+  existing mobile replacement/follow case failed intermittently; three isolated
+  reruns and the final 11-case smoke pass. This intermittent result is retained,
+  not hidden as a clean run.
+- Final GitHub Copilot CLI delta review reports no findings. Browser selection
+  was verified synthetically; physical iOS long-press/callout remains a manual
+  acceptance item. No live terminal input, cloud writes or service changes.
+
 ## 2026-10-03 06:40 +08 — resource windows and usage meters
 
 - Resource history defaults to six hours with 6h/12h/24h controls and a fixed
