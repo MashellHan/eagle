@@ -126,4 +126,7 @@ Run `eagle-agent realtime-watch` as a separate user service using the same secur
 
 ## Unpublished source candidate
 
-The source manifest is 0.8.2 and raises the Zod minimum to 4.6.5. It is not yet published to npm. The verified installation and website onboarding pin remain 0.8.1 until a separately authorized publication verifies the new artifact.
+The source manifest is 0.8.3, includes the realtime status-label redaction fix,
+and retains the Zod minimum of 4.6.5. It is not yet published to npm. The verified
+installation and website onboarding pin remain 0.8.1 until a separately authorized
+publication verifies the new artifact.

@@ -172,6 +172,12 @@ Installing a new npm version updates the executable; it does not create or start
 
 ## Input and evidence
 
+Secret assignment names keep word boundaries within each source line. Labels
+such as `Token usage:` must not become secret fields when whitespace is folded
+for wrapped-credential detection. Line-wrapped identifiers, including their
+continuation padding, remain conservatively protected. A rejected label cannot
+hide a later credential match.
+
 A temporary disconnect preserves the last terminal screen with a retry indicator.
 The composer keeps its focus and remains editable while offline, viewing or
 waiting for a receipt. Sending and terminal shortcuts remain gated by a fresh
