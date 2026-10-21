@@ -1,5 +1,17 @@
 # Retrospective
 
+## 2026-10-21 — Preserve noisy performance failures during release
+
+A final release gate failed the existing styled-Bearer timing ratio, despite
+unchanged Agent code and passing pre-publication gates. The 128k/256k medians
+were 35.91/130.22ms; the actual assertion is `max(60ms, small * 3)`, not the 3.5
+multiplier initially stated in the progress message. Read the assertion before
+quoting it. Three unchanged isolated runs passed with 20.19/29.31, 15.01/26.60
+and 35.80/28.99ms. These observations do not prove that scheduling or the nearby
+mirror installation caused the failure. Retain every result, avoid overlapping
+owned maintenance work with timing gates, and rerun the complete unchanged gates
+before deploying; do not loosen the threshold or discard the failed run.
+
 ## 2026-10-21 — Validate Access output independently of exit status
 
 `cloudflared access token` returned status zero while reporting that no app

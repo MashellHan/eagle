@@ -1,5 +1,42 @@
 # 用户视角检查点
 
+## 2026-10-21 09:38 +08 — Website release gates passed
+
+- The complete unchanged rerun passed 180 Node tests, strict types, lint and
+  build, followed serially by 193 browser passes and the same 11 viewport skips.
+  Final logs are `release-check.log` and `release-browser.log` under
+  `.local/release-v0.12.0/`; the earlier performance failure remains retained.
+- Website/lock version is 0.12.0, Agent source is 0.9.0, and active installation
+  guides/onboarding target the independently verified 0.9.0 artifact. Historical
+  0.8.1 hardware-introduction notes remain historical, not installation pins.
+- npm publication, all three registry hashes, anonymous Tencent download and
+  installation, local real collection/rendering and isolated realtime input
+  have passed. Public authenticated reads still show the pre-release 0.10.1 /
+  0.8.1 services; production deployment and the installed-service upgrade remain
+  pending exact-release CI. No machine configuration or service plist changed.
+
+## 2026-10-21 09:34 +08 — Published Agent verified, website gates pending
+
+- npm accepted Agent 0.9.0. After its processing delay, anonymous npmjs,
+  Tencent and npmmirror metadata match the retained tarball's SHA-1/SHA-512.
+  npm latest is 0.9.0. A second empty-cache, empty-npmrc download from Tencent
+  matched those hashes before an isolated outside-checkout install passed
+  version/help. Website/lock version is now 0.12.0 and onboarding pins 0.9.0;
+  the changed pin first failed its regression against 0.8.1, then passed.
+- Actual local collection passed for 14 Spaces/27 Panes, idempotency, durable
+  revisions, unchanged D1 history, automatic refresh and desktop/mobile rendering.
+  The local realtime bridge returned output from the new shell in 1,303ms and
+  released all four subscriptions. The test pane and owned temporary bridge tab
+  are closed; existing development server tabs remain untouched.
+- Quiet Access login completed; an unexpired private-file JWT authenticated
+  production overview reads. Production still reports website 0.10.1 and Agent
+  0.8.1. No production deployment, package install or service restart has occurred.
+- The first final Node gate passed 179/180 tests but failed the unchanged styled
+  Bearer performance ratio: 35.91/130.22ms versus `max(60ms, small * 3)`.
+  Three unchanged isolated six-test runs passed (styled medians 20.19/29.31,
+  15.01/26.60 and 35.80/28.99ms). Cause is not established. Preserve logs under
+  `.local/release-v0.12.0/`; full serial gates must pass before deployment.
+
 ## 2026-10-21 09:19 +08 — Agent release authentication pending
 
 - Authorized targets are website/Worker 0.12.0 and independent Agent 0.9.0.

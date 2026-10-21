@@ -50,22 +50,22 @@ Open **Connect** on the Eagle website. Add a machine ID, display name and option
 
 The platform signs machine-scoped tokens using the `AGENT_SIGNING_KEY` Worker secret (at least 32 random characters). Raw tokens and the signing key never enter a database. Each machine DO stores only its configuration, public credential ID, enabled state and expiry. Tokens expire after one year. The directory DO indexes machine IDs only; ingestion goes directly to the corresponding machine DO. The old `AGENT_TOKENS` secret remains compatible; Connect can rotate a legacy machine to signed credentials or disable it. Removing a legacy secret alone does not disable a machine already migrated to signed credentials; use Connect.
 
-Install Agent v0.8.1 from npm. The Agent version comes from `agent/package.json`; website-only releases do not require an Agent update or npm publication. Check `node --version`, `npm --version` and `herdr --version`: Node 24+ and a running Herdr installation are required. Node downloads: https://nodejs.org/en/download. The installed Agent needs no Eagle checkout or TypeScript compiler.
+Install Agent v0.9.0 from npm. The Agent version comes from `agent/package.json`; website-only releases do not require an Agent update or npm publication. Check `node --version`, `npm --version` and `herdr --version`: Node 24+ and a running Herdr installation are required. Node downloads: https://nodejs.org/en/download. The installed Agent needs no Eagle checkout or TypeScript compiler.
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.8.1 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.9.0 --registry=https://registry.npmjs.org
 ```
 
 If npm downloads are unreachable, **Tencent Cloud is the preferred mirror**:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.8.1 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g @nocoo/eagle-agent@0.9.0 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
 This changes the registry for this command only. A new version may not have synchronized yet (`404` / `ETARGET`); retry later or use the official registry when reachable, keeping the pinned version. Public installation needs no npm login. Never send an Eagle token to npm or a mirror, or disable HTTPS certificate verification.
 
 ```sh
-eagle-agent --version # expected: 0.8.1
+eagle-agent --version # expected: 0.9.0
 eagle-agent --help
 ```
 

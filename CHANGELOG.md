@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.12.0 — 2026-10-21
+
+- Align sidebar partitions, navigation insets and application typography with
+  Basalt 3.2.0. Use the shared 12/14/18/24px type scale and keep mobile controls
+  readable without hiding navigation or input actions.
+- Give the machine resource column and Space inspector the same responsive
+  desktop width. Keep search in the Space heading, preserve the compact first-card
+  position, and prevent the closed inspector from panning the terminal viewport.
+- Retain terminal frames, reading positions, unread output and uncertain input
+  receipts across views within an open workspace. Clear protected state on
+  authorization loss; never reacquire control or replay inputs automatically.
+- Add safely clickable visible HTTP(S) terminal links with preserved styling
+  and native text selection. Freeze selected output while receiving newer frames;
+  keep primary mobile keys visible with 44px targets.
+- Include the dependency upgrades prepared in 0.10.3 and 0.11.0, including
+  React, AI SDKs, jose, icons, Wrangler, Playwright and Node types.
+- Pair the website/Worker with independently published Agent 0.9.0 for repaired
+  redaction and native history keys. Pin onboarding and installation guides to
+  the verified npm artifact; preserve existing machine and Manager identities.
+
 ## Agent v0.9.0 — 2026-10-21
 
 - Prevent status labels from hiding independent wrapped secret assignments in
@@ -14,8 +34,8 @@
   reject before writing; history actions never submit the command draft.
 - Include the independent Agent dependency updates since 0.8.1. Preserve
   read-only hardware collection, secure configuration and Manager state.
-- Website onboarding remains at verified Agent 0.8.1 during artifact
-  preparation; it advances only after this package is independently verified.
+- Publish independently from website/Worker 0.12.0; onboarding advances only
+  after the exact package has passed registry integrity and installation checks.
 
 ## v0.11.0 — 2026-10-21
 
