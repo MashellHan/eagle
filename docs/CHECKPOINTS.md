@@ -1,5 +1,47 @@
 # 用户视角检查点
 
+## 2026-10-21 09:57 +08 — v0.12.0 published
+
+- Published GitHub Release [v0.12.0](https://github.com/nocoo/eagle/releases/tag/v0.12.0).
+  The annotated tag resolves to `be44a7f61d6ced6b7b063de5571aec3b33e42459`,
+  the same source revision already deployed and verified by CI. This subsequent
+  documentation-only record does not change the deployment or release tag.
+- Final production UI acceptance passed: sidebar 0.12.0, onboarding Agent 0.9.0,
+  two 512px desktop panels, 14px body text, six resource cards, no horizontal
+  overflow at 390/320px and no browser errors. The inspected production screenshot
+  shows fresh resources; missing/offline observations on other machines remain
+  explicit. No remote machine installation was performed.
+- Agent 0.9.0 is public and latest on npm; npmjs, Tencent and npmmirror hashes
+  match the tested artifact. The current MacBook uses that released package,
+  its existing services are running and configuration hashes are unchanged.
+  Local and production collection/realtime receipts, package hashes, deployment,
+  exact-release CI and five-minute follow-up evidence remain in the ignored
+  `.local/release-v0.12.0/` directory. No terminal test pane or verification
+  bridge was left running.
+
+## 2026-10-21 09:54 +08 — Production rollout verified, release metadata next
+
+- Exact-release CI `39528581347` passed on `be44a7f`, including npm ci and all
+  configured gates; its scheduled five-minute recheck also reports success.
+  Worker dry-run and deployment passed. Public health returns 0.12.0 and the
+  exact release SHA; Cloudflare version is `f0236fdc-d6f4-4433-8ef3-7b54343e09cc`.
+- Installed Agent 0.9.0 from Tencent and restarted only the three already-running
+  collector/realtime/Manager services. All have new running PIDs; the machine
+  configuration and three service plists retain their original hashes. Before
+  invoking the source verifier, a fresh production report independently confirmed
+  that the installed collector was uploading version 0.9.0.
+- Production real collection passed for 14 Spaces/25 Panes, authenticated access,
+  anonymous redirection, idempotency, durable revisions, unchanged D1 history,
+  automatic refresh and desktop/mobile rendering. The new isolated shell returned
+  output in 1,600ms, and all four subscriptions closed. Temporary test panes and
+  the local verification bridge tab are closed; no existing task pane was used
+  for input. Receipts/screenshots are under `.local/release-v0.12.0/`.
+- An additional UI verifier initially failed its bundle-version regexp because
+  the minifier uses backtick strings. The deployed literal is correctly 0.9.0;
+  only the ignored verifier changed, and its rerun is in progress. Tag/GitHub
+  Release publication follows that acceptance. This checkpoint is recorded at
+  its actual time, one minute later than the 15-minute cadence.
+
 ## 2026-10-21 09:38 +08 — Website release gates passed
 
 - The complete unchanged rerun passed 180 Node tests, strict types, lint and

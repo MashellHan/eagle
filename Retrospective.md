@@ -1,5 +1,17 @@
 # Retrospective
 
+## 2026-10-21 — Accept the minifier's actual string syntax
+
+The additional production UI verifier recognized quoted onboarding versions but
+omitted backtick strings, which this Vite minifier emits. It therefore reported
+an undefined pin even though the deployed bundle contained 0.9.0 and matched the
+release asset. Inspect the actual owned asset before interpreting a static-match
+failure as a deployment defect. The corrected ignored verifier accepts all three
+string delimiters and compares health against the retained release SHA, not a
+later documentation-only HEAD. Product code and publication artifacts did not
+change. The associated checkpoint was one minute late; record actual times and
+track the checkpoint deadline during operational verification too.
+
 ## 2026-10-21 — Preserve noisy performance failures during release
 
 A final release gate failed the existing styled-Bearer timing ratio, despite
