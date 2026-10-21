@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Agent 0.8.3
+## Agent v0.9.0 — 2026-10-21
 
 - Prevent status labels from hiding independent wrapped secret assignments in
   realtime plain text or styled runs, while preserving ordinary status output.
@@ -9,8 +9,13 @@
 - Protect quoted wrapped values and preserve Bearer prefix spelling and
   whitespace so styled reconstruction does not repeatedly search for changed
   source text.
-- Keep this repair in the unpublished Agent 0.8.3 candidate; website and
-  published-Agent onboarding versions are unchanged.
+- Add native up/down history keys for supported Kitty modes, including
+  report-all-keys encoding, and explicit Ctrl+P/N. Unsupported cursor modes
+  reject before writing; history actions never submit the command draft.
+- Include the independent Agent dependency updates since 0.8.1. Preserve
+  read-only hardware collection, secure configuration and Manager state.
+- Website onboarding remains at verified Agent 0.8.1 during artifact
+  preparation; it advances only after this package is independently verified.
 
 ## v0.11.0 — 2026-10-21
 

@@ -1,7 +1,8 @@
 # @nocoo/eagle-agent
 
-Agent 0.8.1 adds optional macOS GPU, temperature, fan and traffic
-observations. Install macmon separately and include it in the service PATH for
+Agent 0.9.0 improves realtime secret redaction and adds native history-key
+input. Optional macOS GPU, temperature, fan and traffic observations remain
+read-only. Install macmon separately and include it in the service PATH for
 hardware readings; no sudo or fan control is used.
 
 Read-only Herdr inventory, task evidence, machine resources and named TCP port checks for Eagle. Requires Node.js 24+ and the Herdr CLI on macOS or Linux.
@@ -10,16 +11,16 @@ Read-only Herdr inventory, task evidence, machine resources and named TCP port c
 
 Check `node --version`, `npm --version` and `herdr --version` first. Install Node.js 24+ from https://nodejs.org/en/download if needed, and have Herdr installed and running. No Eagle repository checkout, TypeScript compiler or npm login is required to install this public package.
 
-Install Agent v0.8.1 from npm. Website releases are independent:
+Install Agent v0.9.0 from npm. Website releases are independent:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.8.1 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@0.9.0 --registry=https://registry.npmjs.org
 ```
 
 **If npm downloads time out, use the Tencent Cloud mirror / 下载超时时首选腾讯云镜像：**
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.8.1 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g @nocoo/eagle-agent@0.9.0 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
 `--registry` applies only to this installation; it does not change your global npm configuration. Mirrors may lag (`404` / `ETARGET`); retry later or use the official registry when reachable. Keep the pinned version, HTTPS and certificate verification. Eagle credentials are unrelated to npm and must never be sent to a registry.
@@ -27,7 +28,7 @@ npm install -g @nocoo/eagle-agent@0.8.1 --registry=https://mirrors.cloud.tencent
 Verify the installation before configuring the agent:
 
 ```sh
-eagle-agent --version # expected: 0.8.1
+eagle-agent --version # expected: 0.9.0
 eagle-agent --help
 ```
 
@@ -124,9 +125,14 @@ Reusable Skill: https://github.com/nocoo/eagle/blob/main/skills/eagle-report/SKI
 
 Run `eagle-agent realtime-watch` as a separate user service using the same secure configuration. This enables authenticated web control through an outbound WebSocket; the collector remains read-only. Open a Space in Eagle and select 实时模式, then 接管输入. Unwatched Spaces consume no screen polling. Leaving/hiding the page releases the subscription; input is never replayed after a disconnect. Details and limits: https://github.com/nocoo/eagle/blob/main/docs/REALTIME.md
 
-## Unpublished source candidate
+## Realtime upgrade
 
-The source manifest is 0.8.3, includes the realtime status-label redaction fix,
-and retains the Zod minimum of 4.6.5. It is not yet published to npm. The verified
-installation and website onboarding pin remain 0.8.1 until a separately authorized
-publication verifies the new artifact.
+Agent 0.9.0 preserves ordinary status labels while masking wrapped and quoted
+credentials in both plain and styled terminal output. Bounded redaction avoids
+repeated scanning of long whitespace, base64 and Bearer sequences.
+
+Up/down history keys require Kitty disambiguation or report-all-keys mode;
+unsupported cursor modes fail closed. Explicit Ctrl+P/N remain separate actions,
+not automatic substitutes. Deploy the matching Worker before restarting existing
+bridges. Preserve the machine configuration, spool and Manager identity/state;
+installing the package does not start or restart services automatically.
