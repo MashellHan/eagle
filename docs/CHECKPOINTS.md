@@ -1,5 +1,28 @@
 # 用户视角检查点
 
+## 2026-10-21 09:19 +08 — Agent release authentication pending
+
+- Authorized targets are website/Worker 0.12.0 and independent Agent 0.9.0.
+  The public website and latest GitHub Release are still 0.10.1; npm latest
+  and the installed Agent are 0.8.1. Origin was fetched; no remote changes
+  needed integration. Remote D1 reports no pending migrations.
+- Agent preparation is committed at `d8c977b`. Serial release gates passed
+  180 Node tests, strict types, lint, build and 193 browser cases, with 11
+  unchanged viewport skips. The retained 38,200-byte tarball has 18 files and
+  SHA-1 `537330ed4b37f15439dbeaa9b98bc18a8557fe2f`; SHA-512 and the source
+  revision are in `.local/release-v0.12.0/agent-pack-receipt.json`.
+- The exact tarball passed an anonymous, empty-cache Tencent dependency install
+  outside the checkout, CLI version/help and a packed redaction smoke test.
+  npm account login completed and whoami returned `nocoo`. The original publish
+  process is waiting for its separate browser authorization; publication and
+  mirror visibility are not yet established. Website onboarding remains 0.8.1.
+- Existing production collector, Manager and realtime services are running;
+  configuration digests are retained for upgrade verification. Their config,
+  processes, production collection and data have not been changed. The cached
+  viewer JWT is expired and cloudflared has no current app token, so protected
+  production verification still needs Access login. Local/public live collection,
+  realtime round trips, deployment and exact-release CI remain next hops.
+
 ## 2026-10-21 08:51 +08 — UI polish ready for local review
 
 - Final serial `npm run check` passed 180 Node tests, strict types, check-only

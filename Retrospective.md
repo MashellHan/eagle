@@ -1,5 +1,14 @@
 # Retrospective
 
+## 2026-10-21 — Validate Access output independently of exit status
+
+`cloudflared access token` returned status zero while reporting that no app
+token existed. Parsing the redirected empty output then failed. A shell wrapper
+that returned the original status also hid that parser failure. No verification
+was accepted and no credential was exposed. Validate JWT structure and expiry
+before use, propagate validation failures, and run the normal quiet login flow
+when the cache has no token; never treat command exit zero as authentication.
+
 ## 2026-10-21 — Measure panel boxes at the same boundary
 
 The UI-polish regression initially subtracted the inner snapshot region from
