@@ -190,6 +190,16 @@ test("mobile terminal keeps primary keys visible and selected output stable", as
       page.getByRole("button", { name, exact: true }),
     ).toBeInViewport({ ratio: 1 });
   }
+  const shortcutCenters = await page
+    .locator(".live-shortcuts > button")
+    .evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const bounds = button.getBoundingClientRect();
+        return bounds.top + bounds.height / 2;
+      }),
+    );
+  for (const center of shortcutCenters)
+    expect(center).toBeCloseTo(shortcutCenters[0], 1);
   await expect(
     page.getByRole("button", { name: "上一条历史", exact: true }),
   ).toBeDisabled();

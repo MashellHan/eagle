@@ -167,7 +167,7 @@ function HistoryView({ machine, space }: { machine: string; space?: string }) {
     <div className="space-y-4">
       <DailyHistory machine={machine} />
       <div className="flex items-center justify-between">
-        <p className="text-sm text-basalt-muted-foreground">
+        <p className="text-basalt-base text-basalt-muted-foreground">
           历史归档已暂停（旧版原始快照）；新的 AI 日报显示在上方。
         </p>
         <Button
@@ -180,7 +180,7 @@ function HistoryView({ machine, space }: { machine: string; space?: string }) {
         </Button>
       </div>
       {error && (
-        <p role="alert" className="text-sm text-basalt-destructive">
+        <p role="alert" className="text-basalt-base text-basalt-destructive">
           {error}
         </p>
       )}
@@ -200,14 +200,14 @@ function HistoryView({ machine, space }: { machine: string; space?: string }) {
       {entries.map((entry) => (
         <LayerCard key={entry.seq}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-medium">
+            <span className="text-basalt-base font-medium">
               {entry.report.machine.name}
             </span>
-            <span className="text-xs text-basalt-muted-foreground">
+            <span className="text-basalt-sm text-basalt-muted-foreground">
               采集 {time(entry.report.capturedAt)}
             </span>
           </div>
-          <ul className="mt-3 space-y-2 text-sm">
+          <ul className="mt-3 space-y-2 text-basalt-base">
             {(entry.changes.length
               ? entry.changes
               : ["任务与拓扑无变化，采集证据已刷新"]
@@ -217,7 +217,7 @@ function HistoryView({ machine, space }: { machine: string; space?: string }) {
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-xs text-basalt-muted-foreground">
+          <p className="mt-3 text-basalt-sm text-basalt-muted-foreground">
             {entry.report.spaces.length} 个 Space · 接收{" "}
             {time(entry.receivedAt)} · #{entry.seq}
           </p>
@@ -233,7 +233,10 @@ function HistoryView({ machine, space }: { machine: string; space?: string }) {
         </Button>
       )}
       {loading && (
-        <p role="status" className="text-sm text-basalt-muted-foreground">
+        <p
+          role="status"
+          className="text-basalt-base text-basalt-muted-foreground"
+        >
           读取历史…
         </p>
       )}
@@ -415,14 +418,14 @@ function SpaceDetail({
                     {time(machine.report.capturedAt)} {zone}
                   </time>
                 </p>
-                <p className="text-xs text-basalt-muted-foreground">
+                <p className="text-basalt-sm text-basalt-muted-foreground">
                   仅打开或手动刷新时更新，不持续刷新任务内容。
                   {current.readAt && ` 本次读取 ${time(current.readAt)}`}
                 </p>
                 {lastRealtimeAt.current &&
                   Date.parse(machine.report.capturedAt) <
                     Date.parse(lastRealtimeAt.current) && (
-                    <p className="text-xs text-basalt-muted-foreground">
+                    <p className="text-basalt-sm text-basalt-muted-foreground">
                       快照早于最近实时画面，可能尚未包含新任务；任务摘要并非终端逐帧内容。
                     </p>
                   )}
@@ -481,14 +484,14 @@ function SpaceDetail({
                   <LayerCard>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <Status state={assessment.state} />
-                      <span className="text-xs text-basalt-muted-foreground">
+                      <span className="text-basalt-sm text-basalt-muted-foreground">
                         Herdr 弱提示：{pane.hint}
                       </span>
                     </div>
-                    <h3 className="mt-3 text-sm font-medium">
+                    <h3 className="mt-3 text-basalt-base font-medium">
                       {pane.task.title}
                     </h3>
-                    <p className="mt-2 text-sm text-basalt-muted-foreground">
+                    <p className="mt-2 text-basalt-base text-basalt-muted-foreground">
                       {assessment.reason}
                     </p>
                   </LayerCard>
@@ -503,7 +506,7 @@ function SpaceDetail({
                         <LayerCard
                           key={`${e.kind}-${e.source}-${e.observedAt}-${e.taskId}`}
                         >
-                          <div className="flex flex-wrap justify-between gap-2 text-xs">
+                          <div className="flex flex-wrap justify-between gap-2 text-basalt-sm">
                             <Badge variant="outline">
                               {e.kind} · {e.status}
                             </Badge>
@@ -511,17 +514,17 @@ function SpaceDetail({
                               {time(e.observedAt)}
                             </span>
                           </div>
-                          <p className="mt-3 whitespace-pre-wrap break-words text-sm">
+                          <p className="mt-3 whitespace-pre-wrap break-words text-basalt-base">
                             {e.summary}
                           </p>
-                          <p className="mt-2 break-all text-xs text-basalt-muted-foreground">
+                          <p className="mt-2 break-all text-basalt-sm text-basalt-muted-foreground">
                             {e.source}
                             {e.revision ? ` · ${e.revision.slice(0, 12)}` : ""}
                           </p>
                         </LayerCard>
                       ))
                     ) : (
-                      <p className="text-sm text-basalt-muted-foreground">
+                      <p className="text-basalt-base text-basalt-muted-foreground">
                         尚无可靠证据。Pane 状态不能证明任务完成。
                       </p>
                     )}
@@ -739,8 +742,8 @@ export function App() {
             <Mark />
             {(!collapsed || mobile) && (
               <>
-                <strong className="text-lg font-semibold">Eagle</strong>
-                <Badge variant="secondary" className="font-mono text-[10px]">
+                <strong className="text-basalt-xl font-semibold">Eagle</strong>
+                <Badge variant="secondary" className="font-mono text-basalt-sm">
                   v{__APP_VERSION__}
                 </Badge>
                 <div className="ml-auto">{sidebarToggle}</div>
@@ -754,9 +757,7 @@ export function App() {
             {(!collapsed || mobile) && (
               <SidebarPartition>机器 · {machines.length}</SidebarPartition>
             )}
-            <div
-              className={`flex flex-col gap-0.5 ${collapsed && !mobile ? "items-center" : "px-3"}`}
-            >
+            <div className="flex flex-col gap-basalt-nav-gap">
               {machines.map((m) => {
                 const connection = machineConnection(m, now);
                 const label = {
@@ -798,10 +799,10 @@ export function App() {
               })}
             </div>
             {(!collapsed || mobile) && (
-              <SidebarPartition className="mt-6">工作态势</SidebarPartition>
+              <SidebarPartition>工作态势</SidebarPartition>
             )}
             <div
-              className={`flex flex-col gap-0.5 ${collapsed && !mobile ? "items-center mt-6" : "px-3"}`}
+              className={`flex flex-col gap-basalt-nav-gap ${collapsed && !mobile ? "pt-basalt-layout" : ""}`}
             >
               <NavItem
                 aria-label="全局总览"
@@ -965,7 +966,10 @@ export function App() {
                 />
                 {error && (
                   <LayerCard>
-                    <p role="alert" className="text-sm text-basalt-destructive">
+                    <p
+                      role="alert"
+                      className="text-basalt-base text-basalt-destructive"
+                    >
                       {error}
                     </p>
                   </LayerCard>
@@ -975,7 +979,7 @@ export function App() {
                   !activeMachineId &&
                   !!data?.pendingMachines?.length && (
                     <LayerCard>
-                      <p className="text-sm text-basalt-muted-foreground">
+                      <p className="text-basalt-base text-basalt-muted-foreground">
                         等待首次上报：{data.pendingMachines.join("、")}
                       </p>
                     </LayerCard>

@@ -47,7 +47,7 @@ export function SidebarAccount({ collapsed }: { collapsed: boolean }) {
         alt={`${name} 的头像`}
         referrerPolicy="no-referrer"
       />
-      <AvatarFallback className="text-xs">
+      <AvatarFallback className="text-basalt-sm">
         {viewer?.name?.slice(0, 1).toUpperCase() || "E"}
       </AvatarFallback>
     </Avatar>
@@ -132,7 +132,7 @@ export function FamilyActions() {
             </a>
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="text-xs">
+        <TooltipContent side="bottom" className="text-basalt-sm">
           GitHub 仓库
         </TooltipContent>
       </Tooltip>
@@ -167,7 +167,7 @@ export function FamilyActions() {
             </a>
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="text-xs">
+        <TooltipContent side="bottom" className="text-basalt-sm">
           在 hexly.ai 查看 Eagle
         </TooltipContent>
       </Tooltip>
@@ -182,7 +182,7 @@ export function FamilyActions() {
             <ThemeIcon size={16} strokeWidth={1.5} aria-hidden="true" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="text-xs">
+        <TooltipContent side="bottom" className="text-basalt-sm">
           {next === "light"
             ? "切换到浅色"
             : next === "dark"

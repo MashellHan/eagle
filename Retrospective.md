@@ -1,5 +1,24 @@
 # Retrospective
 
+## 2026-10-21 — Measure panel boxes at the same boundary
+
+The UI-polish regression initially subtracted the inner snapshot region from
+the viewport to calculate terminal width. The assertion differed by two pixels
+because the sheet and inspector borders belonged to different boxes. Measure
+the workspace column and outer inspector at the same layout boundary instead;
+do not add an unexplained tolerance or restore the obsolete narrow panel width.
+Similarly, natural-height icon/text shortcuts can have different top edges on
+the same flex row; compare their vertical centers to detect wrapping. Caller
+inspection also showed that the remaining old dashboard width was only a loading
+skeleton, not a third live panel. Verify rendered callers before describing scope.
+
+Widening the resource panel exposed a real extra toolbar row, which pushed the
+first Space card beyond the existing 190px budget. Moving search into the region
+heading removes that row without reducing font sizes. The corrected layout is
+about 187px, but an immediate assertion still captured the 9px entrance translation.
+Poll the unchanged geometry threshold using one browser measurement; do not
+shrink spacing again merely to hide an animation timing race.
+
 ## 2026-10-20 — A rejected redaction label hid a nested assignment
 
 PR #70 preserved ordinary status labels by validating a greedy match after

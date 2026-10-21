@@ -1,5 +1,50 @@
 # 用户视角检查点
 
+## 2026-10-21 08:51 +08 — UI polish ready for local review
+
+- Final serial `npm run check` passed 180 Node tests, strict types, check-only
+  lint and build. `npm run test:browser` passed 193 cases with the same 11
+  viewport-specific skips. Logs and fixture screenshots are retained under
+  `.local/ui-polish/final-check.log`, `final-browser.log` and `final-browser/`.
+  The existing four lint informational diagnostics and bundle-size advisory
+  remain; no timeout, mobile visibility threshold or skip was relaxed.
+- The wider panel initially forced search onto a separate toolbar row. Search
+  now shares the Space section heading; the first card still satisfies the
+  original 190px vertical budget after entrance motion settles. Panel animation
+  assertions use the actual open width rather than the retired 288px constant.
+  The loading skeleton shares the same width token; the fleet overview has no
+  independent right panel. Mobile retains its stacked/overlay layouts.
+- Inspected final desktop machine panels at 1280/1600/1920px, dark overview and
+  settings, light workspace, light 320px machine page and dark 320px terminal.
+  Primary keys and More remain on one row with 44px mobile targets. Existing
+  navigation, sidebar collapse/brand-axis, selection, drafts and input-control
+  regressions all pass.
+- Local HTTPS returns 200 and the existing development servers remain running
+  for user review. Local Chrome rendered the existing stale machine snapshot;
+  no collection, production authentication/D1, live terminal input, service
+  restart, version change, push or deployment was performed.
+
+## 2026-10-21 08:41 +08 — Local UI polish
+
+- Compared installed Basalt 3.2.0 design/integration guides and sidebar sources
+  with the Basalt template checkout at `13a0fe11`. Navigation keeps the existing
+  machine/workbench partitions and destinations, with one native 8px list inset.
+- Three new desktop/mobile regressions failed before implementation: extra
+  sidebar indentation, undersized content and mismatched panel widths. Their six
+  cases now pass. Application typography uses Basalt's 12/14/18/24px roles;
+  the mobile composer retains 1rem to avoid iOS focus zoom. Machine resources
+  and the workspace inspector share `clamp(26rem, 32vw, 38rem)` on desktop.
+- Local Chrome at `https://eagle.dev.hexly.ai` uses the existing Vite/Worker
+  servers and Local environment. It renders existing October 3 machine data
+  explicitly as stale; no collection, live input, production authentication,
+  production D1 writes or deployment was performed. Isolated browser fixtures
+  verify layout, not live service health.
+- Desktop 1280px machine/workspace and mobile 320px screenshots were inspected.
+  The first focused run passed 10 cases with one existing viewport skip; one
+  newly adapted width assertion used mismatched box boundaries and was corrected.
+  Mobile shortcut spacing is tightened to the existing 4px token so readable
+  labels and More share one row. Full serial checks and visual acceptance follow.
+
 ## 2026-10-21 05:39 +08 — deterministic context-menu regression
 
 - PR76 CI run `39500894779` failed on Ubuntu headless Chromium when CDP touch

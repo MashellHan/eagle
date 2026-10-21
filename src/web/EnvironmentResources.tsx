@@ -174,7 +174,7 @@ export function EnvironmentResources({
                   value: "Load",
                   position: "top",
                   fill: "hsl(var(--basalt-muted-foreground))",
-                  fontSize: 11,
+                  fontSize: "var(--basalt-text-sm)",
                 }}
               />
               <Tooltip

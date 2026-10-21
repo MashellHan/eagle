@@ -17,7 +17,7 @@ function ReportCard({ report }: { report: DailyReport }) {
       aria-label={`${report.machineName} ${report.date} 日报`}
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2 text-sm">
+        <div className="flex min-w-0 items-center gap-2 text-basalt-base">
           <Badge variant="purple" className="hidden shrink-0 sm:inline-flex">
             AI 日报
           </Badge>
@@ -27,7 +27,7 @@ function ReportCard({ report }: { report: DailyReport }) {
           >
             {report.machineName}
           </span>
-          <time className="shrink-0 text-xs" dateTime={report.date}>
+          <time className="shrink-0 text-basalt-sm" dateTime={report.date}>
             {report.date}
           </time>
         </div>
@@ -45,10 +45,10 @@ function ReportCard({ report }: { report: DailyReport }) {
           </span>
         </Button>
       </div>
-      <p className="mt-2 text-sm leading-relaxed break-words">
+      <p className="mt-2 text-basalt-base leading-relaxed break-words">
         {report.content.overview}
       </p>
-      <p className="mt-2 text-xs text-basalt-muted-foreground">
+      <p className="mt-2 text-basalt-sm text-basalt-muted-foreground">
         北京时间 00:00–23:59 · {report.snapshots} 次采集 ·{" "}
         {report.semanticRecords} 条语义记录
       </p>
@@ -60,9 +60,9 @@ function ReportCard({ report }: { report: DailyReport }) {
               return (
                 <li
                   key={entry.hour}
-                  className="daily-hour flex items-start gap-3 py-1.5 text-sm"
+                  className="daily-hour flex items-start gap-3 py-1.5 text-basalt-base"
                 >
-                  <span className="shrink-0 font-mono text-xs leading-6 text-basalt-muted-foreground">
+                  <span className="shrink-0 font-mono text-basalt-sm leading-6 text-basalt-muted-foreground">
                     {String(entry.hour).padStart(2, "0")}:00
                   </span>
                   <div className="min-w-0 flex-1 break-words leading-6">
@@ -71,14 +71,14 @@ function ReportCard({ report }: { report: DailyReport }) {
                       (coverage.omittedRecords > 0 ||
                         coverage.excerptedRecords > 0) && (
                         <span
-                          className="ml-2 text-xs text-basalt-muted-foreground"
+                          className="ml-2 text-basalt-sm text-basalt-muted-foreground"
                           title={`模型采用 ${coverage.retainedRecords}/${coverage.inputRecords} 条材料，${coverage.excerptedRecords} 条摘录`}
                         >
                           抽样
                         </span>
                       )}
                     {entry.evidenceIds.length > 0 && (
-                      <span className="ml-2 text-xs text-basalt-muted-foreground">
+                      <span className="ml-2 text-basalt-sm text-basalt-muted-foreground">
                         {entry.evidenceIds.join(" · ")}
                       </span>
                     )}
@@ -89,15 +89,15 @@ function ReportCard({ report }: { report: DailyReport }) {
           </ol>
           {report.content.nextSteps.length > 0 && (
             <section>
-              <h3 className="text-sm font-medium">下一步</h3>
-              <ul className="mt-1 list-inside list-disc text-sm leading-6">
+              <h3 className="text-basalt-base font-medium">下一步</h3>
+              <ul className="mt-1 list-inside list-disc text-basalt-base leading-6">
                 {report.content.nextSteps.map((step) => (
                   <li key={step}>{step}</li>
                 ))}
               </ul>
             </section>
           )}
-          <p className="text-xs text-basalt-muted-foreground">
+          <p className="text-basalt-sm text-basalt-muted-foreground">
             数据截止北京时间
             23:59，不含最后一分钟及生成开始后收到的上报。无采集数据不代表没有活动。
             <br />
@@ -277,7 +277,7 @@ export function DailyHistory({ machine }: { machine: string }) {
               {pendingJobs.map((job) => (
                 <li
                   key={`${job.machineId}:${job.date}`}
-                  className="flex flex-wrap items-center gap-2 py-1 text-xs"
+                  className="flex flex-wrap items-center gap-2 py-1 text-basalt-sm"
                 >
                   <span>
                     {job.machineName} · {job.date}
@@ -308,7 +308,7 @@ export function DailyHistory({ machine }: { machine: string }) {
           </LayerCard>
         )}
         {error && (
-          <p role="alert" className="text-sm text-basalt-destructive">
+          <p role="alert" className="text-basalt-base text-basalt-destructive">
             {error}
           </p>
         )}
@@ -322,8 +322,8 @@ export function DailyHistory({ machine }: { machine: string }) {
         )}
         {!loading && !entries.length && !error && (
           <LayerCard>
-            <p className="text-sm">暂无日报</p>
-            <p className="mt-1 text-xs text-basalt-muted-foreground">
+            <p className="text-basalt-base">暂无日报</p>
+            <p className="mt-1 text-basalt-sm text-basalt-muted-foreground">
               配置 AI 后，每天北京时间 23:59
               自动生成；按小时汇报，无数据时跳过。
             </p>

@@ -130,7 +130,9 @@ export function MachineResources({
   if (!telemetry)
     return (
       <section aria-label="机器资源" className="machine-resources">
-        <p className="text-xs text-basalt-muted-foreground">尚未上报机器资源</p>
+        <p className="text-basalt-sm text-basalt-muted-foreground">
+          尚未上报机器资源
+        </p>
       </section>
     );
   return (

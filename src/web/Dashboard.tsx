@@ -221,7 +221,7 @@ export function Topology({
                       </span>
                     </span>
                     {!compact && (
-                      <span className="line-clamp-2 whitespace-normal text-xs font-normal">
+                      <span className="line-clamp-2 whitespace-normal text-basalt-sm font-normal">
                         {summaries.find(
                           (s) =>
                             s.spaceId === space.id &&
@@ -333,7 +333,9 @@ function SpaceCard({
           <Workflow size={17} strokeWidth={1.5} />
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-semibold">{space.name}</h3>
+          <h3 className="truncate text-basalt-base font-semibold">
+            {space.name}
+          </h3>
           <span className="space-meta">
             {space.session} <span>·</span> {panes.length} panes
           </span>
@@ -354,7 +356,7 @@ function SpaceCard({
       <div className="space-copy">
         <div className="space-state-row">
           <Status state={actual} />
-          <span className="mono text-[10px] text-basalt-muted-foreground">
+          <span className="mono text-basalt-sm text-basalt-muted-foreground">
             {space.id.split(":").at(-1)}
           </span>
         </div>
@@ -464,7 +466,7 @@ function EvidenceCoverage({ machines }: { machines: MachineView[] }) {
           <ShieldCheck size={16} />
         </span>
         <h2>证据覆盖</h2>
-        <span className="mono ml-auto text-xs text-basalt-muted-foreground">
+        <span className="mono ml-auto text-basalt-sm text-basalt-muted-foreground">
           {panes.length} PANES
         </span>
         <CardHelp label="证据覆盖说明">
@@ -666,7 +668,7 @@ export function Dashboard({
               <h2>机器全景</h2>
               <Badge variant="secondary">{machines.length} 台</Badge>
             </div>
-            <span className="text-xs text-basalt-muted-foreground">
+            <span className="text-basalt-sm text-basalt-muted-foreground">
               选择机器，展开工作现场
             </span>
           </div>
@@ -726,7 +728,7 @@ export function Dashboard({
                       <h3 className="truncate font-semibold">
                         {machine.name.replace(/\.local$/, "")}
                       </h3>
-                      <p className="mt-1 text-xs text-basalt-muted-foreground">
+                      <p className="mt-1 text-basalt-sm text-basalt-muted-foreground">
                         {machine.report.machine.platform} · {machine.id}
                       </p>
                     </div>
@@ -747,7 +749,7 @@ export function Dashboard({
                       <span>
                         {group.reduce((n, s) => n + s.panes.length, 0)} 个 Pane
                       </span>
-                      <span className="ml-auto text-xs">
+                      <span className="ml-auto text-basalt-sm">
                         {stale ? "历史快照" : "当前任务分布"}
                       </span>
                     </div>
@@ -794,7 +796,7 @@ export function Dashboard({
                       ))}
                     </div>
                     {resourceStale && (
-                      <p className="text-xs text-basalt-muted-foreground">
+                      <p className="text-basalt-sm text-basalt-muted-foreground">
                         {telemetry
                           ? "资源为历史采样，等待更新"
                           : "等待资源采样"}
@@ -836,43 +838,42 @@ export function Dashboard({
               }
               hint="按 Herdr 顺序 · 点击 Space 查看终端与任务"
               actions={
-                <Badge variant="secondary">
-                  {filtered.length} / {spaces.length}
-                </Badge>
+                <>
+                  <Input
+                    className="board-search"
+                    size="sm"
+                    aria-label="搜索 Space"
+                    value={search}
+                    onChange={(e) => onSearch(e.target.value)}
+                    placeholder="搜索空间、目标、任务…"
+                  />
+                  <Badge variant="secondary">
+                    {filtered.length} / {spaces.length}
+                  </Badge>
+                </>
               }
             />
-            <div className="board-toolbar">
-              <div className="board-search">
-                <Input
+            <fieldset className="state-filters" aria-label="Space 状态筛选">
+              {(["all", ...states] as const).map((state) => (
+                <Button
+                  key={state}
                   size="sm"
-                  aria-label="搜索 Space"
-                  value={search}
-                  onChange={(e) => onSearch(e.target.value)}
-                  placeholder="搜索空间、目标、任务…"
-                />
-              </div>
-              <fieldset className="state-filters" aria-label="Space 状态筛选">
-                {(["all", ...states] as const).map((state) => (
-                  <Button
-                    key={state}
-                    size="sm"
-                    variant={filter === state ? "secondary" : "ghost"}
-                    aria-pressed={filter === state}
-                    aria-label={`筛选${state === "all" ? "全部" : STATE_LABEL[state]}`}
-                    onClick={() => setFilter(state)}
-                  >
-                    {state === "all"
-                      ? "全部"
-                      : state === "verified"
-                        ? "已验证"
-                        : STATE_LABEL[state]}
-                    <span className="mono">
-                      {state === "all" ? spaces.length : counts[state]}
-                    </span>
-                  </Button>
-                ))}
-              </fieldset>
-            </div>
+                  variant={filter === state ? "secondary" : "ghost"}
+                  aria-pressed={filter === state}
+                  aria-label={`筛选${state === "all" ? "全部" : STATE_LABEL[state]}`}
+                  onClick={() => setFilter(state)}
+                >
+                  {state === "all"
+                    ? "全部"
+                    : state === "verified"
+                      ? "已验证"
+                      : STATE_LABEL[state]}
+                  <span className="mono">
+                    {state === "all" ? spaces.length : counts[state]}
+                  </span>
+                </Button>
+              ))}
+            </fieldset>
             {!machines.length && (
               <LayerCard>
                 <LayerCard.Empty
@@ -958,7 +959,7 @@ export function Dashboard({
                   <Bot size={16} />
                 </span>
                 <h2>Agent 分布</h2>
-                <span className="mono ml-auto text-xs text-basalt-muted-foreground">
+                <span className="mono ml-auto text-basalt-sm text-basalt-muted-foreground">
                   {paneCount}
                 </span>
               </div>

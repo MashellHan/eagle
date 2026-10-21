@@ -28,7 +28,7 @@ export function CardHelp({
       <TooltipContent
         side="bottom"
         align="end"
-        className="max-w-xs space-y-2 text-xs leading-relaxed"
+        className="max-w-xs space-y-2 text-basalt-sm leading-relaxed"
       >
         {children}
       </TooltipContent>

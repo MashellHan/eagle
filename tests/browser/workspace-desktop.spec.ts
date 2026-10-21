@@ -235,6 +235,111 @@ test("root selects the first machine, machines lead the sidebar, and explicit ov
   await expect(page).toHaveURL(/machine=two/);
 });
 
+test("Basalt sidebar keeps one navigation inset and native section spacing", async ({
+  page,
+  isMobile,
+}) => {
+  await fixture(page);
+  await page.goto("/");
+  if (isMobile) await page.getByRole("button", { name: "展开导航" }).click();
+  const nav = page.getByRole("navigation", { name: "工作台导航" });
+  await expect(nav.getByRole("button", { name: "Mac One" })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath("sidebar.png") });
+  const geometry = await nav.evaluate((node) => {
+    const bounds = node.getBoundingClientRect();
+    return Array.from(node.querySelectorAll("button")).map((item) => ({
+      inset: item.getBoundingClientRect().left - bounds.left,
+      rightInset: bounds.right - item.getBoundingClientRect().right,
+    }));
+  });
+  for (const row of geometry) {
+    expect(row.inset).toBeCloseTo(8, 1);
+    expect(row.rightInset).toBeCloseTo(8, 1);
+  }
+  for (const label of await nav
+    .locator('[data-slot="sidebar-partition"]')
+    .all()) {
+    await expect(label).toHaveCSS("margin-top", "0px");
+    await expect(label).toHaveCSS("font-size", "12px");
+  }
+  await expect(nav.getByRole("button", { name: "Mac One" })).toHaveCSS(
+    "font-size",
+    "14px",
+  );
+  await nav.getByRole("button", { name: "设置", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+});
+
+test("Basalt typography keeps machine and workspace content readable", async ({
+  page,
+  isMobile,
+}) => {
+  await fixture(page);
+  await page.goto("/");
+  for (const selector of [
+    ".space-objective",
+    ".space-summary",
+    ".resource-metric-heading",
+  ]) {
+    await expect(page.locator(selector).first()).toHaveCSS("font-size", "14px");
+  }
+  await expect(page.locator(".resource-metric-detail").first()).toHaveCSS(
+    "font-size",
+    "12px",
+  );
+  await page
+    .getByRole("button", { name: "查看 Build Workspace", exact: true })
+    .click();
+  await expect(page.getByLabel("发送到当前 Pane")).toHaveCSS(
+    "font-size",
+    isMobile ? "16px" : "14px",
+  );
+  const toggle = page.getByRole("button", { name: "工作区信息", exact: true });
+  if ((await toggle.getAttribute("aria-expanded")) === "false")
+    await toggle.click();
+  await expect(page.locator(".workspace-objective")).toHaveCSS(
+    "font-size",
+    "14px",
+  );
+  await expect(page.locator(".workspace-task-title").first()).toHaveCSS(
+    "font-size",
+    "14px",
+  );
+});
+
+test("desktop machine and workspace use the same generous panel width", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await fixture(page);
+  for (const width of [1280, 1600, 1920]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto("/");
+    const resources = page.locator(".dashboard-resources");
+    await expect(resources).toBeVisible();
+    const expected = Math.min(608, Math.max(416, width * 0.32));
+    const resourceWidth = (await resources.boundingBox())?.width ?? 0;
+    await page.screenshot({
+      path: test.info().outputPath(`machine-${width}.png`),
+    });
+    expect(resourceWidth).toBeCloseTo(expected, 0);
+    await page
+      .getByRole("button", { name: "查看 Build Workspace", exact: true })
+      .click();
+    const inspector = page.locator(".workspace-inspector");
+    await expect(inspector).toBeVisible();
+    await expect
+      .poll(async () => (await inspector.boundingBox())?.width ?? 0)
+      .toBeCloseTo(resourceWidth, 0);
+    await expect(page.getByLabel("发送到当前 Pane")).toBeInViewport({
+      ratio: 1,
+    });
+    await page.screenshot({
+      path: test.info().outputPath(`workspace-${width}.png`),
+    });
+  }
+});
+
 test("desktop snapshot cards stay frozen across dashboard polls until explicitly refreshed", async ({
   page,
   isMobile,
@@ -589,7 +694,11 @@ test("workspace information can be tucked away and reopened without reconnecting
   if (!n || !m || !i) throw new Error("Missing workspace regions");
   expect(n.x + n.width).toBeLessThanOrEqual(m.x + 1);
   expect(m.x + m.width).toBeLessThanOrEqual(i.x + 1);
-  expect(m.width).toBeGreaterThan(1050);
+  const columns = await page.locator(".workspace-columns").boundingBox();
+  const inspector = await page.locator(".workspace-inspector").boundingBox();
+  if (!columns || !inspector) throw new Error("Missing split geometry");
+  expect(m.width).toBeCloseTo(columns.width - inspector.width, 0);
+  expect(m.width).toBeGreaterThan(i.width);
   const card = await info.locator(".workspace-task-card").first().boundingBox();
   expect(card?.height).toBeLessThan(145);
   const body = await page.locator(".space-detail-body").boundingBox();
@@ -663,6 +772,8 @@ test("information panel animates without replacing the terminal", async ({
     await inspector.evaluate(async (el) => {
       await Promise.all(el.getAnimations().map((a) => a.finished));
     });
+    const openWidth = (await inspector.boundingBox())?.width ?? 0;
+    expect(openWidth).toBeGreaterThan(0);
     const frames = await toggle.evaluate(async (el) => {
       (el as HTMLButtonElement).click();
       await new Promise(requestAnimationFrame);
@@ -681,9 +792,9 @@ test("information panel animates without replacing the terminal", async ({
     expect(frames.count).toBeGreaterThan(0);
     if (width >= 1280) {
       expect(frames.width).toBeGreaterThan(0);
-      expect(frames.width).toBeLessThan(288);
+      expect(frames.width).toBeLessThan(openWidth);
     } else {
-      expect(frames.x).toBeGreaterThan(width - (width < 768 ? width : 288));
+      expect(frames.x).toBeGreaterThan(width - openWidth);
       expect(frames.x).toBeLessThan(width);
     }
     await expect(page.getByRole("region", { name: "工作区快照" })).toHaveCount(

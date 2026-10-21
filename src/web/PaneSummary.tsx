@@ -66,7 +66,7 @@ export function PaneSummaryView({
               <h3 className="text-base font-semibold leading-relaxed">
                 {latest.summary.task}
               </h3>
-              <p className="text-sm leading-relaxed">
+              <p className="text-basalt-base leading-relaxed">
                 {latest.summary.progress}
               </p>
               {latest.summary.outcomes.length > 0 && (
@@ -74,7 +74,7 @@ export function PaneSummaryView({
                   {latest.summary.outcomes.map((outcome, index) => (
                     <li
                       key={`${outcome.kind}-${index}`}
-                      className="rounded-lg border border-basalt-border p-3 text-sm"
+                      className="rounded-lg border border-basalt-border p-3 text-basalt-base"
                     >
                       <Badge variant="outline">
                         {outcome.kind === "result" ? "成果描述" : "未独立验证"}{" "}
@@ -88,21 +88,27 @@ export function PaneSummaryView({
               {latest.summary.blocker && (
                 <div className="rounded-lg border border-basalt-border p-3">
                   <Badge variant="orange">真实阻塞 · Manager 判断</Badge>
-                  <p className="mt-2 text-sm">{latest.summary.blocker}</p>
+                  <p className="mt-2 text-basalt-base">
+                    {latest.summary.blocker}
+                  </p>
                 </div>
               )}
               <div className="border-t border-basalt-border pt-3">
-                <p className="text-xs text-basalt-muted-foreground">下一步</p>
-                <p className="mt-1 text-sm">{latest.summary.nextStep}</p>
+                <p className="text-basalt-sm text-basalt-muted-foreground">
+                  下一步
+                </p>
+                <p className="mt-1 text-basalt-base">
+                  {latest.summary.nextStep}
+                </p>
               </div>
-              <p className="text-xs leading-relaxed text-basalt-muted-foreground">
+              <p className="text-basalt-sm leading-relaxed text-basalt-muted-foreground">
                 判断依据：{latest.summary.rationale}
               </p>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-basalt-muted-foreground">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-basalt-sm text-basalt-muted-foreground">
                 <span>语义更新 {time(latest.updatedAt)}</span>
                 <span>最近核对 {time(latest.checkedAt)}</span>
               </div>
-              <p className="break-all text-xs text-basalt-muted-foreground">
+              <p className="break-all text-basalt-sm text-basalt-muted-foreground">
                 任务 {latest.taskId} · 序列 {latest.sequence} ·{" "}
                 {latest.basis.length} 项事实依据
               </p>
@@ -110,7 +116,7 @@ export function PaneSummaryView({
           ) : (
             <>
               <Badge variant="outline">等待 Manager</Badge>
-              <p className="text-sm text-basalt-muted-foreground">
+              <p className="text-basalt-base text-basalt-muted-foreground">
                 daemon 已提供事实快照；这一个 Pane 尚未收到语义总结。
               </p>
             </>
@@ -125,8 +131,8 @@ export function PaneSummaryView({
 function RecordDetail({ entry }: { entry: SemanticRecord }) {
   const { time, zone } = useTimezone();
   return (
-    <div className="space-y-2 text-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+    <div className="space-y-2 text-basalt-base">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-basalt-sm">
         <Badge variant="outline">
           {PHASE_LABEL[entry.value.summary.phase]}
         </Badge>
@@ -138,10 +144,10 @@ function RecordDetail({ entry }: { entry: SemanticRecord }) {
       <p className="text-basalt-muted-foreground">
         {entry.value.summary.progress}
       </p>
-      <p className="text-xs text-basalt-muted-foreground">
+      <p className="text-basalt-sm text-basalt-muted-foreground">
         下一步：{entry.value.summary.nextStep}
       </p>
-      <p className="break-all text-xs text-basalt-muted-foreground">
+      <p className="break-all text-basalt-sm text-basalt-muted-foreground">
         {entry.source?.managerId} · seq {entry.value.sequence} ·{" "}
         {entry.contentHash?.slice(0, 12)} · {entry.value.taskId}
       </p>
@@ -306,7 +312,10 @@ function HourTimeline({ query }: { query: string }) {
           <li key={bucket.hour}>
             <LayerCard>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <time className="text-xs font-medium" dateTime={bucket.hour}>
+                <time
+                  className="text-basalt-sm font-medium"
+                  dateTime={bucket.hour}
+                >
                   {time(bucket.hour, {
                     year: "numeric",
                     month: "2-digit",
@@ -344,12 +353,15 @@ function HourTimeline({ query }: { query: string }) {
         ))}
       </ol>
       {!loading && !hours.length && !error && (
-        <p className="text-sm text-basalt-muted-foreground">
+        <p className="text-basalt-base text-basalt-muted-foreground">
           尚无摘要变化记录。
         </p>
       )}
       {error && (
-        <p role="status" className="text-sm text-basalt-muted-foreground">
+        <p
+          role="status"
+          className="text-basalt-base text-basalt-muted-foreground"
+        >
           {error}
         </p>
       )}
@@ -363,7 +375,7 @@ function HourTimeline({ query }: { query: string }) {
           {more ? "读取中…" : "更早的小时"}
         </Button>
       )}
-      <p className="mt-3 text-xs text-basalt-muted-foreground">
+      <p className="mt-3 text-basalt-sm text-basalt-muted-foreground">
         DO 保留最近 30 天、最多 10,000 条；已归档记录仍可在 D1 历史查询。
       </p>
     </SectionRule>

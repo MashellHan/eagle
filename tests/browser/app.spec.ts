@@ -209,7 +209,20 @@ test("machine resources and named TCP ports show freshness and missing data hone
     expect(resourceBox.y).toBeGreaterThan(cardBox.y + cardBox.height);
   } else {
     expect(resourceBox.x).toBeGreaterThan(cardBox.x + cardBox.width);
-    expect(cardBox.y - islandBox.y).toBeLessThan(190);
+    await expect
+      .poll(() =>
+        page
+          .locator(".space-card")
+          .first()
+          .evaluate((card) => {
+            const island = document.getElementById("eagle-content");
+            if (!island) throw new Error("Missing content island");
+            return (
+              card.getBoundingClientRect().y - island.getBoundingClientRect().y
+            );
+          }),
+      )
+      .toBeLessThan(190);
   }
   stale = true;
   await page.getByRole("button", { name: "刷新", exact: true }).click();

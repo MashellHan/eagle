@@ -212,14 +212,14 @@ export function Settings({ onAuthError }: { onAuthError: () => void }) {
               ])}
               onChange={(value) => setOffset(Number(value))}
             />
-            <p className="text-xs leading-relaxed text-basalt-muted-foreground">
+            <p className="text-basalt-sm leading-relaxed text-basalt-muted-foreground">
               全站时间与小时筛选均使用此时区。默认 UTC+08:00；固定 UTC
               偏移，不随夏令时变化。
             </p>
             {!persisted && (
               <p
                 role="status"
-                className="text-xs text-basalt-warning-foreground"
+                className="text-basalt-sm text-basalt-warning-foreground"
               >
                 浏览器不允许保存偏好，本次选择仅在当前页面生效。
               </p>
@@ -229,7 +229,7 @@ export function Settings({ onAuthError }: { onAuthError: () => void }) {
         <SectionRule title="AI 连接" hint="由 next-ai 提供统一的模型配置。">
           <LayerCard className="space-y-5">
             <div className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-2 text-sm font-medium">
+              <span className="flex items-center gap-2 text-basalt-base font-medium">
                 <Sparkles size={16} /> 报告分析模型
               </span>
               <Badge variant={settings.configured ? "success" : "secondary"}>
@@ -346,7 +346,7 @@ export function Settings({ onAuthError }: { onAuthError: () => void }) {
                 </Button>
               )}
             </div>
-            <div className="rounded-lg bg-basalt-muted/50 p-3 text-xs text-basalt-muted-foreground space-y-2">
+            <div className="rounded-lg bg-basalt-muted/50 p-3 text-basalt-sm text-basalt-muted-foreground space-y-2">
               <p className="flex items-center gap-2">
                 <ShieldCheck size={14} /> 密钥状态：
                 {clearKey
@@ -386,7 +386,7 @@ export function Settings({ onAuthError }: { onAuthError: () => void }) {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <Label htmlFor="daily-enabled">自动生成报告</Label>
-                <p className="mt-1 text-xs text-basalt-muted-foreground">
+                <p className="mt-1 text-basalt-sm text-basalt-muted-foreground">
                   北京时间每天 23:59 启动，每台机器一天一份。
                 </p>
               </div>
@@ -396,12 +396,12 @@ export function Settings({ onAuthError }: { onAuthError: () => void }) {
                 onCheckedChange={(enabled) => change({ enabled })}
               />
             </div>
-            <p className="text-xs text-basalt-muted-foreground">
+            <p className="text-basalt-sm text-basalt-muted-foreground">
               按 00–23 时汇报，截止 23:59，不含最后一分钟。原始采集保留 48
               小时；校验失败最多重试一次，之后可手动重试。
             </p>
             {!settings.configured && (
-              <p className="text-sm text-basalt-muted-foreground">
+              <p className="text-basalt-base text-basalt-muted-foreground">
                 未配置 AI，自动跳过报告生成。
               </p>
             )}
@@ -429,19 +429,22 @@ export function Settings({ onAuthError }: { onAuthError: () => void }) {
             )}
             {saved ? "已保存" : "保存设置"}
           </Button>
-          <span role="status" className="text-sm text-basalt-muted-foreground">
+          <span
+            role="status"
+            className="text-basalt-base text-basalt-muted-foreground"
+          >
             {notice}
           </span>
         </div>
         {error && (
-          <p role="alert" className="text-sm text-basalt-destructive">
+          <p role="alert" className="text-basalt-base text-basalt-destructive">
             {error}
           </p>
         )}
       </div>
       <SectionRule title="中文报告模板" hint={`固定结构 · ${TEMPLATE_VERSION}`}>
         <LayerCard className="space-y-4">
-          <p className="text-xs leading-relaxed text-basalt-muted-foreground">
+          <p className="text-basalt-sm leading-relaxed text-basalt-muted-foreground">
             先读总览，再展开具体进展。报告覆盖本小时的事实采集与语义解释，区分已验证成果和推断，并注明缺失证据。
           </p>
           {[
@@ -449,8 +452,11 @@ export function Settings({ onAuthError }: { onAuthError: () => void }) {
             "24 个小时，每小时 ≤80 字",
             "下一步 ≤3 条，每条 ≤60 字",
           ].map((title, i) => (
-            <div key={title} className="flex gap-3 items-center text-sm">
-              <span className="mono text-xs text-basalt-muted-foreground">
+            <div
+              key={title}
+              className="flex gap-3 items-center text-basalt-base"
+            >
+              <span className="mono text-basalt-sm text-basalt-muted-foreground">
                 0{i + 1}
               </span>
               <span>{title}</span>

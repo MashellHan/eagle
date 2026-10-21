@@ -159,7 +159,7 @@ export function Connect({
       </div>
       {error && (
         <LayerCard>
-          <p role="alert" className="text-sm text-basalt-destructive">
+          <p role="alert" className="text-basalt-base text-basalt-destructive">
             {error}
           </p>
           <Button
@@ -214,7 +214,7 @@ export function Connect({
                     </span>
                     <div className="min-w-0 flex-1">
                       <h3 className="truncate font-semibold">{machine.name}</h3>
-                      <p className="mono mt-1 text-xs text-basalt-muted-foreground">
+                      <p className="mono mt-1 text-basalt-sm text-basalt-muted-foreground">
                         {machine.id}
                       </p>
                     </div>
@@ -251,7 +251,7 @@ export function Connect({
                     </span>
                   </div>
                   {state && (
-                    <p className="text-xs text-basalt-muted-foreground">
+                    <p className="text-basalt-sm text-basalt-muted-foreground">
                       {state.report.spaces.length} Spaces · 最新上报{" "}
                       {time(state.lastSeen)}
                     </p>
@@ -348,7 +348,7 @@ export function Connect({
               <Plus size={17} />
               添加机器
             </h2>
-            <p className="mt-2 text-xs text-basalt-muted-foreground">
+            <p className="mt-2 text-basalt-sm text-basalt-muted-foreground">
               每台机器一个身份，一份接入配置。
             </p>
             <form
@@ -426,7 +426,7 @@ export function Connect({
               </Button>
             </form>
             {machines !== null && !canIssue && (
-              <p className="mt-3 text-xs text-basalt-destructive">
+              <p className="mt-3 text-basalt-sm text-basalt-destructive">
                 尚未配置签名密钥，暂时无法生成 Token。
               </p>
             )}
@@ -459,7 +459,7 @@ export function Connect({
               <X size={16} />
             </Button>
           </div>
-          <p className="mt-2 text-sm text-basalt-muted-foreground">
+          <p className="mt-2 text-basalt-base text-basalt-muted-foreground">
             {issued.machine.name} · 复制后交给该机器的管理 Agent。预览已隐藏
             Token，复制内容包含凭证。
           </p>
