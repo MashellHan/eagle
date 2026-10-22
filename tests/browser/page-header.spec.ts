@@ -64,6 +64,8 @@ for (const [path, title] of routes) {
                         },
                       ],
                 canIssue: true,
+                machineGroups: { groups: [], assignments: {} },
+                pendingMachines: [],
                 entries: [],
                 hours: [],
               },

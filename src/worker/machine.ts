@@ -220,6 +220,13 @@ export class MachineState extends DurableObject<Env> {
     return machine;
   }
 
+  forget(): boolean {
+    const stored = this.ctx.storage.kv.get<Registration>("registration");
+    if (!stored || stored.enabled) return false;
+    this.ctx.storage.kv.delete("registration");
+    return true;
+  }
+
   private authorized(credentialId: string | null): boolean {
     const config = this.ctx.storage.kv.get<Registration>("registration");
     if (!config) return credentialId === null;

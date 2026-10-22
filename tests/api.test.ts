@@ -1013,6 +1013,10 @@ test("Connect creates scoped credentials, rotates and revokes them without persi
     "Renamed Mac",
   );
   assert.equal(
+    (await request("/api/v1/machines/connected/delete", {}, viewer)).status,
+    400,
+  );
+  assert.equal(
     (await request("/api/v1/machines/connected/revoke", {}, viewer)).status,
     200,
   );
@@ -1025,6 +1029,43 @@ test("Connect creates scoped credentials, rotates and revokes them without persi
   ).json()) as { machines: { id: string; enabled: boolean }[] };
   assert.equal(
     after.machines.find((m) => m.id === "connected")?.enabled,
+    false,
+  );
+  const createdGroup = await request(
+    "/api/v1/machine-groups",
+    { name: "Studio" },
+    viewer,
+  );
+  assert.equal(createdGroup.status, 201);
+  const group = (await createdGroup.json()) as { group: { id: string } };
+  assert.equal(
+    (
+      await request(
+        "/api/v1/machine-groups/assignments",
+        { machineId: "connected", groupId: group.group.id },
+        viewer,
+      )
+    ).status,
+    200,
+  );
+  const overviewGroups = (await (
+    await request("/api/v1/overview", undefined, viewer)
+  ).json()) as {
+    machineGroups: { assignments: Record<string, string | null> };
+  };
+  assert.equal(
+    overviewGroups.machineGroups.assignments.connected,
+    group.group.id,
+  );
+  assert.equal(
+    (await request("/api/v1/machines/connected/delete", {}, viewer)).status,
+    200,
+  );
+  const gone = (await (
+    await request("/api/v1/machines", undefined, viewer)
+  ).json()) as { machines: { id: string }[] };
+  assert.equal(
+    gone.machines.some((machine) => machine.id === "connected"),
     false,
   );
   const db = await mf.getD1Database("DB");

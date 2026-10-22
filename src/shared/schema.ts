@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { MachineGroupState } from "./machine-groups.ts";
 
 export type Viewer = {
   name: string;
@@ -277,6 +278,7 @@ export type Overview = {
   now: string;
   machines: MachineView[];
   pendingMachines: string[];
+  machineGroups: MachineGroupState;
 };
 export type HistoryEntry = {
   seq: number;

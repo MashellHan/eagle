@@ -777,7 +777,13 @@ test("Connect manages machines and creates a one-time onboarding prompt without 
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path === "/api/v1/machines" && request.method() === "GET")
-      return route.fulfill({ json: { machines, canIssue: true } });
+      return route.fulfill({
+        json: {
+          machines,
+          canIssue: true,
+          machineGroups: { groups: [], assignments: {} },
+        },
+      });
     if (path === "/api/v1/machines") {
       machines = [
         {
@@ -799,11 +805,16 @@ test("Connect manages machines and creates a one-time onboarding prompt without 
       machines[0].enabled = false;
       return route.fulfill({ json: { machine: machines[0] } });
     }
+    if (path.endsWith("/delete")) {
+      machines = [];
+      return route.fulfill({ json: { deleted: true } });
+    }
     return route.fulfill({
       json: {
         now: new Date().toISOString(),
         machines: [],
         pendingMachines: [],
+        machineGroups: { groups: [], assignments: {} },
       },
     });
   });
@@ -889,6 +900,7 @@ test("Connect rename actions keep a single text line and leave room for the inpu
         new URL(route.request().url()).pathname === "/api/v1/machines"
           ? {
               canIssue: true,
+              machineGroups: { groups: [], assignments: {} },
               machines: [
                 {
                   id: "mac-one",
@@ -898,7 +910,12 @@ test("Connect rename actions keep a single text line and leave room for the inpu
                 },
               ],
             }
-          : { now: new Date().toISOString(), machines: [] },
+          : {
+              now: new Date().toISOString(),
+              machines: [],
+              machineGroups: { groups: [], assignments: {} },
+              pendingMachines: [],
+            },
     }),
   );
   await page.goto("/connect");

@@ -1244,6 +1244,9 @@
   gap: 24px;
   align-items: start;
 }
+.connect-layout > .connect-layout-full {
+  grid-column: 1 / -1;
+}
 .connect-machine {
   display: flex;
   flex-direction: column;

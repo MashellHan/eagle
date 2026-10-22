@@ -50,6 +50,7 @@ import {
   useState,
 } from "react";
 import { assessPane } from "../shared/assessment.ts";
+import { machinesBySidebarGroup } from "../shared/machine-groups.ts";
 import type {
   HistoryEntry,
   MachineView,
@@ -649,6 +650,10 @@ export function App() {
   }, []);
   if (!boot && !auth && !error) return <AccessGate />;
   const machines = data?.machines ?? [];
+  const machineSections = machinesBySidebarGroup(
+    machines,
+    data?.machineGroups ?? { groups: [], assignments: {} },
+  );
   const now = clock;
   const selectedMachine = machines.find((m) => m.id === activeMachineId);
   const shown = activeMachineId
@@ -754,50 +759,59 @@ export function App() {
             <div className="mb-1 self-center">{sidebarToggle}</div>
           )}
           <SidebarNav aria-label="工作台导航">
-            {(!collapsed || mobile) && (
-              <SidebarPartition>机器 · {machines.length}</SidebarPartition>
-            )}
-            <div className="flex flex-col gap-basalt-nav-gap">
-              {machines.map((m) => {
-                const connection = machineConnection(m, now);
-                const label = {
-                  online: "在线",
-                  stale: "采集过期",
-                  offline: "离线 · 心跳过期",
-                }[connection];
-                return (
-                  <Tooltip key={m.id}>
-                    <TooltipTrigger asChild>
-                      <NavItem
-                        aria-label={m.name}
-                        aria-description={label}
-                        className="machine-nav-item"
-                        data-compact={collapsed && !mobile}
-                        active={activeMachineId === m.id && page === "overview"}
-                        onClick={() => navigate("overview", m.id)}
-                      >
-                        <Monitor
-                          className="h-4 w-4 shrink-0"
-                          strokeWidth={1.5}
-                          aria-hidden="true"
-                        />
-                        {(!collapsed || mobile) && (
-                          <span className="truncate">{m.name}</span>
-                        )}
-                        <span
-                          className="machine-status-dot"
-                          data-status={connection}
-                          aria-hidden="true"
-                        />
-                      </NavItem>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" sideOffset={8}>
-                      {m.name} · {label}
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </div>
+            {machineSections.map((section) => (
+              <div
+                key={section.name}
+                className="flex flex-col gap-basalt-nav-gap"
+              >
+                {(!collapsed || mobile) && (
+                  <SidebarPartition>
+                    {section.name} · {section.machines.length}
+                  </SidebarPartition>
+                )}
+                {section.machines.map((m) => {
+                  const connection = machineConnection(m, now);
+                  const label = {
+                    online: "在线",
+                    stale: "采集过期",
+                    offline: "离线 · 心跳过期",
+                  }[connection];
+                  return (
+                    <Tooltip key={m.id}>
+                      <TooltipTrigger asChild>
+                        <NavItem
+                          aria-label={m.name}
+                          aria-description={label}
+                          className="machine-nav-item"
+                          data-compact={collapsed && !mobile}
+                          active={
+                            activeMachineId === m.id && page === "overview"
+                          }
+                          onClick={() => navigate("overview", m.id)}
+                        >
+                          <Monitor
+                            className="h-4 w-4 shrink-0"
+                            strokeWidth={1.5}
+                            aria-hidden="true"
+                          />
+                          {(!collapsed || mobile) && (
+                            <span className="truncate">{m.name}</span>
+                          )}
+                          <span
+                            className="machine-status-dot"
+                            data-status={connection}
+                            aria-hidden="true"
+                          />
+                        </NavItem>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" sideOffset={8}>
+                        {m.name} · {label}
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            ))}
             {(!collapsed || mobile) && (
               <SidebarPartition>工作态势</SidebarPartition>
             )}

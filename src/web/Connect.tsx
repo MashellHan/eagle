@@ -7,23 +7,43 @@ import {
   LayerCard,
 } from "@nocoo/basalt";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@nocoo/basalt/components/select";
+import {
   ArrowUpRight,
   Check,
   Copy,
+  FolderTree,
   KeyRound,
   Plus,
   RefreshCw,
   Server,
   ShieldCheck,
   Terminal,
+  Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   type IssuedCredential,
   onboardingPrompt,
   type Registration,
 } from "../shared/connect.ts";
+import {
+  DEFAULT_MACHINE_GROUP_NAME,
+  type MachineGroup,
+  type MachineGroupState,
+} from "../shared/machine-groups.ts";
 import { type MachineView, WatchPortsSchema } from "../shared/schema.ts";
 import { AuthError, api } from "./api.ts";
 import { isStale } from "./Dashboard.tsx";
@@ -53,8 +73,15 @@ export function Connect({
   const [copied, setCopied] = useState<"prompt" | "token" | null>(null);
   const [confirm, setConfirm] = useState<{
     machine: Registration;
-    action: "rotate" | "revoke";
+    action: "rotate" | "revoke" | "delete";
   } | null>(null);
+  const [machineGroups, setMachineGroups] = useState<MachineGroupState>({
+    groups: [],
+    assignments: {},
+  });
+  const [groupName, setGroupName] = useState("");
+  const [editingGroup, setEditingGroup] = useState<MachineGroup | null>(null);
+  const [editGroupName, setEditGroupName] = useState("");
   const [editing, setEditing] = useState<Registration | null>(null);
   const [editName, setEditName] = useState("");
   const active = useRef(true);
@@ -69,12 +96,17 @@ export function Connect({
   );
   const load = useCallback(async () => {
     try {
-      const result = await api<{ machines: Registration[]; canIssue: boolean }>(
-        "/api/v1/machines",
-      );
+      const result = await api<{
+        machines: Registration[];
+        canIssue: boolean;
+        machineGroups: MachineGroupState;
+      }>("/api/v1/machines");
       if (active.current) {
         setMachines(result.machines);
         setCanIssue(result.canIssue);
+        setMachineGroups(
+          result.machineGroups ?? { groups: [], assignments: {} },
+        );
       }
     } catch (e) {
       if (active.current) fail(e);
@@ -97,6 +129,23 @@ export function Connect({
     setError("");
     setCopied(null);
     try {
+      if (path.endsWith("/delete")) {
+        await api(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!active.current) return;
+        const deletedId = confirm?.machine.id;
+        setMachines((previous) =>
+          (previous ?? []).filter((machine) => machine.id !== deletedId),
+        );
+        if (issued?.machine.id === deletedId) setIssued(null);
+        setConfirm(null);
+        onChange();
+        await load();
+        return;
+      }
       const result = await api<{ machine: Registration; token?: string }>(
         path,
         {
@@ -117,6 +166,103 @@ export function Connect({
       else if (issued?.machine.id === result.machine.id) setIssued(null);
       setConfirm(null);
       setEditing(null);
+      onChange();
+    } catch (e) {
+      if (active.current) fail(e);
+    } finally {
+      if (active.current) setBusy(false);
+    }
+  }
+  async function assignGroup(machineId: string, groupId: string | null) {
+    setBusy(true);
+    setError("");
+    try {
+      await api("/api/v1/machine-groups/assignments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ machineId, groupId }),
+      });
+      if (!active.current) return;
+      setMachineGroups((previous) => ({
+        ...previous,
+        assignments: { ...previous.assignments, [machineId]: groupId },
+      }));
+      onChange();
+    } catch (e) {
+      if (active.current) fail(e);
+    } finally {
+      if (active.current) setBusy(false);
+    }
+  }
+  async function createGroup(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api<{ group: MachineGroup }>(
+        "/api/v1/machine-groups",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: groupName }),
+        },
+      );
+      if (!active.current) return;
+      setMachineGroups((previous) => ({
+        ...previous,
+        groups: [...previous.groups, result.group],
+      }));
+      setGroupName("");
+      onChange();
+    } catch (e) {
+      if (active.current) fail(e);
+    } finally {
+      if (active.current) setBusy(false);
+    }
+  }
+  async function renameGroup(group: MachineGroup) {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api<{ group: MachineGroup }>(
+        `/api/v1/machine-groups/${group.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: editGroupName }),
+        },
+      );
+      if (!active.current) return;
+      setMachineGroups((previous) => ({
+        ...previous,
+        groups: previous.groups.map((entry) =>
+          entry.id === result.group.id ? result.group : entry,
+        ),
+      }));
+      setEditingGroup(null);
+      onChange();
+    } catch (e) {
+      if (active.current) fail(e);
+    } finally {
+      if (active.current) setBusy(false);
+    }
+  }
+  async function removeGroup(group: MachineGroup) {
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/v1/machine-groups/${group.id}`, { method: "DELETE" });
+      if (!active.current) return;
+      setMachineGroups((previous) => {
+        const assignments = { ...previous.assignments };
+        for (const [machineId, assigned] of Object.entries(assignments)) {
+          if (assigned === group.id) assignments[machineId] = null;
+        }
+        return {
+          groups: previous.groups.filter((entry) => entry.id !== group.id),
+          assignments,
+        };
+      });
       onChange();
     } catch (e) {
       if (active.current) fail(e);
@@ -175,6 +321,113 @@ export function Connect({
         </LayerCard>
       )}
       <div className="connect-layout">
+        <section
+          className="connect-layout-full space-y-4"
+          aria-label="机器分组"
+        >
+          <div className="board-title">
+            <div>
+              <h2>机器分组</h2>
+              <Badge variant="secondary">{machineGroups.groups.length}</Badge>
+            </div>
+          </div>
+          <LayerCard>
+            <p className="text-basalt-sm text-basalt-muted-foreground">
+              自定义分组会显示在侧栏；未分组的机器归入「
+              {DEFAULT_MACHINE_GROUP_NAME}」。空分组不会显示。
+            </p>
+            <form
+              className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2"
+              onSubmit={(e) => void createGroup(e)}
+            >
+              <Field label="新分组名称" htmlFor="connect-group-name">
+                <Input
+                  id="connect-group-name"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  maxLength={80}
+                  required
+                  disabled={busy}
+                />
+              </Field>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={busy || !groupName.trim()}
+              >
+                创建分组
+              </Button>
+            </form>
+            {machineGroups.groups.length > 0 && (
+              <ul className="mt-4 space-y-2">
+                {machineGroups.groups.map((group) => (
+                  <li
+                    key={group.id}
+                    className="flex flex-wrap items-center gap-2 rounded-basalt-md border border-basalt-border px-3 py-2"
+                  >
+                    <FolderTree size={15} aria-hidden="true" />
+                    {editingGroup?.id === group.id ? (
+                      <form
+                        className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void renameGroup(group);
+                        }}
+                      >
+                        <Input
+                          className="min-w-[10rem] flex-1"
+                          aria-label="新的分组名称"
+                          value={editGroupName}
+                          onChange={(e) => setEditGroupName(e.target.value)}
+                          required
+                          maxLength={80}
+                        />
+                        <Button type="submit" size="sm" disabled={busy}>
+                          保存
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditingGroup(null)}
+                        >
+                          取消
+                        </Button>
+                      </form>
+                    ) : (
+                      <>
+                        <span className="min-w-0 flex-1 truncate font-medium">
+                          {group.name}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busy}
+                          onClick={() => {
+                            setEditingGroup(group);
+                            setEditGroupName(group.name);
+                          }}
+                        >
+                          重命名
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busy}
+                          aria-label={`删除分组 ${group.name}`}
+                          onClick={() => void removeGroup(group)}
+                        >
+                          <Trash2 size={14} />
+                          删除
+                        </Button>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </LayerCard>
+        </section>
         <section className="space-y-4" aria-label="已管理机器">
           <div className="board-title">
             <div>
@@ -256,6 +509,32 @@ export function Connect({
                       {time(state.lastSeen)}
                     </p>
                   )}
+                  <Field label="侧栏分组" htmlFor={`group-${machine.id}`}>
+                    <Select
+                      value={machineGroups.assignments[machine.id] ?? "default"}
+                      onValueChange={(value) =>
+                        void assignGroup(
+                          machine.id,
+                          value === "default" ? null : value,
+                        )
+                      }
+                      disabled={busy}
+                    >
+                      <SelectTrigger id={`group-${machine.id}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">
+                          {DEFAULT_MACHINE_GROUP_NAME}
+                        </SelectItem>
+                        {machineGroups.groups.map((group) => (
+                          <SelectItem key={group.id} value={group.id}>
+                            {group.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
                   <div className="connect-machine-actions">
                     {state && machine.enabled && (
                       <Button
@@ -298,6 +577,20 @@ export function Connect({
                         }
                       >
                         停用
+                      </Button>
+                    )}
+                    {!machine.enabled && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy}
+                        aria-label={`删除 ${machine.name}`}
+                        onClick={() =>
+                          setConfirm({ machine, action: "delete" })
+                        }
+                      >
+                        <Trash2 size={14} />
+                        删除
                       </Button>
                     )}
                   </div>
@@ -515,20 +808,36 @@ export function Connect({
         }}
         loading={busy}
         title={
-          confirm?.action === "revoke" ? "停用这台机器？" : "生成新的机器凭证？"
+          confirm?.action === "revoke"
+            ? "停用这台机器？"
+            : confirm?.action === "delete"
+              ? "删除这台机器的凭证？"
+              : "生成新的机器凭证？"
         }
         description={
           <>
             {confirm?.machine.name}：
             {confirm?.action === "revoke"
               ? "立即停止接受该机器上报，当前状态保留。重新启用时需要新 Token。"
-              : "旧 Token 将立即失效。请将新的接入提示词交给该机器更新配置。"}
+              : confirm?.action === "delete"
+                ? "从列表中移除该机器及其凭证记录；侧栏与 Connect 将不再显示。机器 DO 中的历史快照仍保留。"
+                : "旧 Token 将立即失效。请将新的接入提示词交给该机器更新配置。"}
             {error && <p role="alert">{error}</p>}
           </>
         }
-        confirmLabel={confirm?.action === "revoke" ? "确认停用" : "确认生成"}
+        confirmLabel={
+          confirm?.action === "revoke"
+            ? "确认停用"
+            : confirm?.action === "delete"
+              ? "确认删除"
+              : "确认生成"
+        }
         cancelLabel="取消"
-        variant={confirm?.action === "revoke" ? "destructive" : "default"}
+        variant={
+          confirm?.action === "revoke" || confirm?.action === "delete"
+            ? "destructive"
+            : "default"
+        }
         onConfirm={() => {
           if (confirm) {
             return mutate(
