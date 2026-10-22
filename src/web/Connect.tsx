@@ -199,11 +199,14 @@ export function Connect({
     setBusy(true);
     setError("");
     try {
-      const result = await api<{ group: MachineGroup }>("/api/v1/machine-groups", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: groupName }),
-      });
+      const result = await api<{ group: MachineGroup }>(
+        "/api/v1/machine-groups",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: groupName }),
+        },
+      );
       if (!active.current) return;
       setMachineGroups((previous) => ({
         ...previous,
@@ -347,7 +350,11 @@ export function Connect({
                   disabled={busy}
                 />
               </Field>
-              <Button type="submit" size="sm" disabled={busy || !groupName.trim()}>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={busy || !groupName.trim()}
+              >
                 创建分组
               </Button>
             </form>

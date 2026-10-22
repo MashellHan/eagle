@@ -760,7 +760,10 @@ export function App() {
           )}
           <SidebarNav aria-label="工作台导航">
             {machineSections.map((section) => (
-              <div key={section.name} className="flex flex-col gap-basalt-nav-gap">
+              <div
+                key={section.name}
+                className="flex flex-col gap-basalt-nav-gap"
+              >
                 {(!collapsed || mobile) && (
                   <SidebarPartition>
                     {section.name} · {section.machines.length}

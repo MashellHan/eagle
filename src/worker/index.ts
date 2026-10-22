@@ -3,16 +3,16 @@ import { version } from "../../package.json";
 import { changesBetween } from "../shared/assessment.ts";
 import { MachineInput, MachineName } from "../shared/connect.ts";
 import {
-  MachineGroupInput,
-  type MachineGroupState,
-} from "../shared/machine-groups.ts";
-import {
   type DailySettings,
   DailySettingsSchema,
   dailyCutoff,
   TEMPLATE_VERSION,
   validDate,
 } from "../shared/daily.ts";
+import {
+  MachineGroupInput,
+  type MachineGroupState,
+} from "../shared/machine-groups.ts";
 import {
   HeartbeatSchema,
   type Report,
@@ -207,10 +207,7 @@ async function fleetIds(env: Env) {
   const directory = env.DIRECTORY.getByName("fleet");
   const deleted = new Set(await directory.deletedIds());
   const ids = [
-    ...new Set([
-      ...Object.keys(agentTokens(env)),
-      ...(await directory.ids()),
-    ]),
+    ...new Set([...Object.keys(agentTokens(env)), ...(await directory.ids())]),
   ]
     .filter((id) => !deleted.has(id))
     .sort();
@@ -223,7 +220,10 @@ async function registrations(env: Env) {
   );
   return machines.filter((m) => m !== null);
 }
-async function machineGroupState(env: Env, ids: string[]): Promise<MachineGroupState> {
+async function machineGroupState(
+  env: Env,
+  ids: string[],
+): Promise<MachineGroupState> {
   return env.DIRECTORY.getByName("fleet").machineGroups(ids);
 }
 function positive(
@@ -558,7 +558,10 @@ async function route(request: Request, env: Env): Promise<Response> {
     }
     throw new HttpError(405, "Method not allowed");
   }
-  if (path === "/api/v1/machine-groups/assignments" && request.method === "POST") {
+  if (
+    path === "/api/v1/machine-groups/assignments" &&
+    request.method === "POST"
+  ) {
     const input = await body(request);
     if (
       !input ||
@@ -575,7 +578,11 @@ async function route(request: Request, env: Env): Promise<Response> {
       )
     )
       throw new HttpError(400, "Invalid machine group assignment");
-    if (!(await env.MACHINES.getByName(input.machineId).registration(input.machineId)))
+    if (
+      !(await env.MACHINES.getByName(input.machineId).registration(
+        input.machineId,
+      ))
+    )
       throw new HttpError(404, "Machine not found");
     const directory = env.DIRECTORY.getByName("fleet");
     if (!(await directory.setAssignment(input.machineId, input.groupId)))

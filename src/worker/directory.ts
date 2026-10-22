@@ -2,8 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 import { type DailySettings, DailySettingsSchema } from "../shared/daily.ts";
 import {
   type MachineGroup,
-  type MachineGroupState,
   MachineGroupInput,
+  type MachineGroupState,
 } from "../shared/machine-groups.ts";
 import { aiEndpoint, sealAiKey, unsealAiKey } from "./ai-secret.ts";
 
@@ -115,7 +115,10 @@ export class MachineDirectory extends DurableObject<Env> {
     return true;
   }
   setAssignment(machineId: string, groupId: string | null): boolean {
-    if (groupId !== null && !this.groups().some((group) => group.id === groupId))
+    if (
+      groupId !== null &&
+      !this.groups().some((group) => group.id === groupId)
+    )
       return false;
     if (groupId === null) this.ctx.storage.kv.delete(`assignment:${machineId}`);
     else this.ctx.storage.kv.put(`assignment:${machineId}`, groupId);

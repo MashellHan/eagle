@@ -28,10 +28,15 @@ export function machinesBySidebarGroup<T extends { id: string }>(
   const defaultMembers = machines
     .filter((machine) => {
       const assigned = state.assignments[machine.id];
-      return assigned === null || assigned === undefined || !groupIds.has(assigned);
+      return (
+        assigned === null || assigned === undefined || !groupIds.has(assigned)
+      );
     })
     .sort((a, b) => a.id.localeCompare(b.id));
   if (defaultMembers.length)
-    sections.push({ name: DEFAULT_MACHINE_GROUP_NAME, machines: defaultMembers });
+    sections.push({
+      name: DEFAULT_MACHINE_GROUP_NAME,
+      machines: defaultMembers,
+    });
   return sections;
 }
