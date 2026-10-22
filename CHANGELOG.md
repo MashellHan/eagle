@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.13.0 — 2026-10-22
+
+- Add machine groups with Connect management and sidebar sections. Unassigned
+  machines use the default group 「机器」; empty groups stay hidden.
+- Allow deleting disabled machine credentials from Connect; active tokens must
+  still be revoked first.
+
 ## v0.12.0 — 2026-10-21
 
 - Align sidebar partitions, navigation insets and application typography with

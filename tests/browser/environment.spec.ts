@@ -39,7 +39,13 @@ test("local environment switch isolates reads, writes, identity and onboarding",
             token: "synthetic-environment-credential-not-real",
           },
         });
-      return route.fulfill({ json: { machines: [], canIssue: true } });
+      return route.fulfill({
+        json: {
+          machines: [],
+          canIssue: true,
+          machineGroups: { groups: [], assignments: {} },
+        },
+      });
     }
     if (path === "/api/v1/resources")
       return route.fulfill({ json: { retentionSeconds: 86400, samples: [] } });
@@ -58,6 +64,8 @@ test("local environment switch isolates reads, writes, identity and onboarding",
             warning: null,
           },
         ],
+        pendingMachines: [],
+        machineGroups: { groups: [], assignments: {} },
       },
     });
   });

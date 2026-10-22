@@ -15,7 +15,13 @@ All private responses are `Cache-Control: no-store`. Maximum streamed upload siz
 | `POST /api/v1/machines` | Verified Access JWT | `{id,name,watchPorts?}`; 201 `{machine,token}` shown once; duplicate ID 409 |
 | `POST /api/v1/machines/:id/rotate` | Verified Access JWT | `{}`; new token, old token invalid immediately; also re-enables |
 | `POST /api/v1/machines/:id/revoke` | Verified Access JWT | `{}`; disables ingestion and hides from overview, preserves DO state |
+| `POST /api/v1/machines/:id/delete` | Verified Access JWT | `{}`; removes a disabled machine from Connect and the fleet index; active machines must be revoked first |
 | `POST /api/v1/machines/:id/rename` | Verified Access JWT | `{name}`; management display name overrides collected hostname |
+| `GET /api/v1/machine-groups` | Verified Access JWT | Ordered custom groups and per-machine assignments (`null` = default sidebar group 「机器」) |
+| `POST /api/v1/machine-groups` | Verified Access JWT | `{name}`; creates a group |
+| `PATCH /api/v1/machine-groups/:id` | Verified Access JWT | `{name}`; renames a group |
+| `DELETE /api/v1/machine-groups/:id` | Verified Access JWT | Deletes a group; assigned machines return to the default group |
+| `POST /api/v1/machine-groups/assignments` | Verified Access JWT | `{machineId, groupId}` with `groupId` UUID or `null` |
 
 Browser origin: `https://eagle.hexly.ai`, protected by the nocoo Access application. Local development viewing is unauthenticated. Machine origin: `https://eagle-ingest.hexly.ai`, which serves reports, heartbeats, summaries, machine-scoped agent-state and public health; all other paths are 404. The browser Access JWT is validated by the Worker, and is never accepted as a machine Bearer token. Legacy viewer Bearer credentials and Eagle session cookies no longer authorize requests.
 

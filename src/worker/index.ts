@@ -3,6 +3,10 @@ import { version } from "../../package.json";
 import { changesBetween } from "../shared/assessment.ts";
 import { MachineInput, MachineName } from "../shared/connect.ts";
 import {
+  MachineGroupInput,
+  type MachineGroupState,
+} from "../shared/machine-groups.ts";
+import {
   type DailySettings,
   DailySettingsSchema,
   dailyCutoff,
@@ -199,17 +203,28 @@ async function ingest(
     throw new HttpError(409, "reportId already used for different content");
   return json(result, result.duplicate ? 200 : 201);
 }
-async function registrations(env: Env) {
+async function fleetIds(env: Env) {
+  const directory = env.DIRECTORY.getByName("fleet");
+  const deleted = new Set(await directory.deletedIds());
   const ids = [
     ...new Set([
       ...Object.keys(agentTokens(env)),
-      ...(await env.DIRECTORY.getByName("fleet").ids()),
+      ...(await directory.ids()),
     ]),
-  ].sort();
+  ]
+    .filter((id) => !deleted.has(id))
+    .sort();
+  return { directory, ids };
+}
+async function registrations(env: Env) {
+  const { ids } = await fleetIds(env);
   const machines = await Promise.all(
     ids.map((id) => env.MACHINES.getByName(id).registration(id)),
   );
   return machines.filter((m) => m !== null);
+}
+async function machineGroupState(env: Env, ids: string[]): Promise<MachineGroupState> {
+  return env.DIRECTORY.getByName("fleet").machineGroups(ids);
 }
 function positive(
   value: string | null,
@@ -458,11 +473,14 @@ async function route(request: Request, env: Env): Promise<Response> {
       throw new HttpError(404, "Machine not found");
     return json(await runDaily(env, ids, Date.now(), input));
   }
-  if (path === "/api/v1/machines" && request.method === "GET")
+  if (path === "/api/v1/machines" && request.method === "GET") {
+    const { ids } = await fleetIds(env);
     return json({
       machines: await registrations(env),
       canIssue: !!env.AGENT_SIGNING_KEY && env.AGENT_SIGNING_KEY.length >= 32,
+      machineGroups: await machineGroupState(env, ids),
     });
+  }
   if (path === "/api/v1/machines" && request.method === "POST") {
     if (!env.AGENT_SIGNING_KEY || env.AGENT_SIGNING_KEY.length < 32)
       throw new HttpError(503, "Token signing is not configured");
@@ -482,11 +500,22 @@ async function route(request: Request, env: Env): Promise<Response> {
     return json({ machine, token: await issueToken(machine, env) }, 201);
   }
   const management = path.match(
-    /^\/api\/v1\/machines\/([a-z0-9][a-z0-9_-]{0,79})\/(rotate|revoke|rename)$/,
+    /^\/api\/v1\/machines\/([a-z0-9][a-z0-9_-]{0,79})\/(rotate|revoke|rename|delete)$/,
   );
   if (management && request.method === "POST") {
     const [, id, operation] = management;
-    const action = operation as "rotate" | "revoke" | "rename";
+    const action = operation as "rotate" | "revoke" | "rename" | "delete";
+    if (action === "delete") {
+      const registration = await env.MACHINES.getByName(id).registration(id);
+      if (!registration || registration.enabled)
+        throw new HttpError(400, "Only disabled machines can be deleted");
+      if (!(await env.MACHINES.getByName(id).forget()))
+        throw new HttpError(404, "Machine not found");
+      const directory = env.DIRECTORY.getByName("fleet");
+      await directory.remove(id);
+      await directory.markDeleted(id);
+      return json({ deleted: true });
+    }
     if (
       action === "rotate" &&
       (!env.AGENT_SIGNING_KEY || env.AGENT_SIGNING_KEY.length < 32)
@@ -512,6 +541,72 @@ async function route(request: Request, env: Env): Promise<Response> {
       machine,
       ...(action === "rotate" ? { token: await issueToken(machine, env) } : {}),
     });
+  }
+  if (path === "/api/v1/machine-groups") {
+    const { ids } = await fleetIds(env);
+    const directory = env.DIRECTORY.getByName("fleet");
+    if (request.method === "GET")
+      return json(await machineGroupState(env, ids));
+    if (request.method === "POST") {
+      const parsed = MachineGroupInput.safeParse(await body(request));
+      if (!parsed.success) throw new HttpError(400, "Invalid group name");
+      await noSecrets(JSON.stringify(parsed.data), env);
+      return json(
+        { group: await directory.createGroup(parsed.data.name) },
+        201,
+      );
+    }
+    throw new HttpError(405, "Method not allowed");
+  }
+  if (path === "/api/v1/machine-groups/assignments" && request.method === "POST") {
+    const input = await body(request);
+    if (
+      !input ||
+      typeof input !== "object" ||
+      Array.isArray(input) ||
+      typeof input.machineId !== "string" ||
+      !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(input.machineId) ||
+      !(
+        input.groupId === null ||
+        (typeof input.groupId === "string" &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+            input.groupId,
+          ))
+      )
+    )
+      throw new HttpError(400, "Invalid machine group assignment");
+    if (!(await env.MACHINES.getByName(input.machineId).registration(input.machineId)))
+      throw new HttpError(404, "Machine not found");
+    const directory = env.DIRECTORY.getByName("fleet");
+    if (!(await directory.setAssignment(input.machineId, input.groupId)))
+      throw new HttpError(404, "Group not found");
+    return json({
+      assignment: {
+        machineId: input.machineId,
+        groupId: input.groupId,
+      },
+    });
+  }
+  const groupPath = path.match(
+    /^\/api\/v1\/machine-groups\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/,
+  );
+  if (groupPath) {
+    const [, groupId] = groupPath;
+    const directory = env.DIRECTORY.getByName("fleet");
+    if (request.method === "PATCH") {
+      const parsed = MachineGroupInput.safeParse(await body(request));
+      if (!parsed.success) throw new HttpError(400, "Invalid group name");
+      await noSecrets(JSON.stringify(parsed.data), env);
+      const group = await directory.renameGroup(groupId, parsed.data.name);
+      if (!group) throw new HttpError(404, "Group not found");
+      return json({ group });
+    }
+    if (request.method === "DELETE") {
+      if (!(await directory.deleteGroup(groupId)))
+        throw new HttpError(404, "Group not found");
+      return json({ deleted: true });
+    }
+    throw new HttpError(405, "Method not allowed");
   }
   if (request.method !== "GET") throw new HttpError(405, "Method not allowed");
   if (path === "/api/v1/me") return json(await withProfile(viewer));
@@ -586,16 +681,17 @@ async function route(request: Request, env: Env): Promise<Response> {
     return json(await object.resources());
   }
   if (path === "/api/v1/overview") {
-    const ids = (await registrations(env))
-      .filter((m) => m.enabled)
-      .map((m) => m.id);
+    const { ids } = await fleetIds(env);
+    const enabled = (await registrations(env)).filter((m) => m.enabled);
+    const enabledIds = enabled.map((m) => m.id);
     const states = await Promise.all(
-      ids.map((id) => env.MACHINES.getByName(id).current()),
+      enabledIds.map((id) => env.MACHINES.getByName(id).current()),
     );
     return json({
       now: new Date().toISOString(),
       machines: states.filter((state) => state !== null),
-      pendingMachines: ids.filter((_, index) => states[index] === null),
+      pendingMachines: enabledIds.filter((_, index) => states[index] === null),
+      machineGroups: await machineGroupState(env, ids),
     });
   }
   if (path === "/api/v1/semantic-hours") {
