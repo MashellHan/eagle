@@ -184,7 +184,7 @@ Use absolute executable paths and a PATH containing Herdr, as with `watch`. Defa
 
 Installing a new npm version updates the executable; it does not create or start a realtime service. Each machine needs its own `realtime-watch` process. An existing `watch` process does not provide the realtime connection.
 
-1. Verify `eagle-agent --version` reports 0.9.0. Herdr must be running; native input currently requires Herdr 0.9.1 / protocol 22.
+1. Verify `eagle-agent --version` reports 1.0.0. Herdr must be running; native input currently requires Herdr 0.9.1 / protocol 22.
 2. Reuse the existing collector's secure configuration, including its machine ID, token and ingestion URL. The default is `~/.config/eagle/agent.json`; preserve an existing custom `EAGLE_CONFIG` path. There are no additional realtime fields to add to that file.
 3. If no realtime service is running, test `eagle-agent realtime-watch` in the foreground. For a custom config, use `EAGLE_CONFIG=/absolute/path/agent.json eagle-agent realtime-watch`. If authentication fails, correct that existing configuration; do not create a replacement machine.
 4. Stop the foreground test before enabling a separate user service with launchd on macOS or systemd on Linux. Use absolute executable paths and the same configuration/PATH as the working collector so the service can find Node and Herdr. Give it its own label/unit and preserve the collector service. If a realtime service already exists, restart that service after upgrading instead of adding a duplicate.
@@ -235,8 +235,8 @@ Screens redact known machine credentials across line wraps and recognizable view
 
 Native attach briefly controls terminal geometry and can resume a pending agent. Layout dimensions are only an estimate; attach/detach can resize the terminal and cause Herdr to reapply other tab geometry. There is no no-resize input API in protocol 22. Text uses a complete bracketed-paste message so Herdr applies the target’s paste mode; embedded escape/control bytes are rejected. Basic keys support legacy, Kitty and modifyOtherKeys modes. Up/down require Kitty disambiguation flag 1 or report-all-keys flag 8, which both prove canonical CSI encoding ([Kitty protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/#report-all-keys-as-escape-codes)); other modes reject direction input because protocol 22 does not expose application-cursor mode (DECCKM). Event reporting flag 2 adds press/release events in either supported mode. Explicit Ctrl+P/N shortcuts remain available for applications with compatible history bindings; they are not automatically substituted. No terminal mouse/color/graphics/resize emulator is implied. Text containing newlines may execute when the target does not use bracketed paste.
 
-The new keys require Agent/bridge 0.9.0 and the matching upgraded Worker.
-Website/Worker 0.12.0 pins the independently verified Agent 0.9.0 artifact.
+The new keys require Agent/bridge 1.0.0 and the matching upgraded Worker.
+Website/Worker 0.14.0 pins the independently verified Agent 1.0.0 artifact.
 Restart existing bridges after upgrading; npm publication alone does not replace
 running processes. Do not deploy only the website and claim key support.
 

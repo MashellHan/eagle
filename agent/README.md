@@ -3,7 +3,9 @@
 Agent 1.0.0 removes the optional semantic layer: `manager-once`,
 `manager-watch`, `manager.command` and the legacy `evidenceFile` input are gone,
 so the package now ships only deterministic collection, realtime bridging and
-their storage. Optional macOS GPU, temperature, fan and traffic observations
+their storage. Stop and delete any supervised `manager-watch` service when
+upgrading; a stored `manager` block or `evidenceFile` path is ignored with one
+`retired_config_keys` log line rather than failing startup. Optional macOS GPU, temperature, fan and traffic observations
 remain read-only. Install macmon separately and include it in the service PATH for
 hardware readings; no sudo or fan control is used.
 

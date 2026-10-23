@@ -39,8 +39,7 @@ Create `~/.config/eagle/agent.json`, directory mode 0700 and file mode 0600:
   "token": "REPLACE_WITH_MACHINE_SECRET",
   "intervalSeconds": 30,
   "slowIntervalSeconds": 300,
-  "watchPorts": [{ "name": "Raven", "port": 7024 }],
-  "evidenceFile": "/absolute/private/path/evidence.json"
+  "watchPorts": [{ "name": "Raven", "port": 7024 }]
 }
 ```
 
@@ -50,22 +49,22 @@ Open **Connect** on the Eagle website. Add a machine ID, display name and option
 
 The platform signs machine-scoped tokens using the `AGENT_SIGNING_KEY` Worker secret (at least 32 random characters). Raw tokens and the signing key never enter a database. Each machine DO stores only its configuration, public credential ID, enabled state and expiry. Tokens expire after one year. The directory DO indexes machine IDs only; ingestion goes directly to the corresponding machine DO. The old `AGENT_TOKENS` secret remains compatible; Connect can rotate a legacy machine to signed credentials or disable it. Removing a legacy secret alone does not disable a machine already migrated to signed credentials; use Connect.
 
-Install Agent v0.9.0 from npm. The Agent version comes from `agent/package.json`; website-only releases do not require an Agent update or npm publication. Check `node --version`, `npm --version` and `herdr --version`: Node 24+ and a running Herdr installation are required. Node downloads: https://nodejs.org/en/download. The installed Agent needs no Eagle checkout or TypeScript compiler.
+Install Agent v1.0.0 from npm. The Agent version comes from `agent/package.json`; website-only releases do not require an Agent update or npm publication. Check `node --version`, `npm --version` and `herdr --version`: Node 24+ and a running Herdr installation are required. Node downloads: https://nodejs.org/en/download. The installed Agent needs no Eagle checkout or TypeScript compiler.
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.9.0 --registry=https://registry.npmjs.org
+npm install -g @nocoo/eagle-agent@1.0.0 --registry=https://registry.npmjs.org
 ```
 
 If npm downloads are unreachable, **Tencent Cloud is the preferred mirror**:
 
 ```sh
-npm install -g @nocoo/eagle-agent@0.9.0 --registry=https://mirrors.cloud.tencent.com/npm/
+npm install -g @nocoo/eagle-agent@1.0.0 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
 This changes the registry for this command only. A new version may not have synchronized yet (`404` / `ETARGET`); retry later or use the official registry when reachable, keeping the pinned version. Public installation needs no npm login. Never send an Eagle token to npm or a mirror, or disable HTTPS certificate verification.
 
 ```sh
-eagle-agent --version # expected: 0.9.0
+eagle-agent --version # expected: 1.0.0
 eagle-agent --help
 ```
 
@@ -95,7 +94,7 @@ Memory is total minus free and may include caches; load is the OS 1/5/15-minute 
 
 `watchPorts` is optional and defaults to an empty list. Each entry has `name`, `port` and optional `host` (`127.0.0.1` by default; `::1` is also supported). At most 32 unique host/port pairs can be configured. For Raven, 7023 is the dashboard and 7024 is the proxy; configure either or both. Checks run concurrently, each bounded to one second, and send no application data or credentials. Results distinguish TCP connect success, connection refusal, timeout and check error. A listening port does not prove business health or successful task deployment. The UI marks observations older than 90 seconds as historical.
 
-Restart the collector after editing its configuration. For an upgrade, deploy the compatible Worker **before** restarting production collectors: old strict v1 servers reject the newly added telemetry field. Older agent reports without telemetry continue to work on the new server. The current preview is configured in `.local/agent-dev.json`; its Raven port check and resource snapshots go to its independent local Durable Object.
+Restart the collector after editing its configuration. For an upgrade, deploy the compatible Worker **before** restarting production collectors: old strict v1 servers reject the newly added telemetry field. Agent 1.0.0 removed the semantic Manager: stop and delete any `manager-watch` service, then restart `watch` and `realtime-watch`. A stored `manager` block or `evidenceFile` path is ignored with one `retired_config_keys` log line instead of failing startup. Older agent reports without telemetry continue to work on the new server. The current preview is configured in `.local/agent-dev.json`; its Raven port check and resource snapshots go to its independent local Durable Object.
 
 ## Installed on MBPM5MSFT
 

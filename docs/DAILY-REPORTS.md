@@ -29,7 +29,7 @@ Eagle records that configured model, not the resolved upstream model or its cost
 No Workers AI binding is used. OpenAI Chat Completions and Anthropic Messages
 remain supported with endpoint-bound encrypted keys and redirects rejected.
 
-Template `eagle-daily-zh-v1` accepts only this JSON shape:
+Template `eagle-daily-zh-v2` accepts only this JSON shape:
 
 ```json
 {
