@@ -440,7 +440,7 @@ export async function collect(config: AgentConfig): Promise<Report> {
       readOnly: true,
     });
   } catch {
-    warnings.push("Codex Goal 数据库不可读；等待管理 Agent 补充");
+    warnings.push("Codex Goal 数据库不可读；Goal 证据将保持未知");
   }
   try {
     for (const session of sessions.filter((s) => s.running)) {

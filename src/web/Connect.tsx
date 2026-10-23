@@ -286,7 +286,7 @@ export function Connect({
         {[
           [Plus, "01", "添加机器", "设置名称与唯一 ID"],
           [KeyRound, "02", "生成凭证", "独立授权，随时撤销"],
-          [Terminal, "03", "粘贴提示词", "交给机器上的管理 Agent"],
+          [Terminal, "03", "粘贴提示词", "交给机器上的编码 Agent"],
         ].map(([Icon, number, title, description]) => {
           const StepIcon = Icon as typeof Plus;
           return (
@@ -452,7 +452,7 @@ export function Connect({
               <LayerCard.Empty
                 icon={<Server size={28} />}
                 title="连接你的第一台机器"
-                description="生成专属提示词后，交给本机管理 Agent 完成接入；推荐 Hermes。"
+                description="生成专属提示词后，交给本机编码 Agent 完成接入。"
               />
             </LayerCard>
           ) : (
@@ -753,7 +753,7 @@ export function Connect({
             </Button>
           </div>
           <p className="mt-2 text-basalt-base text-basalt-muted-foreground">
-            {issued.machine.name} · 复制后交给该机器的管理 Agent。预览已隐藏
+            {issued.machine.name} · 复制后交给该机器的编码 Agent。预览已隐藏
             Token，复制内容包含凭证。
           </p>
           <section aria-label="提示词预览" className="prompt-preview">

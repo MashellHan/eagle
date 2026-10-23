@@ -2071,19 +2071,17 @@ test("archived v1 daily reports stay readable after the template bump", async ()
     inputHash: "legacy-hash",
     snapshots: 2880,
     semanticRecords: 24,
-    coverage: [
-      {
-        hour: 9,
-        snapshots: 120,
-        semanticRecords: 12,
-        inputRecords: 90,
-        retainedRecords: 8,
-        omittedRecords: 0,
-        excerptedRecords: 0,
-        firstObservedAt: "2026-09-01T01:00:00.000Z",
-        lastObservedAt: "2026-09-01T01:59:00.000Z",
-      },
-    ],
+    coverage: Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      snapshots: hour === 9 ? 120 : 0,
+      semanticRecords: hour === 9 ? 12 : 0,
+      inputRecords: hour === 9 ? 90 : 0,
+      retainedRecords: hour === 9 ? 8 : 0,
+      omittedRecords: 0,
+      excerptedRecords: 0,
+      firstObservedAt: hour === 9 ? "2026-09-01T01:00:00.000Z" : null,
+      lastObservedAt: hour === 9 ? "2026-09-01T01:59:00.000Z" : null,
+    })),
     content: {
       overview: "旧模板日报仍可读取。",
       hours: Array.from({ length: 24 }, (_, hour) => ({

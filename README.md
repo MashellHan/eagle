@@ -32,13 +32,13 @@ Eagle 是面向 Herdr 用户的私有看板，汇总每台上报机器的 Space�
 
 侧栏显示已验证的 Access 账户与退出入口。头像服务只接收规范化邮箱的 SHA-256，查询失败时保留账户名和首字母头像。本地可配置 `LOCAL_USER_EMAIL` 预览，退出功能在本地禁用。
 
-Codex 适配器仅提取最终回复和生命周期事件，不采集推理与工具参数；其他 harness 使用有限终端片段和管理 Agent 提供的结构化证据。文本在落盘和上传前脱敏，但启发式规则无法保证识别任意秘密；应提供简明总结与验证凭证，避免原始终端转储。
+Codex 适配器仅提取最终回复和生命周期事件，不采集推理与工具参数；其他 harness 使用有限的终端片段。文本在落盘和上传前脱敏，但启发式规则无法保证识别任意秘密；应提供简明总结与验证凭证，避免原始终端转储。
 
 实时模式另行传输脱敏后的当前终端画面；画面与已发送输入不写入 D1 或 DO 存储。未发送草稿按终端缓存在浏览器 localStorage，断线、退出或刷新后可恢复，发送后清除；可识别的凭据不缓存。
 
 ## 使用
 
-打开 [Eagle](https://eagle.hexly.ai)，通过 Access 登录，在 **Connect** 添加机器，将生成的接入提示词交给该机器上的 管理 Agent（推荐 Hermes，也支持其他 Agent）。
+打开 [Eagle](https://eagle.hexly.ai)，通过 Access 登录，在 **Connect** 添加机器，将生成的接入提示词交给该机器上的编码 Agent。
 
 采集器需要 Node.js 24+、npm 与 Herdr 0.9.1+；实时输入当前要求 Herdr 0.9.1 的协议 22。可从 npm 独立安装，无须克隆 Eagle 仓库。网站可独立发布；当前 Agent 固定使用已发布的 v1.0.0：
 
@@ -121,7 +121,7 @@ npm run test:browser
 | TypeScript、Biome | 类型检查与源码规范 |
 | Cloudflare Workers、Durable Objects、D1 | 受认证 API、每机状态与日报归档 |
 | Cloudflare Access、jose | 查看者身份与 JWT 校验 |
-| Node.js、Herdr、Zod | 本地采集、管理 Agent 与报告校验 |
+| Node.js、Herdr、Zod | 本地采集与报告校验 |
 | Node test runner、Miniflare、Playwright | 单元、API 与浏览器测试 |
 
 ## 文档

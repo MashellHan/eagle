@@ -179,6 +179,47 @@ const dailyReport = {
   },
 };
 
+test("archived v1 daily reports still render every hour without semantic counters", async ({
+  page,
+}) => {
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ json: { machines: [], entries: [] } }),
+  );
+  const legacy = {
+    ...dailyReport,
+    date: "2026-09-02",
+    templateVersion: "eagle-daily-zh-v1",
+    semanticRecords: 24,
+    coverage: dailyReport.coverage.map((hour) => ({
+      ...hour,
+      semanticRecords: hour.hour === 9 ? 12 : 0,
+    })),
+    content: {
+      ...dailyReport.content,
+      overview: "旧模板日报仍可展开查看。",
+      hours: dailyReport.content.hours.map((hour) => ({
+        ...hour,
+        evidenceIds: hour.hour === 9 ? ["H09-S1"] : [],
+      })),
+    },
+  };
+  await page.route("**/api/v1/daily-reports?**", (route) =>
+    route.fulfill({
+      json: { entries: [{ seq: 1, report: legacy }], nextCursor: null },
+    }),
+  );
+  await page.goto("/history");
+  const card = page.getByRole("article", {
+    name: "Mac Studio 2026-09-02 日报",
+  });
+  await expect(card).toContainText("旧模板日报仍可展开查看。");
+  await expect(card).not.toContainText("条语义记录");
+  await card.getByRole("button", { name: "展开报告" }).click();
+  await expect(card.locator(".daily-hour")).toHaveCount(24);
+  await expect(card).toContainText("完成接口集成，部署待核实。");
+  await expect(card).toContainText("H09-S1");
+});
+
 test("daily history shows 24 compact hour rows, preserves expansion and paginates by date", async ({
   page,
 }) => {
