@@ -1358,3 +1358,30 @@ serving and the first catalogue-derived production Cron observation.
 - No Worker deployment, D1 migration, remote collection, production credential
   or dashboard change was performed. Next hop: deploy the Worker before any
   onboarding relies on 1.0.0 if the semantic endpoints must disappear remotely.
+
+## 2026-10-24 06:35 +08 — 0.14.0 deployed
+
+- Gates re-ran at `1ee983d`: `npm run check` passed (168 Node tests, strict
+  types, lint, build) and `npm run test:browser` reported 191 passed with 11
+  pre-existing viewport skips.
+- `wrangler d1 migrations list eagle --remote` showed only
+  `0005_drop_pane_summaries.sql` pending. The table held 30,781 archived rows
+  (2026-09-19 10:34Z → 2026-10-22 02:06Z); they were exported to the ignored
+  `.local/release/pane_summaries-backup.json` (72 MB) before `npm run db:remote`
+  dropped it. No other migration was pending.
+- `npm run deploy` uploaded Worker version `2dd26045-1e6e-4817-ab81-4af8663957a7`
+  with `BUILD_REVISION=1ee983d…`; secrets were unchanged and untouched.
+- Production evidence: `/api/live` returns version `0.14.0`, revision
+  `1ee983d40e53604417c21ddb1ec5e305ec49b19f` and template
+  `eagle-daily-zh-v2`; `/api/v1/summaries`, `/agent-state`, `/semantic-hours`
+  and `/summary-history` all return 404; `/api/v1/overview` returns six machines
+  with no `summaries`/`manager` keys and no pending IDs; every machine reported
+  within 33 seconds on collector `1.0.0`; the served bundle
+  `assets/index-DKEKHnxk.js` matches the local build and contains no semantic UI
+  strings. Archived v1 daily reports still return from D1.
+- CI `Check` succeeded at the same SHA; tags `v0.14.0` and `agent-v1.0.0` and
+  their GitHub Releases were published afterwards, with `v0.14.0` marked Latest.
+- Chrome page inspection could not be captured programmatically: `screencapture`
+  is blocked without screen-recording permission, which was not requested. Page
+  verification therefore rests on the authenticated HTTP checks, the exact
+  bundle comparison and the passing browser suite.
