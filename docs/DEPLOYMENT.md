@@ -87,7 +87,7 @@ The Worker owns `eagle.hexly.ai` as a custom domain. `https://eagle-ingest.hexly
 Migration `0004_daily_reports.sql` creates the daily archive and drops the old
 hourly archive; apply it immediately before deploying the matching Worker. The
 new Worker installs only `59 15 * * *` (Beijing 23:59). Each machine DO drops old
-hourly jobs/steps when initialized, retaining raw snapshots and semantics. The
+hourly jobs/steps and the retired semantic tables when initialized, retaining raw snapshots. The
 existing AI connection and encrypted credential are preserved. Set `AI_ENCRYPTION_KEY` once using a cryptographically random value of at least 32 characters (`npx wrangler secret put AI_ENCRYPTION_KEY`, interactive input or secure file stdin). Do not overwrite an existing wrapping key. Local development uses the same binding in gitignored `.dev.vars`.
 
 Users save provider/model and API keys in `/settings`. The directory DO stores authenticated ciphertext in the separate `ai-credential` record; API responses never return the key. Blank input keeps the existing credential, explicit clearing removes it, and changing provider/endpoint/protocol/authentication requires a new key. Without a complete AI configuration the schedule is a no-op.

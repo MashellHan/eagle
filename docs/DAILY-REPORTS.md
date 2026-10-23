@@ -8,19 +8,17 @@ The UI states this coverage; an empty hour means unknown, not inactivity.
 
 ## Collection and input
 
-The deterministic collector and local Manager keep their existing schedules.
-Snapshots remain in DO `hourly_facts` for 48 hours. Semantic changes remain in
-UTC hour buckets for 30 days or 10,000 entries, with the independent D1 outbox
-unchanged. The cloud report reads 24 UTC buckets corresponding to Beijing 00–23.
-It does not generate or archive separate hourly AI reports.
+The deterministic collector keeps its existing schedule. Snapshots remain in DO
+`hourly_facts` for 48 hours. The cloud report reads 24 UTC buckets corresponding
+to Beijing 00–23. It does not generate or archive separate hourly AI reports.
 
 Each bucket is compacted without changing raw evidence. Visible terminal evidence
-retains first/latest screens per task. The model receives a bounded sample:
-semantic records first, then other records, newest observation first. Each record
+retains first/latest screens per task. The model receives a bounded sample,
+newest observation first. Each record
 retains its source ID and first/latest timestamps; values over 1,000 characters
 are marked excerpts. Each hour has a 4,000-character serialized record budget,
 for at most 96,000 characters of records per day. Coverage stores raw and retained
-counts, excerpt/omission counts, snapshot/semantic counts and observation bounds.
+counts, excerpt/omission counts, snapshot counts and observation bounds.
 The UI marks sampled hours. The report does not claim exhaustive task coverage.
 
 ## Model and output
@@ -64,7 +62,7 @@ budget, below Cloudflare's 15-minute Cron wall limit. Excess fleet work is repor
 as deferred and requires a manual run. One Cron does not mean one fleet-wide call.
 
 DO `daily_jobs` persists a five-minute exclusive lease, input version, attempt,
-stage, safe error, completion and pending final report. The input is frozen at claim time using the maximum snapshot/semantic sequence.
+stage, safe error, completion and pending final report. The input is frozen at claim time using the maximum snapshot sequence.
 Later uploads cannot cancel that snapshot or enter only some of its hour buckets.
 `dataReceivedBy` records the receipt boundary; manual regeneration includes new
 arrivals. Preparation checks frozen counts before invoking the model. An
@@ -98,8 +96,8 @@ a manual retry button. Settings explains the fixed schedule and format limits.
 ## Cutover and verification
 
 Migration `0004_daily_reports.sql` creates `machine_daily_reports` and deletes
-the old hourly archive. Machine DO initialization drops hourly jobs/steps while
-preserving raw snapshots and semantic tables. Directory initialization moves
+the old hourly archive. Machine DO initialization drops hourly jobs/steps and the retired semantic
+tables while preserving raw snapshots. Directory initialization moves
 the existing AI configuration to `daily-settings`, removes its cadence field and
 deletes the old settings record; the encrypted credential remains intact.
 The old hourly endpoints, UI and generation code are removed.

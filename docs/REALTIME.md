@@ -158,18 +158,17 @@ pane. A missing realtime target stays unavailable rather than silently selecting
 and requesting control of a different terminal.
 
 Opening **当前任务** reads the latest already-uploaded overview once and freezes
-its task facts and semantic summary. **刷新** explicitly reads again; background
-dashboard polling and the former semantic-hour timer do not replace this view.
+its task facts and evidence. **刷新** explicitly reads again; background
+dashboard polling does not replace this view.
 Leaving cancels pending reads. Failed refreshes retain and label the previous
 snapshot; an expired Access session clears the protected view.
 
 The panel displays the collection and read times, and warns if collection predates
 the last observed realtime frame. This is not a new collection trigger: the normal
 collector can lag terminal frames (typically a 30-second cadence plus collection
-and upload time), and Codex task titles can still be conversation titles. Semantic
-summaries depend on independently configured Manager updates. This UI change does
-not claim raw-screen/task-summary equality, collect additional prompts/transcripts,
-start a Manager, or persist realtime frames.
+and upload time), and Codex task titles can still be conversation titles. This UI
+change does not claim raw-screen/task-summary equality, collect additional
+prompts/transcripts, or persist realtime frames.
 
 **设置 → 显示时区** controls all structured timestamps, calendar dates and hourly filters. It defaults to UTC+08:00 and stores only the fixed UTC offset in this browser; it does not follow daylight-saving changes or modify source timestamps/UTC archive boundaries. Half-hour and quarter-hour offsets show the corresponding local archive minutes. A blocked browser store keeps the preference in memory and reports that it cannot persist.
 
@@ -179,16 +178,16 @@ Run a separate user service with the same secure config:
 eagle-agent realtime-watch
 ```
 
-Use absolute executable paths and a PATH containing Herdr, as with `watch`. Default to direct connections; enable a proxy only through the [optional reporting proxy](../agent/README.md#optional-reporting-proxy) settings, with Node.js 24.5+ for WebSocket proxy support. Keep only one realtime bridge per machine configuration. This service is independent of the read-only collector and semantic Manager; it enables authenticated remote input. Deploy the compatible Worker before starting upgraded bridges. Agents older than v0.5.0 continue ordinary reporting but cannot provide realtime mode.
+Use absolute executable paths and a PATH containing Herdr, as with `watch`. Default to direct connections; enable a proxy only through the [optional reporting proxy](../agent/README.md#optional-reporting-proxy) settings, with Node.js 24.5+ for WebSocket proxy support. Keep only one realtime bridge per machine configuration. This service is independent of the read-only collector; it enables authenticated remote input. Deploy the compatible Worker before starting upgraded bridges. Agents older than v0.5.0 continue ordinary reporting but cannot provide realtime mode.
 
 ## Upgrade existing machines
 
-Installing a new npm version updates the executable; it does not create or start a realtime service. Each machine needs its own `realtime-watch` process. An existing `watch` or `manager-watch` process does not provide the realtime connection.
+Installing a new npm version updates the executable; it does not create or start a realtime service. Each machine needs its own `realtime-watch` process. An existing `watch` process does not provide the realtime connection.
 
 1. Verify `eagle-agent --version` reports 0.9.0. Herdr must be running; native input currently requires Herdr 0.9.1 / protocol 22.
 2. Reuse the existing collector's secure configuration, including its machine ID, token and ingestion URL. The default is `~/.config/eagle/agent.json`; preserve an existing custom `EAGLE_CONFIG` path. There are no additional realtime fields to add to that file.
-3. If no realtime service is running, test `eagle-agent realtime-watch` in the foreground. For a custom config, use `EAGLE_CONFIG=/absolute/path/agent.json eagle-agent realtime-watch`. If authentication fails, correct that existing configuration; do not create a replacement machine or discard Manager state.
-4. Stop the foreground test before enabling a separate user service with launchd on macOS or systemd on Linux. Use absolute executable paths and the same configuration/PATH as the working collector so the service can find Node and Herdr. Give it its own label/unit and preserve the collector and Manager services. If a realtime service already exists, restart that service after upgrading instead of adding a duplicate.
+3. If no realtime service is running, test `eagle-agent realtime-watch` in the foreground. For a custom config, use `EAGLE_CONFIG=/absolute/path/agent.json eagle-agent realtime-watch`. If authentication fails, correct that existing configuration; do not create a replacement machine.
+4. Stop the foreground test before enabling a separate user service with launchd on macOS or systemd on Linux. Use absolute executable paths and the same configuration/PATH as the working collector so the service can find Node and Herdr. Give it its own label/unit and preserve the collector service. If a realtime service already exists, restart that service after upgrading instead of adding a duplicate.
 5. Reopen the Space in Eagle. `等待本机实时服务` means the machine's realtime bridge is not connected, even when ordinary snapshots are current. Once connected, the view requests input control by default. If another viewer owns control, sending stays disabled; use `接管输入` after it becomes available. Use `释放输入` to remain a viewer.
 
 ## Transport and lifecycle

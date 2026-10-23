@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.14.0 — 2026-10-24
+
+- Remove the optional semantic layer end to end: the Manager, the summary
+  protocol, UTC semantic hour buckets, the D1 `pane_summaries` archive and the
+  Pane summary panel. Pane cards and task headers now show the collected task
+  title, and evidence, state assessment and freshness drop no capability.
+- Drop `/api/v1/summaries`, `/api/v1/agent-state`, `/api/v1/semantic-hours` and
+  `/api/v1/summary-history`; initialization drops the retired Durable Object
+  tables. `migrations/0005_drop_pane_summaries.sql` removes the D1 archive.
+- Keep AI daily reports deterministic-input only. Bump the prompt template to
+  `eagle-daily-zh-v2` and drop semantic counters from coverage and payloads;
+  existing archived reports stay readable.
+- Pair the website with independently published Agent 1.0.0, which removes
+  `manager-once`, `manager-watch`, `manager.command` and the legacy
+  `evidenceFile` input.
+
+## Agent v1.0.0 — 2026-10-24
+
+- Remove the semantic Manager, its configuration and the legacy evidence file
+  input. `watch`, `realtime-watch`, `once`, `heartbeat`, `collect` and `upload`
+  are unchanged; a stored `manager` block or `evidenceFile` path is ignored.
+- Preserve report schema v1, spool recovery, redaction and realtime behaviour.
+
 ## v0.13.0 — 2026-10-22
 
 - Add machine groups with Connect management and sidebar sections. Unassigned

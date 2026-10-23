@@ -12,18 +12,18 @@ parsed URL origin (scheme, hostname and port). An equal machine ID on two
 deployments is not an equal credential scope.
 
 - **Same identity and origin:** back up securely, rotate only the credential,
-  preserve all other settings and Manager state, then restart that service.
+  preserve all other settings, then restart that service.
 - **Different identity:** stop and ask; do not overwrite an unrelated machine.
 - **Different origin:** confirm the destination, preserve the old configuration
   and create a new private configuration directory. Set the new URL/token and
   an explicit `spoolDir` inside that directory. An alternate
   `EAGLE_CONFIG` alone does not relocate the collector cache; explicit `spoolDir`
   also isolates `latest-report.json`. Never point the new deployment at the old
-  spool, evidence file or Manager pending/sequence directory. History transfer
+  spool or latest-report.json. History transfer
   requires a separate decision, not an incidental `once` replay.
 
 Use the same absolute `EAGLE_CONFIG` for `init`, `once`, `watch` and any explicitly
-enabled Manager/realtime command, including the supervised service environment.
+enabled realtime command, including the supervised service environment.
 Validate a fresh snapshot and the destination dashboard before stopping the
 identified old collector and switching continuous collection. Preserve the old
 config/queue for rollback; do not rotate credentials or delete pending reports
@@ -44,7 +44,7 @@ Create `~/.config/eagle/agent.json`, directory mode 0700 and file mode 0600:
 }
 ```
 
-Each machine has one SQLite-backed Durable Object selected by its `machineId`; the agent only posts reports and heartbeats to the authenticated Worker. No object ID or database credential is needed on the machine. The next valid full snapshot replaces the prior current state. A success receipt confirms persistence in DO, not insertion into D1. Semantic Pane changes are independently persisted in the same machine DO, grouped by UTC observation hour, and replicated to D1. Whole-report D1 history remains paused; daily AI reports independently aggregate retained inputs.
+Each machine has one SQLite-backed Durable Object selected by its `machineId`; the agent only posts reports and heartbeats to the authenticated Worker. No object ID or database credential is needed on the machine. The next valid full snapshot replaces the prior current state. A success receipt confirms persistence in DO, not insertion into D1. Whole-report D1 history remains paused; daily AI reports independently aggregate retained inputs.
 
 Open **Connect** on the Eagle website. Add a machine ID, display name and optional watched ports, then copy the generated prompt to the existing management Agent (Hermes recommended) on that machine. Connect also supports renaming, rotating credentials, disabling and re-enabling machines. Token-bearing prompts exist only in browser memory until dismissed or navigation; the visible preview hides the token. Save the credential securely before leaving. Rotation invalidates the previous token immediately; re-enabling always issues a new token.
 
@@ -97,28 +97,9 @@ Memory is total minus free and may include caches; load is the OS 1/5/15-minute 
 
 Restart the collector after editing its configuration. For an upgrade, deploy the compatible Worker **before** restarting production collectors: old strict v1 servers reject the newly added telemetry field. Older agent reports without telemetry continue to work on the new server. The current preview is configured in `.local/agent-dev.json`; its Raven port check and resource snapshots go to its independent local Durable Object.
 
-## Manager evidence
-
-`evidenceFile` is an atomically replaced JSON object keyed by `session:paneId`. Omit the config field if no file is provided. Each entry has a task and an evidence list; all data is validated with the same report schema:
-
-```json
-{
-  "default:w1:p1": {
-    "task": { "id": "release-123", "title": "Publish release 123", "requiresDeployment": true },
-    "evidence": [
-      { "kind": "goal", "status": "running", "summary": "Implementation complete; checking production", "source": "manager:review", "observedAt": "2026-09-19T06:00:00.000Z", "taskId": "release-123" }
-    ]
-  }
-}
-```
-
-First collect the live report and copy its pane.task.id into the manager entry. For Codex it is derived from the native session/turn; Grok and Pi use the latest native user prompt when available. A manager cannot replace this identity: stale IDs are ignored. Unsupported harnesses fall back to terminal/session identity and require the manager to verify task continuity. Retain actual evidence timestamps; never renew old tests merely because the collector ran. Test and deployment receipts include the **tested/deployed full Git SHA**. Legacy Manager evidence is now forced to unknown status and a manager:legacy source; it cannot lower the daemon requiresDeployment requirement or masquerade as Git/test/deployment facts. A terminal's final answer alone remains an unverified claim until the independent receipts agree.
-
-Prefer a short human outcome: what changed, what remains, what needs a decision. Do not send entire scrollback, internal reasoning, environment dumps, or credentials. The UI defaults to this summary and allows inspecting evidence underneath.
-
 ## Installed on MBPM5MSFT
 
-The production machine ID is `mbpm5msft`. Its macOS LaunchAgent at `~/Library/LaunchAgents/com.hexly.eagle-agent.plist` runs this checkout's `agent/cli.ts watch` every 30 seconds and restarts on failure. Configuration, the manager evidence file, durable spool, and `agent.stdout.log` / `agent.stderr.log` are under `~/.config/eagle/`. The website uses Cloudflare Access; the former viewer-token file has been removed. Machine Bearer credentials remain required for reporting.
+The production machine ID is `mbpm5msft`. Its macOS LaunchAgent at `~/Library/LaunchAgents/com.hexly.eagle-agent.plist` runs this checkout's `agent/cli.ts watch` every 30 seconds and restarts on failure. Configuration, the latest report copy, the durable spool, and `agent.stdout.log` / `agent.stderr.log` are under `~/.config/eagle/`. The website uses Cloudflare Access; the former viewer-token file has been removed. Machine Bearer credentials remain required for reporting.
 
 ```sh
 # Restart after updating collector code:
@@ -131,8 +112,4 @@ launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.hexly.eagle-agent.plist
 
 These commands are for this machine's user ID 501. Other machines need their own token, identity, checkout path and service configuration. A valid success acknowledgement is required before a queued report is removed; malformed responses preserve the report for an idempotent retry.
 
-All three Eagle LaunchAgents on this Mac use direct connections by default. Proxying is an explicit per-machine option through `NODE_USE_ENV_PROXY=1` and a verified `HTTPS_PROXY` URL; no proxy host or port is fixed. See [optional reporting proxy](../agent/README.md#optional-reporting-proxy) for enabling it or returning to direct connections. Preserve the spool and Manager state when reloading services.
-
-## Live semantic Manager
-
-The maintained integration is `eagle-agent manager-once` / `manager-watch`, not the legacy evidence file. Run Manager separately from the deterministic `watch` service. See [PANE-SUMMARIES.md](PANE-SUMMARIES.md) for complete v1 protocols, independent DO streams, UTC hourly API/indexes, retention, conflict recovery and agent-neutral scheduler setup. The project [eagle-report Skill](../skills/eagle-report/SKILL.md) is reusable on every machine.
+The Eagle LaunchAgent on this Mac uses direct connections by default. Proxying is an explicit per-machine option through `NODE_USE_ENV_PROXY=1` and a verified `HTTPS_PROXY` URL; no proxy host or port is fixed. See [optional reporting proxy](../agent/README.md#optional-reporting-proxy) for enabling it or returning to direct connections. Preserve the spool when reloading services.

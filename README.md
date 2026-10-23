@@ -19,17 +19,16 @@ Eagle 是面向 Herdr 用户的私有看板，汇总每台上报机器的 Space�
 - **资源与端口**：上报 CPU、内存、主目录所在磁盘容量和运行时间，可检查指定本机 TCP 端口。端口监听只代表连通，不能证明业务健康。
 - **任务证据**：对照当前任务总结、Goal、Git revision 和测试凭证；涉及部署时还需要部署证据。运行中的 Goal 或实际工具执行优先于表面的完成提示。
 - **AI 日报**：每天北京时间 23:59 为每台机器生成一份日报，固定 24 个小时逐项汇报，严格限制格式与长度；失败可手动重试，缺少 AI 配置时自动跳过。侧栏以发光状态点显示机器在线、采集过期或心跳超时。
-- **实时语义总结**：独立 Manager 为 Pane 提供任务、阶段、进展、成果、阻塞、下一步和依据。模型声称完成或测试通过不会自动成为已验证事实。
 
 看板可见时每 5 秒刷新，重新可见时立即刷新。心跳超过 90 秒或快照超过 5 分钟会明确标记过期；刷新失败保留最后数据并提示连接异常。桌面侧栏支持折叠，加载占位保持布局稳定，动画遵守减少动态效果偏好。
 
-每台机器有独立的 SQLite Durable Object，当前快照与语义流分别持久化。语义变化按观察时间归入 UTC 小时桶，同小时可保留多条记录并分页读取；心跳不产生历史，迟到的旧任务报告不会覆盖当前任务。DO 保留 30 天或 10,000 条语义变化，待归档记录受保护，D1 保存归档副本。原始快照历史仍暂停写入 D1；DO 临时保留 48 小时输入，用于每机器独立生成中文日报，报告写入 D1 并在最近历史查询。总览直接读取 DO，不轮询 D1。详见 [AI 日报](docs/DAILY-REPORTS.md)。
+每台机器有独立的 SQLite Durable Object，保存当前完整快照、资源样本和 48 小时日报输入；心跳只更新存活时间，迟到的旧任务报告不会覆盖当前任务。原始快照历史仍暂停写入 D1；AI 日报写入 D1 并在最近历史查询。总览直接读取 DO，不轮询 D1。详见 [AI 日报](docs/DAILY-REPORTS.md)。
 
 ### 认证与隐私
 
 网站由 Cloudflare Access 保护，Worker 校验签名、签发者、应用 audience、有效期与必要声明。本地免登录仅对明确的开发域名或 loopback 且 `LOCAL_DEV="true"` 生效；生产关闭此开关。
 
-机器使用独立的签名 Bearer Token 向 `https://eagle-ingest.hexly.ai` 上报，避免浏览器 SSO 中断采集。该域名只提供机器上报、心跳、语义上传、自身快照、实时桥接和公开 `/api/live`，不提供看板与网站历史查询；私有 API 不开放 CORS。Token 仅在生成时可复制，保存在权限为 `0600` 的机器配置中；签名密钥留在 Worker secret，数据库和浏览器持久存储均不保存 Token。已有 `AGENT_TOKENS` 凭据可继续使用，直到轮换或停用。
+机器使用独立的签名 Bearer Token 向 `https://eagle-ingest.hexly.ai` 上报，避免浏览器 SSO 中断采集。该域名只提供机器上报、心跳、实时桥接和公开 `/api/live`，不提供看板与网站历史查询；私有 API 不开放 CORS。Token 仅在生成时可复制，保存在权限为 `0600` 的机器配置中；签名密钥留在 Worker secret，数据库和浏览器持久存储均不保存 Token。已有 `AGENT_TOKENS` 凭据可继续使用，直到轮换或停用。
 
 侧栏显示已验证的 Access 账户与退出入口。头像服务只接收规范化邮箱的 SHA-256，查询失败时保留账户名和首字母头像。本地可配置 `LOCAL_USER_EMAIL` 预览，退出功能在本地禁用。
 
@@ -59,19 +58,17 @@ npm install -g @nocoo/eagle-agent@0.9.0 --registry=https://mirrors.cloud.tencent
 ```sh
 eagle-agent once
 eagle-agent watch
-# 在独立进程中运行语义 Manager，先显式配置 manager.command；推荐 Hermes，也支持其他 Agent：
-eagle-agent manager-watch
 # 如需网页实时查看与输入，在另一独立进程中运行，沿用安全配置且仅启动一个实例：
 eagle-agent realtime-watch
 ```
 
-确定性采集器默认每 30 秒运行；Manager 仅在输入变化且满足每任务限频时调用现有管理 Agent 的模型，与采集进程独立运行。安全配置中的 `watchPorts` 可指定要检查的端口，例如：
+采集器默认每 30 秒运行一次完整上报。安全配置中的 `watchPorts` 可指定要检查的端口，例如：
 
 ```json
 {"watchPorts":[{"name":"Raven","port":7024}]}
 ```
 
-机器身份、凭据、重试、后台服务与升级顺序见 [Agent 契约](docs/AGENT.md)。可将 [eagle-report Skill](skills/eagle-report/SKILL.md)交给管理 Agent；[报告 Schema](public/report-v1.schema.json)由 TypeScript 校验器生成，服务端另行检查跨对象唯一性。
+机器身份、凭据、重试、后台服务与升级顺序见 [Agent 契约](docs/AGENT.md)。[报告 Schema](public/report-v1.schema.json)由 TypeScript 校验器生成，服务端另行检查跨对象唯一性。
 
 网站 v0.12.0 与独立 Agent v0.9.0 提供 [环境资源监控](docs/RESOURCES.md)：CPU、GPU、内存、磁盘、网络与风扇六张只读卡片，保留数值、等宽占用条与原始证据时间。Apple Silicon 可通过单独安装的 macmon 无提权读取温度、GPU、风扇与内存；物理网卡上下行速率无需 macmon。快速采样每 30 秒，磁盘与 Linux 温度默认每 300 秒。历史图默认最近 6 小时，可切换 6h/12h/24h。开发页面支持 Local/Prod 后端切换。安装命令与 Connect 固定 Agent 0.9.0；发布不会自动升级或重启已有采集器，不回填或伪造历史。
 
@@ -122,7 +119,7 @@ npm run test:browser
 | --- | --- |
 | React、Vite、Basalt、Recharts | 私有看板、组件与可视化 |
 | TypeScript、Biome | 类型检查与源码规范 |
-| Cloudflare Workers、Durable Objects、D1 | 受认证 API、每机状态和语义归档 |
+| Cloudflare Workers、Durable Objects、D1 | 受认证 API、每机状态与日报归档 |
 | Cloudflare Access、jose | 查看者身份与 JWT 校验 |
 | Node.js、Herdr、Zod | 本地采集、管理 Agent 与报告校验 |
 | Node test runner、Miniflare、Playwright | 单元、API 与浏览器测试 |
@@ -130,7 +127,7 @@ npm run test:browser
 ## 文档
 
 - [Agent 安装说明](agent/README.md)与[配置及上报契约](docs/AGENT.md)。
-- [API](docs/API.md)、[实时 Pane 语义契约](docs/PANE-SUMMARIES.md)与[eagle-report Skill](skills/eagle-report/SKILL.md)。
+- [API](docs/API.md)与[实时模式](docs/REALTIME.md)。
 - [部署及真实链路核验](docs/DEPLOYMENT.md)、[实施计划](docs/PLAN.md)与[验证检查点](docs/CHECKPOINTS.md)。
 - [品牌来源](assets/brand/provenance.json)、[Hexly 档案](https://hexly.ai/projects/eagle)与[服务状态](https://status.hexly.ai)。
 

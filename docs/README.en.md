@@ -18,21 +18,20 @@ Eagle is a private dashboard for Herdr users, bringing together each reporting m
 - **Machine onboarding**: use Connect to add or rename machines, generate one-time onboarding prompts, rotate credentials, disable reporting and re-enable machines.
 - **Resources and ports**: report CPU, RAM, home-filesystem capacity and uptime, with optional local TCP endpoint checks. A listening port proves connectivity, not business health.
 - **Task evidence**: compare the current task summary, Goal, Git revision and test receipts, with deployment evidence when required. A running Goal or actual tool execution takes priority over apparent completion.
-- **Live semantic summaries**: an independent Manager supplies each Pane's task, phase, progress, outcomes, blocker, next step and rationale. Model claims of completion or passing tests do not become verified facts automatically.
 
 The dashboard refreshes every 5 seconds while visible and immediately on return. A heartbeat older than 90 seconds or a snapshot older than 5 minutes is marked stale. Failed refreshes retain the last data with a connection warning. The desktop sidebar collapses, loading placeholders preserve layout, and motion respects reduced-motion preferences.
 
-Each machine has an independent SQLite Durable Object, with current snapshots and semantic streams persisted separately. Semantic changes use UTC hourly buckets based on observation time, support multiple entries per hour and pagination, and are unaffected by heartbeats. Late reports from old tasks cannot overwrite the current task. DOs retain 30 days or 10,000 semantic changes while protecting records awaiting archival; D1 stores archive copies. Whole-snapshot D1 writes remain paused. DOs retain 48 hours of temporary inputs for independent Chinese daily reports, archived in D1 and available in History. Settings reuses next-ai configuration and runs once daily at 23:59 Asia/Shanghai with 24 bounded hourly entries; missing AI configuration skips generation. See [daily reports](DAILY-REPORTS.md). The overview reads DOs directly without polling D1.
+Each machine has an independent SQLite Durable Object that stores the complete current snapshot, resource samples and 48 hours of daily-report inputs. Heartbeats refresh liveness only, and late reports from old tasks cannot overwrite the current task. Whole-snapshot D1 writes remain paused; AI daily reports are archived in D1 and available in History. Settings reuses next-ai configuration and runs once daily at 23:59 Asia/Shanghai with 24 bounded hourly entries; missing AI configuration skips generation. See [daily reports](DAILY-REPORTS.md). The overview reads DOs directly without polling D1.
 
 ### Authentication and privacy
 
 Cloudflare Access protects the website. The Worker verifies signatures, issuer, application audience, expiry and required claims. Local viewing bypasses authentication only on explicit development/loopback hosts with `LOCAL_DEV="true"`; production disables this flag.
 
-Machines report to `https://eagle-ingest.hexly.ai` with independent signed Bearer tokens, keeping browser SSO out of collection. This host serves machine reports, heartbeats, semantic uploads, the authenticated machine's own snapshot, the realtime bridge and public `/api/live`, but no dashboard or website history. Private APIs do not support CORS. Tokens can be copied only when issued and belong in mode-`0600` machine configuration. The signing key stays in a Worker secret; databases and persistent browser storage hold no tokens. Existing `AGENT_TOKENS` credentials remain supported until rotated or disabled.
+Machines report to `https://eagle-ingest.hexly.ai` with independent signed Bearer tokens, keeping browser SSO out of collection. This host serves machine reports, heartbeats, the realtime bridge and public `/api/live`, but no dashboard or website history. Private APIs do not support CORS. Tokens can be copied only when issued and belong in mode-`0600` machine configuration. The signing key stays in a Worker secret; databases and persistent browser storage hold no tokens. Existing `AGENT_TOKENS` credentials remain supported until rotated or disabled.
 
 The sidebar shows the verified Access account and logout control. Avatar lookup sends only a SHA-256 hash of the normalized email, falling back to the account name and initial on failure. Local preview can set `LOCAL_USER_EMAIL`; logout is disabled locally.
 
-The Codex adapter extracts only final replies and lifecycle events, excluding reasoning and tool arguments. Other harnesses use bounded terminal excerpts and management-agent evidence. Text is redacted before spool/upload, but heuristics cannot guarantee removal of arbitrary secrets. Supply concise summaries and verification receipts instead of raw terminal dumps.
+The Codex adapter extracts only final replies and lifecycle events, excluding reasoning and tool arguments. Other harnesses use bounded terminal excerpts. Text is redacted before spool/upload, but heuristics cannot guarantee removal of arbitrary secrets. Supply concise summaries and verification receipts instead of raw terminal dumps.
 
 Realtime mode separately transmits redacted current terminal screens. Screen text and submitted input are never persisted in D1 or DO storage. Unsent drafts are cached in browser localStorage per terminal, survive disconnects and page exits, and are cleared on submission; recognizable credentials are excluded.
 
@@ -58,13 +57,11 @@ The expected version is `0.9.0`. These commands select a registry for this insta
 ```sh
 eagle-agent once
 eagle-agent watch
-# In a separate process, run the semantic Manager after explicitly configuring manager.command for Hermes or another Agent:
-eagle-agent manager-watch
 # For web viewing/input, use another process with the same secure configuration; run only one instance:
 eagle-agent realtime-watch
 ```
 
-The deterministic collector runs every 30 seconds by default. Manager uses the existing management Agent and model only when inputs change and the per-task rate limit permits, independently of collection. The secure configuration's `watchPorts` field selects local endpoints, for example:
+The collector reports a complete snapshot every 30 seconds by default. The secure configuration's `watchPorts` field selects local endpoints, for example:
 
 ```json
 {"watchPorts":[{"name":"Raven","port":7024}]}
@@ -121,7 +118,7 @@ npm run test:browser
 | --- | --- |
 | React, Vite, Basalt, Recharts | Private dashboard, components and visualization |
 | TypeScript, Biome | Typechecking and source formatting/linting |
-| Cloudflare Workers, Durable Objects, D1 | Authenticated APIs, per-machine state and semantic archives |
+| Cloudflare Workers, Durable Objects, D1 | Authenticated APIs, per-machine state and daily-report archives |
 | Cloudflare Access, jose | Viewer identity and JWT verification |
 | Node.js, Herdr, Zod | Local collection, management agent and report validation |
 | Node test runner, Miniflare, Playwright | Unit, API and browser tests |
@@ -129,7 +126,7 @@ npm run test:browser
 ## Documentation
 
 - [Agent installation](../agent/README.md) and [configuration/reporting contract](AGENT.md).
-- [API](API.md), [live Pane semantic contract](PANE-SUMMARIES.md) and [eagle-report Skill](../skills/eagle-report/SKILL.md).
+- [API](API.md) and [realtime mode](REALTIME.md).
 - [Deployment and live verification](DEPLOYMENT.md), [implementation plan](PLAN.md) and [verification checkpoints](CHECKPOINTS.md).
 - [Brand provenance](../assets/brand/provenance.json), [Hexly archive](https://hexly.ai/projects/eagle) and [service status](https://status.hexly.ai).
 
