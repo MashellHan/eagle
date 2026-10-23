@@ -210,6 +210,12 @@ before(async () => {
     readFileSync("migrations/0001_initial.sql", "utf8").replace(/\n/g, " "),
   );
   await db.exec(
+    readFileSync("migrations/0002_pane_summaries.sql", "utf8").replace(
+      /\n/g,
+      " ",
+    ),
+  );
+  await db.exec(
     readFileSync("migrations/0003_hourly_reports.sql", "utf8").replace(
       /\n/g,
       " ",
@@ -649,6 +655,30 @@ test("atomic dedup, content conflicts, concurrent retries and out-of-order curre
   assert.equal(stored.results[0].machine_id, "retired");
   assert(!JSON.stringify(stored).includes(token));
 });
+test("equal capture times fall back to report ID ordering", async () => {
+  const at = tick();
+  assert.equal(
+    (await request("/api/v1/reports", report("tie-alpha", at))).status,
+    201,
+  );
+  assert.equal(
+    (await request("/api/v1/reports", report("tie-zulu", at))).status,
+    201,
+  );
+  const current = async () =>
+    (
+      (await (await request("/api/v1/overview", undefined, viewer)).json()) as {
+        machines: { report: { reportId: string } }[];
+      }
+    ).machines[0].report.reportId;
+  assert.equal(await current(), "tie-zulu");
+  assert.equal(
+    (await request("/api/v1/reports", report("tie-mike", at))).status,
+    201,
+  );
+  assert.equal(await current(), "tie-zulu");
+});
+
 test("heartbeats keep known machines alive without rewriting inventory; legacy history stays queryable", async () => {
   const beat = {
     schemaVersion: 1,
@@ -2023,6 +2053,75 @@ test("daily archives paginate by date and reject invalid cursors and methods", a
     (await request("/api/v1/daily-reports/run", undefined, viewer)).status,
     405,
   );
+});
+
+test("archived v1 daily reports stay readable after the template bump", async () => {
+  const db = await mf.getD1Database("DB");
+  const legacy = {
+    machineId: "mac-one",
+    machineName: "Mac One",
+    date: "2026-09-01",
+    timezone: "Asia/Shanghai",
+    cutoff: "2026-09-01T15:59:00.000Z",
+    dataReceivedBy: "2026-09-02T15:59:00.000Z",
+    generatedAt: "2026-09-02T16:05:00.000Z",
+    templateVersion: "eagle-daily-zh-v1",
+    provider: "custom",
+    model: "legacy-model",
+    inputHash: "legacy-hash",
+    snapshots: 2880,
+    semanticRecords: 24,
+    coverage: [
+      {
+        hour: 9,
+        snapshots: 120,
+        semanticRecords: 12,
+        inputRecords: 90,
+        retainedRecords: 8,
+        omittedRecords: 0,
+        excerptedRecords: 0,
+        firstObservedAt: "2026-09-01T01:00:00.000Z",
+        lastObservedAt: "2026-09-01T01:59:00.000Z",
+      },
+    ],
+    content: {
+      overview: "旧模板日报仍可读取。",
+      hours: Array.from({ length: 24 }, (_, hour) => ({
+        hour,
+        summary: hour === 9 ? "本小时有记录。" : "无采集数据。",
+        evidenceIds: hour === 9 ? ["H09-S1"] : [],
+      })),
+      nextSteps: [],
+    },
+  };
+  await db
+    .prepare(
+      "INSERT INTO machine_daily_reports(machine_id,date,generated_at,input_hash,payload) VALUES(?,?,?,?,?)",
+    )
+    .bind(
+      legacy.machineId,
+      legacy.date,
+      legacy.generatedAt,
+      legacy.inputHash,
+      JSON.stringify(legacy),
+    )
+    .run();
+  const response = await request(
+    "/api/v1/daily-reports?date=2026-09-01",
+    undefined,
+    viewer,
+  );
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as {
+    entries: { report: typeof legacy }[];
+  };
+  const archived = body.entries.find(
+    (entry) => entry.report.date === "2026-09-01",
+  )?.report;
+  assert(archived);
+  assert.equal(archived.templateVersion, "eagle-daily-zh-v1");
+  assert.equal(archived.semanticRecords, 24);
+  assert.equal(archived.content.hours[9].evidenceIds[0], "H09-S1");
 });
 
 test("daily cutover preserves the configured provider and encrypted key while removing cadence", async () => {
