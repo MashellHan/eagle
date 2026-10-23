@@ -1385,3 +1385,30 @@ serving and the first catalogue-derived production Cron observation.
   is blocked without screen-recording permission, which was not requested. Page
   verification therefore rests on the authenticated HTTP checks, the exact
   bundle comparison and the passing browser suite.
+
+## 2026-10-24 07:45 +08 — Realtime bridges were missing, not broken
+
+- Report: every machine showed `等待本机实时服务` after 0.14.0. Investigation found
+  no protocol or Worker regression. A real bridge on `1.0.0` connected to
+  `/api/v1/realtime-agent`, the viewer socket upgraded, the first `status`
+  message reported `online:true`, and topology plus frame messages arrived.
+- Per-machine probe (viewer socket per real Space, first `status` frame):
+  `mbpm5msft online=true`, `mbphomelz`, `macstudiolz`, `minim4-a01`,
+  `minim4-a02` and `minim4-w01` `online=false`. A 45-second `wrangler tail`
+  captured report uploads and `/api/live` but no `/api/v1/realtime-agent`
+  attempts, so no bridge process existed to retry.
+- Root cause is supervision, not code: this Mac had no
+  `com.hexly.eagle-realtime` unit at all, and the 1.0.0 upgrade stopped the
+  retired `manager-watch` service without leaving a realtime service behind.
+  `realtime-watch` is optional and reports nothing when absent, so collection
+  stayed green while realtime silently stayed down.
+- Fix on this machine: installed `~/Library/LaunchAgents/com.hexly.eagle-realtime.plist`
+  (KeepAlive, direct network, dedicated logs), bootstrapped it through
+  `launchctl`, and verified `online:true` through a viewer socket. Killing the
+  process proved KeepAlive restarts it and the bridge re-registers.
+- The four remote machines were unreachable from this Mac (no ping, no Herdr
+  remote profile), so their services still need the same unit. `REALTIME.md`
+  now carries the exact LaunchAgent template and the note that removing a
+  service is permanent until it is re-created.
+- Not a code change: no Worker deploy, no dependency or protocol change, no
+  collector restart beyond the new realtime unit.

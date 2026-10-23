@@ -190,6 +190,37 @@ Installing a new npm version updates the executable; it does not create or start
 4. Stop the foreground test before enabling a separate user service with launchd on macOS or systemd on Linux. Use absolute executable paths and the same configuration/PATH as the working collector so the service can find Node and Herdr. Give it its own label/unit and preserve the collector service. If a realtime service already exists, restart that service after upgrading instead of adding a duplicate.
 5. Reopen the Space in Eagle. `等待本机实时服务` means the machine's realtime bridge is not connected, even when ordinary snapshots are current. Once connected, the view requests input control by default. If another viewer owns control, sending stays disabled; use `接管输入` after it becomes available. Use `释放输入` to remain a viewer.
 
+### Supervision template (macOS)
+
+Nothing recreates the bridge for you, and upgrading the package does not
+re-install a service that was removed. Keep one LaunchAgent per configuration:
+
+```xml
+<key>Label</key><string>com.hexly.eagle-realtime</string>
+<key>ProgramArguments</key>
+<array>
+  <string>/absolute/path/to/node</string>
+  <string>/absolute/path/to/@nocoo/eagle-agent/dist/agent/cli.js</string>
+  <string>realtime-watch</string>
+</array>
+<key>EnvironmentVariables</key>
+<dict>
+  <key>EAGLE_CONFIG</key><string>/absolute/path/agent.json</string>
+  <key>NODE_USE_ENV_PROXY</key><string>0</string>
+  <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin</string>
+</dict>
+<key>KeepAlive</key><true/>
+<key>ThrottleInterval</key><integer>30</integer>
+<key>StandardOutPath</key><string>/absolute/path/realtime.stdout.log</string>
+<key>StandardErrorPath</key><string>/absolute/path/realtime.stderr.log</string>
+```
+
+`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.hexly.eagle-realtime.plist`
+starts it at login and after a crash. Confirm `launchctl list | grep
+eagle-realtime` shows a PID and that the Space leaves
+`等待本机实时服务`. On Linux, use the equivalent user systemd unit with the same
+environment.
+
 ## Transport and lifecycle
 
 - Browser: same-origin `/api/v1/realtime?machine=M&space=S`, authenticated by the verified Access JWT. Upgrade requires the exact Origin. No machine token enters the browser or a URL.
@@ -197,7 +228,7 @@ Installing a new npm version updates the executable; it does not create or start
 - The bridge resolves the session's local socket using `herdr session list --json`. Requests are bounded newline-delimited JSON. Screen collection uses `session.snapshot` and `pane.read`. Input uses the same session’s native client socket, protocol 22 (Herdr 0.9.1), with strict `AttachTerminal` by terminal ID and no takeover or name/pane fallback. Unsupported protocol versions fail closed.
 - One polling loop per subscribed Space samples at 350 ms after the previous cycle. Herdr can return revision zero, so the bridge compares redacted screen content; up to four pane reads run together. Each read validates its returned workspace/tab and rechecks terminal identity after capture. Every subscription change refreshes initial topology/screens. Actual latency includes socket work and network round trips.
 - Closing the sheet, navigating away, changing mode/Space, hiding the page or leaving it closes the browser socket and clears retry/heartbeat timers. Resuming the page obtains a fresh subscription. The last viewer's departure cancels the Space loop, pending socket reads and timers. Old subscription IDs cannot update a replacement subscription.
-- Both clients send an immediate initial heartbeat (also avoiding workerd’s close-handshake edge case before the first application message). Connections continue heartbeating; a DO alarm reclaims leases after 35 seconds without messages, sharing the earliest deadline with the existing D1 outbox alarm. Bridges terminate unresponsive transport after 30 seconds and reconnect with bounded backoff; 401/403 authentication failures stop the bridge. Connections have a maximum 15-minute authorization lease; both ends renew by reconnecting through authentication; browser input control is not restored. Credential rotation/revocation closes existing connections.
+- Both clients send an immediate initial heartbeat (also avoiding workerd’s close-handshake edge case before the first application message). Connections continue heartbeating; a DO alarm reclaims leases after 35 seconds without messages. Bridges terminate unresponsive transport after 30 seconds and reconnect with bounded backoff; 401/403 authentication failures stop the bridge. Connections have a maximum 15-minute authorization lease; both ends renew by reconnecting through authentication; browser input control is not restored. Credential rotation/revocation closes existing connections.
 - Bounds: 12 viewers, four distinct subscribed Spaces per machine; 32 panes/16 tabs per Space, 32,000 characters per screen, 8,000 characters per submitted input. Excess topology closes that live view rather than showing an incomplete control surface. Slow bridge connections abort polling immediately; viewer screen receipts enforce a 2 MiB / 128-frame outstanding budget. Viewers share a Space subscription. Routing attachments store compact identity hashes and cumulative delivery counters, not screen text.
 
 ## Input and evidence
