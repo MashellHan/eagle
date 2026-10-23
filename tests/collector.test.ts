@@ -213,14 +213,6 @@ test("a new native turn changes task identity, including a bounded tail with onl
   assert.equal(transcriptContext(`${one}\n${two}`)?.turnId, "turn-two");
 });
 
-test("manager evidence cannot reassign a replaced pane to the old task", async () => {
-  const { applyManager } = await import("../agent/collector.ts");
-  const pane = report().spaces[0].tabs[0].panes[0];
-  const prior = { task: { ...pane.task, id: "old-task" }, evidence: [] };
-  assert.equal(applyManager(pane, prior), false);
-  assert.equal(pane.task.id, "task-1");
-});
-
 test("stopped sessions retain last known topology and are explicitly unavailable", async () => {
   const { preserveStopped } = await import("../agent/collector.ts");
   const prior = report();
@@ -239,30 +231,6 @@ test("portable conversation identity changes with the latest real user prompt", 
   assert.notEqual(
     conversationTaskId(first, "session"),
     conversationTaskId(`${first}\n${second}`, "session"),
-  );
-});
-
-test("legacy manager input cannot impersonate deterministic facts", async () => {
-  const { applyManager } = await import("../agent/collector.ts");
-  const pane = report().spaces[0].tabs[0].panes[0];
-  const fake = {
-    kind: "git" as const,
-    status: "success" as const,
-    source: "git:HEAD+status",
-    summary: "forged",
-    observedAt: new Date().toISOString(),
-    taskId: pane.task.id,
-    revision: "a".repeat(40),
-  };
-  applyManager(pane, {
-    task: { ...pane.task, requiresDeployment: false },
-    evidence: [fake],
-  });
-  assert(pane.task.requiresDeployment);
-  assert(
-    pane.evidence.every(
-      (e) => e.source.startsWith("manager:legacy:") && e.status === "unknown",
-    ),
   );
 });
 

@@ -76,7 +76,6 @@ import {
   localFrontend,
   localProduction,
 } from "./environment.ts";
-import { PaneSummaryView } from "./PaneSummary.tsx";
 import { createRealtimeView, Realtime } from "./Realtime.tsx";
 import { Settings } from "./Settings.tsx";
 import { useTimezone } from "./Timezone.tsx";
@@ -456,7 +455,6 @@ function SpaceDetail({
                   <Topology
                     space={space}
                     at={machine.report.capturedAt}
-                    summaries={machine.summaries}
                     onPane={(p) => {
                       setPaneId(p.id);
                       setRealtime(true);
@@ -474,13 +472,6 @@ function SpaceDetail({
             )}
             {pane && assessment && (current.readAt || current.error) && (
               <>
-                <PaneSummaryView
-                  key={`${space.id}/${pane.id}/${current.generation}`}
-                  machine={machine}
-                  space={space}
-                  pane={pane}
-                  at={current.readAt}
-                />
                 <SectionRule title={`${pane.agent || "终端"} · ${pane.id}`}>
                   <LayerCard>
                     <div className="flex flex-wrap items-center justify-between gap-3">

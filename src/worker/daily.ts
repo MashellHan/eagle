@@ -2,6 +2,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { resolveAiConfig } from "@nocoo/next-ai/server";
 import { APICallError, generateText } from "ai";
+import { digest } from "../shared/canonical.ts";
 import {
   type DailyReport,
   type DailySettings,
@@ -12,7 +13,6 @@ import {
   REPORT_TIMEZONE,
   TEMPLATE_VERSION,
 } from "../shared/daily.ts";
-import { digest } from "../shared/summaries.ts";
 import { withAiKey } from "./ai-secret.ts";
 import { containsCredential } from "./auth.ts";
 
@@ -179,12 +179,8 @@ export async function generateDay(
         signal.throwIfAborted();
         hours.push(await object.dayHourInput(date, hour, claim.lease));
       }
-      const [factCount, , semanticCount] = claim.version.split(":").map(Number);
-      if (
-        hours.reduce((n, h) => n + h.coverage.snapshots, 0) !== factCount ||
-        hours.reduce((n, h) => n + h.coverage.semanticRecords, 0) !==
-          semanticCount
-      )
+      const [factCount] = claim.version.split(":").map(Number);
+      if (hours.reduce((n, h) => n + h.coverage.snapshots, 0) !== factCount)
         throw Object.assign(
           new Error("Daily input expired during preparation"),
           { name: "DailyInputExpiredError" },
@@ -214,10 +210,6 @@ export async function generateDay(
         model: aiConfig(settings, env.AI_API_KEY ?? "").model,
         inputHash,
         snapshots: hours.reduce((n, h) => n + h.coverage.snapshots, 0),
-        semanticRecords: hours.reduce(
-          (n, h) => n + h.coverage.semanticRecords,
-          0,
-        ),
         coverage: hours.map((h) => h.coverage),
         content,
       } satisfies DailyReport;

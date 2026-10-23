@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DailySettingsSchema } from "../src/shared/daily.ts";
-import {
-  compactHour,
-  projectHour,
-  utcHour,
-} from "../src/shared/report-input.ts";
+import { compactHour, projectHour } from "../src/shared/report-input.ts";
 import { sealAiKey, unsealAiKey } from "../src/worker/ai-secret.ts";
 import { complete } from "../src/worker/daily.ts";
 import { report } from "./fixtures.ts";
@@ -41,38 +37,24 @@ test("UI credentials use authenticated encryption bound to their AI endpoint", a
   await assert.rejects(sealAiKey(key, undefined, sealed.endpoint));
 });
 
-test("hour inputs keep closed panes, task changes, every evidence and independent semantic times", () => {
+test("hour inputs keep closed panes, task changes and every evidence", () => {
   const first = report("start", "2026-09-19T09:01:00.000Z");
   const second = structuredClone(first);
   second.reportId = "end";
   second.capturedAt = "2026-09-19T09:59:00.000Z";
   second.spaces[0].tabs[0].panes = [];
-  const input = compactHour(
-    [first, second],
-    [
-      {
-        seq: 7,
-        hour: utcHour(first.capturedAt),
-        value: {
-          observedAt: "2026-09-19T09:17:00.000Z",
-          taskId: "task-1",
-          summary: "完成代码检查",
-        },
-      },
-    ],
-  );
+  const input = compactHour([first, second]);
   assert(
     input.records.some(
       (r) => r.kind === "pane" && JSON.stringify(r.value).includes("w1:p1"),
     ),
   );
   assert.equal(input.records.filter((r) => r.kind === "inventory").length, 2);
-  assert.equal(input.records.filter((r) => r.kind === "semantic").length, 1);
   assert.equal(input.snapshots, 2);
-  const repeated = compactHour(
-    [first, { ...first, reportId: "again", capturedAt: second.capturedAt }],
-    [],
-  );
+  const repeated = compactHour([
+    first,
+    { ...first, reportId: "again", capturedAt: second.capturedAt },
+  ]);
   const pane = repeated.records.find((r) => r.kind === "pane");
   assert.deepEqual(pane?.observations, [first.capturedAt, second.capturedAt]);
   assert.equal(repeated.records.filter((r) => r.kind === "pane").length, 1);
@@ -116,15 +98,7 @@ test("model input bounds terminal repetition per task without changing raw evide
       });
     return value;
   });
-  const raw = compactHour(reports, [
-    {
-      value: {
-        observedAt: reports[70].capturedAt,
-        taskId: "current-task",
-        summary: "Semantic change",
-      },
-    },
-  ]);
+  const raw = compactHour(reports);
   const original = structuredClone(raw);
   const projected = projectHour(raw.records);
   assert.deepEqual(raw, original);
@@ -144,10 +118,6 @@ test("model input bounds terminal repetition per task without changing raw evide
     projected.records.some((r) =>
       r.value.includes("closed task still needs verification"),
     ),
-  );
-  assert.equal(
-    projected.records.filter((r) => r.kind === "semantic").length,
-    1,
   );
   assert(
     projected.records.every((r) =>

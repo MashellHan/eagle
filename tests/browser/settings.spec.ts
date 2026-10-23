@@ -157,12 +157,10 @@ const dailyReport = {
   model: "test-model",
   provider: "custom",
   snapshots: 120,
-  semanticRecords: 24,
   inputHash: "hash",
   coverage: Array.from({ length: 24 }, (_, hour) => ({
     hour,
     snapshots: hour === 9 ? 120 : 0,
-    semanticRecords: hour === 9 ? 24 : 0,
     inputRecords: hour === 9 ? 50 : 0,
     retainedRecords: hour === 9 ? 5 : 0,
     omittedRecords: hour === 9 ? 45 : 0,

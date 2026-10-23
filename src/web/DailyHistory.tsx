@@ -49,8 +49,7 @@ function ReportCard({ report }: { report: DailyReport }) {
         {report.content.overview}
       </p>
       <p className="mt-2 text-basalt-sm text-basalt-muted-foreground">
-        北京时间 00:00–23:59 · {report.snapshots} 次采集 ·{" "}
-        {report.semanticRecords} 条语义记录
+        北京时间 00:00–23:59 · {report.snapshots} 次采集
       </p>
       {expanded && (
         <div className="mt-3 space-y-3">

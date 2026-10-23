@@ -157,12 +157,6 @@ function WorkspaceSnapshot({
             connection === "online" && view?.availability !== "unavailable"
               ? assessPane(pane, current.machine.report.capturedAt).state
               : "unverified";
-          const summary = current.machine.summaries?.find(
-            (s) =>
-              s.spaceId === view?.id &&
-              s.paneId === pane.id &&
-              s.taskId === pane.task.id,
-          );
           return (
             <Button
               key={pane.id}
@@ -182,9 +176,9 @@ function WorkspaceSnapshot({
               </span>
               <strong
                 className="workspace-task-title"
-                title={summary?.summary.task || pane.task.title || pane.title}
+                title={pane.task.title || pane.title}
               >
-                {summary?.summary.task || pane.task.title || pane.title}
+                {pane.task.title || pane.title}
               </strong>
               <span className="workspace-task-footer">
                 <span className="workspace-task-tab" title={tab.name}>

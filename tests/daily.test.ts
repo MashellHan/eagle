@@ -105,7 +105,7 @@ test("daily citations cannot cross hours, invent sources or call missing data in
   assert.throws(() => parseDailyReport(JSON.stringify(value), ids));
 });
 
-test("bounded input prioritizes semantic evidence and discloses omissions without mutating sources", () => {
+test("bounded input discloses omissions without mutating sources", () => {
   const records = Array.from({ length: 150 }, (_, i) => ({
     id: `F${i + 1}`,
     kind: "pane",
@@ -115,60 +115,13 @@ test("bounded input prioritizes semantic evidence and discloses omissions withou
       taskId: `task-${i}`,
     }),
   }));
-  records.push({
-    id: "S1",
-    kind: "semantic",
-    observations: ["2026-09-27T01:30:00.000Z"],
-    value: JSON.stringify({ summary: "Manager 声称检查通过，仍待核实。" }),
-  });
   const original = structuredClone(records);
   const sampled = sampleHour(records, 9);
   assert(JSON.stringify(sampled.records).length <= 4000);
-  assert(sampled.records.some((r) => r.id === "H09-S1"));
   assert(sampled.omittedRecords > 0);
   assert(sampled.excerptedRecords > 0);
   assert.deepEqual(records, original);
   assert(sampled.records.every((r) => r.id.startsWith("H09-")));
-});
-
-test("semantic sampling keeps task identity and progress ahead of bulky evidence metadata", () => {
-  const value = JSON.stringify({
-    contentHash: "hash",
-    value: {
-      basis: Array.from({ length: 30 }, () => "a".repeat(64)),
-      evidence: Array.from({ length: 30 }, () => ({
-        summary: "原始材料".repeat(200),
-      })),
-      spaceId: "space-one",
-      paneId: "pane-one",
-      taskId: "task-one",
-      observedAt: "2026-09-27T01:00:00Z",
-      summary: {
-        task: "日报改造",
-        phase: "verify",
-        progress: "接口校验通过，生产尚未部署",
-        outcomes: [],
-        blocker: null,
-        nextStep: "检查生产",
-        rationale: "管理器声称",
-        evidenceRefs: [],
-      },
-    },
-  });
-  const sampled = sampleHour(
-    [
-      {
-        id: "S1",
-        kind: "semantic",
-        observations: ["2026-09-27T01:00:00Z"],
-        value,
-      },
-    ],
-    9,
-  );
-  assert(sampled.records[0].value.includes("task-one"));
-  assert(sampled.records[0].value.includes("接口校验通过，生产尚未部署"));
-  assert.equal(sampled.excerptedRecords, 1);
 });
 
 test("daily retry receives every populated hour mistaken for missing data with its real citations", async (t) => {

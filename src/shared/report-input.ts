@@ -1,5 +1,5 @@
+import { canonical } from "./canonical.ts";
 import type { Report } from "./schema.ts";
-import { canonical } from "./summaries.ts";
 
 export const utcHour = (at: string | number) =>
   new Date(
@@ -56,10 +56,7 @@ export function projectHour(records: InputRecord[]) {
 }
 
 /** Coalesce identical observations, preserving every timestamp and all closed tasks. */
-export function compactHour(
-  reports: Iterable<Report>,
-  semantics: { value: unknown; [key: string]: unknown }[],
-) {
+export function compactHour(reports: Iterable<Report>) {
   const records: InputRecord[] = [];
   let snapshots = 0;
   const times: string[] = [];
@@ -110,26 +107,10 @@ export function compactHour(
             add("evidence", observedAt, { ...identity, ...fact });
         }
   }
-  for (const value of semantics) {
-    const observedAt =
-      value.value &&
-      typeof value.value === "object" &&
-      "observedAt" in value.value
-        ? String(value.value.observedAt)
-        : "";
-    if (observedAt) times.push(observedAt);
-    records.push({
-      id: `S${records.length + 1}`,
-      kind: "semantic",
-      observations: observedAt ? [observedAt] : [],
-      value: canonical(value),
-    });
-  }
   times.sort();
   return {
     records,
     snapshots,
-    semanticRecords: semantics.length,
     firstObservedAt: times[0] ?? null,
     lastObservedAt: times.at(-1) ?? null,
   };

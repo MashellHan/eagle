@@ -52,8 +52,16 @@ async function accessToken(aud = audience, iss = issuer, expires = "1h") {
     .setExpirationTime(expires)
     .sign(signingKey);
 }
-const currentReport = (id: string, offset = 0) =>
-  report(id, new Date(Date.now() + offset).toISOString());
+// Monotonic collection time keeps current-state ordering deterministic and
+// independent of how fast the suite runs.
+let clock = Date.now();
+const tick = () => {
+  clock += 1;
+  return new Date(clock).toISOString();
+};
+const currentReport = (id: string) => report(id, tick());
+const skewedReport = (id: string, offsetMs: number) =>
+  report(id, new Date(Date.now() + offsetMs).toISOString());
 
 before(async () => {
   const keys = await generateKeyPair("RS256", { extractable: true });
@@ -202,12 +210,6 @@ before(async () => {
     readFileSync("migrations/0001_initial.sql", "utf8").replace(/\n/g, " "),
   );
   await db.exec(
-    readFileSync("migrations/0002_pane_summaries.sql", "utf8").replace(
-      /\n/g,
-      " ",
-    ),
-  );
-  await db.exec(
     readFileSync("migrations/0003_hourly_reports.sql", "utf8").replace(
       /\n/g,
       " ",
@@ -215,6 +217,12 @@ before(async () => {
   );
   await db.exec(
     readFileSync("migrations/0004_daily_reports.sql", "utf8").replace(
+      /\n/g,
+      " ",
+    ),
+  );
+  await db.exec(
+    readFileSync("migrations/0005_drop_pane_summaries.sql", "utf8").replace(
       /\n/g,
       " ",
     ),
@@ -293,7 +301,7 @@ test("uploads update current state without writing a D1 report", async () => {
     ).status,
     409,
   );
-  const value = currentReport("do-only", -20000);
+  const value = skewedReport("do-only", -20000);
   assert.equal((await request("/api/v1/reports", value)).status, 201);
   const db = await mf.getD1Database("DB");
   assert.equal(
@@ -307,7 +315,7 @@ test("uploads update current state without writing a D1 report", async () => {
 });
 
 test("telemetry and current state survive DO eviction without a D1 write", async () => {
-  const value = currentReport("telemetry", -10000);
+  const value = skewedReport("telemetry", -10000);
   const snapshot = {
     ...telemetry(value.capturedAt),
     hardware: {
@@ -606,7 +614,7 @@ test("fail-closed auth, machine scoping, versions, body limits and no token pers
     400,
   );
   assert.equal(
-    (await request("/api/v1/reports", currentReport("future", 600_000))).status,
+    (await request("/api/v1/reports", skewedReport("future", 600_000))).status,
     400,
   );
   assert.equal(
@@ -628,7 +636,7 @@ test("atomic dedup, content conflicts, concurrent retries and out-of-order curre
     409,
   );
   assert.equal(
-    (await request("/api/v1/reports", currentReport("older", -60_000))).status,
+    (await request("/api/v1/reports", skewedReport("older", -60_000))).status,
     201,
   );
   const overview = (await (
@@ -860,7 +868,7 @@ test("the machine ingress exposes only Bearer-protected ingestion and public hea
 });
 
 test("concurrent first delivery shares one receipt; complete replacement removes closed Spaces and clears warnings", async () => {
-  const value = currentReport("replace-current", 2000);
+  const value = currentReport("replace-current");
   value.spaces = [];
   const receipts = await Promise.all(
     Array.from({ length: 4 }, () => request("/api/v1/reports", value)),
@@ -902,7 +910,7 @@ test("concurrent first delivery shares one receipt; complete replacement removes
   await request("/api/v1/reports", {
     ...value,
     reportId: "same-inventory",
-    capturedAt: new Date(Date.parse(value.capturedAt) + 1000).toISOString(),
+    capturedAt: tick(),
   });
   const after = (await read()).machines[0];
   assert.equal(after.changedAt, current.changedAt);
@@ -1148,8 +1156,7 @@ test("credentials embedded in reports are rejected; missing legacy tables cannot
   const db = await mf.getD1Database("DB");
   await db.exec("DROP TABLE machines; DROP TABLE reports;");
   assert.equal(
-    (await request("/api/v1/reports", currentReport("archive-outage", 1000)))
-      .status,
+    (await request("/api/v1/reports", currentReport("archive-outage"))).status,
     201,
   );
   assert.equal(
@@ -1161,447 +1168,6 @@ test("credentials embedded in reports are rejected; missing legacy tables cannot
     (await request("/api/v1/history", undefined, viewer)).status,
     503,
   );
-});
-
-test("semantic summaries bind current tasks and facts, dedupe changes, preserve history, and reject fabricated evidence", async () => {
-  const { evidenceKeys } = await import("../src/shared/summaries.ts");
-  const current = currentReport("semantic-base", 10000);
-  const pane = current.spaces[0].tabs[0].panes[0];
-  pane.evidence = [
-    {
-      kind: "git",
-      status: "success",
-      source: "git:HEAD+status",
-      observedAt: current.capturedAt,
-      taskId: pane.task.id,
-      revision: "a".repeat(40),
-      summary: "main clean",
-    },
-  ];
-  assert.equal((await request("/api/v1/reports", current)).status, 201);
-  const basis = Object.keys(await evidenceKeys(pane.evidence));
-  const entry = {
-    spaceId: current.spaces[0].id,
-    paneId: pane.id,
-    taskId: pane.task.id,
-    basis,
-    observedAt: new Date().toISOString(),
-    summary: {
-      task: "实现实时总结",
-      phase: "verify",
-      progress: "正在核对实际数据",
-      outcomes: [{ kind: "commit", text: "main 已提交", evidenceRefs: basis }],
-      blocker: null,
-      nextStep: "生产验收",
-      rationale: "Git 可见，测试与部署待核对",
-      evidenceRefs: basis,
-    },
-  };
-  const batch = {
-    protocolVersion: 1,
-    machineId: current.machine.id,
-    managerId: "cherry",
-    sequence: 1,
-    sentAt: new Date().toISOString(),
-    updates: [entry],
-    checks: [],
-  };
-  assert.equal(
-    (await request("/api/v1/summaries", batch, "wrong")).status,
-    401,
-  );
-  assert.equal((await request("/api/v1/summaries", batch)).status, 201);
-  assert.equal((await request("/api/v1/summaries", batch)).status, 200);
-  const db = await mf.getD1Database("DB");
-  assert.equal(
-    await db.prepare("SELECT count(*) n FROM pane_summaries").first("n"),
-    1,
-  );
-  assert.equal(
-    (
-      await request("/api/v1/summaries", {
-        ...batch,
-        updates: [
-          { ...entry, summary: { ...entry.summary, progress: "conflict" } },
-        ],
-      })
-    ).status,
-    409,
-  );
-  assert.equal(
-    (
-      await request("/api/v1/summaries", {
-        ...batch,
-        sequence: 2,
-        updates: [{ ...entry, observedAt: new Date().toISOString() }],
-      })
-    ).status,
-    201,
-  );
-  assert.equal(
-    await db.prepare("SELECT count(*) n FROM pane_summaries").first("n"),
-    1,
-  );
-  assert.equal(
-    (
-      await request("/api/v1/summaries", {
-        ...batch,
-        sequence: 3,
-        updates: [
-          {
-            ...entry,
-            summary: { ...entry.summary, evidenceRefs: ["b".repeat(64)] },
-          },
-        ],
-      })
-    ).status,
-    409,
-  );
-  assert.equal(
-    (
-      await request("/api/v1/summaries", {
-        ...batch,
-        sequence: 3,
-        updates: [{ ...entry, taskId: "wrong-task" }],
-      })
-    ).status,
-    409,
-  );
-  const changed = {
-    ...entry,
-    observedAt: new Date().toISOString(),
-    summary: { ...entry.summary, progress: "完成核对，等待发布" },
-  };
-  assert.equal(
-    (
-      await request("/api/v1/summaries", {
-        ...batch,
-        sequence: 3,
-        updates: [changed],
-      })
-    ).status,
-    201,
-  );
-  assert.equal(
-    await db.prepare("SELECT count(*) n FROM pane_summaries").first("n"),
-    2,
-  );
-  const { summary, ...check } = {
-    ...entry,
-    observedAt: new Date().toISOString(),
-  };
-  assert.equal(
-    (
-      await request("/api/v1/summaries", {
-        ...batch,
-        sequence: 4,
-        updates: [],
-        checks: [check],
-      })
-    ).status,
-    201,
-  );
-  assert.equal(
-    await db.prepare("SELECT count(*) n FROM pane_summaries").first("n"),
-    2,
-  );
-  assert.equal(
-    (
-      await request("/api/v1/summaries", {
-        ...batch,
-        managerId: "other",
-        sequence: 5,
-      })
-    ).status,
-    409,
-  );
-  const own = await request("/api/v1/agent-state");
-  assert.equal(own.status, 200);
-  const self = (await own.json()) as {
-    manager: { sequence: number };
-    summaries: { summary: { progress: string } }[];
-  };
-  assert.equal(self.manager.sequence, 4);
-  assert.equal(self.summaries[0].summary.progress, changed.summary.progress);
-  const history = await request(
-    "/api/v1/summary-history?machine=mac-one&space=default:w1&pane=w1:p1",
-    undefined,
-    viewer,
-  );
-  assert.equal(history.status, 200);
-  assert.equal(
-    ((await history.json()) as { entries: unknown[] }).entries.length,
-    2,
-  );
-  await mf.unsafeEvictDurableObject("eagle", "MachineState", {
-    name: "mac-one",
-  });
-  assert.equal(
-    (
-      await request("/api/v1/summaries", {
-        ...batch,
-        sequence: 4,
-        updates: [],
-        checks: [check],
-      })
-    ).status,
-    200,
-  );
-});
-
-test("summaries accept recent acknowledged evidence during active work, while checks cannot refresh old facts; outbox survives D1 outage", async () => {
-  const { evidenceKeys } = await import("../src/shared/summaries.ts");
-  const base = currentReport("semantic-moving", 20000);
-  const pane = base.spaces[0].tabs[0].panes[0];
-  pane.evidence = [
-    {
-      kind: "git",
-      status: "success",
-      source: "git:HEAD+status",
-      observedAt: base.capturedAt,
-      taskId: pane.task.id,
-      revision: "a".repeat(40),
-      summary: "main clean",
-    },
-  ];
-  assert.equal((await request("/api/v1/reports", base)).status, 201);
-  const entry = {
-    spaceId: base.spaces[0].id,
-    paneId: pane.id,
-    taskId: pane.task.id,
-    basis: Object.keys(await evidenceKeys(pane.evidence)),
-    observedAt: new Date().toISOString(),
-    summary: {
-      task: "持续变化任务",
-      phase: "implement",
-      progress: "已完成第一步，后续仍在进行",
-      outcomes: [],
-      blocker: null,
-      nextStep: "继续验证",
-      rationale: "基于分析开始时的实际证据",
-      evidenceRefs: [],
-    },
-  };
-  const next = structuredClone(base);
-  next.reportId = "semantic-moving-next";
-  next.capturedAt = new Date(Date.parse(base.capturedAt) + 1).toISOString();
-  next.spaces[0].tabs[0].panes[0].evidence[0].revision = "b".repeat(40);
-  assert.equal((await request("/api/v1/reports", next)).status, 201);
-  const batch = {
-    protocolVersion: 1,
-    machineId: "mac-one",
-    managerId: "cherry",
-    sequence: 5,
-    sentAt: new Date().toISOString(),
-    updates: [entry],
-    checks: [],
-  };
-  const db = await mf.getD1Database("DB");
-  await db.exec("ALTER TABLE pane_summaries RENAME TO archive_unavailable");
-  const response = await request("/api/v1/summaries", batch);
-  assert.equal(response.status, 201);
-  assert.equal(
-    ((await response.json()) as { archivePending: number }).archivePending,
-    1,
-  );
-  const { summary, ...check } = {
-    ...entry,
-    observedAt: new Date().toISOString(),
-  };
-  assert.equal(
-    (
-      await request("/api/v1/summaries", {
-        ...batch,
-        sequence: 6,
-        updates: [],
-        checks: [check],
-      })
-    ).status,
-    409,
-  );
-  await db.exec("ALTER TABLE archive_unavailable RENAME TO pane_summaries");
-  await mf.unsafeEvictDurableObject("eagle", "MachineState", {
-    name: "mac-one",
-  });
-  assert.equal((await request("/api/v1/summaries", batch)).status, 200);
-  assert.equal(
-    await db
-      .prepare(
-        "SELECT count(*) n FROM pane_summaries WHERE task_id=? AND payload LIKE ?",
-      )
-      .bind("task-1", "%已完成第一步%")
-      .first("n"),
-    1,
-  );
-});
-
-test("DO independently retains semantic records in UTC hours with latest/all queries, source and hashes", async () => {
-  const now = new Date();
-  const previousHour = new Date(now.getTime() - 3600000).toISOString();
-  const entry = {
-    spaceId: "default:w1",
-    paneId: "w1:p1",
-    taskId: "older-task",
-    basis: [],
-    observedAt: previousHour,
-    summary: {
-      task: "过去的任务",
-      phase: "verify",
-      progress: "小时内首次核对",
-      outcomes: [],
-      blocker: null,
-      nextStep: "继续",
-      rationale: "仅语义描述，无事实凭据",
-      evidenceRefs: [],
-    },
-  };
-  const batch = {
-    protocolVersion: 1,
-    machineId: "mac-one",
-    managerId: "cherry",
-    sequence: 6,
-    sentAt: now.toISOString(),
-    updates: [entry],
-    checks: [],
-  };
-  assert.equal(
-    (await request("/api/v1/summaries", batch)).status,
-    201,
-    "Delayed independent semantic report must not require an aligned current snapshot",
-  );
-  const second = {
-    ...batch,
-    sequence: 7,
-    updates: [
-      {
-        ...entry,
-        observedAt: new Date(Date.parse(previousHour) + 1).toISOString(),
-        summary: { ...entry.summary, progress: "同一小时第二次实质变化" },
-      },
-    ],
-  };
-  assert.equal((await request("/api/v1/summaries", second)).status, 201);
-  assert.equal((await request("/api/v1/summaries", second)).status, 200);
-  const hour = `${previousHour.slice(0, 13)}:00:00.000Z`;
-  const query =
-    "/api/v1/semantic-hours?machine=mac-one&space=default:w1&pane=w1:p1";
-  const get = async (path: string) =>
-    (await request(path, undefined, viewer)).json() as Promise<{
-      hours: {
-        hour: string;
-        count: number;
-        latest: {
-          contentHash: string;
-          source: { managerId: string };
-          value: { sequence: number; taskId: string };
-        };
-      }[];
-      entries: {
-        contentHash: string;
-        hour: string;
-        value: { sequence: number };
-      }[];
-    }>;
-  const grouped = await get(query);
-  const bucket = grouped.hours.find((h) => h.hour === hour);
-  assert(bucket);
-  assert.equal(bucket.count, 2);
-  assert.equal(bucket.latest.value.sequence, 7);
-  assert.equal(bucket.latest.source.managerId, "cherry");
-  assert.match(bucket.latest.contentHash, /^[a-f0-9]{64}$/);
-  const all = await get(`${query}&hour=${encodeURIComponent(hour)}&mode=all`);
-  assert.equal(all.entries.length, 2);
-  assert(all.entries.every((e) => e.hour === hour));
-  const latest = await get(
-    `${query}&hour=${encodeURIComponent(hour)}&mode=latest`,
-  );
-  assert.equal(latest.entries.length, 1);
-  assert.equal(latest.entries[0].value.sequence, 7);
-  const own = (await (await request("/api/v1/agent-state")).json()) as {
-    summaries: { taskId: string }[];
-  };
-  assert(
-    own.summaries.every((s) => s.taskId !== "older-task"),
-    "Delayed task cannot replace current interpretation",
-  );
-  await mf.unsafeEvictDurableObject("eagle", "MachineState", {
-    name: "mac-one",
-  });
-  assert.equal(
-    (await get(`${query}&hour=${encodeURIComponent(hour)}&mode=all`)).entries
-      .length,
-    2,
-  );
-  assert.equal((await request(query, undefined, "wrong")).status, 401);
-  assert.equal(
-    (
-      await request(
-        `${query}&hour=${encodeURIComponent(hour)}&mode=latest&before=2`,
-        undefined,
-        viewer,
-      )
-    ).status,
-    400,
-  );
-  assert.equal(
-    (
-      await request("/api/v1/summaries", {
-        ...batch,
-        sequence: 8,
-        updates: [
-          {
-            ...entry,
-            observedAt: new Date(Date.now() - 31 * 86400000).toISOString(),
-          },
-        ],
-      })
-    ).status,
-    409,
-  );
-  assert.equal(
-    (
-      await request("/api/v1/summaries", {
-        ...batch,
-        sequence: 8,
-        updates: [
-          {
-            ...entry,
-            observedAt: new Date(Date.parse(previousHour) - 1).toISOString(),
-            summary: { ...entry.summary, progress: "迟到的更早观察" },
-          },
-        ],
-      })
-    ).status,
-    201,
-  );
-  const active = currentReport("activate-historical-task", 30000);
-  active.spaces[0].tabs[0].panes[0].task.id = "older-task";
-  assert.equal((await request("/api/v1/reports", active)).status, 201);
-  const restored = (await (await request("/api/v1/agent-state")).json()) as {
-    summaries: { sequence: number }[];
-  };
-  assert.equal(
-    restored.summaries[0].sequence,
-    7,
-    "A later upload of an older observation must never roll back the per-task latest pointer",
-  );
-});
-
-test("retention cannot evict a live task interpretation in favor of delayed historical tasks", async () => {
-  const storage = await mf.unsafeGetDurableObjectStorage(
-    "eagle",
-    "MachineState",
-    { name: "mac-one" },
-  );
-  await storage.exec(
-    "UPDATE semantic_current SET received_at='2000-01-01T00:00:00.000Z' WHERE task_id='older-task'",
-  );
-  await request("/api/v1/semantic-hours?machine=mac-one", undefined, viewer);
-  const own = (await (await request("/api/v1/agent-state")).json()) as {
-    summaries: { taskId: string; sequence: number }[];
-  };
-  assert.equal(own.summaries[0]?.taskId, "older-task");
-  assert.equal(own.summaries[0].sequence, 7);
 });
 
 test("realtime bridge rejects missing or mismatched configured machine identity", async () => {
@@ -2520,58 +2086,6 @@ test("daily cutover preserves the configured provider and encrypted key while re
   );
 });
 
-test("daily reports include semantic-only hours with their original observation time", async () => {
-  const machine = "daily-semantic";
-  const credential = await dailyMachine(machine);
-  const value = dailySnapshot("semantic-input", machine, 3);
-  await request("/api/v1/reports", value, credential);
-  const response = await request(
-    "/api/v1/summaries",
-    {
-      protocolVersion: 1,
-      machineId: machine,
-      managerId: "daily-manager",
-      sequence: 1,
-      sentAt: new Date().toISOString(),
-      checks: [],
-      updates: [
-        {
-          spaceId: "default:w1",
-          paneId: "w1:p1",
-          taskId: "semantic-task",
-          basis: [],
-          observedAt: value.capturedAt,
-          summary: {
-            task: "日报验证",
-            phase: "verify",
-            progress: "接口已验证，部署待确认",
-            outcomes: [],
-            blocker: null,
-            nextStep: "验证部署",
-            rationale: "管理器报告",
-            evidenceRefs: [],
-          },
-        },
-      ],
-    },
-    credential,
-  );
-  assert.equal(response.status, 201, await response.clone().text());
-  const storage = await mf.unsafeGetDurableObjectStorage(
-    "eagle",
-    "MachineState",
-    { name: machine },
-  );
-  await storage.exec("DELETE FROM hourly_facts");
-  assert.equal((await dailyResult(machine)).results[0].generated, true);
-  const saved = (await dailyHistory(machine)).entries[0].report;
-  assert.equal(saved.snapshots, 0);
-  assert.equal(saved.semanticRecords, 1);
-  assert.equal(saved.coverage[3].firstObservedAt, value.capturedAt);
-  assert.equal(saved.coverage[3].semanticRecords, 1);
-  assert.match(saved.content.hours[3].evidenceIds[0], /^H03-S\d+$/);
-});
-
 test("one daily cron serves separate machines without a slow model blocking the fleet or duplicate generation", async () => {
   const machines = ["daily-cron-slow", "daily-cron-fast", "daily-cron-next"];
   for (const machine of machines) {
@@ -2708,10 +2222,13 @@ test("resource history is authenticated, isolated, idempotent, time ordered and 
   assert.equal(history.samples[0].memory, 75);
   assert.deepEqual(history.samples[0].load, [1, 2, 3]);
   assert.equal(history.samples[2].cpu, null);
-  const state = (await (
-    await request("/api/v1/agent-state", undefined, credentials.token)
-  ).json()) as MachineView;
-  assert.equal(state.report.reportId, missing.reportId);
+  const overview = (await (
+    await request("/api/v1/overview", undefined, viewer)
+  ).json()) as { machines: MachineView[] };
+  assert.equal(
+    overview.machines.find((entry) => entry.id === machine)?.report.reportId,
+    missing.reportId,
+  );
   const legacy = make("resource-legacy", 50000);
   delete legacy.machine.telemetry;
   await request("/api/v1/reports", legacy, credentials.token);

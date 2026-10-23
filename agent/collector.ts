@@ -15,7 +15,6 @@ import { promisify, stripVTControlCharacters } from "node:util";
 import { z } from "zod";
 import {
   type Evidence,
-  EvidenceSchema,
   type Pane,
   type Report,
   ReportSchema,
@@ -273,26 +272,11 @@ async function herdr(args: string[], session?: string) {
     ...args,
   ]);
 }
-const ManagerSchema = z.record(
-  z.string(),
-  z.strictObject({
-    task: z.strictObject({
-      id: z.string(),
-      title: z.string().max(500),
-      requiresDeployment: z.boolean(),
-    }),
-    evidence: z.array(EvidenceSchema).max(20),
-  }),
-);
 export type AgentConfig = {
-  manager?: Partial<
-    import("zod").infer<typeof import("./manager.ts").ManagerConfigSchema>
-  >;
   url: string;
   token: string;
   machineId: string;
   machineName: string;
-  evidenceFile?: string;
   intervalSeconds?: number;
   slowIntervalSeconds?: number;
   codexDir?: string;
@@ -300,21 +284,6 @@ export type AgentConfig = {
   watchPorts?: { name: string; port: number; host?: string }[];
 };
 
-export function applyManager(
-  pane: Pane,
-  managed: { task: Pane["task"]; evidence: Evidence[] },
-): boolean {
-  if (managed.task.id !== pane.task.id) return false;
-  pane.task.title = managed.task.title;
-  pane.evidence.push(
-    ...managed.evidence.map((e) => ({
-      ...e,
-      status: "unknown" as const,
-      source: `manager:legacy:${e.source}`.slice(0, 240),
-    })),
-  );
-  return true;
-}
 export function preserveStopped(
   current: Space[],
   previous: Space[],
@@ -445,12 +414,7 @@ export async function collect(config: AgentConfig): Promise<Report> {
   ).sessions;
   if (!sessions.some((s) => s.running) && !previous)
     throw new Error("No running Herdr sessions; preserving previous inventory");
-  const manager = config.evidenceFile
-    ? ManagerSchema.parse(
-        JSON.parse(await readFile(config.evidenceFile, "utf8")),
-      )
-    : {};
-  // ponytail: optional Codex v5/v1 adapter. Unsupported local DB schemas remain unknown; manager evidence is portable.
+  // ponytail: optional Codex v5/v1 adapter. Unsupported local DB schemas remain unknown.
   let state: DatabaseSync | undefined;
   let goals: DatabaseSync | undefined;
   const codexDir = config.codexDir ?? join(homedir(), ".codex");
@@ -477,7 +441,6 @@ export async function collect(config: AgentConfig): Promise<Report> {
       for (const space of normalized) {
         for (const pane of space.tabs.flatMap((t) => t.panes)) {
           const original = raw.panes.find((p) => p.pane_id === pane.id);
-          const managed = manager[`${session.name}:${pane.id}`];
           const sessionId =
             original?.agent_session?.kind === "id" &&
             (!original.agent_session.agent ||
@@ -573,10 +536,6 @@ export async function collect(config: AgentConfig): Promise<Report> {
               /* Portable manager evidence remains available when native history is absent. */
             }
           }
-          if (managed && !applyManager(pane, managed))
-            warnings.push(
-              `${space.name}/${pane.id}：管理证据属于旧任务，已忽略`,
-            );
           if (!pane.evidence.some((e) => e.kind === "summary")) {
             try {
               const terminal = await herdr(

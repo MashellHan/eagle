@@ -39,7 +39,7 @@ function allowed(request: IncomingMessage) {
     return request.method === "GET" && path === "/api/v1/realtime";
   return (
     ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(request.method ?? "") &&
-    /^\/api\/v1\/(me|overview|resources|history|semantic-hours|summary-history|daily-reports(?:\/run)?|settings(?:\/test)?|machine-groups(?:\/[0-9a-f-]{36}|\/assignments)?|machines(?:\/[a-z0-9][a-z0-9_-]{0,79}\/(?:rotate|revoke|rename|delete))?)$/.test(
+    /^\/api\/v1\/(me|overview|resources|history|daily-reports(?:\/run)?|settings(?:\/test)?|machine-groups(?:\/[0-9a-f-]{36}|\/assignments)?|machines(?:\/[a-z0-9][a-z0-9_-]{0,79}\/(?:rotate|revoke|rename|delete))?)$/.test(
       path,
     )
   );

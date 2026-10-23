@@ -21,14 +21,9 @@ async function workspace(page: Page, missingTarget = false) {
     ],
   });
   let overviewReads = 0,
-    hoursReads = 0,
     controls = 0,
     fail = false;
   await page.route("**/api/**", (route) => {
-    if (route.request().url().includes("semantic-hours")) {
-      hoursReads++;
-      return route.fulfill({ json: { hours: [], nextCursor: null } });
-    }
     if (route.request().url().includes("overview")) overviewReads++;
     if (fail)
       return route.fulfill({ status: 503, json: { error: "unavailable" } });
@@ -98,7 +93,6 @@ async function workspace(page: Page, missingTarget = false) {
   return {
     now,
     reads: () => overviewReads,
-    hoursReads: () => hoursReads,
     controls: () => controls,
     fail: (value: boolean) => {
       fail = value;
@@ -186,12 +180,10 @@ test("opening current tasks fetches a fresh snapshot then freezes it until refre
   await expect(current).toContainText("New task from latest report");
   expect(source.reads()).toBe(reads + 1);
   await expect(current).toContainText("快照采集");
-  await expect.poll(source.hoursReads).toBe(1);
   source.update("Later task, not auto-rendered");
   await page.clock.fastForward(16000);
   await expect.poll(source.reads).toBeGreaterThan(reads + 1);
   await expect(current).not.toContainText("Later task, not auto-rendered");
-  expect(source.hoursReads()).toBe(1);
   await page.getByRole("button", { name: "刷新当前任务", exact: true }).click();
   await expect(current).toContainText("Later task, not auto-rendered");
   source.update("Task when reopened");

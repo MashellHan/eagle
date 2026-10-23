@@ -74,9 +74,7 @@ async function fixture(page: Page, empty = false, spaceCount = 2) {
   await page.route("**/api/**", (route) => {
     if (route.request().url().includes("/overview")) overviewReads++;
     return route.fulfill({
-      json: route.request().url().includes("semantic-hours")
-        ? { hours: [], nextCursor: null }
-        : { now, machines: shown, pendingMachines: [] },
+      json: { now, machines: shown, pendingMachines: [] },
     });
   });
   let opened = 0,
