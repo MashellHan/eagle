@@ -1331,3 +1331,30 @@ serving and the first catalogue-derived production Cron observation.
 - `git fetch origin` at 07:28 confirmed `origin/main` remains `94df39a`; no rebase onto new remote work is needed. All 341 lockfile resolved URLs remain official npm URLs. Root/lock version is 0.11.0, Agent source 0.8.3 and published onboarding 0.8.1.
 - Actual Herdr collection, live Access/ingestion, production D1 and public rendering remain untouched. Authentication and D1 evidence comes only from isolated local fixtures; screenshots are local synthetic data. No credentials, remote writes, push, PR, tag, publication or deployment were used.
 - Next hop: amend the final version-preparation record, obtain exact-HEAD independent Codex max re-review and close its owned pane. The two gate rounds checked the final code tree; the subsequent amendment only records these outcomes in the changelog/checkpoint.
+
+## 2026-10-24 06:20 +08 — Semantic layer removal and Agent 1.0.0
+
+- Removed the optional LLM semantic layer end to end in `0a3d856` (code,
+  Durable Object table drops, four retired endpoints, Pane summary UI, agent
+  Manager) and `85dd7ef` (docs). `migrations/0005_drop_pane_summaries.sql` is
+  created but **not applied** to any remote D1.
+- Local verification: `npm run check` passes with 168 Node tests, strict types,
+  lint (four pre-existing informational diagnostics) and build; `npm run
+  test:browser` reports 191 passed and 11 pre-existing viewport skips. The suite
+  now uses monotonic collection time, so ordering no longer depends on runtime.
+- Independent Codex `group/auto-gpt-6-astra` high review returned CHANGES
+  REQUIRED on `aa8a9d1` for a strict-config upgrade crash and unpublished pins.
+  `7d270f8` drops retired `manager`/`evidenceFile` keys with one log line
+  (verified with a real legacy config reaching upload), `f2b7a83` restores the
+  0002 migration in the test database and covers archived v1 reports plus equal
+  capture-time ordering, `c21099c` and `ade1792` finish the pins. Re-review:
+  SIGN-OFF, with two minor notes then also fixed.
+- Published `@nocoo/eagle-agent@1.0.0` from the prebuilt tarball
+  `nocoo-eagle-agent-1.0.0.tgz` (16 files, shasum `7e4dac28…574b21`, integrity
+  `sha512-gtBA5fU+…M1cA==`) after Chrome web login and the separate publication
+  challenge. The official registry now serves version 1.0.0 as `latest` with the
+  same hashes, and an isolated-cache install from the Tencent mirror prints
+  `1.0.0`.
+- No Worker deployment, D1 migration, remote collection, production credential
+  or dashboard change was performed. Next hop: deploy the Worker before any
+  onboarding relies on 1.0.0 if the semantic endpoints must disappear remotely.
