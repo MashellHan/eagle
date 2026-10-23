@@ -272,6 +272,16 @@ async function herdr(args: string[], session?: string) {
     ...args,
   ]);
 }
+const RETIRED_CONFIG_KEYS = ["manager", "evidenceFile"] as const;
+/** Drop settings removed in 1.0.0 so an older secure config still starts. */
+export function stripRetiredConfig(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return { value, removed: [] as string[] };
+  const config = { ...(value as Record<string, unknown>) };
+  const removed = RETIRED_CONFIG_KEYS.filter((key) => key in config);
+  for (const key of removed) delete config[key];
+  return { value: config, removed };
+}
 export type AgentConfig = {
   url: string;
   token: string;
@@ -533,7 +543,7 @@ export async function collect(config: AgentConfig): Promise<Report> {
                 );
               }
             } catch {
-              /* Portable manager evidence remains available when native history is absent. */
+              /* Native history is optional; terminal evidence still applies. */
             }
           }
           if (!pane.evidence.some((e) => e.kind === "summary")) {
@@ -641,7 +651,7 @@ export async function collect(config: AgentConfig): Promise<Report> {
     spaces,
     warnings: warnings.slice(0, 100),
   };
-  // Scrub every string, including task titles and manager evidence, before disk spool or transport.
+  // Scrub every string, including task titles, before disk spool or transport.
   function scrub(v: unknown): unknown {
     if (typeof v === "string")
       return redact(v, [config.token]).slice(0, v.length);

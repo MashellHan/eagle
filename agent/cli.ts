@@ -21,6 +21,7 @@ import {
   checkUrl,
   collect,
   sendReport,
+  stripRetiredConfig,
 } from "./collector.ts";
 import { realtimeWatch } from "./realtime.ts";
 import { drainSpool } from "./spool.ts";
@@ -31,7 +32,6 @@ const ConfigSchema = z.strictObject({
   token: z.string().min(32),
   machineId: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/),
   machineName: z.string().min(1),
-  evidenceFile: z.string().optional(),
   intervalSeconds: z.literal(30).default(30),
   slowIntervalSeconds: SlowIntervalSchema,
   codexDir: z.string().optional(),
@@ -147,7 +147,12 @@ async function main() {
   const permissions = await stat(path);
   if (process.platform !== "win32" && (permissions.mode & 0o077) !== 0)
     throw new Error("Config must have mode 0600");
-  const config = ConfigSchema.parse(JSON.parse(await readFile(path, "utf8")));
+  const retired = stripRetiredConfig(JSON.parse(await readFile(path, "utf8")));
+  if (retired.removed.length)
+    console.error(
+      JSON.stringify({ event: "retired_config_keys", keys: retired.removed }),
+    );
+  const config = ConfigSchema.parse(retired.value);
   checkUrl(config.url);
   if (action === "collect") {
     const output = process.argv[3];
