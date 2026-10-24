@@ -87,7 +87,7 @@ provisional: { id, attempt } | null   // id = "p_a<attempt>"
 | `message_update` | Convert every `MessageChange` to a `DeltaChange` with its `index` (table below) and forward it | `delta{messageId:"p_a<n>"}` |
 | `message_start` for an assistant attempt that already has a provisional (retry inside the same turn) | Keep the provisional; apply the new content as one `message` change | `delta{kind:"message"}` |
 | `message_end` with `entry.kind === "pi.assistant"` | Convert the entry's message to a domain `Message`; final state from `stopReason` (F13); clear the provisional | `append{message, replaces: p_a<n>}` |
-| `message_end` with `entry.kind === "pi.assistant"` whose `stopReason === "aborted"` and which F22 produced | Convert with `state:"aborted"`; no provisional to replace | `append` |
+| `message_end` with `entry.kind === "pi.assistant"` whose `stopReason === "aborted"` (F22) | Convert with `state:"aborted"`; carry `replaces` **whenever a provisional for that attempt is open** — after a late attach the snapshot already holds the partial, and an unreplaced aborted entry would duplicate it | `append` |
 | `message_end` with `entry.kind === "pi.user"` | Map the user entry, including its `requestId` when known | `append` |
 | `submission` | Map the record: status, `entryId`, `answerEntryId`, `reason` | `submission` |
 | `inbox_update` | Map queue items | `status` |
@@ -194,9 +194,18 @@ listener_error | session_failed`. Only the last two are faults:
 | `listener_error` | A sink callback threw | Reattach with a snapshot; escalate after three in 60 s |
 | `session_failed` | The harness failed | Classify `storage_failed`; same failure identity as `harness.closed` |
 
-Failure identity correlation: `harness.closed{failed}`, a `session_failed` watch
-end, and the `onReport` for the same session failure all resolve to one `failureId`
-for the bot's lifetime, so exactly one error reaches the client and the log.
+Failure identity correlation works per **failure episode**, not per bot, and each
+duplicate pair has a named key:
+
+| Duplicate notifications | Correlation | Result |
+| --- | --- | --- |
+| `task_failed` + `onReport(task_faulted)` for one task | `taskId` | One failure |
+| `harness.closed{failed}` + watch end `session_failed` | harness episode (`harnessGeneration` counter) | One failure, classified `storage_failed` |
+| `onReport(extension_error)` + a task fault that the same hook caused | `taskId` when present, else the report's sequence | One failure |
+| First recoverable listener error: `onReport(listener_error)` + watch end `listener_error` | episode key `listener:<n>` | **No failure at all** for the first two occurrences; the third within 60 s mints one `internal` failure |
+
+The rule that makes this decidable: only the *classifier* mints a failure, and it
+runs once per episode key. Channels never mint on their own.
 
 Normal ends (`close()` we asked for, `stopped`/`session_closed` watch reasons) are
 not failures and produce no `error` event.
@@ -273,7 +282,7 @@ None of them may change v1 semantics for existing fields.
 | Killed while a tool ran (phase 2) | Replayed only when `replay:"safe"`, else an `interrupted` error result | No adapter involvement |
 | Crash loop ≥ `restartLimit` | Task parked, `onReport(task_parked)` (F15) | `error{kind:"task_parked"}`; `recover` retries it |
 | Storage error | Harness closes itself (F14) | Classify `storage_failed`, mark the bot `unavailable`, serve a snapshot with `unavailable` |
-| Watch ends (F17) | `WatchEnd` reason `listener_error`/`failed` | Reattach with a fresh snapshot; escalate to `internal` after three failures in 60 s |
+| Watch ends (F17) | See the exhaustive `WatchEnd` table: `listener_error` reattaches and escalates at three in 60 s; `session_failed` takes the storage-failure path immediately; normal reasons end silently |
 | `close()` stalls on non-cooperative code | `close()` joins invocations | `close` resolves `timeout`; the registry quarantines the bot and retries; it is never dropped |
 | Reopen after idle close | No state lost | New snapshot; the client replaces its view |
 

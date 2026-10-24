@@ -229,20 +229,24 @@ public struct ConversationEvent {
     case snapshot(ConversationSnapshot)          // initial, resync, or a rerender
     case append(Message, replaces: String?)
     case delta(messageId: String, changes: [DeltaChange])
-    case status(running: Bool, inbox: [InboxItem])
+    case status(running: Bool, inbox: [InboxItem], streaming: String?)
     case submission(Submission)
     case history([Message], hasMore: Bool)
-    case error(kind: ErrorKind, message: String, failure: String?)
+    case error(kind: ErrorKind, message: String, failure: String?, requestId: String?)
   }
 }
 
+// Command context is created by the view model, so the call site and the daemon
+// share one trace and one requestId.
+public struct CommandContext { public let trace: String; public let requestId: String? }
+
 public protocol ConversationPort: AnyObject {
   func open(botId: String) -> AsyncStream<ConversationEvent>
-  func send(requestId: String, text: String, whenBusy: BusyMode) async throws
-  func abort() async throws
-  func recover() async throws
-  func resync() async throws
-  func loadHistory(before messageId: String) async throws
+  func send(_ text: String, whenBusy: BusyMode, context: CommandContext) async throws
+  func abort(context: CommandContext) async throws
+  func recover(context: CommandContext) async throws
+  func resync(context: CommandContext) async throws
+  func loadHistory(before messageId: String, context: CommandContext) async throws
   func close()
 }
 
@@ -293,22 +297,29 @@ the canonical root path, and the kernel releases it when the process dies, inclu
 on `SIGKILL`.
 
 ```
-lock port = 43000 + (fnv1a(realpath(root)) % 1000)   // --lock-port overrides
+lock port = 44000 + (fnv1a(realpath(root)) % 1000)   // no override: the root alone decides
 ```
+
+The port range sits above the default service port (43117) and has no per-process
+override, because an override would let two processes with the same root take
+different lock ports and both open the same sqlite files. Changing `--port` does not
+change the lock port.
 
 1. `listen(127.0.0.1:<lock port>)`. Success means this process owns the root.
 2. `EADDRINUSE` → connect and exchange one line. A daemon answering with the same
-   root means a live owner: print its pid from the answer and exit non-zero. An
-   answer with a different root means a hash collision between two roots: exit with
-   an explicit message telling the operator to set `--lock-port`.
+   root means a live owner: print its pid and exit non-zero. An answer with a
+   different root means a hash collision between two roots; exit with an explicit
+   message naming both roots and the derived port (there is no override to reach
+   for, so the fix is a different root path).
 3. No answer (`ECONNREFUSED`) means nothing is listening even though the port is
    held — a state the kernel does not allow for a live listener — so retry once and
    then fail with the error. There is no file to delete and no takeover.
 
 The unix socket is gone: the client transport is the TCP listener from
-[PROTOCOL.md](PROTOCOL.md). Tests: a live daemon rejects a second start (same root),
-a `SIGKILL`ed daemon is taken over on the next start (the port is free), and a
-different root on a colliding lock port fails with the documented message.
+[PROTOCOL.md](PROTOCOL.md). Tests: a live daemon rejects a second start with the same
+root *and different `--port`*; a `SIGKILL`ed daemon is taken over on the next start;
+two different roots that hash to the same lock port fail with the documented
+message.
 
 ### Bot lifecycle
 

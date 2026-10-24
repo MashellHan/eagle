@@ -68,7 +68,7 @@ asserts bidirectional equality between constants and uses; before that it assert
 | layer | events |
 | --- | --- |
 | transport | `transport.conn.open.ok`, `transport.conn.open.fail`, `transport.conn.open.reject`, `transport.conn.close.ok`, `transport.conn.close.end`, `transport.auth.fail`, `transport.frame.recv.ok`, `transport.frame.recv.fail`, `transport.frame.send.ok`, `transport.frame.send.drop` |
-| protocol | `protocol.decode.fail`, `protocol.encode.fail`, `protocol.limit.fail`, `protocol.version.fail`, `protocol.command.start`, `protocol.command.ok`, `protocol.command.fail` |
+| protocol | `protocol.decode.fail`, `protocol.encode.fail`, `protocol.limit.fail`, `protocol.version.fail`, `protocol.command.start`, `protocol.command.ok`, `protocol.command.fail` — `ok` means decoded, validated and dispatched; `fail` means it never reached core. A command that core then fails logs `ok` here and `*.fail` below |
 | core | `core.catalog.load.ok`, `core.catalog.load.fail`, `core.catalog.write.ok`, `core.catalog.write.fail`, `core.bot.resolve.fail`, `core.bot.open.start`, `core.bot.open.ok`, `core.bot.open.fail`, `core.bot.close.ok`, `core.bot.close.fail`, `core.bot.close.degrade` (quarantine), `core.subscribe.start`, `core.subscribe.ok`, `core.subscribe.fail`, `core.submit.start`, `core.submit.ok`, `core.submit.fail`, `core.history.start`, `core.history.ok`, `core.history.fail`, `core.hub.publish.ok`, `core.hub.coalesce`, `core.hub.snapshot.ok`, `core.hub.degrade`, `core.singleton.start`, `core.singleton.ok`, `core.singleton.fail`, `core.recovery.start`, `core.recovery.bot.ok`, `core.recovery.bot.fail`, `core.recovery.ok`, `core.delete.start`, `core.delete.ok`, `core.delete.fail`, `core.reconcile.ok` |
 | runtime | `runtime.open.start`, `runtime.open.ok`, `runtime.open.fail`, `runtime.subscribe.start`, `runtime.subscribe.ok`, `runtime.subscribe.fail`, `runtime.submit.start`, `runtime.submit.ok`, `runtime.submit.fail`, `runtime.abort.start`, `runtime.abort.ok`, `runtime.abort.fail`, `runtime.recover.start`, `runtime.recover.ok`, `runtime.recover.fail`, `runtime.close.start`, `runtime.close.ok`, `runtime.close.fail`, `runtime.watch.end.ok`, `runtime.failure.classify` |
 | pi | `pi.report`, `pi.session.closed` |
@@ -115,9 +115,10 @@ core.submit.fail      level=warn   err={kind:"storage_failed", failure:"f_7"}  d
 protocol.command.fail level=warn   err={kind:"storage_failed", failure:"f_7"}  detail.propagated=true
 ```
 
-- The failure identity `err.failure` is minted exactly once, at the layer that
-  first detects the failure. It is the dedupe unit: **exactly one `level=error`
-  record per `failure` id**, on the layer where it originated.
+- The failure identity `err.failure` is minted exactly once, by the classifier of a
+  **failure episode** ([RUNTIME.md](RUNTIME.md#failure-channels)). It is the dedupe
+  unit: **exactly one `level=error` record per `failure` id**, on the layer where it
+  originated.
 - Layers above log `warn` with the same `err.kind` and `err.failure`, plus
   `detail.propagated=true`, never the message text and never `error`.
 - A trace is long-lived (a connection serves many commands); a failure is not, so
@@ -130,10 +131,21 @@ protocol.command.fail level=warn   err={kind:"storage_failed", failure:"f_7"}  d
 
 Two different rules, previously conflated:
 
-| Context | Rule |
-| --- | --- |
-| Wire (protocol frames) | Content is allowed inside these structural carriers only: `send.text`; any `Message` object (`blocks`, and the message inside a `delta` `message` change); `delta.changes[].append`; `delta.changes[].block`; `agent.instructions` (only when the `agent` capability is on). No other field carries text |
-| Logs | Never message text, prompts, instructions, tokens, submission `detail`, or provider error strings. Paths under the user's home are shortened to `~` |
+One carrier list, used by both the protocol and the redaction test:
+
+| Carrier | Wire | Logs |
+| --- | --- | --- |
+| `send.text` | Allowed | Forbidden |
+| `Message.blocks` and the message inside a `delta` `message` change | Allowed | Forbidden |
+| `delta.changes[].append`, `delta.changes[].block` | Allowed | Forbidden |
+| `history.messages` | Allowed | Forbidden |
+| `BotSummary.title` (user-authored) | Allowed | Forbidden |
+| `agent.instructions` (capability `agent` only) | Allowed | Forbidden |
+| `notice` text | Allowed | Forbidden |
+| Anything else | Forbidden | Forbidden |
+
+Paths under the user's home are shortened to `~` in logs. A redaction test asserts a
+legal title survives on the wire and never appears in a log record.
 
 Specifics:
 
@@ -151,7 +163,7 @@ Specifics:
 | Level | Contents |
 | --- | --- |
 | `trace` | Frame-level encode/decode; off by default (`--log-level=trace`). Records at this level use the same schema and only `protocol.*`/`transport.frame.*` names |
-| `error` | Originating failures only (`err.origin: true`) |
+| `error` | Originating failures only (`err.origin: true`), one record per failure episode |
 | `warn` | Propagated failures, `core.hub.degrade`, `core.bot.close.degrade` (quarantine), drops |
 | `info` (default) | Crossings: connection, subscribe, submit, publish counters, recovery, delete |
 | `debug` | Coalescing details, snapshot rerenders, paging, per-command byte sizes |
@@ -172,11 +184,12 @@ origin is core; the runtime is never reached.
 
 ```
 transport.frame.recv.ok    trace=tr_A evt=subscribe
-protocol.command.ok        trace=tr_A
+protocol.command.ok        trace=tr_A               # dispatched to core, not "succeeded"
 core.catalog.load.fail     trace=tr_A err={kind:"storage_failed", failure:"f_7", origin:true}
 core.subscribe.fail        trace=tr_A err={kind:"storage_failed", failure:"f_7"} propagated
-protocol.command.fail      trace=tr_A err={kind:"storage_failed", failure:"f_7"} propagated
 ```
+Asserted: `protocol.command.fail` is absent (the frame was valid), exactly one
+`level=error`, on `core`, with `failure:"f_7"`.
 Asserted: no `runtime.*` for `tr_A`, exactly one `level=error`, on `core`, with
 `failure:"f_7"`.
 
@@ -235,5 +248,5 @@ forbidden (a test asserts no emit inside the delta path).
 | `test/log/shape.test.ts` | Required fields; `err.kind` from the union; `detail` whitelist; declared-and-used event names |
 | `test/log/origin.test.ts` | Exactly one `level=error` per `err.failure`, at the originating layer; higher layers log `warn` with `propagated`; the count is keyed on `err.failure`, not on `trace` |
 | `test/log/trace.test.ts` | R1–R3 with fake clock and drain barrier, at `--log-level=debug`, asserting presence *and* absence |
-| `test/log/redaction.test.ts` | Sentinel prompt, token and home path never appear; provider error echo is scrubbed |
+| `test/log/redaction.test.ts` | Sentinel prompt, token, bot title and home path never appear in logs; provider error echo is scrubbed |
 | `BotsFeaturesTests/LoggingTests.swift` | Client emit sites use the shared vocabulary; no per-delta emit |

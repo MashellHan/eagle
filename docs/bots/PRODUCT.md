@@ -58,9 +58,9 @@ tools and bot-to-bot conversation can be added later without reworking any layer
    marked aborted.
 7. **Reconnect.** Closing and reopening the window, or a temporary daemon
    restart, restores every transcript without user action. No message is
-   duplicated or lost. Messages are bounded by construction; a message that would
-   exceed 128 KiB encoded is delivered clipped and marked, never silently
-   shortened.
+   duplicated or lost. Messages are bounded by construction; in the impossible case
+   of an answer above the transport limit, the chat shows a notice instead of a
+   silently shortened answer.
 8. **Recover.** When a bot reports `unavailable` or a parked task, the chat offers
    one action: retry. It re-opens an unavailable bot or retries parked work, then
    reloads the transcript. It never interrupts a healthy answer; abort is a

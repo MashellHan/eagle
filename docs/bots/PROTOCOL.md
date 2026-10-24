@@ -39,12 +39,12 @@ Runtime details live in [RUNTIME.md](RUNTIME.md), layers in
 | `send.text` | 8 000 characters | `error{invalid_command}` |
 | `bot.title` (HTTP) | 80 characters | HTTP `400` |
 | Any single frame | 256 KiB, measured on the **encoded** frame | Close `1008` |
-| Single message payload | 128 KiB encoded | Delivered clipped, see below |
-| Metadata strings | `id` ≤ 80, `title` ≤ 80, `model.provider` ≤ 40, `model.modelId` ≤ 200, `unavailable.message` ≤ 200 | Refused at the producer |
-| Derived bound: `bots` frame | 200 bots × (80 + 80 + 40 + 200 + ids/timestamps ≈ 300 B) ≈ 130 KiB | Inside the 256 KiB cap |
+| Single message payload | ≤ 96 KiB encoded | Withheld and replaced by a notice, see below |
+| Metadata strings | UTF-8 **bytes**: `id` ≤ 80, `title` ≤ 80, `model.provider` ≤ 40, `model.modelId` ≤ 200, `unavailable.message` ≤ 200, timestamps 24, `state` ≤ 12 | Refused at the producer |
+| Derived `bots` bound | 200 × (80 + 80 + 40 + 200 + 200 + 24·2 + 12 + ≈ 120 B JSON overhead) ≈ 200 × 780 B ≈ 156 KiB; `welcome` adds ≈ 1 KiB of envelope and capabilities | Inside the 256 KiB cap |
 | `snapshot.messages` page | ≤ 200 messages and ≤ 192 KiB of the encoded frame, or empty | Older messages page through `history` |
 | `history` reply | ≤ 200 messages and ≤ 192 KiB | `hasMore` says whether more exist |
-| Coalesced delta batch | 128 KiB **soft** flush threshold in addition to 50 ms | A single change is always sent alone when it alone exceeds the threshold, so a legal change is never split or dropped |
+| Coalesced delta batch | 96 KiB **soft** flush threshold in addition to 50 ms | A change always fits alone: it carries at most one message projection (≤ 96 KiB) plus envelope |
 | Catalog size | ≤ 200 bots, `bots` events carry the whole catalog | Creation fails `limit_exceeded` beyond it |
 | `agent.instructions` | ≤ 4 000 characters | `configure` fails `invalid_command` (capability off in phase 1) |
 | `pending` | ≤ 32 entries | Admission beyond it fails `limit_exceeded` |
@@ -106,23 +106,16 @@ client: a model picker needs the `agent` capability.
   "stopReason": "stop",                  // optional: stop|length|toolUse|aborted|error|deferred
   "createdAt": "2026-10-25T02:11:04.001Z",
   "blocks": [ { "type": "text", "text": "巴黎。" } ],
-  "requestId": "r_0190a1b3",             // user messages only; ties the entry to a send
-  "clipped": null                        // {totalBytes, shownBytes} when clipped
+  "requestId": "r_0190a1b3"              // user messages only; ties the entry to a send
 }
 
-// Messages are never split across frames. Phase 1 bounds them by construction:
-// maxTokens 8 192 for assistant answers, 8 000 characters for user text, 500 for
-// notices. The daemon measures the encoded message before sending it; if it exceeds
-// 128 KiB it sends the message clipped, marked, so a client always learns that
-// content exists rather than silently losing it:
-//
-//   "clipped": { "totalBytes": 210000, "shownBytes": 131072 }   // only when clipped
-//
-// The clip is applied to text at a UTF-8 boundary, the message carries
-// `stopReason:"length"`, and the daemon also appends a `notice` saying the answer
-// was clipped. There is no byte-range read path: clipping is a terminal state of
-// that message, not a paging window, so no second coordinate system and no cursor
-// state are needed.
+// Messages are never split or clipped. The bound is structural: assistant answers are
+// capped at maxTokens 8 192, user text at 8 000 characters, notices at 500, and the
+// daemon measures each converted message before sending it. A message above 96 KiB
+// encoded cannot occur with that configuration; if a provider still produces one the
+// daemon withholds the message, emits `notice` text saying the answer exceeded the
+// transport limit, and settles the submission normally. Nothing partial is ever
+// presented as the answer, so there is no clipped variant and no byte counter.
 
 // ContentBlock
 { "type": "text",     "text": "…" }
@@ -341,6 +334,13 @@ recovery guarantees depend on them.
    Entries are never re-sent with a new id, and no entry is removed before its
    terminal record has been stored.
 
+3. **Rejection versus unknown.** An `error` carrying the entry's `requestId` is a
+   definite non-admission: the entry leaves the outbox and its text returns to the
+   composer as a draft, so the user decides whether to send again. No reply at all
+   (disconnect, timeout) is *unknown*: the entry keeps its `requestId` and waits for
+   reconciliation. The two cases are never merged, because only one of them may be
+   re-sent automatically.
+
 Consequence: an unanswered settlement that arrived while the app was closed is
 recovered by re-sending, not by daemon-side history. `snapshot.pending` exists for
 display; it is not the recovery mechanism.
@@ -361,9 +361,10 @@ display; it is not the recovery mechanism.
 | I10 | `append` upserts by id; a provisional `p_a<n>` is finalized by an entry carrying `replaces` |
 | I11 | `rev` is absent on connection-scoped replies and `bots`/`pong`; absence is not a gap |
 | I12 | Older windows are fetched with `history`; the newest window is never re-fetched by paging |
+| I16 | One underlying failure produces one `error` frame and one daemon `error` record, even when the runtime reports it on several channels; the identity is scoped to a failure episode, not to the bot |
 | I13 | Every **block-scoped** delta change (`text`, `thinking`, `toolcall`, `block`) names its `index`; `block` carries the whole block, so no content depends on a preceding append. `message` replaces everything and is the only change without an index |
 | I14 | A submission record is applied only when its rank does not decrease (`queued < placed < done = unanswered`), so a late connection-scoped reply cannot undo a settlement |
-| I15 | Messages are never split across frames. A message over 128 KiB encoded is delivered clipped, marked with `clipped{totalBytes,shownBytes}`, `stopReason:"length"` and a daemon `notice`; clipping is terminal for that message |
+| I15 | Messages are never split or clipped on the wire. A message above 96 KiB encoded is withheld, replaced by a `notice`, and the submission still settles; deltas for an attempt stop being forwarded once its projection would exceed the cap |
 
 ## Close codes
 
