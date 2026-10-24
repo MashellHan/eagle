@@ -9,7 +9,7 @@ struct EagleApp: App {
 
   var body: some Scene {
     WindowGroup("Eagle") {
-      WorkspaceShellView()
+      WorkspaceShellView(onOpenSettings: { SettingsWindowOpener.shared.open() })
         .frame(minWidth: 1280, minHeight: 760)
         .ignoresSafeArea()
         .background(WindowConfigurator())
@@ -20,6 +20,10 @@ struct EagleApp: App {
     .windowStyle(.hiddenTitleBar)
     .windowResizability(.contentMinSize)
     .commands {
+      CommandGroup(replacing: .appSettings) {
+        Button("设置…") { SettingsWindowOpener.shared.open() }
+          .keyboardShortcut(",", modifiers: .command)
+      }
       CommandGroup(after: .newItem) {
         Button("模板库") {
           GalleryWindow.show()
@@ -39,6 +43,36 @@ struct EagleApp: App {
         .keyboardShortcut("2", modifiers: [.command, .control])
       }
     }
+  }
+}
+
+/// Opens the settings window from AppKit call sites such as the menu command.
+@MainActor
+final class SettingsWindowOpener {
+  static let shared = SettingsWindowOpener()
+  private var window: NSWindow?
+
+  func open() {
+    if let existing = window {
+      existing.makeKeyAndOrderFront(nil)
+      return
+    }
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 920, height: 720),
+      styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+      backing: .buffered,
+      defer: false
+    )
+    window.title = "设置"
+    window.titlebarAppearsTransparent = true
+    window.titleVisibility = .hidden
+    window.contentView = NSHostingView(
+      rootView: SettingsView(onClose: { [weak window] in window?.close() })
+        .preferredColorScheme(.light)
+    )
+    window.center()
+    window.makeKeyAndOrderFront(nil)
+    self.window = window
   }
 }
 

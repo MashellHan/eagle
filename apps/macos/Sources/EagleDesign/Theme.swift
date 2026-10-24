@@ -14,6 +14,10 @@ public enum Theme {
     /// Row subtitles and the plan line: lighter than the section labels.
     public static let textMuted = Color(srgb: 0xA7A7A7)
     public static let accent = Color(srgb: 0x3B7DCD)
+    /// Info banner (blue text on a pale blue fill).
+    public static let info = Color(srgb: 0x2F6FD0)
+    public static let infoFill = Color(srgb: 0xEDF3FC)
+    public static let destructive = Color(srgb: 0xE5484D)
     public static let accentFill = Color(srgb: 0x4FA46A)
     public static let accentStrong = Color(srgb: 0x58B378)
     public static let hover = Color(srgb: 0x000000).opacity(0.05)
@@ -89,6 +93,14 @@ public enum Theme {
     public static let hairline: CGFloat = 1
 
     public static let collapseDuration: CGFloat = 0.28
+    public static let settingsRailWidth: CGFloat = 190
+    public static let settingsRowHeight: CGFloat = 46
+    public static let settingsDeviceRowHeight: CGFloat = 58
+    public static let settingsCardRadius: CGFloat = 14
+    public static let settingsCardInset: CGFloat = 20
+    public static let settingsContentInset: CGFloat = 28
+    public static let accountMenuWidth: CGFloat = 226
+    public static let accountRowHeight: CGFloat = 46
     public static let conversationMaxContentWidth: CGFloat = 720
   }
 

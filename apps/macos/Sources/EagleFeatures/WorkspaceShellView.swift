@@ -8,17 +8,22 @@ public struct WorkspaceShellView: View {
   @StateObject private var chat: ChatViewModel
   @StateObject private var inspector: InspectorViewModel
   @StateObject private var layout: ShellLayoutViewModel
+  @StateObject private var account = AccountMenuViewModel()
+  @State private var showsAccountMenu = false
+  private let onOpenSettings: () -> Void
 
   public init(
     list: WorkspaceListViewModel = WorkspaceListViewModel(),
     chat: ChatViewModel = ChatViewModel(),
     inspector: InspectorViewModel = InspectorViewModel(),
-    layout: ShellLayoutViewModel = ShellLayoutViewModel()
+    layout: ShellLayoutViewModel = ShellLayoutViewModel(),
+    onOpenSettings: @escaping () -> Void = {}
   ) {
     _list = StateObject(wrappedValue: list)
     _chat = StateObject(wrappedValue: chat)
     _inspector = StateObject(wrappedValue: inspector)
     _layout = StateObject(wrappedValue: layout)
+    self.onOpenSettings = onOpenSettings
   }
 
   public var body: some View {
@@ -46,6 +51,7 @@ public struct WorkspaceShellView: View {
         onRenameItem: { list.renameItem($0, to: $1) },
         onDeleteItem: { list.deleteItem($0) },
         onCollapse: { layout.toggleSidebar() },
+        onAccount: { showsAccountMenu = true },
         unreadCount: 2
       )
     } conversation: {
@@ -72,6 +78,12 @@ public struct WorkspaceShellView: View {
         onToggleJob: { inspector.setJob($0, isOn: $1) },
         onCollapse: { layout.toggleInspector() }
       )
+    }
+    .popover(isPresented: $showsAccountMenu, arrowEdge: .top) {
+      AccountMenu(rows: account.rows) { row in
+        showsAccountMenu = false
+        if row.id == "settings" { onOpenSettings() }
+      }
     }
     .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSidebar)) { _ in
       layout.toggleSidebar()

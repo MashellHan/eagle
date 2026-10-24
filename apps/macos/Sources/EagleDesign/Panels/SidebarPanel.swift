@@ -19,6 +19,7 @@ public struct SidebarPanel: View {
   private let onSearch: () -> Void
   private let onCompose: () -> Void
   private let onCollapse: () -> Void
+  private let onAccount: () -> Void
   private let unreadCount: Int
   private let onUnread: () -> Void
   private let userName: String
@@ -46,6 +47,7 @@ public struct SidebarPanel: View {
     onSearch: @escaping () -> Void = {},
     onCompose: @escaping () -> Void = {},
     onCollapse: @escaping () -> Void = {},
+    onAccount: @escaping () -> Void = {},
     unreadCount: Int = 0,
     onUnread: @escaping () -> Void = {},
     userName: String = "Zheng Li"
@@ -66,6 +68,7 @@ public struct SidebarPanel: View {
     self.onSearch = onSearch
     self.onCompose = onCompose
     self.onCollapse = onCollapse
+    self.onAccount = onAccount
     self.unreadCount = unreadCount
     self.onUnread = onUnread
     self.userName = userName
@@ -246,6 +249,14 @@ public struct SidebarPanel: View {
   /// No card and no border: the avatar lines up with the list avatars at the
   /// shared 20 pt content inset.
   private var footer: some View {
+    Button(action: onAccount) {
+      footerContent
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("账户与设置")
+  }
+
+  private var footerContent: some View {
     HStack(spacing: Theme.Metric.rowAvatarGap) {
       Avatar(initial: "Z", tint: Theme.Palette.avatarTint(2), size: Theme.Metric.avatarRow)
       Text(userName)

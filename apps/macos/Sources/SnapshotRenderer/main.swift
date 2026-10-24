@@ -42,6 +42,34 @@ struct SnapshotRenderer {
       named: "gallery",
       in: directory
     )
+    let account = AccountMenuViewModel()
+    capture(
+      AccountMenu(rows: account.rows, onSelect: { _ in })
+        .padding(20)
+        .background(Theme.Palette.canvas),
+      size: CGSize(width: 266, height: 360),
+      named: "account-menu",
+      in: directory
+    )
+
+    let machines = SettingsViewModel()
+    machines.selection = .machines
+    capture(
+      SettingsView(model: machines).preferredColorScheme(.light),
+      size: CGSize(width: 920, height: 720),
+      named: "settings-machines",
+      in: directory
+    )
+
+    let general = SettingsViewModel()
+    general.selection = .general
+    capture(
+      SettingsView(model: general).preferredColorScheme(.light),
+      size: CGSize(width: 920, height: 720),
+      named: "settings-general",
+      in: directory
+    )
+
     print("wrote snapshots to \(directory.path)")
   }
 
