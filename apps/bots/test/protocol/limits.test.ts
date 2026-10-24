@@ -112,3 +112,34 @@ test("the catalog budget is per encoded bot summary", () => {
   // Control characters escape to six bytes each, so 80 of them exceed 1200 encoded.
   assert.throws(() => assertFrameBudget(frame), denied("limit_exceeded"));
 });
+
+test("the inline message budget applies wherever a message is carried", () => {
+  const big = message(MAX_MESSAGE_BYTES + 1024);
+  const appendFrame = encodeServerEvent({
+    type: "append",
+    rev: 1,
+    trace,
+    message: big,
+  }) as Record<string, unknown>;
+  assert.throws(() => assertFrameBudget(appendFrame), denied("limit_exceeded"));
+
+  const deltaFrame = encodeServerEvent({
+    type: "delta",
+    rev: 1,
+    trace,
+    messageId: "p_a1",
+    changes: [{ kind: "message", message: big }],
+  }) as Record<string, unknown>;
+  assert.throws(() => assertFrameBudget(deltaFrame), denied("limit_exceeded"));
+});
+
+test("pending and inbox are capped", () => {
+  const pending = Array.from({ length: 33 }, (_, index) => ({
+    requestId: `r_${String(index).padStart(8, "0")}`,
+    submissionId: `s_${index}`,
+    status: "queued" as const,
+  }));
+  const frame = snapshot([]) as { value: Record<string, unknown> };
+  frame.value.pending = pending;
+  assert.throws(() => assertFrameBudget(frame), denied("limit_exceeded"));
+});

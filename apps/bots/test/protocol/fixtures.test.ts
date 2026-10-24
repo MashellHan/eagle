@@ -87,8 +87,18 @@ test("JSON errors are distinguished from schema errors", () => {
     () => parseJson("{"),
     (error: Error & { reason?: string }) => error.reason === "invalid_json",
   );
+  // An unknown event type is ignored with its revision, not treated as corruption.
+  assert.equal(decodeServerEvent({ type: "nope", rev: 7 }).type, "unknown");
   assert.throws(
-    () => decodeServerEvent({ type: "nope" }),
+    () =>
+      decodeServerEvent({
+        type: "status",
+        rev: 1,
+        trace: "tr_12345678",
+        running: "yes",
+        inbox: [],
+        streaming: null,
+      }),
     (error: Error & { reason?: string }) => error.reason === "invalid_event",
   );
 });

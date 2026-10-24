@@ -112,7 +112,15 @@ export type ServerEvent =
       readonly message: string;
       readonly server: { readonly protocolVersion: number };
     }
-  | { readonly type: "pong" };
+  | { readonly type: "pong" }
+  /** An event type this version does not know. Its envelope is preserved so the
+   *  revision is consumed rather than mistaken for a gap (PROTOCOL I8). */
+  | {
+      readonly type: "unknown";
+      readonly rawType: string;
+      readonly rev?: number;
+      readonly trace?: string;
+    };
 
 export type FrameErrorReason =
   | "invalid_json"
@@ -285,11 +293,13 @@ const decodeBlock = (ctx: Ctx, raw: unknown): ContentBlock => {
   if (type === "text") return { type: "text", text: anyStr(ctx, raw.text, "block.text") };
   if (type === "thinking") return { type: "thinking", text: anyStr(ctx, raw.text, "block.text") };
   if (type === "toolCall") {
+    const args = required(ctx, raw, "args");
+    if (!isObject(args)) fail(ctx, "block.args must be an object");
     return {
       type: "toolCall",
       callId: str(ctx, raw.callId, "block.callId"),
       name: str(ctx, raw.name, "block.name"),
-      args: isObject(raw.args) ? raw.args : {},
+      args: args as Record<string, unknown>,
     };
   }
   if (type === "toolResult") {
@@ -391,6 +401,10 @@ const decodeSnapshot = (ctx: Ctx, raw: unknown): ConversationSnapshot => {
     raw.truncatedBefore === undefined
       ? undefined
       : str(ctx, raw.truncatedBefore, "truncatedBefore");
+  if (present(raw, "agent") && !isObject(raw.agent)) fail(ctx, "agent must be an object");
+  if (present(raw, "unavailable") && !isObject(raw.unavailable)) {
+    fail(ctx, "unavailable must be an object");
+  }
   const agent = isObject(raw.agent)
     ? {
         model: {
@@ -491,6 +505,7 @@ const envelope = (ctx: Ctx, raw: Record<string, unknown>) => ({
 const requireEnvelope = (ctx: Ctx, raw: Record<string, unknown>, rev: boolean) => {
   const { rev: revision, trace } = envelope(ctx, raw);
   if (trace === undefined) fail(ctx, "trace is required");
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(trace as string)) fail(ctx, "trace is malformed");
   if (rev && revision === undefined) fail(ctx, "rev is required");
   return { trace: trace as string, rev: revision };
 };
@@ -624,18 +639,41 @@ export function decodeServerEvent(raw: Record<string, unknown>): ServerEvent {
         trace: str(ctx, raw.trace, "trace"),
         kind,
         disposition: oneOf(ctx, required(ctx, raw, "disposition"), DISPOSITIONS, "disposition"),
-        failure: str(ctx, required(ctx, raw, "failure"), "failure"),
+        failure: (() => {
+          const failure = str(ctx, required(ctx, raw, "failure"), "failure");
+          if (!/^f_[A-Za-z0-9_-]{1,32}$/.test(failure)) fail(ctx, "failure is malformed");
+          return failure;
+        })(),
         message,
       };
       if (rev !== undefined) event.rev = rev;
-      if (raw.requestId !== undefined) event.requestId = anyStr(ctx, raw.requestId, "requestId");
+      if (raw.requestId !== undefined) {
+        const requestId = anyStr(ctx, raw.requestId, "requestId");
+        if (!/^[A-Za-z0-9_-]{8,64}$/.test(requestId)) fail(ctx, "requestId is malformed");
+        event.requestId = requestId;
+      }
       if (raw.taskId !== undefined) event.taskId = anyStr(ctx, raw.taskId, "taskId");
       return event;
     }
     case "pong":
       return { type };
-    default:
-      return fail(ctx, `unknown event ${type}`);
+    default: {
+      // Additive versioning: an unknown event is ignorable, but its revision still
+      // advances the client's baseline, so it is not a gap.
+      const ignored = envelope(ctx, raw);
+      return ignored.rev === undefined
+        ? {
+            type: "unknown",
+            rawType: type,
+            ...(ignored.trace === undefined ? {} : { trace: ignored.trace }),
+          }
+        : {
+            type: "unknown",
+            rawType: type,
+            rev: ignored.rev,
+            ...(ignored.trace === undefined ? {} : { trace: ignored.trace }),
+          };
+    }
   }
 }
 

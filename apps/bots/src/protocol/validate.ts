@@ -2,15 +2,18 @@
 // boundary, so every layer below can assume a well-formed command and a frame that
 // fits. Budgets are measured on the encoded bytes, with the same encoder that writes
 // the frame.
-import { serialize } from "./encode.ts";
+import { serializeFrame } from "./encode.ts";
 import { type ClientCommand, FrameError } from "./frames.ts";
 import {
   BOT_ID,
-  ENTRY_ID,
+  COMMITTED_ENTRY_ID,
   MAX_BOT_SUMMARY_BYTES,
   MAX_CATALOG,
   MAX_FRAME_BYTES,
+  MAX_INBOX,
   MAX_MESSAGE_BYTES,
+  MAX_NOTICE_BYTES,
+  MAX_PENDING,
   MAX_SEND_TEXT,
   PAGE_MAX_BYTES,
   PAGE_MAX_MESSAGES,
@@ -51,7 +54,7 @@ export function validateCommand(command: ClientCommand): ClientCommand {
       return command;
     case "history":
       check(command.trace, TRACE_ID, "trace");
-      check(command.before, ENTRY_ID, "before");
+      check(command.before, COMMITTED_ENTRY_ID, "before");
       if (
         !Number.isInteger(command.limit) ||
         command.limit < 1 ||
@@ -74,7 +77,16 @@ export function assertInboundBytes(text: string): number {
   return bytes;
 }
 
-const encodedBytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(value), "utf8");
+// Everything is measured on the transport serialization, so a budget can never be
+// satisfied by a shape that is smaller in memory than on the wire.
+const encodedBytes = (value: unknown): number =>
+  Buffer.byteLength(serializeFrame(value as Record<string, unknown>), "utf8");
+
+const assertMessageBytes = (message: unknown) => {
+  if (encodedBytes(message) > MAX_MESSAGE_BYTES) {
+    throw new FrameError("limit_exceeded", `message exceeds ${MAX_MESSAGE_BYTES} bytes`);
+  }
+};
 
 const pageOf = (wire: Record<string, unknown>): readonly unknown[] | undefined => {
   if (wire.type === "history") return wire.messages as readonly unknown[] | undefined;
@@ -100,13 +112,33 @@ export function assertFrameBudget(wire: Record<string, unknown>): number {
     if (page.length > PAGE_MAX_MESSAGES) {
       throw new FrameError("limit_exceeded", `page exceeds ${PAGE_MAX_MESSAGES} messages`);
     }
-    if (encodedBytes(page) > PAGE_MAX_BYTES) {
-      throw new FrameError("limit_exceeded", `page exceeds ${PAGE_MAX_BYTES} bytes`);
+    for (const message of page) assertMessageBytes(message);
+  }
+  // The page budget is the whole frame: envelope and metadata are bytes too.
+  if (page !== undefined && bytes > PAGE_MAX_BYTES) {
+    throw new FrameError("limit_exceeded", `page frame exceeds ${PAGE_MAX_BYTES} bytes`);
+  }
+
+  if (wire.type === "append") assertMessageBytes(wire.message);
+  if (wire.type === "delta") {
+    for (const change of (wire.changes as readonly Record<string, unknown>[]) ?? []) {
+      if (change.kind === "message") assertMessageBytes(change.message);
+      if (change.kind === "block") assertMessageBytes({ blocks: [change.block] });
     }
-    for (const message of page) {
-      if (encodedBytes(message) > MAX_MESSAGE_BYTES) {
-        throw new FrameError("limit_exceeded", `message exceeds ${MAX_MESSAGE_BYTES} bytes`);
-      }
+  }
+  if (wire.type === "snapshot") {
+    const value = wire.value as Record<string, unknown>;
+    if (Array.isArray(value.pending) && value.pending.length > MAX_PENDING) {
+      throw new FrameError("limit_exceeded", `pending exceeds ${MAX_PENDING}`);
+    }
+    if (Array.isArray(value.inbox) && value.inbox.length > MAX_INBOX) {
+      throw new FrameError("limit_exceeded", `inbox exceeds ${MAX_INBOX}`);
+    }
+  }
+  if (wire.type === "error") {
+    const message = wire.message;
+    if (typeof message === "string" && Buffer.byteLength(message, "utf8") > MAX_NOTICE_BYTES) {
+      throw new FrameError("limit_exceeded", `notice exceeds ${MAX_NOTICE_BYTES} bytes`);
     }
   }
 
@@ -130,5 +162,5 @@ export function assertFrameBudget(wire: Record<string, unknown>): number {
 
 /** Convenience for tests and for callers that only need the measurement. */
 export function measureFrame(wire: Record<string, unknown>): number {
-  return Buffer.byteLength(serialize(wire), "utf8");
+  return Buffer.byteLength(serializeFrame(wire), "utf8");
 }

@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { decodeCommand, decodeServerEvent } from "../../src/protocol/frames.ts";
+import { validateCommand } from "../../src/protocol/validate.ts";
 
 const trace = "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172";
 const requestId = "r_0190a1b4-5061-7c72-8d3e-4f5061728394";
@@ -16,7 +17,7 @@ const invalidEvent = (wire: Record<string, unknown>) => {
 };
 const invalidCommand = (wire: Record<string, unknown>) => {
   assert.throws(
-    () => decodeCommand(wire),
+    () => validateCommand(decodeCommand(wire)),
     (error: Error & { reason?: string }) => error.reason === "invalid_command",
   );
 };
@@ -120,7 +121,7 @@ test("requestId belongs to user messages only", () => {
   invalidEvent({ type: "append", rev: 1, trace, message });
 });
 
-test("unknown fields are tolerated but unknown events and commands are not", () => {
+test("unknown fields are tolerated, unknown events are ignorable, unknown commands are refused", () => {
   const append = {
     type: "append",
     rev: 1,
@@ -129,7 +130,10 @@ test("unknown fields are tolerated but unknown events and commands are not", () 
     futureField: "ignored",
   };
   assert.equal(decodeServerEvent(append).type, "append");
-  invalidEvent({ type: "future_event" });
+  // PROTOCOL I8: an unknown event keeps its envelope so the revision is consumed.
+  const ignored = decodeServerEvent({ type: "future_event", rev: 44, trace });
+  assert.equal(ignored.type, "unknown");
+  assert.equal(ignored.type === "unknown" ? ignored.rev : undefined, 44);
   invalidCommand({ type: "future_command", trace });
 });
 
@@ -139,4 +143,21 @@ test("an explicit null whenBusy is a client bug, not a default", () => {
     decodeCommand({ type: "send", requestId, text: "hi", trace, whenBusy: "steer" }).type,
     "send",
   );
+});
+
+test("a provisional id is not a history cursor", () => {
+  const trace = "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172";
+  invalidCommand({ type: "history", before: "p_a1", limit: 10, trace });
+  invalidCommand({ type: "history", before: "e1", limit: 10, trace });
+});
+
+test("event envelopes carry well-formed ids", () => {
+  invalidEvent({
+    type: "status",
+    rev: 1,
+    trace: "short",
+    running: false,
+    streaming: null,
+    inbox: [],
+  });
 });

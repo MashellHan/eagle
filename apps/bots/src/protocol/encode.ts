@@ -182,6 +182,8 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
       return wire;
     }
     case "pong":
+    case "unknown":
+      // `unknown` is decode-only: this daemon never emits an event it cannot name.
       return wire;
   }
 };
@@ -216,7 +218,10 @@ export const encodeCommand = (command: ClientCommand): Wire => {
   }
 };
 
-/** The serialized form the fixtures are written in. */
+/** The transport form: compact JSON, exactly the bytes the budget measures. */
+export const serializeFrame = (wire: Wire): string => JSON.stringify(wire);
+
+/** The review form the fixtures are written in: same object, pretty-printed. */
 export const serialize = (wire: Wire): string => `${JSON.stringify(wire, null, 2)}\n`;
 
 export const currentProtocolVersion = PROTOCOL_VERSION;
