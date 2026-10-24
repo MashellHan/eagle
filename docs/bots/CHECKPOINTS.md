@@ -149,3 +149,25 @@ coverage above thresholds). The catalog, fake runtime and hub are the only core 
 Next broken hop: `send` has no owner. `src/core/ConversationService.ts` does not exist,
 so rows 17-22 cannot start, and nothing wires the protocol codec to a socket. The full
 state and order of work now lives in [PLAN.md](PLAN.md).
+
+## 2026-10-26 07:20 — stage 2 hub signed off
+
+Observed: ladder rows 11-16 are implemented, tested and signed off after six review
+rounds. The hub now numbers a delta when its batch is broadcast, splits a batch
+between whole changes against the 96 KiB soft limit, keeps a per-bot serial fanout
+with no sink reentrancy, downgrades a slow subscriber to snapshot-only with a
+recovery anchor it never serves stale, and measures encoded bytes through an injected
+transport measure. The fake runtime keeps only committed entries in its history,
+orders finalization like the window, tracks the streaming pointer and walks a
+toolcall path from the block root.
+
+Verified (all run just now in `apps/bots`):
+
+- `npm run check`: `fixtures:check` (26 files), 167 tests, `tsc --noEmit`, Biome and
+  coverage 95.88 % lines, 91.19 % branches, 96.77 % functions.
+- Codex reviewed each batch read-only and answered `VERDICT: SIGN OFF` on fc7fddc
+  after 11 in-memory reproductions and 8 mutations that the suite catches.
+
+Next broken hop: `send` and the connection still have no owner. `ConversationService`
+does not exist, so rows 17-22 cannot start and nothing turns a domain event into a
+frame.

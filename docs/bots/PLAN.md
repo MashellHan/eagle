@@ -43,12 +43,12 @@ after a full review round; a row can be implemented and reviewed but not yet sig
 | 8 | 1 | the layer allowlist, proven by parsing all import forms | **signed off** |
 | 9 | 2 | an interrupted catalog write leaves the previous catalog readable | **signed off** |
 | 10 | 2 | `reconcile` finishes a delete interrupted after the move | **signed off** |
-| 11 | 2 | the fake runtime satisfies the port, per bot and stateful | implemented, review open |
-| 12 | 2 | revisions strictly increase per bot, snapshots included | implemented, review open |
-| 13 | 2 | every subscriber sees the same sequence | implemented, review open |
-| 14 | 2 | a subscriber that falls behind is downgraded to snapshot-only | implemented, review open |
-| 15 | 2 | deltas coalesce inside 50 ms and keep every byte | implemented, review open |
-| 16 | 2 | a runtime snapshot is published at the next revision | implemented, review open |
+| 11 | 2 | the fake runtime satisfies the port, per bot and stateful | **signed off** |
+| 12 | 2 | revisions strictly increase per bot, snapshots included | **signed off** |
+| 13 | 2 | every subscriber sees the same sequence | **signed off** |
+| 14 | 2 | a subscriber that falls behind is downgraded to snapshot-only | **signed off** |
+| 15 | 2 | deltas coalesce inside 50 ms and keep every byte | **signed off** |
+| 16 | 2 | a runtime snapshot is published at the next revision | **signed off** |
 | 17 | 2 | `send` needs a subscription and answers a connection-scoped record | **not started** |
 | 18 | 2 | a repeated `requestId` returns the stored record, no new events | **not started** |
 | 19 | 2 | queued, placed and done map to one submission id | **not started** |
@@ -59,14 +59,12 @@ after a full review round; a row can be implemented and reviewed but not yet sig
 | 37-54 | 4 | server, lifecycle, end-to-end, crash and perf suites | **not started** |
 | 55-69 | 5 | macOS client: decoding, reducer, transport, view models, app | **not started** |
 
-Current tree: 143 tests, coverage 90%+ lines, `typecheck`, `lint`, `fixtures:check`
+Current tree: 167 tests, coverage 95.9% lines, `typecheck`, `lint`, `fixtures:check`
 green. Nothing listens on a socket yet, so the product is not runnable.
 
 ## Next work, in order
 
-1. Close rows 11-16: one review round is outstanding. Expect findings around hub
-   backpressure, delta merge fidelity and fake-runtime state; fix, re-review, sign.
-2. Write `src/core/ConversationService.ts`, which owns rows 17-22:
+1. Write `src/core/ConversationService.ts`, which owns rows 17-22:
    - `subscribe(botId, trace)`: open through the registry, render the first snapshot
      at the current revision, then attach the runtime sink to the hub.
    - `send(input)`: read `RuntimeHandle.submission({requestId})` first so a duplicate
@@ -75,13 +73,18 @@ green. Nothing listens on a socket yet, so the product is not runnable.
    - `abort`, `recover`, `history`, `resync` (snapshot at `hub.rev`).
    - Failure handling by `disposition`: only `not_admitted` lets a client drop its
      outbox entry.
-3. Stage 3: `src/runtime/pi/` (mapEvents, PiDurableRuntime) with the golden
+2. Stage 3: `src/runtime/pi/` (mapEvents, PiDurableRuntime) with the golden
    sequences and fault channels in [RUNTIME.md](RUNTIME.md).
-4. Stage 4: `src/server/`, `src/main.ts`, registry lifecycle, crash and perf suites.
-5. Stage 5: `apps/bots-macos/` (separate package, `EagleDesign` product only).
+3. Stage 4: `src/server/`, `src/main.ts`, registry lifecycle, crash and perf suites.
+4. Stage 5: `apps/bots-macos/` (separate package, `EagleDesign` product only).
 
 ## Open review queue
 
-Rows 11-16 are implemented and green but not signed; the reviewer's last messages on
-these rows are the first thing to read before continuing, because they name the exact
-gaps (subscriber backpressure, merge ordering, fake-runtime ledger authority).
+Empty. Rows 9-16 are signed off; the six review rounds that closed them found, in
+order: revisions consumed before a delta was folded, unfaithful delta merging, a
+silently dead degraded subscriber, reentrant fanout, a missing byte trigger,
+non-wire byte counting, a detached subscriber still pumped, a fake-runtime toolcall
+path read from the wrong root, a lost streaming pointer, history truncated by a
+window rerender, unbounded batches inside one event, a stale anchor served as
+current, a starved cross-subscriber pump, an evicted recovery snapshot, and one
+test that could not fail.
