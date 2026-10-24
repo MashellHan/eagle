@@ -31,6 +31,18 @@ test("a decoded snapshot carries the documented values", () => {
       ["p_a2", "assistant", "streaming"],
     ],
   );
+  assert.equal(
+    event.value.messages[1]?.blocks[0]?.type === "text"
+      ? event.value.messages[1].blocks[0].text
+      : "",
+    "巴黎是法国的",
+  );
+  assert.equal(
+    event.value.messages[0]?.blocks[0]?.type === "text"
+      ? event.value.messages[0].blocks[0].text
+      : "",
+    "巴黎。",
+  );
   assert.equal(event.value.pending[0]?.status, "placed");
   assert.equal(event.value.pending[0]?.entryId, "e_7");
   assert.deepEqual(event.value.inbox, [{ id: "s_4", mode: "followUp" }]);
@@ -45,9 +57,19 @@ test("a decoded delta keeps its indexes and the whole message replacement", () =
     ["text", "block", "message"],
   );
   const [text, block, message] = event.changes;
-  assert.equal(text?.kind === "text" ? text.index : -1, 0);
-  assert.equal(block?.kind === "block" ? block.block.type : "", "text");
+  assert.deepEqual(text, { kind: "text", index: 0, append: "首都" });
+  assert.deepEqual(block, {
+    kind: "block",
+    index: 0,
+    block: { type: "text", text: "巴黎是法国的首都" },
+  });
   assert.equal(message?.kind === "message" ? message.message.id : "", "p_a2");
+  assert.equal(
+    message?.kind === "message" && message.message.blocks[0]?.type === "text"
+      ? message.message.blocks[0].text
+      : "",
+    "巴黎是法国的首都",
+  );
 });
 
 test("a decoded submission separates the entry from the answer", () => {

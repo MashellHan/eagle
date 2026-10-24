@@ -228,3 +228,47 @@ test("a bot summary only carries a reason while unavailable", () => {
     bots: [{ ...bot, unavailable: { reason: "storage_failed", message: "boom" } }],
   });
 });
+
+test("submission entry references must be committed entries", () => {
+  const base = { type: "submission", trace, requestId, submissionId: "s_1" };
+  invalidEvent({ ...base, status: "done", entryId: "", answerEntryId: "e_2" });
+  invalidEvent({ ...base, status: "done", entryId: "e_1", answerEntryId: "p_a2" });
+  invalidEvent({ ...base, status: "unanswered", reason: "  " });
+});
+
+test("agent instructions are bounded and requestIds are well formed", () => {
+  const value = (instructions: string) => ({
+    botId: "b_1",
+    messages: [],
+    streaming: null,
+    pending: [],
+    inbox: [],
+    running: false,
+    agent: { model: { provider: "p", modelId: "m" }, thinkingLevel: "off", instructions },
+  });
+  assert.equal(
+    decodeServerEvent({ type: "snapshot", rev: 1, trace, value: value("x".repeat(4000)) }).type,
+    "snapshot",
+  );
+  invalidEvent({ type: "snapshot", rev: 1, trace, value: value("x".repeat(4001)) });
+  invalidEvent({
+    type: "append",
+    rev: 1,
+    trace,
+    message: {
+      id: "e_1",
+      role: "user",
+      state: "complete",
+      createdAt: "x",
+      blocks: [],
+      requestId: "bad",
+    },
+  });
+  invalidEvent({
+    type: "submission",
+    trace,
+    requestId: "bad",
+    submissionId: "s_1",
+    status: "queued",
+  });
+});

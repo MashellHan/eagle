@@ -318,6 +318,9 @@ const decodeMessage = (ctx: Ctx, raw: unknown): Message => {
   const role = oneOf(ctx, raw.role, ROLES, "message.role");
   const requestId =
     raw.requestId === undefined ? undefined : anyStr(ctx, raw.requestId, "message.requestId");
+  if (requestId !== undefined && !/^[A-Za-z0-9_-]{8,64}$/.test(requestId)) {
+    fail(ctx, "message.requestId is malformed");
+  }
   if (requestId !== undefined && role !== "user") {
     fail(ctx, "requestId belongs to user messages only");
   }
@@ -359,6 +362,14 @@ const decodeSubmission = (ctx: Ctx, raw: unknown): Submission => {
   const entryId = optStr(ctx, raw.entryId, "submission.entryId");
   const answerEntryId = optStr(ctx, raw.answerEntryId, "submission.answerEntryId");
   const reason = optStr(ctx, raw.reason, "submission.reason");
+  for (const [id, what] of [
+    [entryId, "submission.entryId"],
+    [answerEntryId, "submission.answerEntryId"],
+  ] as const) {
+    if (id !== undefined && !/^e_[A-Za-z0-9_-]{1,64}$/.test(id))
+      fail(ctx, `${what} is not a committed entry`);
+  }
+  if (reason !== undefined && reason.trim().length === 0) fail(ctx, "submission.reason is empty");
   if (status === "queued" && (entryId !== undefined || answerEntryId !== undefined)) {
     fail(ctx, "queued submissions have no entries");
   }
@@ -376,7 +387,11 @@ const decodeSubmission = (ctx: Ctx, raw: unknown): Submission => {
   }
   return {
     id: str(ctx, raw.submissionId, "submission.submissionId"),
-    requestId: str(ctx, raw.requestId, "submission.requestId"),
+    requestId: (() => {
+      const requestId = str(ctx, raw.requestId, "submission.requestId");
+      if (!/^[A-Za-z0-9_-]{8,64}$/.test(requestId)) fail(ctx, "submission.requestId is malformed");
+      return requestId;
+    })(),
     status,
     ...(entryId === undefined ? {} : { entryId }),
     ...(answerEntryId === undefined ? {} : { answerEntryId }),
@@ -426,7 +441,12 @@ const decodeSnapshot = (ctx: Ctx, raw: unknown): ConversationSnapshot => {
           ),
         },
         thinkingLevel: anyStr(ctx, raw.agent.thinkingLevel, "agent.thinkingLevel"),
-        instructions: anyStr(ctx, raw.agent.instructions, "agent.instructions"),
+        instructions: (() => {
+          const instructions = anyStr(ctx, raw.agent.instructions, "agent.instructions");
+          if (Array.from(instructions).length > 4_000)
+            fail(ctx, "agent.instructions exceeds 4000 characters");
+          return instructions;
+        })(),
       }
     : undefined;
   const unavailable = isObject(raw.unavailable)
