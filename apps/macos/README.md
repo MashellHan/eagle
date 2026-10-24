@@ -1,51 +1,59 @@
-# macOS client (placeholder)
+# Eagle for macOS
 
-Nothing is implemented here yet. This directory reserves the location and
-records the constraints a macOS client must satisfy, so the repository
-structure and CI can absorb it without another reorganization.
+Pure SwiftUI client that mirrors one Herdr Space as one conversation. No
+third-party dependencies: Foundation, SwiftUI, AppKit only.
 
-## Planned layout
+Status: **template library and three-column shell with mock data**. No daemon or
+network access yet; `EagleFeatures` view models hold static demo content.
 
-```text
-apps/macos/
-  Package.swift          Swift package; `swift test` runs in CI without signing
-  Sources/EagleKit/      API client, models, polling, WebSocket reconnection
-  Sources/EagleApp/      SwiftUI menu-bar app, thin target over EagleKit
-  Tests/EagleKitTests/   decoding regressions against the exported contracts
-  README.md
+## Run
+
+```sh
+cd apps/macos
+swift run EagleApp          # three-column window; ⌘⇧G opens the template gallery
+swift run EagleChecks       # dependency-free assertions, exits non-zero on failure
+swift run SnapshotRenderer ../../.local/macos-snapshots   # PNGs for review
 ```
 
-`EagleKit` holds everything testable and platform-light; `EagleApp` only wires
-SwiftUI views and scene lifecycle. Distribution stays unsigned first, with
-`xattr -dr com.apple.quarantine` instructions in the GitHub Release, until a
-Developer ID and notarization are explicitly authorized.
+`swift build` and `swift run` work with Command Line Tools only. Two toolchain
+limits shape the code:
 
-## First scope
+- SwiftUI's macros (`@State`, `@Observable`, `#Preview`) and Swift Testing's
+  macros are unavailable without full Xcode, and XCTest ships only with Xcode.
+  `LocalState` in `EagleDesign` is a `StateObject`-backed replacement for
+  `@State`, view models use `ObservableObject`, and checks run as the
+  `EagleChecks` executable instead of a test framework.
+- `SnapshotRenderer` hosts each view in an offscreen `NSWindow` because
+  `ImageRenderer` cannot draw AppKit-backed views such as `ScrollView` and
+  `TextField`.
 
-Read-only monitoring: menu-bar fleet state from `GET /api/v1/overview`, a pane
-list per machine, a read-only realtime view and `GET /api/v1/resources` charts.
-Remote input control is deliberately out of scope: it needs the take-over
-semantics in `docs/REALTIME.md` and a separate security review.
+## Layout
 
-## Contracts and authentication
+```text
+Package.swift
+Sources/
+  EagleDesign/       tokens and components, no feature state
+    Theme.swift        palette, metrics, type scale sampled from the reference
+    LocalState.swift   macro-free @State replacement
+    Primitives/        Avatar, Tag, SectionLabel, IconButton, ChevronRow,
+                       ToggleRow, SwitchToggle, SpinnerArc, SegmentedTabs
+    Chat/              AssistantTurn, UserBubble, DeliveryNote, TypingIndicator,
+                       Composer
+    Panels/            SidebarPanel, ConversationColumn, InspectorColumn,
+                       ThreeColumnShell
+    Gallery/           TemplateGallery
+  EagleFeatures/     ObservableObject view models and mock data
+  EagleApp/          AppKit delegate, window, gallery window
+  SnapshotRenderer/  offscreen PNG renderer
+  EagleChecks/       assertions
+```
 
-- Decode against generated contract data, not hand-copied field lists. The web
-  and Worker consume the same schemas from `packages/contracts/src`; this
-  directory should grow `packages/contracts/scripts/export.ts` producing a JSON
-  contract file that both Swift tests and the browser can read.
-- Viewer reads authenticate with a Cloudflare Access JWT in
-  `Cf-Access-Jwt-Assertion`. A native client obtains it through an embedded
-  `ASWebAuthenticationSession` against the Access login, or a future Access
-  service token — that server-side branch does not exist yet and needs its own
-  review.
-- The realtime viewer socket requires `Origin: https://eagle.hexly.ai`
-  (`apps/web/src/worker/index.ts`); a native client must set that header
-  explicitly or the upgrade fails with 403.
-- Private APIs send no CORS headers, so browser cookies are not reusable from a
-  native context.
+Design rules: one component per file, colors and spacing only from `Theme`, no
+global state inside components, no elevation or gradients, monochrome plus one
+green. See [DESIGN.md](DESIGN.md) for the measurements and the decisions taken.
 
-## CI
+## Next
 
-`check.yml` runs on Linux only. A macOS job (`swift build`, `swift test`) is
-added together with the first Swift source, not before: an empty job would
-report success without testing anything.
+Wire `WorkspaceListViewModel` to `GET /api/v1/overview` (one Space per
+conversation), then replace the mock transcript with pane activity. Input
+control stays out of scope until the realtime take-over semantics are reviewed.

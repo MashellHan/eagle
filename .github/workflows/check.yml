@@ -21,3 +21,10 @@ jobs:
       - run: npm run check
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      # The macOS client is a standalone SPM package with no npm dependency.
+      - run: swift build --package-path apps/macos
+      - run: swift run --package-path apps/macos EagleChecks

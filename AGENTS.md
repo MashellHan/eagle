@@ -22,7 +22,7 @@ manifest, while website health/UI versions match the root manifest.
 
 ```
 apps/web          Vite dashboard, Cloudflare Worker, D1 migrations, public assets
-apps/macos        macOS client placeholder; no source or CI job yet
+apps/macos        SwiftUI client (SPM, zero dependencies, macOS 15+); see its README
 packages/contracts  shared zod contracts and pure helpers (private, not published)
 packages/agent    @nocoo/eagle-agent, published to npm
 tests             one Node/Playwright suite at the root, spanning all packages
@@ -30,6 +30,10 @@ scripts           live verification and deployment entry points
 ```
 
 Workspace scripts at the root delegate to `@eagle/web`; run them from the root.
+`apps/macos` builds with Command Line Tools alone: no SwiftUI macros
+(`@State`, `@Observable`, `#Preview`), no XCTest and no Swift Testing, so it
+uses `ObservableObject`, the `LocalState` shim and `swift run EagleChecks`.
+`swift run SnapshotRenderer` writes review PNGs under the ignored `.local/`.
 `packages/agent` compiles `packages/contracts/src` into its own `dist`, so the
 published tarball stays self-contained and its `bin` path is unchanged.
 
