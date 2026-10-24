@@ -6,6 +6,7 @@
   "changes": [
     {
       "kind": "text",
+      "index": 0,
       "append": "首都"
     },
     {
@@ -14,6 +15,21 @@
       "block": {
         "type": "text",
         "text": "巴黎是法国的首都"
+      }
+    },
+    {
+      "kind": "message",
+      "message": {
+        "id": "p_a2",
+        "role": "assistant",
+        "state": "streaming",
+        "createdAt": "2026-10-25T02:12:01.500Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "巴黎是法国的首都"
+          }
+        ]
       }
     }
   ]

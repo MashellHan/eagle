@@ -38,5 +38,22 @@
   "inboxItem": {
     "id": "s_4",
     "mode": "followUp"
+  },
+  "truncatedMessage": {
+    "id": "e_12",
+    "role": "assistant",
+    "state": "complete",
+    "stopReason": "length",
+    "createdAt": "2026-10-25T02:13:00.000Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "…first 128 KiB…"
+      }
+    ],
+    "truncated": {
+      "totalBytes": 210000,
+      "shownBytes": 131072
+    }
   }
 }

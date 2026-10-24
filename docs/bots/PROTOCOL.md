@@ -38,9 +38,13 @@ Runtime details live in [RUNTIME.md](RUNTIME.md), layers in
 | --- | --- | --- |
 | `send.text` | 8 000 characters | `error{invalid_command}` |
 | `bot.title` (HTTP) | 80 characters | HTTP `400` |
-| Any single frame | 256 KiB | Close `1008` |
-| `snapshot.messages` page | ≤ 200 messages and ≤ 192 KiB | Older messages are paged |
-| `history` reply | ≤ 200 messages and ≤ 192 KiB | `hasMore` says whether more exist |
+| Any single frame | 256 KiB, measured on the **encoded** frame | Close `1008` |
+| Inline message payload | 128 KiB | Sent truncated, see below |
+| `snapshot.messages` page | ≤ 200 messages and ≤ 192 KiB, and always ≥ 1 message | Older messages page through `history` |
+| `history` reply (message page) | ≤ 200 messages and ≤ 192 KiB | `hasMore` says whether more exist |
+| `history` reply (byte range) | ≤ 128 KiB | `hasMore` says whether more bytes exist |
+| `pending` | ≤ 32 entries | Admission beyond it fails `limit_exceeded` |
+| `inbox` | ≤ 32 entries | `send` beyond it fails `limit_exceeded` |
 | Connections | 16 | HTTP `503` before upgrade |
 | Subscribers per bot | 8 | `error{limit_exceeded}` |
 | `requestId` | 8–64 chars, `[A-Za-z0-9_-]` | `error{invalid_command}` |
@@ -95,10 +99,18 @@ client: a model picker needs the `agent` capability.
   "id": "e_10",                          // entry id, or a provisional "p_a2" while streaming
   "role": "assistant",                   // user|assistant|notice  (tool|system reserved)
   "state": "complete",                   // streaming|complete|aborted|error
+  "stopReason": "stop",                  // optional: stop|length|toolUse|aborted|error|deferred
   "createdAt": "2026-10-25T02:11:04.001Z",
   "blocks": [ { "type": "text", "text": "巴黎。" } ],
-  "requestId": "r_0190a1b3"              // user messages only; ties the entry to a send
+  "requestId": "r_0190a1b3",             // user messages only; ties the entry to a send
+  "truncated": { "totalBytes": 210000, "shownBytes": 131072 }   // only when clipped
 }
+
+// Truncation: a message whose encoded blocks exceed 128 KiB is sent clipped, with
+// `truncated` filled and `blocks` holding the first 128 KiB of text. The client
+// renders what it has and fetches the rest with `history{messageId, offset}`. A
+// clipped message never makes a page exceed the frame cap, because the clip is
+// measured with the same encoder that builds the frame.
 
 // ContentBlock
 { "type": "text",     "text": "…" }
@@ -153,7 +165,7 @@ server → { "type": "snapshot", "rev": 42, "trace": "tr_…", "value": Conversa
   "agent": { "model": {…}, "thinkingLevel": "off", "instructions": "" },  // reserved
   "messages": [ Message, … ],            // newest page, oldest first
   "truncatedBefore": "e_3",              // present when older messages exist
-  "streaming": { "messageId": "p_a2" },  // present while a run is active
+  "streaming": { "messageId": "p_a2" },  // null when no run is active; always present
   "pending": [                           // admitted, not yet settled
     { "requestId": "r_…", "submissionId": "s_3", "status": "queued" }
   ],
@@ -192,11 +204,11 @@ is never a gap.
 
 { "type": "delta", "rev": 44, "trace": "tr_…", "messageId": "p_a2",
   "changes": [
-    { "kind": "text",     "append": "Par" },
-    { "kind": "thinking", "append": "…" },                        // reserved
+    { "kind": "text",     "index": 0, "append": "Par" },
+    { "kind": "thinking", "index": 1, "append": "…" },            // reserved
     { "kind": "block",    "index": 0, "block": { "type": "text", "text": "Paris" } },
     { "kind": "message",  "message": { … } },                     // whole-message replacement
-    { "kind": "toolcall", "callId": "…", "path": ["args","q"], "append": "…" }  // reserved
+    { "kind": "toolcall", "index": 2, "callId": "…", "path": ["args","q"], "append": "…" }
   ] }
 
 { "type": "status", "rev": 45, "running": true, "inbox": [ InboxItem, … ] }
@@ -218,6 +230,10 @@ is never a gap.
 { "type": "pong" }
 ```
 
+Every change names its block `index`; a `block` change carries the whole block, so
+a client never has to infer content from a stream of appends. `message` replaces
+the entire message, including when a provider revises earlier content.
+
 `append` is an upsert by `message.id`. It is used twice per answer: a provisional
 message (`id: "p_a<n>"`, `state:"streaming"`, real content) before its deltas, and
 the final entry (`id: "e_<n>"`, `replaces: "p_a<n>"`). A client that never saw the
@@ -231,6 +247,13 @@ provisional — because it joined later — already has the content from the sna
 | `placed` | A user entry exists; the run may not have answered | `entryId` |
 | `done` | Answered | both |
 | `unanswered` | Admitted, will never be answered | `entryId` only if it was placed |
+
+Recording order is not execution order. The daemon answers a `send` with the
+record it read, which may already be `done`; a connection-scoped reply may also
+arrive after the broadcast settlement. Status is therefore **ranked**
+(`queued < placed < done = unanswered`) and a client applies a record only when its
+rank is not lower than the one it holds for that `submissionId`. A reply never
+downgrades state.
 
 `reason` on `unanswered` is a short code, not prose: `model_error`, `aborted`
 (user abort or shutdown), `run_failed` (a previous run failed and the queue was
@@ -249,6 +272,7 @@ Every command except `hello` and `ping` carries `trace`.
 { "type": "recover",   "trace": "tr_…" }
 { "type": "resync",    "trace": "tr_…" }
 { "type": "history",   "before": "e_12", "limit": 100, "trace": "tr_…" }
+{ "type": "history",   "messageId": "e_10", "offset": 131072, "trace": "tr_…" }  // byte range of a clipped message
 { "type": "ping" }
 ```
 
@@ -260,13 +284,46 @@ Every command except `hello` and `ping` carries `trace`.
   (phase 2). `reject` yields `error{kind:"invalid_command"}` when busy.
 - `abort` withdraws the running input and any queued inputs. Their settlements
   arrive as `unanswered{reason:"aborted"}`.
-- `recover` is the phase-1 escape hatch for a bot that reports `task_parked` or
-  `unavailable`: it aborts the run, retries parked tasks, and answers with a fresh
-  snapshot. It is idempotent and safe on a healthy bot.
-- `history` returns older messages for scrollback:
-  `{ "type": "history", "trace": "…", "messages": [Message…], "hasMore": bool }`.
-  `messages` are older than `before`, oldest first, contiguous with what the client
-  holds. Pages are read-only: deltas only ever touch the newest window.
+- `recover` is the phase-1 escape hatch, and what it does depends on the bot's
+  state, so it can never destroy healthy work:
+
+  | Bot state | `recover` does |
+  | --- | --- |
+  | `unavailable` | Re-opens the harness (`open` + resume) and answers with a snapshot |
+  | `idle` / `running` with a parked task | Retries the parked tasks only |
+  | `idle` / `running` and healthy | Nothing but the snapshot |
+  | `quarantined` | Refused with `error{kind:"internal"}`; closing must finish first |
+
+  It never aborts a running answer — `abort` is the explicit destructive action.
+  Repeated calls during one recovery episode are idempotent.
+- `history` answers with
+  `{ "type": "history", "trace": "…", "messages": [Message…] | "text": "…", "hasMore": bool }`:
+  - `before` pages older messages, oldest first, contiguous with what the client
+    holds. Read-only: deltas only ever touch the newest window.
+  - `messageId` + `offset` returns the next text slice of a clipped message
+    (`text` from `offset`, up to 128 KiB). Offsets are UTF-8 byte offsets into the
+    full text; a slice never splits a code point.
+
+## Client duties
+
+Two responsibilities live in the client, not the daemon, because only the client
+knows whether it ever saw a reply. They are part of the contract because the
+recovery guarantees depend on them.
+
+1. **Persisted outbox.** Before writing a `send` frame, the client stores
+   `{botId, requestId, text, whenBusy, createdAt}` durably (app-support file, mode
+   0600, since the text is user content). The frame is written after the record
+   exists.
+2. **Reconciliation.** On connect, after the first snapshot, the client re-sends
+   every outbox entry with its original `requestId`. pi returns the stored record,
+   so the reply is authoritative and the entry is dropped when the record is
+   `done` or `unanswered`, or when a message with that `requestId` appears in the
+   snapshot. Entries are never re-sent with a new id, and a dropped entry is
+   removed from storage before the next connect.
+
+Consequence: an unanswered settlement that arrived while the app was closed is
+recovered by re-sending, not by daemon-side history. `snapshot.pending` exists for
+display; it is not the recovery mechanism.
 
 ## Invariants
 
@@ -280,10 +337,13 @@ Every command except `hello` and `ping` carries `trace`.
 | I6 | A command that was never admitted produces `error`, never a `submission`. "Admitted but reply lost" is recovered by re-sending the same `requestId` or by reading `snapshot.pending` |
 | I7 | `bots` events are absolute and idempotent; they carry no `rev` |
 | I8 | Unknown server event types are consumed (`rev` included) and ignored; unknown client commands are rejected without closing |
-| I9 | Wire content appears only in `send.text`, `Message.blocks`, `delta.changes[].append`, and `agent.instructions` |
+| I9 | Wire content appears only inside these carriers: `send.text`; any `Message` (`blocks`, and the message inside a `delta` `message` change); `delta.changes[].append`; `delta.changes[].block`; `agent.instructions`. No other field carries user or model text |
 | I10 | `append` upserts by id; a provisional `p_a<n>` is finalized by an entry carrying `replaces` |
 | I11 | `rev` is absent on connection-scoped replies and `bots`/`pong`; absence is not a gap |
 | I12 | Older windows are fetched with `history`; the newest window is never re-fetched by paging |
+| I13 | Every delta change names a block `index`; a `block` change carries the whole block, so no content depends on a preceding append |
+| I14 | A submission record is applied only when its rank does not decrease (`queued < placed < done = unanswered`), so a late connection-scoped reply cannot undo a settlement |
+| I15 | A clipped message is recoverable: `truncated` states the totals and `history{messageId, offset}` returns every remaining byte |
 
 ## Close codes
 
@@ -323,7 +383,8 @@ sides.
 | `subscribe.client.json` | subscription |
 | `snapshot.server.json`, `snapshot.streaming.server.json`, `snapshot.unavailable.server.json` | attach states |
 | `append.server.json`, `append.streaming.server.json`, `append.finalize.server.json`, `delta.server.json` | transcript |
-| `history.client.json`, `history.server.json` | paging |
+| `history.client.json`, `history.server.json` | message paging |
+| `history.message.client.json`, `history.message.server.json` | byte range of a clipped message |
 | `status.server.json`, `submission.server.json`, `submission.connection.server.json` | run state and the connection-scoped duplicate reply |
 | `bots.server.json`, `error.server.json` | catalog and failures |
 | `send.client.json`, `abort.client.json`, `recover.client.json`, `resync.client.json` | commands |
