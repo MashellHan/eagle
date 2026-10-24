@@ -27,7 +27,7 @@ public struct Composer: View {
 
   public var body: some View {
     HStack(spacing: 8) {
-      IconButton(systemName: "plus", label: "添加附件", size: 26, action: onAttach)
+      IconButton(systemName: "plus", label: "添加附件", size: 28, action: onAttach)
 
       TextField(
         "",
@@ -42,19 +42,19 @@ public struct Composer: View {
       .onSubmit(onSend)
       .accessibilityLabel(placeholder)
 
-      IconButton(systemName: "mic", label: "语音输入", size: 26, tint: Theme.Palette.textSecondary, action: onMic)
+      IconButton(systemName: "mic", label: "语音输入", size: 28, tint: Theme.Palette.textSecondary, action: onMic)
       IconButton(
         systemName: "waveform",
         label: "发送",
-        size: 26,
+        size: 28,
         tint: text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
           ? Theme.Palette.textSecondary
           : Theme.Palette.accentFill,
         action: onSend
       )
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 6)
+    .padding(.horizontal, 14)
+    .padding(.vertical, 7)
     .frame(minHeight: Theme.Metric.composerHeight)
     .background(
       RoundedRectangle(cornerRadius: Theme.Metric.composerHeight / 2, style: .continuous)

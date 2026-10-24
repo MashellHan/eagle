@@ -32,7 +32,7 @@ public struct ChevronRow: View {
           .font(.system(size: 10, weight: .semibold))
           .foregroundStyle(Theme.Palette.textSecondary)
       }
-      .padding(.horizontal, 12)
+      .padding(.horizontal, 14)
       .frame(height: Theme.Metric.inspectorRowHeight)
       .background(
         RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
@@ -78,8 +78,8 @@ public struct ToggleRow: View {
       Spacer(minLength: 8)
       SwitchToggle(isOn: $isOn, label: title)
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 9)
+    .padding(.horizontal, 14)
+    .padding(.vertical, 11)
     .background(
       RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
         .fill(Theme.Palette.card)

@@ -90,7 +90,7 @@ public enum MockWorkspace {
     InspectorJob(
       id: "j1", title: "每日依赖修复调度", detail: "每天 8:47", isOn: true),
     InspectorJob(
-      id: "j2", title: "依赖修复进度 10-24", detail: "每小时，10月24日，10:00 – 20:00", isOn: true),
+      id: "j2", title: "依赖修复进度 10-24", detail: "每小时 · 10:00–20:00", isOn: true),
   ]
 }
 

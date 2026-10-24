@@ -33,7 +33,7 @@ public struct AssistantTurn: View {
         case .bullets(let items):
           VStack(alignment: .leading, spacing: 5) {
             ForEach(items, id: \.self) { item in
-              HStack(alignment: .firstTextBaseline, spacing: 7) {
+              HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("•")
                   .font(Theme.TypeScale.body)
                   .foregroundStyle(Theme.Palette.textSecondary)
@@ -66,12 +66,12 @@ public struct UserBubble: View {
 
   public var body: some View {
     HStack {
-      Spacer(minLength: 80)
+      Spacer(minLength: 96)
       Text(text)
         .font(Theme.TypeScale.bubble)
         .foregroundStyle(.white)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
         .background(Capsule().fill(Theme.Palette.accentFill))
         .textSelection(.enabled)
     }
@@ -118,8 +118,8 @@ public struct TypingIndicator: View {
   }
 
   public var body: some View {
-    HStack(spacing: 8) {
-      SpinnerArc()
+    HStack(spacing: 9) {
+      SpinnerArc(size: 13, lineWidth: 1.8)
       Text(text)
         .font(Theme.TypeScale.body)
         .foregroundStyle(Theme.Palette.textSecondary)

@@ -16,7 +16,7 @@ public enum TranscriptEntry: Identifiable, Hashable, Sendable {
   }
 }
 
-/// Middle column: participant header, scrollable transcript, composer.
+/// Middle column: a slim control strip, scrollable transcript, composer.
 public struct ConversationColumn: View {
   private let title: String
   private let subtitle: String
@@ -24,8 +24,10 @@ public struct ConversationColumn: View {
   private let entries: [TranscriptEntry]
   @Binding private var draft: String
   private let onSend: () -> Void
-  private let onShare: () -> Void
-  private let onClose: () -> Void
+  private let onToggleSidebar: () -> Void
+  private let onToggleInspector: () -> Void
+  private let showsSidebar: Bool
+  private let showsInspector: Bool
 
   public init(
     title: String,
@@ -34,8 +36,10 @@ public struct ConversationColumn: View {
     entries: [TranscriptEntry],
     draft: Binding<String>,
     onSend: @escaping () -> Void,
-    onShare: @escaping () -> Void = {},
-    onClose: @escaping () -> Void = {}
+    showsSidebar: Bool = true,
+    showsInspector: Bool = true,
+    onToggleSidebar: @escaping () -> Void = {},
+    onToggleInspector: @escaping () -> Void = {}
   ) {
     self.title = title
     self.subtitle = subtitle
@@ -43,31 +47,20 @@ public struct ConversationColumn: View {
     self.entries = entries
     self._draft = draft
     self.onSend = onSend
-    self.onShare = onShare
-    self.onClose = onClose
+    self.showsSidebar = showsSidebar
+    self.showsInspector = showsInspector
+    self.onToggleSidebar = onToggleSidebar
+    self.onToggleInspector = onToggleInspector
   }
 
   public var body: some View {
     VStack(spacing: 0) {
-      ScrollViewReader { proxy in
-        ScrollView {
-          VStack(alignment: .leading, spacing: Theme.Metric.turnGap) {
-            ForEach(entries) { entry in
-              row(entry).id(entry.id)
-            }
-            Color.clear.frame(height: 1).id("bottom")
-          }
-          .frame(maxWidth: Theme.Metric.conversationMaxContentWidth, alignment: .leading)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.horizontal, Theme.Metric.conversationInset)
-          .padding(.top, 18)
-          .padding(.bottom, 8)
-        }
-        .scrollIndicators(.never)
-        .onChange(of: entries.count) {
-          withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo("bottom", anchor: .bottom) }
-        }
+      controlStrip
+
+      ZStack(alignment: .top) {
+        transcript
       }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
 
       Composer(
         placeholder: "给 \(title) 发消息",
@@ -75,10 +68,60 @@ public struct ConversationColumn: View {
         onSend: onSend
       )
       .padding(.horizontal, Theme.Metric.conversationInset)
-      .padding(.bottom, 20)
+      .padding(.bottom, Theme.Metric.composerBottomInset)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.Palette.surface)
+  }
+
+  private var controlStrip: some View {
+    HStack(spacing: 4) {
+      if !showsSidebar {
+        IconButton(systemName: "sidebar.left", label: "展开侧栏", action: onToggleSidebar)
+      }
+      Spacer(minLength: 0)
+      if !showsSidebar {
+        HStack(spacing: 8) {
+          Avatar(initial: String(title.prefix(1)), tint: Theme.Palette.avatarTint(tintIndex), size: 22)
+          Text(title)
+            .font(Theme.TypeScale.cardTitle)
+            .foregroundStyle(Theme.Palette.textSecondary)
+        }
+        .transition(.opacity)
+      }
+      Spacer(minLength: 0)
+      if showsInspector {
+        IconButton(systemName: "sidebar.right", label: "收起检查器", action: onToggleInspector)
+      } else {
+        IconButton(systemName: "sidebar.right", label: "展开检查器", action: onToggleInspector)
+      }
+    }
+    .padding(.horizontal, Theme.Metric.conversationInset - 12)
+    .padding(.top, 8)
+    .frame(height: 44)
+  }
+
+  private var transcript: some View {
+    ScrollViewReader { proxy in
+      ScrollView {
+        VStack(alignment: .leading, spacing: Theme.Metric.turnGap) {
+          ForEach(entries) { entry in
+            row(entry).id(entry.id)
+          }
+          Color.clear.frame(height: 1).id("bottom")
+        }
+        .frame(maxWidth: Theme.Metric.conversationMaxContentWidth, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.Metric.conversationInset)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .animation(.easeOut(duration: 0.2), value: entries.count)
+      }
+      .scrollIndicators(.never)
+      .onChange(of: entries.count) {
+        withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo("bottom", anchor: .bottom) }
+      }
+    }
   }
 
   @ViewBuilder
@@ -86,8 +129,10 @@ public struct ConversationColumn: View {
     switch entry {
     case .assistant(_, let blocks):
       AssistantTurn(blocks)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
     case .user(_, let text):
       UserBubble(text)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
     case .note(_, let text, let tintIndices):
       DeliveryNote(text, avatars: tintIndices.map(Theme.Palette.avatarTint))
     case .typing:

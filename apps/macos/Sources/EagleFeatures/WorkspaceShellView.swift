@@ -7,23 +7,29 @@ public struct WorkspaceShellView: View {
   @StateObject private var list: WorkspaceListViewModel
   @StateObject private var chat: ChatViewModel
   @StateObject private var inspector: InspectorViewModel
+  @LocalState private var showsSidebar: Bool
   @LocalState private var showsInspector: Bool
 
   public init(
     list: WorkspaceListViewModel = WorkspaceListViewModel(),
     chat: ChatViewModel = ChatViewModel(),
     inspector: InspectorViewModel = InspectorViewModel(),
+    showsSidebar: Bool = true,
     showsInspector: Bool = true
   ) {
     _list = StateObject(wrappedValue: list)
     _chat = StateObject(wrappedValue: chat)
     _inspector = StateObject(wrappedValue: inspector)
+    _showsSidebar = LocalState(wrappedValue: showsSidebar)
     _showsInspector = LocalState(wrappedValue: showsInspector)
   }
 
   public var body: some View {
     let item = list.selectedItem
-    ThreeColumnShell(showsInspector: showsInspector) {
+    ThreeColumnShell(
+      showsSidebar: showsSidebar,
+      showsInspector: showsInspector
+    ) {
       SidebarPanel(
         profileInitial: "监",
         profileName: "监察御史",
@@ -31,6 +37,7 @@ public struct WorkspaceShellView: View {
         groups: list.groups,
         selection: list.selection,
         onSelect: { list.select($0) },
+        onCollapse: { showsSidebar = false },
         unreadCount: 2
       )
     } conversation: {
@@ -40,7 +47,11 @@ public struct WorkspaceShellView: View {
         tintIndex: item?.tintIndex ?? 2,
         entries: chat.entries,
         draft: $chat.draft,
-        onSend: { chat.send() }
+        onSend: { chat.send() },
+        showsSidebar: showsSidebar,
+        showsInspector: showsInspector,
+        onToggleSidebar: { showsSidebar.toggle() },
+        onToggleInspector: { showsInspector.toggle() }
       )
     } inspector: {
       InspectorColumn(
@@ -51,8 +62,14 @@ public struct WorkspaceShellView: View {
         jobs: inspector.jobs,
         tab: $inspector.tab,
         onToggleJob: { inspector.setJob($0, isOn: $1) },
-        onClose: { showsInspector = false }
+        onCollapse: { showsInspector = false }
       )
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSidebar)) { _ in
+      showsSidebar.toggle()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .eagleToggleInspector)) { _ in
+      showsInspector.toggle()
     }
   }
 }

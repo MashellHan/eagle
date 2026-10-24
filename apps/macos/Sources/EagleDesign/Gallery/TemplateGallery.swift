@@ -169,7 +169,7 @@ public struct TemplateGallery: View {
           tab: .constant(.detail)
         )
         .frame(height: 620)
-        .overlay(alignment: .topTrailing) { cornerLabel("319 × 620") }
+        .overlay(alignment: .topTrailing) { cornerLabel("330 × 620") }
       }
     }
   }

@@ -39,6 +39,7 @@ public struct SwitchToggle: View {
 public struct SpinnerArc: View {
   private let size: CGFloat
   private let lineWidth: CGFloat
+  @LocalState private var spinning = false
 
   public init(size: CGFloat = 12, lineWidth: CGFloat = 1.6) {
     self.size = size
@@ -52,8 +53,13 @@ public struct SpinnerArc: View {
         Theme.Palette.accentStrong,
         style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
       )
-      .rotationEffect(.degrees(-90))
       .frame(width: size, height: size)
+      .rotationEffect(.degrees(spinning ? 360 : 0))
+      .animation(
+        .linear(duration: 0.9).repeatForever(autoreverses: false),
+        value: spinning
+      )
+      .onAppear { spinning = true }
       .accessibilityHidden(true)
   }
 }

@@ -17,14 +17,14 @@ public struct SegmentedTabs<Value: Hashable>: View {
   }
 
   public var body: some View {
-    HStack(spacing: 18) {
+    HStack(spacing: 20) {
       ForEach(values, id: \.self) { value in
         let selected = value == selection
         Button {
           selection = value
         } label: {
           Text(title(value))
-            .font(.system(size: 12, weight: selected ? .semibold : .regular))
+            .font(.system(size: 13, weight: selected ? .semibold : .regular))
             .foregroundStyle(selected ? Theme.Palette.textPrimary : Theme.Palette.textSecondary)
             .padding(.bottom, 6)
             .overlay(alignment: .bottom) {

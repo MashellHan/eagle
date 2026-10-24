@@ -26,7 +26,7 @@ public struct InspectorJob: Identifiable, Hashable, Sendable {
 
 /// Right column: participant summary, text tabs, artifact rows and job switches.
 public struct InspectorColumn: View {
-  public enum Tab: String, CaseIterable, Hashable {
+  public enum Tab: String, CaseIterable, Hashable, Sendable {
     case detail = "详情"
     case library = "资料库"
     case computer = "电脑"
@@ -40,7 +40,7 @@ public struct InspectorColumn: View {
   @Binding private var tab: Tab
   private let onToggleJob: (String, Bool) -> Void
   private let onExpand: () -> Void
-  private let onClose: () -> Void
+  private let onCollapse: () -> Void
   private let onShare: () -> Void
 
   public init(
@@ -52,7 +52,7 @@ public struct InspectorColumn: View {
     tab: Binding<Tab>,
     onToggleJob: @escaping (String, Bool) -> Void = { _, _ in },
     onExpand: @escaping () -> Void = {},
-    onClose: @escaping () -> Void = {},
+    onCollapse: @escaping () -> Void = {},
     onShare: @escaping () -> Void = {}
   ) {
     self.name = name
@@ -63,27 +63,97 @@ public struct InspectorColumn: View {
     self._tab = tab
     self.onToggleJob = onToggleJob
     self.onExpand = onExpand
-    self.onClose = onClose
+    self.onCollapse = onCollapse
     self.onShare = onShare
   }
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      HStack(spacing: 6) {
+      HStack(spacing: 4) {
         Spacer(minLength: 0)
         IconButton(systemName: "square.and.arrow.up", label: "分享", action: onShare)
-        IconButton(systemName: "xmark", label: "关闭检查器", action: onClose)
+        IconButton(systemName: "xmark", label: "收起检查器", action: onCollapse)
       }
-      .padding(.horizontal, Theme.Metric.panelInset - 6)
+      .padding(.horizontal, Theme.Metric.panelInset - 8)
+      .padding(.top, 10)
       .frame(height: Theme.Metric.headerHeight)
 
-      VStack(spacing: 6) {
-        Avatar(
-          initial: String(name.prefix(1)),
-          tint: Theme.Palette.avatarTint(tintIndex),
-          size: Theme.Metric.avatarInspector,
-          shape: .blob
+      Identity(name: name, subtitle: subtitle, tintIndex: tintIndex)
+
+      SegmentedTabs(values: Tab.allCases, selection: $tab) { $0.rawValue }
+        .padding(.horizontal, Theme.Metric.panelInset)
+
+      ScrollView {
+        VStack(alignment: .leading, spacing: 10) {
+          content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.easeOut(duration: 0.18), value: tab)
+        .padding(.horizontal, Theme.Metric.panelInset)
+        .padding(.top, 18)
+        .padding(.bottom, 24)
+      }
+      .scrollIndicators(.never)
+    }
+    .frame(width: Theme.Metric.inspectorWidth)
+    .frame(maxHeight: .infinity)
+    .background(Theme.Palette.surface)
+  }
+
+  @ViewBuilder
+  private var content: some View {
+    switch tab {
+    case .detail:
+      SectionLabel("编码")
+      ForEach(artifacts) { artifact in
+        ChevronRow(
+          systemName: "chevron.left.forwardslash.chevron.right",
+          title: artifact.title
         )
+      }
+      TextAction("展开", action: onExpand)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 2)
+
+      SectionLabel("例行任务").padding(.top, 10)
+      ForEach(jobs) { job in
+        ToggleRow(
+          title: job.title,
+          detail: job.detail,
+          isOn: Binding(
+            get: { job.isOn },
+            set: { onToggleJob(job.id, $0) }
+          )
+        )
+      }
+    case .library:
+      SectionLabel("资料库")
+      Text("尚无资料。接入 Herdr 后，Space 的证据与产物会出现在这里。")
+        .font(Theme.TypeScale.note)
+        .foregroundStyle(Theme.Palette.textSecondary)
+    case .computer:
+      SectionLabel("电脑")
+      Text("终端与会话信息在接入后展示。")
+        .font(Theme.TypeScale.note)
+        .foregroundStyle(Theme.Palette.textSecondary)
+    }
+  }
+}
+
+private struct Identity: View {
+  let name: String
+  let subtitle: String
+  let tintIndex: Int
+
+  var body: some View {
+    VStack(spacing: 8) {
+      Avatar(
+        initial: String(name.prefix(1)),
+        tint: Theme.Palette.avatarTint(tintIndex),
+        size: Theme.Metric.avatarInspector,
+        shape: .blob
+      )
+      VStack(spacing: 3) {
         Text(name)
           .font(Theme.TypeScale.inspectorTitle)
           .foregroundStyle(Theme.Palette.textPrimary)
@@ -91,55 +161,9 @@ public struct InspectorColumn: View {
           .font(Theme.TypeScale.rowSubtitle)
           .foregroundStyle(Theme.Palette.textSecondary)
       }
-      .frame(maxWidth: .infinity)
-      .padding(.top, 4)
-      .padding(.bottom, 16)
-
-      SegmentedTabs(values: Tab.allCases, selection: $tab) { $0.rawValue }
-        .padding(.horizontal, Theme.Metric.panelInset)
-
-      ScrollView {
-        VStack(alignment: .leading, spacing: 8) {
-          switch tab {
-          case .detail:
-            SectionLabel("编码").padding(.top, 4)
-            ForEach(artifacts) { artifact in
-              ChevronRow(systemName: "chevron.left.forwardslash.chevron.right", title: artifact.title)
-            }
-            TextAction("展开", action: onExpand)
-              .frame(maxWidth: .infinity)
-              .padding(.top, 2)
-
-            SectionLabel("例行任务").padding(.top, 8)
-            ForEach(jobs) { job in
-              ToggleRow(
-                title: job.title,
-                detail: job.detail,
-                isOn: Binding(
-                  get: { job.isOn },
-                  set: { onToggleJob(job.id, $0) }
-                )
-              )
-            }
-          case .library:
-            SectionLabel("资料库").padding(.top, 4)
-            Text("尚无资料。接入 Herdr 后，Space 的证据与产物会出现在这里。")
-              .font(Theme.TypeScale.note)
-              .foregroundStyle(Theme.Palette.textSecondary)
-          case .computer:
-            SectionLabel("电脑").padding(.top, 4)
-            Text("终端与会话信息在接入后展示。")
-              .font(Theme.TypeScale.note)
-              .foregroundStyle(Theme.Palette.textSecondary)
-          }
-        }
-        .padding(.horizontal, Theme.Metric.panelInset)
-        .padding(.bottom, 20)
-      }
-      .scrollIndicators(.never)
     }
-    .frame(width: Theme.Metric.inspectorWidth)
-    .frame(maxHeight: .infinity)
-    .background(Theme.Palette.surface)
+    .frame(maxWidth: .infinity)
+    .padding(.top, 22)
+    .padding(.bottom, 22)
   }
 }
