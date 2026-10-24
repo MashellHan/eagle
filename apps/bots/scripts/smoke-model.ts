@@ -65,7 +65,11 @@ const provider = createProvider({
 const models = createModels();
 models.setProvider(provider);
 
-const harness = await Harness.open(new MemoryStorage(), { models, registry: createRegistry() }, context);
+const harness = await Harness.open(
+  new MemoryStorage(),
+  { models, registry: createRegistry() },
+  context,
+);
 const root = await harness.root(context, { agent: { model: { provider: providerId, modelId } } });
 
 type Watch = { seen: string[]; firstDeltaAt: number | null; stop: () => Promise<void> };
@@ -104,7 +108,7 @@ async function lastAssistantText(): Promise<string> {
   const page = await root.entries({}, 50, undefined, context);
   const entry = [...page.items].reverse().find((item) => item.kind === "pi.assistant");
   const message = entry?.model?.[0];
-  if (!message || message.role !== "assistant") return "";
+  if (message?.role !== "assistant") return "";
   if (typeof message.content === "string") return message.content;
   return message.content
     .map((block) => (block.type === "text" ? block.text : ""))
