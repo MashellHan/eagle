@@ -3,7 +3,7 @@
 // are removed before anything is written.
 
 import type { ErrorKind, Failure } from "../core/domain.ts";
-import { type EventName, isEventName, type Layer } from "./events.ts";
+import { type DeclaredEvent, type EventName, isEventName, type Layer } from "./events.ts";
 
 export const LEVELS = ["trace", "debug", "info", "warn", "error"] as const;
 export type Level = (typeof LEVELS)[number];
@@ -131,9 +131,10 @@ export class Log {
     this.#now = now;
   }
 
-  emit(level: Level, layer: Layer, evt: EventName, fields: EmitFields): LogRecord {
+  emit(level: Level, layer: Layer, evt: DeclaredEvent, fields: EmitFields): LogRecord {
     // The event argument is an `EventName`, so a literal typo fails typecheck as well.
     if (!isEventName(evt)) throw new Error(`undeclared log event: ${String(evt)}`);
+    // `DeclaredEvent` is a brand: a literal or an aliased string cannot reach here.
     if (!evt.startsWith(`${layer}.`)) {
       throw new Error(`event ${evt} does not belong to layer ${layer}`);
     }

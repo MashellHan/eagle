@@ -97,14 +97,23 @@ export const EVENTS = {
 
 export type EventName = keyof typeof EVENTS;
 
+// A branded name: only values produced here are assignable, so an emit site cannot
+// pass a literal or an aliased string. The brand is compile-time only.
+declare const declaredEvent: unique symbol;
+export type DeclaredEvent = EventName & { readonly [declaredEvent]: true };
+/** Brands a name from the catalogue. A typo is still a type error; a bare string at
+ *  an emit call is not assignable. */
+export const declareEvent = (name: EventName): DeclaredEvent => name as DeclaredEvent;
+const declared = declareEvent;
+
 export const Events = {
-  protocolCommandStart: "protocol.command.start",
-  protocolCommandOk: "protocol.command.ok",
-  protocolCommandFail: "protocol.command.fail",
-  protocolDecodeFail: "protocol.decode.fail",
-  protocolLimitFail: "protocol.limit.fail",
-  protocolVersionFail: "protocol.version.fail",
-  protocolEncodeFail: "protocol.encode.fail",
-} as const satisfies Record<string, EventName>;
+  protocolCommandStart: declared("protocol.command.start"),
+  protocolCommandOk: declared("protocol.command.ok"),
+  protocolCommandFail: declared("protocol.command.fail"),
+  protocolDecodeFail: declared("protocol.decode.fail"),
+  protocolLimitFail: declared("protocol.limit.fail"),
+  protocolVersionFail: declared("protocol.version.fail"),
+  protocolEncodeFail: declared("protocol.encode.fail"),
+} as const;
 
 export const isEventName = (value: string): value is EventName => Object.hasOwn(EVENTS, value);
