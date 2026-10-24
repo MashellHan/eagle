@@ -51,7 +51,10 @@ const message = (bytes: number, id = "e_1"): Message => ({
   blocks: [{ type: "text", text: text(bytes) }],
 });
 
-const snapshot = (messages: readonly Message[]): Record<string, unknown> =>
+const snapshot = (
+  messages: readonly Message[],
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> =>
   encodeServerEvent({
     type: "snapshot",
     rev: 1,
@@ -63,6 +66,7 @@ const snapshot = (messages: readonly Message[]): Record<string, unknown> =>
       pending: [],
       inbox: [],
       running: false,
+      ...extra,
     } satisfies ConversationSnapshot,
   }) as Record<string, unknown>;
 
@@ -142,4 +146,65 @@ test("pending and inbox are capped", () => {
   const frame = snapshot([]) as { value: Record<string, unknown> };
   frame.value.pending = pending;
   assert.throws(() => assertFrameBudget(frame), denied("limit_exceeded"));
+});
+
+test("a notice text is capped in bytes wherever a message is carried", () => {
+  const notice = {
+    id: "e_1",
+    role: "notice",
+    state: "complete",
+    createdAt: "2026-10-25T02:11:04.001Z",
+    blocks: [{ type: "text", text: "é".repeat(300) }], // 600 bytes
+  };
+  const frame = encodeServerEvent({
+    type: "append",
+    rev: 1,
+    trace,
+    message: notice as never,
+  }) as Record<string, unknown>;
+  assert.ok(measureFrame(frame) < MAX_FRAME_BYTES);
+  assert.throws(() => assertFrameBudget(frame), denied("limit_exceeded"));
+});
+
+test("a status inbox is capped like a snapshot inbox", () => {
+  const inbox = Array.from({ length: 33 }, (_, index) => ({
+    id: `s_${index}`,
+    mode: "followUp" as const,
+  }));
+  for (const frame of [
+    { type: "status", rev: 1, trace, running: true, streaming: null, inbox },
+    snapshot([], { inbox }),
+  ]) {
+    assert.throws(
+      () => assertFrameBudget(frame as Record<string, unknown>),
+      denied("limit_exceeded"),
+    );
+  }
+  assert.equal(
+    assertFrameBudget({
+      type: "status",
+      rev: 1,
+      trace,
+      running: true,
+      streaming: null,
+      inbox: inbox.slice(0, 32),
+    } as Record<string, unknown>) > 0,
+    true,
+  );
+});
+
+test("an error message is capped in characters, not bytes", () => {
+  const error = (message: string) => ({
+    type: "error",
+    trace,
+    kind: "internal",
+    failure: "f_1",
+    disposition: "runtime",
+    message,
+  });
+  assert.equal(assertFrameBudget(error("中".repeat(200)) as Record<string, unknown>) > 0, true);
+  assert.throws(
+    () => assertFrameBudget(error("x".repeat(201)) as Record<string, unknown>),
+    denied("limit_exceeded"),
+  );
 });

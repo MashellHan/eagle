@@ -82,9 +82,26 @@ export function assertInboundBytes(text: string): number {
 const encodedBytes = (value: unknown): number =>
   Buffer.byteLength(serializeFrame(value as Record<string, unknown>), "utf8");
 
-const assertMessageBytes = (message: unknown) => {
+const assertMessageBudget = (message: unknown) => {
   if (encodedBytes(message) > MAX_MESSAGE_BYTES) {
     throw new FrameError("limit_exceeded", `message exceeds ${MAX_MESSAGE_BYTES} bytes`);
+  }
+  const record = message as Record<string, unknown>;
+  const noticeBytes =
+    record.role === "notice"
+      ? (record.blocks as readonly Record<string, unknown>[]).reduce(
+          (total, block) => total + Buffer.byteLength(String(block.text ?? ""), "utf8"),
+          0,
+        )
+      : 0;
+  if (noticeBytes > MAX_NOTICE_BYTES) {
+    throw new FrameError("limit_exceeded", `notice exceeds ${MAX_NOTICE_BYTES} bytes`);
+  }
+};
+
+const assertInboxBudget = (inbox: unknown) => {
+  if (Array.isArray(inbox) && inbox.length > MAX_INBOX) {
+    throw new FrameError("limit_exceeded", `inbox exceeds ${MAX_INBOX}`);
   }
 };
 
@@ -112,18 +129,19 @@ export function assertFrameBudget(wire: Record<string, unknown>): number {
     if (page.length > PAGE_MAX_MESSAGES) {
       throw new FrameError("limit_exceeded", `page exceeds ${PAGE_MAX_MESSAGES} messages`);
     }
-    for (const message of page) assertMessageBytes(message);
+    for (const message of page) assertMessageBudget(message);
   }
   // The page budget is the whole frame: envelope and metadata are bytes too.
   if (page !== undefined && bytes > PAGE_MAX_BYTES) {
     throw new FrameError("limit_exceeded", `page frame exceeds ${PAGE_MAX_BYTES} bytes`);
   }
 
-  if (wire.type === "append") assertMessageBytes(wire.message);
+  if (wire.type === "append") assertMessageBudget(wire.message);
   if (wire.type === "delta") {
     for (const change of (wire.changes as readonly Record<string, unknown>[]) ?? []) {
-      if (change.kind === "message") assertMessageBytes(change.message);
-      if (change.kind === "block") assertMessageBytes({ blocks: [change.block] });
+      if (change.kind === "message") assertMessageBudget(change.message);
+      if (change.kind === "block")
+        assertMessageBudget({ role: "assistant", blocks: [change.block] });
     }
   }
   if (wire.type === "snapshot") {
@@ -131,14 +149,13 @@ export function assertFrameBudget(wire: Record<string, unknown>): number {
     if (Array.isArray(value.pending) && value.pending.length > MAX_PENDING) {
       throw new FrameError("limit_exceeded", `pending exceeds ${MAX_PENDING}`);
     }
-    if (Array.isArray(value.inbox) && value.inbox.length > MAX_INBOX) {
-      throw new FrameError("limit_exceeded", `inbox exceeds ${MAX_INBOX}`);
-    }
   }
+  if (wire.type === "snapshot") assertInboxBudget((wire.value as Record<string, unknown>).inbox);
+  if (wire.type === "status") assertInboxBudget(wire.inbox);
   if (wire.type === "error") {
-    const message = wire.message;
-    if (typeof message === "string" && Buffer.byteLength(message, "utf8") > MAX_NOTICE_BYTES) {
-      throw new FrameError("limit_exceeded", `notice exceeds ${MAX_NOTICE_BYTES} bytes`);
+    // The contract caps an error message in characters, not bytes.
+    if (typeof wire.message === "string" && Array.from(wire.message).length > 200) {
+      throw new FrameError("limit_exceeded", "error message exceeds 200 characters");
     }
   }
 

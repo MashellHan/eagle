@@ -371,6 +371,9 @@ const decodeSubmission = (ctx: Ctx, raw: unknown): Submission => {
   if (status === "unanswered" && (reason === undefined || answerEntryId !== undefined)) {
     fail(ctx, "unanswered submissions have reason and no answer");
   }
+  if (status !== "unanswered" && reason !== undefined) {
+    fail(ctx, "reason belongs to unanswered submissions only");
+  }
   return {
     id: str(ctx, raw.submissionId, "submission.submissionId"),
     requestId: str(ctx, raw.requestId, "submission.requestId"),
@@ -393,8 +396,11 @@ const decodeSnapshot = (ctx: Ctx, raw: unknown): ConversationSnapshot => {
   const messages = arr(ctx, required(ctx, raw, "messages"), "messages").map((m) =>
     decodeMessage(ctx, m),
   );
-  if (streaming !== null && !messages.some((m) => m.id === streaming)) {
-    fail(ctx, "streaming id must be one of the snapshot messages");
+  if (streaming !== null) {
+    const target = messages.find((m) => m.id === streaming);
+    if (target === undefined) fail(ctx, "streaming id must be one of the snapshot messages");
+    if (target?.state !== "streaming")
+      fail(ctx, "the streaming message must be in streaming state");
   }
 
   const truncatedBefore =
@@ -430,15 +436,35 @@ const decodeSnapshot = (ctx: Ctx, raw: unknown): ConversationSnapshot => {
       }
     : undefined;
 
+  const pending = arr(ctx, required(ctx, raw, "pending"), "pending").map((p) =>
+    decodeSubmission(ctx, p),
+  );
+  const inbox = arr(ctx, required(ctx, raw, "inbox"), "inbox").map((i) => decodeInboxItem(ctx, i));
+  const running = bool(ctx, required(ctx, raw, "running"), "running");
+
+  // State relations the contract requires of every snapshot.
+  if (pending.some((record) => record.status === "done" || record.status === "unanswered")) {
+    fail(ctx, "pending holds admitted, unsettled submissions only");
+  }
+  if (unavailable !== undefined) {
+    if (
+      messages.length > 0 ||
+      pending.length > 0 ||
+      inbox.length > 0 ||
+      running ||
+      streaming !== null
+    ) {
+      fail(ctx, "an unavailable snapshot has unknown collections, so they must be empty");
+    }
+  }
+
   return {
     botId: str(ctx, raw.botId, "botId"),
     messages,
     streaming,
-    pending: arr(ctx, required(ctx, raw, "pending"), "pending").map((p) =>
-      decodeSubmission(ctx, p),
-    ),
-    inbox: arr(ctx, required(ctx, raw, "inbox"), "inbox").map((i) => decodeInboxItem(ctx, i)),
-    running: bool(ctx, required(ctx, raw, "running"), "running"),
+    pending,
+    inbox,
+    running,
     ...(truncatedBefore === undefined ? {} : { truncatedBefore }),
     ...(raw.usage === undefined ? {} : { usage: decodeUsage(ctx, raw.usage) }),
     ...(agent === undefined ? {} : { agent }),
@@ -483,6 +509,13 @@ const decodeBotSummary = (ctx: Ctx, raw: unknown): BotSummary => {
         message: anyStr(ctx, raw.unavailable.message, "bot.unavailable.message"),
       }
     : undefined;
+  const state = oneOf(ctx, raw.state, BOT_STATES, "bot.state");
+  if (state === "unavailable" && unavailable === undefined) {
+    fail(ctx, "an unavailable bot must carry its reason");
+  }
+  if (state !== "unavailable" && unavailable !== undefined) {
+    fail(ctx, "only an unavailable bot carries a reason");
+  }
   return {
     id: str(ctx, raw.id, "bot.id"),
     title: str(ctx, raw.title, "bot.title"),
@@ -492,7 +525,7 @@ const decodeBotSummary = (ctx: Ctx, raw: unknown): BotSummary => {
       provider: str(ctx, model.provider, "bot.model.provider"),
       modelId: str(ctx, model.modelId, "bot.model.modelId"),
     },
-    state: oneOf(ctx, raw.state, BOT_STATES, "bot.state"),
+    state,
     ...(unavailable === undefined ? {} : { unavailable }),
   };
 };
@@ -639,11 +672,8 @@ export function decodeServerEvent(raw: Record<string, unknown>): ServerEvent {
         trace: str(ctx, raw.trace, "trace"),
         kind,
         disposition: oneOf(ctx, required(ctx, raw, "disposition"), DISPOSITIONS, "disposition"),
-        failure: (() => {
-          const failure = str(ctx, required(ctx, raw, "failure"), "failure");
-          if (!/^f_[A-Za-z0-9_-]{1,32}$/.test(failure)) fail(ctx, "failure is malformed");
-          return failure;
-        })(),
+        // Opaque identity minted by the daemon: the contract fixes no format.
+        failure: str(ctx, required(ctx, raw, "failure"), "failure"),
         message,
       };
       if (rev !== undefined) event.rev = rev;

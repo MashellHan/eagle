@@ -161,3 +161,70 @@ test("event envelopes carry well-formed ids", () => {
     inbox: [],
   });
 });
+
+test("snapshot state relations are enforced", () => {
+  const base = { type: "snapshot", rev: 1, trace };
+  const complete = {
+    id: "e_1",
+    role: "assistant",
+    state: "complete",
+    createdAt: "x",
+    blocks: [],
+  };
+  // streaming must point at a message in streaming state
+  invalidEvent({
+    ...base,
+    value: {
+      botId: "b_1",
+      messages: [complete],
+      streaming: { messageId: "e_1" },
+      pending: [],
+      inbox: [],
+      running: true,
+    },
+  });
+  // pending holds unsettled records only
+  invalidEvent({
+    ...base,
+    value: {
+      botId: "b_1",
+      messages: [],
+      streaming: null,
+      pending: [
+        { requestId, submissionId: "s_1", status: "done", entryId: "e_1", answerEntryId: "e_2" },
+      ],
+      inbox: [],
+      running: false,
+    },
+  });
+  // an unavailable snapshot has empty collections
+  invalidEvent({
+    ...base,
+    value: {
+      botId: "b_1",
+      messages: [complete],
+      streaming: null,
+      pending: [],
+      inbox: [],
+      running: false,
+      unavailable: { reason: "storage_failed", message: "boom" },
+    },
+  });
+});
+
+test("a bot summary only carries a reason while unavailable", () => {
+  const bot = {
+    id: "b_1",
+    title: "t",
+    createdAt: "x",
+    updatedAt: "x",
+    model: { provider: "magpie", modelId: "auto/gpt-6-luna" },
+    state: "idle",
+  };
+  assert.equal(decodeServerEvent({ type: "bots", bots: [bot] }).type, "bots");
+  invalidEvent({ type: "bots", bots: [{ ...bot, state: "unavailable" }] });
+  invalidEvent({
+    type: "bots",
+    bots: [{ ...bot, unavailable: { reason: "storage_failed", message: "boom" } }],
+  });
+});
