@@ -90,9 +90,12 @@ public struct SidebarPanel: View {
   private var toolbar: some View {
     HStack(spacing: 2) {
       Spacer(minLength: 0)
-      IconButton(systemName: "magnifyingglass", label: "搜索", action: onSearch)
-      IconButton(systemName: "plus", label: "新建会话", action: onCompose)
-      IconButton(systemName: "sidebar.left", label: "收起侧栏", action: onCollapse)
+      IconButton(
+        systemName: "magnifyingglass", label: "搜索", style: .circled, action: onSearch)
+      IconButton(
+        systemName: "plus", label: "新建会话", style: .circled, action: onCompose)
+      IconButton(
+        systemName: "sidebar.left", label: "收起侧栏", style: .circled, action: onCollapse)
     }
     .padding(.trailing, 12)
     .padding(.top, Theme.Metric.toolbarTopInset)

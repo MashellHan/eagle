@@ -36,7 +36,10 @@ public struct ConversationColumn: View {
   @Binding private var draft: String
   private let onSend: () -> Void
   private let onShowSidebar: () -> Void
+  private let onShowInspector: () -> Void
   private let showsSidebar: Bool
+  private let showsInspector: Bool
+  private let maxContentWidth: CGFloat
 
   public init(
     title: String,
@@ -47,7 +50,10 @@ public struct ConversationColumn: View {
     draft: Binding<String>,
     onSend: @escaping () -> Void,
     showsSidebar: Bool = true,
-    onShowSidebar: @escaping () -> Void = {}
+    showsInspector: Bool = true,
+    maxContentWidth: CGFloat = Theme.Metric.conversationMaxContentWidth,
+    onShowSidebar: @escaping () -> Void = {},
+    onShowInspector: @escaping () -> Void = {}
   ) {
     self.title = title
     self.subtitle = subtitle
@@ -57,12 +63,15 @@ public struct ConversationColumn: View {
     self._draft = draft
     self.onSend = onSend
     self.showsSidebar = showsSidebar
+    self.showsInspector = showsInspector
+    self.maxContentWidth = maxContentWidth
     self.onShowSidebar = onShowSidebar
+    self.onShowInspector = onShowInspector
   }
 
   public var body: some View {
     VStack(spacing: 0) {
-      if !showsSidebar {
+      if !showsSidebar || !showsInspector {
         controlStrip
       }
 
@@ -87,7 +96,9 @@ public struct ConversationColumn: View {
   private var controlStrip: some View {
     HStack(spacing: 10) {
       if !showsSidebar {
-        IconButton(systemName: "sidebar.left", label: "展开侧栏", action: onShowSidebar)
+        // Clear the traffic lights, which float over the window's top-left.
+        IconButton(
+          systemName: "sidebar.left", label: "展开侧栏", style: .circled, action: onShowSidebar)
         Avatar(
           initial: String(title.prefix(1)), tint: Theme.Palette.avatarTint(tintIndex), size: 24)
         Text(title)
@@ -96,10 +107,17 @@ public struct ConversationColumn: View {
           .transition(.opacity)
       }
       Spacer(minLength: 0)
+      if !showsInspector {
+        IconButton(
+          systemName: "sidebar.right", label: "展开检查器", style: .circled, action: onShowInspector)
+      }
     }
-    .padding(.horizontal, Theme.Metric.conversationInset - 8)
-    .padding(.top, Theme.Metric.windowInset + 2)
-    .frame(height: Theme.Metric.windowInset + 40)
+    .padding(
+      .leading, showsSidebar ? Theme.Metric.conversationInset - 8 : Theme.Metric.trafficLightsEnd
+    )
+    .padding(.trailing, Theme.Metric.conversationInset - 8)
+    .padding(.top, Theme.Metric.toolbarTopInset)
+    .frame(height: Theme.Metric.toolbarTopInset + Theme.Metric.toolbarHeight)
   }
 
   private var pinnedHeader: some View {
@@ -130,7 +148,7 @@ public struct ConversationColumn: View {
           }
           Color.clear.frame(height: 1).id("bottom")
         }
-        .frame(maxWidth: Theme.Metric.conversationMaxContentWidth, alignment: .leading)
+        .frame(maxWidth: maxContentWidth, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.Metric.conversationInset)
         .padding(.top, sender == nil ? 8 : Theme.Metric.pinnedHeaderHeight)

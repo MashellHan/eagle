@@ -42,6 +42,14 @@ struct SnapshotRenderer {
       named: "gallery",
       in: directory
     )
+    let collapsed = ShellLayoutViewModel(showsSidebar: false, showsInspector: false)
+    capture(
+      WorkspaceShellView(layout: collapsed).preferredColorScheme(.light),
+      size: CGSize(width: 1440, height: 900),
+      named: "shell-collapsed",
+      in: directory
+    )
+
     let account = AccountMenuViewModel()
     capture(
       AccountMenu(rows: account.rows, onSelect: { _ in })

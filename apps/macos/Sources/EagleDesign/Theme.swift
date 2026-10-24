@@ -61,10 +61,10 @@ public enum Theme {
     public static let rowAvatarGap: CGFloat = 11
     public static let sectionHeaderHeight: CGFloat = 24
     public static let sectionGap: CGFloat = 22
-    public static let profileTop: CGFloat = 22
-    public static let chipTopInset: CGFloat = 6
-    public static let pinnedHeaderHeight: CGFloat = 70
-    public static let toolbarTopInset: CGFloat = 12
+    public static let profileTop: CGFloat = 16
+    public static let chipTopInset: CGFloat = 2
+    public static let pinnedHeaderHeight: CGFloat = 64
+    public static let toolbarTopInset: CGFloat = 6
     public static let profileAvatar: CGFloat = 55
     public static let profileNameGap: CGFloat = 8
     public static let listTopGap: CGFloat = 34

@@ -18,12 +18,13 @@ struct ThemeTests {
     #expect(Theme.Metric.sectionHeaderHeight == 24)
     #expect(Theme.Metric.sectionGap == 22)
     #expect(Theme.Metric.profileAvatar == 55)
+    #expect(Theme.Metric.toolbarTopInset == 6)
     #expect(Theme.Metric.toolbarHeight == 36)
     #expect(Theme.Metric.unreadPillHeight == 28)
     #expect(Theme.Metric.inspectorRowHeight == 40)
     #expect(Theme.Metric.composerHeight == 54)
     #expect(Theme.Metric.cardRadius == 12)
-    #expect(Theme.Metric.pinnedHeaderHeight == 70)
+    #expect(Theme.Metric.pinnedHeaderHeight == 64)
   }
 
   @Test("column clamps stay ordered")

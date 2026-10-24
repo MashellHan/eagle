@@ -41,6 +41,7 @@ public struct AccountMenuRow: Identifiable, Hashable, Sendable {
 public struct AccountMenu: View {
   private let rows: [AccountMenuRow]
   private let onSelect: (AccountMenuRow) -> Void
+  @State private var hovering: String?
 
   public init(rows: [AccountMenuRow], onSelect: @escaping (AccountMenuRow) -> Void) {
     self.rows = rows
@@ -85,11 +86,18 @@ public struct AccountMenu: View {
           }
           .padding(.horizontal, 14)
           .frame(height: Theme.Metric.accountRowHeight)
+          .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+              .fill(hovering == row.id ? Theme.Palette.hover : .clear)
+              .padding(.horizontal, 6)
+          )
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 ? row.id : (hovering == row.id ? nil : hovering) }
       }
     }
+    .animation(.easeOut(duration: 0.1), value: hovering)
     .padding(.vertical, 8)
     .frame(width: Theme.Metric.accountMenuWidth)
     .background(
