@@ -70,3 +70,25 @@ Next broken hop: the daemon has no `src/` code, no lock discipline and no tests,
 the ladder in `docs/bots/TESTING.md` stage 1 cannot run. The skeleton commit carries
 `package-lock.json`, the configs and `.env.example` — never the real `.env`, which
 holds `BOTS_API_KEY` and stays untracked with mode 0600.
+
+## 2026-10-25 22:30 — documentation signed off
+
+Observed: the contract is signed off by the independent reviewer after eight
+rounds. Round 1 found 7 blockers and 29 findings; rounds 2-8 found 7, 5, 4, 3, 2, 2
+and finally none. Every finding was accepted and applied, and each round's fix is
+its own commit so the reasoning is reviewable.
+
+Verified: the reviewer's final message reports `VERDICT: SIGN OFF`, with B1-B7 all
+`FIXED`, all five weak spots closed (content reconstruction, frame budgets, offline
+outbox reconciliation, exactly-one-error with attribution, stage-1 signable), and
+the note that stage 1 can start "without inventing anything". Its single warning for
+implementation: do not lose the "attempt withdrawn" decision — the regression to
+watch is over-limit partial, then shorter content, then the entry commits, then a
+daemon restart; append, snapshot and history must all yield the same notice.
+
+Nothing has been executed yet beyond the model smoke test and the probe scripts, so
+this signoff certifies the contract, not a passing gate.
+
+Next broken hop: stage 1 has no code. The first ladder row is
+`test/protocol/fixtures.test.ts` -> `decodes every committed fixture without loss`,
+which must fail because no decoder exists, then pass with the protocol module.
