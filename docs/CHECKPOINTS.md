@@ -1435,3 +1435,22 @@ serving and the first catalogue-derived production Cron observation.
   `/api/live` returns version `0.14.1` at that revision, the served bundle
   `assets/index-DGKCJgCS.js` matches the local build, and six machines report
   fresh snapshots with no pending IDs. No database migration or Agent change.
+
+## 2026-10-24 12:15 +08 — hooks, CI and the first automated deploy
+
+- Tracked hooks now live in `.githooks/` and `npm ci` installs them through the
+  `prepare` script (`core.hooksPath`). Pre-commit lints the staged snapshot with
+  Biome and swift-format; pre-push runs `npm run check`, the browser suite and
+  the Swift tests. Both ran on this push.
+- The macOS package moved from a bespoke `EagleChecks` executable to Swift
+  Testing targets. CI exposed two problems the local toolchain hid: `LocalState`
+  failed Swift 6 Sendable rules (the shim is deleted, views use `@State`) and the
+  coverage script assumed one toolchain's artifact layout (it now discovers
+  `default.profdata` and every `*.xctest`). Coverage reports 205/207 lines =
+  99.0% against a 90% gate; the macos CI job runs the format lint and that gate.
+- `deploy.yml` runs after a green `Check` on main, deploys the exact SHA with
+  `npm run deploy` and polls `/api/live` for that revision. The first run before
+  the secrets existed skipped with a notice; `CLOUDFLARE_ACCOUNT_ID` and
+  `CLOUDFLARE_API_TOKEN` are now configured and this push exercises the path.
+- Unchanged: no D1 migration in this round, no secrets rotated, no npm
+  publication and no change to the Agent.
