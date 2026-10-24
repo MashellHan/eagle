@@ -147,12 +147,12 @@ transport error and must not be retried automatically: the user decides.
 `settings` is a getter object per bot so the daemon can change one bot's policy
 without touching another (F14).
 
-## No tools (phase 1) — and how to enable them later
+## Reserved capability enable paths
 
-Phase 1 installs an empty registry and provides no `env`. A model that asks for a
-tool therefore receives an error result (established pi behaviour), the run
-continues, and nothing crashes. `capabilities.tools` is `false`, so the client
-never renders tool UI.
+Phase 1 installs an empty registry and provides no `env`, so no tool is offered.
+A model that asks for one anyway receives an error result (established pi
+behaviour), the run continues, and nothing crashes. `capabilities.tools` is
+`false`, so the client never renders tool UI.
 
 `src/runtime/pi/registry.ts` is the only place that would change:
 
