@@ -3,6 +3,9 @@
 // See docs/bots/PROTOCOL.md (entities) and docs/bots/ARCHITECTURE.md (ownership).
 
 export type BotId = string;
+
+/** Bot ids as the catalog, protocol and filesystem accept them. */
+export const BOT_ID_PATTERN = /^b_[A-Za-z0-9_-]{1,64}$/;
 export type EntryId = string;
 
 export type BotState =

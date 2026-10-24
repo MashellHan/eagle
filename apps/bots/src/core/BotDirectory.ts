@@ -1,9 +1,10 @@
-// The bot catalog: one JSON file, written atomically, plus the reconciliation that
-// finishes a delete interrupted between its two steps (docs/bots/ARCHITECTURE.md,
-// "Bot lifecycle"). Filesystem calls go through an injected interface so the failure
-// windows can be tested exactly.
+// The bot catalog: one JSON file written atomically, one directory per bot, and the
+// reconciliation that finishes a delete interrupted between its two steps
+// (docs/bots/ARCHITECTURE.md "Bot lifecycle"). Everything that mutates the catalog runs
+// on one internal queue, so concurrent callers cannot overwrite each other.
 import { randomUUID } from "node:crypto";
 import type { BotRecord } from "./domain.ts";
+import { BOT_ID_PATTERN } from "./domain.ts";
 
 export type DirEntry = { readonly name: string; isDirectory(): boolean };
 
@@ -17,20 +18,58 @@ export interface DirectoryFs {
   stat(path: string): Promise<{ isDirectory(): boolean }>;
 }
 
-export class DirectoryError extends Error {}
+export type DirectoryErrorReason =
+  | "unknown_bot"
+  | "duplicate_bot"
+  | "corrupt_catalog"
+  | "storage_failed";
+
+export class DirectoryError extends Error {
+  readonly reason: DirectoryErrorReason;
+
+  constructor(reason: DirectoryErrorReason, message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "DirectoryError";
+    this.reason = reason;
+  }
+}
 
 const CATALOG = "catalog.json";
+const CATALOG_VERSION = 1;
+
+export type BotConfig = BotRecord & {
+  readonly instructions?: string;
+  readonly thinkingLevel?: string;
+};
 
 export type ReconcileResult = {
-  /** Catalog entries removed because their bot directory is gone and trash has it. */
   readonly finishedDeletes: readonly string[];
-  /** Trash directories with no catalog entry are left alone. */
   readonly orphanedTrash: readonly string[];
+};
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isBotRecord = (value: unknown): value is BotConfig => {
+  if (!isObject(value)) return false;
+  const model = value.model;
+  return (
+    typeof value.id === "string" &&
+    BOT_ID_PATTERN.test(value.id) &&
+    typeof value.title === "string" &&
+    value.title.trim().length > 0 &&
+    typeof value.createdAt === "string" &&
+    typeof value.updatedAt === "string" &&
+    isObject(model) &&
+    typeof model.provider === "string" &&
+    typeof model.modelId === "string"
+  );
 };
 
 export class BotDirectory {
   readonly #root: string;
   readonly #fs: DirectoryFs;
+  #queue: Promise<unknown> = Promise.resolve();
 
   constructor(root: string, fs: DirectoryFs) {
     this.#root = root;
@@ -49,94 +88,151 @@ export class BotDirectory {
     return `${this.#root}/trash/${id}`;
   }
 
-  async load(): Promise<readonly BotRecord[]> {
+  async load(): Promise<readonly BotConfig[]> {
     let body: string;
     try {
       body = await this.#fs.readFile(this.catalogPath);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-      throw new DirectoryError(`cannot read catalog: ${(error as Error).message}`);
+      throw new DirectoryError("storage_failed", "cannot read catalog", { cause: error });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
-    } catch {
-      throw new DirectoryError("catalog is not JSON");
+    } catch (error) {
+      throw new DirectoryError("corrupt_catalog", "catalog is not JSON", { cause: error });
     }
-    const bots = (parsed as { bots?: unknown }).bots;
-    if (!Array.isArray(bots)) throw new DirectoryError("catalog has no bots array");
-    return bots as readonly BotRecord[];
+    if (!isObject(parsed)) throw new DirectoryError("corrupt_catalog", "catalog is not an object");
+    if (parsed.version !== CATALOG_VERSION) {
+      throw new DirectoryError("corrupt_catalog", "catalog version is not 1");
+    }
+    const bots = parsed.bots;
+    if (!Array.isArray(bots))
+      throw new DirectoryError("corrupt_catalog", "catalog has no bots array");
+    const seen = new Set<string>();
+    for (const [index, bot] of bots.entries()) {
+      if (!isBotRecord(bot)) {
+        throw new DirectoryError("corrupt_catalog", `catalog entry ${index} is malformed`);
+      }
+      if (seen.has(bot.id)) {
+        throw new DirectoryError("corrupt_catalog", `catalog repeats bot ${bot.id}`);
+      }
+      seen.add(bot.id);
+    }
+    return bots as readonly BotConfig[];
   }
 
-  /** Writes through a temporary file and renames, so a crash never leaves a partial catalog. */
-  async writeAll(bots: readonly BotRecord[]): Promise<void> {
+  async writeAll(bots: readonly BotConfig[]): Promise<void> {
     const temp = `${this.catalogPath}.${randomUUID()}.tmp`;
-    const body = `${JSON.stringify({ version: 1, bots }, null, 2)}\n`;
+    const body = `${JSON.stringify({ version: CATALOG_VERSION, bots }, null, 2)}\n`;
     try {
       await this.#fs.writeFile(temp, body, 0o600);
       await this.#fs.rename(temp, this.catalogPath);
     } catch (error) {
       await this.#fs.unlink(temp).catch(() => {});
-      throw new DirectoryError(`cannot write catalog: ${(error as Error).message}`);
+      throw new DirectoryError("storage_failed", "cannot write catalog", { cause: error });
     }
   }
 
-  async create(record: BotRecord): Promise<void> {
-    const bots = await this.load();
-    if (bots.some((bot) => bot.id === record.id)) {
-      throw new DirectoryError(`bot ${record.id} already exists`);
-    }
-    await this.#fs.mkdir(this.botDir(record.id), { recursive: true });
-    await this.writeAll([...bots, record]);
+  /** Persists the bot config, then publishes the catalog entry. */
+  async create(config: BotConfig): Promise<void> {
+    await this.#serial(async () => {
+      const bots = await this.load();
+      if (bots.some((bot) => bot.id === config.id)) {
+        throw new DirectoryError("duplicate_bot", `bot ${config.id} already exists`);
+      }
+      try {
+        await this.#fs.mkdir(this.botDir(config.id), { recursive: true });
+        await this.#fs.writeFile(
+          `${this.botDir(config.id)}/bot.json`,
+          `${JSON.stringify(config, null, 2)}\n`,
+          0o600,
+        );
+      } catch (error) {
+        throw new DirectoryError("storage_failed", `cannot write bot ${config.id}`, {
+          cause: error,
+        });
+      }
+      await this.writeAll([...bots, config]);
+    });
   }
 
-  async rename(id: string, title: string, at: string): Promise<BotRecord> {
-    const bots = await this.load();
-    const index = bots.findIndex((bot) => bot.id === id);
-    if (index === -1) throw new DirectoryError(`bot ${id} does not exist`);
-    const current = bots[index] as BotRecord;
-    const updated: BotRecord = { ...current, title, updatedAt: at };
-    const next = bots.map((bot, position) => (position === index ? updated : bot));
-    await this.writeAll(next);
-    return updated;
+  async rename(id: string, title: string, at: string): Promise<BotConfig> {
+    return this.#serial(async () => {
+      const bots = await this.load();
+      const index = bots.findIndex((bot) => bot.id === id);
+      if (index === -1) throw new DirectoryError("unknown_bot", `bot ${id} does not exist`);
+      const current = bots[index] as BotConfig;
+      const updated: BotConfig = { ...current, title, updatedAt: at };
+      await this.writeAll(bots.map((bot, position) => (position === index ? updated : bot)));
+      return updated;
+    });
   }
 
   /**
-   * Two idempotent steps: move the directory to its deterministic trash path, then
-   * drop the catalog entry. A failure after the move is finished by `reconcile`.
+   * Two idempotent steps. ENOENT from the move is only acceptable when the source is
+   * gone *and* the trash directory is there; anything else keeps the catalog entry so
+   * the bot cannot become unreachable.
    */
   async remove(id: string): Promise<void> {
-    const bots = await this.load();
-    if (!bots.some((bot) => bot.id === id)) throw new DirectoryError(`bot ${id} does not exist`);
-    await this.#fs.mkdir(`${this.#root}/trash`, { recursive: true });
-    try {
-      await this.#fs.rename(this.botDir(id), this.trashDir(id));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        throw new DirectoryError(`cannot move bot ${id} to trash: ${(error as Error).message}`);
+    await this.#serial(async () => {
+      const bots = await this.load();
+      if (!bots.some((bot) => bot.id === id)) {
+        throw new DirectoryError("unknown_bot", `bot ${id} does not exist`);
       }
-    }
-    await this.writeAll(bots.filter((bot) => bot.id !== id));
+      await this.#fs.mkdir(`${this.#root}/trash`, { recursive: true });
+      try {
+        await this.#fs.rename(this.botDir(id), this.trashDir(id));
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        const sourceGone = !(await this.#exists(this.botDir(id)));
+        const trashed = await this.#exists(this.trashDir(id));
+        if (!(code === "ENOENT" && sourceGone && trashed)) {
+          throw new DirectoryError("storage_failed", `cannot move bot ${id} to trash`, {
+            cause: error,
+          });
+        }
+      }
+      await this.writeAll(bots.filter((bot) => bot.id !== id));
+    });
   }
 
-  /** Finishes interrupted deletes and reports trash that no catalog entry points at. */
   async reconcile(): Promise<ReconcileResult> {
-    const bots = await this.load();
-    const trashed = await this.#list(`${this.#root}/trash`);
-    const present = new Set(await this.#list(`${this.#root}/bots`));
-    const trashedSet = new Set(trashed);
-    const finishedDeletes = bots
-      .filter((bot) => !present.has(bot.id) && trashedSet.has(bot.id))
-      .map((bot) => bot.id);
-    if (finishedDeletes.length > 0) {
-      const keep = bots.filter((bot) => !finishedDeletes.includes(bot.id));
-      await this.writeAll(keep);
+    return this.#serial(async () => {
+      const bots = await this.load();
+      const trashed = new Set(await this.#list(`${this.#root}/trash`));
+      const present = new Set(await this.#list(`${this.#root}/bots`));
+      const finishedDeletes = bots
+        .filter((bot) => !present.has(bot.id) && trashed.has(bot.id))
+        .map((bot) => bot.id);
+      if (finishedDeletes.length > 0) {
+        await this.writeAll(bots.filter((bot) => !finishedDeletes.includes(bot.id)));
+      }
+      const catalogIds = new Set(bots.map((bot) => bot.id));
+      return {
+        finishedDeletes,
+        orphanedTrash: [...trashed].filter((name) => !catalogIds.has(name)).sort(),
+      };
+    });
+  }
+
+  #serial<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.#queue.then(work, work);
+    this.#queue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  async #exists(path: string): Promise<boolean> {
+    try {
+      await this.#fs.stat(path);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw new DirectoryError("storage_failed", `cannot inspect ${path}`, { cause: error });
     }
-    const catalogIds = new Set(bots.map((bot) => bot.id));
-    return {
-      finishedDeletes,
-      orphanedTrash: trashed.filter((name) => !catalogIds.has(name)),
-    };
   }
 
   async #list(path: string): Promise<string[]> {
@@ -145,7 +241,7 @@ export class BotDirectory {
       return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-      throw new DirectoryError(`cannot list ${path}: ${(error as Error).message}`);
+      throw new DirectoryError("storage_failed", `cannot list ${path}`, { cause: error });
     }
   }
 }

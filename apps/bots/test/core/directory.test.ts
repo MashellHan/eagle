@@ -63,7 +63,10 @@ test("a duplicate id is refused and the catalog is unchanged", async () => {
   const { root, dir } = await workspace();
   try {
     await dir.create(record("b_1"));
-    await assert.rejects(dir.create(record("b_1")), DirectoryError);
+    await assert.rejects(
+      dir.create(record("b_1")),
+      (error: DirectoryError) => error.reason === "duplicate_bot",
+    );
     assert.deepEqual(
       (await dir.load()).map((bot) => bot.id),
       ["b_1"],
@@ -88,7 +91,10 @@ test("an interrupted write leaves the previous catalog readable", async () => {
       },
     };
     const interrupted = new BotDirectory(root, failing);
-    await assert.rejects(interrupted.create(record("b_2")), DirectoryError);
+    await assert.rejects(
+      interrupted.create(record("b_2")),
+      (error: DirectoryError) => error.reason === "storage_failed",
+    );
     assert.equal(await readFile(join(root, "catalog.json"), "utf8"), before);
     assert.deepEqual(
       (await dir.load()).map((bot) => bot.id),
@@ -107,7 +113,11 @@ test("a corrupt catalog is reported, never silently treated as empty", async () 
   const { root, dir } = await workspace();
   try {
     await writeFile(join(root, "catalog.json"), "{ not json", { mode: 0o600 });
-    await assert.rejects(dir.load(), /not JSON/);
+    await assert.rejects(
+      dir.load(),
+      (error: DirectoryError) =>
+        error.reason === "corrupt_catalog" && /not JSON/.test(error.message),
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -145,6 +155,157 @@ test("reconcile leaves an unknown trash directory alone", async () => {
     const result = await dir.reconcile();
     assert.deepEqual(result.finishedDeletes, []);
     assert.deepEqual(result.orphanedTrash, ["b_gone"]);
+    assert.deepEqual(
+      (await dir.load()).map((bot) => bot.id),
+      ["b_1"],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("concurrent creates keep every bot", async () => {
+  const { root, dir } = await workspace();
+  try {
+    await Promise.all([
+      dir.create(record("b_1")),
+      dir.create(record("b_2")),
+      dir.create(record("b_3")),
+    ]);
+    assert.deepEqual((await dir.load()).map((bot) => bot.id).sort(), ["b_1", "b_2", "b_3"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("interleaved rename and remove do not clobber each other", async () => {
+  const { root, dir } = await workspace();
+  try {
+    await dir.create(record("b_1"));
+    await dir.create(record("b_2"));
+    await Promise.all([dir.rename("b_1", "研究员", "2026-10-25T03:00:00.000Z"), dir.remove("b_2")]);
+    const bots = await dir.load();
+    assert.deepEqual(
+      bots.map((bot) => [bot.id, bot.title]),
+      [["b_1", "研究员"]],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+const corrupt = async (body: string) => {
+  const { root, dir } = await workspace();
+  await writeFile(join(root, "catalog.json"), body, { mode: 0o600 });
+  return { root, dir };
+};
+
+test("a malformed catalog entry is refused instead of being trusted", async () => {
+  const cases = [
+    "null",
+    '{"version":1,"bots":[null]}',
+    '{"version":1,"bots":[{"id":"b_1"}]}',
+    '{"version":2,"bots":[]}',
+    `{"version":1,"bots":[{"id":"b_1","title":"a","createdAt":"x","updatedAt":"x","model":{"provider":"p","modelId":"m"}},{"id":"b_1","title":"b","createdAt":"x","updatedAt":"x","model":{"provider":"p","modelId":"m"}}]}`,
+  ];
+  for (const body of cases) {
+    const { root, dir } = await corrupt(body);
+    try {
+      await assert.rejects(
+        dir.load(),
+        (error: DirectoryError) => error.reason === "corrupt_catalog",
+      );
+      const before = await readFile(join(root, "catalog.json"), "utf8");
+      await assert.rejects(dir.create(record("b_9")), DirectoryError);
+      assert.equal(await readFile(join(root, "catalog.json"), "utf8"), before);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("create persists bot.json before publishing the catalog entry", async () => {
+  const { root, dir } = await workspace();
+  try {
+    await dir.create({ ...record("b_1"), instructions: "be brief" });
+    const config = JSON.parse(await readFile(join(root, "bots", "b_1", "bot.json"), "utf8"));
+    assert.equal(config.instructions, "be brief");
+    assert.equal(config.id, "b_1");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a failed bot.json write does not create a catalog entry", async () => {
+  const { root, dir } = await workspace();
+  try {
+    const real = await nodeDirectoryFs();
+    const failing: DirectoryFs = {
+      ...real,
+      writeFile: async (path, body, mode) => {
+        if (path.endsWith("bot.json")) throw Object.assign(new Error("ENOSPC"), { code: "ENOSPC" });
+        return real.writeFile(path, body, mode);
+      },
+    };
+    await assert.rejects(
+      new BotDirectory(root, failing).create(record("b_1")),
+      (error: DirectoryError) => error.reason === "storage_failed",
+    );
+    assert.deepEqual(await dir.load(), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("remove refuses to drop the entry when the move fails but the bot is still there", async () => {
+  const { root, dir } = await workspace();
+  try {
+    await dir.create(record("b_1"));
+    const real = await nodeDirectoryFs();
+    const failing: DirectoryFs = {
+      ...real,
+      rename: async () => {
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
+    };
+    await assert.rejects(
+      new BotDirectory(root, failing).remove("b_1"),
+      (error: DirectoryError) => error.reason === "storage_failed",
+    );
+    assert.deepEqual(
+      (await dir.load()).map((bot) => bot.id),
+      ["b_1"],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("remove finishes when the source is gone and trash has it", async () => {
+  const { root, dir } = await workspace();
+  try {
+    await dir.create(record("b_1"));
+    const real = await nodeDirectoryFs();
+    await real.mkdir(join(root, "trash"), { recursive: true });
+    await real.rename(join(root, "bots", "b_1"), join(root, "trash", "b_1"));
+    await dir.remove("b_1");
+    assert.deepEqual(await dir.load(), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("remove refuses when neither the bot nor its trash exists", async () => {
+  const { root, dir } = await workspace();
+  try {
+    await dir.create(record("b_1"));
+    // The directory vanished without a trash copy: dropping the entry would make the
+    // bot unreachable, so the catalog keeps it and the caller sees a storage failure.
+    await rm(join(root, "bots", "b_1"), { recursive: true, force: true });
+    await assert.rejects(
+      dir.remove("b_1"),
+      (error: DirectoryError) => error.reason === "storage_failed",
+    );
     assert.deepEqual(
       (await dir.load()).map((bot) => bot.id),
       ["b_1"],
