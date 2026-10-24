@@ -85,7 +85,7 @@ is never started before its preconditions are green.
 | 25 | `test/runtime/mapEvents.test.ts` | `applies block and message replacements without loss, including a start block with no delta` | 23 |
 | 25b | `test/runtime/mapEvents.test.ts` | `two text blocks receive deltas at their own indexes` | 23 |
 | 25c | `test/runtime/mapEvents.test.ts` | `an aborted entry replaces the provisional that a late attach already delivered` | 23 |
-| 25d | `test/runtime/mapEvents.test.ts` | `an oversized projection is withheld and a notice is emitted instead` | 23 |
+| 25d | `test/runtime/mapEvents.test.ts` | `an oversized projection is withheld: the notice takes the entry id, replaces the provisional, and a reconnect sees the same notice` | 23 |
 | 26 | `test/runtime/mapEvents.test.ts` | `a failed attempt finalizes its provisional and the retry gets a new id` | 23 |
 | 26b | `test/runtime/mapEvents.test.ts` | `deferred_poll drops the provisional through a snapshot with streaming null` | 23 |
 | 27 | `test/runtime/mapEvents.test.ts` | `maps every stopReason to a message state` | 23 |
@@ -121,7 +121,8 @@ is never started before its preconditions are green.
 | 52 | `test/e2e/journey.test.ts` | `a bot joining mid-answer receives the partial in the snapshot` | 49 |
 | 52b | `test/e2e/outbox.test.ts` | `a send persisted before the socket write is reconciled after a daemon restart` | 49 |
 | 52c | `test/e2e/paging.test.ts` | `history pages older messages and the newest window is never re-fetched` | 49 |
-| 52e | `test/e2e/outbox.test.ts` | `a definite rejection restores the draft, an unknown result keeps the requestId` | 49 |
+| 52e | `test/e2e/outbox.test.ts` | `a not_admitted rejection restores the draft, an unknown result keeps the requestId` | 49 |
+| 52f | `test/e2e/outbox.test.ts` | `an admitted input whose status read fails keeps the outbox entry and reconciles on re-send` | 49 |
 | 52d | `test/e2e/ordering.test.ts` | `a late connection-scoped record never downgrades a settlement` | 49 |
 | 53 | `test/crash/sigkill.test.ts` | `killing the daemon mid-answer loses no message and duplicates none` | 49 |
 | 53b | `test/crash/delete.test.ts` | `R4: a delete killed after rename reconciles on the next start` | 49 |
@@ -171,7 +172,10 @@ is never started before its preconditions are green.
 | Unknown command type | `error{invalid_command}`, connection kept |
 | `subscribe` to a missing bot | Close 4004; `core.bot.resolve.fail` only |
 
-| `send` before admission rejects | `error`, **no** `submission` frame; client keeps the draft |
+| `send` before admission rejects | `error{disposition:"not_admitted"}`, **no** `submission` frame; the client restores the draft |
+| Admission succeeded, reading its record failed | `error{disposition:"unknown"}`, outbox entry kept, reconciled by re-sending |
+| Rename to a title over the encoded budget | Refused; the catalog frame stays inside 200 × 1 200 B |
+| Session failure on all three channels | One failure identity; a reopen then a new failure gets a new one |
 | Reply to `send` lost | Re-send the same `requestId` returns the record; no duplicate entry |
 | Provider error | `unanswered{reason:"model_error"}`; provider text absent from logs |
 | `runtime.open` rejects | `error` carries `failure` whose origin is `runtime`; core logs `warn` with the same id |

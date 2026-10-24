@@ -112,8 +112,12 @@ storage_failed | internal`.
 ```
 runtime.submit.fail   level=error  err={kind:"storage_failed", failure:"f_7", origin:true}
 core.submit.fail      level=warn   err={kind:"storage_failed", failure:"f_7"}  detail.propagated=true
-protocol.command.fail level=warn   err={kind:"storage_failed", failure:"f_7"}  detail.propagated=true
 ```
+
+`protocol.*` appears here only as `protocol.command.ok` from before dispatch: the
+command outcome ends at dispatch, so a failure after it is never reported as a
+`protocol.command.fail`. Layers that handed the call on record propagation; the layer
+that dispatched does not.
 
 - The failure identity `err.failure` is minted exactly once, by the classifier of a
   **failure episode** ([RUNTIME.md](RUNTIME.md#failure-channels)). It is the dedupe

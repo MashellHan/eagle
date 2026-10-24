@@ -40,8 +40,12 @@ Runtime details live in [RUNTIME.md](RUNTIME.md), layers in
 | `bot.title` (HTTP) | 80 characters | HTTP `400` |
 | Any single frame | 256 KiB, measured on the **encoded** frame | Close `1008` |
 | Single message payload | ≤ 96 KiB encoded | Withheld and replaced by a notice, see below |
-| Metadata strings | UTF-8 **bytes**: `id` ≤ 80, `title` ≤ 80, `model.provider` ≤ 40, `model.modelId` ≤ 200, `unavailable.message` ≤ 200, timestamps 24, `state` ≤ 12 | Refused at the producer |
-| Derived `bots` bound | 200 × (80 + 80 + 40 + 200 + 200 + 24·2 + 12 + ≈ 120 B JSON overhead) ≈ 200 × 780 B ≈ 156 KiB; `welcome` adds ≈ 1 KiB of envelope and capabilities | Inside the 256 KiB cap |
+| `notice` text | ≤ 500 bytes, and for the withheld case a fixed constant | — |
+| One `BotSummary` | ≤ 1 200 bytes **after JSON encoding** (escaping included) | Creation or rename refuses a value that would exceed it |
+| Catalog | ≤ 200 bots | Creation fails `limit_exceeded` beyond it |
+| Derived `bots` bound | 200 × 1 200 B + 200 B envelope = 240 200 B | Inside the 256 KiB cap |
+| Derived `welcome` bound | the same 240 200 B + ≤ 4 KiB of server/capability fields = 244 300 B | Inside the 256 KiB cap |
+| UX caps (not the authority) | `title` ≤ 80 characters, `id` ≤ 80, `model.provider` ≤ 40, `model.modelId` ≤ 200, `unavailable.message` ≤ 200 | Rejected earlier with a clear message |
 | `snapshot.messages` page | ≤ 200 messages and ≤ 192 KiB of the encoded frame, or empty | Older messages page through `history` |
 | `history` reply | ≤ 200 messages and ≤ 192 KiB | `hasMore` says whether more exist |
 | Coalesced delta batch | 96 KiB **soft** flush threshold in addition to 50 ms | A change always fits alone: it carries at most one message projection (≤ 96 KiB) plus envelope |
@@ -116,6 +120,13 @@ client: a model picker needs the `agent` capability.
 // daemon withholds the message, emits `notice` text saying the answer exceeded the
 // transport limit, and settles the submission normally. Nothing partial is ever
 // presented as the answer, so there is no clipped variant and no byte counter.
+//
+// The replacement is deterministic and identifiable: the notice takes the withheld
+// entry's own id (`e_<n>`), `state:"complete"`, the fixed text "回答超出传输上限",
+// and the submission's `answerEntryId` points at it. A provisional that already
+// streamed is finalized by an `append` with `replaces` pointing at it, so a
+// reconnecting client sees the same notice from `snapshot`/`history` (same id, same
+// text) and no duplicate. `status.streaming` becomes null at that point.
 
 // ContentBlock
 { "type": "text",     "text": "…" }
@@ -232,6 +243,7 @@ is never a gap.
 { "type": "error", "rev": 47, "trace": "tr_…",
   "kind": "task_parked",                   // ErrorKind
   "failure": "f_7f3a",                     // identity, shared with the daemon log
+  "disposition": "runtime",                // not_admitted | unknown | runtime
   "message": "…",                          // redacted, ≤ 200 chars
   "requestId": "r_…",                      // present when a command caused it
   "taskId": "t_3" }                        // reserved
@@ -334,12 +346,16 @@ recovery guarantees depend on them.
    Entries are never re-sent with a new id, and no entry is removed before its
    terminal record has been stored.
 
-3. **Rejection versus unknown.** An `error` carrying the entry's `requestId` is a
-   definite non-admission: the entry leaves the outbox and its text returns to the
-   composer as a draft, so the user decides whether to send again. No reply at all
-   (disconnect, timeout) is *unknown*: the entry keeps its `requestId` and waits for
-   reconciliation. The two cases are never merged, because only one of them may be
-   re-sent automatically.
+3. **Disposition decides the outbox.** Every `error` carries `disposition`:
+
+   | `disposition` | Meaning | Outbox |
+   | --- | --- | --- |
+   | `not_admitted` | The daemon refused the command before admission (validation, limits, busy with `reject`, unknown bot). Carries `requestId` | Remove the entry and restore its text as a draft; the user decides |
+   | `unknown` | Admission could not be confirmed (a storage or read failure between `submit()` and reading its record) | Keep the entry; it is reconciled by re-sending the same `requestId` |
+   | `runtime` | A run-time failure reported later (parked task, storage failure, watch escalation). May carry `requestId` for correlation | Keep the entry or not; it is about the bot, not that command |
+
+   Presence of `requestId` never implies non-admission by itself: only
+   `disposition:"not_admitted"` clears the outbox.
 
 Consequence: an unanswered settlement that arrived while the app was closed is
 recovered by re-sending, not by daemon-side history. `snapshot.pending` exists for
@@ -407,7 +423,7 @@ sides.
 | `history.client.json`, `history.server.json` | message paging |
 
 | `status.server.json`, `submission.server.json`, `submission.connection.server.json` | run state and the connection-scoped duplicate reply |
-| `bots.server.json`, `error.server.json` | catalog and failures |
+| `bots.server.json`, `error.server.json`, `error-rejected.server.json` | catalog, runtime failure, definite rejection |
 | `send.client.json`, `abort.client.json`, `recover.client.json`, `resync.client.json` | commands |
 | `ping.client.json`, `pong.server.json` | liveness |
 | `entities.json` | `BotSummary`, `Message`, `InboxItem` samples |

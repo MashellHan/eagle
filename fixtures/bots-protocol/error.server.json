@@ -6,5 +6,6 @@
   "message": "a task was parked after repeated restarts",
   "taskId": "t_3",
   "failure": "f_7f3a",
-  "requestId": "r_0190a1b4-5061-7c72-8d3e-4f5061728394"
+  "requestId": "r_0190a1b4-5061-7c72-8d3e-4f5061728394",
+  "disposition": "runtime"
 }

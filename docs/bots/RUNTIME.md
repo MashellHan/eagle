@@ -96,7 +96,7 @@ provisional: { id, attempt } | null   // id = "p_a<attempt>"
 | `auto_retry_start` / `auto_retry_end` | Log only; the provisional stays open because the failed entry arrives after `auto_retry_start` | — |
 | `deferred_poll` | Upstream dropped the partial: emit a `snapshot` with `streaming:null`, `running:true`, then `status` | `snapshot`, `status` |
 | `task_failed` | Classify as `task_faulted` (a park only ever arrives through `onReport`) | `error{kind:"task_faulted", taskId}` |
-| `onReport` (`task_parked`, `session_failed`, `extension_error`, …) (F15) | Mint a `failureId`, dedupe by it across channels, then classify | `error{kind, failureId}` |
+| `onReport` (`task_parked`, `session_failed`, `extension_error`, …) (F15) | Pass the report to the classifier, which owns minting; the channel never mints | `error{kind, failureId}` |
 | `harness.closed` (F25) | `reason:"closed"` because we called `close()` → expected, no error. `reason:"failed"` → `storage_failed` | `error{kind:"storage_failed"}` only for the failed case |
 | watch end (F17) | Follow the exhaustive `WatchEnd` table below; `session_failed` goes straight to the storage-failure path | `snapshot` after reattach, or `error` |
 | watch falls behind → fresh `snapshot` (F8) | Reset provisional state from the snapshot | `snapshot` |
@@ -200,7 +200,7 @@ duplicate pair has a named key:
 | Duplicate notifications | Correlation | Result |
 | --- | --- | --- |
 | `task_failed` + `onReport(task_faulted)` for one task | `taskId` | One failure |
-| `harness.closed{failed}` + watch end `session_failed` | harness episode (`harnessGeneration` counter) | One failure, classified `storage_failed` |
+| `harness.closed{failed}` + watch end `session_failed` + `onReport(session_failed)` | harness episode (`harnessGeneration` counter) | One failure, classified `storage_failed`; a reopen starts a new generation, so a later failure gets a new identity |
 | `onReport(extension_error)` + a task fault that the same hook caused | `taskId` when present, else the report's sequence | One failure |
 | First recoverable listener error: `onReport(listener_error)` + watch end `listener_error` | episode key `listener:<n>` | **No failure at all** for the first two occurrences; the third within 60 s mints one `internal` failure |
 
