@@ -44,7 +44,7 @@ export class FakeHandle implements RuntimeHandle {
       inbox: [],
       running: false,
     };
-    this.#committed = [...this.#snapshot.messages];
+    this.#committed = this.#snapshot.messages.filter((message) => message.state !== "streaming");
     for (const record of this.#snapshot.pending) this.#submissions.set(record.requestId, record);
   }
 
@@ -133,7 +133,11 @@ export class FakeHandle implements RuntimeHandle {
 
   #apply(event: RuntimeEvent): void {
     if (event.type === "append") {
-      this.#committed = upsert(this.#committed, event.message, event.replaces);
+      // Only committed entries belong to history: a provisional is projection-only, so a
+      // withdrawn attempt leaves no message behind.
+      if (event.message.state !== "streaming") {
+        this.#committed = upsert(this.#committed, event.message, event.replaces);
+      }
       const messages = upsert(this.#snapshot.messages, event.message, event.replaces);
       // A provisional becomes the streaming target; anything else that supersedes it
       // clears the pointer, so a late joiner sees the real attempt state.
@@ -158,9 +162,10 @@ export class FakeHandle implements RuntimeHandle {
     if (event.type === "snapshot") {
       this.#snapshot = event.value;
       // The window may shrink, but committed history stays readable through history().
-      for (const message of event.value.messages) {
-        this.#committed = upsert(this.#committed, message);
-      }
+      this.#committed = mergeOrdered(
+        this.#committed,
+        event.value.messages.filter((message) => message.state !== "streaming"),
+      );
       // The snapshot is the authority for pending, running and streaming; keep any
       // settled record the ledger already knows about.
       for (const record of event.value.pending) this.#submissions.set(record.requestId, record);
@@ -189,6 +194,32 @@ export class FakeHandle implements RuntimeHandle {
     }
   }
 }
+
+/** Merges a window into the ledger, keeping the order the two sequences already imply. */
+const mergeOrdered = (known: readonly Message[], incoming: readonly Message[]): Message[] => {
+  const merged = [...known];
+  for (let index = 0; index < incoming.length; index += 1) {
+    const message = incoming[index];
+    if (message === undefined) continue;
+    const existing = merged.findIndex((item) => item.id === message.id);
+    if (existing >= 0) {
+      merged[existing] = message;
+      continue;
+    }
+    let insertAt = merged.length;
+    for (let later = index + 1; later < incoming.length; later += 1) {
+      const following = incoming[later];
+      const at =
+        following === undefined ? -1 : merged.findIndex((item) => item.id === following.id);
+      if (at >= 0) {
+        insertAt = at;
+        break;
+      }
+    }
+    merged.splice(insertAt, 0, message);
+  }
+  return merged;
+};
 
 const upsert = (messages: readonly Message[], message: Message, replaces?: string): Message[] => {
   const next = [...messages];

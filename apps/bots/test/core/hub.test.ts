@@ -2,13 +2,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  DELTA_FLUSH_MS,
+  DELTA_BATCH_BYTE_LIMIT,
   EventHub,
   type HubEvent,
+  type HubOptions,
   type HubSubscription,
 } from "../../src/core/EventHub.ts";
+import type { RuntimeEvent } from "../../src/core/RuntimePort.ts";
 
 const trace = "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172";
+
+const utf8 = (event: RuntimeEvent): number => Buffer.byteLength(JSON.stringify(event), "utf8");
+
+const hub = (options: Partial<HubOptions> = {}): EventHub =>
+  new EventHub("b_1", trace, { measure: utf8, schedule: () => {}, ...options });
 
 const status = (running = false) => ({
   type: "status" as const,
@@ -35,34 +42,34 @@ const emptySnapshot = (running = false) => ({
 });
 
 test("revisions start at one and strictly increase", () => {
-  const hub = new EventHub("b_1", trace);
+  const events = hub();
   const seen: number[] = [];
-  hub.subscribe((event) => {
+  events.subscribe((event) => {
     seen.push(event.rev);
   });
   for (let index = 0; index < 5; index += 1) {
-    hub.publish(status(index % 2 === 0));
+    events.publish(status(index % 2 === 0));
   }
   assert.deepEqual(seen, [1, 2, 3, 4, 5]);
-  assert.equal(hub.rev, 5);
+  assert.equal(events.rev, 5);
 });
 
 test("snapshots take a revision like any other bot-scoped event", () => {
-  const hub = new EventHub("b_1", trace, { schedule: () => {} });
+  const events = hub();
   const seen: { type: string; rev: number }[] = [];
-  hub.subscribe((event) => seen.push({ type: event.type, rev: event.rev }));
-  hub.publish(status());
-  hub.publishSnapshot(emptySnapshot(true));
+  events.subscribe((event) => seen.push({ type: event.type, rev: event.rev }));
+  events.publish(status());
+  events.publishSnapshot(emptySnapshot(true));
   assert.deepEqual(seen, [
     { type: "status", rev: 1 },
     { type: "snapshot", rev: 2 },
   ]);
-  assert.equal(hub.rev, 2);
+  assert.equal(events.rev, 2);
 });
 
 test("each hub numbers its own bot", () => {
-  const first = new EventHub("b_1", trace);
-  const second = new EventHub("b_2", trace);
+  const first = hub();
+  const second = new EventHub("b_2", trace, { measure: utf8, schedule: () => {} });
   const firstSeen: number[] = [];
   const secondSeen: number[] = [];
   first.subscribe((event) => firstSeen.push(event.rev));
@@ -75,58 +82,62 @@ test("each hub numbers its own bot", () => {
 });
 
 test("every subscriber sees the same sequence, including a manual one", () => {
-  const hub = new EventHub("b_1", trace, { schedule: () => {} });
+  const events = hub();
   const live: number[] = [];
   const manual: number[] = [];
-  hub.subscribe((event) => live.push(event.rev));
-  const subscription = hub.subscribe((event) => manual.push(event.rev), { manual: true });
-  for (let index = 0; index < 4; index += 1) hub.publish(status(index % 2 === 0));
-  hub.pump(subscription.id);
+  events.subscribe((event) => live.push(event.rev));
+  const subscription = events.subscribe((event) => manual.push(event.rev), { manual: true });
+  for (let index = 0; index < 4; index += 1) events.publish(status(index % 2 === 0));
+  events.pump(subscription.id);
   assert.deepEqual(live, [1, 2, 3, 4]);
   assert.deepEqual(manual, [1, 2, 3, 4]);
 });
 
 test("a subscriber that falls behind is downgraded to snapshot-only", () => {
-  const hub = new EventHub("b_1", trace, { schedule: () => {} });
+  const events = hub();
   const received: number[] = [];
-  const subscription = hub.subscribe((event) => received.push(event.rev), { manual: true });
-  for (let index = 0; index < 300; index += 1) hub.publish(status(index % 2 === 0));
-  assert.equal(hub.degraded(subscription.id), true);
-  hub.pump(subscription.id);
+  const subscription = events.subscribe((event) => received.push(event.rev), { manual: true });
+  for (let index = 0; index < 300; index += 1) events.publish(status(index % 2 === 0));
+  assert.equal(events.degraded(subscription.id), true);
+  events.pump(subscription.id);
   assert.equal(received.length, 0, "a downgraded subscriber receives nothing while behind");
-  hub.publishSnapshot(emptySnapshot());
-  hub.pump(subscription.id);
+  events.publishSnapshot(emptySnapshot());
+  events.pump(subscription.id);
   assert.deepEqual(received, [301], "the snapshot is the recovery and takes a revision");
-  assert.equal(hub.degraded(subscription.id), false);
-  hub.publish(status(true));
-  hub.pump(subscription.id);
+  assert.equal(events.degraded(subscription.id), false);
+  events.publish(status(true));
+  events.pump(subscription.id);
   assert.deepEqual(received, [301, 302], "the subscriber is live again after the snapshot");
 });
 
-test("a recovery snapshot is not evicted by increments that arrive before the pump", () => {
-  const hub = new EventHub("b_1", trace, { schedule: () => {} });
+test("a snapshot that lost a later event is never delivered as if it were current", () => {
+  const events = hub();
   const received: HubEvent[] = [];
-  const subscription = hub.subscribe((event) => received.push(event), { manual: true });
-  for (let index = 0; index < 300; index += 1) hub.publish(status(index % 2 === 0));
-  hub.publishSnapshot(emptySnapshot());
-  for (let index = 0; index < 300; index += 1) hub.publish(status(index % 2 === 0));
-  hub.pump(subscription.id);
+  const subscription = events.subscribe((event) => received.push(event), { manual: true });
+  for (let index = 0; index < 300; index += 1) events.publish(status(true));
+  events.publishSnapshot(emptySnapshot(true));
+  events.publish(status(false));
+  events.pump(subscription.id);
+  assert.equal(received.length, 0, "the anchor is stale, so the subscriber stays snapshot-only");
+  assert.equal(events.degraded(subscription.id), true);
+  events.publishSnapshot(emptySnapshot(false));
+  events.pump(subscription.id);
   assert.deepEqual(
-    received.map((event) => event.type),
-    ["snapshot"],
-    "increments are dropped while an undelivered snapshot is the only anchor",
+    received.map((event) => (event.type === "snapshot" ? event.value.running : null)),
+    [false],
+    "a current snapshot re-anchors the subscriber with the running state it lost",
   );
-  assert.equal(hub.degraded(subscription.id), false);
+  assert.equal(events.degraded(subscription.id), false);
 });
 
 test("deltas inside one window are coalesced and keep every appended byte", () => {
   const scheduled: (() => void)[] = [];
-  const hub = new EventHub("b_1", trace, { schedule: (run) => scheduled.push(run) });
+  const events = hub({ schedule: (run) => scheduled.push(run) });
   const seen: { rev: number; changes: unknown }[] = [];
-  hub.subscribe((event) => {
+  events.subscribe((event) => {
     if (event.type === "delta") seen.push({ rev: event.rev, changes: event.changes });
   });
-  for (const append of ["a", "b", "c"]) hub.publish(delta(append));
+  for (const append of ["a", "b", "c"]) events.publish(delta(append));
   assert.equal(seen.length, 0, "nothing is delivered before the window closes");
   scheduled.shift()?.();
   assert.equal(seen.length, 1);
@@ -135,15 +146,15 @@ test("deltas inside one window are coalesced and keep every appended byte", () =
 
 test("the default scheduler flushes 50 ms after the first delta without extending", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const hub = new EventHub("b_1", trace);
+  const events = new EventHub("b_1", trace, { measure: utf8 });
   const seen: { rev: number; changes: unknown }[] = [];
-  hub.subscribe((event) => {
+  events.subscribe((event) => {
     if (event.type === "delta") seen.push({ rev: event.rev, changes: event.changes });
   });
-  hub.publish(delta("a"));
-  t.mock.timers.tick(DELTA_FLUSH_MS - 1);
-  assert.equal(seen.length, 0, "the window is not closed one millisecond early");
-  hub.publish(delta("b"));
+  events.publish(delta("a"));
+  t.mock.timers.tick(49);
+  assert.equal(seen.length, 0, "the contract's window is 50 ms, not 49");
+  events.publish(delta("b"));
   t.mock.timers.tick(1);
   assert.equal(seen.length, 1, "a later delta does not extend the deadline");
   assert.deepEqual(seen[0]?.changes, [{ kind: "text", index: 0, append: "ab" }]);
@@ -151,42 +162,42 @@ test("the default scheduler flushes 50 ms after the first delta without extendin
 
 test("a merged delta takes the next revision, so no subscriber sees a gap", () => {
   const scheduled: (() => void)[] = [];
-  const hub = new EventHub("b_1", trace, { schedule: (run) => scheduled.push(run) });
+  const events = hub({ schedule: (run) => scheduled.push(run) });
   const seen: { type: string; rev: number }[] = [];
-  hub.subscribe((event) => seen.push({ type: event.type, rev: event.rev }));
-  hub.publish(status());
-  for (const append of ["a", "b", "c"]) hub.publish(delta(append));
+  events.subscribe((event) => seen.push({ type: event.type, rev: event.rev }));
+  events.publish(status());
+  for (const append of ["a", "b", "c"]) events.publish(delta(append));
   scheduled.shift()?.();
-  hub.publishSnapshot(emptySnapshot());
+  events.publishSnapshot(emptySnapshot());
   assert.deepEqual(seen, [
     { type: "status", rev: 1 },
     { type: "delta", rev: 2 },
     { type: "snapshot", rev: 3 },
   ]);
-  assert.equal(hub.rev, 3);
+  assert.equal(events.rev, 3);
 });
 
 test("a non-delta event flushes pending deltas first, in order", () => {
-  const hub = new EventHub("b_1", trace, { schedule: () => {} });
+  const events = hub();
   const seen: string[] = [];
-  hub.subscribe((event) => seen.push(`${event.type}:${event.rev}`));
-  hub.publish(delta("a"));
-  hub.publish(status(true));
+  events.subscribe((event) => seen.push(`${event.type}:${event.rev}`));
+  events.publish(delta("a"));
+  events.publish(status(true));
   assert.deepEqual(seen, ["delta:1", "status:2"]);
 });
 
 test("a runtime snapshot is rendered at the next revision", () => {
-  const hub = new EventHub("b_1", trace, { schedule: () => {} });
+  const events = hub();
   const seen: { type: string; rev: number; running: boolean | undefined }[] = [];
-  hub.subscribe((event) =>
+  events.subscribe((event) =>
     seen.push({
       type: event.type,
       rev: event.rev,
       running: event.type === "snapshot" ? event.value.running : undefined,
     }),
   );
-  hub.publish(status(false));
-  hub.publishSnapshot(emptySnapshot(true));
+  events.publish(status(false));
+  events.publishSnapshot(emptySnapshot(true));
   assert.deepEqual(seen, [
     { type: "status", rev: 1, running: undefined },
     { type: "snapshot", rev: 2, running: true },
@@ -195,12 +206,12 @@ test("a runtime snapshot is rendered at the next revision", () => {
 
 test("merging keeps block, toolcall and message payloads intact", () => {
   const scheduled: (() => void)[] = [];
-  const hub = new EventHub("b_1", trace, { schedule: (run) => scheduled.push(run) });
+  const events = hub({ schedule: (run) => scheduled.push(run) });
   const seen: unknown[] = [];
-  hub.subscribe((event) => {
+  events.subscribe((event) => {
     if (event.type === "delta") seen.push(event.changes);
   });
-  hub.publish({
+  events.publish({
     type: "delta",
     trace,
     messageId: "p_a1",
@@ -210,7 +221,7 @@ test("merging keeps block, toolcall and message payloads intact", () => {
       { kind: "block", index: 2, block: { type: "text", text: "whole" } },
     ],
   });
-  hub.publish(delta("b"));
+  events.publish(delta("b"));
   scheduled.shift()?.();
   // Only adjacent changes for the same block fold; a block change in between keeps the
   // original order instead of reordering content.
@@ -223,53 +234,78 @@ test("merging keeps block, toolcall and message payloads intact", () => {
 });
 
 test("deltas for different messages are not merged together", () => {
-  const scheduled: (() => void)[] = [];
-  const hub = new EventHub("b_1", trace, { schedule: (run) => scheduled.push(run) });
+  const events = hub();
   const seen: string[] = [];
-  hub.subscribe((event) => {
+  events.subscribe((event) => {
     if (event.type === "delta") seen.push(event.messageId);
   });
-  hub.publish(delta("a", "p_a1"));
-  hub.publish(delta("b", "p_a2"));
-  hub.drain();
+  events.publish(delta("a", "p_a1"));
+  events.publish(delta("b", "p_a2"));
+  events.drain();
   assert.deepEqual(seen, ["p_a1", "p_a2"]);
 });
 
-test("a delta batch flushes before the 96 KiB soft limit without splitting a change", () => {
-  const scheduled: (() => void)[] = [];
-  const hub = new EventHub("b_1", trace, { schedule: (run) => scheduled.push(run) });
-  const seen: unknown[] = [];
-  hub.subscribe((event) => {
-    if (event.type === "delta") seen.push(event.changes);
+test("one event with several large changes is split between changes, not inside one", () => {
+  const events = hub();
+  const seen: HubEvent[] = [];
+  events.subscribe((event) => seen.push(event));
+  const replacement = (text: string) => ({
+    kind: "message" as const,
+    message: {
+      id: "p_a1",
+      role: "assistant" as const,
+      state: "streaming" as const,
+      createdAt: "x",
+      blocks: [{ type: "text" as const, text }],
+    },
   });
-  const big = "x".repeat(60 * 1024);
-  hub.publish(delta(big));
-  assert.equal(seen.length, 0, "one change stays inside the window");
-  hub.publish(delta(big));
-  assert.equal(seen.length, 1, "the batch flushes instead of growing past the soft limit");
-  assert.deepEqual(seen[0], [{ kind: "text", index: 0, append: big }]);
-  scheduled.shift()?.();
-  assert.deepEqual(seen[1], [{ kind: "text", index: 0, append: big }]);
+  const letters = ["a", "b", "c", "d"];
+  events.publish({
+    type: "delta",
+    trace,
+    messageId: "p_a1",
+    changes: letters.map((letter) => replacement(letter.repeat(70_000))),
+  });
+  events.drain();
+  assert.equal(seen.length, 4, "each oversized change travels in its own frame");
+  const texts: string[] = [];
+  for (const event of seen) {
+    assert.ok(utf8(event) < DELTA_BATCH_BYTE_LIMIT, "no frame crosses the soft limit alone");
+    const change = event.type === "delta" ? event.changes[0] : undefined;
+    assert.equal(event.type === "delta" ? event.changes.length : 0, 1);
+    assert.equal(change?.kind, "message");
+    const block = change?.kind === "message" ? change.message.blocks[0] : undefined;
+    texts.push(block?.type === "text" ? block.text.slice(0, 1) : "");
+  }
+  assert.deepEqual(texts, letters, "every change survives in order");
 });
 
-test("a subscriber behind in bytes is downgraded using the injected measurement", () => {
-  const hub = new EventHub("b_1", trace, {
-    schedule: () => {},
-    measure: () => 600 * 1024,
-  });
-  const subscription = hub.subscribe(() => {}, { manual: true });
-  hub.publish(status());
-  assert.equal(hub.degraded(subscription.id), false);
-  hub.publish(status());
-  assert.equal(hub.degraded(subscription.id), true, "two 600 KiB events exceed 1 MiB");
+test("the injected measurement decides when a subscriber is downgraded", () => {
+  const events = hub({ measure: () => 600 * 1024 });
+  const subscription = events.subscribe(() => {}, { manual: true });
+  events.publish(status());
+  assert.equal(events.degraded(subscription.id), false);
+  events.publish(status());
+  assert.equal(events.degraded(subscription.id), true, "two 600 KiB events exceed 1 MiB");
 });
 
-test("the default measurement counts encoded bytes, not UTF-16 units", () => {
-  const hub = new EventHub("b_1", trace, { schedule: () => {} });
-  const subscription = hub.subscribe(() => {}, { manual: true });
+test("the measurement, not the domain shape, decides the queued bytes", () => {
+  // The wire encodes `streaming` as {messageId}, so a domain-JSON measure would price
+  // these snapshots wrongly; only the injected transport measure is trusted.
+  const events = hub({ measure: () => 128 * 1024 });
+  const subscription = events.subscribe(() => {}, { manual: true });
+  for (let index = 0; index < 8; index += 1) events.publishSnapshot(emptySnapshot());
+  assert.equal(events.degraded(subscription.id), false, "eight 128 KiB events fit in 1 MiB");
+  events.publishSnapshot(emptySnapshot());
+  assert.equal(events.degraded(subscription.id), true, "the ninth exceeds it");
+});
+
+test("the reference measurement counts encoded bytes, not UTF-16 units", () => {
+  const events = hub();
+  const subscription = events.subscribe(() => {}, { manual: true });
   const text = "汉".repeat(20_000);
   for (let index = 0; index < 20; index += 1) {
-    hub.publish({
+    events.publish({
       type: "append",
       trace,
       message: {
@@ -281,49 +317,109 @@ test("the default measurement counts encoded bytes, not UTF-16 units", () => {
       },
     });
   }
-  assert.equal(hub.degraded(subscription.id), true);
+  assert.equal(events.degraded(subscription.id), true);
 });
 
 test("a publish from a sink is serialized behind the event being delivered", () => {
-  const hub = new EventHub("b_1", trace, { schedule: () => {} });
+  const events = hub();
   const first: number[] = [];
   const second: number[] = [];
-  hub.subscribe((event) => {
+  events.subscribe((event) => {
     first.push(event.rev);
-    if (event.rev === 1) hub.publish(status(true));
+    if (event.rev === 1) events.publish(status(true));
   });
-  hub.subscribe((event) => second.push(event.rev));
-  hub.publish(status(false));
+  events.subscribe((event) => second.push(event.rev));
+  events.publish(status(false));
   assert.deepEqual(first, [1, 2]);
   assert.deepEqual(second, [1, 2], "the reentrant event waits for the whole fanout");
 });
 
+test("a timer flush plus a publish from a sink stay in revision order", () => {
+  const scheduled: (() => void)[] = [];
+  const events = hub({ schedule: (run) => scheduled.push(run) });
+  const seen: string[] = [];
+  events.subscribe((event) => {
+    seen.push(`${event.type}:${event.rev}`);
+    if (event.type === "delta" && event.rev === 1) events.publishSnapshot(emptySnapshot(true));
+  });
+  events.publish(delta("a", "p_a1"));
+  events.publish(delta("b", "p_a2"));
+  scheduled.shift()?.();
+  assert.deepEqual(seen, ["delta:1", "delta:2", "snapshot:3"]);
+});
+
 test("a subscriber that detaches inside a callback receives nothing more", () => {
-  const hub = new EventHub("b_1", trace, { schedule: () => {} });
+  const events = hub();
   const received: number[] = [];
   let subscription: HubSubscription;
-  subscription = hub.subscribe(
+  subscription = events.subscribe(
     (event) => {
       received.push(event.rev);
       subscription.detach();
     },
     { manual: true },
   );
-  for (let index = 0; index < 3; index += 1) hub.publish(status());
-  hub.pump(subscription.id);
+  for (let index = 0; index < 3; index += 1) events.publish(status());
+  events.pump(subscription.id);
   assert.deepEqual(received, [1]);
 });
 
-test("a sink that throws is dropped without stalling other subscribers", () => {
-  const hub = new EventHub("b_1", trace, { schedule: () => {} });
+test("a pump from inside a sink does not re-enter it", () => {
+  const events = hub();
   const received: number[] = [];
-  const throwing = hub.subscribe(() => {
+  let depth = 0;
+  let deepest = 0;
+  let subscription: HubSubscription;
+  subscription = events.subscribe(
+    (event) => {
+      depth += 1;
+      deepest = Math.max(deepest, depth);
+      received.push(event.rev);
+      events.pump(subscription.id);
+      depth -= 1;
+    },
+    { manual: true },
+  );
+  for (let index = 0; index < 3; index += 1) events.publish(status());
+  events.pump(subscription.id);
+  assert.deepEqual(received, [1, 2, 3]);
+  assert.equal(deepest, 1, "the sink is never called re-entrantly");
+});
+
+test("a sink that throws is dropped without stalling other subscribers", () => {
+  const events = hub();
+  const received: number[] = [];
+  const throwing = events.subscribe(() => {
     throw new Error("transport is gone");
   });
-  hub.subscribe((event) => received.push(event.rev));
-  hub.publish(status());
-  hub.publish(status());
+  events.subscribe((event) => received.push(event.rev));
+  events.publish(status());
+  events.publish(status());
   assert.deepEqual(received, [1, 2]);
-  assert.equal(hub.degraded(throwing.id), false);
-  assert.equal(hub.subscriberCount, 1);
+  assert.equal(events.degraded(throwing.id), false);
+  assert.equal(events.subscriberCount, 1);
+});
+
+test("a sink publish cannot slip between a flushed delta and its triggering event", () => {
+  const events = hub();
+  const seen: string[] = [];
+  events.subscribe((event) => {
+    seen.push(`${event.type}:${event.rev}`);
+    if (event.type === "delta") {
+      events.publish({
+        type: "append",
+        trace,
+        message: {
+          id: "p_a1",
+          role: "assistant",
+          state: "streaming",
+          createdAt: "x",
+          blocks: [{ type: "text", text: "final" }],
+        },
+      });
+    }
+  });
+  events.publish(delta("a"));
+  events.publishSnapshot(emptySnapshot());
+  assert.deepEqual(seen, ["delta:1", "snapshot:2", "append:3"]);
 });

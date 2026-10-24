@@ -543,3 +543,100 @@ test("history keeps messages that the current window no longer shows", async () 
     ["e_1", "e_2"],
   );
 });
+
+test("a withdrawn provisional leaves no history ghost", async () => {
+  const runtime = new FakeRuntime();
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  const fake = runtime.handle("b_1");
+  fake.emit({
+    type: "append",
+    trace,
+    message: {
+      id: "p_a1",
+      role: "assistant",
+      state: "streaming",
+      createdAt: "x",
+      blocks: [{ type: "text", text: "partial" }],
+    },
+  });
+  fake.emit({
+    type: "snapshot",
+    trace,
+    value: {
+      botId: "b_1",
+      messages: [],
+      streaming: null,
+      pending: [],
+      inbox: [],
+      running: false,
+    },
+  });
+  fake.emit({
+    type: "append",
+    trace,
+    message: {
+      id: "e_1",
+      role: "user",
+      state: "complete",
+      createdAt: "x",
+      blocks: [{ type: "text", text: "next" }],
+    },
+  });
+  assert.deepEqual(
+    (await handle.history({ beforeEntryId: "e_1", limit: 10 })).messages.map((m) => m.id),
+    [],
+    "the withdrawn attempt is not a committed entry",
+  );
+});
+
+test("a window that grows merges history in the order the snapshot already implies", async () => {
+  const committed = (id: string) => ({
+    id,
+    role: "user" as const,
+    state: "complete" as const,
+    createdAt: "x",
+    blocks: [{ type: "text" as const, text: id }],
+  });
+  const runtime = new FakeRuntime({
+    snapshot: () => ({
+      botId: "b_1",
+      messages: [committed("e_3")],
+      truncatedBefore: "e_3",
+      streaming: null,
+      pending: [],
+      inbox: [],
+      running: false,
+    }),
+  });
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  runtime.handle("b_1").emit({
+    type: "snapshot",
+    trace,
+    value: {
+      botId: "b_1",
+      messages: [committed("e_1"), committed("e_2"), committed("e_3")],
+      streaming: null,
+      pending: [],
+      inbox: [],
+      running: false,
+    },
+  });
+  assert.deepEqual(
+    (await handle.history({ limit: 10 })).messages.map((m) => m.id),
+    ["e_1", "e_2", "e_3"],
+  );
+  assert.deepEqual(
+    (await handle.history({ beforeEntryId: "e_3", limit: 10 })).messages.map((m) => m.id),
+    ["e_1", "e_2"],
+  );
+});

@@ -1,9 +1,8 @@
 // Fanout and revision ownership for one bot (docs/bots/PROTOCOL.md, "Server events").
 // The hub numbers every bot-scoped event on a per-bot sequence and is the only place
 // that decides what a subscriber receives. It speaks domain events: encoding a frame is
-// the wire layer's job, so core never imports protocol and the byte measurement is
-// injected by the layer that encodes.
-import type { ConversationSnapshot } from "./domain.ts";
+// the wire layer's job, so core never imports protocol and the encoded size is injected.
+import type { ConversationSnapshot, DeltaChange } from "./domain.ts";
 import type { RuntimeEvent } from "./RuntimePort.ts";
 
 /** A runtime event after the hub has given it a revision. */
@@ -21,12 +20,19 @@ export const DELTA_BATCH_BYTE_LIMIT = 96 * 1024;
 export const DELTA_FLUSH_MS = 50;
 
 export type HubOptions = {
-  readonly schedule?: (run: () => void) => void;
   /** Encoded bytes of one event, measured by the transport that will write it. */
-  readonly measure?: (event: RuntimeEvent) => number;
+  readonly measure: (event: RuntimeEvent) => number;
+  readonly schedule?: (run: () => void) => void;
 };
 
 type Queued = { readonly event: HubEvent; readonly bytes: number };
+
+type PendingChange = {
+  readonly trace: string;
+  readonly messageId: string;
+  readonly change: DeltaChange;
+  readonly bytes: number;
+};
 
 type Slot = {
   readonly id: string;
@@ -35,9 +41,11 @@ type Slot = {
   queue: Queued[];
   bytes: number;
   degraded: boolean;
+  /** While degraded, the newest snapshot is the only thing worth holding. */
+  anchor: Queued | undefined;
+  /** True once an increment was lost after the anchor, making the anchor stale. */
+  stale: boolean;
 };
-
-const wireBytes = (event: RuntimeEvent): number => Buffer.byteLength(JSON.stringify(event), "utf8");
 
 export class EventHub {
   readonly #botId: string;
@@ -48,22 +56,22 @@ export class EventHub {
   #rev = 0;
   #nextId = 1;
   /** Deltas still inside the coalescing window; they do not consume a revision yet. */
-  #pendingDeltas: (RuntimeEvent & { type: "delta" })[] = [];
+  #pendingChanges: PendingChange[] = [];
   #pendingBytes = 0;
   #flushScheduled = false;
   /** Events numbered and waiting for their turn on the per-bot serial queue. */
   #dispatch: HubEvent[] = [];
   #delivering = false;
 
-  constructor(botId: string, trace: string, options: HubOptions = {}) {
+  constructor(botId: string, trace: string, options: HubOptions) {
     this.#botId = botId;
     this.#defaultTrace = trace;
+    this.#measure = options.measure;
     this.#schedule =
       options.schedule ??
       ((run) => {
         setTimeout(run, DELTA_FLUSH_MS);
       });
-    this.#measure = options.measure ?? wireBytes;
   }
 
   get botId(): string {
@@ -93,6 +101,8 @@ export class EventHub {
       queue: [],
       bytes: 0,
       degraded: false,
+      anchor: undefined,
+      stale: false,
     });
     return {
       id,
@@ -101,13 +111,14 @@ export class EventHub {
         if (slot !== undefined) {
           slot.queue = [];
           slot.bytes = 0;
+          slot.anchor = undefined;
         }
         this.#slots.delete(id);
       },
     };
   }
 
-  /** True once the subscriber fell too far behind and was downgraded. */
+  /** True while the subscriber is snapshot-only and waiting for a current snapshot. */
   degraded(id: string): boolean {
     return this.#slots.get(id)?.degraded === true;
   }
@@ -116,10 +127,9 @@ export class EventHub {
   pump(id: string): void {
     const slot = this.#slots.get(id);
     if (slot === undefined) return;
-    if (this.#delivering) {
-      this.#drain(slot);
-      return;
-    }
+    // A pump from inside a sink is already being served by the running serial section;
+    // entering it again would call the sink re-entrantly and reorder the queue.
+    if (this.#delivering) return;
     this.#delivering = true;
     try {
       this.#drain(slot);
@@ -140,7 +150,8 @@ export class EventHub {
       return;
     }
     this.#flushDeltas();
-    this.#enqueue({ ...event, rev: this.#nextRevision() });
+    this.#push({ ...event, rev: this.#nextRevision() });
+    this.#runDispatch();
   }
 
   publishSnapshot(value: ConversationSnapshot, trace = this.#defaultTrace): void {
@@ -154,15 +165,23 @@ export class EventHub {
   }
 
   #queueDelta(event: RuntimeEvent & { type: "delta" }): void {
-    const bytes = this.#measure(event);
-    // A batch never grows past the soft limit: flushes happen between whole changes, so
-    // a single oversized change still travels alone instead of being split.
-    if (this.#pendingDeltas.length > 0 && this.#pendingBytes + bytes > DELTA_BATCH_BYTE_LIMIT) {
-      this.#flushDeltas();
+    // The window is split by whole changes, never by events: one event may carry several
+    // large replacements and must not become one oversized frame.
+    for (const change of event.changes) {
+      const bytes = this.#measure({
+        type: "delta",
+        trace: event.trace,
+        messageId: event.messageId,
+        changes: [change],
+      });
+      if (this.#pendingChanges.length > 0 && this.#pendingBytes + bytes > DELTA_BATCH_BYTE_LIMIT) {
+        this.#flushDeltas();
+      }
+      this.#pendingChanges.push({ trace: event.trace, messageId: event.messageId, change, bytes });
+      this.#pendingBytes += bytes;
     }
-    this.#pendingDeltas.push(event);
-    this.#pendingBytes += bytes;
     this.#scheduleFlush();
+    this.#runDispatch();
   }
 
   #scheduleFlush(): void {
@@ -175,19 +194,30 @@ export class EventHub {
     });
   }
 
+  /**
+   * Numbers and queues every pending batch at once. Nothing is delivered until the caller
+   * runs the serial queue, so a sink that publishes cannot slip in between two batches.
+   */
   #flushDeltas(): void {
-    const pending = this.#pendingDeltas;
+    const pending = this.#pendingChanges;
     if (pending.length === 0) return;
-    this.#pendingDeltas = [];
+    this.#pendingChanges = [];
     this.#pendingBytes = 0;
-    for (const group of groupByMessage(pending)) {
-      this.#enqueue({ ...mergeDeltas(group), rev: this.#nextRevision() });
+    for (const group of groupChanges(pending)) {
+      const last = group[group.length - 1];
+      if (last === undefined) continue;
+      this.#push({
+        type: "delta",
+        trace: last.trace,
+        messageId: last.messageId,
+        changes: mergeChanges(group.map((item) => item.change)),
+        rev: this.#nextRevision(),
+      });
     }
   }
 
-  #enqueue(event: HubEvent): void {
+  #push(event: HubEvent): void {
     this.#dispatch.push(event);
-    this.#runDispatch();
   }
 
   #runDispatch(): void {
@@ -211,13 +241,17 @@ export class EventHub {
 
   #offer(slot: Slot, event: HubEvent, bytes: number): void {
     if (slot.degraded) {
-      // Snapshot-only: increments are dropped, and the newest snapshot is kept as the
-      // recovery anchor until it is delivered. That anchor is never evicted by later
-      // increments, so a behind subscriber always has a way back.
-      if (event.type !== "snapshot") return;
-      slot.queue = [{ event, bytes }];
-      slot.bytes = bytes;
-    } else if (
+      // Snapshot-only: increments are dropped. The newest snapshot becomes the anchor,
+      // but it can only be used while nothing after it was lost.
+      if (event.type === "snapshot") {
+        slot.anchor = { event, bytes };
+        slot.stale = false;
+      } else if (slot.anchor !== undefined) {
+        slot.stale = true;
+      }
+      return;
+    }
+    if (
       slot.queue.length + 1 > SUBSCRIBER_QUEUE_LIMIT ||
       slot.bytes + bytes > SUBSCRIBER_BYTE_LIMIT
     ) {
@@ -225,31 +259,45 @@ export class EventHub {
       slot.degraded = true;
       slot.queue = [];
       slot.bytes = 0;
+      slot.anchor = undefined;
+      slot.stale = true;
       return;
-    } else {
-      slot.queue.push({ event, bytes });
-      slot.bytes += bytes;
     }
+    slot.queue.push({ event, bytes });
+    slot.bytes += bytes;
     if (!slot.manual) this.#drain(slot);
   }
 
   #drain(slot: Slot): void {
-    // A synchronous sink keeps the queue empty; one that throws is dropped from the hub.
-    while (slot.queue.length > 0) {
+    while (true) {
       // A sink may detach itself (or be dropped) in the middle of a pump.
       if (this.#slots.get(slot.id) !== slot) return;
-      const next = slot.queue.shift();
+      const next = this.#next(slot);
       if (next === undefined) return;
-      slot.bytes -= next.bytes;
-      // Delivering the anchor makes the subscriber contiguous again.
-      if (next.event.type === "snapshot") slot.degraded = false;
       try {
-        slot.send(next.event);
+        slot.send(next);
       } catch {
         this.#slots.delete(slot.id);
         return;
       }
     }
+  }
+
+  /** Takes the next deliverable event, or re-anchors a degraded subscriber. */
+  #next(slot: Slot): HubEvent | undefined {
+    if (slot.degraded) {
+      const anchor = slot.anchor;
+      // A stale anchor would leave the client silently wrong, so it is dropped and the
+      // subscriber stays snapshot-only until a current snapshot arrives.
+      if (anchor === undefined || slot.stale) return undefined;
+      slot.anchor = undefined;
+      slot.degraded = false;
+      return anchor.event;
+    }
+    const queued = slot.queue.shift();
+    if (queued === undefined) return undefined;
+    slot.bytes -= queued.bytes;
+    return queued.event;
   }
 
   #nextRevision(): number {
@@ -258,49 +306,41 @@ export class EventHub {
   }
 }
 
-/** Consecutive deltas for one message travel together; a different message starts a group. */
-type DeltaEvent = RuntimeEvent & { type: "delta" };
-
-const groupByMessage = (events: readonly DeltaEvent[]): DeltaEvent[][] => {
-  const groups: DeltaEvent[][] = [];
-  let current: DeltaEvent[] = [];
+/** Consecutive changes for one message travel together; another message starts a group. */
+const groupChanges = (changes: readonly PendingChange[]): PendingChange[][] => {
+  const groups: PendingChange[][] = [];
+  let current: PendingChange[] = [];
   let target: string | undefined;
-  for (const event of events) {
-    if (current.length > 0 && event.messageId !== target) {
+  for (const item of changes) {
+    if (current.length > 0 && item.messageId !== target) {
       groups.push(current);
       current = [];
     }
-    target = event.messageId;
-    current.push(event);
+    target = item.messageId;
+    current.push(item);
   }
   if (current.length > 0) groups.push(current);
   return groups;
 };
 
 /**
- * Folds consecutive deltas for one message into a single event. Content is preserved:
- * appends concatenate per block index, and block/message replacements keep their whole
- * payload in the original order.
+ * Folds one batch into a single change list. Appends concatenate per block index, and
+ * block/message replacements keep their whole payload in the original order.
  */
-const mergeDeltas = (events: readonly DeltaEvent[]): DeltaEvent => {
-  const first = events[0];
-  if (first === undefined) throw new Error("a delta batch holds deltas");
-  const last = events[events.length - 1] as DeltaEvent;
-  const changes: Record<string, unknown>[] = [];
-  for (const event of events) {
-    for (const change of event.changes) {
-      const prior = changes[changes.length - 1];
-      if (
-        prior !== undefined &&
-        (change.kind === "text" || change.kind === "thinking") &&
-        prior.kind === change.kind &&
-        prior.index === change.index
-      ) {
-        prior.append = `${String(prior.append)}${change.append}`;
-        continue;
-      }
-      changes.push({ ...change });
+const mergeChanges = (changes: readonly DeltaChange[]): DeltaChange[] => {
+  const merged: Record<string, unknown>[] = [];
+  for (const change of changes) {
+    const prior = merged[merged.length - 1];
+    if (
+      prior !== undefined &&
+      (change.kind === "text" || change.kind === "thinking") &&
+      prior.kind === change.kind &&
+      prior.index === change.index
+    ) {
+      prior.append = `${String(prior.append)}${change.append}`;
+      continue;
     }
+    merged.push({ ...change });
   }
-  return { ...last, type: "delta", messageId: last.messageId, changes: changes as never };
+  return merged as never;
 };

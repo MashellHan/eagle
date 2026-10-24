@@ -385,11 +385,13 @@ Rules:
 | Shared mutable state | Only the catalog and the log; everything else is per bot |
 | Snapshot rerender | When the runtime sends `snapshot` (watch fell behind) the hub renders a fresh wire snapshot to every subscriber at the next `rev` |
 
-`EventHub` measures encoded bytes through an injected `measure` function, so the
-frame encoder owns that number and `core/` keeps no wire knowledge. A delta is
-numbered only when its batch is broadcast, so folding never leaves a revision gap;
-while a subscriber is snapshot-only, the newest snapshot is held as its recovery
-anchor and is never evicted by increments.
+`EventHub` requires an injected `measure` function, so the frame encoder owns the
+byte count and `core/` keeps no wire knowledge. A delta is numbered only when its
+batch is broadcast, so folding never leaves a revision gap, and a batch is split
+between whole changes. While a subscriber is snapshot-only, the newest snapshot is
+held as its recovery anchor; once an increment is lost after it the anchor is stale
+and is never delivered, so the subscriber waits for a current snapshot instead of
+silently rendering an outdated state.
 
 ## Failure containment
 
