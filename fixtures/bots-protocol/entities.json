@@ -20,7 +20,8 @@
         "type": "text",
         "text": "巴黎是法国的"
       }
-    ]
+    ],
+    "clipped": null
   },
   "userMessage": {
     "id": "e_7",
@@ -33,10 +34,28 @@
         "text": "法国的首都是哪里？"
       }
     ],
-    "requestId": "r_0190a1b4-5061-7c72-8d3e-4f5061728394"
+    "requestId": "r_0190a1b4-5061-7c72-8d3e-4f5061728394",
+    "clipped": null
   },
   "inboxItem": {
     "id": "s_4",
     "mode": "followUp"
+  },
+  "clippedMessage": {
+    "id": "e_12",
+    "role": "assistant",
+    "state": "complete",
+    "stopReason": "length",
+    "createdAt": "2026-10-25T02:13:00.000Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "…clipped to fit the frame budget…"
+      }
+    ],
+    "clipped": {
+      "totalBytes": 210000,
+      "shownBytes": 131072
+    }
   }
 }

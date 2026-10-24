@@ -97,16 +97,18 @@ async function turn(prompt: string) {
   const started = now();
   const submission = await root.submit({ type: "input", content: prompt }, context);
   const settled = await submission.wait(context);
-  const text = await lastAssistantText();
+  // Read the answer of *this* submission, never "the newest assistant entry", so a
+  // stale answer from an earlier turn cannot make the check pass.
+  const text = settled.status === "done" ? await answerText(settled.answer) : "";
   const elapsed = ms(started);
   await new Promise((resolve) => setTimeout(resolve, 120));
   await watch.stop();
   return { settled, text, elapsed, events: watch.seen, firstDeltaAt: watch.firstDeltaAt };
 }
 
-async function lastAssistantText(): Promise<string> {
+async function answerText(entryId: unknown): Promise<string> {
   const page = await root.entries({}, 50, undefined, context);
-  const entry = [...page.items].reverse().find((item) => item.kind === "pi.assistant");
+  const entry = page.items.find((item) => String(item.id) === String(entryId));
   const message = entry?.model?.[0];
   if (message?.role !== "assistant") return "";
   if (typeof message.content === "string") return message.content;
@@ -148,7 +150,7 @@ await harness.close(context);
 
 const ok =
   first.settled.status === "done" &&
-  first.text.length > 0 &&
+  /巴黎|paris/i.test(first.text) &&
   second.settled.status === "done" &&
   /巴黎|paris/i.test(second.text);
 console.log(JSON.stringify({ event: ok ? "smoke.pass" : "smoke.fail" }));

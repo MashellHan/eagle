@@ -84,7 +84,8 @@ is never started before its preconditions are green.
 | 24 | `test/runtime/mapEvents.test.ts` | `builds the provisional from message_start content` | 23 |
 | 25 | `test/runtime/mapEvents.test.ts` | `applies block and message replacements without loss, including a start block with no delta` | 23 |
 | 25b | `test/runtime/mapEvents.test.ts` | `two text blocks receive deltas at their own indexes` | 23 |
-| 26 | `test/runtime/mapEvents.test.ts` | `a retry inside one turn starts a new attempt id` | 23 |
+| 26 | `test/runtime/mapEvents.test.ts` | `a failed attempt finalizes its provisional and the retry gets a new id` | 23 |
+| 26b | `test/runtime/mapEvents.test.ts` | `deferred_poll drops the provisional through a snapshot with streaming null` | 23 |
 | 27 | `test/runtime/mapEvents.test.ts` | `maps every stopReason to a message state` | 23 |
 | 28 | `test/runtime/adapter.test.ts` | `one turn appends exactly one pi.assistant entry` | 23 |
 | 29 | `test/runtime/idempotency.test.ts` | `the same requestId returns one record and emits no new events` | 28 |
@@ -106,7 +107,7 @@ is never started before its preconditions are green.
 | 40 | `test/server/socket.test.ts` | `a second subscribe on one connection closes 1008` | 37 |
 | 41 | `test/server/catalog.test.ts` | `create, rename and delete keep the catalog absolute` | 9, 37 |
 | 42 | `test/log/origin.test.ts` | `a failed operation has exactly one error record, at the originating layer, counted by failure id` | 6, 38 |
-| 43 | `test/log/trace.test.ts` | `R1–R4 hold with a fake clock and a drain barrier` | 42 |
+| 43 | `test/log/trace.test.ts` | `R1–R3 hold with a fake clock and a drain barrier` | 42 |
 | 44 | `test/core/registry.test.ts` | `open is idempotent and shared by concurrent subscribers` | 28 |
 | 45 | `test/core/registry.test.ts` | `an idle bot closes after idleCloseMs and reopens on demand` | 44 |
 | 46 | `test/core/registry.test.ts` | `a timed-out close quarantines and refuses open and delete` | 36, 44 |
@@ -120,6 +121,7 @@ is never started before its preconditions are green.
 | 52c | `test/e2e/paging.test.ts` | `history pages older messages and the newest window is never re-fetched` | 49 |
 | 52d | `test/e2e/ordering.test.ts` | `a late connection-scoped record never downgrades a settlement` | 49 |
 | 53 | `test/crash/sigkill.test.ts` | `killing the daemon mid-answer loses no message and duplicates none` | 49 |
+| 53b | `test/crash/delete.test.ts` | `R4: a delete killed after rename reconciles on the next start` | 49 |
 | 54 | `test/crash/singleton.test.ts` | `a SIGKILLed daemon is taken over on the next start` | 48 |
 
 ### Stage 5 — client
@@ -165,10 +167,12 @@ is never started before its preconditions are green.
 | Malformed JSON frame | Close 1008; `protocol.decode.fail` only |
 | Unknown command type | `error{invalid_command}`, connection kept |
 | `subscribe` to a missing bot | Close 4004; `core.bot.resolve.fail` only |
-| `runtime.open` rejects | Bot `unavailable`; snapshot carries `unavailable`; one `error` at core |
+
 | `send` before admission rejects | `error`, **no** `submission` frame; client keeps the draft |
 | Reply to `send` lost | Re-send the same `requestId` returns the record; no duplicate entry |
 | Provider error | `unanswered{reason:"model_error"}`; provider text absent from logs |
+| `runtime.open` rejects | `error` carries `failure` whose origin is `runtime`; core logs `warn` with the same id |
+| Oversized message | Delivered clipped with `clipped`, `stopReason:"length"` and a notice; no frame exceeds 256 KiB |
 | Abort with a queued input | Both settle `unanswered{reason:"aborted"}`; inbox empty |
 | Parked task | One `error{kind:"task_parked"}` within 60 s; `recover` clears it |
 | Watch ends once | Reattach + snapshot; no client-visible error |
@@ -189,14 +193,18 @@ is never started before its preconditions are green.
 (stage 4) and is mandatory from then on; it is opt-in for the fast gate
 (`npm run test:crash`).
 
-The barrier is a fact about commits, not a sleep and not a delta: deltas can be
-absent entirely (RUNTIME F5), and the first `append` of a turn is the user entry.
-The test starts a daemon whose provider streams slowly and waits for a
-`core.hub.publish.ok` whose whitelisted `detail` says `role="assistant"`,
-`state="streaming"`, with a `messageId`. That frame is only ever produced from
-committed state, so an assistant partial provably exists. Then it `SIGKILL`s the
-process. A second case kills **before** any assistant provisional exists, only after
-admission, and asserts recovery without requiring an aborted assistant entry.
+The barrier is a fact about the provider, not about timing or a log state. The
+test's provider emits one streamed chunk, writes a sentinel file, and then **never
+returns** — completion is blocked by construction, so no answer can land between the
+barrier and the kill. The test waits for the sentinel *and* for the daemon's
+`append` record whose whitelisted `detail` carries `role="assistant"`,
+`state="streaming"` and a `messageId`, then `SIGKILL`s the process.
+
+A second case kills **before** any assistant provisional exists, only after
+admission (no sentinel chunk emitted), and asserts recovery without requiring an
+aborted assistant entry. A third case kills after `rename` during delete
+(`test/crash/delete.test.ts`) and asserts only post-restart reconciliation, since a
+killed process cannot log its own failure.
 
 After restart it asserts: exactly one admitted submission, the interrupted attempt
 retained as an `aborted` assistant entry (RUNTIME F22), exactly one completed

@@ -91,14 +91,14 @@ provisional: { id, attempt } | null   // id = "p_a<attempt>"
 | `message_end` with `entry.kind === "pi.user"` | Map the user entry, including its `requestId` when known | `append` |
 | `submission` | Map the record: status, `entryId`, `answerEntryId`, `reason` | `submission` |
 | `inbox_update` | Map queue items | `status` |
-| `run_start` / `run_end` | Mark running, clear the provisional at attempt end | `status` |
+| `run_start` / `run_end` | `status{running, streaming: provisionalId \| null}`; `run_end` closes any open provisional | `status` |
 | `tool_execution_*` | Reserved (phase 2) | `delta{kind:"toolcall"}` / reserved blocks |
 | `auto_retry_start` / `auto_retry_end` | Log only; the provisional stays open because the failed entry arrives after `auto_retry_start` | — |
-| `deferred_poll` | Keep the provisional; emit nothing but `status{running:true}` | `status` |
+| `deferred_poll` | Upstream dropped the partial: emit a `snapshot` with `streaming:null`, `running:true`, then `status` | `snapshot`, `status` |
 | `task_failed` | Classify as `task_faulted` (a park only ever arrives through `onReport`) | `error{kind:"task_faulted", taskId}` |
 | `onReport` (`task_parked`, `session_failed`, `extension_error`, …) (F15) | Mint a `failureId`, dedupe by it across channels, then classify | `error{kind, failureId}` |
 | `harness.closed` (F25) | `reason:"closed"` because we called `close()` → expected, no error. `reason:"failed"` → `storage_failed` | `error{kind:"storage_failed"}` only for the failed case |
-| watch end (F17) | `stopped`/`session_closed`/`ended` belong to us or to a closed harness: detach, no error. `listener_error`/`failed`/`cancelled` while we still want the watch: reattach with a fresh snapshot | `snapshot` after reattach, or `error{kind:"internal"}` after three failures in 60 s |
+| watch end (F17) | Follow the exhaustive `WatchEnd` table below; `session_failed` goes straight to the storage-failure path | `snapshot` after reattach, or `error` |
 | watch falls behind → fresh `snapshot` (F8) | Reset provisional state from the snapshot | `snapshot` |
 
 `MessageChange` must be applied without loss. The wire mirrors each kind
@@ -144,32 +144,30 @@ that resumes). The provisional id is scoped to the attempt so a stale stream can
 never write into a finalized message:
 
 Upstream order matters: `auto_retry_start` is published **before** the failed
-attempt's assistant entry, so the provisional must survive it.
+attempt's assistant entry, so the provisional must survive it; the entry itself then
+finalizes it.
 
 ```
 first message_start(assistant)   → open provisional "p_a<n>" with current content
 message_update*                  → deltas to "p_a<n>" (block-scoped, indexed)
-message_start again (retry)      → do NOT create a second provisional: apply the new
-                                   content as a `message` change to the same p_a<n>
 auto_retry_start                 → log only; the provisional stays open
-message_end(pi.assistant)        → append the real entry with replaces p_a<n>; closed
-message_end(aborted)             → append the aborted entry (F22); closed
-deferred_poll                    → no message is appended; keep the provisional and
-                                   emit status{running:true}
-run_end                          → close any still-open provisional with a final
-                                   `status{running:false}`; clients drop a provisional
-                                   that never received `replaces`
+message_end(pi.assistant)        → append the entry with replaces p_a<n>; attempt n closed
+message_end(aborted)             → append the aborted entry (F22); attempt n closed
+deferred_poll                    → upstream drops generation.message: broadcast a
+                                   snapshot with streaming:null (running:true) so the
+                                   client removes the provisional
+message_start after a closed attempt → new attempt id "p_a<n+1>"
+run_end                          → close any open provisional via status{streaming:null}
 ```
 
-The provisional id changes only after a finalize. A retry therefore continues the
-same bubble, which is what the user sees.
+Rules that follow:
 
 | Situation | Provisional handling |
 | --- | --- |
-| Retry inside one turn | The same provisional continues; the new `message_start` content is applied as a `message` change, and the eventual entry carries `replaces: p_a<n>` |
-| Deferred poll (`deferred_poll`) | The provisional is kept and no entry is appended; only `status{running:true}` is emitted |
-| Late join or snapshot rerender mid-attempt | The snapshot carries the attempt's current content and its `p_a<n>` id, so later deltas land on a message the client already has |
-| Watch fell behind (F8) | Reset attempt state from the snapshot; the next delta must carry the snapshot's provisional id or be dropped |
+| Failed attempt followed by a retry | The failed entry finalizes `p_a<n>`; the retry starts `p_a<n+1>` |
+| Deferred poll | Upstream removed the partial, so the adapter broadcasts `snapshot{streaming:null, running:true}`; the next attempt starts a new id |
+| Late join or snapshot rerender | The snapshot carries the live attempt's content and its `p_a<n>` id |
+| Watch fell behind (F8) | Reset attempt state from the snapshot; a delta for an unknown id is dropped |
 
 ### Failure channels
 
@@ -192,7 +190,7 @@ listener_error | session_failed`. Only the last two are faults:
 | `stopped` | We detached | Nothing |
 | `cancelled` | The acquisition context was cancelled (shutdown) | Nothing |
 | `session_closed` | `close()` ended the session | Nothing |
-| `retired` | A document watch's incarnation retired | Re-acquire the watch; not a failure |
+| `retired` | A document watch's incarnation retired | Re-acquire the watch; not a failure, no counter |
 | `listener_error` | A sink callback threw | Reattach with a snapshot; escalate after three in 60 s |
 | `session_failed` | The harness failed | Classify `storage_failed`; same failure identity as `harness.closed` |
 
@@ -304,6 +302,7 @@ and leaves a running answer alone; `abort` is the only destructive command.
     after restart is attributed to `tr_boot_<n>`, not to the original `send`.
 15. Do not clear the provisional on `auto_retry_start`: upstream publishes the
     failed attempt's entry afterwards, and that entry is what carries `replaces`.
+    Do close it when that entry arrives — the retry gets a new id.
 16. Do not treat `deferred_poll` as a message event; it is a polling sleep.
 17. Do not expect `retired` to be an error; it means a document watch's
     incarnation rotated, and the watch is simply re-acquired.

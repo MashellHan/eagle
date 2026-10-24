@@ -90,7 +90,7 @@ five files kept.
 | Field | Presence | Meaning |
 | --- | --- | --- |
 | `ts` | always | ISO-8601 UTC, milliseconds |
-| `level` | always | `debug` / `info` / `warn` / `error` |
+| `level` | always | `trace` / `debug` / `info` / `warn` / `error` |
 | `layer` | always | See above |
 | `evt` | always | One declared name |
 | `trace` | always | Per the ownership table |
@@ -152,7 +152,7 @@ Specifics:
 | --- | --- |
 | `trace` | Frame-level encode/decode; off by default (`--log-level=trace`). Records at this level use the same schema and only `protocol.*`/`transport.frame.*` names |
 | `error` | Originating failures only (`err.origin: true`) |
-| `warn` | Propagated failures, `core.hub.degrade`, `core.bot.quarantine`, drops |
+| `warn` | Propagated failures, `core.hub.degrade`, `core.bot.close.degrade` (quarantine), drops |
 | `info` (default) | Crossings: connection, subscribe, submit, publish counters, recovery, delete |
 | `debug` | Coalescing details, snapshot rerenders, paging, per-command byte sizes |
 Coalesced deltas log `detail.count`, never contents. Recipes below state the
@@ -206,7 +206,9 @@ protocol.command.fail      trace=tr_C propagated
 ```
 Asserted: no `core.*` and no `runtime.*` for `tr_C`. Attribution: client/protocol.
 
-**R4 — delete interrupted between the two steps.**
+**R4 — delete interrupted between the two steps.** This recipe runs in the crash
+suite (`test/crash/delete.test.ts`), not in the deterministic log suite, because it
+uses a real `SIGKILL`.
 Inject: `SIGKILL` after `rename(bots/<id>, trash/<id>)` and before the catalog
 write. A killed process cannot log its own failure, so only the pre-kill barrier and
 the post-restart evidence are asserted.
@@ -232,6 +234,6 @@ forbidden (a test asserts no emit inside the delta path).
 | --- | --- |
 | `test/log/shape.test.ts` | Required fields; `err.kind` from the union; `detail` whitelist; declared-and-used event names |
 | `test/log/origin.test.ts` | Exactly one `level=error` per `err.failure`, at the originating layer; higher layers log `warn` with `propagated`; the count is keyed on `err.failure`, not on `trace` |
-| `test/log/trace.test.ts` | R1–R4 with fake clock and drain barrier, at `--log-level=debug`, asserting presence *and* absence |
+| `test/log/trace.test.ts` | R1–R3 with fake clock and drain barrier, at `--log-level=debug`, asserting presence *and* absence |
 | `test/log/redaction.test.ts` | Sentinel prompt, token and home path never appear; provider error echo is scrubbed |
 | `BotsFeaturesTests/LoggingTests.swift` | Client emit sites use the shared vocabulary; no per-delta emit |

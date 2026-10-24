@@ -10,8 +10,8 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env src/main.ts",
     "test": "sh scripts/run-tests.sh",
-    "test:crash": "node --test $(sh scripts/crash-files.sh)",
-    "perf": "node --test $(sh scripts/perf-files.sh)",
+    "test:crash": "sh scripts/run-suite.sh test/crash",
+    "perf": "sh scripts/run-suite.sh test/perf",
     "typecheck": "tsc --noEmit",
     "lint": "biome check --error-on-warnings .",
     "format": "biome check --write .",

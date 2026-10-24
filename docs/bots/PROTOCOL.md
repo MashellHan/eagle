@@ -39,10 +39,12 @@ Runtime details live in [RUNTIME.md](RUNTIME.md), layers in
 | `send.text` | 8 000 characters | `error{invalid_command}` |
 | `bot.title` (HTTP) | 80 characters | HTTP `400` |
 | Any single frame | 256 KiB, measured on the **encoded** frame | Close `1008` |
-| Single message payload | 128 KiB encoded | `error{kind:"limit_exceeded"}`; the message stays in storage and is not streamed |
+| Single message payload | 128 KiB encoded | Delivered clipped, see below |
+| Metadata strings | `id` ≤ 80, `title` ≤ 80, `model.provider` ≤ 40, `model.modelId` ≤ 200, `unavailable.message` ≤ 200 | Refused at the producer |
+| Derived bound: `bots` frame | 200 bots × (80 + 80 + 40 + 200 + ids/timestamps ≈ 300 B) ≈ 130 KiB | Inside the 256 KiB cap |
 | `snapshot.messages` page | ≤ 200 messages and ≤ 192 KiB of the encoded frame, or empty | Older messages page through `history` |
 | `history` reply | ≤ 200 messages and ≤ 192 KiB | `hasMore` says whether more exist |
-| Coalesced delta batch | ≤ 64 KiB, flushed on size as well as on 50 ms | Splitting keeps every frame inside the cap |
+| Coalesced delta batch | 128 KiB **soft** flush threshold in addition to 50 ms | A single change is always sent alone when it alone exceeds the threshold, so a legal change is never split or dropped |
 | Catalog size | ≤ 200 bots, `bots` events carry the whole catalog | Creation fails `limit_exceeded` beyond it |
 | `agent.instructions` | ≤ 4 000 characters | `configure` fails `invalid_command` (capability off in phase 1) |
 | `pending` | ≤ 32 entries | Admission beyond it fails `limit_exceeded` |
@@ -104,15 +106,23 @@ client: a model picker needs the `agent` capability.
   "stopReason": "stop",                  // optional: stop|length|toolUse|aborted|error|deferred
   "createdAt": "2026-10-25T02:11:04.001Z",
   "blocks": [ { "type": "text", "text": "巴黎。" } ],
-  "requestId": "r_0190a1b3"              // user messages only; ties the entry to a send
+  "requestId": "r_0190a1b3",             // user messages only; ties the entry to a send
+  "clipped": null                        // {totalBytes, shownBytes} when clipped
 }
 
-// Messages are never truncated on the wire. Phase 1 bounds them by construction:
-// assistant answers are capped at maxTokens 8 192 (~32 KiB), user text at 8 000
-// characters, notices at 500. A message that still exceeds 128 KiB encoded is a
-// protocol violation: the daemon answers `error{kind:"limit_exceeded"}`, keeps the
-// message in storage and does not stream it. There is therefore no intra-message
-// paging and no second byte coordinate system.
+// Messages are never split across frames. Phase 1 bounds them by construction:
+// maxTokens 8 192 for assistant answers, 8 000 characters for user text, 500 for
+// notices. The daemon measures the encoded message before sending it; if it exceeds
+// 128 KiB it sends the message clipped, marked, so a client always learns that
+// content exists rather than silently losing it:
+//
+//   "clipped": { "totalBytes": 210000, "shownBytes": 131072 }   // only when clipped
+//
+// The clip is applied to text at a UTF-8 boundary, the message carries
+// `stopReason:"length"`, and the daemon also appends a `notice` saying the answer
+// was clipped. There is no byte-range read path: clipping is a terminal state of
+// that message, not a paging window, so no second coordinate system and no cursor
+// state are needed.
 
 // ContentBlock
 { "type": "text",     "text": "…" }
@@ -189,9 +199,10 @@ Snapshot semantics:
   runtime's watch fell behind).
 - `truncatedBefore` means older messages exist and are loadable with `history`.
   Its presence is not an error and does not block the composer.
-- When `unavailable` is present, `messages` may be empty and `agent`/`usage` are
-  omitted: those values are **unknown**, not empty. `pending` and `inbox` are also
-  unknown. The client shows the reason and offers `recover`.
+- When `unavailable` is present, every collection is still present and empty and
+  `streaming` is `null`, but they mean **unknown**, not empty: the client renders the
+  reason and offers `recover`, and never treats the empty arrays as truth. `agent`
+  and `usage` may be omitted in that variant.
 
 ## Server events
 
@@ -213,7 +224,9 @@ is never a gap.
     { "kind": "toolcall", "index": 2, "callId": "…", "path": ["args","q"], "append": "…" }
   ] }
 
-{ "type": "status", "rev": 45, "running": true, "inbox": [ InboxItem, … ] }
+{ "type": "status", "rev": 45, "trace": "tr_…", "running": true,
+  "streaming": "p_a2",                   // null when no attempt is in flight
+  "inbox": [ InboxItem, … ] }
 
 { "type": "submission", "rev": 46, "trace": "tr_…",
   "requestId": "r_…", "submissionId": "s_3",
@@ -225,7 +238,9 @@ is never a gap.
 
 { "type": "error", "rev": 47, "trace": "tr_…",
   "kind": "task_parked",                   // ErrorKind
+  "failure": "f_7f3a",                     // identity, shared with the daemon log
   "message": "…",                          // redacted, ≤ 200 chars
+  "requestId": "r_…",                      // present when a command caused it
   "taskId": "t_3" }                        // reserved
 
 { "type": "bots", "bots": [ BotSummary, … ] }   // absolute catalog state, no rev
@@ -278,6 +293,9 @@ Every command except `hello` and `ping` carries `trace`.
 { "type": "ping" }
 ```
 
+- A command rejection is reported twice with one identity: the protocol emits
+  `error{kind, failure, requestId}` and the same `failure` is what the daemon logs.
+  A client that is awaiting a call can match them by `failure`.
 - `send` requires a subscription. The daemon replies with a `submission` frame for
   that `requestId` carrying the record it reads, which may already be `done`
   because admission starts the run. A repeated `send` with the same `requestId`
@@ -345,7 +363,7 @@ display; it is not the recovery mechanism.
 | I12 | Older windows are fetched with `history`; the newest window is never re-fetched by paging |
 | I13 | Every **block-scoped** delta change (`text`, `thinking`, `toolcall`, `block`) names its `index`; `block` carries the whole block, so no content depends on a preceding append. `message` replaces everything and is the only change without an index |
 | I14 | A submission record is applied only when its rank does not decrease (`queued < placed < done = unanswered`), so a late connection-scoped reply cannot undo a settlement |
-| I15 | Messages are never split on the wire; a message over 128 KiB encoded is refused with `limit_exceeded` and remains readable in storage |
+| I15 | Messages are never split across frames. A message over 128 KiB encoded is delivered clipped, marked with `clipped{totalBytes,shownBytes}`, `stopReason:"length"` and a daemon `notice`; clipping is terminal for that message |
 
 ## Close codes
 

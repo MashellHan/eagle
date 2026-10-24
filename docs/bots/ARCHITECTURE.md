@@ -141,7 +141,7 @@ Swift type use the same word. Wire decoding is confined to `BotsTransport`.
 export type RuntimeEvent = { readonly trace: string } & (
   | { type: "append"; message: Message; replaces?: string }
   | { type: "delta"; messageId: string; changes: DeltaChange[] }
-  | { type: "status"; running: boolean; inbox: InboxItem[] }
+  | { type: "status"; running: boolean; inbox: InboxItem[]; streaming: string | null }
   | { type: "submission"; record: Submission }
   | { type: "snapshot"; value: ConversationSnapshot }   // watch fell behind: replace everything
   | { type: "error"; failure: { id: string; kind: ErrorKind; origin: Layer }; message: string; taskId?: string }
@@ -275,7 +275,6 @@ One daemon process owns every bot under one root directory (default
 
 ```
 botd (single process, launchd-supervised)
-├─ <root>/run/daemon.sock           unix socket: the transport AND the singleton lock
 ├─ <root>/token                     0600 bearer token, generated on first start
 ├─ <root>/catalog.json              bot list, atomic write (tmp + rename)
 ├─ <root>/logs/daemon-YYYYMMDD.jsonl
@@ -288,50 +287,28 @@ botd (single process, launchd-supervised)
 
 ### Singleton lock
 
-A check-then-unlink on a socket path can hand the root to two processes, so the
-lock is an `O_EXCL` file with an atomic takeover, and the socket is only a
-transport.
+Any file-based stale-lock recovery has an unlink race, so the singleton is a
+**kernel-exclusive listener**: the daemon binds a second loopback port derived from
+the canonical root path, and the kernel releases it when the process dies, including
+on `SIGKILL`.
 
 ```
-<root>/run/daemon.lock    { pid, startedAt }   0600, kernel-exclusive creation
-<root>/run/daemon.sock    unix socket for the client (not a lock)
+lock port = 43000 + (fnv1a(realpath(root)) % 1000)   // --lock-port overrides
 ```
 
-Renaming a path proves nothing about which inode it held, so takeover is guarded by
-a **second `O_EXCL` file** that only one process can own:
+1. `listen(127.0.0.1:<lock port>)`. Success means this process owns the root.
+2. `EADDRINUSE` → connect and exchange one line. A daemon answering with the same
+   root means a live owner: print its pid from the answer and exit non-zero. An
+   answer with a different root means a hash collision between two roots: exit with
+   an explicit message telling the operator to set `--lock-port`.
+3. No answer (`ECONNREFUSED`) means nothing is listening even though the port is
+   held — a state the kernel does not allow for a live listener — so retry once and
+   then fail with the error. There is no file to delete and no takeover.
 
-```
-run/daemon.lock            { pid, startedAt }         ownership
-run/daemon.lock.takeover   { pid, startedAt }         single-taker guard for recovery
-```
-
-Acquire, bounded at five attempts:
-
-1. `open(lock, "wx")` succeeds → write `{pid, startedAt}`, `fsync`, re-read and
-   verify our pid; this process owns the root.
-2. `EEXIST` → read the pid. `process.kill(pid, 0)` succeeds → a live daemon owns
-   the root; print its pid and exit non-zero.
-3. The pid is dead (or the file is unreadable and older than 10 s) → try
-   `open(lock + ".takeover", "wx")`:
-   - `EEXIST` means another starter is already recovering. Re-check that guard's
-     pid; if it is alive, wait 100 ms and retry from step 1. If the guard's pid is
-     dead and its file is older than 10 s, remove the guard and retry from step 1.
-   - Success → **re-read the lock**: if its pid is now alive, another daemon won
-     while we waited; release the guard and exit. Otherwise `unlink(lock)`, release
-     the guard, and retry from step 1.
-4. Every attempt logs `core.singleton.start` and either `core.singleton.ok` or
-   `core.singleton.fail`; exhausting the attempts exits non-zero.
-
-Why this is safe: only the holder of the takeover guard may remove the lock, and it
-re-reads the lock after acquiring the guard, so it can never delete a lock written
-after its own read. Two concurrent starters therefore produce exactly one owner;
-the test forces that interleaving with a barrier between step 2 and step 3 rather
-than merely starting two processes.
-
-`SIGKILL` leaves a stale file whose pid is dead, which step 3 takes over. Tests
-cover: live instance rejects the second, `SIGKILL`ed instance is taken over, and
-two processes racing the same stale lock produce exactly one winner
-(`test/crash/singleton.test.ts`).
+The unix socket is gone: the client transport is the TCP listener from
+[PROTOCOL.md](PROTOCOL.md). Tests: a live daemon rejects a second start (same root),
+a `SIGKILL`ed daemon is taken over on the next start (the port is free), and a
+different root on a colliding lock port fails with the documented message.
 
 ### Bot lifecycle
 
@@ -403,7 +380,8 @@ Rules:
 | Provider error echoing user text | L1 | `err.kind` only; provider text never logged, message redacted to a fixed notice |
 | Storage error (`SessionFailed`) | L0 | Harness closes itself; L1 classifies `storage_failed`, L2 marks `unavailable` |
 | Parked task (`onReport`) | L0 → L1 | `error{kind:"task_parked"}`; `recover` clears it |
-| Watch ended (`listener_error`, `session_failed`) | L0 → L1 | Reattach with a fresh snapshot; no client-visible error on the first, three failures in 60 s mint one `internal` failure and mark the bot `unavailable` |
+| Watch ended (`listener_error`) | L0 → L1 | Reattach with a fresh snapshot; no client-visible error on the first, three within 60 s mint one `internal` failure and mark the bot `unavailable` |
+| Watch ended (`session_failed`) | L0 → L1 | Immediate `storage_failed` failure, same identity as `harness.closed{failed}`; no reattach counting |
 | Whole process crash | — | Next start resumes; `SIGKILL` recovery is a mandatory test |
 | `close()` timeout | L2 | Bot quarantined; open/delete refused until closed |
 | Client disconnect | L4 | Daemon keeps working; reconnect starts from a snapshot |

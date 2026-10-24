@@ -11,6 +11,7 @@
     "unavailable": {
       "reason": "storage_failed",
       "message": "session storage could not be opened"
-    }
+    },
+    "streaming": null
   }
 }
