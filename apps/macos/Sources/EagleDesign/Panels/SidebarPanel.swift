@@ -82,9 +82,37 @@ public struct SidebarPanel: View {
           .padding(.horizontal, Theme.Metric.sidebarInset - Theme.Metric.rowInset)
           .padding(.bottom, 16)
         }
-        .scrollIndicators(.never)
-        .onAppear {
-          if let selection { proxy.scrollTo(selection, anchor: .center) }
+        .scrollEdgeFades(Theme.Palette.canvas)
+        .overlay(alignment: .bottom) {
+          if unreadCount > 0 {
+            Button(action: onUnread) {
+              HStack(spacing: 8) {
+                Circle()
+                  .fill(.white.opacity(0.22))
+                  .frame(width: 20, height: 20)
+                  .overlay {
+                    Image(systemName: "chevron.down")
+                      .font(.system(size: 9, weight: .bold))
+                      .foregroundStyle(.white)
+                  }
+                Text("更多未读消息")
+                  .font(.system(size: 12, weight: .medium))
+                  .foregroundStyle(.white)
+              }
+              .padding(.horizontal, 12)
+              .frame(height: 34)
+              .background(Capsule().fill(Theme.Palette.accent))
+              .shadow(color: Theme.Palette.accent.opacity(0.28), radius: 10, y: 3)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.bottom, 8)
+          }
+        }
+        .onChange(of: selection) {
+          if let selection {
+            withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(selection, anchor: .center) }
+          }
         }
       }
 
@@ -119,34 +147,6 @@ public struct SidebarPanel: View {
 
   private var footer: some View {
     VStack(spacing: 8) {
-      if unreadCount > 0 {
-        HStack(spacing: 10) {
-          Circle()
-            .fill(Theme.Palette.accentFill)
-            .frame(width: 20, height: 20)
-            .overlay {
-              Image(systemName: "chevron.down")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.white)
-            }
-          Text("\(unreadCount) 条未读消息")
-            .font(Theme.TypeScale.note)
-            .foregroundStyle(Theme.Palette.textSecondary)
-          Spacer(minLength: 0)
-          TextAction("更多未读消息", action: onUnread)
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 40)
-        .background(
-          RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
-            .fill(Theme.Palette.card)
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
-            .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
-        )
-      }
-
       HStack(spacing: 10) {
         Avatar(initial: "Z", tint: Theme.Palette.avatarTint(2))
         Text(userName)

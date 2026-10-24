@@ -2,15 +2,25 @@ import SwiftUI
 
 /// One transcript row. Assistant turns are plain text; only user turns and the
 /// delivery meta lines carry color.
+public struct TranscriptSender: Hashable, Sendable {
+  public let name: String
+  public let tintIndex: Int
+
+  public init(name: String, tintIndex: Int) {
+    self.name = name
+    self.tintIndex = tintIndex
+  }
+}
+
 public enum TranscriptEntry: Identifiable, Hashable, Sendable {
-  case assistant(id: String, blocks: [AssistantTurn.Block])
+  case assistant(id: String, blocks: [AssistantTurn.Block], sender: TranscriptSender? = nil)
   case user(id: String, text: String)
   case note(id: String, text: String, tintIndices: [Int])
   case typing(id: String)
 
   public var id: String {
     switch self {
-    case .assistant(let id, _), .user(let id, _), .note(let id, _, _), .typing(let id):
+    case .assistant(let id, _, _), .user(let id, _), .note(let id, _, _), .typing(let id):
       return id
     }
   }
@@ -117,7 +127,7 @@ public struct ConversationColumn: View {
         .padding(.bottom, 12)
         .animation(.easeOut(duration: 0.2), value: entries.count)
       }
-      .scrollIndicators(.never)
+      .scrollEdgeFades(Theme.Palette.surface)
       .onChange(of: entries.count) {
         withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo("bottom", anchor: .bottom) }
       }
@@ -127,9 +137,17 @@ public struct ConversationColumn: View {
   @ViewBuilder
   private func row(_ entry: TranscriptEntry) -> some View {
     switch entry {
-    case .assistant(_, let blocks):
-      AssistantTurn(blocks)
-        .transition(.opacity.combined(with: .move(edge: .bottom)))
+    case .assistant(_, let blocks, let sender):
+      VStack(alignment: .leading, spacing: 14) {
+        if let sender {
+          HStack {
+            Spacer(minLength: 0)
+            SenderChip(name: sender.name, tintIndex: sender.tintIndex)
+          }
+        }
+        AssistantTurn(blocks)
+      }
+      .transition(.opacity.combined(with: .move(edge: .bottom)))
     case .user(_, let text):
       UserBubble(text)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
