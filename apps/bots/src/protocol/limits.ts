@@ -17,3 +17,5 @@ export const DELTA_FLUSH_BYTES = 96 * 1024;
 export const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/;
 export const TRACE_ID = /^[A-Za-z0-9_-]{8,64}$/;
 export const BOT_ID = /^[A-Za-z0-9_-]{1,80}$/;
+/** Entry ids are `e_*` for committed entries and `p_a*` for provisional messages. */
+export const ENTRY_ID = /^(e|p_a)[A-Za-z0-9_-]{1,64}$/;

@@ -1,13 +1,13 @@
 {
   "type": "status",
   "rev": 49,
+  "trace": "tr_0190a1b3-4f50-7b61-9c2d-3e4f50617283",
   "running": true,
+  "streaming": "p_a2",
   "inbox": [
     {
       "id": "s_4",
       "mode": "followUp"
     }
-  ],
-  "trace": "tr_0190a1b3-4f50-7b61-9c2d-3e4f50617283",
-  "streaming": "p_a2"
+  ]
 }

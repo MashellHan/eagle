@@ -1,5 +1,6 @@
-// Wire ⇄ domain for protocol v1. Field names follow docs/bots/PROTOCOL.md exactly;
-// unknown fields are tolerated (additive versioning) and never re-encoded.
+// Wire ⇄ domain for protocol v1 (docs/bots/PROTOCOL.md). Strict on everything the
+// contract calls required, tolerant only of *unknown* fields, which are dropped on
+// encode. Nothing reaches a domain type without passing its closed union.
 import type {
   BotSummary,
   ContentBlock,
@@ -9,7 +10,11 @@ import type {
   ErrorKind,
   InboxItem,
   Message,
+  MessageRole,
+  MessageState,
+  StopReason,
   Submission,
+  SubmissionStatus,
   Usage,
 } from "../core/domain.ts";
 import { PROTOCOL_VERSION } from "./version.ts";
@@ -35,7 +40,9 @@ export type ClientCommand =
     }
   | { readonly type: "ping" };
 
-export type ServerEvent = { readonly rev?: number; readonly trace?: string } & (
+export type SessionErrorKind = Exclude<ErrorKind, "version_mismatch">;
+
+export type ServerEvent =
   | {
       readonly type: "welcome";
       readonly protocolVersion: number;
@@ -47,34 +54,65 @@ export type ServerEvent = { readonly rev?: number; readonly trace?: string } & (
       readonly capabilities: Readonly<Record<string, boolean>>;
       readonly bots: readonly BotSummary[];
     }
-  | { readonly type: "snapshot"; readonly value: ConversationSnapshot }
-  | { readonly type: "append"; readonly message: Message; readonly replaces?: string }
-  | { readonly type: "delta"; readonly messageId: string; readonly changes: readonly DeltaChange[] }
+  | {
+      readonly type: "snapshot";
+      readonly rev: number;
+      readonly trace: string;
+      readonly value: ConversationSnapshot;
+    }
+  | {
+      readonly type: "append";
+      readonly rev: number;
+      readonly trace: string;
+      readonly message: Message;
+      readonly replaces?: string;
+    }
+  | {
+      readonly type: "delta";
+      readonly rev: number;
+      readonly trace: string;
+      readonly messageId: string;
+      readonly changes: readonly DeltaChange[];
+    }
   | {
       readonly type: "status";
+      readonly rev: number;
+      readonly trace: string;
       readonly running: boolean;
       readonly streaming: string | null;
       readonly inbox: readonly InboxItem[];
     }
-  | { readonly type: "submission"; readonly record: Submission }
+  | {
+      readonly type: "submission";
+      readonly rev?: number;
+      readonly trace: string;
+      readonly record: Submission;
+    }
   | { readonly type: "bots"; readonly bots: readonly BotSummary[] }
   | {
       readonly type: "history";
+      readonly trace: string;
       readonly messages: readonly Message[];
       readonly hasMore: boolean;
     }
   | {
       readonly type: "error";
-      readonly kind: ErrorKind;
-      readonly disposition?: ErrorDisposition;
-      readonly failure?: string;
+      readonly rev?: number;
+      readonly trace: string;
+      readonly kind: SessionErrorKind;
+      readonly disposition: ErrorDisposition;
+      readonly failure: string;
+      readonly message: string;
       readonly requestId?: string;
       readonly taskId?: string;
-      readonly message: string;
-      readonly server?: { readonly protocolVersion: number };
     }
-  | { readonly type: "pong" }
-);
+  | {
+      readonly type: "error";
+      readonly kind: "version_mismatch";
+      readonly message: string;
+      readonly server: { readonly protocolVersion: number };
+    }
+  | { readonly type: "pong" };
 
 export type FrameErrorReason =
   | "invalid_json"
@@ -93,32 +131,97 @@ export class FrameError extends Error {
   }
 }
 
+const ERROR_KINDS: readonly ErrorKind[] = [
+  "auth_failed",
+  "unknown_bot",
+  "invalid_command",
+  "limit_exceeded",
+  "version_mismatch",
+  "model_error",
+  "session_failed",
+  "task_faulted",
+  "task_parked",
+  "extension_error",
+  "storage_failed",
+  "internal",
+];
+const DISPOSITIONS: readonly ErrorDisposition[] = ["not_admitted", "unknown", "runtime"];
+const ROLES: readonly MessageRole[] = ["user", "assistant", "notice", "tool", "system"];
+const STATES: readonly MessageState[] = ["streaming", "complete", "aborted", "error"];
+const STOP_REASONS: readonly StopReason[] = [
+  "stop",
+  "length",
+  "toolUse",
+  "aborted",
+  "error",
+  "deferred",
+];
+const SUBMISSION_STATUSES: readonly SubmissionStatus[] = ["queued", "placed", "done", "unanswered"];
+const INBOX_MODES: readonly InboxItem["mode"][] = ["followUp", "steer", "queue"];
+const BOT_STATES: readonly BotSummary["state"][] = [
+  "catalogued",
+  "opening",
+  "idle",
+  "running",
+  "unavailable",
+  "quarantined",
+];
+
+/** Decode context decides whether a schema fault is a client or a server error. */
+type Ctx = "command" | "event";
+
+function fail(ctx: Ctx, message: string): never {
+  throw new FrameError(ctx === "command" ? "invalid_command" : "invalid_event", message);
+}
+
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
-const str = (v: unknown, what: string): string => {
-  if (typeof v !== "string") throw new FrameError("invalid_command", `${what} must be a string`);
-  return v;
+const present = (o: Record<string, unknown>, key: string): boolean =>
+  Object.hasOwn(o, key) && o[key] !== undefined;
+
+const str = (ctx: Ctx, v: unknown, what: string): string => {
+  if (typeof v !== "string" || v.length === 0) fail(ctx, `${what} must be a non-empty string`);
+  return v as string;
 };
 
-const optStr = (v: unknown, what: string): string | undefined =>
-  v === undefined || v === null ? undefined : str(v, what);
-
-const num = (v: unknown, what: string): number => {
-  if (typeof v !== "number" || !Number.isFinite(v)) {
-    throw new FrameError("invalid_command", `${what} must be a number`);
-  }
-  return v;
+const anyStr = (ctx: Ctx, v: unknown, what: string): string => {
+  if (typeof v !== "string") fail(ctx, `${what} must be a string`);
+  return v as string;
 };
 
-const bool = (v: unknown, what: string): boolean => {
-  if (typeof v !== "boolean") throw new FrameError("invalid_command", `${what} must be a boolean`);
-  return v;
+const optStr = (ctx: Ctx, v: unknown, what: string): string | undefined =>
+  v === undefined ? undefined : anyStr(ctx, v, what);
+
+const int = (ctx: Ctx, v: unknown, what: string): number => {
+  if (typeof v !== "number" || !Number.isSafeInteger(v)) fail(ctx, `${what} must be an integer`);
+  return v as number;
 };
 
-const arr = (v: unknown, what: string): readonly unknown[] => {
-  if (!Array.isArray(v)) throw new FrameError("invalid_command", `${what} must be an array`);
-  return v;
+const nonNegative = (ctx: Ctx, v: unknown, what: string): number => {
+  const value = int(ctx, v, what);
+  if (value < 0) fail(ctx, `${what} must not be negative`);
+  return value;
+};
+
+const bool = (ctx: Ctx, v: unknown, what: string): boolean => {
+  if (typeof v !== "boolean") fail(ctx, `${what} must be a boolean`);
+  return v as boolean;
+};
+
+const arr = (ctx: Ctx, v: unknown, what: string): readonly unknown[] => {
+  if (!Array.isArray(v)) fail(ctx, `${what} must be an array`);
+  return v as readonly unknown[];
+};
+
+const oneOf = <T extends string>(ctx: Ctx, v: unknown, values: readonly T[], what: string): T => {
+  if (typeof v !== "string" || !values.includes(v as T)) fail(ctx, `${what} is not a known value`);
+  return v as T;
+};
+
+const required = (ctx: Ctx, o: Record<string, unknown>, key: string): unknown => {
+  if (!present(o, key)) fail(ctx, `${key} is required`);
+  return o[key];
 };
 
 export function parseJson(text: string): Record<string, unknown> {
@@ -128,308 +231,411 @@ export function parseJson(text: string): Record<string, unknown> {
   } catch {
     throw new FrameError("invalid_json", "frame is not JSON");
   }
-  if (!isObject(value)) throw new FrameError("invalid_command", "frame must be an object");
+  if (!isObject(value)) throw new FrameError("invalid_json", "frame must be an object");
   return value;
 }
 
 export function decodeCommand(raw: Record<string, unknown>): ClientCommand {
-  const type = str(raw.type, "type");
+  const ctx: Ctx = "command";
+  const type = str(ctx, raw.type, "type");
   switch (type) {
     case "hello":
       return {
         type: "hello",
-        protocolVersion: num(raw.protocolVersion, "protocolVersion"),
-        client: str(raw.client, "client"),
+        protocolVersion: int(ctx, raw.protocolVersion, "protocolVersion"),
+        client: str(ctx, raw.client, "client"),
       };
     case "subscribe":
-      return { type, botId: str(raw.botId, "botId"), trace: str(raw.trace, "trace") };
+      return { type, botId: str(ctx, raw.botId, "botId"), trace: str(ctx, raw.trace, "trace") };
     case "send": {
-      const whenBusy = optStr(raw.whenBusy, "whenBusy") ?? "followUp";
-      if (whenBusy !== "followUp" && whenBusy !== "steer" && whenBusy !== "reject") {
-        throw new FrameError("invalid_command", "whenBusy is invalid");
-      }
+      // Only an omitted whenBusy defaults; an explicit null is a client bug.
+      const whenBusy =
+        raw.whenBusy === undefined
+          ? "followUp"
+          : oneOf(ctx, raw.whenBusy, ["followUp", "steer", "reject"] as const, "whenBusy");
       return {
         type,
-        requestId: str(raw.requestId, "requestId"),
-        text: str(raw.text, "text"),
+        requestId: str(ctx, raw.requestId, "requestId"),
+        text: anyStr(ctx, required(ctx, raw, "text"), "text"),
         whenBusy,
-        trace: str(raw.trace, "trace"),
+        trace: str(ctx, raw.trace, "trace"),
       };
     }
     case "abort":
     case "recover":
     case "resync":
-      return { type, trace: str(raw.trace, "trace") };
+      return { type, trace: str(ctx, raw.trace, "trace") };
     case "history":
       return {
         type,
-        before: str(raw.before, "before"),
-        limit: num(raw.limit, "limit"),
-        trace: str(raw.trace, "trace"),
+        before: str(ctx, raw.before, "before"),
+        limit: int(ctx, raw.limit, "limit"),
+        trace: str(ctx, raw.trace, "trace"),
       };
     case "ping":
       return { type: "ping" };
     default:
-      throw new FrameError("invalid_command", `unknown command ${type}`);
+      return fail(ctx, `unknown command ${type}`);
   }
 }
 
-function decodeMessage(raw: unknown): Message {
-  if (!isObject(raw)) throw new FrameError("invalid_event", "message must be an object");
-  const message: Record<string, unknown> = {
-    id: str(raw.id, "message.id"),
-    role: str(raw.role, "message.role"),
-    state: str(raw.state, "message.state"),
-    createdAt: str(raw.createdAt, "message.createdAt"),
-    blocks: arr(raw.blocks, "message.blocks").map(decodeBlock),
-  };
-  const requestId = optStr(raw.requestId, "message.requestId");
-  if (requestId !== undefined) message.requestId = requestId;
-  const stopReason = optStr(raw.stopReason, "message.stopReason");
-  if (stopReason !== undefined) message.stopReason = stopReason;
-  return message as unknown as Message;
-}
-
-function decodeBlock(raw: unknown): ContentBlock {
-  if (!isObject(raw)) throw new FrameError("invalid_event", "block must be an object");
-  const type = str(raw.type, "block.type");
-  if (type === "text") return { type: "text", text: str(raw.text, "block.text") };
-  if (type === "thinking") return { type: "thinking", text: str(raw.text, "block.text") };
+const decodeBlock = (ctx: Ctx, raw: unknown): ContentBlock => {
+  if (!isObject(raw)) fail(ctx, "block must be an object");
+  const type = str(ctx, raw.type, "block.type");
+  if (type === "text") return { type: "text", text: anyStr(ctx, raw.text, "block.text") };
+  if (type === "thinking") return { type: "thinking", text: anyStr(ctx, raw.text, "block.text") };
   if (type === "toolCall") {
     return {
       type: "toolCall",
-      callId: str(raw.callId, "block.callId"),
-      name: str(raw.name, "block.name"),
+      callId: str(ctx, raw.callId, "block.callId"),
+      name: str(ctx, raw.name, "block.name"),
       args: isObject(raw.args) ? raw.args : {},
     };
   }
   if (type === "toolResult") {
     return {
       type: "toolResult",
-      callId: str(raw.callId, "block.callId"),
-      text: str(raw.text, "block.text"),
-      isError: bool(raw.isError, "block.isError"),
+      callId: str(ctx, raw.callId, "block.callId"),
+      text: anyStr(ctx, raw.text, "block.text"),
+      isError: bool(ctx, raw.isError, "block.isError"),
     };
   }
-  throw new FrameError("invalid_event", `unknown block type ${type}`);
-}
+  return fail(ctx, `unknown block type ${type}`);
+};
 
-function decodeUsage(raw: unknown): Usage | undefined {
-  if (raw === undefined) return undefined;
-  if (!isObject(raw)) throw new FrameError("invalid_event", "usage must be an object");
+const decodeMessage = (ctx: Ctx, raw: unknown): Message => {
+  if (!isObject(raw)) fail(ctx, "message must be an object");
+  const role = oneOf(ctx, raw.role, ROLES, "message.role");
+  const requestId =
+    raw.requestId === undefined ? undefined : anyStr(ctx, raw.requestId, "message.requestId");
+  if (requestId !== undefined && role !== "user") {
+    fail(ctx, "requestId belongs to user messages only");
+  }
+  const stopReason =
+    raw.stopReason === undefined
+      ? undefined
+      : oneOf(ctx, raw.stopReason, STOP_REASONS, "message.stopReason");
   return {
-    inputTokens: num(raw.inputTokens, "usage.inputTokens"),
-    outputTokens: num(raw.outputTokens, "usage.outputTokens"),
-    totalTokens: num(raw.totalTokens, "usage.totalTokens"),
+    id: str(ctx, raw.id, "message.id"),
+    role,
+    state: oneOf(ctx, raw.state, STATES, "message.state"),
+    createdAt: str(ctx, raw.createdAt, "message.createdAt"),
+    blocks: arr(ctx, raw.blocks, "message.blocks").map((b) => decodeBlock(ctx, b)),
+    ...(requestId === undefined ? {} : { requestId }),
+    ...(stopReason === undefined ? {} : { stopReason }),
   };
-}
+};
 
-function decodeInboxItem(raw: unknown): InboxItem {
-  if (!isObject(raw)) throw new FrameError("invalid_event", "inbox item must be an object");
-  const mode = str(raw.mode, "inbox.mode");
-  if (mode !== "followUp" && mode !== "steer" && mode !== "queue") {
-    throw new FrameError("invalid_event", "inbox.mode is invalid");
-  }
-  return { id: str(raw.id, "inbox.id"), mode };
-}
+const decodeUsage = (ctx: Ctx, raw: unknown): Usage => {
+  if (!isObject(raw)) fail(ctx, "usage must be an object");
+  return {
+    inputTokens: nonNegative(ctx, raw.inputTokens, "usage.inputTokens"),
+    outputTokens: nonNegative(ctx, raw.outputTokens, "usage.outputTokens"),
+    totalTokens: nonNegative(ctx, raw.totalTokens, "usage.totalTokens"),
+  };
+};
 
-function decodeSubmission(raw: unknown): Submission {
-  if (!isObject(raw)) throw new FrameError("invalid_event", "submission must be an object");
-  const status = str(raw.status, "submission.status");
-  if (status !== "queued" && status !== "placed" && status !== "done" && status !== "unanswered") {
-    throw new FrameError("invalid_event", "submission.status is invalid");
+const decodeInboxItem = (ctx: Ctx, raw: unknown): InboxItem => {
+  if (!isObject(raw)) fail(ctx, "inbox item must be an object");
+  return {
+    id: str(ctx, raw.id, "inbox.id"),
+    mode: oneOf(ctx, raw.mode, INBOX_MODES, "inbox.mode"),
+  };
+};
+
+const decodeSubmission = (ctx: Ctx, raw: unknown): Submission => {
+  if (!isObject(raw)) fail(ctx, "submission must be an object");
+  const status = oneOf(ctx, raw.status, SUBMISSION_STATUSES, "submission.status");
+  const entryId = optStr(ctx, raw.entryId, "submission.entryId");
+  const answerEntryId = optStr(ctx, raw.answerEntryId, "submission.answerEntryId");
+  const reason = optStr(ctx, raw.reason, "submission.reason");
+  if (status === "queued" && (entryId !== undefined || answerEntryId !== undefined)) {
+    fail(ctx, "queued submissions have no entries");
   }
-  const record: Record<string, unknown> = {
-    id: str(raw.submissionId, "submission.submissionId"),
-    requestId: str(raw.requestId, "submission.requestId"),
+  if (status === "placed" && (entryId === undefined || answerEntryId !== undefined)) {
+    fail(ctx, "placed submissions have entryId only");
+  }
+  if (status === "done" && (entryId === undefined || answerEntryId === undefined)) {
+    fail(ctx, "done submissions have entryId and answerEntryId");
+  }
+  if (status === "unanswered" && (reason === undefined || answerEntryId !== undefined)) {
+    fail(ctx, "unanswered submissions have reason and no answer");
+  }
+  return {
+    id: str(ctx, raw.submissionId, "submission.submissionId"),
+    requestId: str(ctx, raw.requestId, "submission.requestId"),
     status,
+    ...(entryId === undefined ? {} : { entryId }),
+    ...(answerEntryId === undefined ? {} : { answerEntryId }),
+    ...(reason === undefined ? {} : { reason }),
   };
-  const entryId = optStr(raw.entryId, "submission.entryId");
-  if (entryId !== undefined) record.entryId = entryId;
-  const answerEntryId = optStr(raw.answerEntryId, "submission.answerEntryId");
-  if (answerEntryId !== undefined) record.answerEntryId = answerEntryId;
-  const reason = optStr(raw.reason, "submission.reason");
-  if (reason !== undefined) record.reason = reason;
-  return record as unknown as Submission;
-}
+};
 
-function decodeSnapshot(raw: unknown): ConversationSnapshot {
-  if (!isObject(raw)) throw new FrameError("invalid_event", "snapshot value must be an object");
-  const value: Record<string, unknown> = {
-    botId: str(raw.botId, "snapshot.botId"),
-    messages: arr(raw.messages, "snapshot.messages").map(decodeMessage),
-    streaming:
-      raw.streaming === null || raw.streaming === undefined
-        ? null
-        : isObject(raw.streaming)
-          ? str(raw.streaming.messageId, "snapshot.streaming.messageId")
-          : null,
-    pending: arr(raw.pending, "snapshot.pending").map(decodeSubmission),
-    inbox: arr(raw.inbox, "snapshot.inbox").map(decodeInboxItem),
-    running: bool(raw.running, "snapshot.running"),
+const decodeSnapshot = (ctx: Ctx, raw: unknown): ConversationSnapshot => {
+  if (!isObject(raw)) fail(ctx, "snapshot value must be an object");
+  const streamingRaw = required(ctx, raw, "streaming");
+  let streaming: string | null;
+  if (streamingRaw === null) streaming = null;
+  else if (isObject(streamingRaw))
+    streaming = str(ctx, streamingRaw.messageId, "streaming.messageId");
+  else return fail(ctx, "streaming must be null or an object");
+
+  const messages = arr(ctx, required(ctx, raw, "messages"), "messages").map((m) =>
+    decodeMessage(ctx, m),
+  );
+  if (streaming !== null && !messages.some((m) => m.id === streaming)) {
+    fail(ctx, "streaming id must be one of the snapshot messages");
+  }
+
+  const truncatedBefore =
+    raw.truncatedBefore === undefined
+      ? undefined
+      : str(ctx, raw.truncatedBefore, "truncatedBefore");
+  const agent = isObject(raw.agent)
+    ? {
+        model: {
+          provider: str(
+            ctx,
+            (isObject(raw.agent.model) ? raw.agent.model : {}).provider,
+            "agent.model.provider",
+          ),
+          modelId: str(
+            ctx,
+            (isObject(raw.agent.model) ? raw.agent.model : {}).modelId,
+            "agent.model.modelId",
+          ),
+        },
+        thinkingLevel: anyStr(ctx, raw.agent.thinkingLevel, "agent.thinkingLevel"),
+        instructions: anyStr(ctx, raw.agent.instructions, "agent.instructions"),
+      }
+    : undefined;
+  const unavailable = isObject(raw.unavailable)
+    ? {
+        reason: oneOf(ctx, raw.unavailable.reason, ERROR_KINDS, "unavailable.reason"),
+        message: anyStr(ctx, raw.unavailable.message, "unavailable.message"),
+      }
+    : undefined;
+
+  return {
+    botId: str(ctx, raw.botId, "botId"),
+    messages,
+    streaming,
+    pending: arr(ctx, required(ctx, raw, "pending"), "pending").map((p) =>
+      decodeSubmission(ctx, p),
+    ),
+    inbox: arr(ctx, required(ctx, raw, "inbox"), "inbox").map((i) => decodeInboxItem(ctx, i)),
+    running: bool(ctx, required(ctx, raw, "running"), "running"),
+    ...(truncatedBefore === undefined ? {} : { truncatedBefore }),
+    ...(raw.usage === undefined ? {} : { usage: decodeUsage(ctx, raw.usage) }),
+    ...(agent === undefined ? {} : { agent }),
+    ...(unavailable === undefined ? {} : { unavailable }),
   };
-  const truncatedBefore = optStr(raw.truncatedBefore, "snapshot.truncatedBefore");
-  if (truncatedBefore !== undefined) value.truncatedBefore = truncatedBefore;
-  const usage = decodeUsage(raw.usage);
-  if (usage !== undefined) value.usage = usage;
-  if (isObject(raw.agent)) {
-    const model = isObject(raw.agent.model) ? raw.agent.model : {};
-    value.agent = {
-      model: {
-        provider: str(model.provider, "agent.model.provider"),
-        modelId: str(model.modelId, "agent.model.modelId"),
-      },
-      thinkingLevel: str(raw.agent.thinkingLevel, "agent.thinkingLevel"),
-      instructions: str(raw.agent.instructions, "agent.instructions"),
-    };
-  }
-  if (isObject(raw.unavailable)) {
-    value.unavailable = {
-      reason: str(raw.unavailable.reason, "unavailable.reason") as ErrorKind,
-      message: str(raw.unavailable.message, "unavailable.message"),
-    };
-  }
-  return value as unknown as ConversationSnapshot;
-}
+};
 
-function decodeDeltaChange(raw: unknown): DeltaChange {
-  if (!isObject(raw)) throw new FrameError("invalid_event", "delta change must be an object");
-  const kind = str(raw.kind, "change.kind");
+const decodeDeltaChange = (ctx: Ctx, raw: unknown): DeltaChange => {
+  if (!isObject(raw)) fail(ctx, "delta change must be an object");
+  const kind = str(ctx, raw.kind, "change.kind");
+  if (kind === "message")
+    return { kind, message: decodeMessage(ctx, required(ctx, raw, "message")) };
+  // Block-scoped changes all name their index; `message` is the documented exception.
+  const index = nonNegative(ctx, required(ctx, raw, "index"), "change.index");
   if (kind === "text" || kind === "thinking") {
-    return {
-      kind,
-      index: num(raw.index, "change.index"),
-      append: str(raw.append, "change.append"),
-    };
+    return { kind, index, append: anyStr(ctx, raw.append, "change.append") };
   }
   if (kind === "toolcall") {
+    const path = arr(ctx, required(ctx, raw, "path"), "change.path").map((part, position) => {
+      if (typeof part === "string") return part;
+      if (typeof part === "number" && Number.isSafeInteger(part)) return part;
+      return fail(ctx, `change.path[${position}] must be a string or an integer`);
+    });
     return {
       kind,
-      index: num(raw.index, "change.index"),
-      callId: str(raw.callId, "change.callId"),
-      path: arr(raw.path, "change.path") as readonly (string | number)[],
-      append: str(raw.append, "change.append"),
+      index,
+      callId: str(ctx, raw.callId, "change.callId"),
+      path,
+      append: anyStr(ctx, raw.append, "change.append"),
     };
   }
-  if (kind === "block") {
-    return { kind, index: num(raw.index, "change.index"), block: decodeBlock(raw.block) };
-  }
-  if (kind === "message") return { kind, message: decodeMessage(raw.message) };
-  throw new FrameError("invalid_event", `unknown change kind ${kind}`);
-}
+  if (kind === "block") return { kind, index, block: decodeBlock(ctx, raw.block) };
+  return fail(ctx, `unknown change kind ${kind}`);
+};
 
-function decodeBotSummary(raw: unknown): BotSummary {
-  if (!isObject(raw)) throw new FrameError("invalid_event", "bot must be an object");
+const decodeBotSummary = (ctx: Ctx, raw: unknown): BotSummary => {
+  if (!isObject(raw)) fail(ctx, "bot must be an object");
   const model = isObject(raw.model) ? raw.model : {};
-  const bot: Record<string, unknown> = {
-    id: str(raw.id, "bot.id"),
-    title: str(raw.title, "bot.title"),
-    createdAt: str(raw.createdAt, "bot.createdAt"),
-    updatedAt: str(raw.updatedAt, "bot.updatedAt"),
+  const unavailable = isObject(raw.unavailable)
+    ? {
+        reason: oneOf(ctx, raw.unavailable.reason, ERROR_KINDS, "bot.unavailable.reason"),
+        message: anyStr(ctx, raw.unavailable.message, "bot.unavailable.message"),
+      }
+    : undefined;
+  return {
+    id: str(ctx, raw.id, "bot.id"),
+    title: str(ctx, raw.title, "bot.title"),
+    createdAt: str(ctx, raw.createdAt, "bot.createdAt"),
+    updatedAt: str(ctx, raw.updatedAt, "bot.updatedAt"),
     model: {
-      provider: str(model.provider, "bot.model.provider"),
-      modelId: str(model.modelId, "bot.model.modelId"),
+      provider: str(ctx, model.provider, "bot.model.provider"),
+      modelId: str(ctx, model.modelId, "bot.model.modelId"),
     },
-    state: str(raw.state, "bot.state"),
+    state: oneOf(ctx, raw.state, BOT_STATES, "bot.state"),
+    ...(unavailable === undefined ? {} : { unavailable }),
   };
-  if (isObject(raw.unavailable)) {
-    bot.unavailable = {
-      reason: str(raw.unavailable.reason, "bot.unavailable.reason") as ErrorKind,
-      message: str(raw.unavailable.message, "bot.unavailable.message"),
-    };
-  }
-  return bot as unknown as BotSummary;
-}
+};
+
+const envelope = (ctx: Ctx, raw: Record<string, unknown>) => ({
+  rev: present(raw, "rev") ? nonNegative(ctx, raw.rev, "rev") : undefined,
+  trace: present(raw, "trace") ? str(ctx, raw.trace, "trace") : undefined,
+});
+
+const requireEnvelope = (ctx: Ctx, raw: Record<string, unknown>, rev: boolean) => {
+  const { rev: revision, trace } = envelope(ctx, raw);
+  if (trace === undefined) fail(ctx, "trace is required");
+  if (rev && revision === undefined) fail(ctx, "rev is required");
+  return { trace: trace as string, rev: revision };
+};
 
 export function decodeServerEvent(raw: Record<string, unknown>): ServerEvent {
-  const type = str(raw.type, "type");
-  const base: { rev?: number; trace?: string } = {};
-  if (raw.rev !== undefined) base.rev = num(raw.rev, "rev");
-  if (raw.trace !== undefined) base.trace = str(raw.trace, "trace");
+  const ctx: Ctx = "event";
+  const type = str(ctx, raw.type, "type");
 
   switch (type) {
     case "welcome": {
-      const server = isObject(raw.server) ? raw.server : {};
+      const serverRaw = required(ctx, raw, "server");
+      if (!isObject(serverRaw)) fail(ctx, "server must be an object");
+      const server = serverRaw as Record<string, unknown>;
+      const capabilitiesValue = required(ctx, raw, "capabilities");
+      if (!isObject(capabilitiesValue)) fail(ctx, "capabilities must be an object");
+      const capabilitiesRaw = capabilitiesValue as Record<string, unknown>;
       const capabilities: Record<string, boolean> = {};
-      if (isObject(raw.capabilities)) {
-        for (const [name, on] of Object.entries(raw.capabilities)) capabilities[name] = on === true;
+      for (const name of ["agent", "tools", "tasks", "entries", "usage", "peers"]) {
+        capabilities[name] = bool(
+          ctx,
+          required(ctx, capabilitiesRaw, name),
+          `capabilities.${name}`,
+        );
       }
       return {
-        ...base,
         type,
-        protocolVersion: num(raw.protocolVersion, "protocolVersion"),
+        protocolVersion: int(ctx, required(ctx, raw, "protocolVersion"), "protocolVersion"),
         server: {
-          version: str(server.version, "server.version"),
-          instance: str(server.instance, "server.instance"),
-          pid: num(server.pid, "server.pid"),
+          version: str(ctx, server.version, "server.version"),
+          instance: str(ctx, server.instance, "server.instance"),
+          pid: int(ctx, server.pid, "server.pid"),
         },
         capabilities,
-        bots: arr(raw.bots, "welcome.bots").map(decodeBotSummary),
+        bots: arr(ctx, required(ctx, raw, "bots"), "bots").map((b) => decodeBotSummary(ctx, b)),
       };
     }
-    case "snapshot":
-      return { ...base, type, value: decodeSnapshot(raw.value) };
+    case "snapshot": {
+      const { rev, trace } = requireEnvelope(ctx, raw, true);
+      return {
+        type,
+        rev: rev as number,
+        trace,
+        value: decodeSnapshot(ctx, required(ctx, raw, "value")),
+      };
+    }
     case "append": {
-      const replaces = optStr(raw.replaces, "replaces");
+      const { rev, trace } = requireEnvelope(ctx, raw, true);
+      const replaces = optStr(ctx, raw.replaces, "replaces");
+      const message = decodeMessage(ctx, required(ctx, raw, "message"));
       return replaces === undefined
-        ? { ...base, type, message: decodeMessage(raw.message) }
-        : { ...base, type, message: decodeMessage(raw.message), replaces };
+        ? { type, rev: rev as number, trace, message }
+        : { type, rev: rev as number, trace, message, replaces };
     }
-    case "delta":
+    case "delta": {
+      const { rev, trace } = requireEnvelope(ctx, raw, true);
       return {
-        ...base,
         type,
-        messageId: str(raw.messageId, "messageId"),
-        changes: arr(raw.changes, "changes").map(decodeDeltaChange),
+        rev: rev as number,
+        trace,
+        messageId: str(ctx, required(ctx, raw, "messageId"), "messageId"),
+        changes: arr(ctx, required(ctx, raw, "changes"), "changes").map((c) =>
+          decodeDeltaChange(ctx, c),
+        ),
       };
-    case "status":
+    }
+    case "status": {
+      const { rev, trace } = requireEnvelope(ctx, raw, true);
+      const streamingRaw = required(ctx, raw, "streaming");
+      const streaming = streamingRaw === null ? null : anyStr(ctx, streamingRaw, "streaming");
       return {
-        ...base,
         type,
-        running: bool(raw.running, "running"),
-        streaming:
-          raw.streaming === null || raw.streaming === undefined
-            ? null
-            : str(raw.streaming, "streaming"),
-        inbox: arr(raw.inbox, "inbox").map(decodeInboxItem),
+        rev: rev as number,
+        trace,
+        running: bool(ctx, required(ctx, raw, "running"), "running"),
+        streaming,
+        inbox: arr(ctx, required(ctx, raw, "inbox"), "inbox").map((i) => decodeInboxItem(ctx, i)),
       };
-    case "submission":
-      return { ...base, type, record: decodeSubmission(raw) };
+    }
+    case "submission": {
+      const { trace, rev } = requireEnvelope(ctx, raw, false);
+      const record = decodeSubmission(ctx, raw);
+      return rev === undefined ? { type, trace, record } : { type, rev, trace, record };
+    }
     case "bots":
-      return { ...base, type, bots: arr(raw.bots, "bots").map(decodeBotSummary) };
-    case "history":
       return {
-        ...base,
         type,
-        messages: arr(raw.messages ?? [], "messages").map(decodeMessage),
-        hasMore: bool(raw.hasMore ?? false, "hasMore"),
+        bots: arr(ctx, required(ctx, raw, "bots"), "bots").map((b) => decodeBotSummary(ctx, b)),
       };
+    case "history": {
+      const { trace } = requireEnvelope(ctx, raw, false);
+      return {
+        type,
+        trace,
+        messages: arr(ctx, required(ctx, raw, "messages"), "messages").map((m) =>
+          decodeMessage(ctx, m),
+        ),
+        hasMore: bool(ctx, required(ctx, raw, "hasMore"), "hasMore"),
+      };
+    }
     case "error": {
-      const event: Record<string, unknown> = {
-        ...base,
-        type,
-        kind: str(raw.kind, "kind"),
-        message: str(raw.message, "message"),
-      };
-      const disposition = optStr(raw.disposition, "disposition");
-      if (disposition !== undefined) event.disposition = disposition;
-      const failure = optStr(raw.failure, "failure");
-      if (failure !== undefined) event.failure = failure;
-      const requestId = optStr(raw.requestId, "requestId");
-      if (requestId !== undefined) event.requestId = requestId;
-      const taskId = optStr(raw.taskId, "taskId");
-      if (taskId !== undefined) event.taskId = taskId;
-      if (isObject(raw.server)) {
-        event.server = {
-          protocolVersion: num(raw.server.protocolVersion, "server.protocolVersion"),
+      const kind = oneOf(ctx, required(ctx, raw, "kind"), ERROR_KINDS, "kind") as ErrorKind;
+      const message = anyStr(ctx, required(ctx, raw, "message"), "message");
+      if (kind === "version_mismatch") {
+        // Handshake failure: no session exists, so no disposition or failure id.
+        if (present(raw, "disposition") || present(raw, "failure")) {
+          fail(ctx, "the handshake error carries server, not disposition");
+        }
+        const serverValue = required(ctx, raw, "server");
+        if (!isObject(serverValue)) fail(ctx, "server must be an object");
+        const server = serverValue as Record<string, unknown>;
+        return {
+          type,
+          kind,
+          message,
+          server: { protocolVersion: int(ctx, server.protocolVersion, "server.protocolVersion") },
         };
       }
-      return event as unknown as ServerEvent;
+      const { rev } = requireEnvelope(ctx, raw, false);
+      const event: {
+        type: "error";
+        rev?: number;
+        trace: string;
+        kind: SessionErrorKind;
+        disposition: ErrorDisposition;
+        failure: string;
+        message: string;
+        requestId?: string;
+        taskId?: string;
+      } = {
+        type,
+        trace: str(ctx, raw.trace, "trace"),
+        kind,
+        disposition: oneOf(ctx, required(ctx, raw, "disposition"), DISPOSITIONS, "disposition"),
+        failure: str(ctx, required(ctx, raw, "failure"), "failure"),
+        message,
+      };
+      if (rev !== undefined) event.rev = rev;
+      if (raw.requestId !== undefined) event.requestId = anyStr(ctx, raw.requestId, "requestId");
+      if (raw.taskId !== undefined) event.taskId = anyStr(ctx, raw.taskId, "taskId");
+      return event;
     }
     case "pong":
-      return { ...base, type };
+      return { type };
     default:
-      throw new FrameError("invalid_event", `unknown event ${type}`);
+      return fail(ctx, `unknown event ${type}`);
   }
 }
 

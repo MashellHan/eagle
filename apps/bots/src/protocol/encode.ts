@@ -107,9 +107,13 @@ const encodeChange = (change: DeltaChange): Wire => {
 };
 
 export const encodeServerEvent = (event: ServerEvent): Wire => {
+  // The envelope is per variant: welcome and bots carry no revision, pong carries
+  // nothing, and a handshake error carries neither trace nor failure.
   const wire: Wire = { type: event.type };
-  if (event.rev !== undefined) wire.rev = event.rev;
-  if (event.trace !== undefined) wire.trace = event.trace;
+  if (event.type !== "welcome" && event.type !== "bots" && event.type !== "pong") {
+    if ("rev" in event && event.rev !== undefined) wire.rev = event.rev;
+    if ("trace" in event && event.trace !== undefined) wire.trace = event.trace;
+  }
 
   switch (event.type) {
     case "welcome":
@@ -160,16 +164,23 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
       wire.hasMore = event.hasMore;
       wire.messages = event.messages.map(encodeMessage);
       return wire;
-    case "error":
+    case "error": {
       wire.kind = event.kind;
-      if (event.failure !== undefined) wire.failure = event.failure;
-      if (event.disposition !== undefined) wire.disposition = event.disposition;
       wire.message = event.message;
-      if (event.requestId !== undefined) wire.requestId = event.requestId;
-      if (event.taskId !== undefined) wire.taskId = event.taskId;
-      if (event.server !== undefined)
-        wire.server = { protocolVersion: event.server.protocolVersion };
+      // Both error shapes share `type`, so narrow explicitly instead of relying on a
+      // discriminant TypeScript cannot see.
+      if (event.kind === "version_mismatch") {
+        const handshake = event as Extract<ServerEvent, { kind: "version_mismatch" }>;
+        wire.server = { protocolVersion: handshake.server.protocolVersion };
+        return wire;
+      }
+      const session = event as Extract<ServerEvent, { disposition: unknown }>;
+      wire.failure = session.failure;
+      wire.disposition = session.disposition;
+      if (session.requestId !== undefined) wire.requestId = session.requestId;
+      if (session.taskId !== undefined) wire.taskId = session.taskId;
       return wire;
+    }
     case "pong":
       return wire;
   }

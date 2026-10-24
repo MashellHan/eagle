@@ -2,8 +2,8 @@
   "type": "error",
   "trace": "tr_0190a1b4-5061-7c72-8d3e-4f5061728394",
   "kind": "invalid_command",
+  "message": "the bot is busy",
   "failure": "f_91c2",
   "disposition": "not_admitted",
-  "message": "the bot is busy",
   "requestId": "r_0190a1b4-5061-7c72-8d3e-4f5061728394"
 }

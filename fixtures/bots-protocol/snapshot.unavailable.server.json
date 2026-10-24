@@ -5,13 +5,13 @@
   "value": {
     "botId": "b_0190a1b0-1c2d-7e3f-8a9b-0c1d2e3f4a5b",
     "messages": [],
+    "streaming": null,
     "pending": [],
     "inbox": [],
     "running": false,
     "unavailable": {
       "reason": "storage_failed",
       "message": "session storage could not be opened"
-    },
-    "streaming": null
+    }
   }
 }

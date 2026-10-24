@@ -4,8 +4,8 @@
   "trace": "tr_0190a1b3-4f50-7b61-9c2d-3e4f50617283",
   "kind": "task_parked",
   "message": "a task was parked after repeated restarts",
-  "taskId": "t_3",
   "failure": "f_7f3a",
+  "disposition": "runtime",
   "requestId": "r_0190a1b4-5061-7c72-8d3e-4f5061728394",
-  "disposition": "runtime"
+  "taskId": "t_3"
 }

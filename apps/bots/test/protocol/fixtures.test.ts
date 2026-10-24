@@ -56,11 +56,12 @@ test("the encoder reproduces snapshot.server.json byte for byte", () => {
   assert.equal(wire.type, "snapshot");
   if (wire.type !== "snapshot") return;
   const snapshot: ConversationSnapshot = wire.value;
-  const encoded = encodeServerEvent(
-    wire.trace === undefined
-      ? { type: "snapshot", rev: 42, value: snapshot }
-      : { type: "snapshot", rev: 42, trace: wire.trace, value: snapshot },
-  );
+  const encoded = encodeServerEvent({
+    type: "snapshot",
+    rev: 42,
+    trace: wire.trace ?? "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172",
+    value: snapshot,
+  });
   assert.equal(serialize(encoded as Record<string, unknown>), readText("snapshot.server.json"));
 });
 
@@ -72,7 +73,12 @@ test("entity samples decode individually", () => {
   const entities = read("entities.json");
   const bot = decodeServerEvent({ type: "bots", bots: [entities.bot] }) as ServerEvent;
   assert.equal(bot.type, "bots");
-  const append = decodeServerEvent({ type: "append", message: entities.message }) as ServerEvent;
+  const append = decodeServerEvent({
+    type: "append",
+    rev: 1,
+    trace: "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172",
+    message: entities.message,
+  }) as ServerEvent;
   assert.equal(append.type, "append");
 });
 
