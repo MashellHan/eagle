@@ -1,7 +1,8 @@
 // Fanout and revision ownership for one bot (docs/bots/PROTOCOL.md, "Server events").
 // The hub numbers every bot-scoped event on a per-bot sequence and is the only place
 // that decides what a subscriber receives. It speaks domain events: encoding a frame is
-// the wire layer's job, so core never imports protocol.
+// the wire layer's job, so core never imports protocol and the byte measurement is
+// injected by the layer that encodes.
 import type { ConversationSnapshot } from "./domain.ts";
 import type { RuntimeEvent } from "./RuntimePort.ts";
 
@@ -15,49 +16,61 @@ export type HubSubscription = { readonly id: string; detach(): void };
 export const SUBSCRIBER_QUEUE_LIMIT = 256;
 export const SUBSCRIBER_BYTE_LIMIT = 1024 * 1024;
 
+/** Soft batch limit for coalesced deltas (docs/bots/PROTOCOL.md#limits). */
+export const DELTA_BATCH_BYTE_LIMIT = 96 * 1024;
+export const DELTA_FLUSH_MS = 50;
+
+export type HubOptions = {
+  readonly schedule?: (run: () => void) => void;
+  /** Encoded bytes of one event, measured by the transport that will write it. */
+  readonly measure?: (event: RuntimeEvent) => number;
+};
+
+type Queued = { readonly event: HubEvent; readonly bytes: number };
+
 type Slot = {
   readonly id: string;
   readonly send: HubSubscriber;
   readonly manual: boolean;
-  queue: HubEvent[];
+  queue: Queued[];
   bytes: number;
   degraded: boolean;
 };
 
-/** Coalescing window for deltas (docs/bots/PROTOCOL.md#limits). */
-export const DELTA_FLUSH_MS = 50;
+const wireBytes = (event: RuntimeEvent): number => Buffer.byteLength(JSON.stringify(event), "utf8");
 
 export class EventHub {
   readonly #botId: string;
   readonly #defaultTrace: string;
   readonly #slots = new Map<string, Slot>();
-  readonly #clock: () => number;
-  readonly #flush: (run: () => void) => void;
+  readonly #schedule: (run: () => void) => void;
+  readonly #measure: (event: RuntimeEvent) => number;
   #rev = 0;
   #nextId = 1;
-  #pendingDeltas: HubEvent[] = [];
+  /** Deltas still inside the coalescing window; they do not consume a revision yet. */
+  #pendingDeltas: (RuntimeEvent & { type: "delta" })[] = [];
   #pendingBytes = 0;
   #flushScheduled = false;
+  /** Events numbered and waiting for their turn on the per-bot serial queue. */
+  #dispatch: HubEvent[] = [];
+  #delivering = false;
 
-  constructor(
-    botId: string,
-    trace: string,
-    options: { clock?: () => number; schedule?: (run: () => void) => void } = {},
-  ) {
+  constructor(botId: string, trace: string, options: HubOptions = {}) {
     this.#botId = botId;
     this.#defaultTrace = trace;
-    this.#clock = options.clock ?? (() => Date.now());
-    this.#flush =
+    this.#schedule =
       options.schedule ??
       ((run) => {
         setTimeout(run, DELTA_FLUSH_MS);
       });
+    this.#measure = options.measure ?? wireBytes;
   }
 
   get botId(): string {
     return this.#botId;
   }
 
+  /** The revision of the last event this hub numbered. */
   get rev(): number {
     return this.#rev;
   }
@@ -81,7 +94,17 @@ export class EventHub {
       bytes: 0,
       degraded: false,
     });
-    return { id, detach: () => this.#slots.delete(id) };
+    return {
+      id,
+      detach: () => {
+        const slot = this.#slots.get(id);
+        if (slot !== undefined) {
+          slot.queue = [];
+          slot.bytes = 0;
+        }
+        this.#slots.delete(id);
+      },
+    };
   }
 
   /** True once the subscriber fell too far behind and was downgraded. */
@@ -92,110 +115,136 @@ export class EventHub {
   /** Delivers everything queued for a manual subscriber. */
   pump(id: string): void {
     const slot = this.#slots.get(id);
-    if (slot === undefined || slot.degraded) return;
-    this.#drain(slot);
-  }
-
-  /** Publishes a bot-scoped event with the next revision and fans it out. */
-  publish(event: RuntimeEvent): HubEvent {
-    const stamped: HubEvent = { ...event, rev: this.#nextRevision() };
-    if (event.type === "delta") {
-      // Deltas are coalesced inside the window so a streaming answer is not one frame
-      // per token; every other event flushes them first, which keeps revision order.
-      this.#pendingDeltas.push(stamped);
-      this.#pendingBytes += encodedSize(stamped);
-      this.#scheduleFlush();
-      return stamped;
+    if (slot === undefined) return;
+    if (this.#delivering) {
+      this.#drain(slot);
+      return;
     }
-    this.#flushPendingDeltas();
-    this.#deliver(stamped);
-    return stamped;
+    this.#delivering = true;
+    try {
+      this.#drain(slot);
+    } finally {
+      this.#delivering = false;
+    }
+    this.#runDispatch();
   }
 
-  publishSnapshot(value: ConversationSnapshot, trace = this.#defaultTrace): HubEvent {
-    return this.publish({ type: "snapshot", trace, value });
+  /**
+   * Publishes a bot-scoped event. A delta only enters the coalescing window here; its
+   * revision is assigned when the batch it lands in is actually broadcast, so no
+   * subscriber ever observes a numbered event that was folded away.
+   */
+  publish(event: RuntimeEvent): void {
+    if (event.type === "delta") {
+      this.#queueDelta(event);
+      return;
+    }
+    this.#flushDeltas();
+    this.#enqueue({ ...event, rev: this.#nextRevision() });
   }
 
-  reply(event: RuntimeEvent): RuntimeEvent {
-    return event;
+  publishSnapshot(value: ConversationSnapshot, trace = this.#defaultTrace): void {
+    this.publish({ type: "snapshot", trace, value });
   }
 
   /** Delivers anything still coalescing. Tests call this instead of waiting. */
   drain(): void {
-    this.#flushPendingDeltas();
+    this.#flushDeltas();
+    this.#runDispatch();
+  }
+
+  #queueDelta(event: RuntimeEvent & { type: "delta" }): void {
+    const bytes = this.#measure(event);
+    // A batch never grows past the soft limit: flushes happen between whole changes, so
+    // a single oversized change still travels alone instead of being split.
+    if (this.#pendingDeltas.length > 0 && this.#pendingBytes + bytes > DELTA_BATCH_BYTE_LIMIT) {
+      this.#flushDeltas();
+    }
+    this.#pendingDeltas.push(event);
+    this.#pendingBytes += bytes;
+    this.#scheduleFlush();
   }
 
   #scheduleFlush(): void {
     if (this.#flushScheduled) return;
     this.#flushScheduled = true;
-    this.#flush(() => {
+    this.#schedule(() => {
       this.#flushScheduled = false;
-      this.#flushPendingDeltas();
+      this.#flushDeltas();
+      this.#runDispatch();
     });
   }
 
-  #flushPendingDeltas(): void {
+  #flushDeltas(): void {
     const pending = this.#pendingDeltas;
     if (pending.length === 0) return;
     this.#pendingDeltas = [];
     this.#pendingBytes = 0;
-    // Consecutive deltas for one message fold together; a different message starts a
-    // new group so nothing is dropped or retargeted.
-    let group: HubEvent[] = [];
-    for (const event of pending) {
-      const previous = group[group.length - 1];
-      const sameTarget =
-        previous?.type === "delta" &&
-        event.type === "delta" &&
-        previous.messageId === event.messageId;
-      if (group.length > 0 && !sameTarget) {
-        const merged = mergeDeltas(group);
-        if (merged !== undefined) this.#deliver(merged);
-        group = [];
+    for (const group of groupByMessage(pending)) {
+      this.#enqueue({ ...mergeDeltas(group), rev: this.#nextRevision() });
+    }
+  }
+
+  #enqueue(event: HubEvent): void {
+    this.#dispatch.push(event);
+    this.#runDispatch();
+  }
+
+  #runDispatch(): void {
+    if (this.#delivering) return;
+    this.#delivering = true;
+    try {
+      while (this.#dispatch.length > 0) {
+        const event = this.#dispatch.shift();
+        if (event === undefined) break;
+        this.#fanout(event);
       }
-      group.push(event);
+    } finally {
+      this.#delivering = false;
     }
-    const merged = mergeDeltas(group);
-    if (merged !== undefined) this.#deliver(merged);
   }
 
-  #deliver(event: HubEvent): void {
-    for (const slot of this.#slots.values()) this.#offer(slot, event);
+  #fanout(event: HubEvent): void {
+    const bytes = this.#measure(event);
+    for (const slot of this.#slots.values()) this.#offer(slot, event, bytes);
   }
 
-  #offer(slot: Slot, event: HubEvent): void {
+  #offer(slot: Slot, event: HubEvent, bytes: number): void {
     if (slot.degraded) {
-      // Snapshot-only: a snapshot is the recovery, everything else is dropped.
+      // Snapshot-only: increments are dropped, and the newest snapshot is kept as the
+      // recovery anchor until it is delivered. That anchor is never evicted by later
+      // increments, so a behind subscriber always has a way back.
       if (event.type !== "snapshot") return;
-      slot.degraded = false;
-      slot.queue = [];
-      slot.bytes = 0;
-    }
-    const size = encodedSize(event);
-    if (
+      slot.queue = [{ event, bytes }];
+      slot.bytes = bytes;
+    } else if (
       slot.queue.length + 1 > SUBSCRIBER_QUEUE_LIMIT ||
-      slot.bytes + size > SUBSCRIBER_BYTE_LIMIT
+      slot.bytes + bytes > SUBSCRIBER_BYTE_LIMIT
     ) {
       // Falling behind downgrades the subscriber instead of stalling the hub.
       slot.degraded = true;
       slot.queue = [];
       slot.bytes = 0;
       return;
+    } else {
+      slot.queue.push({ event, bytes });
+      slot.bytes += bytes;
     }
-    slot.queue.push(event);
-    slot.bytes += size;
-    if (slot.manual) return;
-    this.#drain(slot);
+    if (!slot.manual) this.#drain(slot);
   }
 
   #drain(slot: Slot): void {
     // A synchronous sink keeps the queue empty; one that throws is dropped from the hub.
     while (slot.queue.length > 0) {
+      // A sink may detach itself (or be dropped) in the middle of a pump.
+      if (this.#slots.get(slot.id) !== slot) return;
       const next = slot.queue.shift();
-      if (next === undefined) break;
-      slot.bytes -= encodedSize(next);
+      if (next === undefined) return;
+      slot.bytes -= next.bytes;
+      // Delivering the anchor makes the subscriber contiguous again.
+      if (next.event.type === "snapshot") slot.degraded = false;
       try {
-        slot.send(next);
+        slot.send(next.event);
       } catch {
         this.#slots.delete(slot.id);
         return;
@@ -209,22 +258,36 @@ export class EventHub {
   }
 }
 
-const encodedSize = (event: HubEvent): number => JSON.stringify(event).length;
+/** Consecutive deltas for one message travel together; a different message starts a group. */
+type DeltaEvent = RuntimeEvent & { type: "delta" };
+
+const groupByMessage = (events: readonly DeltaEvent[]): DeltaEvent[][] => {
+  const groups: DeltaEvent[][] = [];
+  let current: DeltaEvent[] = [];
+  let target: string | undefined;
+  for (const event of events) {
+    if (current.length > 0 && event.messageId !== target) {
+      groups.push(current);
+      current = [];
+    }
+    target = event.messageId;
+    current.push(event);
+  }
+  if (current.length > 0) groups.push(current);
+  return groups;
+};
 
 /**
- * Folds consecutive deltas for one message into a single event, keeping the last
- * revision. Content is preserved: appends concatenate per block index.
+ * Folds consecutive deltas for one message into a single event. Content is preserved:
+ * appends concatenate per block index, and block/message replacements keep their whole
+ * payload in the original order.
  */
-const mergeDeltas = (events: readonly HubEvent[]): HubEvent | undefined => {
+const mergeDeltas = (events: readonly DeltaEvent[]): DeltaEvent => {
   const first = events[0];
-  if (first === undefined) return undefined;
-  const last = events[events.length - 1] as HubEvent;
-  if (events.length === 1) return first;
-  if (events.some((event) => event.type !== "delta")) return undefined;
-  const deltas = events as readonly (HubEvent & { type: "delta" })[];
-  const messageId = deltas[0]?.messageId ?? "";
+  if (first === undefined) throw new Error("a delta batch holds deltas");
+  const last = events[events.length - 1] as DeltaEvent;
   const changes: Record<string, unknown>[] = [];
-  for (const event of deltas) {
+  for (const event of events) {
     for (const change of event.changes) {
       const prior = changes[changes.length - 1];
       if (
@@ -236,10 +299,8 @@ const mergeDeltas = (events: readonly HubEvent[]): HubEvent | undefined => {
         prior.append = `${String(prior.append)}${change.append}`;
         continue;
       }
-      // Anything else keeps its full payload: block and message replacements carry
-      // content that a merge must not swallow.
       changes.push({ ...change });
     }
   }
-  return { ...last, type: "delta", messageId, changes: changes as never };
+  return { ...last, type: "delta", messageId: last.messageId, changes: changes as never };
 };

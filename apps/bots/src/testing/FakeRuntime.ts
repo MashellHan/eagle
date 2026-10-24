@@ -1,7 +1,7 @@
 // A scripted runtime for core tests. Each bot id gets its own handle and state, opening
 // the same id twice returns the same handle, and every emitted event is applied to that
 // state, so `submission()`, `history()` and `subscribe()` answer from what was delivered.
-import type { ConversationSnapshot, Message, Submission } from "../core/domain.ts";
+import type { ConversationSnapshot, DeltaChange, Message, Submission } from "../core/domain.ts";
 import type {
   RuntimeBotSpec,
   RuntimeEvent,
@@ -23,6 +23,8 @@ export class FakeHandle implements RuntimeHandle {
   readonly closes: { trace: string; deadlineMs: number }[] = [];
   readonly #script: FakeScript;
   #snapshot: ConversationSnapshot;
+  /** Every message ever committed, in order: the window may move, history may not. */
+  #committed: Message[] = [];
   #sink: ((event: RuntimeEvent) => void) | undefined;
   #submissions = new Map<string, Submission>();
 
@@ -42,6 +44,7 @@ export class FakeHandle implements RuntimeHandle {
       inbox: [],
       running: false,
     };
+    this.#committed = [...this.#snapshot.messages];
     for (const record of this.#snapshot.pending) this.#submissions.set(record.requestId, record);
   }
 
@@ -80,7 +83,7 @@ export class FakeHandle implements RuntimeHandle {
   }
 
   history(input: { beforeEntryId?: string; limit: number }): Promise<RuntimeHistory> {
-    const messages: readonly Message[] = this.#snapshot.messages;
+    const messages: readonly Message[] = this.#committed;
     const end = input.beforeEntryId
       ? Math.max(
           0,
@@ -130,75 +133,34 @@ export class FakeHandle implements RuntimeHandle {
 
   #apply(event: RuntimeEvent): void {
     if (event.type === "append") {
-      const messages = [...this.#snapshot.messages];
-      const replaced = event.replaces ? messages.findIndex((m) => m.id === event.replaces) : -1;
-      const existing = messages.findIndex((m) => m.id === event.message.id);
-      const target = replaced >= 0 ? replaced : existing;
-      if (target >= 0) messages[target] = event.message;
-      else messages.push(event.message);
-      // A replaced provisional is gone, so a streaming pointer at it must move too.
-      const streaming =
-        event.replaces && this.#snapshot.streaming === event.replaces
-          ? event.message.state === "streaming"
-            ? event.message.id
-            : null
-          : this.#snapshot.streaming;
+      this.#committed = upsert(this.#committed, event.message, event.replaces);
+      const messages = upsert(this.#snapshot.messages, event.message, event.replaces);
+      // A provisional becomes the streaming target; anything else that supersedes it
+      // clears the pointer, so a late joiner sees the real attempt state.
+      let streaming = this.#snapshot.streaming;
+      if (event.message.state === "streaming") streaming = event.message.id;
+      else if (streaming === event.message.id || streaming === event.replaces) streaming = null;
       this.#snapshot = { ...this.#snapshot, messages, streaming };
       return;
     }
     if (event.type === "delta") {
-      const current = this.#snapshot.messages.find((message) => message.id === event.messageId);
-      if (current === undefined) return;
-      type MutableBlock = {
-        type: string;
-        text?: string;
-        args?: Record<string, unknown>;
-        [key: string]: unknown;
-      };
-      let message = current;
-      let blocks = message.blocks.map((block) => ({ ...block })) as MutableBlock[];
-      // Changes apply in order: a message replacement swaps the working message, and the
-      // changes after it land on the replacement.
-      for (const change of event.changes) {
-        if (change.kind === "message") {
-          message = change.message;
-          blocks = message.blocks.map((block) => ({ ...block })) as MutableBlock[];
-          continue;
-        }
-        if (change.kind === "block") {
-          blocks[change.index] = { ...change.block } as never;
-          continue;
-        }
-        const block = blocks[change.index];
-        if (block === undefined) continue;
-        if (
-          (change.kind === "text" || change.kind === "thinking") &&
-          typeof block.text === "string"
-        ) {
-          block.text += change.append;
-          continue;
-        }
-        if (change.kind === "toolcall" && block.type === "toolCall") {
-          const args = { ...(block.args ?? {}) } as Record<string, unknown>;
-          const key = change.path[0];
-          if (typeof key === "string") {
-            const prior = typeof args[key] === "string" ? (args[key] as string) : "";
-            args[key] = prior + change.append;
-          }
-          block.args = args;
-        }
-      }
-      const updated = { ...message, blocks: blocks as never };
-      this.#snapshot = {
-        ...this.#snapshot,
-        messages: this.#snapshot.messages.map((existing) =>
-          existing.id === event.messageId ? updated : existing,
-        ),
-      };
+      const update = (message: Message): Message => applyChanges(message, event.changes);
+      const hasTarget = (message: Message): boolean => message.id === event.messageId;
+      this.#committed = this.#committed.map((message) =>
+        hasTarget(message) ? update(message) : message,
+      );
+      const messages = this.#snapshot.messages.map((message) =>
+        hasTarget(message) ? update(message) : message,
+      );
+      this.#snapshot = { ...this.#snapshot, messages };
       return;
     }
     if (event.type === "snapshot") {
       this.#snapshot = event.value;
+      // The window may shrink, but committed history stays readable through history().
+      for (const message of event.value.messages) {
+        this.#committed = upsert(this.#committed, message);
+      }
       // The snapshot is the authority for pending, running and streaming; keep any
       // settled record the ledger already knows about.
       for (const record of event.value.pending) this.#submissions.set(record.requestId, record);
@@ -227,6 +189,62 @@ export class FakeHandle implements RuntimeHandle {
     }
   }
 }
+
+const upsert = (messages: readonly Message[], message: Message, replaces?: string): Message[] => {
+  const next = [...messages];
+  const replaced = replaces === undefined ? -1 : next.findIndex((item) => item.id === replaces);
+  const existing = next.findIndex((item) => item.id === message.id);
+  const target = replaced >= 0 ? replaced : existing;
+  if (target >= 0) next[target] = message;
+  else next.push(message);
+  return next;
+};
+
+/** Applies delta changes in order: a message replacement swaps the working message. */
+const applyChanges = (message: Message, changes: readonly DeltaChange[]): Message => {
+  let current = message;
+  let blocks = [...current.blocks];
+  for (const change of changes) {
+    if (change.kind === "message") {
+      current = change.message;
+      blocks = [...current.blocks];
+      continue;
+    }
+    if (change.kind === "block") {
+      blocks[change.index] = change.block;
+      continue;
+    }
+    const block = blocks[change.index];
+    if (block === undefined) continue;
+    if (
+      (change.kind === "text" && block.type === "text") ||
+      (change.kind === "thinking" && block.type === "thinking")
+    ) {
+      blocks[change.index] = { ...block, text: block.text + change.append };
+      continue;
+    }
+    if (change.kind === "toolcall" && block.type === "toolCall") {
+      const call = structuredClone(block);
+      appendAtPath(call, change.path, change.append);
+      blocks[change.index] = call;
+    }
+  }
+  return { ...current, blocks };
+};
+
+/** A toolcall path is rooted at the block: `["args","q"]` appends to `block.args.q`. */
+const appendAtPath = (root: object, path: readonly (string | number)[], append: string): void => {
+  let node = root as Record<string | number, unknown>;
+  for (const key of path.slice(0, -1)) {
+    const next = node[key];
+    if (next === null || typeof next !== "object") return;
+    node = next as Record<string | number, unknown>;
+  }
+  const leaf = path[path.length - 1];
+  if (leaf === undefined) return;
+  const prior = node[leaf];
+  node[leaf] = `${typeof prior === "string" ? prior : ""}${append}`;
+};
 
 export class FakeRuntime implements RuntimePort {
   readonly #options: {

@@ -295,7 +295,7 @@ test("delta kinds keep every byte, including a replacement followed by more chan
         },
       },
       { kind: "text", index: 0, append: "+" },
-      { kind: "toolcall", index: 1, callId: "c_1", path: ["path"], append: "/tmp/x" },
+      { kind: "toolcall", index: 1, callId: "c_1", path: ["args", "path"], append: "/tmp/x" },
     ],
   });
   const view = (await handle.subscribe(trace, () => {})).snapshot;
@@ -400,4 +400,146 @@ test("a submission created after a restored ledger entry does not reuse its id",
     trace,
   });
   assert.equal(created.id, "s_3");
+});
+
+test("a toolcall delta walks the whole path from the block root", async () => {
+  const runtime = new FakeRuntime();
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  const fake = runtime.handle("b_1");
+  fake.emit({
+    type: "append",
+    trace,
+    message: {
+      id: "p_a1",
+      role: "assistant",
+      state: "streaming",
+      createdAt: "x",
+      blocks: [
+        {
+          type: "toolCall",
+          callId: "c_1",
+          name: "read",
+          args: { q: "A", list: [{ value: "X" }] },
+        },
+      ],
+    },
+  });
+  fake.emit({
+    type: "delta",
+    trace,
+    messageId: "p_a1",
+    changes: [
+      { kind: "toolcall", index: 0, callId: "c_1", path: ["args", "q"], append: "B" },
+      {
+        kind: "toolcall",
+        index: 0,
+        callId: "c_1",
+        path: ["args", "list", 0, "value"],
+        append: "Y",
+      },
+    ],
+  });
+  const view = (await handle.subscribe(trace, () => {})).snapshot;
+  const call = view.messages[0]?.blocks[0];
+  assert.deepEqual(call?.type === "toolCall" ? call.args : {}, {
+    q: "AB",
+    list: [{ value: "XY" }],
+  });
+});
+
+test("a streaming append becomes the pointer a late joiner sees, and finalization clears it", async () => {
+  const runtime = new FakeRuntime();
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  const fake = runtime.handle("b_1");
+  fake.emit({ type: "status", trace, running: true, streaming: null, inbox: [] });
+  fake.emit({
+    type: "append",
+    trace,
+    message: {
+      id: "p_a1",
+      role: "assistant",
+      state: "streaming",
+      createdAt: "x",
+      blocks: [{ type: "text", text: "half" }],
+    },
+  });
+  const joined = (await handle.subscribe(trace, () => {})).snapshot;
+  assert.equal(joined.streaming, "p_a1", "a late joiner sees the attempt as active");
+  fake.emit({
+    type: "append",
+    trace,
+    replaces: "p_a1",
+    message: {
+      id: "e_1",
+      role: "assistant",
+      state: "complete",
+      createdAt: "x",
+      blocks: [{ type: "text", text: "half and more" }],
+    },
+  });
+  const finished = (await handle.subscribe(trace, () => {})).snapshot;
+  assert.equal(finished.streaming, null);
+});
+
+test("history keeps messages that the current window no longer shows", async () => {
+  const runtime = new FakeRuntime();
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  const fake = runtime.handle("b_1");
+  for (const id of ["e_1", "e_2"]) {
+    fake.emit({
+      type: "append",
+      trace,
+      message: {
+        id,
+        role: "user",
+        state: "complete",
+        createdAt: "x",
+        blocks: [{ type: "text", text: id }],
+      },
+    });
+  }
+  fake.emit({
+    type: "snapshot",
+    trace,
+    value: {
+      botId: "b_1",
+      messages: [
+        {
+          id: "e_2",
+          role: "user",
+          state: "complete",
+          createdAt: "x",
+          blocks: [{ type: "text", text: "e_2" }],
+        },
+      ],
+      truncatedBefore: "e_2",
+      streaming: null,
+      pending: [],
+      inbox: [],
+      running: false,
+    },
+  });
+  assert.deepEqual(
+    (await handle.history({ beforeEntryId: "e_2", limit: 10 })).messages.map((m) => m.id),
+    ["e_1"],
+  );
+  assert.deepEqual(
+    (await handle.history({ limit: 10 })).messages.map((m) => m.id),
+    ["e_1", "e_2"],
+  );
 });
