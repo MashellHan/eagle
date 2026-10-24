@@ -45,9 +45,9 @@ const DETAIL_TYPES = {
   propagated: "boolean",
 } as const;
 
-const redact = (value: string): string => {
+const redact = (value: string, secrets: readonly string[] = []): string => {
   let text = value;
-  for (const secret of [process.env.BOTS_API_KEY, process.env.AGENT_SIGNING_KEY]) {
+  for (const secret of [process.env.BOTS_API_KEY, process.env.AGENT_SIGNING_KEY, ...secrets]) {
     if (secret && secret.length >= 8) text = text.split(secret).join("[redacted]");
   }
   text = text.replace(/[A-Za-z0-9_-]{0,2}sk-[A-Za-z0-9_-]{16,}/g, "[redacted]");
@@ -83,6 +83,7 @@ const COUNT_KEYS = new Set(["count", "bytes", "len"]);
 const redactDetail = (
   evt: EventName,
   detail: Readonly<Record<string, unknown>>,
+  secrets: readonly string[],
 ): Record<string, unknown> => {
   const allowed = DETAIL_SCHEMA[evt] ?? [];
   const clean: Record<string, unknown> = {};
@@ -102,7 +103,7 @@ const redactDetail = (
     ) {
       throw new Error(`log detail ${key} must be a non-negative integer`);
     }
-    clean[key] = expected === "string" ? redact(value as string) : value;
+    clean[key] = expected === "string" ? redact(value as string, secrets) : value;
   }
   return clean;
 };
@@ -122,13 +123,20 @@ export type EmitFields = {
   readonly propagated?: boolean;
 };
 
+export type LogOptions = {
+  /** Credentials known only at runtime, such as the daemon bearer token. */
+  readonly secrets?: () => readonly string[];
+};
+
 export class Log {
   readonly #sink: LogSink;
   readonly #now: () => Date;
+  readonly #secrets: () => readonly string[];
 
-  constructor(sink: LogSink, now: () => Date = () => new Date()) {
+  constructor(sink: LogSink, now: () => Date = () => new Date(), options: LogOptions = {}) {
     this.#sink = sink;
     this.#now = now;
+    this.#secrets = options.secrets ?? (() => []);
   }
 
   emit(level: Level, layer: Layer, evt: DeclaredEvent, fields: EmitFields): LogRecord {
@@ -161,10 +169,10 @@ export class Log {
       level,
       layer,
       evt,
-      trace: redact(fields.trace),
-      ...(fields.botId === undefined ? {} : { botId: redact(fields.botId) }),
-      ...(fields.connId === undefined ? {} : { connId: redact(fields.connId) }),
-      ...(fields.reqId === undefined ? {} : { reqId: redact(fields.reqId) }),
+      trace: redact(fields.trace, this.#secrets()),
+      ...(fields.botId === undefined ? {} : { botId: redact(fields.botId, this.#secrets()) }),
+      ...(fields.connId === undefined ? {} : { connId: redact(fields.connId, this.#secrets()) }),
+      ...(fields.reqId === undefined ? {} : { reqId: redact(fields.reqId, this.#secrets()) }),
       ...(fields.rev === undefined ? {} : { rev: fields.rev }),
       ...(fields.durMs === undefined ? {} : { durMs: fields.durMs }),
       ...(fields.failure === undefined
@@ -172,17 +180,21 @@ export class Log {
         : {
             err: {
               kind: fields.failure.kind,
-              failure: redact(fields.failure.id),
+              failure: redact(fields.failure.id, this.#secrets()),
               ...(fields.origin === true ? { origin: true as const } : {}),
             },
           }),
       ...(fields.detail === undefined && fields.propagated === undefined
         ? {}
         : {
-            detail: redactDetail(evt, {
-              ...(fields.detail ?? {}),
-              ...(fields.propagated === true ? { propagated: true } : {}),
-            }),
+            detail: redactDetail(
+              evt,
+              {
+                ...(fields.detail ?? {}),
+                ...(fields.propagated === true ? { propagated: true } : {}),
+              },
+              this.#secrets(),
+            ),
           }),
     };
     this.#sink(record);
@@ -193,7 +205,8 @@ export class Log {
 /** Collects records for assertions; never used in production paths. */
 export const captureLog = (
   now: () => Date = () => new Date(),
+  options: LogOptions = {},
 ): { log: Log; records: LogRecord[] } => {
   const records: LogRecord[] = [];
-  return { log: new Log((record) => records.push(record), now), records };
+  return { log: new Log((record) => records.push(record), now, options), records };
 };
