@@ -52,12 +52,22 @@ test("a record carries the documented fields", () => {
 test("an undeclared event name is refused", () => {
   const { log } = captureLog(at);
   assert.equal(isEventName("core.submit.start"), true);
-  assert.throws(() => log.emit("info", "core", "core.not.declared", { trace }), /undeclared/);
+  assert.throws(
+    () => log.emit("info", "core", "core.not.declared" as never, { trace }),
+    /undeclared/,
+  );
 });
 
 test("an event must belong to the layer that logs it", () => {
   const { log } = captureLog(at);
   assert.throws(() => log.emit("info", "core", "runtime.open.ok", { trace }), /does not belong/);
+  // The pi layer is a layer like any other: an upstream report name cannot be
+  // borrowed by core.
+  assert.throws(() => log.emit("info", "core", "pi.report", { trace }), /does not belong/);
+  assert.equal(
+    log.emit("warn", "pi", "pi.report", { trace, failure, propagated: true }).layer,
+    "pi",
+  );
 });
 
 test("a failure event requires a failure identity", () => {
@@ -81,6 +91,60 @@ test("only the originating layer logs at error", () => {
   assert.deepEqual(record.err, { kind: "storage_failed", failure: "f_7", origin: true });
 });
 
+test("an error record must originate at the emitting layer", () => {
+  const { log } = captureLog(at);
+  const foreign = { id: "f_8", kind: "storage_failed" as const, layer: "runtime" as const };
+  assert.throws(
+    () => log.emit("error", "core", "core.submit.fail", { trace, failure: foreign, origin: true }),
+    /must originate at runtime/,
+  );
+});
+
+test("classification and error records require a non-empty failure", () => {
+  const { log } = captureLog(at);
+  assert.throws(
+    () => log.emit("info", "runtime", "runtime.failure.classify", { trace }),
+    /requires a failure/,
+  );
+  assert.throws(
+    () => log.emit("error", "core", "core.submit.start", { trace, origin: true }),
+    /requires a failure/,
+  );
+  const empty = { id: "  ", kind: "internal" as const, layer: "core" as const };
+  assert.throws(
+    () => log.emit("warn", "core", "core.submit.fail", { trace, failure: empty }),
+    /non-empty failure identity/,
+  );
+  assert.equal(
+    log.emit("info", "runtime", "runtime.failure.classify", { trace, failure, origin: true }).level,
+    "info",
+  );
+});
+
+test("detail keys and types are declared", () => {
+  const { log } = captureLog(at);
+  assert.throws(
+    () => log.emit("info", "core", "core.hub.publish.ok", { trace, detail: { surprise: 1 } }),
+    /undeclared log detail key/,
+  );
+  assert.throws(
+    () => log.emit("info", "core", "core.hub.publish.ok", { trace, detail: { count: "text" } }),
+    /must be a number/,
+  );
+  const record = log.emit("warn", "runtime", "runtime.submit.fail", {
+    trace,
+    failure,
+    propagated: true,
+    detail: { providerCode: "rate_limited", count: 2, reattach: true },
+  });
+  assert.deepEqual(record.detail, {
+    providerCode: "rate_limited",
+    count: 2,
+    reattach: true,
+    propagated: true,
+  });
+});
+
 test("secrets, home paths and message text never reach a record", () => {
   const { log, records } = captureLog(at);
   process.env.BOTS_API_KEY = "sk-live-abcdefghijklmnop";
@@ -89,7 +153,7 @@ test("secrets, home paths and message text never reach a record", () => {
       trace,
       detail: {
         reason: `failed for ${process.env.HOME}/bots with sk-live-abcdefghijklmnop`,
-        text: "hello",
+        messageId: "hello",
       },
     });
   } finally {
@@ -98,15 +162,11 @@ test("secrets, home paths and message text never reach a record", () => {
   const serialized = JSON.stringify(records);
   assert.equal(serialized.includes("sk-live-abcdefghijklmnop"), false);
   assert.equal(serialized.includes(process.env.HOME ?? "unlikely-home"), false);
-  assert.equal(
-    serialized.includes("hello"),
-    false,
-    "detail keys outside the allowlist are dropped",
-  );
+  assert.equal(serialized.includes("hello"), true, "declared string details survive redaction");
   assert.equal(records[0]?.detail?.reason, "failed for ~/bots with [redacted]");
 });
 
-test("no emit site passes a literal event name", () => {
+test("no source file holds an event-shaped string literal", () => {
   const walk = (dir: string): string[] =>
     readdirSync(dir).flatMap((name) => {
       const path = join(dir, name);
@@ -115,8 +175,16 @@ test("no emit site passes a literal event name", () => {
     });
   for (const file of walk("src")) {
     if (file.endsWith("log/events.ts")) continue;
-    const source = readFileSync(file, "utf8");
-    const literals = source.match(/\.emit\([^)]*"[a-z]+\.[a-z.]+\.[a-z]+"/g) ?? [];
-    assert.deepEqual(literals, [], `${file} passes an event literal; use Events.* constants`);
+    // Strip comments: documentation mentions entry kinds such as `pi.user`.
+    const source = readFileSync(file, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    // Any literal that looks like an event name is a bypass: it can reach emit through
+    // an alias and it escapes both the type and the catalogue.
+    // Only names that start with a real layer are suspicious; dotted field paths such
+    // as "agent.model.provider" are legitimate strings.
+    const literals =
+      source.match(/["'`](transport|protocol|core|runtime|pi)\.[a-z0-9_.]+["'`]/g) ?? [];
+    assert.deepEqual(literals, [], `${file} holds an event-shaped literal; use Events.* constants`);
   }
 });

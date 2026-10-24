@@ -25,22 +25,25 @@ export type LogRecord = {
 
 export type LogSink = (record: LogRecord) => void;
 
-const ALLOWED_DETAIL = new Set([
-  "count",
-  "bytes",
-  "len",
-  "reason",
-  "kind",
-  "role",
-  "state",
-  "messageId",
-  "reattach",
-  "quarantined",
-  "finished",
-  "evt",
-  "queued",
-  "propagated",
-]);
+// Every allowed detail key has a declared type. An unknown key or a wrong type is a
+// shape error at the emit site, not something the sink silently drops.
+const DETAIL_TYPES = {
+  count: "number",
+  bytes: "number",
+  len: "number",
+  reason: "string",
+  kind: "string",
+  role: "string",
+  state: "string",
+  messageId: "string",
+  finished: "string",
+  evt: "string",
+  providerCode: "string",
+  reattach: "boolean",
+  quarantined: "boolean",
+  queued: "boolean",
+  propagated: "boolean",
+} as const;
 
 const redact = (value: string): string => {
   let text = value;
@@ -56,9 +59,12 @@ const redact = (value: string): string => {
 const redactDetail = (detail: Readonly<Record<string, unknown>>): Record<string, unknown> => {
   const clean: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(detail)) {
-    if (!ALLOWED_DETAIL.has(key)) continue;
-    if (typeof value === "string") clean[key] = redact(value);
-    else if (typeof value === "number" || typeof value === "boolean") clean[key] = value;
+    const expected = (DETAIL_TYPES as Record<string, string | undefined>)[key];
+    if (expected === undefined) throw new Error(`undeclared log detail key: ${key}`);
+    if (typeof value !== expected) {
+      throw new Error(`log detail ${key} must be a ${expected}`);
+    }
+    clean[key] = expected === "string" ? redact(value as string) : value;
   }
   return clean;
 };
@@ -87,17 +93,28 @@ export class Log {
     this.#now = now;
   }
 
-  emit(level: Level, layer: Layer, evt: string, fields: EmitFields): LogRecord {
-    if (!isEventName(evt)) throw new Error(`undeclared log event: ${evt}`);
-    if (!evt.startsWith(`${layer}.`) && evt !== "pi.report" && evt !== "pi.session.closed") {
+  emit(level: Level, layer: Layer, evt: EventName, fields: EmitFields): LogRecord {
+    // The event argument is an `EventName`, so a literal typo fails typecheck as well.
+    if (!isEventName(evt)) throw new Error(`undeclared log event: ${String(evt)}`);
+    if (!evt.startsWith(`${layer}.`)) {
       throw new Error(`event ${evt} does not belong to layer ${layer}`);
     }
-    const needsFailure = /\.(fail|degrade|reject)$/.test(evt);
+    const needsFailure = /\.(fail|degrade|reject|classify)$/.test(evt) || level === "error";
     if (needsFailure && fields.failure === undefined) {
       throw new Error(`event ${evt} requires a failure`);
     }
-    if (level === "error" && fields.origin !== true) {
-      throw new Error(`only the originating layer logs at error (${evt})`);
+    if (fields.failure !== undefined && fields.failure.id.trim().length === 0) {
+      throw new Error(`event ${evt} needs a non-empty failure identity`);
+    }
+    if (level === "error") {
+      if (fields.origin !== true) {
+        throw new Error(`only the originating layer logs at error (${evt})`);
+      }
+      if (fields.failure?.layer !== layer) {
+        throw new Error(
+          `error record for ${evt} must originate at ${String(fields.failure?.layer)}`,
+        );
+      }
     }
 
     const record: LogRecord = {
