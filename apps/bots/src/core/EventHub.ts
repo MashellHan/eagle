@@ -139,7 +139,23 @@ export class EventHub {
     if (pending.length === 0) return;
     this.#pendingDeltas = [];
     this.#pendingBytes = 0;
-    const merged = mergeDeltas(pending);
+    // Consecutive deltas for one message fold together; a different message starts a
+    // new group so nothing is dropped or retargeted.
+    let group: HubEvent[] = [];
+    for (const event of pending) {
+      const previous = group[group.length - 1];
+      const sameTarget =
+        previous?.type === "delta" &&
+        event.type === "delta" &&
+        previous.messageId === event.messageId;
+      if (group.length > 0 && !sameTarget) {
+        const merged = mergeDeltas(group);
+        if (merged !== undefined) this.#deliver(merged);
+        group = [];
+      }
+      group.push(event);
+    }
+    const merged = mergeDeltas(group);
     if (merged !== undefined) this.#deliver(merged);
   }
 
@@ -148,7 +164,13 @@ export class EventHub {
   }
 
   #offer(slot: Slot, event: HubEvent): void {
-    if (slot.degraded) return; // snapshot-only: nothing else is sent
+    if (slot.degraded) {
+      // Snapshot-only: a snapshot is the recovery, everything else is dropped.
+      if (event.type !== "snapshot") return;
+      slot.degraded = false;
+      slot.queue = [];
+      slot.bytes = 0;
+    }
     const size = encodedSize(event);
     if (
       slot.queue.length + 1 > SUBSCRIBER_QUEUE_LIMIT ||
@@ -198,29 +220,26 @@ const mergeDeltas = (events: readonly HubEvent[]): HubEvent | undefined => {
   if (first === undefined) return undefined;
   const last = events[events.length - 1] as HubEvent;
   if (events.length === 1) return first;
-  const groups = new Map<string, { kind: string; index?: number; append?: string }[]>();
-  for (const event of events) {
-    if (event.type !== "delta") return undefined;
-    const bucket = groups.get(event.messageId) ?? [];
+  if (events.some((event) => event.type !== "delta")) return undefined;
+  const deltas = events as readonly (HubEvent & { type: "delta" })[];
+  const messageId = deltas[0]?.messageId ?? "";
+  const changes: Record<string, unknown>[] = [];
+  for (const event of deltas) {
     for (const change of event.changes) {
-      if (change.kind === "text" || change.kind === "thinking") {
-        const prior = bucket.find(
-          (entry) => entry.kind === change.kind && entry.index === change.index,
-        );
-        if (prior) prior.append = (prior.append ?? "") + change.append;
-        else bucket.push({ kind: change.kind, index: change.index, append: change.append });
-      } else {
-        bucket.push({ kind: change.kind });
+      const prior = changes[changes.length - 1];
+      if (
+        prior !== undefined &&
+        (change.kind === "text" || change.kind === "thinking") &&
+        prior.kind === change.kind &&
+        prior.index === change.index
+      ) {
+        prior.append = `${String(prior.append)}${change.append}`;
+        continue;
       }
+      // Anything else keeps its full payload: block and message replacements carry
+      // content that a merge must not swallow.
+      changes.push({ ...change });
     }
-    groups.set(event.messageId, bucket);
   }
-  const [messageId, changes] = [...groups.entries()][0] ?? [];
-  if (messageId === undefined || changes === undefined) return undefined;
-  return {
-    ...last,
-    type: "delta",
-    messageId,
-    changes: changes as never,
-  };
+  return { ...last, type: "delta", messageId, changes: changes as never };
 };

@@ -79,7 +79,18 @@ test("a subscriber that falls behind is downgraded to snapshot-only", () => {
   assert.equal(hub.degraded(subscription.id), true);
   hub.pump(subscription.id);
   assert.equal(received.length, 0, "a downgraded subscriber receives nothing while behind");
-  hub.drain();
+  // A snapshot is the recovery: it is delivered and the subscriber is live again.
+  hub.publishSnapshot({
+    botId: "b_1",
+    messages: [],
+    streaming: null,
+    pending: [],
+    inbox: [],
+    running: false,
+  });
+  hub.pump(subscription.id);
+  assert.deepEqual(received, [301], "the snapshot is published after the 300 status events");
+  assert.equal(hub.degraded(subscription.id), false);
 });
 
 test("deltas inside one window are coalesced and keep every appended byte", () => {
@@ -138,4 +149,62 @@ test("a runtime snapshot is rendered at the next revision", () => {
   ]);
   assert.equal(snapshot.rev, 2);
   assert.equal(snapshot.type === "snapshot" ? snapshot.value.running : undefined, true);
+});
+
+test("merging keeps block, toolcall and message payloads intact", () => {
+  const scheduled: (() => void)[] = [];
+  const hub = new EventHub("b_1", trace, { schedule: (run) => scheduled.push(run) });
+  const seen: unknown[] = [];
+  hub.subscribe((event) => {
+    if (event.type === "delta") seen.push(event.changes);
+  });
+  hub.publish({
+    type: "delta",
+    trace,
+    messageId: "p_a1",
+    changes: [
+      { kind: "text", index: 0, append: "a" },
+      { kind: "toolcall", index: 1, callId: "c", path: ["q"], append: "x" },
+      { kind: "block", index: 2, block: { type: "text", text: "whole" } },
+    ],
+  });
+  hub.publish({
+    type: "delta",
+    trace,
+    messageId: "p_a1",
+    changes: [{ kind: "text", index: 0, append: "b" }],
+  });
+  scheduled.shift()?.();
+  // Only adjacent changes for the same block fold; a block change in between keeps the
+  // original order instead of reordering content.
+  assert.deepEqual(seen[0], [
+    { kind: "text", index: 0, append: "a" },
+    { kind: "toolcall", index: 1, callId: "c", path: ["q"], append: "x" },
+    { kind: "block", index: 2, block: { type: "text", text: "whole" } },
+    { kind: "text", index: 0, append: "b" },
+  ]);
+});
+
+test("deltas for different messages are not merged together", () => {
+  const scheduled: (() => void)[] = [];
+  const hub = new EventHub("b_1", trace, { schedule: (run) => scheduled.push(run) });
+  const seen: string[] = [];
+  hub.subscribe((event) => {
+    if (event.type === "delta") seen.push(event.messageId);
+  });
+  hub.publish({
+    type: "delta",
+    trace,
+    messageId: "p_a1",
+    changes: [{ kind: "text", index: 0, append: "a" }],
+  });
+  hub.publish({
+    type: "delta",
+    trace,
+    messageId: "p_a2",
+    changes: [{ kind: "text", index: 0, append: "b" }],
+  });
+  scheduled[0]?.();
+  scheduled[1]?.();
+  assert.deepEqual(seen, ["p_a1", "p_a2"]);
 });
