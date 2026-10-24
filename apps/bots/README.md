@@ -55,7 +55,7 @@ npm test               # fast gate
 npm run typecheck
 npm run lint
 npm run coverage       # enforced thresholds
-npm run check          # everything above except coverage, in gate order
+npm run check          # fixtures:check, test, typecheck, lint, coverage (see docs/bots/TESTING.md)
 ```
 
 `smoke:model` never prints the key and exits non-zero when the endpoint, the model

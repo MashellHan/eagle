@@ -38,6 +38,10 @@ evidence says upstream source. Probe scripts and inputs are listed in
 | F19 | `settings` are host-level and read at every use; only `pi.agent` is per conversation | upstream README |
 | F20 | Sleeping tasks survive restarts, and the Node default timer keeps the process alive, so `onWake` is unnecessary in the daemon | upstream `spec §5.6` |
 | F21 | Cold open 7 ms; reopen of 400 entries 3 ms; 20 bots open in 30 ms at 103 MB RSS; ≈2.4 KB storage per answered turn | P5 |
+| F22 | An interrupted attempt is **converted into a committed `aborted` assistant entry** (`convertPartial`) before the run resumes, so a crash mid-answer leaves an aborted entry plus the eventual answer | upstream `dist/harness/generation.js` `convertPartial` |
+| F23 | `deferred` responses commit a polling checkpoint instead of an assistant entry; the run stays active with no message | upstream `generation.js`, `spec §8.3` |
+| F24 | Reading `status()` after `submit()` can already show `done`, because admission starts the run | P4 (duplicate `requestId` returned `done` with entry + answer) |
+| F25 | `harness.closed` reports `{reason}` and normal `close()` also settles it; it is not a failure by itself | upstream README "Errors", `spec §10.1` |
 
 ## Harness construction (per bot)
 
@@ -78,50 +82,98 @@ provisional: { id, attempt } | null   // id = "p_a<attempt>"
 | pi source | Adapter action | `RuntimeEvent` |
 | --- | --- | --- |
 | attach snapshot (F8) | Build the view; if a partial exists, include it as a provisional message with its current content | `subscribe()` result |
-| `message_start` where `message.role === "assistant"` | Start an attempt if none is open; emit the provisional once, **with the content from F4**, `state:"streaming"` | `append` |
+| `message_start` where `message.role === "assistant"` | Start an attempt if none is open; emit the provisional once, **with the converted content from F4**, `state:"streaming"` | `append` |
 | `message_start` where `message.role === "user"` | Ignore (F3) | — |
-| `message_update` | Apply every `MessageChange` losslessly and forward it (F4/F5) | `delta{messageId:"p_a<n>"}` |
+| `message_update` | Convert every `MessageChange` to a `DeltaChange` with its `index` (table below) and forward it | `delta{messageId:"p_a<n>"}` |
 | `message_start` for an assistant attempt that already has a provisional (retry inside the same turn) | Close the old provisional, start a new attempt id | `append{new p_a<n>}` |
-| `message_end` with `entry.kind === "pi.assistant"` | Map the entry's message; final state from `stopReason` (F13) | `append{message, replaces: p_a<n>}` |
+| `message_end` with `entry.kind === "pi.assistant"` | Convert the entry's message to a domain `Message`; final state from `stopReason` (F13); clear the provisional | `append{message, replaces: p_a<n>}` |
+| `message_end` with `entry.kind === "pi.assistant"` whose `stopReason === "aborted"` and which F22 produced | Convert with `state:"aborted"`; no provisional to replace | `append` |
 | `message_end` with `entry.kind === "pi.user"` | Map the user entry, including its `requestId` when known | `append` |
 | `submission` | Map the record: status, `entryId`, `answerEntryId`, `reason` | `submission` |
 | `inbox_update` | Map queue items | `status` |
 | `run_start` / `run_end` | Mark running, clear the provisional at attempt end | `status` |
 | `tool_execution_*` | Reserved (phase 2) | `delta{kind:"toolcall"}` / reserved blocks |
 | `auto_retry_start` / `auto_retry_end` | Log `runtime.classify`; no wire event (the attempt id changes on the next `message_start`) | — |
-| `task_failed` | Classify the task kind | `error{kind:"task_faulted"\|"task_parked", taskId}` |
-| `onReport` (`task_parked`, `session_failed`, `extension_error`, …) (F15) | Dedupe by `(kind, taskId)` within 60 s, then classify | `error` |
-| `harness.closed` (F14) | Classify `storage_failed`; mark the handle dead | `error{kind:"storage_failed"}` |
-| watch end (F17) | Reattach once, then error | `snapshot` after reattach, or `error{kind:"internal"}` |
+| `task_failed` | Classify as `task_faulted` (a park only ever arrives through `onReport`) | `error{kind:"task_faulted", taskId}` |
+| `onReport` (`task_parked`, `session_failed`, `extension_error`, …) (F15) | Mint a `failureId`, dedupe by it across channels, then classify | `error{kind, failureId}` |
+| `harness.closed` (F25) | `reason:"closed"` because we called `close()` → expected, no error. `reason:"failed"` → `storage_failed` | `error{kind:"storage_failed"}` only for the failed case |
+| watch end (F17) | `stopped`/`session_closed`/`ended` belong to us or to a closed harness: detach, no error. `listener_error`/`failed`/`cancelled` while we still want the watch: reattach with a fresh snapshot | `snapshot` after reattach, or `error{kind:"internal"}` after three failures in 60 s |
 | watch falls behind → fresh `snapshot` (F8) | Reset provisional state from the snapshot | `snapshot` |
 
 `MessageChange` must be applied without loss. The wire mirrors each kind
 ([PROTOCOL.md](PROTOCOL.md#server-events)):
 
-| Change | Wire |
+| pi change | Wire `DeltaChange` |
 | --- | --- |
-| `text_start` | nothing; the following deltas carry the text |
-| `text_delta` | `{kind:"text", append}` |
-| `thinking_start`, `thinking_delta` | `{kind:"thinking", append}` (reserved) |
-| `toolcall_start`, `toolcall_delta` | `{kind:"toolcall", callId, path, append}` (reserved) |
-| `block` | `{kind:"block", index, block}` — the whole block |
-| `message` | `{kind:"message", message}` — whole replacement |
+| `text_start` | `{kind:"block", index: contentIndex, block: {type:"text", text: block.text}}` |
+| `text_delta` | `{kind:"text", index: contentIndex, append}` |
+| `thinking_start` | `{kind:"block", index, block: {type:"thinking", text: block.thinking}}` |
+| `thinking_delta` | `{kind:"thinking", index, append}` |
+| `toolcall_start` | `{kind:"block", index, block: {type:"toolCall", callId, name, args}}` |
+| `toolcall_delta` | `{kind:"toolcall", index, callId, path, append}` |
+| `block` | `{kind:"block", index, block}` — the whole converted block |
+| `message` | `{kind:"message", message: convertMessage(message)}` |
+
+`convertMessage` is the only place pi-ai types are read. Nothing from
+`@earendil-works/pi-ai` crosses into `core/domain.ts`: blocks, messages, usage and
+stop reasons are all converted. A golden case covers a block that is announced by
+`text_start` and then receives no delta at all (F5), and a case with two text
+blocks where deltas must land on the right index.
 
 `stopReason` (F13) → `Message.state`:
 
 | `stopReason` | `state` | Note |
 | --- | --- | --- |
 | `stop` | `complete` | Normal answer |
-| `length` | `complete` | Truncated by the token limit; the client appends a notice |
-| `toolUse` | `complete` | Phase 2 only; a tool round follows |
+| `length` | `complete` | Token limit reached. `Message.stopReason` says `length`, so the client renders its own notice instead of guessing from text |
+| `toolUse` | `complete` | A tool round follows; phase 1 has no tools, so the request gets an error result and the run continues (see "No tools") |
 | `aborted` | `aborted` | User abort or shutdown |
 | `error` | `error` | Upstream failure; reason text becomes a `notice`, never model context |
-| `deferred` | `streaming` | Poll-based provider; the run stays active |
+| `deferred` | — (no message) | F23: the run sleeps in a polling checkpoint; the adapter only emits `status{running:true}`, never a fake streaming message |
 | `pending` | `streaming` | In-flight partial |
 
 Because `message_update` is optional (F5), the adapter must never treat deltas as
 the source of truth: the provisional content comes from `message_start`, and the
 final `append` from the entry.
+
+### Attempt lifecycle
+
+One run may contain several generation attempts (retries, deferred polls, a crash
+that resumes). The provisional id is scoped to the attempt so a stale stream can
+never write into a finalized message:
+
+```
+attempt n:  message_start(assistant)     → open attempt n, provisional "p_a<n>"
+            message_update*              → deltas to "p_a<n>"
+            message_end(pi.assistant)    → append final entry, replaces p_a<n>, attempt closed
+            auto_retry_start             → close p_a<n>; the next message_start opens n+1
+            deferred                     → no message at all; emit status only, attempt stays open
+            message_end(aborted)         → append aborted entry, attempt closed (F22)
+            run_end                      → close any open attempt without emitting a message
+```
+
+| Situation | Provisional handling |
+| --- | --- |
+| Retry inside one turn | Old provisional is abandoned silently; the new `message_start` opens `p_a<n+1>`. Clients drop a provisional that never gets `replaces` when `status` reports `running:false` |
+| Deferred poll | No provisional; only `status{running:true}` |
+| Late join or snapshot rerender mid-attempt | The snapshot carries the attempt's current content and its `p_a<n>` id, so later deltas land on a message the client already has |
+| Watch fell behind (F8) | Reset attempt state from the snapshot; the next delta must carry the snapshot's provisional id or be dropped |
+
+### Failure channels
+
+pi reports trouble through four channels, not one. Each needs wiring and each can
+double-report the same underlying failure, so the adapter mints a `failureId` at
+the classification point and dedupes on it:
+
+| Channel | Covers |
+| --- | --- |
+| `AgentEvent` (`task_failed`) | A task that faulted while running |
+| `onReport` (F15) | Parked tasks, session failure, extension/hook errors |
+| `harness.closed` (F25) | Harness end; only `reason:"failed"` is a failure |
+| Watch end (F17) | The event stream ended; reattach before reporting |
+
+Normal ends (`close()` we asked for, `stopped`/`session_closed` watch reasons) are
+not failures and produce no `error` event.
 
 ## Submission ledger
 
@@ -131,6 +183,9 @@ The adapter keeps `requestId → submissionId` in memory and answers from it:
   `status(context)` (F12) and returns the record. A repeated `requestId` returns the
   existing record and emits **no** new events (F7), which is why the daemon replies
   with a connection-scoped `submission` frame itself.
+- The record read here can already be `done` (F24), because admission starts the
+  run. The wire therefore ranks statuses and clients never downgrade
+  ([PROTOCOL.md](PROTOCOL.md#client-commands)).
 - `submission(key)` resolves by either id for duplicate replies.
 - The ledger is not persisted: pi-dedupes by `requestId` in storage, so a daemon
   restart plus a re-sent `send` still converges (F7).
@@ -151,7 +206,7 @@ The adapter keeps `requestId → submissionId` in memory and answers from it:
 | --- | --- | --- |
 | `stream.timeoutMs` | 120 000 | A stalled provider must eventually fail the run |
 | `retry.maxRetries` | 3 | 429/5xx are transient |
-| `compaction.enabled` | **false** | F16: compaction is a background task, and phase 1 closes a bot on "no run, no task". Long chats fail with `model_error` and stay readable; enabling compaction is a phase-2 change that also has to extend the close condition and the `tasks` capability |
+| `compaction.enabled` | **false** | F16: compaction is a conversation-owned background task. Phase 1 closes a bot on "no run, no task" and would close a compacting bot out from under itself. Long chats fail with `model_error` and stay readable. Enabling it later needs no close-condition change (it already reads `busy().tasks`) but does need the `tasks` capability so the UI can show a background compaction |
 | `progress.partialIntervalMs` | 100 | Matches the protocol's 50 ms coalescing; local storage makes 100 cheap |
 | `progress.outputIntervalMs` | 100 | Reserved (tool output) |
 | `afterFailedRun` | `"continue"` | A failed run must not strand queued follow-ups |
@@ -176,10 +231,10 @@ own change set:
 | Capability | Work required when enabling |
 | --- | --- |
 | `tools` | Install tool extensions; provide `env`; map `tool_execution_*` to `delta`/blocks; render approvals; flip the flag |
-| `agent` | Add a `configure` command and a `CONNECT`-time model catalog endpoint; expose `RuntimeHandle.configure`; render the settings panel |
+| `agent` | Add a `configure` command and a model catalog endpoint; add `configure` to the port; render the settings panel |
 | `tasks` | Emit `task` events from `watchTaskGraph`; add a `retry` command; make the close condition task-aware |
 | `entries` | Serve raw entries from `conversation.entries()` behind a paging command |
-| `usage` | Populate `usage` in snapshots from `pi.usage` |
+| `usage` | Already populated in phase 1: `snapshot.usage` comes from `pi.usage`; the panel is what phase 2 adds |
 | `peers` | Bot-to-bot delivery as a tool or background task; a `peers` policy document |
 
 None of them may change v1 semantics for existing fields.
@@ -188,13 +243,17 @@ None of them may change v1 semantics for existing fields.
 
 | Situation | pi behaviour | Adapter action |
 | --- | --- | --- |
-| Process killed mid-run | Committed entries survive; the generation task is still `running` on disk | `open()` resumes; the run continues from its checkpoint |
+| Process killed mid-run | Committed entries survive; the generation task is still `running` on disk; on resume the interrupted partial becomes a committed `aborted` assistant entry (F22) | `open()` resumes; the client shows the aborted attempt followed by the final answer |
 | Killed while a tool ran (phase 2) | Replayed only when `replay:"safe"`, else an `interrupted` error result | No adapter involvement |
 | Crash loop ≥ `restartLimit` | Task parked, `onReport(task_parked)` (F15) | `error{kind:"task_parked"}`; `recover` retries it |
 | Storage error | Harness closes itself (F14) | Classify `storage_failed`, mark the bot `unavailable`, serve a snapshot with `unavailable` |
 | Watch ends (F17) | `WatchEnd` reason `listener_error`/`failed` | Reattach with a fresh snapshot; escalate to `internal` after three failures in 60 s |
 | `close()` stalls on non-cooperative code | `close()` joins invocations | `close` resolves `timeout`; the registry quarantines the bot and retries; it is never dropped |
 | Reopen after idle close | No state lost | New snapshot; the client replaces its view |
+
+`recover` is the operator's escape hatch and is state-dependent
+([PROTOCOL.md](PROTOCOL.md#client-commands)). The adapter exposes parked-task retry
+and leaves a running answer alone; `abort` is the only destructive command.
 
 ## Pitfalls
 
@@ -207,6 +266,14 @@ None of them may change v1 semantics for existing fields.
    attempt-scoped provisional id.
 6. Do not assume a `pi.system` entry exists (F6).
 7. Never open one bot twice (F19, no cross-process locking).
+12. Do not expect exactly one assistant entry after a crash: F22 commits an
+    `aborted` attempt first. Assert one admission, one retained interrupted
+    attempt, one final answer.
+13. Do not treat a missing delta as a stall (F5), and do not treat a
+    `harness.closed` with `reason:"closed"` as a failure (F25).
+14. Do not claim trace continuity into pi: phase 1 installs no pi telemetry, so
+    trace ids live in the daemon's own logs and in-memory ledger. A resumed run
+    after restart is attributed to `tr_boot_<n>`, not to the original `send`.
 8. Do not synthesize `unanswered` from a thrown command (F7/F12): only a stored
    record settles an input. `abort` settles with `reason:"aborted"` (F10), which is
    not a model failure.

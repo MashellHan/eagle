@@ -82,7 +82,8 @@ is never started before its preconditions are green.
 | --- | --- | --- | --- |
 | 23 | `test/runtime/mapEvents.test.ts` | `maps a recorded run to append, delta, append, submission, status` | 11 |
 | 24 | `test/runtime/mapEvents.test.ts` | `builds the provisional from message_start content` | 23 |
-| 25 | `test/runtime/mapEvents.test.ts` | `applies block and message replacements without loss` | 23 |
+| 25 | `test/runtime/mapEvents.test.ts` | `applies block and message replacements without loss, including a start block with no delta` | 23 |
+| 25b | `test/runtime/mapEvents.test.ts` | `two text blocks receive deltas at their own indexes` | 23 |
 | 26 | `test/runtime/mapEvents.test.ts` | `a retry inside one turn starts a new attempt id` | 23 |
 | 27 | `test/runtime/mapEvents.test.ts` | `maps every stopReason to a message state` | 23 |
 | 28 | `test/runtime/adapter.test.ts` | `one turn appends exactly one pi.assistant entry` | 23 |
@@ -115,6 +116,9 @@ is never started before its preconditions are green.
 | 50 | `test/e2e/journey.test.ts` | `two bots stream independently with separate revisions` | 49 |
 | 51 | `test/e2e/journey.test.ts` | `a lost submission reply is recovered by re-sending the requestId` | 49 |
 | 52 | `test/e2e/journey.test.ts` | `a bot joining mid-answer receives the partial in the snapshot` | 49 |
+| 52b | `test/e2e/outbox.test.ts` | `a send persisted before the socket write is reconciled after a daemon restart` | 49 |
+| 52c | `test/e2e/paging.test.ts` | `a clipped message pages back to its full length` | 49 |
+| 52d | `test/e2e/ordering.test.ts` | `a late connection-scoped record never downgrades a settlement` | 49 |
 | 53 | `test/crash/sigkill.test.ts` | `killing the daemon mid-answer loses no message and duplicates none` | 49 |
 | 54 | `test/crash/singleton.test.ts` | `a SIGKILLed daemon is taken over on the next start` | 48 |
 
@@ -132,10 +136,10 @@ is never started before its preconditions are green.
 | 62 | `BotsTransportTests/SocketTests.swift` | `maps close codes to connection states and reconnects on 1006` | 61 |
 | 63 | `BotsFeaturesTests/ConversationTests.swift` | `connecting, ready, resync, reconnect and failed` | 59, 61 |
 | 64 | `BotsFeaturesTests/ComposerTests.swift` | `optimistic bubble is replaced by the submission and append` | 60 |
-| 65 | `BotsFeaturesTests/ComposerTests.swift` | `retry reuses the same requestId` | 64 |
+| 65 | `BotsFeaturesTests/ComposerTests.swift` | `retry reuses the same requestId, including after an app restart` | 64 |
 | 66 | `BotsFeaturesTests/ComposerTests.swift` | `sending while busy queues with followUp and survives a restart of the view` | 64 |
 | 67 | `BotsFeaturesTests/CatalogTests.swift` | `create selects the new bot; delete removes it; a push updates the list` | 61 |
-| 68 | `BotsFeaturesTests/RecoveryTests.swift` | `an unavailable bot offers recover and returns to live` | 63 |
+| 68 | `BotsFeaturesTests/RecoveryTests.swift` | `recover reopens an unavailable bot and leaves a healthy one untouched` | 63 |
 | 69 | `BotsCoreTests/DependencyRulesTests.swift` | `no networking API in core or features; no wire decoding outside transport` | 55 |
 
 ## Golden fixtures
@@ -172,21 +176,30 @@ is never started before its preconditions are green.
 | `close` never resolves | Quarantine; open and delete refused; retry every 30 s |
 | Subscriber stops reading | Queue overflow → snapshot-only; daemon keeps serving others |
 | Second daemon on the same root | Exits non-zero; first unaffected |
+| Two daemons racing the same stale lock | Exactly one wins; the loser exits non-zero |
+| Provider returns `deferred` then answers | `running:true` throughout, no fake streaming message, one final answer |
+| Provider stops at `length` | `Message.stopReason:"length"`; client renders its own notice |
 | `SIGKILL` mid-answer | Restart resumes; no message lost or duplicated |
 | Delete killed after rename | Restart reconciliation finishes the delete |
 
 ## Crash test
 
-`test/crash/sigkill.test.ts` is **mandatory at every stage signoff** and opt-in
-for the fast gate (`npm run test:crash`).
+`test/crash/sigkill.test.ts` runs from the stage that implements the daemon
+(stage 4) and is mandatory from then on; it is opt-in for the fast gate
+(`npm run test:crash`).
 
-The barrier is a fact about commits, not a sleep: the test starts a daemon with a
-provider that streams slowly, waits for the first `core.hub.publish.ok` with a
-delta in the daemon log (deltas are only ever emitted from committed state), then
-`SIGKILL`s the process. After restart it asserts exactly one user entry and one
-assistant entry, that the answer is complete, and that no duplicate submission
-exists. A second case kills after `rename` during delete and asserts the startup
-reconciliation removed the catalog entry.
+The barrier is a fact about commits, not a sleep and not a delta: deltas can be
+absent entirely (RUNTIME F5). The test starts a daemon whose provider streams
+slowly and waits for the first `core.hub.publish.ok` with `detail.kind="append"`
+in the daemon log — that frame is only ever produced from committed state, so a
+partial assistant message exists by then. Then it `SIGKILL`s the process.
+
+After restart it asserts: exactly one admitted submission, the interrupted attempt
+retained as an `aborted` assistant entry (RUNTIME F22), exactly one completed
+answer for the same input, no duplicate submission and no duplicate user entry. A
+second case kills after `rename` during delete and asserts that startup
+reconciliation finished the delete; a `SIGKILL`ed process cannot log its own
+failure, so the evidence is the post-restart `core.reconcile.ok`.
 
 ## Performance measurement
 
@@ -211,18 +224,22 @@ bound means changing [PRODUCT.md](PRODUCT.md#speed-targets) in the same commit.
 ```sh
 cd apps/bots
 npm run fixtures:check
-npm test                # fast gate: no sockets left open, under 30 s
+npm test                # fast gate: src/**/*.test.ts + test/{protocol,core,runtime,server,e2e,log}/**/*.test.ts
 npm run typecheck       # tsc --noEmit
-npm run lint            # biome check --error-on-warnings
+npm run lint            # biome check --error-on-warnings .
 npm run coverage        # thresholds enforced, see below
-npm run test:crash      # mandatory at stage signoff
-npm run perf            # informational + generous bounds
+npm run test:crash      # test/crash/** only; mandatory from stage 4
+npm run perf            # test/perf/** only; informational + generous bounds
 npm run check           # fixtures:check + test + typecheck + lint + coverage
 
 cd apps/bots-macos
 swift test
 ./Scripts/coverage.sh    # Bots logic gate, own script
 ```
+
+`npm test`'s file list is explicit, so `test/crash/**` and `test/perf/**` never run
+in the fast gate, and the gates named in `package.json` are the single authority
+(README points here instead of restating them).
 
 `npm run coverage` runs Node's own reporter with enforced thresholds:
 
@@ -231,6 +248,7 @@ node --test \
   --experimental-test-coverage \
   --test-coverage-include='src/**/*.ts' \
   --test-coverage-exclude='src/testing/**' \
+  --test-coverage-exclude='src/**/*.test.ts' \
   --test-coverage-include-all \
   --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=85 \
   'src/**/*.test.ts' 'test/**/*.test.ts'
@@ -251,11 +269,25 @@ Rules:
 
 ## Definition of done for a stage
 
+Gates accumulate: a stage must keep every earlier stage's gates green and add its
+own. Requirements that need a later stage's machinery start when that machinery
+exists — this prevents the circular gate where stage 1 must pass a `SIGKILL` test
+that only stage 4 can run.
+
+| Gate | Enforced from |
+| --- | --- |
+| `npm test` + `npm run typecheck` + `npm run lint` + `fixtures:check` | stage 1 |
+| `npm run coverage` with enforced thresholds | stage 1 |
+| Event catalogue bidirectional equality (`test/log/catalog.test.ts`) | stage 4 (when every emit site exists); before that the test only asserts `used ⊆ declared` |
+| `test/log/origin.test.ts` for each layer that exists | stage 4 |
+| `npm run test:crash` | stage 4 |
+| `npm run perf` | stage 4 |
+| `swift test` + `Scripts/coverage.sh` | stage 5 |
+
+Per stage:
+
 1. Every ladder row of the stage is green; documents updated in the same commits.
-2. `npm run check` (daemon) and `swift test` + `Scripts/coverage.sh` (client) pass.
-3. `npm run test:crash` passes and its output is quoted in the stage checkpoint.
-4. One injected failure per layer was demonstrated and attributed by
-   `test/log/origin.test.ts` for that layer.
-5. No widened limits, silenced log, swallowed error or new `test.only`.
-6. [CHECKPOINTS.md](CHECKPOINTS.md) records what a user can see, what was run, and
+2. The gates listed above for that stage pass; output is quoted in the checkpoint.
+3. No widened limits, silenced log, swallowed error or new `test.only`.
+4. [CHECKPOINTS.md](CHECKPOINTS.md) records what a user can see, what was run, and
    the next broken hop.

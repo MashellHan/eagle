@@ -66,7 +66,7 @@ Verified:
 - `git log` shows the review-fix commits; no Bots code beyond
   `package.json`/`tsconfig.json`/`biome.json`/`scripts/smoke-model.ts` exists yet.
 
-Next broken hop: the daemon has no `src/` code, no lock file discipline and no
-tests, so the ladder in `docs/bots/TESTING.md` stage 1 cannot run. The `.env` and
-`package-lock.json` for `apps/bots` are created but not committed; the skeleton
-commit has to include them together with the root `biome.json` exclusion.
+Next broken hop: the daemon has no `src/` code, no lock discipline and no tests, so
+the ladder in `docs/bots/TESTING.md` stage 1 cannot run. The skeleton commit carries
+`package-lock.json`, the configs and `.env.example` — never the real `.env`, which
+holds `BOTS_API_KEY` and stays untracked with mode 0600.

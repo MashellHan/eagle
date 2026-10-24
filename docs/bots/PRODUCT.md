@@ -60,8 +60,9 @@ tools and bot-to-bot conversation can be added later without reworking any layer
    restart, restores every transcript without user action. No message is
    duplicated or lost.
 8. **Recover.** When a bot reports `unavailable` or a parked task, the chat offers
-   one action: retry. It aborts the stuck run, retries parked work and reloads the
-   transcript.
+   one action: retry. It re-opens an unavailable bot or retries parked work, then
+   reloads the transcript. It never interrupts a healthy answer; abort is a
+   separate, explicit action.
 9. **Quit.** Quitting the app does not stop the daemon. A daemon that was killed
    mid-answer resumes the run when it starts again.
 
@@ -78,13 +79,13 @@ scope of each claim is recorded in
 excluded: the smoke test against the pinned development endpoint measured 1.3–1.7 s
 per answered turn, which is upstream time, not Bots time.
 
-| Operation | Measured | Phase-1 target (p95) |
+| Operation | Measured (single sample) | Phase-1 bound (median of 5 samples, see [TESTING.md](TESTING.md#performance-measurement)) |
 | --- | --- | --- |
 | `Harness.open` + `root()` on an empty bot | 7 ms | < 250 ms |
 | Reopen a bot with 400 entries / 479 KB | 3 ms | < 100 ms |
 | One `submit()` → settled answer (faux) | 2–7 ms | < 200 ms |
 | 200 answered turns, same bot | 164 ms total (≈1 ms/turn) | — |
-| Storage growth per turn (800-char answers) | ≈2.4 KB | — |
+| Storage growth per turn (456-char answers) | ≈2.4 KB | — |
 | 20 bots open in one process | 30 ms, RSS 103 MB | < 1 s |
 | Create bot (catalog write + directory) | — | < 50 ms |
 | Delete bot (close + move to trash) | — | < 50 ms |
@@ -109,8 +110,8 @@ what is enabled, so later phases flip flags instead of rebuilding screens.
 | `tools` | `false` | Block types and delta kinds that can carry tool calls; nothing produces them | Tool calls, approvals, result rendering |
 | `tasks` | `false` | An `error` kind for parked tasks and a `recover` command | Task panel, per-task retry, compaction control |
 | `entries` | `false` | Nothing beyond the transcript itself | Raw entry inspector |
-| `usage` | `false` | A `usage` field in snapshots, populated from `pi.usage` | Token and cost panel |
-| `agent` | `false` | Per-bot model stored in `bot.json`; `RuntimeHandle.configure` declared | Model, thinking level and instructions editing |
+| `usage` | `false` | A `usage` field in snapshots, populated from `pi.usage` (the data is live; only the panel is missing) | Token and cost panel |
+| `agent` | `false` | Per-bot model stored in `bot.json` and used for every request | Model, thinking level and instructions editing |
 | `peers` | `false` | A capability flag | Bot-to-bot messages and delegation |
 
 Reserved means exactly two things: the wire can represent the concept, and a
@@ -142,9 +143,10 @@ recorded in [CHECKPOINTS.md](CHECKPOINTS.md):
    90% Bots logic gate for its own target list.
 3. The nine journeys above are exercised end to end against a real socket with the
    faux provider.
-4. `npm run test:crash` passes: a `SIGKILL` mid-answer loses and duplicates
-   nothing, and a delete interrupted between rename and catalog write reconciles
-   on the next start.
+4. `npm run test:crash` passes: a `SIGKILL` mid-answer admits the input once,
+   keeps the interrupted attempt as an aborted message, completes the answer once,
+   and a delete interrupted between rename and catalog write reconciles on the next
+   start.
 5. One injected failure per layer is attributed to exactly one layer by
    `test/log/origin.test.ts` and `test/log/trace.test.ts`, not by reading code.
 6. `npm run perf` prints its environment and samples and stays inside the bounds
