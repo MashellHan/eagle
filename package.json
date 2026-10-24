@@ -22,11 +22,11 @@
     "db:remote": "wrangler d1 migrations apply eagle --remote"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "4.0.84",
-    "@ai-sdk/openai": "4.0.98",
+    "@ai-sdk/anthropic": "4.0.87",
+    "@ai-sdk/openai": "4.0.101",
     "@nocoo/basalt": "^3.2.1",
     "@nocoo/next-ai": "^0.4.0",
-    "ai": "7.0.147",
+    "ai": "7.0.152",
     "jose": "^6.2.13",
     "lucide-react": "1.61.0",
     "react": "^19.3.1",
