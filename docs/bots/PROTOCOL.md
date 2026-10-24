@@ -174,7 +174,11 @@ client → { "type": "unsubscribe" }
 ## Server events
 
 Every bot-scoped event carries `rev`, which strictly increases per bot starting
-from the `rev` of the `snapshot` that established the client's baseline.
+from the `rev` of the `snapshot` that established the client's baseline. `rev` is
+absent on events that do not belong to a bot's sequence: `bots`, `pong`, and an
+`error` produced by a command that arrived before any subscription existed
+(`invalid_command`, `limit_exceeded`). A client must not treat a missing `rev` as
+a gap.
 
 ```jsonc
 { "type": "append", "rev": 43, "trace": "tr_…", "message": Message,
