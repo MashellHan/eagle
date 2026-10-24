@@ -96,7 +96,7 @@ test("an error record must originate at the emitting layer", () => {
   const foreign = { id: "f_8", kind: "storage_failed" as const, layer: "runtime" as const };
   assert.throws(
     () => log.emit("error", "core", "core.submit.fail", { trace, failure: foreign, origin: true }),
-    /must originate at runtime/,
+    /must come from runtime/,
   );
 });
 
@@ -116,8 +116,17 @@ test("classification and error records require a non-empty failure", () => {
     /non-empty failure identity/,
   );
   assert.equal(
-    log.emit("info", "runtime", "runtime.failure.classify", { trace, failure, origin: true }).level,
+    log.emit("info", "runtime", "runtime.failure.classify", {
+      trace,
+      failure: { ...failure, layer: "runtime" },
+      origin: true,
+    }).level,
     "info",
+  );
+  // A non-error record cannot claim a foreign origin either.
+  assert.throws(
+    () => log.emit("info", "runtime", "runtime.failure.classify", { trace, failure, origin: true }),
+    /must come from core/,
   );
 });
 

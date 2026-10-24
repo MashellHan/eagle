@@ -144,15 +144,15 @@ export class Log {
     if (fields.failure !== undefined && fields.failure.id.trim().length === 0) {
       throw new Error(`event ${evt} needs a non-empty failure identity`);
     }
-    if (level === "error") {
-      if (fields.origin !== true) {
-        throw new Error(`only the originating layer logs at error (${evt})`);
-      }
-      if (fields.failure?.layer !== layer) {
-        throw new Error(
-          `error record for ${evt} must originate at ${String(fields.failure?.layer)}`,
-        );
-      }
+    // Claiming origin is checked at every level, not only for error records: a warn
+    // or info record must not attribute a failure to another layer either.
+    if (fields.origin === true && fields.failure?.layer !== layer) {
+      throw new Error(
+        `an origin record for ${evt} must come from ${String(fields.failure?.layer ?? "the failure layer")}`,
+      );
+    }
+    if (level === "error" && fields.origin !== true) {
+      throw new Error(`only the originating layer logs at error (${evt})`);
     }
 
     const record: LogRecord = {
