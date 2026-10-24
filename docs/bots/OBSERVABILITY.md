@@ -51,19 +51,24 @@ Rules:
    exception is the connection trace, which is used until a command arrives.
 4. Client logs use the same `trace` string, so Console.app and the daemon JSONL
    join on one value. The app's "Copy diagnostics" surfaces it.
+5. `ping`/`pong` are liveness only and carry no trace; their records use the
+   connection trace. Phase 1 installs no pi telemetry, so a trace cannot be carried
+   into pi-durable or recovered from its storage: a run resumed after a restart is
+   attributed to a fresh `tr_boot_<n>`.
 
 ## Event names
 
 `<layer>.<subject>.<outcome>`, outcome ∈ `start | ok | fail | drop | degrade |
-skip`. Names are constants in `src/log/events.ts`; a test asserts that every
-constant is used and every used constant is declared.
+skip | reject | end | classify`. Names are constants in `src/log/events.ts`; a test
+asserts that every constant is used and every used constant is declared. There is
+no free-form event name.
 
 | layer | events |
 | --- | --- |
-| transport | `transport.conn.open.ok`, `transport.conn.open.fail`, `transport.conn.close`, `transport.auth.fail`, `transport.frame.recv.ok`, `transport.frame.recv.fail`, `transport.frame.send.ok`, `transport.frame.send.drop`, `transport.conn.reject` |
+| transport | `transport.conn.open.ok`, `transport.conn.open.fail`, `transport.conn.open.reject`, `transport.conn.close.ok`, `transport.conn.close.end`, `transport.auth.fail`, `transport.frame.recv.ok`, `transport.frame.recv.fail`, `transport.frame.send.ok`, `transport.frame.send.drop` |
 | protocol | `protocol.decode.fail`, `protocol.encode.fail`, `protocol.limit.fail`, `protocol.version.fail`, `protocol.command.start`, `protocol.command.ok`, `protocol.command.fail` |
-| core | `core.catalog.load.ok`, `core.catalog.load.fail`, `core.catalog.write.ok`, `core.catalog.write.fail`, `core.bot.resolve.fail`, `core.bot.open.start`, `core.bot.open.ok`, `core.bot.open.fail`, `core.bot.close.ok`, `core.bot.close.fail`, `core.bot.quarantine`, `core.bot.unavailable`, `core.subscribe.ok`, `core.subscribe.fail`, `core.submit.start`, `core.submit.ok`, `core.submit.fail`, `core.history.ok`, `core.history.fail`, `core.hub.publish.ok`, `core.hub.coalesce`, `core.hub.snapshot.ok`, `core.hub.degrade`, `core.recovery.start`, `core.recovery.bot.ok`, `core.recovery.bot.fail`, `core.recovery.ok`, `core.delete.start`, `core.delete.ok`, `core.delete.fail`, `core.reconcile.ok` |
-| runtime | `runtime.open.start`, `runtime.open.ok`, `runtime.open.fail`, `runtime.subscribe.ok`, `runtime.subscribe.fail`, `runtime.submit.ok`, `runtime.submit.fail`, `runtime.abort.ok`, `runtime.abort.fail`, `runtime.recover.ok`, `runtime.recover.fail`, `runtime.close.ok`, `runtime.close.fail`, `runtime.watch.end`, `runtime.classify` |
+| core | `core.catalog.load.ok`, `core.catalog.load.fail`, `core.catalog.write.ok`, `core.catalog.write.fail`, `core.bot.resolve.fail`, `core.bot.open.start`, `core.bot.open.ok`, `core.bot.open.fail`, `core.bot.close.ok`, `core.bot.close.fail`, `core.bot.close.degrade` (quarantine), `core.subscribe.start`, `core.subscribe.ok`, `core.subscribe.fail`, `core.submit.start`, `core.submit.ok`, `core.submit.fail`, `core.history.start`, `core.history.ok`, `core.history.fail`, `core.hub.publish.ok`, `core.hub.coalesce`, `core.hub.snapshot.ok`, `core.hub.degrade`, `core.singleton.start`, `core.recovery.start`, `core.recovery.bot.ok`, `core.recovery.bot.fail`, `core.recovery.ok`, `core.delete.start`, `core.delete.ok`, `core.delete.fail`, `core.reconcile.ok` |
+| runtime | `runtime.open.start`, `runtime.open.ok`, `runtime.open.fail`, `runtime.subscribe.start`, `runtime.subscribe.ok`, `runtime.subscribe.fail`, `runtime.submit.start`, `runtime.submit.ok`, `runtime.submit.fail`, `runtime.abort.start`, `runtime.abort.ok`, `runtime.abort.fail`, `runtime.recover.start`, `runtime.recover.ok`, `runtime.recover.fail`, `runtime.close.start`, `runtime.close.ok`, `runtime.close.fail`, `runtime.watch.end.ok`, `runtime.failure.classify` |
 | pi | `pi.report`, `pi.session.closed` |
 
 `*.start` pairs with exactly one `*.ok|fail` per layer reached. A layer that is
@@ -92,7 +97,7 @@ five files kept.
 | `reqId` | commands carrying a `requestId` | Client request id |
 | `rev` | hub publishes | Assigned revision |
 | `durMs` | `*.ok` / `*.fail` with a paired start | Layer's own work |
-| `err` | `*.fail`, `*.degrade`, `runtime.classify` | `{ "kind": ErrorKind }`, plus `origin: true` only on the originating record |
+| `err` | `*.fail`, `*.degrade`, `*.reject`, `runtime.failure.classify` | `{ "kind": ErrorKind, "failure": "f_…" }`, plus `origin: true` only on the originating record |
 | `detail` | optional | Whitelisted ids, counts, enums, byte lengths |
 
 `ErrorKind` is the closed union shared with the protocol:
@@ -103,19 +108,21 @@ storage_failed | internal`.
 ## Failure recording: origin versus propagation
 
 ```
-runtime.submit.fail   level=error  err={kind:"session_failed", origin:true}
-core.submit.fail      level=warn   err={kind:"session_failed"}          detail.propagated=true
-protocol.command.fail level=warn   err={kind:"session_failed"}          detail.propagated=true
+runtime.submit.fail   level=error  err={kind:"storage_failed", failure:"f_7", origin:true}
+core.submit.fail      level=warn   err={kind:"storage_failed", failure:"f_7"}  detail.propagated=true
+protocol.command.fail level=warn   err={kind:"storage_failed", failure:"f_7"}  detail.propagated=true
 ```
 
-- The originating layer logs `error`, sets `err.origin`, and may include a
-  redacted `detail.safeMessage` from a fixed catalogue.
-- Every layer above logs `warn` with the same `err.kind` and
-  `detail.propagated=true`, never the message text, never `error`.
-- A test asserts exactly one `error` per failed trace, and that its `layer` is the
-  innermost layer that reached the failure.
-- A failure the layer can retry internally (one watch reattach) is logged
-  `runtime.watch.end` at `warn` and is not an error; three within 60 s escalate.
+- The failure identity `err.failure` is minted exactly once, at the layer that
+  first detects the failure. It is the dedupe unit: **exactly one `level=error`
+  record per `failure` id**, on the layer where it originated.
+- Layers above log `warn` with the same `err.kind` and `err.failure`, plus
+  `detail.propagated=true`, never the message text and never `error`.
+- A trace is long-lived (a connection serves many commands); a failure is not, so
+  deduping on `failure` rather than on `trace` is what makes "one error" exact.
+- Retryable trouble that the layer handles internally (one watch reattach) logs
+  `runtime.watch.end.ok` at `warn` and mints no failure id. Three within 60 s mint
+  one `internal` failure.
 
 ## Redaction
 
@@ -123,7 +130,7 @@ Two different rules, previously conflated:
 
 | Context | Rule |
 | --- | --- |
-| Wire (protocol frames) | Content is allowed and expected in exactly these carriers: `send.text`, `Message.blocks`, `delta.changes[].append`, `agent.instructions` (only when the `agent` capability is on). Nowhere else |
+| Wire (protocol frames) | Content is allowed inside these structural carriers only: `send.text`; any `Message` object (`blocks`, and the message inside a `delta` `message` change); `delta.changes[].append`; `delta.changes[].block`; `agent.instructions` (only when the `agent` capability is on). No other field carries text |
 | Logs | Never message text, prompts, instructions, tokens, submission `detail`, or provider error strings. Paths under the user's home are shortened to `~` |
 
 Specifics:
@@ -141,12 +148,11 @@ Specifics:
 
 | Level | Contents |
 | --- | --- |
+| `trace` | Frame-level encode/decode; off by default (`--log-level=trace`). Records at this level use the same schema and only `protocol.*`/`transport.frame.*` names |
 | `error` | Originating failures only (`err.origin: true`) |
 | `warn` | Propagated failures, `core.hub.degrade`, `core.bot.quarantine`, drops |
 | `info` (default) | Crossings: connection, subscribe, submit, publish counters, recovery, delete |
 | `debug` | Coalescing details, snapshot rerenders, paging, per-command byte sizes |
-| `trace` | Frame-level encode/decode, off by default (`--log-level=trace`) |
-
 Coalesced deltas log `detail.count`, never contents. Recipes below state the
 level they require; `--log-level=debug` is the support default when collecting
 evidence.
@@ -158,34 +164,36 @@ presence *and* absence. The tests use a fake clock and a drain barrier
 (`await hub.drain()` / `await log.flush()`) rather than sleeps, so a missing
 event is a fact, not a race.
 
-**R1 — submit never reaches the runtime.**
-Inject: `RuntimePort.open` rejects once.
+**R1 — a bot cannot be opened.**
+Inject: the fake storage handed to core throws on open. Core owns the open step,
+so the origin is core.
 
 ```
-transport.frame.recv.ok    trace=tr_A evt=send
+transport.frame.recv.ok    trace=tr_A evt=subscribe
 protocol.command.ok        trace=tr_A
-core.submit.start          trace=tr_A botId=b1
+core.subscribe.start       trace=tr_A botId=b1
 core.bot.open.start        trace=tr_A botId=b1
-core.bot.open.fail         trace=tr_A err={kind:"storage_failed", origin:true}
-core.submit.fail           trace=tr_A err={kind:"storage_failed"} propagated
+core.bot.open.fail         trace=tr_A err={kind:"storage_failed", failure:"f_7", origin:true}
+core.subscribe.fail        trace=tr_A err={kind:"storage_failed", failure:"f_7"} propagated
+protocol.command.fail      trace=tr_A err={kind:"storage_failed", failure:"f_7"} propagated
 ```
-Asserted: `runtime.open.ok` absent, exactly one `level=error`, at `core`. The
-attribution is to core's open step, which is what failed.
+Asserted: no `runtime.open.*` for `tr_A` (the adapter was never reached), exactly
+one `level=error`, on `core`, with `failure:"f_7"`; the bot is `unavailable`.
 
-**R2 — the stream stops mid-answer.**
-Inject: the runtime's sink throws once after the first delta, then reattach
-succeeds.
+**R2 — the event stream dies mid-answer.**
+Inject: the adapter's own sink callback throws once (a defect inside the runtime
+layer), then reattach succeeds.
 
 ```
-core.subscribe.ok          trace=tr_B rev=41
-core.hub.publish.ok        trace=tr_B rev=42 detail.count=1
-runtime.watch.end          trace=tr_B level=warn
+core.hub.publish.ok        trace=tr_B rev=42 detail.kind=append
+runtime.watch.end.ok       trace=tr_B level=warn detail.reason=listener_error
 runtime.subscribe.ok       trace=tr_B detail.reattach=true
 core.hub.snapshot.ok       trace=tr_B rev=43
 ```
-Asserted: exactly one `runtime.watch.end`, a new `runtime.subscribe.ok` for the
-same bot, a snapshot rerender, and no `transport.*` event for `tr_B` after the
-first frame. Attribution: runtime watch lifetime, not transport.
+Asserted: exactly one `runtime.watch.end.ok`, a reattach, a snapshot rerender, no
+`level=error` (handled internally), and no `transport.*` event for `tr_B` after the
+first frame. A variant that fails three times in 60 s asserts one `internal`
+failure with `origin:true` on `runtime`.
 
 **R3 — the client sends something malformed.**
 Inject: one frame with an unknown command type.
@@ -220,7 +228,7 @@ forbidden (a test asserts no emit inside the delta path).
 | Test | Asserts |
 | --- | --- |
 | `test/log/shape.test.ts` | Required fields; `err.kind` from the union; `detail` whitelist; declared-and-used event names |
-| `test/log/origin.test.ts` | One `level=error` per failed trace, at the innermost layer; higher layers log `warn` with `propagated` |
-| `test/log/trace.test.ts` | R1–R4 with fake clock and drain barrier, at `--log-level=debug` |
+| `test/log/origin.test.ts` | Exactly one `level=error` per `err.failure`, at the originating layer; higher layers log `warn` with `propagated` |
+| `test/log/trace.test.ts` | R1–R4 with fake clock and drain barrier, at `--log-level=debug`, asserting presence *and* absence |
 | `test/log/redaction.test.ts` | Sentinel prompt, token and home path never appear; provider error echo is scrubbed |
 | `BotsFeaturesTests/LoggingTests.swift` | Client emit sites use the shared vocabulary; no per-delta emit |

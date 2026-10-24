@@ -122,6 +122,7 @@ Sources/
     ConversationViewModel.swift
     ComposerViewModel.swift
     BotSettingsViewModel.swift   reserved; not rendered in phase 1
+    OutboxStore.swift            persisted unsent commands (see PROTOCOL client duties)
   BotsApp/                    main.swift = composition root only
 Tests/
   BotsCoreTests/ BotsFeaturesTests/ BotsTransportTests/
@@ -137,10 +138,36 @@ Swift type use the same word. Wire decoding is confined to `BotsTransport`.
 export type RuntimeEvent =
   | { type: "append"; message: Message; replaces?: string }
   | { type: "delta"; messageId: string; changes: DeltaChange[] }
+  // A delta is lossless: every change names its block index, and a block change
+  // carries the whole block. pi's start events therefore map to block changes,
+  // not to nothing.
   | { type: "status"; running: boolean; inbox: InboxItem[] }
   | { type: "submission"; record: Submission }
   | { type: "snapshot"; value: ConversationSnapshot }   // watch fell behind: replace everything
   | { type: "error"; kind: ErrorKind; message: string; taskId?: string };
+
+export type DeltaChange =
+  | { kind: "text"; index: number; append: string }
+  | { kind: "thinking"; index: number; append: string }
+  | { kind: "toolcall"; index: number; callId: string; path: readonly (string | number)[]; append: string }
+  | { kind: "block"; index: number; block: ContentBlock }   // the whole block
+  | { kind: "message"; message: Message };                  // the whole message
+
+export type SubmitInput = {
+  readonly requestId: string;
+  readonly text: string;
+  readonly whenBusy: BusyMode;
+  readonly trace: string;
+};
+
+export type Submission = {
+  readonly id: string;
+  readonly requestId: string;
+  readonly status: "queued" | "placed" | "done" | "unanswered";
+  readonly entryId?: string;        // pi.user entry, once placed
+  readonly answerEntryId?: string;  // pi.assistant entry, once done
+  readonly reason?: string;         // only unanswered
+};
 
 export interface RuntimePort {
   /** Opens, recovers (resume), and returns a handle. Idempotent per bot id. */
@@ -163,8 +190,11 @@ export interface RuntimeHandle {
   submit(input: SubmitInput): Promise<Submission>;
   /** Current record by submission id or requestId; used for duplicate replies. */
   submission(key: { submissionId: string } | { requestId: string }): Promise<Submission | undefined>;
+  /** Older messages, oldest first. Byte budgets stay in the wire layer. */
+  history(input: { beforeEntryId?: string; limit: number }): Promise<{ messages: Message[]; hasMore: boolean }>;
   abort(trace: string): Promise<void>;
-  /** Escape hatch: abort the run and retry parked tasks. */
+  /** Retries parked work for this bot and leaves a healthy bot untouched.
+   *  It never aborts a running answer; `abort` does that. */
   recover(trace: string): Promise<void>;
   /** Live work, so the registry can decide whether closing is safe. */
   busy(): Promise<{ run: boolean; tasks: boolean }>;
@@ -184,15 +214,19 @@ public enum ConnectionState: Equatable {
   case connecting, ready, reconnecting(attempt: Int), failed(reason: String), stopped
 }
 
+// `rev` is present on every bot-scoped case and absent on connection-scoped
+// replies. BotsTransport owns close codes, envelope decoding and therefore gap
+// detection: it drops out-of-order frames and emits `.snapshot` after a resync,
+// so the reducer stays pure and never sees a gap.
 public enum ConversationEvent {
   case connection(ConnectionState)
-  case snapshot(ConversationSnapshot)          // also arrives for resync and resnapshot
-  case append(Message, replaces: String?)
-  case delta(messageId: String, changes: [DeltaChange])
-  case status(running: Bool, inbox: [InboxItem])
-  case submission(Submission)
-  case history([Message], hasMore: Bool)        // reply to loadHistory
-  case error(ErrorKind, String)
+  case snapshot(ConversationSnapshot, rev: Int)      // also for resync and resnapshot
+  case append(Message, replaces: String?, rev: Int)
+  case delta(messageId: String, changes: [DeltaChange], rev: Int)
+  case status(running: Bool, inbox: [InboxItem], rev: Int)
+  case submission(Submission, rev: Int?)             // nil when connection-scoped
+  case history([Message], hasMore: Bool)
+  case error(kind: ErrorKind, message: String, trace: String, requestId: String?)
 }
 
 public protocol ConversationPort: AnyObject {
@@ -245,20 +279,35 @@ botd (single process, launchd-supervised)
      └─ …
 ```
 
-### Singleton without a stale lock
+### Singleton lock
 
-The lock is the unix socket, not a lock file, because the OS releases a bound
-socket when the process dies — including `SIGKILL`:
+A check-then-unlink on a socket path can hand the root to two processes, so the
+lock is an `O_EXCL` file with an atomic takeover, and the socket is only a
+transport.
 
-1. Try `listen(<root>/run/daemon.sock)`.
-2. `EADDRINUSE`: connect and send a one-line `instance` probe.
-   - Answers: another live daemon owns the root → exit non-zero with its pid.
-   - `ECONNREFUSED`/`ENOENT` on connect: the file is a leftover. Unlink it and
-     bind once more. A second failure exits non-zero.
-3. Never delete a socket another process is listening on.
+```
+<root>/run/daemon.lock    { pid, startedAt }   0600, kernel-exclusive creation
+<root>/run/daemon.sock    unix socket for the client (not a lock)
+```
 
-Both scenarios are tested: a live instance rejects the second, and a
-`SIGKILL`ed instance is taken over on the next start (`test/crash/singleton`).
+Acquire:
+
+1. `open(lock, "wx")` succeeds → write `{pid, startedAt}`; this process owns the
+   root.
+2. `EEXIST` → read the pid. `process.kill(pid, 0)` succeeds → a live daemon owns
+   the root, print its pid and exit non-zero.
+3. The pid is dead (or the file is unreadable and older than 10 s) → take over
+   with an **atomic rename** of the stale file to `daemon.lock.<mypid>`, then
+   delete it and go to step 1. Renaming one inode succeeds exactly once: a
+   concurrent starter loses with `ENOENT` and retries from step 1, so two
+   processes can never both believe they own the root.
+4. Bound the loop at five attempts; each attempt is logged
+   (`core.singleton.start`), and a failure to acquire exits non-zero.
+
+`SIGKILL` leaves a stale file whose pid is dead, which step 3 takes over. Tests
+cover: live instance rejects the second, `SIGKILL`ed instance is taken over, and
+two processes racing the same stale lock produce exactly one winner
+(`test/crash/singleton.test.ts`).
 
 ### Bot lifecycle
 
