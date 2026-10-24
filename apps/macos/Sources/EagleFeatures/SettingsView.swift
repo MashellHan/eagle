@@ -4,6 +4,7 @@ import SwiftUI
 /// The settings window content, one screen per rail section.
 public struct SettingsView: View {
   @StateObject private var model: SettingsViewModel
+  @AppStorage("eagle.appearance") private var appearance = "system"
   private let onClose: () -> Void
 
   public init(model: SettingsViewModel = SettingsViewModel(), onClose: @escaping () -> Void = {}) {
@@ -47,12 +48,29 @@ public struct SettingsView: View {
               .tint(Theme.Palette.accentStrong)
           }
           Divider().overlay(Theme.Palette.line)
-          SettingsRow("外观", detail: "跟随系统浅色外观") {
-            PillMenu("跟随系统")
+          SettingsRow("外观", detail: "浅色、深色或跟随系统") {
+            PillMenu(appearanceLabel) { cycleAppearance() }
           }
         }
       }
     }
+  }
+
+  private var appearanceLabel: String {
+    switch appearance {
+    case "light": return "浅色"
+    case "dark": return "深色"
+    default: return "跟随系统"
+    }
+  }
+
+  private func cycleAppearance() {
+    appearance =
+      switch appearance {
+      case "system": "light"
+      case "light": "dark"
+      default: "system"
+      }
   }
 
   private var machines: some View {

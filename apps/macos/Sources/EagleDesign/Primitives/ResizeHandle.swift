@@ -1,10 +1,11 @@
 import AppKit
 import SwiftUI
 
-/// One-pixel divider that drags a column width. It reports the *absolute* width
-/// from the drag origin measured in the global coordinate space, so the layout
-/// cannot feed back into the gesture and jitter. The line never changes colour;
-/// only the cursor changes, through a native cursor rect.
+/// One-pixel divider that drags a column width. The drag records the width and
+/// pointer position at gesture start and applies the absolute offset, so the
+/// column tracks the cursor one-to-one instead of feeding layout changes back
+/// into the gesture. The line never changes colour; the cursor changes through a
+/// native cursor rect.
 public struct ResizeHandle: View {
   private let width: CGFloat
   private let minimum: CGFloat
@@ -13,6 +14,7 @@ public struct ResizeHandle: View {
   private let onChange: (CGFloat) -> Void
 
   @State private var startX: CGFloat?
+  @State private var startWidth: CGFloat?
 
   public init(
     width: CGFloat,
@@ -42,21 +44,22 @@ public struct ResizeHandle: View {
     .gesture(
       DragGesture(minimumDistance: 0, coordinateSpace: .global)
         .onChanged { value in
+          if startX == nil {
+            startX = value.location.x
+            startWidth = width
+          }
           let origin = startX ?? value.location.x
-          if startX == nil { startX = origin }
-          let delta = value.location.x - origin
-          let target = inverted ? width - delta : width + delta
-          onChange(min(target, maximum).clamped(to: minimum...maximum))
+          let base = startWidth ?? width
+          let offset = value.location.x - origin
+          let target = inverted ? base - offset : base + offset
+          onChange(min(max(target, minimum), maximum))
         }
-        .onEnded { _ in startX = nil }
+        .onEnded { _ in
+          startX = nil
+          startWidth = nil
+        }
     )
     .accessibilityLabel("调整栏宽")
-  }
-}
-
-extension CGFloat {
-  fileprivate func clamped(to range: ClosedRange<CGFloat>) -> CGFloat {
-    Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
   }
 }
 

@@ -78,6 +78,19 @@ struct SnapshotRenderer {
       in: directory
     )
 
+    capture(
+      WorkspaceShellView().preferredColorScheme(.dark),
+      size: CGSize(width: 1728, height: 1082),
+      named: "shell-dark",
+      in: directory
+    )
+    capture(
+      SettingsView(model: SettingsViewModel()).preferredColorScheme(.dark),
+      size: CGSize(width: 920, height: 720),
+      named: "settings-dark",
+      in: directory
+    )
+
     print("wrote snapshots to \(directory.path)")
   }
 

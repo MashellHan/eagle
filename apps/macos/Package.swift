@@ -8,7 +8,7 @@ let package = Package(
     .executable(name: "EagleApp", targets: ["EagleApp"])
   ],
   targets: [
-    .target(name: "EagleDesign"),
+    .target(name: "EagleDesign", resources: [.process("Resources")]),
     .target(name: "EagleFeatures", dependencies: ["EagleDesign"]),
     .executableTarget(
       name: "EagleApp",

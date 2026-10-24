@@ -10,20 +10,20 @@ public struct WorkspaceShellView: View {
   @StateObject private var layout: ShellLayoutViewModel
   @StateObject private var account = AccountMenuViewModel()
   @State private var showsAccountMenu = false
-  private let onOpenSettings: () -> Void
+  @State private var showsSettings = false
+  @StateObject private var settings = SettingsViewModel()
+  @AppStorage("eagle.appearance") private var appearance = "system"
 
   public init(
     list: WorkspaceListViewModel = WorkspaceListViewModel(),
     chat: ChatViewModel = ChatViewModel(),
     inspector: InspectorViewModel = InspectorViewModel(),
-    layout: ShellLayoutViewModel = ShellLayoutViewModel(),
-    onOpenSettings: @escaping () -> Void = {}
+    layout: ShellLayoutViewModel = ShellLayoutViewModel()
   ) {
     _list = StateObject(wrappedValue: list)
     _chat = StateObject(wrappedValue: chat)
     _inspector = StateObject(wrappedValue: inspector)
     _layout = StateObject(wrappedValue: layout)
-    self.onOpenSettings = onOpenSettings
   }
 
   public var body: some View {
@@ -44,9 +44,6 @@ public struct WorkspaceShellView: View {
         onResizeInspector: { layout.setInspectorWidth($0) }
       ) {
         SidebarPanel(
-          profileInitial: "监",
-          profileName: "监察御史",
-          profilePlan: "Personal",
           sections: list.sections,
           selection: list.selection,
           width: layout.sidebarWidth,
@@ -66,7 +63,6 @@ public struct WorkspaceShellView: View {
           title: item?.title ?? "依赖修复专家",
           subtitle: item?.tag ?? "GitHub",
           tintIndex: item?.tintIndex ?? 2,
-          sender: TranscriptSender(name: item?.title ?? "依赖修复专家", tintIndex: item?.tintIndex ?? 2),
           entries: chat.entries,
           draft: $chat.draft,
           onSend: { chat.send() },
@@ -74,7 +70,7 @@ public struct WorkspaceShellView: View {
           showsInspector: layout.showsInspector,
           maxContentWidth: contentWidth,
           onShowSidebar: { layout.toggleSidebar() },
-          onShowInspector: { layout.toggleInspector() }
+          onToggleInspector: { layout.toggleInspector() }
         )
       } inspector: {
         InspectorColumn(
@@ -102,7 +98,7 @@ public struct WorkspaceShellView: View {
           .onTapGesture { showsAccountMenu = false }
         AccountMenu(rows: account.rows) { row in
           showsAccountMenu = false
-          if row.id == "settings" { onOpenSettings() }
+          if row.id == "settings" { showsSettings = true }
         }
         .padding(.leading, Theme.Metric.contentInset)
         .padding(.bottom, Theme.Metric.footerHeight + Theme.Metric.footerBottom + 6)
@@ -110,5 +106,40 @@ public struct WorkspaceShellView: View {
       }
     }
     .animation(.snappy(duration: 0.18), value: showsAccountMenu)
+    .overlay {
+      if showsSettings {
+        settingsOverlay
+      }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSettings)) { _ in
+      showsSettings.toggle()
+    }
+  }
+
+  /// Centred settings card over a blurred, dimmed copy of the window. The
+  /// traffic lights are hidden while it is open so the card owns the chrome.
+  private var settingsOverlay: some View {
+    ZStack {
+      Rectangle()
+        .fill(.ultraThinMaterial)
+        .overlay(Color.black.opacity(0.12))
+        .ignoresSafeArea()
+        .onTapGesture { showsSettings = false }
+
+      SettingsView(model: settings, onClose: { showsSettings = false })
+        .frame(width: Theme.Metric.settingsWidth, height: Theme.Metric.settingsHeight)
+        .background(
+          RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(Theme.Palette.surface)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+          RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+        )
+        .shadow(color: .black.opacity(0.28), radius: 40, y: 18)
+        .background(TrafficLights(hidden: true))
+    }
+    .transition(.opacity)
   }
 }

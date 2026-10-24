@@ -4,9 +4,6 @@ import SwiftUI
 /// 36 pt, profile avatar 55 pt starting at 79, first section header at 214,
 /// 58 pt rows, unread pill at 28 pt and a 62 pt user card.
 public struct SidebarPanel: View {
-  private let profileInitial: String
-  private let profileName: String
-  private let profilePlan: String
   private let sections: [SidebarSection]
   private let selection: String?
   private let onSelect: (String) -> Void
@@ -31,9 +28,6 @@ public struct SidebarPanel: View {
   @State private var hoveringSection: String?
 
   public init(
-    profileInitial: String,
-    profileName: String,
-    profilePlan: String,
     sections: [SidebarSection],
     selection: String?,
     width: CGFloat = Theme.Metric.sidebarWidth,
@@ -52,9 +46,6 @@ public struct SidebarPanel: View {
     onUnread: @escaping () -> Void = {},
     userName: String = "Zheng Li"
   ) {
-    self.profileInitial = profileInitial
-    self.profileName = profileName
-    self.profilePlan = profilePlan
     self.sections = sections
     self.selection = selection
     self.width = width
@@ -74,53 +65,24 @@ public struct SidebarPanel: View {
     self.userName = userName
   }
 
+  private static var version: String {
+    (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev"
+  }
+
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      toolbar
-      profile
+      BrandHeader(
+        version: Self.version,
+        onSearch: onSearch,
+        onCompose: onCompose,
+        onCollapse: onCollapse
+      )
       list
       footer
     }
     .frame(width: width)
     .frame(maxHeight: .infinity)
     .background(Theme.Palette.canvas)
-  }
-
-  /// Traffic lights occupy 0…75 pt; the actions sit on the right edge.
-  private var toolbar: some View {
-    HStack(spacing: 2) {
-      Spacer(minLength: 0)
-      IconButton(
-        systemName: "magnifyingglass", label: "搜索", style: .circled, action: onSearch)
-      IconButton(
-        systemName: "plus", label: "新建会话", style: .circled, action: onCompose)
-      IconButton(
-        systemName: "sidebar.left", label: "收起侧栏", style: .circled, action: onCollapse)
-    }
-    .padding(.trailing, 12)
-    .padding(.top, Theme.Metric.toolbarTopInset)
-    .frame(height: Theme.Metric.toolbarTopInset + Theme.Metric.toolbarHeight)
-  }
-
-  private var profile: some View {
-    VStack(spacing: 0) {
-      Avatar(
-        initial: profileInitial,
-        tint: Theme.Palette.avatarTint(1),
-        size: Theme.Metric.profileAvatar,
-        badge: Theme.Palette.avatarTint(3)
-      )
-      .padding(.top, Theme.Metric.profileTop)
-      Text(profileName)
-        .font(Theme.TypeScale.profileName)
-        .foregroundStyle(Theme.Palette.textPrimary)
-        .padding(.top, Theme.Metric.profileNameGap)
-      Text(profilePlan)
-        .font(Theme.TypeScale.profilePlan)
-        .foregroundStyle(Theme.Palette.textMuted)
-        .padding(.top, 3)
-    }
-    .frame(maxWidth: .infinity)
   }
 
   private var list: some View {

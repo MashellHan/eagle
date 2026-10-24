@@ -16,15 +16,15 @@ struct ThemeTests {
     #expect(Theme.Metric.rowHeight == 58)
     #expect(Theme.Metric.avatarRow == 34)
     #expect(Theme.Metric.sectionHeaderHeight == 24)
-    #expect(Theme.Metric.sectionGap == 22)
-    #expect(Theme.Metric.profileAvatar == 55)
+    #expect(Theme.Metric.sectionGap == 18)
+    #expect(Theme.Metric.logoSize == 22)
     #expect(Theme.Metric.toolbarTopInset == 6)
-    #expect(Theme.Metric.toolbarHeight == 36)
+    #expect(Theme.Metric.toolbarHeight == 34)
     #expect(Theme.Metric.unreadPillHeight == 28)
     #expect(Theme.Metric.inspectorRowHeight == 40)
     #expect(Theme.Metric.composerHeight == 54)
     #expect(Theme.Metric.cardRadius == 12)
-    #expect(Theme.Metric.pinnedHeaderHeight == 64)
+    #expect(Theme.Metric.pinnedHeaderHeight == 62)
   }
 
   @Test("column clamps stay ordered")
@@ -37,26 +37,26 @@ struct ThemeTests {
 
   @Test("palette keeps the sampled values")
   func palette() {
-    expectColor(Theme.Palette.canvas, 0xF7F7F5)
+    expectColor(Theme.Palette.canvas, 0xF2F2F7)
     expectColor(Theme.Palette.surface, 0xFFFFFF)
     expectColor(Theme.Palette.card, 0xFFFFFF)
-    expectColor(Theme.Palette.line, 0xECECEA)
-    expectColor(Theme.Palette.textPrimary, 0x252525)
-    expectColor(Theme.Palette.textSecondary, 0x757575)
-    expectColor(Theme.Palette.textMuted, 0xA7A7A7)
-    expectColor(Theme.Palette.accent, 0x3B7DCD)
-    expectColor(Theme.Palette.accentFill, 0x4FA46A)
-    expectColor(Theme.Palette.accentStrong, 0x58B378)
+    expectColor(Theme.Palette.line, 0xE4E4E9)
+    expectColor(Theme.Palette.textPrimary, 0x141416)
+    expectColor(Theme.Palette.textSecondary, 0x6C6C72)
+    expectColor(Theme.Palette.textMuted, 0x9A9AA2)
+    expectColor(Theme.Palette.accent, 0x0B84C4)
+    expectColor(Theme.Palette.accentFill, 0x2FB457)
+    expectColor(Theme.Palette.accentStrong, 0x2FB457)
   }
 
   @Test("avatar tints wrap and treat negatives by magnitude")
   func avatarTints() {
-    #expect(Theme.Palette.avatarTints.count == 7)
-    expectColor(Theme.Palette.avatarTint(0), 0xEC5858)
-    expectColor(Theme.Palette.avatarTint(7), 0xEC5858)
-    expectColor(Theme.Palette.avatarTint(6), 0x68C488)
+    #expect(Theme.Palette.avatarTints.count == 8)
+    expectColor(Theme.Palette.avatarTint(0), 0xFF3B30)
+    expectColor(Theme.Palette.avatarTint(8), 0xFF3B30)
+    expectColor(Theme.Palette.avatarTint(7), 0xFFCC00)
     // Negative indices use the magnitude, matching the avatar helper contract.
-    expectColor(Theme.Palette.avatarTint(-1), 0x5098F4)
+    expectColor(Theme.Palette.avatarTint(-1), 0x0FA3E0)
   }
 }
 
@@ -92,12 +92,6 @@ struct TranscriptTests {
     ]
     #expect(rows.map(\.id) == ["a1", "u1", "n1", "t1"])
     #expect(Set(rows.map(\.id)).count == rows.count)
-  }
-
-  @Test("sender is plain value data")
-  func sender() {
-    #expect(TranscriptSender(name: "A", tintIndex: 2) == TranscriptSender(name: "A", tintIndex: 2))
-    #expect(TranscriptSender(name: "A", tintIndex: 2) != TranscriptSender(name: "B", tintIndex: 2))
   }
 
   @Test("assistant blocks compare by content")

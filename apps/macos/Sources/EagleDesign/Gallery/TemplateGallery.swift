@@ -142,9 +142,6 @@ public struct TemplateGallery: View {
     GalleryCard(title: "栏目") {
       HStack(alignment: .top, spacing: 16) {
         SidebarPanel(
-          profileInitial: "监",
-          profileName: "监察御史",
-          profilePlan: "Personal",
           sections: [
             SidebarSection(
               id: "s", title: "秘书处",

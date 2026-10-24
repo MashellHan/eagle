@@ -1,37 +1,37 @@
+import AppKit
 import SwiftUI
 
-/// Design tokens sampled from the Grok Bot desktop reference, then lightened:
-/// the first pass read too grey and too small, so surfaces are now near-white,
-/// body text is 14 pt and paddings are wider.
+/// Design tokens. Colours are dynamic: each token carries a light and a dark
+/// value, so views never branch on the colour scheme. The accent family is an
+/// iPhone 5C candy palette; surfaces stay neutral so the colour pops.
 public enum Theme {
   public enum Palette {
-    public static let canvas = Color(srgb: 0xF7F7F5)
-    public static let surface = Color(srgb: 0xFFFFFF)
-    public static let card = Color(srgb: 0xFFFFFF)
-    public static let line = Color(srgb: 0xECECEA)
-    public static let textPrimary = Color(srgb: 0x252525)
-    public static let textSecondary = Color(srgb: 0x757575)
-    /// Row subtitles and the plan line: lighter than the section labels.
-    public static let textMuted = Color(srgb: 0xA7A7A7)
-    public static let accent = Color(srgb: 0x3B7DCD)
-    /// Info banner (blue text on a pale blue fill).
-    public static let info = Color(srgb: 0x2F6FD0)
-    public static let infoFill = Color(srgb: 0xEDF3FC)
-    public static let destructive = Color(srgb: 0xE5484D)
-    public static let accentFill = Color(srgb: 0x4FA46A)
-    public static let accentStrong = Color(srgb: 0x58B378)
-    public static let hover = Color(srgb: 0x000000).opacity(0.05)
-    public static let selection = Color(srgb: 0xFFFFFF)
+    public static let canvas = Color(light: 0xF2F2F7, dark: 0x1B1B1D)
+    public static let surface = Color(light: 0xFFFFFF, dark: 0x121214)
+    public static let card = Color(light: 0xFFFFFF, dark: 0x1F1F22)
+    public static let line = Color(light: 0xE4E4E9, dark: 0x333338)
+    public static let textPrimary = Color(light: 0x141416, dark: 0xF5F5F7)
+    public static let textSecondary = Color(light: 0x6C6C72, dark: 0xA6A6AE)
+    public static let textMuted = Color(light: 0x9A9AA2, dark: 0x75757D)
+    public static let accent = Color(light: 0x0B84C4, dark: 0x4FC3F7)
+    public static let accentFill = Color(light: 0x2FB457, dark: 0x2FB457)
+    public static let accentStrong = Color(light: 0x2FB457, dark: 0x3DD068)
+    public static let info = Color(light: 0x0B6FBE, dark: 0x7FC8FF)
+    public static let infoFill = Color(light: 0xE4F4FD, dark: 0x10293C)
+    public static let destructive = Color(light: 0xE5372F, dark: 0xFF5F57)
+    public static let hover = Color(light: 0x000000, dark: 0xFFFFFF).opacity(0.06)
+    public static let selection = Color(light: 0xFFFFFF, dark: 0x2A2A2E)
 
-    /// Avatar tints observed in the reference list, in rotation order.
+    /// iPhone 5C candy tints, in rotation order.
     public static let avatarTints: [Color] = [
-      Color(srgb: 0xEC5858),
-      Color(srgb: 0x5098F4),
-      Color(srgb: 0x64C0B0),
-      Color(srgb: 0xF08840),
-      Color(srgb: 0x9878F4),
-      Color(srgb: 0xEC60A4),
-      Color(srgb: 0x68C488),
+      Color(light: 0xFF3B30, dark: 0xFF5F57),
+      Color(light: 0x0FA3E0, dark: 0x3BB8EC),
+      Color(light: 0x34C759, dark: 0x45D96B),
+      Color(light: 0xFF9F0A, dark: 0xFFB340),
+      Color(light: 0xAF52DE, dark: 0xC177EF),
+      Color(light: 0xFF2D55, dark: 0xFF5F80),
+      Color(light: 0x00B4C4, dark: 0x2BD3E3),
+      Color(light: 0xFFCC00, dark: 0xFFD84D),
     ]
 
     public static func avatarTint(_ index: Int) -> Color {
@@ -40,7 +40,6 @@ public enum Theme {
   }
 
   public enum Metric {
-    // Window and columns, measured from the reference screenshot in points.
     public static let windowWidth: CGFloat = 1728
     public static let windowHeight: CGFloat = 1082
     public static let sidebarWidth: CGFloat = 374
@@ -53,25 +52,21 @@ public enum Theme {
     /// Traffic lights: 13.5 pt circles at (16, 15) with a 23 pt pitch.
     public static let trafficLightInset: CGFloat = 15
     public static let trafficLightsEnd: CGFloat = 75
-    public static let toolbarHeight: CGFloat = 36
+    public static let toolbarHeight: CGFloat = 34
+    public static let toolbarTopInset: CGFloat = 6
+    public static let headerHeight: CGFloat = 44
+    public static let logoSize: CGFloat = 22
 
-    /// Sidebar grid: 20 pt content inset, 34 pt rows avatars, 58 pt row pitch.
     public static let contentInset: CGFloat = 20
     public static let rowHeight: CGFloat = 58
     public static let rowAvatarGap: CGFloat = 11
     public static let sectionHeaderHeight: CGFloat = 24
-    public static let sectionGap: CGFloat = 22
-    public static let profileTop: CGFloat = 16
-    public static let chipTopInset: CGFloat = 2
-    public static let pinnedHeaderHeight: CGFloat = 64
-    public static let toolbarTopInset: CGFloat = 6
-    public static let profileAvatar: CGFloat = 55
-    public static let profileNameGap: CGFloat = 8
-    public static let listTopGap: CGFloat = 34
+    public static let sectionGap: CGFloat = 18
+    public static let listTopGap: CGFloat = 10
     public static let unreadPillHeight: CGFloat = 28
     public static let unreadPillBottom: CGFloat = 16
-    public static let footerHeight: CGFloat = 62
-    public static let footerBottom: CGFloat = 16
+    public static let footerHeight: CGFloat = 54
+    public static let footerBottom: CGFloat = 14
 
     public static let panelInset: CGFloat = 16
     public static let conversationInset: CGFloat = 24
@@ -82,7 +77,7 @@ public enum Theme {
     public static let windowInset: CGFloat = 8
 
     public static let avatarRow: CGFloat = 34
-    public static let avatarProfile: CGFloat = profileAvatar
+    public static let avatarProfile: CGFloat = 55
     public static let avatarInspector: CGFloat = 76
     public static let avatarNote: CGFloat = 18
     public static let iconButton: CGFloat = 30
@@ -92,7 +87,11 @@ public enum Theme {
     public static let controlRadius: CGFloat = 9
     public static let hairline: CGFloat = 1
 
+    public static let chipTopInset: CGFloat = 2
+    public static let pinnedHeaderHeight: CGFloat = 62
     public static let collapseDuration: CGFloat = 0.28
+    public static let conversationMaxContentWidth: CGFloat = 720
+
     public static let settingsRailWidth: CGFloat = 190
     public static let settingsRowHeight: CGFloat = 46
     public static let settingsDeviceRowHeight: CGFloat = 58
@@ -101,7 +100,8 @@ public enum Theme {
     public static let settingsContentInset: CGFloat = 28
     public static let accountMenuWidth: CGFloat = 226
     public static let accountRowHeight: CGFloat = 46
-    public static let conversationMaxContentWidth: CGFloat = 720
+    public static let settingsWidth: CGFloat = 900
+    public static let settingsHeight: CGFloat = 640
   }
 
   public enum TypeScale {
@@ -110,6 +110,7 @@ public enum Theme {
     public static let sectionLabel = Font.system(size: 13.5, weight: .medium)
     public static let profileName = Font.system(size: 13.5, weight: .semibold)
     public static let profilePlan = Font.system(size: 12.5)
+    public static let brand = Font.system(size: 17, weight: .semibold)
     public static let body = Font.system(size: 15)
     public static let bodyEmphasis = Font.system(size: 15, weight: .medium)
     public static let bubble = Font.system(size: 15)
@@ -123,14 +124,29 @@ public enum Theme {
 }
 
 extension Color {
-  /// sRGB token helper so palette values stay readable in source.
-  init(srgb value: UInt32) {
+  /// Dynamic colour with separate light and dark sRGB values.
+  init(light: UInt32, dark: UInt32) {
     self.init(
-      .sRGB,
-      red: Double((value >> 16) & 0xFF) / 255,
-      green: Double((value >> 8) & 0xFF) / 255,
-      blue: Double(value & 0xFF) / 255,
-      opacity: 1
+      nsColor: NSColor(name: nil) { appearance in
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return NSColor(srgb: isDark ? dark : light)
+      }
+    )
+  }
+
+  /// Static sRGB helper used by tests and one-off previews.
+  init(srgb value: UInt32) {
+    self.init(nsColor: NSColor(srgb: value))
+  }
+}
+
+extension NSColor {
+  fileprivate convenience init(srgb value: UInt32) {
+    self.init(
+      srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
+      green: CGFloat((value >> 8) & 0xFF) / 255,
+      blue: CGFloat(value & 0xFF) / 255,
+      alpha: 1
     )
   }
 }

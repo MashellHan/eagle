@@ -6,14 +6,15 @@ import SwiftUI
 @main
 struct EagleApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+  @AppStorage("eagle.appearance") private var appearance = "system"
 
   var body: some Scene {
     WindowGroup("Eagle") {
-      WorkspaceShellView(onOpenSettings: { SettingsWindowOpener.shared.open() })
+      WorkspaceShellView()
         .frame(minWidth: 1280, minHeight: 760)
         .ignoresSafeArea()
         .background(WindowConfigurator())
-        .preferredColorScheme(.light)
+        .preferredColorScheme(scheme)
     }
     .defaultSize(width: Theme.Metric.windowWidth, height: Theme.Metric.windowHeight)
     // Immersive: no title bar, traffic lights float over the sidebar.
@@ -21,7 +22,7 @@ struct EagleApp: App {
     .windowResizability(.contentMinSize)
     .commands {
       CommandGroup(replacing: .appSettings) {
-        Button("设置…") { SettingsWindowOpener.shared.open() }
+        Button("设置…") { NotificationCenter.default.post(name: .eagleToggleSettings, object: nil) }
           .keyboardShortcut(",", modifiers: .command)
       }
       CommandGroup(after: .newItem) {
@@ -43,36 +44,6 @@ struct EagleApp: App {
         .keyboardShortcut("2", modifiers: [.command, .control])
       }
     }
-  }
-}
-
-/// Opens the settings window from AppKit call sites such as the menu command.
-@MainActor
-final class SettingsWindowOpener {
-  static let shared = SettingsWindowOpener()
-  private var window: NSWindow?
-
-  func open() {
-    if let existing = window {
-      existing.makeKeyAndOrderFront(nil)
-      return
-    }
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 920, height: 720),
-      styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
-      backing: .buffered,
-      defer: false
-    )
-    window.title = "设置"
-    window.titlebarAppearsTransparent = true
-    window.titleVisibility = .hidden
-    window.contentView = NSHostingView(
-      rootView: SettingsView(onClose: { [weak window] in window?.close() })
-        .preferredColorScheme(.light)
-    )
-    window.center()
-    window.makeKeyAndOrderFront(nil)
-    self.window = window
   }
 }
 
@@ -131,5 +102,16 @@ enum GalleryWindow {
     window.center()
     window.makeKeyAndOrderFront(nil)
     Self.window = window
+  }
+}
+
+extension EagleApp {
+  /// `nil` follows the system; the settings switch stores light or dark.
+  fileprivate var scheme: ColorScheme? {
+    switch appearance {
+    case "light": return .light
+    case "dark": return .dark
+    default: return nil
+    }
   }
 }

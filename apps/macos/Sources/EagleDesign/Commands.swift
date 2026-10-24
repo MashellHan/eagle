@@ -4,4 +4,5 @@ import Foundation
 extension Notification.Name {
   public static let eagleToggleSidebar = Notification.Name("ai.hexly.eagle.toggleSidebar")
   public static let eagleToggleInspector = Notification.Name("ai.hexly.eagle.toggleInspector")
+  public static let eagleToggleSettings = Notification.Name("ai.hexly.eagle.toggleSettings")
 }
