@@ -114,11 +114,16 @@ test("only real import nodes count as dependencies", () => {
     'const metadata = { import: "../protocol/version.ts" };',
     'export const alsoMetadata = { from: "../protocol/version.ts" };',
     `const lazy = \`${"$"}{await import("./in-interpolation.ts")}\`;`,
+    "const templateOnly = await import(`./in-a-template-literal.ts`);",
+    'export type Pi = typeof import("@earendil-works/pi-durable");',
+    'export type Wire = typeof import("../protocol/version.ts");',
   ].join("\n");
   assert.deepEqual(dependenciesOf(source).sort(), [
+    "../protocol/version.ts",
     "./a.ts",
     "./b.ts",
     "./c.ts",
+    "./in-a-template-literal.ts",
     "./in-interpolation.ts",
     "./side-effect.ts",
     "@earendil-works/pi-durable",
@@ -154,5 +159,22 @@ test("the rules allow the documented edges", () => {
   assert.deepEqual(
     violations(allowed.map(({ file, specifier }) => ({ file, dependencies: [specifier] }))),
     [],
+  );
+});
+
+test("type-only imports are caught end to end", () => {
+  const source = ['export type PiModule = typeof import("@earendil-works/pi-durable");'].join("\n");
+  const graph = [
+    { file: "src/core/domain.ts", dependencies: dependenciesOf(source) },
+    {
+      file: "src/core/domain.ts",
+      dependencies: dependenciesOf('export type T = typeof import("../protocol/version.ts");'),
+    },
+  ];
+  const found = violations(graph);
+  assert.equal(found.length, 2, "both a type import of pi-durable and of the wire layer must fail");
+  assert.deepEqual(
+    found.map((entry) => entry.file),
+    ["src/core/domain.ts", "src/core/domain.ts"],
   );
 });

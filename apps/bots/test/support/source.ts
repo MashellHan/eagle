@@ -38,11 +38,21 @@ export function dependenciesOf(source: string): string[] {
       const value = specifier(node);
       if (value !== undefined) found.add(value);
     }
+    // `typeof import("x")` in a type position is an ImportType node, and it leaks a
+    // dependency just like a value import does.
+    if (node.type === "TSImportType") {
+      const value = (node.argument as { value?: unknown } | undefined)?.value;
+      if (typeof value === "string") found.add(value);
+    }
     if (node.type === "CallExpression" && node.callee?.type === "Import") {
       const argument = node.arguments?.[0];
-      const value =
-        argument?.type === "StringLiteral" ? (argument as { value?: unknown }).value : undefined;
-      if (typeof value === "string") found.add(value);
+      const literal =
+        argument?.type === "StringLiteral"
+          ? (argument as { value?: unknown }).value
+          : argument?.type === "TemplateLiteral" && (argument.expressions?.length ?? 0) === 0
+            ? (argument.quasis?.[0] as { value?: { cooked?: unknown } } | undefined)?.value?.cooked
+            : undefined;
+      if (typeof literal === "string") found.add(literal);
     }
     for (const [key, value] of Object.entries(node)) {
       if (key === "loc" || key === "leadingComments" || key === "trailingComments") continue;
