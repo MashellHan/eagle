@@ -35,7 +35,8 @@ public struct EdgeFade: View {
 
 extension View {
   /// Masks the top and bottom of a scroll view with panel-coloured gradients.
-  public func scrollEdgeFades(_ color: Color, top: CGFloat = 26, bottom: CGFloat = 26) -> some View {
+  public func scrollEdgeFades(_ color: Color, top: CGFloat = 26, bottom: CGFloat = 26) -> some View
+  {
     overlay(alignment: .top) { EdgeFade(color: color, edge: .top, height: top) }
       .overlay(alignment: .bottom) { EdgeFade(color: color, edge: .bottom, height: bottom) }
   }

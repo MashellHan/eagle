@@ -128,7 +128,9 @@ struct EagleChecks {
     if let created { groups.deleteSection(created.id) }
     check("delete removes", groups.sections.count == initialSections)
     groups.renameItem("deps", to: "依赖修复专家 A")
-    check("item rename", groups.groups.flatMap(\.items).contains { $0.id == "deps" && $0.title == "依赖修复专家 A" })
+    check(
+      "item rename",
+      groups.groups.flatMap(\.items).contains { $0.id == "deps" && $0.title == "依赖修复专家 A" })
     let beforeItems = groups.totalConversations
     groups.deleteItem("deps")
     check("item delete", groups.totalConversations == beforeItems - 1)

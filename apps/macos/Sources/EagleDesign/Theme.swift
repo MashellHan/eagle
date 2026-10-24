@@ -57,7 +57,10 @@ public enum Theme {
     public static let rowAvatarGap: CGFloat = 11
     public static let sectionHeaderHeight: CGFloat = 24
     public static let sectionGap: CGFloat = 22
-    public static let profileTop: CGFloat = 33
+    public static let profileTop: CGFloat = 22
+    public static let chipTopInset: CGFloat = 6
+    public static let pinnedHeaderHeight: CGFloat = 62
+    public static let toolbarTopInset: CGFloat = 4
     public static let profileAvatar: CGFloat = 55
     public static let profileNameGap: CGFloat = 8
     public static let listTopGap: CGFloat = 34
@@ -106,7 +109,6 @@ public enum Theme {
     public static let pill = Font.system(size: 11.5, weight: .medium)
   }
 }
-
 
 extension Color {
   /// sRGB token helper so palette values stay readable in source.

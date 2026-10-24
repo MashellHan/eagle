@@ -3,7 +3,8 @@ import SwiftUI
 
 /// One-pixel divider that drags a column width. It reports the *absolute* width
 /// from the drag origin measured in the global coordinate space, so the layout
-/// cannot feed back into the gesture and jitter.
+/// cannot feed back into the gesture and jitter. The line never changes colour;
+/// only the cursor changes, through a native cursor rect.
 public struct ResizeHandle: View {
   private let width: CGFloat
   private let minimum: CGFloat
@@ -11,7 +12,6 @@ public struct ResizeHandle: View {
   private let inverted: Bool
   private let onChange: (CGFloat) -> Void
 
-  @LocalState private var active = false
   @LocalState private var startX: CGFloat?
 
   public init(
@@ -31,18 +31,14 @@ public struct ResizeHandle: View {
   public var body: some View {
     ZStack {
       Rectangle()
-        .fill(active ? Theme.Palette.accent.opacity(0.6) : Theme.Palette.line)
-        .frame(width: active ? 2 : Theme.Metric.hairline)
-      Rectangle()
-        .fill(Color.clear)
-        .frame(width: 11)
+        .fill(Theme.Palette.line)
+        .frame(width: Theme.Metric.hairline)
+      Color.clear
         .contentShape(Rectangle())
+        .background(CursorRect(cursor: .resizeLeftRight))
     }
     .frame(width: 11)
-    .onHover { hovering in
-      active = hovering
-      if hovering { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-    }
+    .frame(maxHeight: .infinity)
     .gesture(
       DragGesture(minimumDistance: 0, coordinateSpace: .global)
         .onChanged { value in
@@ -50,10 +46,50 @@ public struct ResizeHandle: View {
           if startX == nil { startX = origin }
           let delta = value.location.x - origin
           let target = inverted ? width - delta : width + delta
-          onChange(min(max(target, minimum), maximum))
+          onChange(min(target, maximum).clamped(to: minimum...maximum))
         }
         .onEnded { _ in startX = nil }
     )
     .accessibilityLabel("调整栏宽")
+  }
+}
+
+extension CGFloat {
+  fileprivate func clamped(to range: ClosedRange<CGFloat>) -> CGFloat {
+    Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
+  }
+}
+
+/// Native cursor rect: `onHover` plus `NSCursor.push` loses to SwiftUI's own
+/// cursor management, a cursor rect does not.
+struct CursorRect: NSViewRepresentable {
+  let cursor: NSCursor
+
+  func makeNSView(context: Context) -> CursorView {
+    CursorView(cursor: cursor)
+  }
+
+  func updateNSView(_ view: CursorView, context: Context) {
+    view.cursor = cursor
+    view.window?.invalidateCursorRects(for: view)
+  }
+
+  final class CursorView: NSView {
+    var cursor: NSCursor
+
+    init(cursor: NSCursor) {
+      self.cursor = cursor
+      super.init(frame: .zero)
+      translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+      fatalError("init(coder:) is not used")
+    }
+
+    override func resetCursorRects() {
+      addCursorRect(bounds, cursor: cursor)
+    }
   }
 }

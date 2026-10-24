@@ -13,14 +13,14 @@ public struct TranscriptSender: Hashable, Sendable {
 }
 
 public enum TranscriptEntry: Identifiable, Hashable, Sendable {
-  case assistant(id: String, blocks: [AssistantTurn.Block], sender: TranscriptSender? = nil)
+  case assistant(id: String, blocks: [AssistantTurn.Block])
   case user(id: String, text: String)
   case note(id: String, text: String, tintIndices: [Int])
   case typing(id: String)
 
   public var id: String {
     switch self {
-    case .assistant(let id, _, _), .user(let id, _), .note(let id, _, _), .typing(let id):
+    case .assistant(let id, _), .user(let id, _), .note(let id, _, _), .typing(let id):
       return id
     }
   }
@@ -32,6 +32,7 @@ public struct ConversationColumn: View {
   private let subtitle: String
   private let tintIndex: Int
   private let entries: [TranscriptEntry]
+  private let sender: TranscriptSender?
   @Binding private var draft: String
   private let onSend: () -> Void
   private let onShowSidebar: () -> Void
@@ -41,6 +42,7 @@ public struct ConversationColumn: View {
     title: String,
     subtitle: String,
     tintIndex: Int,
+    sender: TranscriptSender? = nil,
     entries: [TranscriptEntry],
     draft: Binding<String>,
     onSend: @escaping () -> Void,
@@ -51,6 +53,7 @@ public struct ConversationColumn: View {
     self.subtitle = subtitle
     self.tintIndex = tintIndex
     self.entries = entries
+    self.sender = sender
     self._draft = draft
     self.onSend = onSend
     self.showsSidebar = showsSidebar
@@ -65,6 +68,7 @@ public struct ConversationColumn: View {
 
       ZStack(alignment: .top) {
         transcript
+        pinnedHeader
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -84,7 +88,8 @@ public struct ConversationColumn: View {
     HStack(spacing: 10) {
       if !showsSidebar {
         IconButton(systemName: "sidebar.left", label: "展开侧栏", action: onShowSidebar)
-        Avatar(initial: String(title.prefix(1)), tint: Theme.Palette.avatarTint(tintIndex), size: 24)
+        Avatar(
+          initial: String(title.prefix(1)), tint: Theme.Palette.avatarTint(tintIndex), size: 24)
         Text(title)
           .font(Theme.TypeScale.cardTitle)
           .foregroundStyle(Theme.Palette.textSecondary)
@@ -95,6 +100,24 @@ public struct ConversationColumn: View {
     .padding(.horizontal, Theme.Metric.conversationInset - 8)
     .padding(.top, Theme.Metric.windowInset + 2)
     .frame(height: Theme.Metric.windowInset + 40)
+  }
+
+  private var pinnedHeader: some View {
+    VStack(spacing: 0) {
+      if let sender {
+        SenderChip(name: sender.name, tintIndex: sender.tintIndex)
+          .padding(.top, Theme.Metric.chipTopInset)
+          .padding(.bottom, 10)
+      }
+      LinearGradient(
+        colors: [Theme.Palette.surface, Theme.Palette.surface.opacity(0)],
+        startPoint: .top,
+        endPoint: .bottom
+      )
+      .frame(height: 14)
+    }
+    .frame(maxWidth: .infinity)
+    .allowsHitTesting(false)
   }
 
   private var transcript: some View {
@@ -109,11 +132,11 @@ public struct ConversationColumn: View {
         .frame(maxWidth: Theme.Metric.conversationMaxContentWidth, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.Metric.conversationInset)
-        .padding(.top, showsSidebar ? Theme.Metric.windowInset + 6 : 6)
+        .padding(.top, sender == nil ? 8 : Theme.Metric.pinnedHeaderHeight)
         .padding(.bottom, 12)
         .animation(.easeOut(duration: 0.2), value: entries.count)
       }
-      .scrollEdgeFades(Theme.Palette.surface)
+      .scrollEdgeFades(Theme.Palette.surface, top: 0, bottom: 26)
       .onChange(of: entries.count) {
         withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo("bottom", anchor: .bottom) }
       }
@@ -123,18 +146,9 @@ public struct ConversationColumn: View {
   @ViewBuilder
   private func row(_ entry: TranscriptEntry) -> some View {
     switch entry {
-    case .assistant(_, let blocks, let sender):
-      VStack(alignment: .leading, spacing: 14) {
-        if let sender {
-          HStack {
-            Spacer(minLength: 0)
-            SenderChip(name: sender.name, tintIndex: sender.tintIndex)
-            Spacer(minLength: 0)
-          }
-        }
-        AssistantTurn(blocks)
-      }
-      .transition(.opacity.combined(with: .move(edge: .bottom)))
+    case .assistant(_, let blocks):
+      AssistantTurn(blocks)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
     case .user(_, let text):
       UserBubble(text)
         .transition(.opacity.combined(with: .move(edge: .bottom)))

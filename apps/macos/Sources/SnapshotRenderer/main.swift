@@ -14,7 +14,8 @@ import SwiftUI
 struct SnapshotRenderer {
   @MainActor
   static func main() {
-    let output = CommandLine.arguments.count > 1
+    let output =
+      CommandLine.arguments.count > 1
       ? CommandLine.arguments[1]
       : ".local/macos-snapshots"
     let directory = URL(fileURLWithPath: output, isDirectory: true)
@@ -45,7 +46,9 @@ struct SnapshotRenderer {
   }
 
   @MainActor
-  private static func capture<V: View>(_ view: V, size: CGSize, named name: String, in directory: URL) {
+  private static func capture<V: View>(
+    _ view: V, size: CGSize, named name: String, in directory: URL
+  ) {
     let window = NSWindow(
       contentRect: NSRect(origin: .zero, size: size),
       styleMask: [.borderless],

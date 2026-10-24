@@ -1,7 +1,7 @@
-import EagleDesign
-import SwiftUI
-import Foundation
 import Combine
+import EagleDesign
+import Foundation
+import SwiftUI
 
 /// Static demo content so the shell and the template library can be judged
 /// before any real Herdr data is wired in.
@@ -21,72 +21,80 @@ public struct WorkspaceGroup: Identifiable, Hashable, Sendable {
 
 public enum MockWorkspace {
   public static let groups: [WorkspaceGroup] = [
-    WorkspaceGroup(id: "secretariat", title: "秘书处", items: [
-      SidebarItem(
-        id: "investigator", title: "首席调查官",
-        subtitle: "哥，最值得借鉴的是 OpenClaw 的聊天界面模块...", tintIndex: 0),
-      SidebarItem(
-        id: "secretary", title: "工作秘书",
-        subtitle: "哥，周末早上有两件事：", tag: "Personal", tintIndex: 1),
-      SidebarItem(
-        id: "xbutler", title: "X管家",
-        subtitle: "Brotli 那条已经转给 @安全审查师了，原帖和 C...", tag: "Personal", tintIndex: 2),
-      SidebarItem(
-        id: "mail", title: "个人邮件管家",
-        subtitle: "收件箱摘要 2026-10-24 06:00（北京时间）", tag: "Personal", tintIndex: 3),
-      SidebarItem(
-        id: "life", title: "生活秘书",
-        subtitle: "读到了，你现在在北京大兴区旧宫镇，坐标大约...", tag: "Personal", tintIndex: 4),
-      SidebarItem(
-        id: "skills", title: "技能优化大师",
-        subtitle: "哥，安全审查师的 security-incident-daily 第四...", tintIndex: 5),
-      SidebarItem(
-        id: "knowledge", title: "知识库",
-        subtitle: "哥，我查过了：翻墙大师的知识库 key 现在只能...", tag: "Personal", tintIndex: 5),
-      SidebarItem(
-        id: "fund", title: "基金经理",
-        subtitle: "好，那次同步就让它在 Studio 上跑完，我不催...", tag: "Personal", tintIndex: 3),
-      SidebarItem(
-        id: "blog", title: "博客秘书",
-        subtitle: "文章已经在站上发布了：这次 reorg 没写到的那...", tag: "Personal", tintIndex: 0),
-      SidebarItem(
-        id: "finance", title: "财务助手",
-        subtitle: "规则已写进知识库；脚本也是按「远期」标识...", tag: "Personal", tintIndex: 4),
-    ]),
-    WorkspaceGroup(id: "news", title: "新闻组", count: 9, items: [
-      SidebarItem(
-        id: "translator", title: "首席翻译官",
-        subtitle: "已经发给 @博客秘书 了，附上了终稿路径、Xra...", tag: "News", tintIndex: 3),
-      SidebarItem(
-        id: "reporter", title: "行业记者",
-        subtitle: "今天值得读的三条：Cursor 的 sandbox 设计、...", tag: "News", tintIndex: 1),
-      SidebarItem(
-        id: "digest", title: "早报编辑",
-        subtitle: "早报已排好版，头图用的是昨天那张航拍。", tag: "News", tintIndex: 6),
-      SidebarItem(
-        id: "research", title: "调研助手",
-        subtitle: "查到 4 家同类产品的定价，最低的是按席位计费。", tag: "News", tintIndex: 7),
-    ]),
-    WorkspaceGroup(id: "review", title: "审查组", count: 4, items: [
-      SidebarItem(
-        id: "deps", title: "依赖修复专家",
-        subtitle: "第一批 8 个仓库已经开始修了，每小时给你发一次进度",
-        tag: "GitHub", tintIndex: 2),
-      SidebarItem(
-        id: "security", title: "安全审查师",
-        subtitle: "CVE-2026-3185 已确认影响 body-parser 2.3.x。", tag: "Security", tintIndex: 0),
-      SidebarItem(
-        id: "codex", title: "Codex 审查",
-        subtitle: "PR #854 第 1 轮通过，没有需要追加的修改。", tag: "GitHub", tintIndex: 1),
-    ]),
-    WorkspaceGroup(id: "ops", title: "运维组", items: [
-      SidebarItem(
-        id: "build", title: "构建守护",
-        subtitle: "main 分支 3 次构建失败，都是同一个快照测试。", tintIndex: 6),
-      SidebarItem(
-        id: "infra", title: "基础设施",
-        subtitle: "东京区域的 D1 读延迟回落到 2.1ms。", tintIndex: 7),
-    ]),
+    WorkspaceGroup(
+      id: "secretariat", title: "秘书处",
+      items: [
+        SidebarItem(
+          id: "investigator", title: "首席调查官",
+          subtitle: "哥，最值得借鉴的是 OpenClaw 的聊天界面模块...", tintIndex: 0),
+        SidebarItem(
+          id: "secretary", title: "工作秘书",
+          subtitle: "哥，周末早上有两件事：", tag: "Personal", tintIndex: 1),
+        SidebarItem(
+          id: "xbutler", title: "X管家",
+          subtitle: "Brotli 那条已经转给 @安全审查师了，原帖和 C...", tag: "Personal", tintIndex: 2),
+        SidebarItem(
+          id: "mail", title: "个人邮件管家",
+          subtitle: "收件箱摘要 2026-10-24 06:00（北京时间）", tag: "Personal", tintIndex: 3),
+        SidebarItem(
+          id: "life", title: "生活秘书",
+          subtitle: "读到了，你现在在北京大兴区旧宫镇，坐标大约...", tag: "Personal", tintIndex: 4),
+        SidebarItem(
+          id: "skills", title: "技能优化大师",
+          subtitle: "哥，安全审查师的 security-incident-daily 第四...", tintIndex: 5),
+        SidebarItem(
+          id: "knowledge", title: "知识库",
+          subtitle: "哥，我查过了：翻墙大师的知识库 key 现在只能...", tag: "Personal", tintIndex: 5),
+        SidebarItem(
+          id: "fund", title: "基金经理",
+          subtitle: "好，那次同步就让它在 Studio 上跑完，我不催...", tag: "Personal", tintIndex: 3),
+        SidebarItem(
+          id: "blog", title: "博客秘书",
+          subtitle: "文章已经在站上发布了：这次 reorg 没写到的那...", tag: "Personal", tintIndex: 0),
+        SidebarItem(
+          id: "finance", title: "财务助手",
+          subtitle: "规则已写进知识库；脚本也是按「远期」标识...", tag: "Personal", tintIndex: 4),
+      ]),
+    WorkspaceGroup(
+      id: "news", title: "新闻组", count: 9,
+      items: [
+        SidebarItem(
+          id: "translator", title: "首席翻译官",
+          subtitle: "已经发给 @博客秘书 了，附上了终稿路径、Xra...", tag: "News", tintIndex: 3),
+        SidebarItem(
+          id: "reporter", title: "行业记者",
+          subtitle: "今天值得读的三条：Cursor 的 sandbox 设计、...", tag: "News", tintIndex: 1),
+        SidebarItem(
+          id: "digest", title: "早报编辑",
+          subtitle: "早报已排好版，头图用的是昨天那张航拍。", tag: "News", tintIndex: 6),
+        SidebarItem(
+          id: "research", title: "调研助手",
+          subtitle: "查到 4 家同类产品的定价，最低的是按席位计费。", tag: "News", tintIndex: 7),
+      ]),
+    WorkspaceGroup(
+      id: "review", title: "审查组", count: 4,
+      items: [
+        SidebarItem(
+          id: "deps", title: "依赖修复专家",
+          subtitle: "第一批 8 个仓库已经开始修了，每小时给你发一次进度",
+          tag: "GitHub", tintIndex: 2),
+        SidebarItem(
+          id: "security", title: "安全审查师",
+          subtitle: "CVE-2026-3185 已确认影响 body-parser 2.3.x。", tag: "Security", tintIndex: 0),
+        SidebarItem(
+          id: "codex", title: "Codex 审查",
+          subtitle: "PR #854 第 1 轮通过，没有需要追加的修改。", tag: "GitHub", tintIndex: 1),
+      ]),
+    WorkspaceGroup(
+      id: "ops", title: "运维组",
+      items: [
+        SidebarItem(
+          id: "build", title: "构建守护",
+          subtitle: "main 分支 3 次构建失败，都是同一个快照测试。", tintIndex: 6),
+        SidebarItem(
+          id: "infra", title: "基础设施",
+          subtitle: "东京区域的 D1 读延迟回落到 2.1ms。", tintIndex: 7),
+      ]),
   ]
 
   public static let transcript: [TranscriptEntry] = [
@@ -108,8 +116,7 @@ public enum MockWorkspace {
         .paragraph(
           "执行计划：每个仓库开一个 PR，最多同时修 8 个。第一批是 base-mcp、firefly、octo、zhe、bogo、hexly.ai、his.fm 和 meowth，next-ai、sleepy、giraffe 和 matrix 排在后面，前面合并一个就补上一个。每个 PR 等 CI 通过后用 Codex 审查，最多 10 轮，审查通过后用 merge 方式合并。"
         ),
-      ],
-      sender: TranscriptSender(name: "依赖修复专家", tintIndex: 2)
+      ]
     ),
     .note(id: "n1", text: "已发送给 8 个智能体", tintIndices: [1, 2, 3]),
     .assistant(
@@ -138,7 +145,8 @@ public enum MockWorkspace {
         )
       ]
     ),
-    .note(id: "n4", text: "已发送给 deps 2026-10-24 next-ai 和 deps 2026-10-24 bogo", tintIndices: [2, 3]),
+    .note(
+      id: "n4", text: "已发送给 deps 2026-10-24 next-ai 和 deps 2026-10-24 bogo", tintIndices: [2, 3]),
     .user(id: "u1", text: "今天 eagle 会修吗"),
     .assistant(
       id: "a5",
@@ -248,7 +256,9 @@ public final class WorkspaceListViewModel: ObservableObject {
     let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return }
     for groupIndex in groups.indices {
-      guard let itemIndex = groups[groupIndex].items.firstIndex(where: { $0.id == id }) else { continue }
+      guard let itemIndex = groups[groupIndex].items.firstIndex(where: { $0.id == id }) else {
+        continue
+      }
       let item = groups[groupIndex].items[itemIndex]
       groups[groupIndex].items[itemIndex] = SidebarItem(
         id: item.id,
@@ -263,7 +273,9 @@ public final class WorkspaceListViewModel: ObservableObject {
 
   public func deleteItem(_ id: String) {
     for groupIndex in groups.indices {
-      guard let itemIndex = groups[groupIndex].items.firstIndex(where: { $0.id == id }) else { continue }
+      guard let itemIndex = groups[groupIndex].items.firstIndex(where: { $0.id == id }) else {
+        continue
+      }
       groups[groupIndex].items.remove(at: itemIndex)
       if selection == id {
         selection = groups.flatMap(\.items).first?.id

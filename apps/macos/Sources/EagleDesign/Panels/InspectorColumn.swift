@@ -78,7 +78,7 @@ public struct InspectorColumn: View {
         IconButton(systemName: "xmark", label: "收起检查器", action: onCollapse)
       }
       .padding(.horizontal, Theme.Metric.panelInset - 6)
-      .padding(.top, Theme.Metric.windowInset + 2)
+      .padding(.top, Theme.Metric.toolbarTopInset)
       .frame(height: Theme.Metric.toolbarHeight)
 
       Identity(name: name, subtitle: subtitle, tintIndex: tintIndex)

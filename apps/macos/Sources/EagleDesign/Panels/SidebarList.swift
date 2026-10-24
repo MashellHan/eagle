@@ -25,7 +25,9 @@ public struct SidebarSection: Identifiable, Hashable, Sendable {
   public let isExpanded: Bool
   public let items: [SidebarItem]
 
-  public init(id: String, title: String, count: Int? = nil, isExpanded: Bool = true, items: [SidebarItem]) {
+  public init(
+    id: String, title: String, count: Int? = nil, isExpanded: Bool = true, items: [SidebarItem]
+  ) {
     self.id = id
     self.title = title
     self.count = count

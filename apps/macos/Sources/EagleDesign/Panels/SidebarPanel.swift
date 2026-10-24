@@ -92,8 +92,8 @@ public struct SidebarPanel: View {
       IconButton(systemName: "sidebar.left", label: "收起侧栏", action: onCollapse)
     }
     .padding(.trailing, 12)
-    .padding(.top, 10)
-    .frame(height: 10 + Theme.Metric.toolbarHeight)
+    .padding(.top, Theme.Metric.toolbarTopInset)
+    .frame(height: Theme.Metric.toolbarTopInset + Theme.Metric.toolbarHeight)
   }
 
   private var profile: some View {

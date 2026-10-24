@@ -40,7 +40,9 @@ public struct TemplateGallery: View {
 
   private var paletteSection: some View {
     GalleryCard(title: "配色") {
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 5), spacing: 12) {
+      LazyVGrid(
+        columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 5), spacing: 12
+      ) {
         swatch("canvas", Theme.Palette.canvas, "F4F4F4")
         swatch("surface", Theme.Palette.surface, "FCFCFC")
         swatch("card", Theme.Palette.card, "FFFFFF")
@@ -75,8 +77,12 @@ public struct TemplateGallery: View {
     GalleryCard(title: "基础控件") {
       VStack(alignment: .leading, spacing: 18) {
         HStack(spacing: 12) {
-          Avatar(initial: "监", tint: Theme.Palette.avatarTint(1), size: Theme.Metric.avatarProfile, badge: Theme.Palette.avatarTint(3))
-          Avatar(initial: "G", tint: Theme.Palette.accentStrong, size: Theme.Metric.avatarProfile, shape: .blob)
+          Avatar(
+            initial: "监", tint: Theme.Palette.avatarTint(1), size: Theme.Metric.avatarProfile,
+            badge: Theme.Palette.avatarTint(3))
+          Avatar(
+            initial: "G", tint: Theme.Palette.accentStrong, size: Theme.Metric.avatarProfile,
+            shape: .blob)
           ForEach(Array(Theme.Palette.avatarTints.enumerated()), id: \.offset) { index, tint in
             Avatar(initial: "依", tint: tint)
           }
@@ -105,7 +111,9 @@ public struct TemplateGallery: View {
           .frame(maxWidth: 320)
 
         VStack(spacing: 8) {
-          ChevronRow(systemName: "chevron.left.forwardslash.chevron.right", title: "deps 2026-10-24 sleepy") {}
+          ChevronRow(
+            systemName: "chevron.left.forwardslash.chevron.right", title: "deps 2026-10-24 sleepy"
+          ) {}
           ToggleRow(title: "每日依赖修复调度", detail: "每天 8:47", isOn: $toggleOne)
           ToggleRow(title: "依赖修复进度 10-24", detail: "每小时，10月24日，10:00 – 20:00", isOn: $toggleTwo)
         }
@@ -138,13 +146,20 @@ public struct TemplateGallery: View {
           profileName: "监察御史",
           profilePlan: "Personal",
           sections: [
-            SidebarSection(id: "s", title: "秘书处", items: [
-              SidebarItem(id: "1", title: "首席调查官", subtitle: "哥，最值得借鉴的是 OpenClaw 的聊天界面模块...", tintIndex: 0),
-              SidebarItem(id: "2", title: "工作秘书", subtitle: "哥，周末早上有两件事：", tag: "Personal", tintIndex: 1),
-            ]),
-            SidebarSection(id: "n", title: "新闻组", count: 9, items: [
-              SidebarItem(id: "3", title: "知识库", subtitle: "哥，我查过了：翻墙大师的知识库 key 现在只能...", tintIndex: 5),
-            ]),
+            SidebarSection(
+              id: "s", title: "秘书处",
+              items: [
+                SidebarItem(
+                  id: "1", title: "首席调查官", subtitle: "哥，最值得借鉴的是 OpenClaw 的聊天界面模块...", tintIndex: 0),
+                SidebarItem(
+                  id: "2", title: "工作秘书", subtitle: "哥，周末早上有两件事：", tag: "Personal", tintIndex: 1),
+              ]),
+            SidebarSection(
+              id: "n", title: "新闻组", count: 9,
+              items: [
+                SidebarItem(
+                  id: "3", title: "知识库", subtitle: "哥，我查过了：翻墙大师的知识库 key 现在只能...", tintIndex: 5)
+              ]),
           ],
           selection: "2",
           onSelect: { _ in },
@@ -164,7 +179,8 @@ public struct TemplateGallery: View {
           ],
           jobs: [
             InspectorJob(id: "j1", title: "每日依赖修复调度", detail: "每天 8:47", isOn: true),
-            InspectorJob(id: "j2", title: "依赖修复进度 10-24", detail: "每小时，10月24日，10:00 – 20:00", isOn: true),
+            InspectorJob(
+              id: "j2", title: "依赖修复进度 10-24", detail: "每小时，10月24日，10:00 – 20:00", isOn: true),
           ],
           tab: .constant(.detail)
         )

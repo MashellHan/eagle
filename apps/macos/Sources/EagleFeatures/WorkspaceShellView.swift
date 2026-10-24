@@ -53,6 +53,7 @@ public struct WorkspaceShellView: View {
         title: item?.title ?? "依赖修复专家",
         subtitle: item?.tag ?? "GitHub",
         tintIndex: item?.tintIndex ?? 2,
+        sender: TranscriptSender(name: item?.title ?? "依赖修复专家", tintIndex: item?.tintIndex ?? 2),
         entries: chat.entries,
         draft: $chat.draft,
         onSend: { chat.send() },

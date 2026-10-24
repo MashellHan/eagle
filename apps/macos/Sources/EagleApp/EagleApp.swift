@@ -11,6 +11,7 @@ struct EagleApp: App {
     WindowGroup("Eagle") {
       WorkspaceShellView()
         .frame(minWidth: 1280, minHeight: 760)
+        .ignoresSafeArea()
         .background(WindowConfigurator())
         .preferredColorScheme(.light)
     }

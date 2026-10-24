@@ -42,7 +42,9 @@ public struct Composer: View {
       .onSubmit(onSend)
       .accessibilityLabel(placeholder)
 
-      IconButton(systemName: "mic", label: "语音输入", size: 28, tint: Theme.Palette.textSecondary, action: onMic)
+      IconButton(
+        systemName: "mic", label: "语音输入", size: 28, tint: Theme.Palette.textSecondary, action: onMic
+      )
       IconButton(
         systemName: "waveform",
         label: "发送",

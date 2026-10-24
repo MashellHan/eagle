@@ -29,18 +29,20 @@ let radius: CGFloat = 185
 
 func render(_ size: CGFloat) -> Data? {
   let pixels = Int(size)
-  guard let rep = NSBitmapImageRep(
-    bitmapDataPlanes: nil,
-    pixelsWide: pixels,
-    pixelsHigh: pixels,
-    bitsPerSample: 8,
-    samplesPerPixel: 4,
-    hasAlpha: true,
-    isPlanar: false,
-    colorSpaceName: .deviceRGB,
-    bytesPerRow: 0,
-    bitsPerPixel: 0
-  ) else { return nil }
+  guard
+    let rep = NSBitmapImageRep(
+      bitmapDataPlanes: nil,
+      pixelsWide: pixels,
+      pixelsHigh: pixels,
+      bitsPerSample: 8,
+      samplesPerPixel: 4,
+      hasAlpha: true,
+      isPlanar: false,
+      colorSpaceName: .deviceRGB,
+      bytesPerRow: 0,
+      bitsPerPixel: 0
+    )
+  else { return nil }
   rep.size = NSSize(width: size, height: size)
 
   NSGraphicsContext.saveGraphicsState()
