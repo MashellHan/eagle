@@ -54,8 +54,9 @@ public enum Theme {
     public static let trafficLightsEnd: CGFloat = 75
     public static let toolbarHeight: CGFloat = 32
     public static let toolbarTopInset: CGFloat = 12
-    public static let headerHeight: CGFloat = 44
-    public static let logoSize: CGFloat = 33
+    public static let headerHeight: CGFloat = 53
+    /// The logo is bounded by the header container, never larger than it.
+    public static let logoSize: CGFloat = min(headerControlHeight, headerHeight * 0.62)
     /// The brand header starts after the traffic lights.
     public static let headerLeadingInset: CGFloat = 95
     public static let headerControlHeight: CGFloat = 32

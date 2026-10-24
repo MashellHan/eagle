@@ -65,18 +65,8 @@ public struct SidebarPanel: View {
     self.userName = userName
   }
 
-  private static var version: String {
-    (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev"
-  }
-
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      BrandHeader(
-        version: Self.version,
-        onSearch: onSearch,
-        onCompose: onCompose,
-        onCollapse: onCollapse
-      )
       list
       footer
     }
@@ -110,7 +100,7 @@ public struct SidebarPanel: View {
         }
       }
     }
-    .padding(.top, Theme.Metric.listTopGap)
+    .padding(.top, 6)
   }
 
   private func sectionHeader(_ section: SidebarSection, isFirst: Bool) -> some View {

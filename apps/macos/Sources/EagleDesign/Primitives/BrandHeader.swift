@@ -25,11 +25,13 @@ public struct VersionBadge: View {
 
   public var body: some View {
     Text("v\(version)")
-      .font(Theme.TypeScale.pill)
-      .foregroundStyle(Theme.Palette.textSecondary)
-      .padding(.horizontal, 6)
-      .padding(.vertical, 2)
-      .background(Capsule().fill(Theme.Palette.hover))
+      .font(.system(size: 10.5, weight: .medium))
+      .foregroundStyle(Theme.Palette.textMuted)
+      .lineLimit(1)
+      .fixedSize()
+      .padding(.horizontal, 5)
+      .padding(.vertical, 1.5)
+      .background(Capsule().fill(Theme.Palette.hover.opacity(0.6)))
       .accessibilityLabel("版本 \(version)")
   }
 }

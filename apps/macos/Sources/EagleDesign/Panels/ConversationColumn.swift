@@ -56,12 +56,8 @@ public struct ConversationColumn: View {
     self.onToggleInspector = onToggleInspector
   }
 
-  @State private var hoveringHeader = false
-
   public var body: some View {
     VStack(spacing: 0) {
-      header
-
       transcript
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -75,60 +71,6 @@ public struct ConversationColumn: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.Palette.surface)
-  }
-
-  /// Fixed header row. The participant bubble is centred and never moves on the
-  /// Y axis: the reveal buttons are overlaid at the edges instead of sitting in
-  /// the flow.
-  private var header: some View {
-    ZStack {
-      Button(action: onToggleInspector) {
-        HStack(spacing: 8) {
-          Avatar(
-            initial: String(title.prefix(1)),
-            tint: Theme.Palette.avatarTint(tintIndex),
-            size: 22,
-            shape: .blob
-          )
-          Text(title)
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(Theme.Palette.textPrimary)
-        }
-        .padding(.horizontal, 14)
-        .frame(height: Theme.Metric.headerControlHeight)
-        .background(
-          Capsule(style: .continuous)
-            .fill(hoveringHeader ? Theme.Palette.hover : .clear)
-        )
-        .overlay(
-          Capsule(style: .continuous)
-            .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
-        )
-        .contentShape(Capsule())
-      }
-      .buttonStyle(.plain)
-      .onHover { hoveringHeader = $0 }
-      .accessibilityLabel("\(title)，切换检查器")
-
-      HStack(spacing: 8) {
-        if !showsSidebar {
-          IconButton(
-            systemName: "sidebar.left", label: "展开侧栏", style: .circled, action: onShowSidebar)
-        }
-        Spacer(minLength: 0)
-        if !showsInspector {
-          IconButton(
-            systemName: "sidebar.right", label: "展开检查器", style: .circled,
-            action: onToggleInspector)
-        }
-      }
-      .padding(
-        .leading, showsSidebar ? Theme.Metric.conversationInset : Theme.Metric.trafficLightsEnd
-      )
-      .padding(.trailing, Theme.Metric.conversationInset)
-    }
-    .padding(.top, Theme.Metric.toolbarTopInset)
-    .frame(height: Theme.Metric.toolbarTopInset + Theme.Metric.headerControlHeight)
   }
 
   private var transcript: some View {

@@ -72,17 +72,6 @@ public struct InspectorColumn: View {
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      HStack(spacing: 4) {
-        Spacer(minLength: 0)
-        IconButton(
-          systemName: "square.and.arrow.up", label: "分享", style: .circled, action: onShare)
-        IconButton(
-          systemName: "xmark", label: "收起检查器", style: .circled, action: onCollapse)
-      }
-      .padding(.horizontal, Theme.Metric.panelInset - 6)
-      .padding(.top, Theme.Metric.toolbarTopInset)
-      .frame(height: Theme.Metric.toolbarHeight)
-
       Identity(name: name, subtitle: subtitle, tintIndex: tintIndex)
 
       SegmentedTabs(values: Tab.allCases, selection: $tab) { $0.rawValue }
