@@ -1,0 +1,81 @@
+// The runtime boundary (docs/bots/ARCHITECTURE.md, "Ports"). A runtime translates its
+// own behaviour into these events; it never numbers revisions, encodes frames or knows
+// the catalog.
+import type {
+  BusyMode,
+  ConversationSnapshot,
+  DeltaChange,
+  ErrorKind,
+  Message,
+  Submission,
+} from "./domain.ts";
+
+export type RuntimeEvent = { readonly trace: string } & (
+  | { readonly type: "append"; readonly message: Message; readonly replaces?: string }
+  | { readonly type: "delta"; readonly messageId: string; readonly changes: readonly DeltaChange[] }
+  | {
+      readonly type: "status";
+      readonly running: boolean;
+      readonly streaming: string | null;
+      readonly inbox: readonly {
+        readonly id: string;
+        readonly mode: "followUp" | "steer" | "queue";
+      }[];
+    }
+  | { readonly type: "submission"; readonly record: Submission }
+  | { readonly type: "snapshot"; readonly value: ConversationSnapshot }
+  | {
+      readonly type: "error";
+      readonly failure: {
+        readonly id: string;
+        readonly kind: ErrorKind;
+        readonly layer: "runtime" | "pi";
+      };
+      readonly message: string;
+      readonly taskId?: string;
+    }
+);
+
+export type RuntimeBotSpec = {
+  readonly id: string;
+  readonly dir: string;
+  readonly model: { readonly provider: string; readonly modelId: string };
+  readonly trace: string;
+};
+
+export type SubmitInput = {
+  readonly requestId: string;
+  readonly text: string;
+  readonly whenBusy: BusyMode;
+  readonly trace: string;
+};
+
+export type RuntimeSubscription = {
+  readonly snapshot: ConversationSnapshot;
+  detach(): void;
+};
+
+export type RuntimeHistory = {
+  readonly messages: readonly Message[];
+  readonly hasMore: boolean;
+};
+
+export interface RuntimeHandle {
+  /** Atomic: the view at attachment plus every later commit, with nothing lost between. */
+  subscribe(trace: string, sink: (event: RuntimeEvent) => void): Promise<RuntimeSubscription>;
+  /** Idempotent by requestId; returns the submission's current record. */
+  submit(input: SubmitInput): Promise<Submission>;
+  submission(
+    key: { submissionId: string } | { requestId: string },
+  ): Promise<Submission | undefined>;
+  history(input: { beforeEntryId?: string; limit: number }): Promise<RuntimeHistory>;
+  abort(trace: string): Promise<void>;
+  /** Retries parked work; never aborts a running answer. */
+  recover(trace: string): Promise<void>;
+  busy(): Promise<{ run: boolean; tasks: boolean }>;
+  close(trace: string, deadlineMs: number): Promise<"closed" | "timeout">;
+}
+
+export interface RuntimePort {
+  open(spec: RuntimeBotSpec): Promise<RuntimeHandle>;
+}
