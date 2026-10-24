@@ -159,3 +159,12 @@ export type Failure = {
   readonly kind: ErrorKind;
   readonly layer: "transport" | "protocol" | "core" | "runtime" | "pi";
 };
+
+/** A bot as the catalog stores it. Runtime state is not persisted here. */
+export type BotRecord = {
+  readonly id: BotId;
+  readonly title: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly model: { readonly provider: string; readonly modelId: string };
+};
