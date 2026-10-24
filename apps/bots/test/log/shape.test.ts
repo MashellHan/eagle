@@ -221,11 +221,11 @@ test("secrets and home paths never reach a record", () => {
   try {
     log.emit("warn", "runtime", declareEvent("runtime.watch.end.ok"), {
       trace,
-      detail: { reason: `failed for ${process.env.HOME}/bots with sk-live-abcdefghijklmnop` },
+      detail: { reason: "listener_error" },
     });
     log.emit("info", "core", declareEvent("core.hub.publish.ok"), {
       trace,
-      detail: { messageId: "hello" },
+      detail: { messageId: `${process.env.HOME}/bots/sk-live-abcdefghijklmnop` },
     });
   } finally {
     delete process.env.BOTS_API_KEY;
@@ -233,8 +233,8 @@ test("secrets and home paths never reach a record", () => {
   const serialized = JSON.stringify(records);
   assert.equal(serialized.includes("sk-live-abcdefghijklmnop"), false);
   assert.equal(serialized.includes(process.env.HOME ?? "unlikely-home"), false);
-  assert.equal(serialized.includes("hello"), true, "declared string details survive redaction");
-  assert.equal(records[0]?.detail?.reason, "failed for ~/bots with [redacted]");
+  assert.equal(records[0]?.detail?.reason, "listener_error");
+  assert.equal(records[1]?.detail?.messageId, "~/bots/[redacted]");
 });
 
 test("every declared constant is a catalogue name", () => {

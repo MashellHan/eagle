@@ -80,6 +80,27 @@ const DETAIL_SCHEMA: Readonly<Record<string, readonly string[]>> = {
 const FRAMEWORK_DETAIL = new Set(["propagated"]);
 const COUNT_KEYS = new Set(["count", "bytes", "len"]);
 
+// `reason` and `providerCode` are the only string details that are not ids, so they
+// must be codes, never prose: free text there would be a content channel around the
+// per-event whitelist.
+const REASONS = new Set([
+  "listener_error",
+  "queue_overflow",
+  "retired",
+  "stopped",
+  "cancelled",
+  "session_closed",
+  "session_failed",
+  "timeout",
+  "invalid",
+  "upstream",
+  "shutdown",
+  "delete",
+  "startup",
+  "quarantine",
+]);
+const PROVIDER_CODE = /^[A-Za-z0-9_.-]{1,40}$/;
+
 const redactDetail = (
   evt: EventName,
   detail: Readonly<Record<string, unknown>>,
@@ -102,6 +123,12 @@ const redactDetail = (
       (typeof value !== "number" || !Number.isInteger(value) || value < 0)
     ) {
       throw new Error(`log detail ${key} must be a non-negative integer`);
+    }
+    if (key === "reason" && !REASONS.has(value as string)) {
+      throw new Error("log detail reason must be a known code");
+    }
+    if (key === "providerCode" && !PROVIDER_CODE.test(value as string)) {
+      throw new Error("log detail providerCode must be a short code");
     }
     clean[key] = expected === "string" ? redact(value as string, secrets) : value;
   }

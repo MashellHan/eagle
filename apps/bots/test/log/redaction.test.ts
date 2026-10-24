@@ -68,6 +68,22 @@ test("a provider error is reduced to a code, never to its text", () => {
       }),
     /not declared for runtime.submit.fail/,
   );
+  // The two string details that are not ids accept codes only, so echoed content
+  // cannot smuggle itself in through a declared key.
+  for (const detail of [
+    { reason: `provider echoed ${providerSentinel}` },
+    { providerCode: `provider rejected ${providerSentinel}` },
+  ]) {
+    assert.throws(
+      () =>
+        log.emit("warn", "runtime", declareEvent("runtime.submit.fail"), {
+          trace,
+          failure: { ...failure, layer: "runtime" },
+          detail,
+        }),
+      /must be a (known code|short code)/,
+    );
+  }
 });
 
 test("a bot title on the wire stays out of the log even when a caller passes it", () => {
