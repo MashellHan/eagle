@@ -92,3 +92,25 @@ this signoff certifies the contract, not a passing gate.
 Next broken hop: stage 1 has no code. The first ladder row is
 `test/protocol/fixtures.test.ts` -> `decodes every committed fixture without loss`,
 which must fail because no decoder exists, then pass with the protocol module.
+
+## 2026-10-25 22:45 — stage 1 started: the wire decodes and re-encodes
+
+Observed: the protocol codec exists and the normative fixtures are executable. The
+ladder rows 1-2 are green; rows 3-8 (command validation, limits, versioning, log
+shape and redaction, architecture guards) are not written yet.
+
+Verified:
+
+- `node --test test/protocol/fixtures.test.ts`: 29 tests pass, including "decodes and
+  re-encodes <fixture> without loss" for all 17 server fixtures and "the encoder
+  reproduces snapshot.server.json byte for byte".
+- `npm test` runs the shared unit file list through `scripts/run-tests.sh`; it fails
+  loudly when the list is empty, so a gate cannot pass because it found nothing.
+- `npm run typecheck` and `npm run lint` pass.
+- `npm run check` is expected to fail right now: `npm run coverage` enforces 90 %
+  lines over `src/**` with `--test-coverage-include-all`, and most modules
+  (`core/`, `runtime/`, `server/`, `log/`) do not exist yet.
+
+Next broken hop: no command validation, no limits enforcement, no log module and no
+architecture guard test, so ladder rows 3-8 cannot run. The next commit adds command
+validation and limits, then the log module, then the guard tests.
