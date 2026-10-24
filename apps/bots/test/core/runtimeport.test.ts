@@ -255,3 +255,77 @@ test("an admitted submission is visible in pending", async () => {
     ["s_1"],
   );
 });
+
+test("delta kinds keep every byte, including a replacement followed by more changes", async () => {
+  const runtime = new FakeRuntime();
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  const fake = runtime.handle("b_1");
+  fake.emit({
+    type: "append",
+    trace,
+    message: {
+      id: "p_a1",
+      role: "assistant",
+      state: "streaming",
+      createdAt: "x",
+      blocks: [{ type: "text", text: "A" }],
+    },
+  });
+  fake.emit({
+    type: "delta",
+    trace,
+    messageId: "p_a1",
+    changes: [
+      {
+        kind: "message",
+        message: {
+          id: "p_a1",
+          role: "assistant",
+          state: "streaming",
+          createdAt: "x",
+          blocks: [
+            { type: "text", text: "base" },
+            { type: "toolCall", callId: "c_1", name: "read", args: {} },
+          ],
+        },
+      },
+      { kind: "text", index: 0, append: "+" },
+      { kind: "toolcall", index: 1, callId: "c_1", path: ["path"], append: "/tmp/x" },
+    ],
+  });
+  const view = (await handle.subscribe(trace, () => {})).snapshot;
+  const [text, call] = view.messages[0]?.blocks ?? [];
+  assert.equal(text?.type === "text" ? text.text : "", "base+");
+  assert.deepEqual(call?.type === "toolCall" ? call.args : {}, { path: "/tmp/x" });
+});
+
+test("a snapshot handed to the constructor seeds the ledger", async () => {
+  const runtime = new FakeRuntime({
+    snapshot: () => ({
+      botId: "b_1",
+      messages: [],
+      streaming: null,
+      pending: [{ id: "s_9", requestId, status: "placed", entryId: "e_1" }],
+      inbox: [],
+      running: true,
+    }),
+  });
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  assert.deepEqual(await handle.submission({ requestId }), {
+    id: "s_9",
+    requestId,
+    status: "placed",
+    entryId: "e_1",
+  });
+  assert.equal((await handle.busy()).run, true);
+});

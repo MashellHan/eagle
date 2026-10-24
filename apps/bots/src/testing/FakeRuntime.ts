@@ -42,6 +42,7 @@ export class FakeHandle implements RuntimeHandle {
       inbox: [],
       running: false,
     };
+    for (const record of this.#snapshot.pending) this.#submissions.set(record.requestId, record);
   }
 
   get snapshot(): ConversationSnapshot {
@@ -136,26 +137,50 @@ export class FakeHandle implements RuntimeHandle {
       return;
     }
     if (event.type === "delta") {
-      const messages = this.#snapshot.messages.map((message) => {
-        if (message.id !== event.messageId) return message;
-        const blocks = message.blocks.map((block) => ({ ...block })) as {
-          type: string;
-          text?: string;
-          [key: string]: unknown;
-        }[];
-        for (const change of event.changes) {
-          if (change.kind === "text" || change.kind === "thinking") {
-            const block = blocks[change.index];
-            if (block && typeof block.text === "string") block.text += change.append;
-          } else if (change.kind === "block") {
-            blocks[change.index] = { ...change.block } as never;
-          } else if (change.kind === "message") {
-            return change.message;
-          }
+      const current = this.#snapshot.messages.find((message) => message.id === event.messageId);
+      if (current === undefined) return;
+      // A whole-message replacement is the new base for the changes that follow it.
+      const replacement = event.changes.find((change) => change.kind === "message");
+      let message = replacement?.kind === "message" ? replacement.message : current;
+      const blocks = message.blocks.map((block) => ({ ...block })) as {
+        type: string;
+        text?: string;
+        args?: Record<string, unknown>;
+        [key: string]: unknown;
+      }[];
+      for (const change of event.changes) {
+        if (change.kind === "message") continue;
+        if (change.kind === "block") {
+          blocks[change.index] = { ...change.block } as never;
+          continue;
         }
-        return { ...message, blocks: blocks as never };
-      });
-      this.#snapshot = { ...this.#snapshot, messages };
+        const block = blocks[change.index];
+        if (block === undefined) continue;
+        if (
+          (change.kind === "text" || change.kind === "thinking") &&
+          typeof block.text === "string"
+        ) {
+          block.text += change.append;
+          continue;
+        }
+        if (change.kind === "toolcall" && block.type === "toolCall") {
+          // Tool-call arguments stream as a JSON path; append at that path.
+          const args = { ...(block.args ?? {}) } as Record<string, unknown>;
+          const key = change.path[0];
+          if (typeof key === "string") {
+            const prior = typeof args[key] === "string" ? (args[key] as string) : "";
+            args[key] = prior + change.append;
+          }
+          block.args = args;
+        }
+      }
+      message = { ...message, blocks: blocks as never };
+      this.#snapshot = {
+        ...this.#snapshot,
+        messages: this.#snapshot.messages.map((existing) =>
+          existing.id === event.messageId ? message : existing,
+        ),
+      };
       return;
     }
     if (event.type === "snapshot") {
