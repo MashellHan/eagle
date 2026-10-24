@@ -1412,3 +1412,26 @@ serving and the first catalogue-derived production Cron observation.
   service is permanent until it is re-created.
 - Not a code change: no Worker deploy, no dependency or protocol change, no
   collector restart beyond the new realtime unit.
+
+## 2026-10-24 09:25 +08 — 0.14.1 dependency release
+
+- Seven dependency issues (#80, #81, #82, #84, #85, #86, #89) were resolved in
+  five atomic commits. The AI SDK trio moved together because each package pins
+  an exact `@ai-sdk/provider`; upgrading `@ai-sdk/anthropic` alone fails type
+  checking on `finishReason.unified`.
+- biome 2.6.2 needed a migration unit: Markdown is excluded from the formatted
+  set to keep hand-authored docs and tables stable, `noInvalidGridAreas` is off
+  because it rejects valid multi-row `grid-template-areas` (four-line repro),
+  and the new template-literal and `textContent` findings are fixed in code.
+- Local checks at `48c7854`: `npm run check` passed (168 Node tests, strict
+  types, lint, build) and `npm run test:browser` reported 191 passed with 11
+  viewport skips. The user accepted the running dev servers on
+  `https://eagle.dev.hexly.ai` after vite 8.3.5 and wrangler 4.152.0 restarts.
+- Release: `48c7854` pushed, tag `v0.14.1` and GitHub Release published (Latest),
+  all seven issues closed automatically by their `Fixes #N` lines. CI `Check`
+  succeeded at that exact SHA (run 40049564619).
+- Deployment: `npm run deploy` published Worker version
+  `b2d3f615-9a70-47cd-afe2-60561b8332be` with `BUILD_REVISION=48c7854`.
+  `/api/live` returns version `0.14.1` at that revision, the served bundle
+  `assets/index-DGKCJgCS.js` matches the local build, and six machines report
+  fresh snapshots with no pending IDs. No database migration or Agent change.
