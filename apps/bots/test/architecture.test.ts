@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, posix, relative } from "node:path";
 import test from "node:test";
+import { dependenciesOf } from "./support/source.ts";
 
 const root = process.cwd();
 
@@ -15,22 +16,6 @@ const walk = (dir: string): string[] =>
     if (statSync(path).isDirectory()) return walk(path);
     return path.endsWith(".ts") ? [path] : [];
   });
-
-/** Every specifier a file depends on, in any import form. */
-export const dependenciesOf = (source: string): string[] => {
-  const patterns = [
-    /from\s*["']([^"']+)["']/g, // static import and re-export
-    /import\s*["']([^"']+)["']/g, // side-effect import
-    /import\s*\(\s*["']([^"']+)["']\s*\)/g, // dynamic import
-  ];
-  const found = new Set<string>();
-  for (const pattern of patterns) {
-    for (const match of source.matchAll(pattern)) {
-      if (match[1]) found.add(match[1]);
-    }
-  }
-  return [...found];
-};
 
 const PACKAGE_IMPORT = /^@earendil-works\//;
 const ALWAYS_ALLOWED = (target: string): boolean =>
@@ -115,13 +100,18 @@ test("the source graph satisfies the layer allowlist", () => {
   assert.deepEqual(violations(graph), []);
 });
 
-test("every import form is extracted", () => {
+test("every import form is extracted, and look-alikes are not", () => {
   const source = [
     'import { a } from "./a.ts";',
     'export { b } from "./b.ts";',
     'import "./side-effect.ts";',
-    'const c = await import("./c.ts");',
+    'const c = await import("./c.ts", { with: { type: "json" } });',
     'import type { D } from "@earendil-works/pi-durable";',
+    '// import "./commented.ts";',
+    '/* from "./block-commented.ts" */',
+    "const text = 'import(\"./in-a-string.ts\")';",
+    'const template = `from "./in-a-template.ts"`;',
+    'const plain = "from \\"../protocol/version.ts\\"";',
   ].join("\n");
   assert.deepEqual(dependenciesOf(source).sort(), [
     "./a.ts",
