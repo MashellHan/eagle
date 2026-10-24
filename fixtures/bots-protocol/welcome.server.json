@@ -3,6 +3,7 @@
   "protocolVersion": 1,
   "server": {
     "version": "0.1.0",
+    "instance": "i_7f3a",
     "pid": 4711
   },
   "capabilities": {
@@ -15,29 +16,29 @@
   },
   "bots": [
     {
-      "id": "b_01J9Z0K2Q3R4S5T6V7W8X9Y0Z",
+      "id": "b_0190a1b0-1c2d-7e3f-8a9b-0c1d2e3f4a5b",
       "title": "研究员",
       "createdAt": "2026-10-25T02:11:03.412Z",
       "updatedAt": "2026-10-25T02:11:03.412Z",
       "model": {
         "provider": "magpie",
-        "modelId": "group/auto-gpt-6-luna"
+        "modelId": "auto/gpt-6-luna"
       },
-      "state": "catalogued"
+      "state": "idle"
     },
     {
-      "id": "b_01J9Z0K2Q3R4S5T6V7W8X9Y10",
+      "id": "b_0190a1b1-2d3e-7f40-9b0c-1d2e3f405162",
       "title": "写作助手",
-      "createdAt": "2026-10-25T02:12:41.100Z",
-      "updatedAt": "2026-10-25T02:20:07.845Z",
+      "createdAt": "2026-10-25T02:11:03.412Z",
+      "updatedAt": "2026-10-25T02:11:03.412Z",
       "model": {
         "provider": "magpie",
-        "modelId": "group/auto-gpt-6-luna"
+        "modelId": "auto/gpt-6-luna"
       },
       "state": "unavailable",
       "unavailable": {
-        "reason": "session_failed",
-        "message": "storage could not be opened"
+        "reason": "storage_failed",
+        "message": "session storage could not be opened"
       }
     }
   ]

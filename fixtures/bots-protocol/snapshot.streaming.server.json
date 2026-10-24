@@ -1,0 +1,65 @@
+{
+  "type": "snapshot",
+  "rev": 47,
+  "trace": "tr_0190a1b3-4f50-7b61-9c2d-3e4f50617283",
+  "value": {
+    "botId": "b_0190a1b0-1c2d-7e3f-8a9b-0c1d2e3f4a5b",
+    "agent": {
+      "model": {
+        "provider": "magpie",
+        "modelId": "auto/gpt-6-luna"
+      },
+      "thinkingLevel": "off",
+      "instructions": ""
+    },
+    "messages": [
+      {
+        "id": "e_10",
+        "role": "assistant",
+        "state": "complete",
+        "createdAt": "2026-10-25T02:11:04.001Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "巴黎。"
+          }
+        ]
+      },
+      {
+        "id": "p_a2",
+        "role": "assistant",
+        "state": "streaming",
+        "createdAt": "2026-10-25T02:12:01.500Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "巴黎是法国的"
+          }
+        ]
+      }
+    ],
+    "truncatedBefore": "e_10",
+    "streaming": {
+      "messageId": "p_a2"
+    },
+    "pending": [
+      {
+        "requestId": "r_0190a1b4-5061-7c72-8d3e-4f5061728394",
+        "submissionId": "s_3",
+        "status": "placed"
+      }
+    ],
+    "inbox": [
+      {
+        "id": "s_4",
+        "mode": "followUp"
+      }
+    ],
+    "running": true,
+    "usage": {
+      "inputTokens": 68,
+      "outputTokens": 16,
+      "totalTokens": 84
+    }
+  }
+}

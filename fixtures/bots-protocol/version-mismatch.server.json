@@ -1,0 +1,8 @@
+{
+  "type": "error",
+  "kind": "version_mismatch",
+  "message": "server speaks protocol 1",
+  "server": {
+    "protocolVersion": 1
+  }
+}

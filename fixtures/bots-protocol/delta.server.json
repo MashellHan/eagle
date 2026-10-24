@@ -1,12 +1,20 @@
 {
   "type": "delta",
-  "rev": 44,
-  "trace": "tr_01J9Z0K4M5N6P7Q8R9S0T1V2W",
-  "messageId": "e_18",
+  "rev": 48,
+  "trace": "tr_0190a1b3-4f50-7b61-9c2d-3e4f50617283",
+  "messageId": "p_a2",
   "changes": [
     {
       "kind": "text",
-      "append": "巴黎"
+      "append": "首都"
+    },
+    {
+      "kind": "block",
+      "index": 0,
+      "block": {
+        "type": "text",
+        "text": "巴黎是法国的首都"
+      }
     }
   ]
 }

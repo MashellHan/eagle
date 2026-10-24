@@ -1,17 +1,18 @@
 {
   "type": "append",
   "rev": 43,
-  "trace": "tr_01J9Z0K4M5N6P7Q8R9S0T1V2W",
+  "trace": "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172",
   "message": {
-    "id": "e_17",
+    "id": "e_7",
     "role": "user",
     "state": "complete",
-    "createdAt": "2026-10-25T02:12:00.000Z",
+    "createdAt": "2026-10-25T02:11:04.001Z",
     "blocks": [
       {
         "type": "text",
-        "text": "再讲讲它的历史。"
+        "text": "法国的首都是哪里？"
       }
-    ]
+    ],
+    "requestId": "r_0190a1b4-5061-7c72-8d3e-4f5061728394"
   }
 }

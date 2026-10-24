@@ -1,6 +1,7 @@
 {
   "type": "send",
-  "requestId": "r_01J9Z0K4M5N6P7Q8R9S0T1V2W",
+  "requestId": "r_0190a1b4-5061-7c72-8d3e-4f5061728394",
   "text": "法国的首都是哪里？",
-  "whenBusy": "followUp"
+  "whenBusy": "followUp",
+  "trace": "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172"
 }

@@ -1,12 +1,17 @@
 {
   "type": "append",
-  "rev": 48,
-  "trace": "tr_01J9Z0K4M5N6P7Q8R9S0T1V2W",
+  "rev": 47,
+  "trace": "tr_0190a1b3-4f50-7b61-9c2d-3e4f50617283",
   "message": {
-    "id": "p_1",
+    "id": "p_a2",
     "role": "assistant",
     "state": "streaming",
     "createdAt": "2026-10-25T02:12:01.500Z",
-    "blocks": []
+    "blocks": [
+      {
+        "type": "text",
+        "text": "巴黎是法国的"
+      }
+    ]
   }
 }

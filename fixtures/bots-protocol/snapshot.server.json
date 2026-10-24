@@ -1,20 +1,20 @@
 {
   "type": "snapshot",
   "rev": 42,
-  "trace": "tr_01J9Z0K3A4B5C6D7E8F9G0H1J",
+  "trace": "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172",
   "value": {
-    "botId": "b_01J9Z0K2Q3R4S5T6V7W8X9Y0Z",
+    "botId": "b_0190a1b0-1c2d-7e3f-8a9b-0c1d2e3f4a5b",
     "agent": {
       "model": {
         "provider": "magpie",
-        "modelId": "group/auto-gpt-6-luna"
+        "modelId": "auto/gpt-6-luna"
       },
       "thinkingLevel": "off",
       "instructions": ""
     },
     "messages": [
       {
-        "id": "e_15",
+        "id": "e_7",
         "role": "user",
         "state": "complete",
         "createdAt": "2026-10-25T02:11:04.001Z",
@@ -23,13 +23,14 @@
             "type": "text",
             "text": "法国的首都是哪里？"
           }
-        ]
+        ],
+        "requestId": "r_0190a1b4-5061-7c72-8d3e-4f5061728394"
       },
       {
-        "id": "e_16",
+        "id": "e_10",
         "role": "assistant",
         "state": "complete",
-        "createdAt": "2026-10-25T02:11:04.905Z",
+        "createdAt": "2026-10-25T02:11:04.001Z",
         "blocks": [
           {
             "type": "text",
@@ -39,6 +40,7 @@
       }
     ],
     "streaming": null,
+    "pending": [],
     "inbox": [],
     "running": false,
     "usage": {
