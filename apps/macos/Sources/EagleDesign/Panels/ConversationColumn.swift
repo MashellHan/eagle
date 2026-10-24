@@ -120,7 +120,9 @@ public struct ConversationColumn: View {
         .padding(.bottom, 12)
         .animation(.easeOut(duration: 0.2), value: entries.count)
       }
-      .scrollEdgeFades(Theme.Palette.surface, top: 14, bottom: 26)
+      .scrollEdgeFades(
+        Theme.Palette.surface, top: Theme.Metric.edgeFadeHeight, bottom: Theme.Metric.edgeFadeHeight
+      )
       .onChange(of: entries.count) {
         withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo("bottom", anchor: .bottom) }
       }

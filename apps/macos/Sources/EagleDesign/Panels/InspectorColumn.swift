@@ -103,7 +103,9 @@ public struct InspectorColumn: View {
         .padding(.top, 16)
         .padding(.bottom, 20)
       }
-      .scrollEdgeFades(Theme.Palette.surface)
+      .scrollEdgeFades(
+        Theme.Palette.surface, top: Theme.Metric.edgeFadeHeight, bottom: Theme.Metric.edgeFadeHeight
+      )
     }
     .frame(width: width)
     .frame(maxHeight: .infinity)

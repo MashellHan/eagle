@@ -3,6 +3,7 @@ import SwiftUI
 
 /// Resolves the bare eagle mark without relying on `Bundle.module`, which traps
 /// when the resource bundle is missing from a hand-assembled `.app`.
+@MainActor
 public enum BrandMark {
   public static let image: NSImage? = {
     let names = [

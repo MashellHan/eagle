@@ -102,7 +102,9 @@ public struct SidebarPanel: View {
         .padding(.bottom, 8)
       }
       .scrollIndicators(.never)
-      .scrollEdgeFades(Theme.Palette.canvas, top: 0, bottom: 18)
+      .scrollEdgeFades(
+        Theme.Palette.canvas, top: Theme.Metric.edgeFadeHeight, bottom: Theme.Metric.edgeFadeHeight
+      )
       .overlay(alignment: .bottom) { unreadPill }
       .onChange(of: selection) {
         if let selection {
@@ -145,8 +147,8 @@ public struct SidebarPanel: View {
       }
       Spacer(minLength: 0)
     }
-    .padding(.leading, Theme.Metric.contentInset - 4)
-    .padding(.trailing, Theme.Metric.contentInset)
+    .padding(.leading, Theme.Metric.rowContentInset)
+    .padding(.trailing, Theme.Metric.rowContentInset)
     .frame(height: Theme.Metric.sectionHeaderHeight, alignment: .top)
     .padding(.top, isFirst ? 0 : Theme.Metric.sectionGap)
     .onHover { hoveringSection = $0 ? section.id : nil }
