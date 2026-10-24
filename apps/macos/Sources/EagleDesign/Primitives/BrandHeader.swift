@@ -14,7 +14,8 @@ public struct VersionBadge: View {
       Image(nsImage: image)
         .resizable()
         .interpolation(.high)
-        .scaledToFit()
+        .scaledToFill()
+        .clipShape(Circle())
     } else {
       // Fallback keeps the header usable when the resource bundle is absent.
       Image(systemName: "bird")
@@ -62,7 +63,8 @@ public struct BrandHeader: View {
       Image(nsImage: image)
         .resizable()
         .interpolation(.high)
-        .scaledToFit()
+        .scaledToFill()
+        .clipShape(Circle())
     } else {
       // Fallback keeps the header usable when the resource bundle is absent.
       Image(systemName: "bird")
@@ -89,10 +91,26 @@ public struct BrandHeader: View {
       VersionBadge(version: version)
       Spacer(minLength: 8)
       IconButton(
-        systemName: "magnifyingglass", label: "搜索", style: .circled, action: onSearch)
-      IconButton(systemName: "plus", label: "新建会话", style: .circled, action: onCompose)
+        systemName: "magnifyingglass",
+        label: "搜索",
+        size: Theme.Metric.headerControlHeight,
+        style: .circled,
+        action: onSearch
+      )
       IconButton(
-        systemName: "sidebar.left", label: "收起侧栏", style: .circled, action: onCollapse)
+        systemName: "plus",
+        label: "新建会话",
+        size: Theme.Metric.headerControlHeight,
+        style: .circled,
+        action: onCompose
+      )
+      IconButton(
+        systemName: "sidebar.left",
+        label: "收起侧栏",
+        size: Theme.Metric.headerControlHeight,
+        style: .circled,
+        action: onCollapse
+      )
     }
     .padding(.leading, Theme.Metric.headerLeadingInset)
     .padding(.trailing, Theme.Metric.contentInset)

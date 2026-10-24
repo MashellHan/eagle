@@ -63,7 +63,7 @@ public struct WindowHeader<Center: View>: View {
 
       center
     }
-    .padding(.top, Theme.Metric.toolbarTopInset)
+    .padding(.bottom, Theme.Metric.headerBottomInset)
     .frame(height: Theme.Metric.headerHeight, alignment: .bottom)
     .background(Theme.Palette.surface)
     .overlay(alignment: .bottom) {

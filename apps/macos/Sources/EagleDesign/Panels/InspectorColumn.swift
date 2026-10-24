@@ -77,7 +77,13 @@ public struct InspectorColumn: View {
           Spacer(minLength: 0)
           IconButton(
             systemName: "square.and.arrow.up", label: "分享", style: .circled, action: onShare)
-          IconButton(systemName: "xmark", label: "收起检查器", style: .circled, action: onCollapse)
+          IconButton(
+            systemName: "xmark",
+            label: "收起检查器",
+            size: Theme.Metric.headerControlHeight,
+            style: .circled,
+            action: onCollapse
+          )
         }
         .padding(.trailing, Theme.Metric.panelInset)
       }

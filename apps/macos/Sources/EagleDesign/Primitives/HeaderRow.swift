@@ -13,7 +13,7 @@ public struct HeaderRow<Content: View>: View {
   public var body: some View {
     content
       .frame(height: Theme.Metric.headerControlHeight)
-      .padding(.top, Theme.Metric.toolbarTopInset)
+      .padding(.bottom, Theme.Metric.headerBottomInset)
       .frame(height: Theme.Metric.headerHeight, alignment: .bottom)
   }
 }
