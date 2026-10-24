@@ -109,7 +109,7 @@ public enum Theme {
     public static let settingsCardInset: CGFloat = 20
     public static let settingsContentInset: CGFloat = 28
     public static let accountMenuWidth: CGFloat = 226
-    public static let accountRowHeight: CGFloat = 46
+    public static let accountRowHeight: CGFloat = 38
     public static let settingsWidth: CGFloat = 900
     public static let settingsHeight: CGFloat = 640
   }

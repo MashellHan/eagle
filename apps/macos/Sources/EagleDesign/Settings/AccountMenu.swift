@@ -55,21 +55,21 @@ public struct AccountMenu: View {
           Rectangle()
             .fill(Theme.Palette.line)
             .frame(height: Theme.Metric.hairline)
-            .padding(.vertical, 6)
-            .padding(.horizontal, 14)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 12)
         }
         Button {
           onSelect(row)
         } label: {
-          HStack(spacing: 12) {
+          HStack(spacing: 10) {
             Image(systemName: row.systemName)
-              .font(.system(size: 15))
+              .font(.system(size: 14))
               .foregroundStyle(
                 row.destructive ? Theme.Palette.destructive : Theme.Palette.textPrimary
               )
               .frame(width: 20)
             Text(row.title)
-              .font(.system(size: 14, weight: row.kind == .plan ? .semibold : .regular))
+              .font(.system(size: 13.5, weight: row.kind == .plan ? .semibold : .regular))
               .foregroundStyle(
                 row.destructive ? Theme.Palette.destructive : Theme.Palette.textPrimary)
             Spacer(minLength: 8)
@@ -84,12 +84,12 @@ public struct AccountMenu: View {
                 .foregroundStyle(Theme.Palette.textMuted)
             }
           }
-          .padding(.horizontal, 14)
+          .padding(.horizontal, 12)
           .frame(height: Theme.Metric.accountRowHeight)
           .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
               .fill(hovering == row.id ? Theme.Palette.hover : .clear)
-              .padding(.horizontal, 6)
+              .padding(.horizontal, 4)
           )
           .contentShape(Rectangle())
         }
@@ -98,14 +98,14 @@ public struct AccountMenu: View {
       }
     }
     .animation(.easeOut(duration: 0.1), value: hovering)
-    .padding(.vertical, 8)
+    .padding(.vertical, 6)
     .frame(width: Theme.Metric.accountMenuWidth)
     .background(
-      RoundedRectangle(cornerRadius: Theme.Metric.settingsCardRadius, style: .continuous)
+      RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
         .fill(Theme.Palette.card)
     )
     .overlay(
-      RoundedRectangle(cornerRadius: Theme.Metric.settingsCardRadius, style: .continuous)
+      RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
         .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
     )
     .shadow(color: .black.opacity(0.10), radius: 18, y: 6)

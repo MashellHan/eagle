@@ -99,6 +99,7 @@ public struct SidebarPanel: View {
             }
           }
         }
+        .padding(.top, Theme.Metric.edgeFadeHeight + 8)
         .padding(.bottom, 8)
       }
       .scrollIndicators(.never)
@@ -112,7 +113,6 @@ public struct SidebarPanel: View {
         }
       }
     }
-    .padding(.top, 6)
   }
 
   private func sectionHeader(_ section: SidebarSection, isFirst: Bool) -> some View {
