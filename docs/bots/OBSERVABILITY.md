@@ -59,15 +59,17 @@ Rules:
 ## Event names
 
 `<layer>.<subject>.<outcome>`, outcome ∈ `start | ok | fail | drop | degrade |
-skip | reject | end | classify`. Names are constants in `src/log/events.ts`; a test
-asserts that every constant is used and every used constant is declared. There is
-no free-form event name.
+skip | reject | end | classify`. Names are constants in `src/log/events.ts`. Every
+`start` has a declared `ok`/`fail` partner (`core.singleton.start` →
+`core.singleton.ok|fail`), and no free-form event name exists. From stage 4 a test
+asserts bidirectional equality between constants and uses; before that it asserts
+`used ⊆ declared`.
 
 | layer | events |
 | --- | --- |
 | transport | `transport.conn.open.ok`, `transport.conn.open.fail`, `transport.conn.open.reject`, `transport.conn.close.ok`, `transport.conn.close.end`, `transport.auth.fail`, `transport.frame.recv.ok`, `transport.frame.recv.fail`, `transport.frame.send.ok`, `transport.frame.send.drop` |
 | protocol | `protocol.decode.fail`, `protocol.encode.fail`, `protocol.limit.fail`, `protocol.version.fail`, `protocol.command.start`, `protocol.command.ok`, `protocol.command.fail` |
-| core | `core.catalog.load.ok`, `core.catalog.load.fail`, `core.catalog.write.ok`, `core.catalog.write.fail`, `core.bot.resolve.fail`, `core.bot.open.start`, `core.bot.open.ok`, `core.bot.open.fail`, `core.bot.close.ok`, `core.bot.close.fail`, `core.bot.close.degrade` (quarantine), `core.subscribe.start`, `core.subscribe.ok`, `core.subscribe.fail`, `core.submit.start`, `core.submit.ok`, `core.submit.fail`, `core.history.start`, `core.history.ok`, `core.history.fail`, `core.hub.publish.ok`, `core.hub.coalesce`, `core.hub.snapshot.ok`, `core.hub.degrade`, `core.singleton.start`, `core.recovery.start`, `core.recovery.bot.ok`, `core.recovery.bot.fail`, `core.recovery.ok`, `core.delete.start`, `core.delete.ok`, `core.delete.fail`, `core.reconcile.ok` |
+| core | `core.catalog.load.ok`, `core.catalog.load.fail`, `core.catalog.write.ok`, `core.catalog.write.fail`, `core.bot.resolve.fail`, `core.bot.open.start`, `core.bot.open.ok`, `core.bot.open.fail`, `core.bot.close.ok`, `core.bot.close.fail`, `core.bot.close.degrade` (quarantine), `core.subscribe.start`, `core.subscribe.ok`, `core.subscribe.fail`, `core.submit.start`, `core.submit.ok`, `core.submit.fail`, `core.history.start`, `core.history.ok`, `core.history.fail`, `core.hub.publish.ok`, `core.hub.coalesce`, `core.hub.snapshot.ok`, `core.hub.degrade`, `core.singleton.start`, `core.singleton.ok`, `core.singleton.fail`, `core.recovery.start`, `core.recovery.bot.ok`, `core.recovery.bot.fail`, `core.recovery.ok`, `core.delete.start`, `core.delete.ok`, `core.delete.fail`, `core.reconcile.ok` |
 | runtime | `runtime.open.start`, `runtime.open.ok`, `runtime.open.fail`, `runtime.subscribe.start`, `runtime.subscribe.ok`, `runtime.subscribe.fail`, `runtime.submit.start`, `runtime.submit.ok`, `runtime.submit.fail`, `runtime.abort.start`, `runtime.abort.ok`, `runtime.abort.fail`, `runtime.recover.start`, `runtime.recover.ok`, `runtime.recover.fail`, `runtime.close.start`, `runtime.close.ok`, `runtime.close.fail`, `runtime.watch.end.ok`, `runtime.failure.classify` |
 | pi | `pi.report`, `pi.session.closed` |
 
@@ -165,20 +167,18 @@ presence *and* absence. The tests use a fake clock and a drain barrier
 event is a fact, not a race.
 
 **R1 — a bot cannot be opened.**
-Inject: the fake storage handed to core throws on open. Core owns the open step,
-so the origin is core.
+Inject: `catalog.json` is unreadable (a core-owned file). Core owns that read, so the
+origin is core; the runtime is never reached.
 
 ```
 transport.frame.recv.ok    trace=tr_A evt=subscribe
 protocol.command.ok        trace=tr_A
-core.subscribe.start       trace=tr_A botId=b1
-core.bot.open.start        trace=tr_A botId=b1
-core.bot.open.fail         trace=tr_A err={kind:"storage_failed", failure:"f_7", origin:true}
+core.catalog.load.fail     trace=tr_A err={kind:"storage_failed", failure:"f_7", origin:true}
 core.subscribe.fail        trace=tr_A err={kind:"storage_failed", failure:"f_7"} propagated
 protocol.command.fail      trace=tr_A err={kind:"storage_failed", failure:"f_7"} propagated
 ```
-Asserted: no `runtime.open.*` for `tr_A` (the adapter was never reached), exactly
-one `level=error`, on `core`, with `failure:"f_7"`; the bot is `unavailable`.
+Asserted: no `runtime.*` for `tr_A`, exactly one `level=error`, on `core`, with
+`failure:"f_7"`.
 
 **R2 — the event stream dies mid-answer.**
 Inject: the adapter's own sink callback throws once (a defect inside the runtime
@@ -189,11 +189,12 @@ core.hub.publish.ok        trace=tr_B rev=42 detail.kind=append
 runtime.watch.end.ok       trace=tr_B level=warn detail.reason=listener_error
 runtime.subscribe.ok       trace=tr_B detail.reattach=true
 core.hub.snapshot.ok       trace=tr_B rev=43
+transport.frame.send.ok    trace=tr_B detail.evt=snapshot
 ```
-Asserted: exactly one `runtime.watch.end.ok`, a reattach, a snapshot rerender, no
-`level=error` (handled internally), and no `transport.*` event for `tr_B` after the
-first frame. A variant that fails three times in 60 s asserts one `internal`
-failure with `origin:true` on `runtime`.
+Asserted: exactly one `runtime.watch.end.ok`, one reattach, one snapshot rerender,
+and no `level=error` (handled internally). A variant that fails three times in 60 s
+asserts exactly one `internal` failure with `origin:true` on `runtime`, and one
+`level=error` overall.
 
 **R3 — the client sends something malformed.**
 Inject: one frame with an unknown command type.
@@ -206,15 +207,17 @@ protocol.command.fail      trace=tr_C propagated
 Asserted: no `core.*` and no `runtime.*` for `tr_C`. Attribution: client/protocol.
 
 **R4 — delete interrupted between the two steps.**
-Inject: kill the process after `rename` and before the catalog write.
+Inject: `SIGKILL` after `rename(bots/<id>, trash/<id>)` and before the catalog
+write. A killed process cannot log its own failure, so only the pre-kill barrier and
+the post-restart evidence are asserted.
 
 ```
 core.delete.start          trace=tr_D botId=b1
-core.delete.fail           trace=tr_D err={kind:"internal", origin:true}
-# after restart
+# process killed; no further records for tr_D
 core.reconcile.ok          trace=tr_boot_1 botId=b1 detail.finished="delete"
 ```
-Asserted: the catalog no longer lists `b1` after restart and `trash/b1` exists.
+Asserted: `core.reconcile.ok` after restart, no `b1` in the catalog, `trash/b1`
+present. Nothing is asserted about `core.delete.fail` for `tr_D`.
 
 ## Client logging
 
@@ -228,7 +231,7 @@ forbidden (a test asserts no emit inside the delta path).
 | Test | Asserts |
 | --- | --- |
 | `test/log/shape.test.ts` | Required fields; `err.kind` from the union; `detail` whitelist; declared-and-used event names |
-| `test/log/origin.test.ts` | Exactly one `level=error` per `err.failure`, at the originating layer; higher layers log `warn` with `propagated` |
+| `test/log/origin.test.ts` | Exactly one `level=error` per `err.failure`, at the originating layer; higher layers log `warn` with `propagated`; the count is keyed on `err.failure`, not on `trace` |
 | `test/log/trace.test.ts` | R1–R4 with fake clock and drain barrier, at `--log-level=debug`, asserting presence *and* absence |
 | `test/log/redaction.test.ts` | Sentinel prompt, token and home path never appear; provider error echo is scrubbed |
 | `BotsFeaturesTests/LoggingTests.swift` | Client emit sites use the shared vocabulary; no per-delta emit |

@@ -55,7 +55,10 @@ npm test               # fast gate
 npm run typecheck
 npm run lint
 npm run coverage       # enforced thresholds
-npm run check          # fixtures:check, test, typecheck, lint, coverage (see docs/bots/TESTING.md)
+npm run coverage       # unit file list, thresholds enforced
+npm run test:crash     # real SIGKILL recovery, from stage 4
+npm run perf           # documented measurement, informational
+npm run check          # fixtures:check, test, typecheck, lint, coverage
 ```
 
 `smoke:model` never prints the key and exits non-zero when the endpoint, the model

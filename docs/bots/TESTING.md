@@ -53,7 +53,7 @@ is never started before its preconditions are green.
 | 3 | `test/protocol/commands.test.ts` | `rejects a send without a requestId or trace` | 1 |
 | 4 | `test/protocol/limits.test.ts` | `rejects text longer than 8000 characters and frames over 256 KiB` | 1 |
 | 5 | `test/protocol/versioning.test.ts` | `ignores an unknown event type but consumes its rev` | 1 |
-| 6 | `test/log/shape.test.ts` | `every declared event name is used and every used name is declared` | log module |
+| 6 | `test/log/shape.test.ts` | `every event name a source file uses is declared` (subset only; equality is asserted from stage 4 by `catalog.test.ts`) | log module |
 | 7 | `test/log/redaction.test.ts` | `a provider error echoing the prompt never reaches the log` | log module |
 | 8 | `test/architecture.test.ts` | `core imports nothing from protocol or pi-durable` | 1, 6 |
 
@@ -105,7 +105,7 @@ is never started before its preconditions are green.
 | 39 | `test/server/socket.test.ts` | `closes 4004 for an unknown bot and 4090 while quarantined` | 37 |
 | 40 | `test/server/socket.test.ts` | `a second subscribe on one connection closes 1008` | 37 |
 | 41 | `test/server/catalog.test.ts` | `create, rename and delete keep the catalog absolute` | 9, 37 |
-| 42 | `test/log/origin.test.ts` | `a failed trace has exactly one error record, at the innermost layer` | 6, 38 |
+| 42 | `test/log/origin.test.ts` | `a failed operation has exactly one error record, at the originating layer, counted by failure id` | 6, 38 |
 | 43 | `test/log/trace.test.ts` | `R1–R4 hold with a fake clock and a drain barrier` | 42 |
 | 44 | `test/core/registry.test.ts` | `open is idempotent and shared by concurrent subscribers` | 28 |
 | 45 | `test/core/registry.test.ts` | `an idle bot closes after idleCloseMs and reopens on demand` | 44 |
@@ -117,7 +117,7 @@ is never started before its preconditions are green.
 | 51 | `test/e2e/journey.test.ts` | `a lost submission reply is recovered by re-sending the requestId` | 49 |
 | 52 | `test/e2e/journey.test.ts` | `a bot joining mid-answer receives the partial in the snapshot` | 49 |
 | 52b | `test/e2e/outbox.test.ts` | `a send persisted before the socket write is reconciled after a daemon restart` | 49 |
-| 52c | `test/e2e/paging.test.ts` | `a clipped message pages back to its full length` | 49 |
+| 52c | `test/e2e/paging.test.ts` | `history pages older messages and the newest window is never re-fetched` | 49 |
 | 52d | `test/e2e/ordering.test.ts` | `a late connection-scoped record never downgrades a settlement` | 49 |
 | 53 | `test/crash/sigkill.test.ts` | `killing the daemon mid-answer loses no message and duplicates none` | 49 |
 | 54 | `test/crash/singleton.test.ts` | `a SIGKILLed daemon is taken over on the next start` | 48 |
@@ -130,10 +130,11 @@ is never started before its preconditions are green.
 | 56 | `BotsCoreTests/ReducerTests.swift` | `append upserts by id and applies replaces` | 55 |
 | 57 | `BotsCoreTests/ReducerTests.swift` | `delta applies text, block and message changes in order` | 55 |
 | 58 | `BotsCoreTests/ReducerTests.swift` | `a snapshot replaces state and resets the baseline` | 55 |
-| 59 | `BotsCoreTests/ReducerTests.swift` | `a revision gap requests a resync and drops later events` | 55 |
+| 59 | `BotsTransportTests/GapTests.swift` | `a revision gap drops events, resyncs once and reconnects after two failures (fake clock)` | 61 |
 | 60 | `BotsCoreTests/ReducerTests.swift` | `a duplicate submission reply does not disturb the transcript` | 55 |
 | 61 | `BotsTransportTests/SocketTests.swift` | `speaks the fixture server: handshake, subscribe, stream, paging` | fixture server |
 | 62 | `BotsTransportTests/SocketTests.swift` | `maps close codes to connection states and reconnects on 1006` | 61 |
+| 62b | `BotsTransportTests/GapTests.swift` | `a snapshot resets the gap counters` | 59 |
 | 63 | `BotsFeaturesTests/ConversationTests.swift` | `connecting, ready, resync, reconnect and failed` | 59, 61 |
 | 64 | `BotsFeaturesTests/ComposerTests.swift` | `optimistic bubble is replaced by the submission and append` | 60 |
 | 65 | `BotsFeaturesTests/ComposerTests.swift` | `retry reuses the same requestId, including after an app restart` | 64 |
@@ -189,10 +190,13 @@ is never started before its preconditions are green.
 (`npm run test:crash`).
 
 The barrier is a fact about commits, not a sleep and not a delta: deltas can be
-absent entirely (RUNTIME F5). The test starts a daemon whose provider streams
-slowly and waits for the first `core.hub.publish.ok` with `detail.kind="append"`
-in the daemon log — that frame is only ever produced from committed state, so a
-partial assistant message exists by then. Then it `SIGKILL`s the process.
+absent entirely (RUNTIME F5), and the first `append` of a turn is the user entry.
+The test starts a daemon whose provider streams slowly and waits for a
+`core.hub.publish.ok` whose whitelisted `detail` says `role="assistant"`,
+`state="streaming"`, with a `messageId`. That frame is only ever produced from
+committed state, so an assistant partial provably exists. Then it `SIGKILL`s the
+process. A second case kills **before** any assistant provisional exists, only after
+admission, and asserts recovery without requiring an aborted assistant entry.
 
 After restart it asserts: exactly one admitted submission, the interrupted attempt
 retained as an `aborted` assistant entry (RUNTIME F22), exactly one completed
@@ -224,22 +228,24 @@ bound means changing [PRODUCT.md](PRODUCT.md#speed-targets) in the same commit.
 ```sh
 cd apps/bots
 npm run fixtures:check
-npm test                # fast gate: src/**/*.test.ts + test/{protocol,core,runtime,server,e2e,log}/**/*.test.ts
+npm test                # deterministic unit and integration tests only
 npm run typecheck       # tsc --noEmit
 npm run lint            # biome check --error-on-warnings .
-npm run coverage        # thresholds enforced, see below
+npm run coverage        # same file list as `npm test`, thresholds enforced
 npm run test:crash      # test/crash/** only; mandatory from stage 4
-npm run perf            # test/perf/** only; informational + generous bounds
-npm run check           # fixtures:check + test + typecheck + lint + coverage
+npm run perf            # test/perf/** only; informational
+npm run check           # fixtures:check, test, typecheck, lint, coverage
 
 cd apps/bots-macos
 swift test
 ./Scripts/coverage.sh    # Bots logic gate, own script
 ```
 
-`npm test`'s file list is explicit, so `test/crash/**` and `test/perf/**` never run
-in the fast gate, and the gates named in `package.json` are the single authority
-(README points here instead of restating them).
+One file list, defined once in `scripts/unit-files.sh` and used by both `npm test`
+and `npm run coverage`, so the deterministic gate and the coverage gate can never
+drift. `test/crash/**` and `test/perf/**` are deliberately absent from it: a real
+`SIGKILL` and a real clock are not deterministic. `package.json` is the single
+authority for these commands; the README points here instead of restating them.
 
 `npm run coverage` runs Node's own reporter with enforced thresholds:
 
@@ -251,7 +257,7 @@ node --test \
   --test-coverage-exclude='src/**/*.test.ts' \
   --test-coverage-include-all \
   --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=85 \
-  'src/**/*.test.ts' 'test/**/*.test.ts'
+  $(sh scripts/unit-files.sh)
 ```
 
 `--test-coverage-include-all` counts files no test imported, so an untested module
@@ -278,7 +284,8 @@ that only stage 4 can run.
 | --- | --- |
 | `npm test` + `npm run typecheck` + `npm run lint` + `fixtures:check` | stage 1 |
 | `npm run coverage` with enforced thresholds | stage 1 |
-| Event catalogue bidirectional equality (`test/log/catalog.test.ts`) | stage 4 (when every emit site exists); before that the test only asserts `used ⊆ declared` |
+| `test/log/shape.test.ts` asserting `used ⊆ declared` | stage 1 |
+| `test/log/catalog.test.ts` asserting bidirectional equality | stage 4 (the first stage where every emit site exists) |
 | `test/log/origin.test.ts` for each layer that exists | stage 4 |
 | `npm run test:crash` | stage 4 |
 | `npm run perf` | stage 4 |

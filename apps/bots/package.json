@@ -9,15 +9,17 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env src/main.ts",
-    "test": "node --test src/**/*.test.ts test/**/*.test.ts",
+    "test": "sh scripts/run-tests.sh",
+    "test:crash": "node --test $(sh scripts/crash-files.sh)",
+    "perf": "node --test $(sh scripts/perf-files.sh)",
     "typecheck": "tsc --noEmit",
     "lint": "biome check --error-on-warnings .",
     "format": "biome check --write .",
-    "coverage": "node --test --experimental-test-coverage --test-coverage-lines=90 src/**/*.test.ts test/**/*.test.ts",
+    "coverage": "sh scripts/run-tests.sh --coverage",
     "fixtures:check": "node --experimental-strip-types scripts/fixtures.ts check",
     "fixtures:write": "node --experimental-strip-types scripts/fixtures.ts write",
     "smoke:model": "node --env-file-if-exists=.env --experimental-strip-types scripts/smoke-model.ts",
-    "check": "npm run fixtures:check && npm test && npm run typecheck && npm run lint"
+    "check": "npm run fixtures:check && npm test && npm run typecheck && npm run lint && npm run coverage"
   },
   "dependencies": {
     "@earendil-works/chord": "1.4.0",

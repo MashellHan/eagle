@@ -85,7 +85,7 @@ provisional: { id, attempt } | null   // id = "p_a<attempt>"
 | `message_start` where `message.role === "assistant"` | Start an attempt if none is open; emit the provisional once, **with the converted content from F4**, `state:"streaming"` | `append` |
 | `message_start` where `message.role === "user"` | Ignore (F3) | — |
 | `message_update` | Convert every `MessageChange` to a `DeltaChange` with its `index` (table below) and forward it | `delta{messageId:"p_a<n>"}` |
-| `message_start` for an assistant attempt that already has a provisional (retry inside the same turn) | Close the old provisional, start a new attempt id | `append{new p_a<n>}` |
+| `message_start` for an assistant attempt that already has a provisional (retry inside the same turn) | Keep the provisional; apply the new content as one `message` change | `delta{kind:"message"}` |
 | `message_end` with `entry.kind === "pi.assistant"` | Convert the entry's message to a domain `Message`; final state from `stopReason` (F13); clear the provisional | `append{message, replaces: p_a<n>}` |
 | `message_end` with `entry.kind === "pi.assistant"` whose `stopReason === "aborted"` and which F22 produced | Convert with `state:"aborted"`; no provisional to replace | `append` |
 | `message_end` with `entry.kind === "pi.user"` | Map the user entry, including its `requestId` when known | `append` |
@@ -93,7 +93,8 @@ provisional: { id, attempt } | null   // id = "p_a<attempt>"
 | `inbox_update` | Map queue items | `status` |
 | `run_start` / `run_end` | Mark running, clear the provisional at attempt end | `status` |
 | `tool_execution_*` | Reserved (phase 2) | `delta{kind:"toolcall"}` / reserved blocks |
-| `auto_retry_start` / `auto_retry_end` | Log `runtime.classify`; no wire event (the attempt id changes on the next `message_start`) | — |
+| `auto_retry_start` / `auto_retry_end` | Log only; the provisional stays open because the failed entry arrives after `auto_retry_start` | — |
+| `deferred_poll` | Keep the provisional; emit nothing but `status{running:true}` | `status` |
 | `task_failed` | Classify as `task_faulted` (a park only ever arrives through `onReport`) | `error{kind:"task_faulted", taskId}` |
 | `onReport` (`task_parked`, `session_failed`, `extension_error`, …) (F15) | Mint a `failureId`, dedupe by it across channels, then classify | `error{kind, failureId}` |
 | `harness.closed` (F25) | `reason:"closed"` because we called `close()` → expected, no error. `reason:"failed"` → `storage_failed` | `error{kind:"storage_failed"}` only for the failed case |
@@ -142,20 +143,31 @@ One run may contain several generation attempts (retries, deferred polls, a cras
 that resumes). The provisional id is scoped to the attempt so a stale stream can
 never write into a finalized message:
 
+Upstream order matters: `auto_retry_start` is published **before** the failed
+attempt's assistant entry, so the provisional must survive it.
+
 ```
-attempt n:  message_start(assistant)     → open attempt n, provisional "p_a<n>"
-            message_update*              → deltas to "p_a<n>"
-            message_end(pi.assistant)    → append final entry, replaces p_a<n>, attempt closed
-            auto_retry_start             → close p_a<n>; the next message_start opens n+1
-            deferred                     → no message at all; emit status only, attempt stays open
-            message_end(aborted)         → append aborted entry, attempt closed (F22)
-            run_end                      → close any open attempt without emitting a message
+first message_start(assistant)   → open provisional "p_a<n>" with current content
+message_update*                  → deltas to "p_a<n>" (block-scoped, indexed)
+message_start again (retry)      → do NOT create a second provisional: apply the new
+                                   content as a `message` change to the same p_a<n>
+auto_retry_start                 → log only; the provisional stays open
+message_end(pi.assistant)        → append the real entry with replaces p_a<n>; closed
+message_end(aborted)             → append the aborted entry (F22); closed
+deferred_poll                    → no message is appended; keep the provisional and
+                                   emit status{running:true}
+run_end                          → close any still-open provisional with a final
+                                   `status{running:false}`; clients drop a provisional
+                                   that never received `replaces`
 ```
+
+The provisional id changes only after a finalize. A retry therefore continues the
+same bubble, which is what the user sees.
 
 | Situation | Provisional handling |
 | --- | --- |
-| Retry inside one turn | Old provisional is abandoned silently; the new `message_start` opens `p_a<n+1>`. Clients drop a provisional that never gets `replaces` when `status` reports `running:false` |
-| Deferred poll | No provisional; only `status{running:true}` |
+| Retry inside one turn | The same provisional continues; the new `message_start` content is applied as a `message` change, and the eventual entry carries `replaces: p_a<n>` |
+| Deferred poll (`deferred_poll`) | The provisional is kept and no entry is appended; only `status{running:true}` is emitted |
 | Late join or snapshot rerender mid-attempt | The snapshot carries the attempt's current content and its `p_a<n>` id, so later deltas land on a message the client already has |
 | Watch fell behind (F8) | Reset attempt state from the snapshot; the next delta must carry the snapshot's provisional id or be dropped |
 
@@ -171,6 +183,22 @@ the classification point and dedupes on it:
 | `onReport` (F15) | Parked tasks, session failure, extension/hook errors |
 | `harness.closed` (F25) | Harness end; only `reason:"failed"` is a failure |
 | Watch end (F17) | The event stream ended; reattach before reporting |
+
+`WatchEnd.reason` is one of `stopped | cancelled | session_closed | retired |
+listener_error | session_failed`. Only the last two are faults:
+
+| Reason | Meaning | Adapter |
+| --- | --- | --- |
+| `stopped` | We detached | Nothing |
+| `cancelled` | The acquisition context was cancelled (shutdown) | Nothing |
+| `session_closed` | `close()` ended the session | Nothing |
+| `retired` | A document watch's incarnation retired | Re-acquire the watch; not a failure |
+| `listener_error` | A sink callback threw | Reattach with a snapshot; escalate after three in 60 s |
+| `session_failed` | The harness failed | Classify `storage_failed`; same failure identity as `harness.closed` |
+
+Failure identity correlation: `harness.closed{failed}`, a `session_failed` watch
+end, and the `onReport` for the same session failure all resolve to one `failureId`
+for the bot's lifetime, so exactly one error reaches the client and the log.
 
 Normal ends (`close()` we asked for, `stopped`/`session_closed` watch reasons) are
 not failures and produce no `error` event.
@@ -274,6 +302,11 @@ and leaves a running answer alone; `abort` is the only destructive command.
 14. Do not claim trace continuity into pi: phase 1 installs no pi telemetry, so
     trace ids live in the daemon's own logs and in-memory ledger. A resumed run
     after restart is attributed to `tr_boot_<n>`, not to the original `send`.
+15. Do not clear the provisional on `auto_retry_start`: upstream publishes the
+    failed attempt's entry afterwards, and that entry is what carries `replaces`.
+16. Do not treat `deferred_poll` as a message event; it is a polling sleep.
+17. Do not expect `retired` to be an error; it means a document watch's
+    incarnation rotated, and the watch is simply re-acquired.
 8. Do not synthesize `unanswered` from a thrown command (F7/F12): only a stored
    record settles an input. `abort` settles with `reason:"aborted"` (F10), which is
    not a model failure.

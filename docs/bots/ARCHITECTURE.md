@@ -135,16 +135,17 @@ Swift type use the same word. Wire decoding is confined to `BotsTransport`.
 
 ```ts
 // apps/bots/src/core/RuntimePort.ts
-export type RuntimeEvent =
+// Every event carries the trace that caused it: the submission trace for run
+// output, the connection or boot trace otherwise. Failures carry a minted identity
+// so one underlying failure reported on several channels collapses to one record.
+export type RuntimeEvent = { readonly trace: string } & (
   | { type: "append"; message: Message; replaces?: string }
   | { type: "delta"; messageId: string; changes: DeltaChange[] }
-  // A delta is lossless: every change names its block index, and a block change
-  // carries the whole block. pi's start events therefore map to block changes,
-  // not to nothing.
   | { type: "status"; running: boolean; inbox: InboxItem[] }
   | { type: "submission"; record: Submission }
   | { type: "snapshot"; value: ConversationSnapshot }   // watch fell behind: replace everything
-  | { type: "error"; kind: ErrorKind; message: string; taskId?: string };
+  | { type: "error"; failure: { id: string; kind: ErrorKind; origin: Layer }; message: string; taskId?: string }
+);
 
 export type DeltaChange =
   | { kind: "text"; index: number; append: string }
@@ -190,7 +191,7 @@ export interface RuntimeHandle {
   submit(input: SubmitInput): Promise<Submission>;
   /** Current record by submission id or requestId; used for duplicate replies. */
   submission(key: { submissionId: string } | { requestId: string }): Promise<Submission | undefined>;
-  /** Older messages, oldest first. Byte budgets stay in the wire layer. */
+  /** Older messages, oldest first. Byte budgets and paging stay in the wire layer. */
   history(input: { beforeEntryId?: string; limit: number }): Promise<{ messages: Message[]; hasMore: boolean }>;
   abort(trace: string): Promise<void>;
   /** Retries parked work for this bot and leaves a healthy bot untouched.
@@ -218,15 +219,21 @@ public enum ConnectionState: Equatable {
 // replies. BotsTransport owns close codes, envelope decoding and therefore gap
 // detection: it drops out-of-order frames and emits `.snapshot` after a resync,
 // so the reducer stays pure and never sees a gap.
-public enum ConversationEvent {
-  case connection(ConnectionState)
-  case snapshot(ConversationSnapshot, rev: Int)      // also for resync and resnapshot
-  case append(Message, replaces: String?, rev: Int)
-  case delta(messageId: String, changes: [DeltaChange], rev: Int)
-  case status(running: Bool, inbox: [InboxItem], rev: Int)
-  case submission(Submission, rev: Int?)             // nil when connection-scoped
-  case history([Message], hasMore: Bool)
-  case error(kind: ErrorKind, message: String, trace: String, requestId: String?)
+public struct ConversationEvent {
+  public let trace: String              // command trace, or the connection's
+  public let rev: Int?                  // nil for connection-scoped replies
+  public let body: Body
+
+  public enum Body {
+    case connection(ConnectionState)
+    case snapshot(ConversationSnapshot)          // initial, resync, or a rerender
+    case append(Message, replaces: String?)
+    case delta(messageId: String, changes: [DeltaChange])
+    case status(running: Bool, inbox: [InboxItem])
+    case submission(Submission)
+    case history([Message], hasMore: Bool)
+    case error(kind: ErrorKind, message: String, failure: String?)
+  }
 }
 
 public protocol ConversationPort: AnyObject {
@@ -290,19 +297,36 @@ transport.
 <root>/run/daemon.sock    unix socket for the client (not a lock)
 ```
 
-Acquire:
+Renaming a path proves nothing about which inode it held, so takeover is guarded by
+a **second `O_EXCL` file** that only one process can own:
 
-1. `open(lock, "wx")` succeeds → write `{pid, startedAt}`; this process owns the
-   root.
+```
+run/daemon.lock            { pid, startedAt }         ownership
+run/daemon.lock.takeover   { pid, startedAt }         single-taker guard for recovery
+```
+
+Acquire, bounded at five attempts:
+
+1. `open(lock, "wx")` succeeds → write `{pid, startedAt}`, `fsync`, re-read and
+   verify our pid; this process owns the root.
 2. `EEXIST` → read the pid. `process.kill(pid, 0)` succeeds → a live daemon owns
-   the root, print its pid and exit non-zero.
-3. The pid is dead (or the file is unreadable and older than 10 s) → take over
-   with an **atomic rename** of the stale file to `daemon.lock.<mypid>`, then
-   delete it and go to step 1. Renaming one inode succeeds exactly once: a
-   concurrent starter loses with `ENOENT` and retries from step 1, so two
-   processes can never both believe they own the root.
-4. Bound the loop at five attempts; each attempt is logged
-   (`core.singleton.start`), and a failure to acquire exits non-zero.
+   the root; print its pid and exit non-zero.
+3. The pid is dead (or the file is unreadable and older than 10 s) → try
+   `open(lock + ".takeover", "wx")`:
+   - `EEXIST` means another starter is already recovering. Re-check that guard's
+     pid; if it is alive, wait 100 ms and retry from step 1. If the guard's pid is
+     dead and its file is older than 10 s, remove the guard and retry from step 1.
+   - Success → **re-read the lock**: if its pid is now alive, another daemon won
+     while we waited; release the guard and exit. Otherwise `unlink(lock)`, release
+     the guard, and retry from step 1.
+4. Every attempt logs `core.singleton.start` and either `core.singleton.ok` or
+   `core.singleton.fail`; exhausting the attempts exits non-zero.
+
+Why this is safe: only the holder of the takeover guard may remove the lock, and it
+re-reads the lock after acquiring the guard, so it can never delete a lock written
+after its own read. Two concurrent starters therefore produce exactly one owner;
+the test forces that interleaving with a barrier between step 2 and step 3 rather
+than merely starting two processes.
 
 `SIGKILL` leaves a stale file whose pid is dead, which step 3 takes over. Tests
 cover: live instance rejects the second, `SIGKILL`ed instance is taken over, and
@@ -379,7 +403,7 @@ Rules:
 | Provider error echoing user text | L1 | `err.kind` only; provider text never logged, message redacted to a fixed notice |
 | Storage error (`SessionFailed`) | L0 | Harness closes itself; L1 classifies `storage_failed`, L2 marks `unavailable` |
 | Parked task (`onReport`) | L0 → L1 | `error{kind:"task_parked"}`; `recover` clears it |
-| Watch ended (`listener_error`) | L0 → L1 | `error{kind:"internal"}` + reattach with a fresh snapshot; three failures in 60 s mark `unavailable` |
+| Watch ended (`listener_error`, `session_failed`) | L0 → L1 | Reattach with a fresh snapshot; no client-visible error on the first, three failures in 60 s mint one `internal` failure and mark the bot `unavailable` |
 | Whole process crash | — | Next start resumes; `SIGKILL` recovery is a mandatory test |
 | `close()` timeout | L2 | Bot quarantined; open/delete refused until closed |
 | Client disconnect | L4 | Daemon keeps working; reconnect starts from a snapshot |
