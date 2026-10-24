@@ -450,3 +450,36 @@ test("a pump requested on every event is never starved by a publishing sink", ()
   assert.equal(events.degraded(subscription.id), false);
   assert.equal(deepest, 1, "no sink is called re-entrantly");
 });
+
+test("the snapshot that triggers the overflow becomes the recovery anchor", () => {
+  const events = hub({ measure: () => 1 });
+  const received: HubEvent[] = [];
+  const subscription = events.subscribe((event) => received.push(event), { manual: true });
+  for (let index = 0; index < 256; index += 1) events.publish(status());
+  assert.equal(events.degraded(subscription.id), false, "256 queued events still fit");
+  events.publishSnapshot(emptySnapshot(true));
+  assert.equal(events.degraded(subscription.id), true);
+  events.pump(subscription.id);
+  assert.deepEqual(
+    received.map((event) => event.type),
+    ["snapshot"],
+    "the overflowing snapshot is delivered instead of dropped",
+  );
+  assert.equal(events.degraded(subscription.id), false);
+});
+
+test("a snapshot that exceeds the byte budget also becomes the anchor", () => {
+  const events = hub({
+    measure: (event) => (event.type === "snapshot" ? 60_300 : 4_000),
+  });
+  const received: HubEvent[] = [];
+  const subscription = events.subscribe((event) => received.push(event), { manual: true });
+  for (let index = 0; index < 255; index += 1) events.publish(status());
+  events.publishSnapshot(emptySnapshot(true));
+  events.pump(subscription.id);
+  assert.deepEqual(
+    received.map((event) => event.type),
+    ["snapshot"],
+  );
+  assert.equal(events.degraded(subscription.id), false);
+});

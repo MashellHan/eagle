@@ -265,12 +265,19 @@ export class EventHub {
       slot.queue.length + 1 > SUBSCRIBER_QUEUE_LIMIT ||
       slot.bytes + bytes > SUBSCRIBER_BYTE_LIMIT
     ) {
-      // Falling behind downgrades the subscriber instead of stalling the hub.
+      // Falling behind downgrades the subscriber instead of stalling the hub. A snapshot
+      // is itself the recovery, so the event that triggers the overflow becomes the
+      // anchor instead of being thrown away.
       slot.degraded = true;
       slot.queue = [];
       slot.bytes = 0;
-      slot.anchor = undefined;
-      slot.stale = true;
+      if (event.type === "snapshot") {
+        slot.anchor = { event, bytes };
+        slot.stale = false;
+      } else {
+        slot.anchor = undefined;
+        slot.stale = true;
+      }
       return;
     }
     slot.queue.push({ event, bytes });
