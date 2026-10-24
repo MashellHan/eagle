@@ -3,7 +3,11 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
-import { type AgentConfig, collect, sendReport } from "../agent/collector.ts";
+import {
+  type AgentConfig,
+  collect,
+  sendReport,
+} from "../packages/agent/collector.ts";
 
 const origin = process.env.EAGLE_VERIFY_ORIGIN || "https://eagle.dev.hexly.ai";
 const config: AgentConfig = JSON.parse(

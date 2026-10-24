@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { MachineTelemetrySchema } from "../../src/shared/schema.ts";
+import { MachineTelemetrySchema } from "../../packages/contracts/src/schema.ts";
 import { evidence, report, telemetry } from "../fixtures.ts";
 
 async function fixture(page: Page, empty = false, spaceCount = 2) {

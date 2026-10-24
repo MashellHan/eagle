@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { LiveFrame } from "../src/shared/realtime.ts";
-import { compactRenderedFrame } from "../src/shared/terminal-display.ts";
+import type { LiveFrame } from "../packages/contracts/src/realtime.ts";
+import { compactRenderedFrame } from "../packages/contracts/src/terminal-display.ts";
 
 test("compact display hides idle chrome without losing body or footer colors", () => {
   const runs = [

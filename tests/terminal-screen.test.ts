@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { redactScreen, terminalScreen } from "../agent/realtime.ts";
-import { FrameSchema } from "../src/shared/realtime.ts";
-import { restyleRedactedText } from "../src/shared/terminal.ts";
+import { redactScreen, terminalScreen } from "../packages/agent/realtime.ts";
+import { FrameSchema } from "../packages/contracts/src/realtime.ts";
+import { restyleRedactedText } from "../packages/contracts/src/terminal.ts";
 
 test("terminal snapshots preserve safe SGR colors and emphasis alongside plain text", () => {
   const screen = terminalScreen(

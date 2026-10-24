@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import site from "../package.json" with { type: "json" };
-import { onboardingPrompt, type Registration } from "../src/shared/connect.ts";
+import {
+  onboardingPrompt,
+  type Registration,
+} from "../packages/contracts/src/connect.ts";
 
 const machine: Registration = {
   id: "test-mac",
@@ -21,6 +24,7 @@ test("onboarding checks both identity and origin before rotating an existing cre
     "fixture-token",
     "https://ingest.example.test",
     [],
+    site.config.publishedAgentVersion,
   );
   assert.match(prompt, /machineId 和 url/);
   assert.match(prompt, /仅当机器 ID 和规范化后的 origin 都相同/);
@@ -34,6 +38,7 @@ test("cross-origin onboarding isolates credentials, spool and cache", () => {
     "fixture-token",
     "https://ingest.example.test",
     [],
+    site.config.publishedAgentVersion,
   );
   for (const text of [
     "不得把新 token 写入旧地址的配置",
@@ -52,6 +57,7 @@ test("every command and supervised service uses the chosen configuration", () =>
     "fixture-token",
     "http://127.0.0.1:37053",
     [],
+    site.config.publishedAgentVersion,
   );
   assert.match(prompt, /所有 init、once、watch、realtime-watch/);
   assert.match(prompt, /launchd\/systemd 的环境中显式设置 EAGLE_CONFIG/);
@@ -64,6 +70,7 @@ test("same-origin rotation restarts only existing services using the selected co
     "fixture-token",
     "https://ingest.example.test",
     [],
+    site.config.publishedAgentVersion,
   );
   const rotation = prompt.split("- 同环境轮换：")[1]?.split("\n")[0] ?? "";
   assert.match(rotation, /重启使用该配置且已启用的 watch、realtime-watch 服务/);
@@ -76,6 +83,7 @@ test("onboarding pins the published Agent independently of website releases", ()
     "fixture-token",
     "https://ingest.example.test",
     [],
+    site.config.publishedAgentVersion,
   );
   assert(
     prompt.includes(
@@ -96,6 +104,7 @@ test("release pins verified Agent 1.0.0", () => {
     "fixture-token",
     "https://ingest.example.test",
     [],
+    site.config.publishedAgentVersion,
   );
   assert.equal(site.config.publishedAgentVersion, "1.0.0");
   assert(prompt.includes("npm install -g @nocoo/eagle-agent@1.0.0 "));

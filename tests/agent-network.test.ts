@@ -76,7 +76,7 @@ test("CLI networking defaults to direct and supports an explicit environment pro
   const run = (proxyEnv: Record<string, string>) =>
     promisify(execFile)(
       process.execPath,
-      [resolve("agent/cli.ts"), "heartbeat"],
+      [resolve("packages/agent/cli.ts"), "heartbeat"],
       { env: { ...env, EAGLE_CONFIG: config, ...proxyEnv }, timeout: 5000 },
     );
   await run({});

@@ -10,21 +10,21 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { after, before, test } from "node:test";
 import { serialize } from "node:v8";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 import NativeWebSocket from "ws";
+import { viewerAuthorized } from "../apps/web/src/worker/auth.ts";
 import {
   type DailyReport,
   dailyCutoff,
   dailyStart,
   dueDate,
-} from "../src/shared/daily.ts";
-import type { MachineView, Report } from "../src/shared/schema.ts";
-import { viewerAuthorized } from "../src/worker/auth.ts";
+} from "../packages/contracts/src/daily.ts";
+import type { MachineView, Report } from "../packages/contracts/src/schema.ts";
 import { report, telemetry } from "./fixtures.ts";
 
 let mf: Miniflare;
@@ -81,11 +81,13 @@ before(async () => {
     "node_modules/.bin/wrangler",
     [
       "deploy",
+      "--config",
+      "apps/web/wrangler.jsonc",
       "--dry-run",
       "--outdir",
-      ".local/test-worker",
+      resolve(".local/test-worker"),
       "--assets",
-      ".local/test-assets",
+      resolve(".local/test-assets"),
     ],
     { stdio: "pipe" },
   );
@@ -207,31 +209,34 @@ before(async () => {
   mf = new Miniflare(options);
   const db = await mf.getD1Database("DB");
   await db.exec(
-    readFileSync("migrations/0001_initial.sql", "utf8").replace(/\n/g, " "),
-  );
-  await db.exec(
-    readFileSync("migrations/0002_pane_summaries.sql", "utf8").replace(
+    readFileSync("apps/web/migrations/0001_initial.sql", "utf8").replace(
       /\n/g,
       " ",
     ),
   );
   await db.exec(
-    readFileSync("migrations/0003_hourly_reports.sql", "utf8").replace(
+    readFileSync("apps/web/migrations/0002_pane_summaries.sql", "utf8").replace(
       /\n/g,
       " ",
     ),
   );
   await db.exec(
-    readFileSync("migrations/0004_daily_reports.sql", "utf8").replace(
+    readFileSync("apps/web/migrations/0003_hourly_reports.sql", "utf8").replace(
       /\n/g,
       " ",
     ),
   );
   await db.exec(
-    readFileSync("migrations/0005_drop_pane_summaries.sql", "utf8").replace(
+    readFileSync("apps/web/migrations/0004_daily_reports.sql", "utf8").replace(
       /\n/g,
       " ",
     ),
+  );
+  await db.exec(
+    readFileSync(
+      "apps/web/migrations/0005_drop_pane_summaries.sql",
+      "utf8",
+    ).replace(/\n/g, " "),
   );
   const legacy = report("legacy-import");
   legacy.machine.id = "retired";

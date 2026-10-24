@@ -1,0 +1,9 @@
+{
+  "name": "@eagle/contracts",
+  "private": true,
+  "type": "module",
+  "description": "Shared report, API and settings schemas for the Eagle website, Worker and Agent",
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
+}

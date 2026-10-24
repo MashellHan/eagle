@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { DailySettingsSchema } from "../../src/shared/daily.ts";
+import { DailySettingsSchema } from "../../packages/contracts/src/daily.ts";
 import { report } from "../fixtures.ts";
 
 test.use({ reducedMotion: "reduce" });

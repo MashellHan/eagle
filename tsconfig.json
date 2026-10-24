@@ -14,12 +14,13 @@
     "types": ["node", "vite/client"]
   },
   "include": [
-    "src",
-    "agent",
+    "apps/web/src",
+    "apps/web/vite.config.ts",
+    "apps/web/worker-configuration.d.ts",
+    "packages/contracts/src",
+    "packages/agent",
     "scripts",
     "tests",
-    "vite.config.ts",
-    "playwright.config.ts",
-    "worker-configuration.d.ts"
+    "playwright.config.ts"
   ]
 }

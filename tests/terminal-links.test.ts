@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { terminalScreen } from "../agent/realtime.ts";
-import { terminalLinkParts } from "../src/shared/terminal-links.ts";
+import { terminalScreen } from "../packages/agent/realtime.ts";
+import { terminalLinkParts } from "../packages/contracts/src/terminal-links.ts";
 
 const hrefs = (text: string) =>
   terminalLinkParts(text).flatMap((part) => (part.href ? [part.href] : []));

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
-import { redactScreen, terminalScreen } from "../agent/realtime.ts";
+import { redactScreen, terminalScreen } from "../packages/agent/realtime.ts";
 
 test("screen redaction preserves status labels instead of joining words into secret names", () => {
   for (const label of [

@@ -4,7 +4,7 @@ import {
   assessPane,
   changesBetween,
   summarize,
-} from "../src/shared/assessment.ts";
+} from "../packages/contracts/src/assessment.ts";
 import { evidence, NOW, report } from "./fixtures.ts";
 
 test("a working hint supplies activity when native execution evidence has not arrived", () => {

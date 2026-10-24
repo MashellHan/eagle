@@ -6,10 +6,15 @@
   },
   "private": true,
   "type": "module",
+  "workspaces": [
+    "apps/web",
+    "packages/contracts",
+    "packages/agent"
+  ],
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 7053 --strictPort",
-    "dev:api": "wrangler dev --port 37053 --inspector-port 38053",
-    "build": "vite build",
+    "dev": "npm --workspace @eagle/web run dev",
+    "dev:api": "npm --workspace @eagle/web run dev:api",
+    "build": "npm --workspace @eagle/web run build",
     "typecheck": "tsc --noEmit",
     "lint": "biome check . --error-on-warnings",
     "format": "biome check --write .",
@@ -17,23 +22,9 @@
     "test:browser": "playwright test",
     "check": "npm run test && npm run typecheck && npm run lint && npm run build",
     "deploy": "node scripts/deploy.ts",
-    "agent": "node agent/cli.ts",
-    "db:local": "wrangler d1 migrations apply eagle --local",
-    "db:remote": "wrangler d1 migrations apply eagle --remote"
-  },
-  "dependencies": {
-    "@ai-sdk/anthropic": "4.0.87",
-    "@ai-sdk/openai": "4.0.101",
-    "@nocoo/basalt": "^3.2.1",
-    "@nocoo/next-ai": "^0.4.0",
-    "ai": "7.0.152",
-    "jose": "^6.2.13",
-    "lucide-react": "1.61.0",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "recharts": "^3.10.1",
-    "ws": "8.22.0",
-    "zod": "^4.6.7"
+    "agent": "node packages/agent/cli.ts",
+    "db:local": "wrangler d1 migrations apply eagle --local --config apps/web/wrangler.jsonc",
+    "db:remote": "wrangler d1 migrations apply eagle --remote --config apps/web/wrangler.jsonc"
   },
   "overrides": {
     "undici": "7.29.1",
@@ -43,16 +34,10 @@
   "devDependencies": {
     "@biomejs/biome": "2.6.2",
     "@playwright/test": "^1.64.1",
-    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.6.5",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.5",
-    "@types/ws": "8.18.2",
-    "@vitejs/plugin-react": "^6.1.2",
     "miniflare": "5.20260918.0-alpha",
-    "tailwindcss": "^4.3.3",
     "typescript": "7.0.2",
-    "vite": "8.3.5",
-    "wrangler": "4.152.0"
+    "ws": "8.22.0",
+    "zod": "^4.6.7"
   }
 }

@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   DailySettingsSchema,
   TEMPLATE_VERSION,
-} from "../../src/shared/daily.ts";
+} from "../../packages/contracts/src/daily.ts";
 
 test("AI key can be saved, retained, tested and cleared without returning or persisting its plaintext", async ({
   page,

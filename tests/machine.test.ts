@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:net";
 import { test } from "node:test";
-import { collectTelemetry, cpuUsage } from "../agent/machine.ts";
+import { collectTelemetry, cpuUsage } from "../packages/agent/machine.ts";
 
 test("CPU usage uses sample deltas, handles missing samples and idle CPUs", () => {
   assert.equal(
@@ -49,7 +49,9 @@ test("real local resource sampling and configured TCP checks distinguish open an
 });
 
 test("slow probes are cached with their original timestamps, configurable, and shared during overlapping calls", async () => {
-  const { createTelemetrySampler } = await import("../agent/machine.ts");
+  const { createTelemetrySampler } = await import(
+    "../packages/agent/machine.ts"
+  );
   const { telemetry } = await import("./fixtures.ts");
   let now = Date.parse("2026-10-02T00:00:00Z");
   let slowCalls = 0;
@@ -102,8 +104,12 @@ test("slow probes are cached with their original timestamps, configurable, and s
 });
 
 test("missing optional hardware does not break sampling or revive cached macmon readings", async () => {
-  const { createTelemetrySampler } = await import("../agent/machine.ts");
-  const { MachineTelemetrySchema } = await import("../src/shared/schema.ts");
+  const { createTelemetrySampler } = await import(
+    "../packages/agent/machine.ts"
+  );
+  const { MachineTelemetrySchema } = await import(
+    "../packages/contracts/src/schema.ts"
+  );
   const { telemetry } = await import("./fixtures.ts");
   const now = Date.parse(telemetry().observedAt);
   const sample = createTelemetrySampler({

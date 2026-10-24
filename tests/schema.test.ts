@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MachineTelemetrySchema, ReportSchema } from "../src/shared/schema.ts";
+import {
+  MachineTelemetrySchema,
+  ReportSchema,
+} from "../packages/contracts/src/schema.ts";
 import { report, telemetry } from "./fixtures.ts";
 
 test("v1 report round trips; unsupported versions, secrets and duplicate IDs fail closed", () => {

@@ -4,12 +4,15 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { AGENT_VERSION } from "../agent/version.ts";
 import pkg from "../package.json" with { type: "json" };
+import { AGENT_VERSION } from "../packages/agent/version.ts";
 
 test("npm agent artifact installs outside the checkout and accepts credentials only through secure config", () => {
   const manifest = JSON.parse(
-    readFileSync(new URL("../agent/package.json", import.meta.url), "utf8"),
+    readFileSync(
+      new URL("../packages/agent/package.json", import.meta.url),
+      "utf8",
+    ),
   );
   const lock = JSON.parse(
     readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"),
@@ -23,7 +26,13 @@ test("npm agent artifact installs outside the checkout and accepts credentials o
       JSON.parse(
         execFileSync(
           "npm",
-          ["pack", "./agent", "--pack-destination", directory, "--json"],
+          [
+            "pack",
+            "./packages/agent",
+            "--pack-destination",
+            directory,
+            "--json",
+          ],
           { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
         ),
       ),

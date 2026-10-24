@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compactTerminalText } from "../src/shared/terminal-display.ts";
+import { compactTerminalText } from "../packages/contracts/src/terminal-display.ts";
 
 test("compact only the trailing idle Codex prompt and keep model plus directory", () => {
   const text =

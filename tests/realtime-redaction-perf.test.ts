@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { test } from "node:test";
-import { redact } from "../agent/collector.ts";
-import { redactScreen, terminalScreen } from "../agent/realtime.ts";
+import { redact } from "../packages/agent/collector.ts";
+import { redactScreen, terminalScreen } from "../packages/agent/realtime.ts";
 
 function medianRuntime(
   input: string,

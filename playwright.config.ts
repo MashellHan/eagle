@@ -6,7 +6,7 @@ export default defineConfig({
   use: { baseURL: "http://127.0.0.1:27053", trace: "retain-on-failure" },
   webServer: {
     command:
-      "npm run build -- --mode test --outDir .local/browser-dist && vite preview --mode test --outDir .local/browser-dist --host 127.0.0.1 --port 27053 --strictPort",
+      "npm --workspace @eagle/web run build -- --mode test && npm --workspace @eagle/web exec -- vite preview --mode test --host 127.0.0.1 --port 27053 --strictPort",
     url: "http://127.0.0.1:27053",
     reuseExistingServer: false,
   },

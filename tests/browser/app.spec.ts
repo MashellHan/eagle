@@ -667,7 +667,7 @@ test("local sidebar preserves logout chrome without inventing a login session", 
 test("deployment image policy allows HTTPS author-service avatars", async ({
   page,
 }) => {
-  const policy = readFileSync("public/_headers", "utf8")
+  const policy = readFileSync("apps/web/public/_headers", "utf8")
     .split("\n")
     .find((line) => line.trim().startsWith("Content-Security-Policy:"))
     ?.trim()

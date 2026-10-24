@@ -4,7 +4,7 @@ import {
   networkState,
   readTemperature,
   vpnState,
-} from "../agent/environment.ts";
+} from "../packages/agent/environment.ts";
 
 test("network status uses OS reachability without claiming public Internet health", () => {
   assert.equal(networkState("darwin", "Reachable"), "connected");

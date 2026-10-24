@@ -1,4 +1,4 @@
-import type { Evidence, Report } from "../src/shared/schema.ts";
+import type { Evidence, Report } from "../packages/contracts/src/schema.ts";
 export const NOW = "2026-09-19T05:50:00.000Z";
 export function telemetry(observedAt = NOW) {
   return {

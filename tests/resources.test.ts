@@ -3,7 +3,7 @@ import { test } from "node:test";
 import {
   type ResourceSample,
   resourcePoints,
-} from "../src/shared/resources.ts";
+} from "../packages/contracts/src/resources.ts";
 
 test("resource chart preserves non-percent load, null measurements, long gaps and offline tails", () => {
   const point = (seconds: number): ResourceSample => ({

@@ -5,9 +5,9 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { LiveBridge, redactScreen } from "../agent/realtime.ts";
-import { submitTerminalInput } from "../agent/terminal-input.ts";
-import { InputSchema } from "../src/shared/realtime.ts";
+import { LiveBridge, redactScreen } from "../packages/agent/realtime.ts";
+import { submitTerminalInput } from "../packages/agent/terminal-input.ts";
+import { InputSchema } from "../packages/contracts/src/realtime.ts";
 
 test("history arrows are validated keys, not raw escape sequences in pasted text", () => {
   for (const key of ["up", "down", "ctrl+p", "ctrl+n"]) {
@@ -363,7 +363,7 @@ test("native input binds the terminal before paste/keys, confirms only submissio
     text: "hello",
     keys: [
       "enter" as const,
-    ] as import("../src/shared/realtime.ts").LiveInput["keys"],
+    ] as import("../packages/contracts/src/realtime.ts").LiveInput["keys"],
   };
   const submit = (signal = new AbortController().signal, valid = true) =>
     submitTerminalInput(

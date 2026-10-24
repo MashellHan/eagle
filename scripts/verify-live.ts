@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
-import { type AgentConfig, collect, sendReport } from "../agent/collector.ts";
-import type { Overview } from "../src/shared/schema.ts";
+import {
+  type AgentConfig,
+  collect,
+  sendReport,
+} from "../packages/agent/collector.ts";
+import type { Overview } from "../packages/contracts/src/schema.ts";
 
 const origin = process.env.EAGLE_VERIFY_ORIGIN || "https://eagle.dev.hexly.ai";
 const config: AgentConfig = JSON.parse(

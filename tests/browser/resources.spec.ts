@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { MachineTelemetrySchema } from "../../src/shared/schema.ts";
+import { MachineTelemetrySchema } from "../../packages/contracts/src/schema.ts";
 import { report, telemetry } from "../fixtures.ts";
 
 const now = "2026-10-02T01:00:00.000Z";

@@ -12,8 +12,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { sendReport, UploadRejectedError } from "../agent/collector.ts";
-import { drainSpool } from "../agent/spool.ts";
+import {
+  sendReport,
+  UploadRejectedError,
+} from "../packages/agent/collector.ts";
+import { drainSpool } from "../packages/agent/spool.ts";
 import { report } from "./fixtures.ts";
 
 test("reconnect sends the newest queued snapshot before older backlog", async () => {
@@ -128,7 +131,7 @@ test("a full queue drains before attempting a fresh capture", async () => {
       { mode: 0o600 },
     );
     await assert.rejects(
-      promisify(execFile)(process.execPath, ["agent/cli.ts", "once"], {
+      promisify(execFile)(process.execPath, ["packages/agent/cli.ts", "once"], {
         env: { ...process.env, PATH: "/nonexistent", EAGLE_CONFIG: config },
       }),
       /Collection failed; previous complete inventory preserved/,

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import {
   DEFAULT_MACHINE_GROUP_NAME,
   machinesBySidebarGroup,
-} from "../src/shared/machine-groups.ts";
+} from "../packages/contracts/src/machine-groups.ts";
 
 test("sidebar groups hide empty sections and keep stable order", () => {
   const machines = [

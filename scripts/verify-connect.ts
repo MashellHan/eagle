@@ -4,9 +4,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
-import { AGENT_VERSION } from "../agent/version.ts";
-import type { IssuedCredential, Registration } from "../src/shared/connect.ts";
-import type { Overview } from "../src/shared/schema.ts";
+import { AGENT_VERSION } from "../packages/agent/version.ts";
+import type {
+  IssuedCredential,
+  Registration,
+} from "../packages/contracts/src/connect.ts";
+import type { Overview } from "../packages/contracts/src/schema.ts";
 
 // Deliberately local: this acceptance check creates and disables a real test identity.
 const origin = "https://eagle.dev.hexly.ai";

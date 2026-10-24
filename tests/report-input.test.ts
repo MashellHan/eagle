@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DailySettingsSchema } from "../src/shared/daily.ts";
-import { compactHour, projectHour } from "../src/shared/report-input.ts";
-import { sealAiKey, unsealAiKey } from "../src/worker/ai-secret.ts";
-import { complete } from "../src/worker/daily.ts";
+import { sealAiKey, unsealAiKey } from "../apps/web/src/worker/ai-secret.ts";
+import { complete } from "../apps/web/src/worker/daily.ts";
+import { DailySettingsSchema } from "../packages/contracts/src/daily.ts";
+import {
+  compactHour,
+  projectHour,
+} from "../packages/contracts/src/report-input.ts";
 import { report } from "./fixtures.ts";
 
 test("UI credentials use authenticated encryption bound to their AI endpoint", async () => {

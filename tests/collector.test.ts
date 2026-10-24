@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { normalizeSnapshot, redact, sendReport } from "../agent/collector.ts";
+import {
+  normalizeSnapshot,
+  redact,
+  sendReport,
+} from "../packages/agent/collector.ts";
 import { report } from "./fixtures.ts";
 
 test("normalizes all workspaces including nonfocused tabs and rects, never trusts done", () => {
@@ -111,7 +115,7 @@ test("upload retries reuse the identical ID/body; permanent auth failures stop; 
 });
 
 test("Codex transcript adapter uses final messages and explicit turn events, never tool/analysis text", async () => {
-  const { transcriptEvidence } = await import("../agent/collector.ts");
+  const { transcriptEvidence } = await import("../packages/agent/collector.ts");
   const events = [
     {
       timestamp: "2026-09-19T05:00:00Z",
@@ -167,7 +171,7 @@ test("Codex transcript adapter uses final messages and explicit turn events, nev
 });
 
 test("native final_answer phase emitted by installed Codex is recognized", async () => {
-  const { transcriptEvidence } = await import("../agent/collector.ts");
+  const { transcriptEvidence } = await import("../packages/agent/collector.ts");
   const line = JSON.stringify({
     timestamp: "2026-09-19T05:00:00Z",
     type: "response_item",
@@ -182,7 +186,7 @@ test("native final_answer phase emitted by installed Codex is recognized", async
 });
 
 test("bounded transcript tails still recognize actual tool execution without a pane badge", async () => {
-  const { transcriptEvidence } = await import("../agent/collector.ts");
+  const { transcriptEvidence } = await import("../packages/agent/collector.ts");
   const line = JSON.stringify({
     timestamp: "2026-09-19T05:00:00Z",
     type: "response_item",
@@ -198,7 +202,7 @@ test("bounded transcript tails still recognize actual tool execution without a p
 });
 
 test("a new native turn changes task identity, including a bounded tail with only item events", async () => {
-  const { transcriptContext } = await import("../agent/collector.ts");
+  const { transcriptContext } = await import("../packages/agent/collector.ts");
   const one = JSON.stringify({
     timestamp: "2026-09-19T05:00:00Z",
     type: "event_msg",
@@ -214,7 +218,7 @@ test("a new native turn changes task identity, including a bounded tail with onl
 });
 
 test("retired agent config keys are dropped instead of failing startup", async () => {
-  const { stripRetiredConfig } = await import("../agent/collector.ts");
+  const { stripRetiredConfig } = await import("../packages/agent/collector.ts");
   const legacy = {
     url: "http://127.0.0.1:37053",
     token: "x".repeat(32),
@@ -237,7 +241,7 @@ test("retired agent config keys are dropped instead of failing startup", async (
 });
 
 test("stopped sessions retain last known topology and are explicitly unavailable", async () => {
-  const { preserveStopped } = await import("../agent/collector.ts");
+  const { preserveStopped } = await import("../packages/agent/collector.ts");
   const prior = report();
   const result = preserveStopped([], prior.spaces, ["default"]);
   assert.equal(result.length, 1);
@@ -245,7 +249,7 @@ test("stopped sessions retain last known topology and are explicitly unavailable
 });
 
 test("portable conversation identity changes with the latest real user prompt", async () => {
-  const { conversationTaskId } = await import("../agent/collector.ts");
+  const { conversationTaskId } = await import("../packages/agent/collector.ts");
   const first = JSON.stringify({ type: "user", content: [{ text: "Ship A" }] });
   const second = JSON.stringify({
     type: "user",
@@ -258,7 +262,9 @@ test("portable conversation identity changes with the latest real user prompt", 
 });
 
 test("native Grok/Pi finals belong only to the latest real user task and never certify tests", async () => {
-  const { conversationEvidence } = await import("../agent/collector.ts");
+  const { conversationEvidence } = await import(
+    "../packages/agent/collector.ts"
+  );
   const at = "2026-09-19T10:00:00.000Z";
   const grok = [
     { type: "user", content: "Ship A" },

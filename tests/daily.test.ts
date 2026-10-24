@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { completeReport } from "../apps/web/src/worker/daily.ts";
 import {
   DailySettingsSchema,
   dailyCutoff,
@@ -10,8 +11,7 @@ import {
   parseDailyReport,
   sampleHour,
   validDate,
-} from "../src/shared/daily.ts";
-import { completeReport } from "../src/worker/daily.ts";
+} from "../packages/contracts/src/daily.ts";
 
 test("daily generation retries a transient model error once and never retries authentication failures", async (t) => {
   let calls = 0;
@@ -50,7 +50,7 @@ test("one daily cron starts at 23:59 Beijing and preserves calendar boundaries",
     DailySettingsSchema.safeParse({ intervalHours: 24 }).success,
     false,
   );
-  const config = JSON.parse(readFileSync("wrangler.jsonc", "utf8"));
+  const config = JSON.parse(readFileSync("apps/web/wrangler.jsonc", "utf8"));
   assert.deepEqual(config.triggers.crons, ["59 15 * * *"]);
 });
 

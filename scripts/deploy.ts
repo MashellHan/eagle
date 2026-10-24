@@ -7,9 +7,17 @@ if (git("status", "--porcelain"))
     "Commit the release before deploying; the health endpoint must identify the exact source revision.",
   );
 const revision = git("rev-parse", "HEAD");
-execFileSync("npm", ["run", "build"], { stdio: "inherit" });
+execFileSync("npm", ["--workspace", "@eagle/web", "run", "build"], {
+  stdio: "inherit",
+});
 execFileSync(
   "node_modules/.bin/wrangler",
-  ["deploy", "--var", `BUILD_REVISION:${revision}`],
+  [
+    "deploy",
+    "--config",
+    "apps/web/wrangler.jsonc",
+    "--var",
+    `BUILD_REVISION:${revision}`,
+  ],
   { stdio: "inherit" },
 );

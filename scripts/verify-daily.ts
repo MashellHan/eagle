@@ -4,7 +4,7 @@ import { chromium, expect } from "@playwright/test";
 import {
   DailyContentSchema,
   DailySettingsSchema,
-} from "../src/shared/daily.ts";
+} from "../packages/contracts/src/daily.ts";
 
 const origin = process.env.EAGLE_VERIFY_ORIGIN || "https://eagle.dev.hexly.ai";
 const production = !origin.includes(".dev.");

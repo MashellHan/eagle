@@ -5,7 +5,7 @@ import {
   parseMacmon,
   parseNetworkCounters,
   readHardware,
-} from "../agent/hardware.ts";
+} from "../packages/agent/hardware.ts";
 
 test("macmon maps bounded hardware evidence without leaking device identifiers", () => {
   const value = parseMacmon(
