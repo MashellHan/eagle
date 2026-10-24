@@ -1,7 +1,7 @@
 // A scripted runtime for core tests. Each bot id gets its own handle and state, opening
 // the same id twice returns the same handle, and every emitted event is applied to that
 // state, so `submission()`, `history()` and `subscribe()` answer from what was delivered.
-import type { ConversationSnapshot, DeltaChange, Message, Submission } from "../core/domain.ts";
+import type { ConversationSnapshot, Message, Submission } from "../core/domain.ts";
 import type {
   RuntimeBotSpec,
   RuntimeEvent,
@@ -11,6 +11,7 @@ import type {
   RuntimeSubscription,
   SubmitInput,
 } from "../core/RuntimePort.ts";
+import { applyChanges, mergeOrdered, reduceView } from "../core/view.ts";
 
 export type FakeScript = {
   /** Events emitted after a submit is admitted. */
@@ -132,158 +133,37 @@ export class FakeHandle implements RuntimeHandle {
   }
 
   #apply(event: RuntimeEvent): void {
-    if (event.type === "append") {
-      const messages = upsert(this.#snapshot.messages, event.message, event.replaces);
+    const next = reduceView(this.#snapshot, event);
+    if (event.type === "append" && event.message.state !== "streaming") {
       // Only committed entries belong to history: a provisional is projection-only, so a
       // withdrawn attempt leaves no message behind. A finalization takes the position the
       // projection gives it, so paging and the window never disagree.
-      if (event.message.state !== "streaming") {
-        const without =
-          event.replaces === undefined
-            ? this.#committed
-            : this.#committed.filter((message) => message.id !== event.replaces);
-        this.#committed = mergeOrdered(
-          without,
-          messages.filter((message) => message.state !== "streaming"),
-        );
-      }
-      // A provisional becomes the streaming target; anything else that supersedes it
-      // clears the pointer, so a late joiner sees the real attempt state.
-      let streaming = this.#snapshot.streaming;
-      if (event.message.state === "streaming") streaming = event.message.id;
-      else if (streaming === event.message.id || streaming === event.replaces) streaming = null;
-      this.#snapshot = { ...this.#snapshot, messages, streaming };
-      return;
+      const without =
+        event.replaces === undefined
+          ? this.#committed
+          : this.#committed.filter((message) => message.id !== event.replaces);
+      this.#committed = mergeOrdered(
+        without,
+        next.messages.filter((message) => message.state !== "streaming"),
+      );
     }
     if (event.type === "delta") {
-      const update = (message: Message): Message => applyChanges(message, event.changes);
-      const hasTarget = (message: Message): boolean => message.id === event.messageId;
       this.#committed = this.#committed.map((message) =>
-        hasTarget(message) ? update(message) : message,
+        message.id === event.messageId ? applyChanges(message, event.changes) : message,
       );
-      const messages = this.#snapshot.messages.map((message) =>
-        hasTarget(message) ? update(message) : message,
-      );
-      this.#snapshot = { ...this.#snapshot, messages };
-      return;
     }
     if (event.type === "snapshot") {
-      this.#snapshot = event.value;
       // The window may shrink, but committed history stays readable through history().
       this.#committed = mergeOrdered(
         this.#committed,
         event.value.messages.filter((message) => message.state !== "streaming"),
       );
-      // The snapshot is the authority for pending, running and streaming; keep any
-      // settled record the ledger already knows about.
       for (const record of event.value.pending) this.#submissions.set(record.requestId, record);
-      return;
     }
-    if (event.type === "status") {
-      // running comes from the snapshot, which was just replaced.
-      this.#snapshot = {
-        ...this.#snapshot,
-        running: event.running,
-        streaming: event.streaming,
-        inbox: event.inbox,
-      };
-      return;
-    }
-    if (event.type === "submission") {
-      this.#submissions.set(event.record.requestId, event.record);
-      const pending = this.#snapshot.pending
-        .filter((record) => record.id !== event.record.id)
-        .concat(
-          event.record.status === "done" || event.record.status === "unanswered"
-            ? []
-            : [event.record],
-        );
-      this.#snapshot = { ...this.#snapshot, pending };
-    }
+    if (event.type === "submission") this.#submissions.set(event.record.requestId, event.record);
+    this.#snapshot = next;
   }
 }
-
-/** Merges a window into the ledger, keeping the order the two sequences already imply. */
-const mergeOrdered = (known: readonly Message[], incoming: readonly Message[]): Message[] => {
-  const merged = [...known];
-  for (let index = 0; index < incoming.length; index += 1) {
-    const message = incoming[index];
-    if (message === undefined) continue;
-    const existing = merged.findIndex((item) => item.id === message.id);
-    if (existing >= 0) {
-      merged[existing] = message;
-      continue;
-    }
-    let insertAt = merged.length;
-    for (let later = index + 1; later < incoming.length; later += 1) {
-      const following = incoming[later];
-      const at =
-        following === undefined ? -1 : merged.findIndex((item) => item.id === following.id);
-      if (at >= 0) {
-        insertAt = at;
-        break;
-      }
-    }
-    merged.splice(insertAt, 0, message);
-  }
-  return merged;
-};
-
-const upsert = (messages: readonly Message[], message: Message, replaces?: string): Message[] => {
-  const next = [...messages];
-  const replaced = replaces === undefined ? -1 : next.findIndex((item) => item.id === replaces);
-  const existing = next.findIndex((item) => item.id === message.id);
-  const target = replaced >= 0 ? replaced : existing;
-  if (target >= 0) next[target] = message;
-  else next.push(message);
-  return next;
-};
-
-/** Applies delta changes in order: a message replacement swaps the working message. */
-const applyChanges = (message: Message, changes: readonly DeltaChange[]): Message => {
-  let current = message;
-  let blocks = [...current.blocks];
-  for (const change of changes) {
-    if (change.kind === "message") {
-      current = change.message;
-      blocks = [...current.blocks];
-      continue;
-    }
-    if (change.kind === "block") {
-      blocks[change.index] = change.block;
-      continue;
-    }
-    const block = blocks[change.index];
-    if (block === undefined) continue;
-    if (
-      (change.kind === "text" && block.type === "text") ||
-      (change.kind === "thinking" && block.type === "thinking")
-    ) {
-      blocks[change.index] = { ...block, text: block.text + change.append };
-      continue;
-    }
-    if (change.kind === "toolcall" && block.type === "toolCall") {
-      const call = structuredClone(block);
-      appendAtPath(call, change.path, change.append);
-      blocks[change.index] = call;
-    }
-  }
-  return { ...current, blocks };
-};
-
-/** A toolcall path is rooted at the block: `["args","q"]` appends to `block.args.q`. */
-const appendAtPath = (root: object, path: readonly (string | number)[], append: string): void => {
-  let node = root as Record<string | number, unknown>;
-  for (const key of path.slice(0, -1)) {
-    const next = node[key];
-    if (next === null || typeof next !== "object") return;
-    node = next as Record<string | number, unknown>;
-  }
-  const leaf = path[path.length - 1];
-  if (leaf === undefined) return;
-  const prior = node[leaf];
-  node[leaf] = `${typeof prior === "string" ? prior : ""}${append}`;
-};
 
 export class FakeRuntime implements RuntimePort {
   readonly #options: {

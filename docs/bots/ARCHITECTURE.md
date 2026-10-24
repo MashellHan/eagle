@@ -393,6 +393,12 @@ held as its recovery anchor; once an increment is lost after it the anchor is st
 and is never delivered, so the subscriber waits for a current snapshot instead of
 silently rendering an outdated state.
 
+`ConversationService` folds those events into the bot's current view, so a new
+connection starts from what the bot is now, not from what it was when the bot
+opened. It reserves the connection before opening, flushes the coalescing window
+and captures the baseline's own revision inside the same serial section, and only
+then goes live, so a first frame is always the snapshot whose `rev` the reply names.
+
 ## Failure containment
 
 | Failure | Layer | Containment |
