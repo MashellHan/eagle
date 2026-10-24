@@ -1,0 +1,7 @@
+{
+  "type": "error",
+  "rev": 47,
+  "trace": "tr_01J9Z0K4M5N6P7Q8R9S0T1V2W",
+  "kind": "session_failed",
+  "message": "storage request failed"
+}

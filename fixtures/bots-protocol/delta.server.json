@@ -1,0 +1,12 @@
+{
+  "type": "delta",
+  "rev": 44,
+  "trace": "tr_01J9Z0K4M5N6P7Q8R9S0T1V2W",
+  "messageId": "e_18",
+  "changes": [
+    {
+      "kind": "text",
+      "append": "巴黎"
+    }
+  ]
+}

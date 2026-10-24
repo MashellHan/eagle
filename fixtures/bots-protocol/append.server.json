@@ -1,0 +1,17 @@
+{
+  "type": "append",
+  "rev": 43,
+  "trace": "tr_01J9Z0K4M5N6P7Q8R9S0T1V2W",
+  "message": {
+    "id": "e_17",
+    "role": "user",
+    "state": "complete",
+    "createdAt": "2026-10-25T02:12:00.000Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "再讲讲它的历史。"
+      }
+    ]
+  }
+}

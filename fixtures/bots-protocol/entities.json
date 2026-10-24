@@ -1,0 +1,29 @@
+{
+  "bot": {
+    "id": "b_01J9Z0K2Q3R4S5T6V7W8X9Y0Z",
+    "title": "研究员",
+    "createdAt": "2026-10-25T02:11:03.412Z",
+    "updatedAt": "2026-10-25T02:11:03.412Z",
+    "model": {
+      "provider": "magpie",
+      "modelId": "group/auto-gpt-6-luna"
+    },
+    "state": "idle"
+  },
+  "message": {
+    "id": "e_18",
+    "role": "assistant",
+    "state": "streaming",
+    "createdAt": "2026-10-25T02:12:01.500Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "巴黎"
+      }
+    ]
+  },
+  "inboxItem": {
+    "id": "s_3",
+    "mode": "followUp"
+  }
+}

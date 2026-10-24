@@ -1,0 +1,50 @@
+{
+  "type": "snapshot",
+  "rev": 42,
+  "trace": "tr_01J9Z0K3A4B5C6D7E8F9G0H1J",
+  "value": {
+    "botId": "b_01J9Z0K2Q3R4S5T6V7W8X9Y0Z",
+    "agent": {
+      "model": {
+        "provider": "magpie",
+        "modelId": "group/auto-gpt-6-luna"
+      },
+      "thinkingLevel": "off",
+      "instructions": ""
+    },
+    "messages": [
+      {
+        "id": "e_15",
+        "role": "user",
+        "state": "complete",
+        "createdAt": "2026-10-25T02:11:04.001Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "法国的首都是哪里？"
+          }
+        ]
+      },
+      {
+        "id": "e_16",
+        "role": "assistant",
+        "state": "complete",
+        "createdAt": "2026-10-25T02:11:04.905Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "巴黎。"
+          }
+        ]
+      }
+    ],
+    "streaming": null,
+    "inbox": [],
+    "running": false,
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0
+    }
+  }
+}

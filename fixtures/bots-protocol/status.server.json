@@ -1,0 +1,11 @@
+{
+  "type": "status",
+  "rev": 45,
+  "running": true,
+  "inbox": [
+    {
+      "id": "s_3",
+      "mode": "followUp"
+    }
+  ]
+}
