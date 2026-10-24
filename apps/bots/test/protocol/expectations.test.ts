@@ -165,14 +165,21 @@ const message = (bytes: number, id: string) => ({
 });
 
 test("a frame that only violates the frame cap is refused", () => {
-  // Metadata, not messages: the page and message budgets are satisfied.
-  const frame = snapshotOf([message(10, "e_1")], {
-    agent: {
-      model: { provider: "p", modelId: "m" },
-      thinkingLevel: "off",
-      instructions: "x".repeat(MAX_FRAME_BYTES),
-    },
-  });
+  // A delta has no page or single-message budget, so only the frame cap can refuse it.
+  const changes = Array.from({ length: 9_000 }, () => ({
+    kind: "text" as const,
+    index: 0,
+    append: "x".repeat(32),
+  }));
+  const frame = encodeServerEvent({
+    type: "delta",
+    rev: 1,
+    trace,
+    messageId: "p_a1",
+    changes,
+  }) as Record<string, unknown>;
+  const bytes = Buffer.byteLength(JSON.stringify(frame), "utf8");
+  assert.ok(bytes > MAX_FRAME_BYTES, `frame must exceed the cap, got ${bytes}`);
   assert.throws(
     () => assertFrameBudget(frame),
     (error: Error & { reason?: string }) => error.reason === "limit_exceeded",

@@ -272,3 +272,17 @@ test("agent instructions are bounded and requestIds are well formed", () => {
     status: "queued",
   });
 });
+
+test("a bot summary rejects a malformed reason field", () => {
+  const bot = {
+    id: "b_1",
+    title: "t",
+    createdAt: "x",
+    updatedAt: "x",
+    model: { provider: "magpie", modelId: "auto/gpt-6-luna" },
+    state: "idle",
+  };
+  for (const unavailable of ["storage_failed", null, [], 3]) {
+    invalidEvent({ type: "bots", bots: [{ ...bot, unavailable }] });
+  }
+});

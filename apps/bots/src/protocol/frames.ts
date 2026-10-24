@@ -523,6 +523,9 @@ const decodeDeltaChange = (ctx: Ctx, raw: unknown): DeltaChange => {
 const decodeBotSummary = (ctx: Ctx, raw: unknown): BotSummary => {
   if (!isObject(raw)) fail(ctx, "bot must be an object");
   const model = isObject(raw.model) ? raw.model : {};
+  if (present(raw, "unavailable") && !isObject(raw.unavailable)) {
+    fail(ctx, "bot.unavailable must be an object when present");
+  }
   const unavailable = isObject(raw.unavailable)
     ? {
         reason: oneOf(ctx, raw.unavailable.reason, ERROR_KINDS, "bot.unavailable.reason"),
