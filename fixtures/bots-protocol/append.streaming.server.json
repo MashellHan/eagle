@@ -1,0 +1,12 @@
+{
+  "type": "append",
+  "rev": 48,
+  "trace": "tr_01J9Z0K4M5N6P7Q8R9S0T1V2W",
+  "message": {
+    "id": "p_1",
+    "role": "assistant",
+    "state": "streaming",
+    "createdAt": "2026-10-25T02:12:01.500Z",
+    "blocks": []
+  }
+}

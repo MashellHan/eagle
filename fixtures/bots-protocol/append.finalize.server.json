@@ -1,0 +1,18 @@
+{
+  "type": "append",
+  "rev": 52,
+  "trace": "tr_01J9Z0K4M5N6P7Q8R9S0T1V2W",
+  "replaces": "p_1",
+  "message": {
+    "id": "e_18",
+    "role": "assistant",
+    "state": "complete",
+    "createdAt": "2026-10-25T02:12:01.500Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "巴黎是法国的首都，也是该国最大的城市。"
+      }
+    ]
+  }
+}

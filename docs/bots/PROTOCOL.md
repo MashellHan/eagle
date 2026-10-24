@@ -177,7 +177,8 @@ Every bot-scoped event carries `rev`, which strictly increases per bot starting
 from the `rev` of the `snapshot` that established the client's baseline.
 
 ```jsonc
-{ "type": "append", "rev": 43, "trace": "tr_…", "message": Message }
+{ "type": "append", "rev": 43, "trace": "tr_…", "message": Message,
+  "replaces": "p_1" }          // optional: provisional streaming id this message finalizes
 
 { "type": "delta", "rev": 44, "trace": "tr_…", "messageId": "e_17",
   "changes": [
@@ -206,6 +207,20 @@ from the `rev` of the `snapshot` that established the client's baseline.
 
 { "type": "pong" }
 ```
+
+`append` is an **upsert by `message.id`**. A client that already holds the id
+replaces the message. Two append shapes use this:
+
+- a provisional streaming message with `id` of the form `p_<n>`, `state`
+  `"streaming"`, sent before its deltas so they have a target;
+- the final message with a real entry id, carrying `replaces: "p_<n>"` when it
+  supersedes a provisional one.
+
+A provisional message never survives a `snapshot`: the snapshot only contains
+committed entries, and its `streaming.messageId`, when a run is active, names the
+provisional message the client should expect deltas for. If the snapshot announces
+`streaming.messageId` and the client has no such message, it waits for the next
+`append`.
 
 `bots` events are absolute: a client replaces its sidebar state. They carry no
 `rev` because the catalog is not part of any bot's sequence.
@@ -242,6 +257,7 @@ returns `error{kind: "invalid_command"}` when the bot is busy — used by future
 | I6 | `bots` events are absolute and idempotent | `test/server/catalog.test.ts` |
 | I7 | No message body, prompt or token appears in any frame field other than `send.text` and `Message.blocks` | `test/protocol/redaction.test.ts` |
 | I8 | Unknown server event types are ignored; unknown client commands are rejected without closing | `test/protocol/versioning.test.ts` |
+| I9 | `append` upserts by id; a provisional `p_<n>` is replaced by the final entry carrying `replaces` | `BotsCoreTests/ReducerTests.swift`, `test/core/hub.test.ts` |
 
 ## Close codes
 
@@ -273,6 +289,7 @@ both sides:
 | `hello.client.json`, `welcome.server.json` | handshake |
 | `subscribe.client.json`, `unsubscribe.client.json` | subscription |
 | `snapshot.server.json`, `append.server.json`, `delta.server.json` | transcript |
+| `append.streaming.server.json`, `append.finalize.server.json` | provisional streaming message and its replacement |
 | `status.server.json`, `submission.server.json`, `error.server.json` | run state |
 | `bots.server.json` | catalog |
 | `send.client.json`, `abort.client.json`, `resync.client.json` | commands |
