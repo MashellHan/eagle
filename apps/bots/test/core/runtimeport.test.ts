@@ -329,3 +329,75 @@ test("a snapshot handed to the constructor seeds the ledger", async () => {
   });
   assert.equal((await handle.busy()).run, true);
 });
+
+test("changes before a message replacement apply to the old content, not the new one", async () => {
+  const runtime = new FakeRuntime();
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  const fake = runtime.handle("b_1");
+  fake.emit({
+    type: "append",
+    trace,
+    message: {
+      id: "p_a1",
+      role: "assistant",
+      state: "streaming",
+      createdAt: "x",
+      blocks: [{ type: "text", text: "A" }],
+    },
+  });
+  fake.emit({
+    type: "delta",
+    trace,
+    messageId: "p_a1",
+    changes: [
+      { kind: "text", index: 0, append: "!" },
+      {
+        kind: "message",
+        message: {
+          id: "p_a1",
+          role: "assistant",
+          state: "streaming",
+          createdAt: "x",
+          blocks: [{ type: "text", text: "base" }],
+        },
+      },
+      { kind: "text", index: 0, append: "+" },
+    ],
+  });
+  const view = (await handle.subscribe(trace, () => {})).snapshot;
+  const block = view.messages[0]?.blocks[0];
+  assert.equal(block?.type === "text" ? block.text : "", "base+");
+});
+
+test("a submission created after a restored ledger entry does not reuse its id", async () => {
+  const runtime = new FakeRuntime({
+    snapshot: () => ({
+      botId: "b_1",
+      messages: [],
+      streaming: null,
+      pending: [
+        { id: "s_2", requestId: "r_0190a1b4-5061-7c72-8d3e-4f5061728394", status: "queued" },
+      ],
+      inbox: [],
+      running: false,
+    }),
+  });
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  const created = await handle.submit({
+    requestId: "r_0190a1b5-6172-7d83-9e4f-506172839405",
+    text: "hi",
+    whenBusy: "followUp",
+    trace,
+  });
+  assert.equal(created.id, "s_3");
+});

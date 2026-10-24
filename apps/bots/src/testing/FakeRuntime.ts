@@ -59,7 +59,7 @@ export class FakeHandle implements RuntimeHandle {
     const existing = this.#submissions.get(input.requestId);
     if (existing) return existing;
     const record: Submission = {
-      id: `s_${this.#submissions.size + 1}`,
+      id: this.#nextSubmissionId(),
       requestId: input.requestId,
       status: "queued",
     };
@@ -118,6 +118,16 @@ export class FakeHandle implements RuntimeHandle {
     this.#sink?.(event);
   }
 
+  /** Never collides with an id restored from a snapshot. */
+  #nextSubmissionId(): string {
+    let highest = 0;
+    for (const id of [...this.#submissions.values()].map((record) => record.id)) {
+      const match = /^s_(\d+)$/.exec(id);
+      if (match?.[1]) highest = Math.max(highest, Number(match[1]));
+    }
+    return `s_${highest + 1}`;
+  }
+
   #apply(event: RuntimeEvent): void {
     if (event.type === "append") {
       const messages = [...this.#snapshot.messages];
@@ -139,17 +149,22 @@ export class FakeHandle implements RuntimeHandle {
     if (event.type === "delta") {
       const current = this.#snapshot.messages.find((message) => message.id === event.messageId);
       if (current === undefined) return;
-      // A whole-message replacement is the new base for the changes that follow it.
-      const replacement = event.changes.find((change) => change.kind === "message");
-      let message = replacement?.kind === "message" ? replacement.message : current;
-      const blocks = message.blocks.map((block) => ({ ...block })) as {
+      type MutableBlock = {
         type: string;
         text?: string;
         args?: Record<string, unknown>;
         [key: string]: unknown;
-      }[];
+      };
+      let message = current;
+      let blocks = message.blocks.map((block) => ({ ...block })) as MutableBlock[];
+      // Changes apply in order: a message replacement swaps the working message, and the
+      // changes after it land on the replacement.
       for (const change of event.changes) {
-        if (change.kind === "message") continue;
+        if (change.kind === "message") {
+          message = change.message;
+          blocks = message.blocks.map((block) => ({ ...block })) as MutableBlock[];
+          continue;
+        }
         if (change.kind === "block") {
           blocks[change.index] = { ...change.block } as never;
           continue;
@@ -164,7 +179,6 @@ export class FakeHandle implements RuntimeHandle {
           continue;
         }
         if (change.kind === "toolcall" && block.type === "toolCall") {
-          // Tool-call arguments stream as a JSON path; append at that path.
           const args = { ...(block.args ?? {}) } as Record<string, unknown>;
           const key = change.path[0];
           if (typeof key === "string") {
@@ -174,11 +188,11 @@ export class FakeHandle implements RuntimeHandle {
           block.args = args;
         }
       }
-      message = { ...message, blocks: blocks as never };
+      const updated = { ...message, blocks: blocks as never };
       this.#snapshot = {
         ...this.#snapshot,
         messages: this.#snapshot.messages.map((existing) =>
-          existing.id === event.messageId ? message : existing,
+          existing.id === event.messageId ? updated : existing,
         ),
       };
       return;
