@@ -65,8 +65,18 @@ public struct SidebarPanel: View {
     self.userName = userName
   }
 
+  private static var version: String {
+    (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev"
+  }
+
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
+      BrandHeader(
+        version: Self.version,
+        onSearch: onSearch,
+        onCompose: onCompose,
+        onCollapse: onCollapse
+      )
       list
       footer
     }

@@ -72,6 +72,12 @@ public struct BrandHeader: View {
   }
 
   public var body: some View {
+    HeaderRow {
+      content
+    }
+  }
+
+  private var content: some View {
     HStack(spacing: 6) {
       mark
         .frame(width: Theme.Metric.logoSize, height: Theme.Metric.logoSize)
@@ -90,7 +96,5 @@ public struct BrandHeader: View {
     }
     .padding(.leading, Theme.Metric.headerLeadingInset)
     .padding(.trailing, Theme.Metric.contentInset)
-    .padding(.top, Theme.Metric.toolbarTopInset)
-    .frame(height: Theme.Metric.toolbarTopInset + Theme.Metric.headerControlHeight)
   }
 }

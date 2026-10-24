@@ -58,6 +58,8 @@ public struct ConversationColumn: View {
 
   public var body: some View {
     VStack(spacing: 0) {
+      header
+
       transcript
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -71,6 +73,35 @@ public struct ConversationColumn: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.Palette.surface)
+  }
+
+  private var header: some View {
+    HeaderRow {
+      ZStack {
+        ParticipantBubble(
+          name: title,
+          tintIndex: tintIndex,
+          action: onToggleInspector
+        )
+
+        HStack(spacing: 8) {
+          if !showsSidebar {
+            IconButton(
+              systemName: "sidebar.left", label: "展开侧栏", style: .circled, action: onShowSidebar)
+          }
+          Spacer(minLength: 0)
+          if !showsInspector {
+            IconButton(
+              systemName: "sidebar.right", label: "展开检查器", style: .circled,
+              action: onToggleInspector)
+          }
+        }
+        .padding(
+          .leading, showsSidebar ? Theme.Metric.conversationInset : Theme.Metric.trafficLightsEnd
+        )
+        .padding(.trailing, Theme.Metric.conversationInset)
+      }
+    }
   }
 
   private var transcript: some View {

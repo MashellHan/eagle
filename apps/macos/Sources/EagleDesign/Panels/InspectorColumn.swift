@@ -72,6 +72,16 @@ public struct InspectorColumn: View {
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
+      HeaderRow {
+        HStack(spacing: 6) {
+          Spacer(minLength: 0)
+          IconButton(
+            systemName: "square.and.arrow.up", label: "分享", style: .circled, action: onShare)
+          IconButton(systemName: "xmark", label: "收起检查器", style: .circled, action: onCollapse)
+        }
+        .padding(.trailing, Theme.Metric.panelInset)
+      }
+
       Identity(name: name, subtitle: subtitle, tintIndex: tintIndex)
 
       SegmentedTabs(values: Tab.allCases, selection: $tab) { $0.rawValue }
