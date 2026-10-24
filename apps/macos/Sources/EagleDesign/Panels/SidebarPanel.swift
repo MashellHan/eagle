@@ -99,6 +99,7 @@ public struct SidebarPanel: View {
             }
           }
         }
+        .padding(.horizontal, Theme.Metric.listCardInset)
         .padding(.top, Theme.Metric.edgeFadeHeight + 8)
         .padding(.bottom, 8)
       }

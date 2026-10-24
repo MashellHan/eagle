@@ -39,6 +39,7 @@ public struct ConversationRow: View {
     }
     .padding(.leading, Theme.Metric.rowContentInset)
     .padding(.trailing, Theme.Metric.rowContentInset)
+    .frame(maxWidth: .infinity, alignment: .leading)
     .frame(height: Theme.Metric.rowHeight)
     .background(
       RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
