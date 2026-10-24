@@ -25,16 +25,16 @@ export class FakeHandle implements RuntimeHandle {
   #snapshot: ConversationSnapshot;
   #sink: ((event: RuntimeEvent) => void) | undefined;
   #submissions = new Map<string, Submission>();
-  #run = false;
+
   closed = false;
 
   constructor(
     spec: RuntimeBotSpec,
-    options: { script?: FakeScript; snapshot?: ConversationSnapshot },
+    options: { script?: FakeScript; snapshot?: (() => ConversationSnapshot) | undefined },
   ) {
     this.spec = spec;
     this.#script = options.script ?? {};
-    this.#snapshot = options.snapshot ?? {
+    this.#snapshot = options.snapshot?.() ?? {
       botId: spec.id,
       messages: [],
       streaming: null,
@@ -63,6 +63,7 @@ export class FakeHandle implements RuntimeHandle {
       status: "queued",
     };
     this.#submissions.set(input.requestId, record);
+    this.#snapshot = { ...this.#snapshot, pending: [...this.#snapshot.pending, record] };
     for (const event of this.#script.onSubmit?.(input) ?? []) this.emit(event);
     return this.#submissions.get(input.requestId) ?? record;
   }
@@ -100,7 +101,7 @@ export class FakeHandle implements RuntimeHandle {
   }
 
   busy(): Promise<{ run: boolean; tasks: boolean }> {
-    return Promise.resolve({ run: this.#run, tasks: false });
+    return Promise.resolve({ run: this.#snapshot.running, tasks: false });
   }
 
   close(trace: string, deadlineMs: number): Promise<"closed" | "timeout"> {
@@ -118,21 +119,54 @@ export class FakeHandle implements RuntimeHandle {
 
   #apply(event: RuntimeEvent): void {
     if (event.type === "append") {
-      const messages = this.#snapshot.messages.filter((message) => message.id !== event.message.id);
-      if (event.replaces) {
-        const withoutProvisional = messages.filter((message) => message.id !== event.replaces);
-        this.#snapshot = { ...this.#snapshot, messages: [...withoutProvisional, event.message] };
-        return;
-      }
-      this.#snapshot = { ...this.#snapshot, messages: [...messages, event.message] };
+      const messages = [...this.#snapshot.messages];
+      const replaced = event.replaces ? messages.findIndex((m) => m.id === event.replaces) : -1;
+      const existing = messages.findIndex((m) => m.id === event.message.id);
+      const target = replaced >= 0 ? replaced : existing;
+      if (target >= 0) messages[target] = event.message;
+      else messages.push(event.message);
+      // A replaced provisional is gone, so a streaming pointer at it must move too.
+      const streaming =
+        event.replaces && this.#snapshot.streaming === event.replaces
+          ? event.message.state === "streaming"
+            ? event.message.id
+            : null
+          : this.#snapshot.streaming;
+      this.#snapshot = { ...this.#snapshot, messages, streaming };
+      return;
+    }
+    if (event.type === "delta") {
+      const messages = this.#snapshot.messages.map((message) => {
+        if (message.id !== event.messageId) return message;
+        const blocks = message.blocks.map((block) => ({ ...block })) as {
+          type: string;
+          text?: string;
+          [key: string]: unknown;
+        }[];
+        for (const change of event.changes) {
+          if (change.kind === "text" || change.kind === "thinking") {
+            const block = blocks[change.index];
+            if (block && typeof block.text === "string") block.text += change.append;
+          } else if (change.kind === "block") {
+            blocks[change.index] = { ...change.block } as never;
+          } else if (change.kind === "message") {
+            return change.message;
+          }
+        }
+        return { ...message, blocks: blocks as never };
+      });
+      this.#snapshot = { ...this.#snapshot, messages };
       return;
     }
     if (event.type === "snapshot") {
       this.#snapshot = event.value;
+      // The snapshot is the authority for pending, running and streaming; keep any
+      // settled record the ledger already knows about.
+      for (const record of event.value.pending) this.#submissions.set(record.requestId, record);
       return;
     }
     if (event.type === "status") {
-      this.#run = event.running;
+      // running comes from the snapshot, which was just replaced.
       this.#snapshot = {
         ...this.#snapshot,
         running: event.running,
@@ -156,10 +190,15 @@ export class FakeHandle implements RuntimeHandle {
 }
 
 export class FakeRuntime implements RuntimePort {
-  readonly #options: { script?: FakeScript; snapshot?: ConversationSnapshot };
+  readonly #options: {
+    script?: FakeScript;
+    snapshot?: (() => ConversationSnapshot) | undefined;
+  };
   readonly handles = new Map<string, FakeHandle>();
 
-  constructor(options: { script?: FakeScript; snapshot?: ConversationSnapshot } = {}) {
+  constructor(
+    options: { script?: FakeScript; snapshot?: (() => ConversationSnapshot) | undefined } = {},
+  ) {
     this.#options = options;
   }
 

@@ -80,7 +80,7 @@ test("submit is idempotent by requestId and the record is readable both ways", a
 
 test("history pages older messages and stops at the boundary", async () => {
   const runtime = new FakeRuntime({
-    snapshot: {
+    snapshot: () => ({
       botId: "b_1",
       messages: [1, 2, 3, 4, 5].map((index) => ({
         id: `e_${index}`,
@@ -93,7 +93,7 @@ test("history pages older messages and stops at the boundary", async () => {
       pending: [],
       inbox: [],
       running: false,
-    },
+    }),
   });
   const handle = await runtime.open({
     id: "b_1",
@@ -157,4 +157,101 @@ test("emitted events are visible through the query methods", async () => {
   assert.equal((await handle.busy()).run, false);
   fake.emit({ type: "status", trace, running: true, streaming: "p_a1", inbox: [] });
   assert.equal((await handle.busy()).run, true);
+});
+
+test("deltas, replacements and snapshots keep the view consistent", async () => {
+  const runtime = new FakeRuntime();
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  const fake = runtime.handle("b_1");
+  fake.emit({
+    type: "append",
+    trace,
+    message: {
+      id: "p_a1",
+      role: "assistant",
+      state: "streaming",
+      createdAt: "x",
+      blocks: [{ type: "text", text: "A" }],
+    },
+  });
+  fake.emit({
+    type: "delta",
+    trace,
+    messageId: "p_a1",
+    changes: [{ kind: "text", index: 0, append: "B" }],
+  });
+  fake.emit({
+    type: "append",
+    trace,
+    replaces: "p_a1",
+    message: {
+      id: "e_1",
+      role: "assistant",
+      state: "complete",
+      createdAt: "x",
+      blocks: [{ type: "text", text: "AB" }],
+    },
+  });
+  const view = (await handle.subscribe(trace, () => {})).snapshot;
+  assert.deepEqual(
+    view.messages.map((m) => m.id),
+    ["e_1"],
+  );
+  assert.equal(view.streaming, null, "a replaced provisional cannot remain the streaming target");
+  const block = view.messages[0]?.blocks[0];
+  assert.equal(block?.type === "text" ? block.text : "", "AB");
+});
+
+test("a snapshot is the authority for pending, running and the ledger", async () => {
+  const runtime = new FakeRuntime();
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  const fake = runtime.handle("b_1");
+  fake.emit({
+    type: "snapshot",
+    trace,
+    value: {
+      botId: "b_1",
+      messages: [],
+      streaming: null,
+      pending: [{ id: "s_7", requestId, status: "queued" }],
+      inbox: [],
+      running: true,
+    },
+  });
+  assert.equal((await handle.busy()).run, true);
+  assert.deepEqual(await handle.submission({ requestId }), {
+    id: "s_7",
+    requestId,
+    status: "queued",
+  });
+  assert.deepEqual(
+    (await handle.submit({ requestId, text: "again", whenBusy: "followUp", trace })).id,
+    "s_7",
+  );
+});
+
+test("an admitted submission is visible in pending", async () => {
+  const runtime = new FakeRuntime();
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  await handle.submit({ requestId, text: "hi", whenBusy: "followUp", trace });
+  const view = (await handle.subscribe(trace, () => {})).snapshot;
+  assert.deepEqual(
+    view.pending.map((record) => record.id),
+    ["s_1"],
+  );
 });
