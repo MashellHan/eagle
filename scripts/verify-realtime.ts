@@ -100,7 +100,7 @@ try {
   // The marker must be output by the shell, not merely echoed on its command line.
   await expect
     .poll(async () =>
-      (await pane.locator("pre").innerText())
+      ((await pane.locator("pre").textContent()) ?? "")
         .split("\n")
         .some((line) => line.trim() === marker),
     )

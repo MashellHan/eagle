@@ -81,7 +81,7 @@ test("live bridge shares subscriptions, rejects replaced terminals, and stops al
         output = "replacement screen";
         replaceDuringRead = false;
       }
-      socket.end(JSON.stringify({ id: request.id, result }) + "\n");
+      socket.end(`${JSON.stringify({ id: request.id, result })}\n`);
     });
   });
   await new Promise<void>((r) => server.listen(path, r));
@@ -194,7 +194,7 @@ test("live bridge shares subscriptions, rejects replaced terminals, and stops al
 test("screen redaction covers wrapping and visible credential fragments", () => {
   const token = "fixture-secret-abcdefghijklmnopqrstuvwxyz-0123456789";
   for (const value of [
-    token.slice(0, 23) + "\n" + token.slice(23),
+    `${token.slice(0, 23)}\n${token.slice(23)}`,
     token.slice(12, 32),
     token.slice(-18),
   ]) {
@@ -270,7 +270,7 @@ test("input never falls back to pane routing after the validated terminal is rep
             };
       if (validatingInput && request.method === "session.snapshot")
         replaced = true;
-      socket.end(JSON.stringify({ id: request.id, result }) + "\n");
+      socket.end(`${JSON.stringify({ id: request.id, result })}\n`);
     }),
   );
   await new Promise<void>((r) => api.listen(path, r));

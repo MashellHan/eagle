@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.2/schema.json",
   "files": {
     "includes": [
       "**",
@@ -8,6 +8,7 @@
       "!agent/dist",
       "!node_modules",
       "!package-lock.json",
+      "!**/*.md",
       "!.wrangler",
       "!test-results",
       "!playwright-report",
@@ -22,7 +23,8 @@
     "enabled": true,
     "rules": {
       "correctness": {
-        "noInvalidPositionAtImportRule": "off"
+        "noInvalidPositionAtImportRule": "off",
+        "noInvalidGridAreas": "off"
       }
     }
   },

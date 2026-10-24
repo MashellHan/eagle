@@ -182,7 +182,7 @@ export function socketRequest(
     socket.on("end", () => finish(new Error("Herdr disconnected")));
     socket.on("connect", () => {
       if (!signal.aborted)
-        socket.write(JSON.stringify({ id, method, params }) + "\n");
+        socket.write(`${JSON.stringify({ id, method, params })}\n`);
     });
     socket.on("data", (chunk) => {
       bytes += chunk;

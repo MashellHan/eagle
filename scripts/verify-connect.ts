@@ -66,7 +66,9 @@ try {
     "Onboarding prompt is incomplete",
   );
   assert(
-    !(await page.getByLabel("提示词预览").innerText()).includes(first.token),
+    !((await page.getByLabel("提示词预览").textContent()) ?? "").includes(
+      first.token,
+    ),
     "Preview exposed the credential",
   );
   await page.evaluate(() => navigator.clipboard.writeText(""));

@@ -384,7 +384,7 @@ test("output status stays inside the input field, including failures", async ({
   const row = page.locator(".live-input-field");
   const icon = row.getByRole("button", { name: /终端输出：/ });
   await expect(icon).toHaveAttribute("aria-label", "终端输出：刚有新输出");
-  expect(await icon.innerText()).toBe("");
+  expect(await icon.textContent()).toBe("");
   await expect(icon).toHaveCSS("animation-name", "none");
   const geometry = await row.evaluate((el) => {
     const nodes = [el.querySelector("button"), el.querySelector("input")];
