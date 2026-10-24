@@ -32,7 +32,9 @@ scripts           live verification and deployment entry points
 Workspace scripts at the root delegate to `@eagle/web`; run them from the root.
 `apps/macos` builds with Command Line Tools alone: no SwiftUI macros
 (`@State`, `@Observable`, `#Preview`), no XCTest and no Swift Testing, so it
-uses `ObservableObject`, the `LocalState` shim and `swift run EagleChecks`.
+uses `ObservableObject` and the `LocalState` shim. Tests, strict `swift
+format` lint and the 90% logic-coverage gate need the Xcode toolchain, which
+`apps/macos/Scripts/*.sh` selects through `DEVELOPER_DIR`.
 `swift run SnapshotRenderer` writes review PNGs under the ignored `.local/`.
 `packages/agent` compiles `packages/contracts/src` into its own `dist`, so the
 published tarball stays self-contained and its `bin` path is unchanged.

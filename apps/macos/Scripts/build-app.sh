@@ -6,6 +6,11 @@
 set -eu
 cd "$(dirname "$0")/.."
 
+# SwiftUI macros need the Xcode toolchain; fall back to the selected one.
+if [ -d /Applications/Xcode.app/Contents/Developer ]; then
+  export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+fi
+
 CONFIG="${1:-debug}"
 swift build -c "$CONFIG"
 BINARY="$(swift build -c "$CONFIG" --show-bin-path)/EagleApp"

@@ -69,7 +69,7 @@ public enum MockWorkspace {
           subtitle: "早报已排好版，头图用的是昨天那张航拍。", tag: "News", tintIndex: 6),
         SidebarItem(
           id: "research", title: "调研助手",
-          subtitle: "查到 4 家同类产品的定价，最低的是按席位计费。", tag: "News", tintIndex: 7),
+          subtitle: "查到 4 家同类产品的定价，最低的是按席位计费。", tag: "News", tintIndex: 0),
       ]),
     WorkspaceGroup(
       id: "review", title: "审查组", count: 4,
@@ -93,7 +93,7 @@ public enum MockWorkspace {
           subtitle: "main 分支 3 次构建失败，都是同一个快照测试。", tintIndex: 6),
         SidebarItem(
           id: "infra", title: "基础设施",
-          subtitle: "东京区域的 D1 读延迟回落到 2.1ms。", tintIndex: 7),
+          subtitle: "东京区域的 D1 读延迟回落到 2.1ms。", tintIndex: 0),
       ]),
   ]
 

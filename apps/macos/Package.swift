@@ -18,12 +18,7 @@ let package = Package(
       name: "SnapshotRenderer",
       dependencies: ["EagleDesign", "EagleFeatures"]
     ),
-    // XCTest ships only with full Xcode and Swift Testing's macro plugin does
-    // not load under a Command Line Tools-only toolchain, so the checks run as
-    // a plain executable: `swift run EagleChecks`.
-    .executableTarget(
-      name: "EagleChecks",
-      dependencies: ["EagleDesign", "EagleFeatures"]
-    ),
+    .testTarget(name: "EagleDesignTests", dependencies: ["EagleDesign"]),
+    .testTarget(name: "EagleFeaturesTests", dependencies: ["EagleFeatures"]),
   ]
 )

@@ -17,7 +17,8 @@ let mark = root.appendingPathComponent("Support/Brand/eagle-mark.png")
 let iconset = root.appendingPathComponent("Support/AppIcon.iconset")
 let output = root.appendingPathComponent("Support/AppIcon.icns")
 
-guard let textureImage = NSImage(contentsOf: texture), let markImage = NSImage(contentsOf: mark) else {
+guard let textureImage = NSImage(contentsOf: texture), let markImage = NSImage(contentsOf: mark)
+else {
   print("missing brand artwork under Support/Brand")
   exit(1)
 }

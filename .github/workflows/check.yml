@@ -27,4 +27,5 @@ jobs:
       - uses: actions/checkout@v4
       # The macOS client is a standalone SPM package with no npm dependency.
       - run: swift build --package-path apps/macos
-      - run: swift run --package-path apps/macos EagleChecks
+      - run: cd apps/macos && swift format lint --strict --recursive Sources Scripts Tests
+      - run: apps/macos/Scripts/coverage.sh

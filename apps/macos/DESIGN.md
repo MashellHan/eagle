@@ -159,9 +159,9 @@ keeps a label and 24 pt hit target, and the green bubble uses white text.
 
 ## Toolchain constraints discovered
 
-Command Line Tools only (no Xcode) means the SwiftUI macro plugin is missing:
-`@State`, `@Observable` and `#Preview` do not compile, and neither Swift Testing
-macros nor XCTest are available. The package therefore targets `.macOS(.v15)`,
-uses `ObservableObject` view models, a `LocalState` property-wrapper shim, and a
-plain `EagleChecks` executable for assertions. Installing full Xcode would allow
-dropping the shim and restoring previews.
+Command Line Tools only (no Xcode) means the SwiftUI macro and Swift Testing
+plugins are missing, so the package keeps `ObservableObject` view models and a
+`LocalState` shim, and the scripts export
+`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` so tests, strict
+`swift format` lint and coverage run against the Xcode toolchain. Installing
+Xcode also restores `#Preview` for local design work.

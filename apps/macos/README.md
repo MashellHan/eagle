@@ -12,18 +12,19 @@ network access yet; `EagleFeatures` view models hold static demo content.
 cd apps/macos
 ./Scripts/build-app.sh && open .build/Eagle.app   # normal app window, Dock icon
 swift run EagleApp          # same shell without a bundle; ⌘⇧G opens the gallery
-swift run EagleChecks       # dependency-free assertions, exits non-zero on failure
+swift test                 # Swift Testing suites for the logic layer
+./Scripts/coverage.sh      # same tests plus a 90% logic-coverage gate
 swift run SnapshotRenderer ../../.local/macos-snapshots   # PNGs for review
 ```
 
 `swift build` and `swift run` work with Command Line Tools only. Two toolchain
 limits shape the code:
 
-- SwiftUI's macros (`@State`, `@Observable`, `#Preview`) and Swift Testing's
-  macros are unavailable without full Xcode, and XCTest ships only with Xcode.
-  `LocalState` in `EagleDesign` is a `StateObject`-backed replacement for
-  `@State`, view models use `ObservableObject`, and checks run as the
-  `EagleChecks` executable instead of a test framework.
+- Swift Testing and the SwiftUI macros need the Xcode toolchain. The scripts
+  export `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` when Xcode
+  is installed; with Command Line Tools only, `swift build` still works but the
+  test targets do not. View models use `ObservableObject` and views keep the
+  `LocalState` shim so the app itself builds either way.
 - `SnapshotRenderer` hosts each view in an offscreen `NSWindow` because
   `ImageRenderer` cannot draw AppKit-backed views such as `ScrollView` and
   `TextField`.
@@ -47,7 +48,7 @@ Sources/
   EagleFeatures/     ObservableObject view models and mock data
   EagleApp/          AppKit delegate, window, gallery window
   SnapshotRenderer/  offscreen PNG renderer
-  EagleChecks/       assertions
+  Scripts/           build-app, make-icon, coverage
 ```
 
 Design rules: one component per file, colors and spacing only from `Theme`, no
