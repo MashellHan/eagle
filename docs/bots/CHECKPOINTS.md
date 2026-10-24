@@ -40,3 +40,33 @@ create the isolated package (`package.json`, `tsconfig.json`, `biome.json`, test
 script) before the protocol codec can be written, otherwise the TDD ladder has
 nowhere to run. `apps/macos` still contains only the Eagle client; the `Bots*`
 targets do not exist.
+
+## 2026-10-25 21:40 — review round 1 and model endpoint verified
+
+Observed: the contract was reviewed by an independent coding agent (Codex, model
+`group/auto-gpt-6-astra`, reasoning `xhigh`) which returned `VERDICT: BLOCKING 7`
+with 29 findings. All 29 were accepted as correct or as actionable gaps; the
+documents were revised in three commits (ports/ownership/logging, wire, runtime and
+tests). The development model endpoint was also verified end to end.
+
+Verified:
+
+- `cd apps/bots && npm run smoke:model` against `http://127.0.0.1:3425/v1`
+  (provider `magpie`, model `auto/gpt-6-luna`, OpenAI Responses shape): two turns,
+  both `done`, answers `巴黎是法国的首都。`, 1.7 s and 1.3 s per turn, usage
+  `68 in / 16 out`. The key is read from the 0600 `.env`, never printed, never in
+  argv.
+- `npx tsc --noEmit` in `apps/bots` passes for the smoke script.
+- Probe P3 established that the assistant `message_start` already carries the full
+  partial content, and that `message_update` can be absent entirely (one run had
+  zero deltas). Probe P4 established `abort()` settlements (`unanswered{reason:
+  "aborted"}`, with `entry` for the running input and without it for queued inputs)
+  and duplicate-`requestId` idempotency. Both facts changed the mapping and the
+  protocol, so they were applied before code exists.
+- `git log` shows the review-fix commits; no Bots code beyond
+  `package.json`/`tsconfig.json`/`biome.json`/`scripts/smoke-model.ts` exists yet.
+
+Next broken hop: the daemon has no `src/` code, no lock file discipline and no
+tests, so the ladder in `docs/bots/TESTING.md` stage 1 cannot run. The `.env` and
+`package-lock.json` for `apps/bots` are created but not committed; the skeleton
+commit has to include them together with the root `biome.json` exclusion.

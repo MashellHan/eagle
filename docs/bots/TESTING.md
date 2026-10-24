@@ -1,214 +1,261 @@
 # Bots — test contract
 
-Status: **phase 1 contract**. Tests are the specification of each layer's
-behaviour and the enforcement of the boundaries in
-[ARCHITECTURE.md](ARCHITECTURE.md). Runtime mapping under test is described in
-[RUNTIME.md](RUNTIME.md); log assertions in
+Status: **phase 1 contract**. Tests are the specification of each layer and the
+enforcement of the boundaries in [ARCHITECTURE.md](ARCHITECTURE.md). Runtime
+behaviour under test is described in [RUNTIME.md](RUNTIME.md); log assertions in
 [OBSERVABILITY.md](OBSERVABILITY.md).
 
-## The loop (non-negotiable)
+## The loop
 
 For every behaviour change:
 
-1. Update the owning document first if a contract, semantic or log event changes.
-2. Add or change the test that demonstrates the behaviour. Run it and record the
-   failure text in the commit body (`Red:` line).
-3. Write the smallest implementation that makes it pass.
-4. Run the layer's tests, then the full gate.
-5. Commit once: documents + failing-then-passing test + implementation. `main`
+1. Update the owning document first when a contract, semantic or log event changes.
+2. Write the test that demonstrates the behaviour. Run it. Record the failure in
+   the commit body as a `Red:` line.
+3. Write the smallest implementation that passes.
+4. Run the layer tests, then the stage gate.
+5. Commit once: documents + the test that failed first + implementation. `main`
    never holds a red commit.
 
-Commit body format:
-
 ```
-Red: <test name> — <one line of the failure it produced>
+Red: <test name> — <the failure it produced>
 Tests: <files or names>
 Checks: cd apps/bots && npm run check
 ```
 
-## What may be faked, and what may not
+## What may be faked
 
-| Real, never faked | Faked in unit tests | Notes |
+| Real, never faked | Faked | Why the boundary is there |
 | --- | --- | --- |
-| Protocol encode/decode against fixtures | — | A codec that only round-trips its own bug is useless |
-| `BotDirectory` file writes (real temp dir) | — | Atomicity is a filesystem property |
-| `EventHub` ordering and backpressure | — | Pure in-memory async, no reason to fake |
-| SQLite storage + `Harness.open` | — | `test/runtime/**` uses real `openNodeSqliteStorage` in a temp dir |
-| HTTP/WS transport (real `node:http`, ephemeral port) | — | Close codes and auth only exist on a real socket |
+| Protocol encode/decode against fixtures | — | A codec that only round-trips its own bug proves nothing |
+| `BotDirectory` writes (real temp dir) | — | Atomicity is a filesystem property |
+| `EventHub` ordering, coalescing, paging | — | Pure in-memory async |
+| SQLite storage and `Harness.open` | — | `test/runtime/**` uses real `openNodeSqliteStorage` in a temp dir |
+| HTTP and WebSocket transport (real `node:http`, ephemeral port) | — | Auth, close codes and paging only exist on a socket |
 | pi-durable itself | Model provider only | `fauxProvider()` replaces the network, not the runtime |
-| — | `RuntimePort` (core tests) | `testing/FakeRuntime.ts` replays scripted `RuntimeEvent` |
-| — | `Clock` | Coalescing and idle close use an injectable clock |
-| — | `ConversationPort` / `BotCatalogPort` (Swift VM tests) | Domain fakes, no URLSession |
-| — | `URLProtocol` (Swift transport unit tests) | Frame-level, with the real client logic |
-
-A test that mocks the layer it is meant to verify is a deleted test.
+| Swift `ConversationSocket` framing | — | It connects to the same fixture server the daemon tests use |
+| — | `RuntimePort` in core tests | `testing/FakeRuntime.ts` replays scripted `RuntimeEvent`s |
+| — | Clock, timers | Coalescing, idle close, quarantine retry |
+| — | `CatalogPort` / `ConversationPort` in VM tests | Domain fakes; no sockets |
+| — | `URLProtocol` for **HTTP only** | It cannot intercept `URLSessionWebSocketTask`; a WebSocket fake must be a real local server |
 
 ## Test ladder
 
-Ordered; each row is one commit-sized step. "First failing test" is the test to
-write first.
+Each row is one commit-sized step; the `Needs` column is the precondition. A step
+is never started before its preconditions are green.
 
-### L3 protocol and transport (daemon)
+### Stage 1 — wire and project skeleton
 
-| Step | File | First failing test |
-| --- | --- | --- |
-| P1 | `test/protocol/fixtures.test.ts` | `decodes every committed fixture without loss` |
-| P2 | `test/protocol/events.test.ts` | `encodes a snapshot identical to the committed fixture` |
-| P3 | `test/protocol/commands.test.ts` | `rejects a send without a requestId` |
-| P4 | `test/protocol/limits.test.ts` | `rejects text longer than 8000 characters` |
-| P5 | `test/protocol/versioning.test.ts` | `ignores an unknown server event type` / `rejects an unknown command without closing` |
-| P6 | `test/protocol/redaction.test.ts` | `never puts message text outside blocks` |
-| P7 | `test/server/auth.test.ts` | `rejects a wrong bearer token before upgrade` |
-| P8 | `test/server/socket.test.ts` | `closes 1008 when hello is not the first frame` |
-| P9 | `test/server/socket.test.ts` | `closes 4004 for an unknown bot id` |
-| P10 | `test/server/catalog.test.ts` | `create, rename, delete keep the catalog absolute and idempotent` |
+| # | File | First failing test | Needs |
+| --- | --- | --- | --- |
+| 1 | `test/protocol/fixtures.test.ts` | `decodes every committed fixture without loss` | package, tsconfig, `fixtures:check` harness |
+| 2 | `test/protocol/events.test.ts` | `encodes a snapshot byte-identically to its fixture` | 1 |
+| 3 | `test/protocol/commands.test.ts` | `rejects a send without a requestId or trace` | 1 |
+| 4 | `test/protocol/limits.test.ts` | `rejects text longer than 8000 characters and frames over 256 KiB` | 1 |
+| 5 | `test/protocol/versioning.test.ts` | `ignores an unknown event type but consumes its rev` | 1 |
+| 6 | `test/log/shape.test.ts` | `every declared event name is used and every used name is declared` | log module |
+| 7 | `test/log/redaction.test.ts` | `a provider error echoing the prompt never reaches the log` | log module |
+| 8 | `test/architecture.test.ts` | `core imports nothing from protocol or pi-durable` | 1, 6 |
 
-### L2 core
+### Stage 2 — domain, catalog and lifecycle primitives
 
-| Step | File | First failing test |
-| --- | --- | --- |
-| C1 | `test/core/directory.test.ts` | `keeps the previous catalog when a write is interrupted` |
-| C2 | `test/core/directory.test.ts` | `rejects a duplicate bot id` |
-| C3 | `test/core/hub.test.ts` | `assigns strictly increasing revisions per bot` |
-| C4 | `test/core/hub.test.ts` | `delivers the same sequence to every subscriber` |
-| C5 | `test/core/hub.test.ts` | `downgrades a subscriber that falls behind to snapshot-only` |
-| C6 | `test/core/hub.test.ts` | `coalesces deltas inside one 50ms window` |
-| C7 | `test/core/service.test.ts` | `send requires a subscription` |
-| C8 | `test/core/service.test.ts` | `maps queued, placed and done submissions to the same submissionId` |
-| C9 | `test/core/service.test.ts` | `renders an unanswered submission as a model failure, not a transport failure` |
-| C10 | `test/core/service.test.ts` | `resync returns a snapshot whose rev equals the last published event` |
-| C11 | `test/core/registry.test.ts` | `open is idempotent and shared by concurrent subscribers` |
-| C12 | `test/core/registry.test.ts` | `closes an idle bot after idleCloseMs and reopens on demand` |
-| C13 | `test/core/registry.test.ts` | `delete closes, moves the directory to trash and updates the catalog` |
-| C14 | `test/core/registry.test.ts` | `recovery scan resumes active bots and leaves the rest closed` |
-| C15 | `test/core/lock.test.ts` | `a second daemon on the same root exits non-zero` |
+| # | File | First failing test | Needs |
+| --- | --- | --- | --- |
+| 9 | `test/core/directory.test.ts` | `keeps the previous catalog when a write is interrupted` | 8 |
+| 10 | `test/core/directory.test.ts` | `delete reconciliation finishes an interrupted delete` | 9 |
+| 11 | `test/core/runtimeport.test.ts` | `the fake runtime satisfies the port contract` | 8 |
+| 12 | `test/core/hub.test.ts` | `assigns strictly increasing revisions per bot` | 11 |
+| 13 | `test/core/hub.test.ts` | `delivers the same sequence to every subscriber and drops none` | 12 |
+| 14 | `test/core/hub.test.ts` | `downgrades a subscriber that falls behind to snapshot-only` | 12 |
+| 15 | `test/core/hub.test.ts` | `coalesces deltas inside one 50ms window with a fake clock` | 12 |
+| 16 | `test/core/hub.test.ts` | `renders a fresh snapshot when the runtime reports one` | 12 |
+| 17 | `test/core/service.test.ts` | `send requires a subscription and answers a connection-scoped record` | 13 |
+| 18 | `test/core/service.test.ts` | `a repeated send with the same requestId returns the stored record` | 17 |
+| 19 | `test/core/service.test.ts` | `queued, placed and done map to one submissionId` | 17 |
+| 20 | `test/core/service.test.ts` | `unanswered keeps its reason and never invents a settlement` | 17 |
+| 21 | `test/core/service.test.ts` | `history pages older messages without touching the newest window` | 17 |
+| 22 | `test/core/service.test.ts` | `resync returns a snapshot whose rev equals the last published event` | 17 |
 
-### L1 runtime adapter
+### Stage 3 — pi adapter
 
-| Step | File | First failing test |
-| --- | --- | --- |
-| R1 | `test/runtime/mapEvents.test.ts` | `maps a recorded run to append, delta, append, submission, status` |
-| R2 | `test/runtime/mapEvents.test.ts` | `ignores message_start and turn_start` |
-| R3 | `test/runtime/mapEvents.test.ts` | `names the provisional message p_1 and finalizes it with replaces` |
-| R4 | `test/runtime/mapEvents.test.ts` | `maps aborted and error stop reasons to message state` |
-| R5 | `test/runtime/adapter.test.ts` | `submit then wait produces exactly one pi.assistant entry` |
-| R6 | `test/runtime/idempotency.test.ts` | `the same requestId produces one user entry and one submission` |
-| R7 | `test/runtime/adapter.test.ts` | `abort leaves the conversation idle and settles the submission` |
-| R8 | `test/runtime/adapter.test.ts` | `a provider error settles unanswered with reason and detail` |
-| R9 | `test/runtime/adapter.test.ts` | `a model asking for a tool gets an error result and the run continues` |
-| R10 | `test/runtime/recovery.test.ts` | `a run interrupted by close resumes on reopen` |
-| R11 | `test/runtime/adapter.test.ts` | `close is bounded and reports a timeout` |
+| # | File | First failing test | Needs |
+| --- | --- | --- | --- |
+| 23 | `test/runtime/mapEvents.test.ts` | `maps a recorded run to append, delta, append, submission, status` | 11 |
+| 24 | `test/runtime/mapEvents.test.ts` | `builds the provisional from message_start content` | 23 |
+| 25 | `test/runtime/mapEvents.test.ts` | `applies block and message replacements without loss` | 23 |
+| 26 | `test/runtime/mapEvents.test.ts` | `a retry inside one turn starts a new attempt id` | 23 |
+| 27 | `test/runtime/mapEvents.test.ts` | `maps every stopReason to a message state` | 23 |
+| 28 | `test/runtime/adapter.test.ts` | `one turn appends exactly one pi.assistant entry` | 23 |
+| 29 | `test/runtime/idempotency.test.ts` | `the same requestId returns one record and emits no new events` | 28 |
+| 30 | `test/runtime/adapter.test.ts` | `abort settles the running and queued inputs with reason aborted` | 28 |
+| 31 | `test/runtime/adapter.test.ts` | `a provider error settles unanswered with reason model_error` | 28 |
+| 32 | `test/runtime/adapter.test.ts` | `a model asking for a tool gets an error result and the run continues` | 28 |
+| 33 | `test/runtime/failures.test.ts` | `a parked task surfaces as task_parked from onReport, once` | 28 |
+| 34 | `test/runtime/failures.test.ts` | `a storage failure closes the harness and classifies storage_failed` | 28 |
+| 35 | `test/runtime/recovery.test.ts` | `open resumes a run interrupted by close` | 28 |
+| 36 | `test/runtime/adapter.test.ts` | `close resolves timeout without dropping the handle` | 28 |
 
-### End to end, log and performance
+### Stage 4 — server, lifecycle and end-to-end
 
-| Step | File | First failing test |
-| --- | --- | --- |
-| E1 | `test/e2e/journey.test.ts` | `create, chat three turns, reconnect and delete` |
-| E2 | `test/e2e/journey.test.ts` | `two bots stream independently without interleaving revisions` |
-| E3 | `test/log/shape.test.ts` | `every failure carries a closed err.kind` |
-| E4 | `test/log/trace.test.ts` | `R1: an open stall stops at core without runtime.open.ok` |
-| E5 | `test/log/trace.test.ts` | `R2: a dead watch is attributed to runtime` |
-| E6 | `test/log/trace.test.ts` | `R3: a malformed command produces no core events` |
-| E7 | `test/log/redaction.test.ts` | `message text never reaches the log` |
-| E8 | `test/log/catalog.test.ts` | `every emitted event name is in the catalog` |
-| E9 | `test/perf/baseline.test.ts` | `cold open, reopen, one turn and twenty bots stay inside the documented bounds` |
-| E10 | `test/architecture.test.ts` | `core does not import pi-durable` |
+| # | File | First failing test | Needs |
+| --- | --- | --- | --- |
+| 37 | `test/server/auth.test.ts` | `rejects a wrong bearer token before upgrade` | 17 |
+| 38 | `test/server/socket.test.ts` | `closes 1008 when hello is not the first frame` | 37 |
+| 39 | `test/server/socket.test.ts` | `closes 4004 for an unknown bot and 4090 while quarantined` | 37 |
+| 40 | `test/server/socket.test.ts` | `a second subscribe on one connection closes 1008` | 37 |
+| 41 | `test/server/catalog.test.ts` | `create, rename and delete keep the catalog absolute` | 9, 37 |
+| 42 | `test/log/origin.test.ts` | `a failed trace has exactly one error record, at the innermost layer` | 6, 38 |
+| 43 | `test/log/trace.test.ts` | `R1–R4 hold with a fake clock and a drain barrier` | 42 |
+| 44 | `test/core/registry.test.ts` | `open is idempotent and shared by concurrent subscribers` | 28 |
+| 45 | `test/core/registry.test.ts` | `an idle bot closes after idleCloseMs and reopens on demand` | 44 |
+| 46 | `test/core/registry.test.ts` | `a timed-out close quarantines and refuses open and delete` | 36, 44 |
+| 47 | `test/core/registry.test.ts` | `recovery scan resumes active bots and leaves the rest closed` | 44 |
+| 48 | `test/core/singleton.test.ts` | `a live daemon rejects a second instance on the same root` | 44 |
+| 49 | `test/e2e/journey.test.ts` | `create, chat three turns, reconnect and delete` | 41, 44 |
+| 50 | `test/e2e/journey.test.ts` | `two bots stream independently with separate revisions` | 49 |
+| 51 | `test/e2e/journey.test.ts` | `a lost submission reply is recovered by re-sending the requestId` | 49 |
+| 52 | `test/e2e/journey.test.ts` | `a bot joining mid-answer receives the partial in the snapshot` | 49 |
+| 53 | `test/crash/sigkill.test.ts` | `killing the daemon mid-answer loses no message and duplicates none` | 49 |
+| 54 | `test/crash/singleton.test.ts` | `a SIGKILLed daemon is taken over on the next start` | 48 |
 
-### L4 client
+### Stage 5 — client
 
-| Step | File | First failing test |
-| --- | --- | --- |
-| S1 | `BotsCoreTests/FixtureDecodingTests.swift` | `decodes every committed fixture` |
-| S2 | `BotsCoreTests/ReducerTests.swift` | `append upserts by id and applies replaces` |
-| S3 | `BotsCoreTests/ReducerTests.swift` | `delta appends text to the target message` |
-| S4 | `BotsCoreTests/ReducerTests.swift` | `a revision gap requests a resync and drops later events` |
-| S5 | `BotsCoreTests/TranscriptBuilderTests.swift` | `builds rows for user, assistant, notice and a streaming tail` |
-| S6 | `BotsFeaturesTests/ConversationTests.swift` | `subscribe to snapshot to live to resync` |
-| S7 | `BotsFeaturesTests/ComposerTests.swift` | `optimistic bubble is replaced when the submission and append arrive` |
-| S8 | `BotsFeaturesTests/ComposerTests.swift` | `retry reuses the same requestId` |
-| S9 | `BotsFeaturesTests/ComposerTests.swift` | `sending while busy queues with followUp` |
-| S10 | `BotsFeaturesTests/CatalogTests.swift` | `create selects the new bot; delete removes it` |
-| S11 | `BotsCoreTests/DependencyRulesTests.swift` | `features, core and design contain no networking API` |
+| # | File | First failing test | Needs |
+| --- | --- | --- | --- |
+| 55 | `BotsCoreTests/FixtureDecodingTests.swift` | `decodes every committed fixture` | 1 |
+| 56 | `BotsCoreTests/ReducerTests.swift` | `append upserts by id and applies replaces` | 55 |
+| 57 | `BotsCoreTests/ReducerTests.swift` | `delta applies text, block and message changes in order` | 55 |
+| 58 | `BotsCoreTests/ReducerTests.swift` | `a snapshot replaces state and resets the baseline` | 55 |
+| 59 | `BotsCoreTests/ReducerTests.swift` | `a revision gap requests a resync and drops later events` | 55 |
+| 60 | `BotsCoreTests/ReducerTests.swift` | `a duplicate submission reply does not disturb the transcript` | 55 |
+| 61 | `BotsTransportTests/SocketTests.swift` | `speaks the fixture server: handshake, subscribe, stream, paging` | fixture server |
+| 62 | `BotsTransportTests/SocketTests.swift` | `maps close codes to connection states and reconnects on 1006` | 61 |
+| 63 | `BotsFeaturesTests/ConversationTests.swift` | `connecting, ready, resync, reconnect and failed` | 59, 61 |
+| 64 | `BotsFeaturesTests/ComposerTests.swift` | `optimistic bubble is replaced by the submission and append` | 60 |
+| 65 | `BotsFeaturesTests/ComposerTests.swift` | `retry reuses the same requestId` | 64 |
+| 66 | `BotsFeaturesTests/ComposerTests.swift` | `sending while busy queues with followUp and survives a restart of the view` | 64 |
+| 67 | `BotsFeaturesTests/CatalogTests.swift` | `create selects the new bot; delete removes it; a push updates the list` | 61 |
+| 68 | `BotsFeaturesTests/RecoveryTests.swift` | `an unavailable bot offers recover and returns to live` | 63 |
+| 69 | `BotsCoreTests/DependencyRulesTests.swift` | `no networking API in core or features; no wire decoding outside transport` | 55 |
 
 ## Golden fixtures
 
-- `fixtures/bots-protocol/*.json` are normative. `npm run fixtures:check`
-  re-encodes every fixture through the daemon codec and fails on any byte
-  difference; `npm run fixtures:write` regenerates them after a documented
-  protocol change.
-- `test/protocol/fixtures.test.ts` also asserts the file set matches the table in
-  [PROTOCOL.md](PROTOCOL.md#fixtures) — a fixture cannot exist undocumented.
-- Swift decodes the same directory via a relative path from `Package.swift`, so
-  one change to a fixture breaks both sides in the same commit.
+- `fixtures/bots-protocol/*.json` are normative. `npm run fixtures:check` encodes
+  every fixture through the daemon codec and fails on any byte difference;
+  `npm run fixtures:write` regenerates them after a documented protocol change.
+- `test/protocol/fixtures.test.ts` also asserts that the file set equals the table
+  in [PROTOCOL.md](PROTOCOL.md#fixtures): an undocumented fixture fails.
+- The Swift package decodes the same directory through a relative path, so one
+  changed fixture breaks both sides in the same commit.
+- Golden event sequences (not just single frames) are checked in under
+  `test/runtime/golden/` for: a plain answer, an answer with deltas, a retry inside
+  one turn, a tool-call attempt, an abort with a queued input, and a provider
+  error.
 
 ## Fault injection
-
-Each row has a test that asserts both the response and the layer attribution.
 
 | Injected fault | Expected |
 | --- | --- |
 | Wrong bearer token | HTTP 401; no `core.*` log; no bot opened |
 | Malformed JSON frame | Close 1008; `protocol.decode.fail` only |
+| Unknown command type | `error{invalid_command}`, connection kept |
 | `subscribe` to a missing bot | Close 4004; `core.bot.resolve.fail` only |
-| `RuntimeHandle.snapshot()` throws | Bot marked `unavailable`; client snapshot carries `unavailable`; `core.bot.open.fail` |
-| `submit()` throws | `error{kind:"internal"}`, submission marked unanswered at the client, connection kept |
-| Provider error | `unanswered{reason:"model_error"}`; no `error` event |
-| Storage corruption (`session.sqlite` replaced with junk) | Bot `unavailable`, daemon alive, other bots unaffected |
-| Client disconnects mid-stream | Run continues; reconnect snapshot contains the finished message |
-| Subscriber stops reading | Queue overflow → snapshot-only, no daemon stall |
-| Second daemon on the same root | Exits non-zero, first daemon unaffected |
+| `runtime.open` rejects | Bot `unavailable`; snapshot carries `unavailable`; one `error` at core |
+| `send` before admission rejects | `error`, **no** `submission` frame; client keeps the draft |
+| Reply to `send` lost | Re-send the same `requestId` returns the record; no duplicate entry |
+| Provider error | `unanswered{reason:"model_error"}`; provider text absent from logs |
+| Abort with a queued input | Both settle `unanswered{reason:"aborted"}`; inbox empty |
+| Parked task | One `error{kind:"task_parked"}` within 60 s; `recover` clears it |
+| Watch ends once | Reattach + snapshot; no client-visible error |
+| Watch ends three times in 60 s | `error{kind:"internal"}`, bot `unavailable` |
+| `session.sqlite` replaced with junk | That bot `unavailable`; other bots unaffected; daemon alive |
+| `close` never resolves | Quarantine; open and delete refused; retry every 30 s |
+| Subscriber stops reading | Queue overflow → snapshot-only; daemon keeps serving others |
+| Second daemon on the same root | Exits non-zero; first unaffected |
+| `SIGKILL` mid-answer | Restart resumes; no message lost or duplicated |
+| Delete killed after rename | Restart reconciliation finishes the delete |
 
-## Performance smoke
+## Crash test
 
-`test/perf/baseline.test.ts` prints what it measured and asserts generous bounds
-so CI noise cannot mask a real regression:
+`test/crash/sigkill.test.ts` is **mandatory at every stage signoff** and opt-in
+for the fast gate (`npm run test:crash`).
+
+The barrier is a fact about commits, not a sleep: the test starts a daemon with a
+provider that streams slowly, waits for the first `core.hub.publish.ok` with a
+delta in the daemon log (deltas are only ever emitted from committed state), then
+`SIGKILL`s the process. After restart it asserts exactly one user entry and one
+assistant entry, that the answer is complete, and that no duplicate submission
+exists. A second case kills after `rename` during delete and asserts the startup
+reconciliation removed the catalog entry.
+
+## Performance measurement
+
+`npm run perf` is separate from `npm run check` because absolute milliseconds are
+not deterministic. It records the environment, samples each operation five times,
+reports the median, and asserts only generous bounds so a real regression fails
+while noise does not.
 
 | Measurement | Bound | Documented value |
 | --- | --- | --- |
-| `Harness.open` + `root()` | < 250 ms | 7 ms |
+| `Harness.open` + `root()` on an empty bot | < 250 ms | 7 ms |
 | Reopen a bot with 400 entries | < 100 ms | 3 ms |
 | One answered turn (faux) | < 200 ms | 2–7 ms |
-| 20 bots open | < 1 s | 30 ms |
+| 20 bots open in one process | < 1 s | 30 ms |
 
-When a bound is intentionally raised, [PRODUCT.md](PRODUCT.md#speed-targets) and
-the bound change in the same commit, with the new measurement recorded.
+The script prints machine, Node version, filesystem and sample values; the
+observed numbers are copied into [CHECKPOINTS.md](CHECKPOINTS.md). Changing a
+bound means changing [PRODUCT.md](PRODUCT.md#speed-targets) in the same commit.
 
 ## Gates
 
 ```sh
 cd apps/bots
-npm run fixtures:check     # codec vs committed fixtures
-npm test                   # node --test src/**/*.test.ts test/**/*.test.ts
-npm run typecheck          # tsc --noEmit (no build output)
-npm run lint               # biome check --error-on-warnings
-npm run coverage           # node --test --experimental-test-coverage, lines >= 90
-npm run check              # all of the above
+npm run fixtures:check
+npm test                # fast gate: no sockets left open, under 30 s
+npm run typecheck       # tsc --noEmit
+npm run lint            # biome check --error-on-warnings
+npm run coverage        # thresholds enforced, see below
+npm run test:crash      # mandatory at stage signoff
+npm run perf            # informational + generous bounds
+npm run check           # fixtures:check + test + typecheck + lint + coverage
 
-cd apps/macos
-swift test                 # Bots targets, Swift Testing
-./Scripts/coverage.sh      # logic coverage >= 90%
+cd apps/bots-macos
+swift test
+./Scripts/coverage.sh    # Bots logic gate, own script
 ```
+
+`npm run coverage` runs Node's own reporter with enforced thresholds:
+
+```sh
+node --test \
+  --experimental-test-coverage \
+  --test-coverage-include='src/**/*.ts' \
+  --test-coverage-exclude='src/testing/**' \
+  --test-coverage-include-all \
+  --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=85 \
+  'src/**/*.test.ts' 'test/**/*.test.ts'
+```
+
+`--test-coverage-include-all` counts files no test imported, so an untested module
+cannot hide. The thresholds make the command exit non-zero; stage signoff records
+the run.
 
 Rules:
 
-- No skipped or focused tests. A blocked test is deleted or fixed; a
-  `test.skip`/`.only`/`XCTSkip` in the diff fails review.
-- Slow tests are opt-in by environment, not by skip: `PI_BOTS_SLOW=1` enables
-  `test/e2e/kill.test.ts` (SIGKILL a daemon mid-run, restart, assert no message is
-  lost or duplicated) and any test that sleeps for real time. The default gate
-  runs in under 30 seconds.
-- Every gate is deterministic: no network, no API key, no wall-clock ordering
-  assumptions. Time-dependent tests inject a clock.
-- Coverage is a floor, not a goal: a layer with 95% coverage and no fault
-  injection test is not done.
+- No skipped or focused tests. A blocked test is deleted or fixed; `test.skip`,
+  `.only` or `XCTSkip` in a diff fails review.
+- Time-dependent tests inject a clock. Only the crash and perf suites touch real
+  time, and neither is part of `npm test`.
+- No test opens a network socket other than a loopback fixture server it owns.
+- Coverage is a floor: a layer at 95% with no fault-injection test is not done.
 
-## Definition of done for a commit
+## Definition of done for a stage
 
-1. The document that owns the behaviour was updated in the same commit (or the
-   commit is test-only and says why).
-2. The new test failed before the implementation and passes after; the commit
-   body records the failure.
-3. `cd apps/bots && npm run check` passes; for Swift commits `swift test` passes.
-4. No new `test.skip`, no widened limits, no silenced log, no swallowed error.
-5. Layer attribution: if the commit adds an error path, a test asserts which
-   layer logs it and which layers stay silent.
+1. Every ladder row of the stage is green; documents updated in the same commits.
+2. `npm run check` (daemon) and `swift test` + `Scripts/coverage.sh` (client) pass.
+3. `npm run test:crash` passes and its output is quoted in the stage checkpoint.
+4. One injected failure per layer was demonstrated and attributed by
+   `test/log/origin.test.ts` for that layer.
+5. No widened limits, silenced log, swallowed error or new `test.only`.
+6. [CHECKPOINTS.md](CHECKPOINTS.md) records what a user can see, what was run, and
+   the next broken hop.
