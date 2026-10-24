@@ -260,24 +260,15 @@ test("one event with several large changes is split between changes, not inside 
     },
   });
   const letters = ["a", "b", "c", "d"];
-  events.publish({
-    type: "delta",
-    trace,
-    messageId: "p_a1",
-    changes: letters.map((letter) => replacement(letter.repeat(70_000))),
-  });
+  const changes = letters.map((letter) => replacement(letter.repeat(70_000)));
+  events.publish({ type: "delta", trace, messageId: "p_a1", changes });
   events.drain();
   assert.equal(seen.length, 4, "each oversized change travels in its own frame");
-  const texts: string[] = [];
-  for (const event of seen) {
+  for (const [index, event] of seen.entries()) {
     assert.ok(utf8(event) < DELTA_BATCH_BYTE_LIMIT, "no frame crosses the soft limit alone");
-    const change = event.type === "delta" ? event.changes[0] : undefined;
-    assert.equal(event.type === "delta" ? event.changes.length : 0, 1);
-    assert.equal(change?.kind, "message");
-    const block = change?.kind === "message" ? change.message.blocks[0] : undefined;
-    texts.push(block?.type === "text" ? block.text.slice(0, 1) : "");
+    const delivered = event.type === "delta" ? event.changes : undefined;
+    assert.deepEqual(delivered, [changes[index]], "each frame carries its whole change");
   }
-  assert.deepEqual(texts, letters, "every change survives in order");
 });
 
 test("the injected measurement decides when a subscriber is downgraded", () => {
@@ -422,4 +413,18 @@ test("a sink publish cannot slip between a flushed delta and its triggering even
   events.publish(delta("a"));
   events.publishSnapshot(emptySnapshot());
   assert.deepEqual(seen, ["delta:1", "snapshot:2", "append:3"]);
+});
+
+test("a pump requested for another subscriber from inside a sink is not lost", () => {
+  const events = hub();
+  const first: number[] = [];
+  const second: number[] = [];
+  const manual = events.subscribe((event) => second.push(event.rev), { manual: true });
+  events.subscribe((event) => {
+    first.push(event.rev);
+    events.pump(manual.id);
+  });
+  events.publish(status());
+  assert.deepEqual(first, [1]);
+  assert.deepEqual(second, [1], "the cross-slot request runs after the fanout, not inside it");
 });

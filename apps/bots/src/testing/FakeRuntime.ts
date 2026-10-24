@@ -133,12 +133,20 @@ export class FakeHandle implements RuntimeHandle {
 
   #apply(event: RuntimeEvent): void {
     if (event.type === "append") {
-      // Only committed entries belong to history: a provisional is projection-only, so a
-      // withdrawn attempt leaves no message behind.
-      if (event.message.state !== "streaming") {
-        this.#committed = upsert(this.#committed, event.message, event.replaces);
-      }
       const messages = upsert(this.#snapshot.messages, event.message, event.replaces);
+      // Only committed entries belong to history: a provisional is projection-only, so a
+      // withdrawn attempt leaves no message behind. A finalization takes the position the
+      // projection gives it, so paging and the window never disagree.
+      if (event.message.state !== "streaming") {
+        const without =
+          event.replaces === undefined
+            ? this.#committed
+            : this.#committed.filter((message) => message.id !== event.replaces);
+        this.#committed = mergeOrdered(
+          without,
+          messages.filter((message) => message.state !== "streaming"),
+        );
+      }
       // A provisional becomes the streaming target; anything else that supersedes it
       // clears the pointer, so a late joiner sees the real attempt state.
       let streaming = this.#snapshot.streaming;

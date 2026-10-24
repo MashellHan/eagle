@@ -640,3 +640,48 @@ test("a window that grows merges history in the order the snapshot already impli
     ["e_1", "e_2"],
   );
 });
+
+test("a finalization keeps the window and history in one order", async () => {
+  const runtime = new FakeRuntime();
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  const fake = runtime.handle("b_1");
+  const message = (id: string, state: "streaming" | "complete", text: string) => ({
+    id,
+    role: (state === "streaming" ? "assistant" : "user") as "assistant" | "user",
+    state,
+    createdAt: "x",
+    blocks: [{ type: "text" as const, text }],
+  });
+  fake.emit({ type: "append", trace, message: message("e_1", "complete", "one") });
+  fake.emit({ type: "append", trace, message: message("p_a1", "streaming", "answer") });
+  fake.emit({ type: "append", trace, message: message("e_2", "complete", "two") });
+  fake.emit({
+    type: "append",
+    trace,
+    replaces: "p_a1",
+    message: {
+      id: "e_3",
+      role: "assistant",
+      state: "complete",
+      createdAt: "x",
+      blocks: [{ type: "text", text: "answer" }],
+    },
+  });
+  const view = (await handle.subscribe(trace, () => {})).snapshot;
+  const window = view.messages.map((m) => m.id);
+  assert.deepEqual(window, ["e_1", "e_3", "e_2"]);
+  assert.deepEqual(
+    (await handle.history({ limit: 10 })).messages.map((m) => m.id),
+    window,
+    "history pages in the order the client already shows",
+  );
+  assert.deepEqual(
+    (await handle.history({ beforeEntryId: "e_2", limit: 10 })).messages.map((m) => m.id),
+    ["e_1", "e_3"],
+  );
+});

@@ -61,6 +61,8 @@ export class EventHub {
   #flushScheduled = false;
   /** Events numbered and waiting for their turn on the per-bot serial queue. */
   #dispatch: HubEvent[] = [];
+  /** Manual pumps requested while the serial section is running, including cross-slot ones. */
+  #pumps = new Set<string>();
   #delivering = false;
 
   constructor(botId: string, trace: string, options: HubOptions) {
@@ -125,18 +127,11 @@ export class EventHub {
 
   /** Delivers everything queued for a manual subscriber. */
   pump(id: string): void {
-    const slot = this.#slots.get(id);
-    if (slot === undefined) return;
-    // A pump from inside a sink is already being served by the running serial section;
-    // entering it again would call the sink re-entrantly and reorder the queue.
-    if (this.#delivering) return;
-    this.#delivering = true;
-    try {
-      this.#drain(slot);
-    } finally {
-      this.#delivering = false;
-    }
-    this.#runDispatch();
+    if (!this.#slots.has(id)) return;
+    // Requests are queued rather than served inline, so a pump from inside a sink never
+    // re-enters a sink and a pump for another subscriber is not lost.
+    this.#pumps.add(id);
+    this.#runSerial();
   }
 
   /**
@@ -151,7 +146,7 @@ export class EventHub {
     }
     this.#flushDeltas();
     this.#push({ ...event, rev: this.#nextRevision() });
-    this.#runDispatch();
+    this.#runSerial();
   }
 
   publishSnapshot(value: ConversationSnapshot, trace = this.#defaultTrace): void {
@@ -161,7 +156,7 @@ export class EventHub {
   /** Delivers anything still coalescing. Tests call this instead of waiting. */
   drain(): void {
     this.#flushDeltas();
-    this.#runDispatch();
+    this.#runSerial();
   }
 
   #queueDelta(event: RuntimeEvent & { type: "delta" }): void {
@@ -181,7 +176,7 @@ export class EventHub {
       this.#pendingBytes += bytes;
     }
     this.#scheduleFlush();
-    this.#runDispatch();
+    this.#runSerial();
   }
 
   #scheduleFlush(): void {
@@ -190,7 +185,7 @@ export class EventHub {
     this.#schedule(() => {
       this.#flushScheduled = false;
       this.#flushDeltas();
-      this.#runDispatch();
+      this.#runSerial();
     });
   }
 
@@ -220,14 +215,27 @@ export class EventHub {
     this.#dispatch.push(event);
   }
 
-  #runDispatch(): void {
+  /**
+   * One serial section per bot: fanout and manual pumps never interleave, so every
+   * subscriber observes revisions in the same order and no sink is called re-entrantly.
+   */
+  #runSerial(): void {
     if (this.#delivering) return;
     this.#delivering = true;
     try {
-      while (this.#dispatch.length > 0) {
-        const event = this.#dispatch.shift();
-        if (event === undefined) break;
-        this.#fanout(event);
+      while (true) {
+        while (this.#dispatch.length > 0) {
+          const event = this.#dispatch.shift();
+          if (event === undefined) break;
+          this.#fanout(event);
+        }
+        if (this.#pumps.size === 0) break;
+        const requests = [...this.#pumps];
+        this.#pumps.clear();
+        for (const id of requests) {
+          const slot = this.#slots.get(id);
+          if (slot !== undefined) this.#drain(slot);
+        }
       }
     } finally {
       this.#delivering = false;
