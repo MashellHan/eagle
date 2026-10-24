@@ -25,6 +25,8 @@ apps/web          Vite dashboard, Cloudflare Worker, D1 migrations, public asset
 apps/macos        SwiftUI client (SPM, zero dependencies, macOS 15+); see its README
 packages/contracts  shared zod contracts and pure helpers (private, not published)
 packages/agent    @nocoo/eagle-agent, published to npm
+apps/bots         Bots daemon: independent product, not a workspace member
+docs/bots         Bots contracts; fixtures/bots-protocol holds the wire samples
 tests             one Node/Playwright suite at the root, spanning all packages
 scripts           live verification and deployment entry points
 ```
@@ -92,6 +94,32 @@ npm run test:browser
 Run API and Vite development servers in separate terminals. CI installs Chromium
 with `npx playwright install --with-deps chromium` before browser tests. `format`
 is an editing command, not a check; checks must not run autofix.
+
+## Bots (isolated product)
+
+`apps/bots`, the `Bots*` Swift targets and `docs/bots/` implement a local
+multi-bot chat product backed by `@earendil-works/pi-durable`. It is a separate
+product that lives in this repository:
+
+- No code, protocol or build coupling with the website, Worker, Agent or
+  contracts. `apps/bots` is not a root workspace member, root `check` and CI do
+  not run it, and root `biome.json` must exclude it. The only shared code is
+  `apps/macos/Sources/EagleDesign`.
+- Documentation is the contract and precedes code: `docs/bots/PRODUCT.md`,
+  `ARCHITECTURE.md`, `PROTOCOL.md`, `RUNTIME.md`, `OBSERVABILITY.md`,
+  `TESTING.md`. A behaviour, protocol or log-event change lands with its document
+  in the same commit; [PROTOCOL.md](docs/bots/PROTOCOL.md) v1 is additive only and
+  `fixtures/bots-protocol/` is normative for both languages.
+- Strict TDD per `docs/bots/TESTING.md`: demonstrate the failing test, then the
+  smallest implementation, then `cd apps/bots && npm run check` and
+  `cd apps/macos && swift test`. Never skip or focus a test, never widen a limit
+  or silence a log to pass.
+- Layer attribution is part of correctness: every crossing logs its layer with
+  the shared `trace`, the innermost failure is the only error logged, and the
+  diagnosis recipes in `docs/bots/OBSERVABILITY.md` are asserted by tests.
+- Phase 1 is chat only. Tools, tasks, usage, raw entries, agent settings and
+  bot-to-bot conversation stay behind protocol capability flags and are not
+  rendered; they are not deleted or stubbed out.
 
 ## Quality contract and current evidence
 
