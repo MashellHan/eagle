@@ -5,6 +5,7 @@
       "**",
       "!**/worker-configuration.d.ts",
       "!dist",
+      "!.build",
       "!apps/web/dist",
       "!packages/agent/dist",
       "!node_modules",
