@@ -224,18 +224,20 @@ export class EventHub {
     this.#delivering = true;
     try {
       while (true) {
-        while (this.#dispatch.length > 0) {
-          const event = this.#dispatch.shift();
-          if (event === undefined) break;
-          this.#fanout(event);
+        const event = this.#dispatch.shift();
+        if (event !== undefined) this.#fanout(event);
+        // Requested pumps run after every fanout, never after the whole queue: a sink
+        // that keeps publishing would otherwise starve the subscriber it pumped.
+        if (this.#pumps.size > 0) {
+          const requests = [...this.#pumps];
+          this.#pumps.clear();
+          for (const id of requests) {
+            const slot = this.#slots.get(id);
+            if (slot !== undefined) this.#drain(slot);
+          }
+          continue;
         }
-        if (this.#pumps.size === 0) break;
-        const requests = [...this.#pumps];
-        this.#pumps.clear();
-        for (const id of requests) {
-          const slot = this.#slots.get(id);
-          if (slot !== undefined) this.#drain(slot);
-        }
+        if (event === undefined) break;
       }
     } finally {
       this.#delivering = false;

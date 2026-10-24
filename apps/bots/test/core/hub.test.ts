@@ -428,3 +428,25 @@ test("a pump requested for another subscriber from inside a sink is not lost", (
   assert.deepEqual(first, [1]);
   assert.deepEqual(second, [1], "the cross-slot request runs after the fanout, not inside it");
 });
+
+test("a pump requested on every event is never starved by a publishing sink", () => {
+  const events = hub();
+  const live: number[] = [];
+  const manual: number[] = [];
+  let depth = 0;
+  let deepest = 0;
+  const subscription = events.subscribe((event) => manual.push(event.rev), { manual: true });
+  events.subscribe((event) => {
+    depth += 1;
+    deepest = Math.max(deepest, depth);
+    live.push(event.rev);
+    events.pump(subscription.id);
+    if (event.rev < 300) events.publish(status());
+    depth -= 1;
+  });
+  events.publish(status());
+  assert.equal(live.length, 300);
+  assert.deepEqual(manual, live, "the manual subscriber keeps up with the whole chain");
+  assert.equal(events.degraded(subscription.id), false);
+  assert.equal(deepest, 1, "no sink is called re-entrantly");
+});
