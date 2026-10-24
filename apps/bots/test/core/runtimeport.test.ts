@@ -15,7 +15,7 @@ test("open is recorded and returns a handle with the whole port", async () => {
     model: { provider: "faux", modelId: "faux-1" },
     trace,
   });
-  assert.deepEqual(runtime.opens, ["b_1"]);
+  assert.deepEqual([...runtime.handles.keys()], ["b_1"]);
   for (const method of [
     "subscribe",
     "submit",
@@ -30,7 +30,7 @@ test("open is recorded and returns a handle with the whole port", async () => {
   }
   assert.deepEqual(await handle.busy(), { run: false, tasks: false });
   assert.equal(await handle.close(trace, 5_000), "closed");
-  assert.deepEqual(runtime.closes, [{ trace, deadlineMs: 5_000 }]);
+  assert.deepEqual(runtime.handle("b_1").closes, [{ trace, deadlineMs: 5_000 }]);
 });
 
 test("subscribe is atomic: the snapshot and every later event arrive", async () => {
@@ -44,11 +44,11 @@ test("subscribe is atomic: the snapshot and every later event arrive", async () 
   const seen: RuntimeEvent[] = [];
   const subscription = await handle.subscribe(trace, (event) => seen.push(event));
   assert.deepEqual(subscription.snapshot.messages, []);
-  runtime.emit({ type: "status", trace, running: true, streaming: null, inbox: [] });
+  runtime.handle("b_1").emit({ type: "status", trace, running: true, streaming: null, inbox: [] });
   assert.equal(seen.length, 1);
   assert.equal(seen[0]?.type, "status");
   subscription.detach();
-  runtime.emit({ type: "status", trace, running: false, streaming: null, inbox: [] });
+  runtime.handle("b_1").emit({ type: "status", trace, running: false, streaming: null, inbox: [] });
   assert.equal(seen.length, 1, "a detached sink receives nothing");
 });
 
@@ -111,4 +111,50 @@ test("history pages older messages and stops at the boundary", async () => {
     ["e_2", "e_3"],
   );
   assert.equal(older.hasMore, true);
+});
+
+test("each bot keeps its own state, and a second open returns the same handle", async () => {
+  const runtime = new FakeRuntime();
+  const spec = (id: string) => ({
+    id,
+    dir: `/tmp/${id}`,
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  const first = await runtime.open(spec("b_1"));
+  const second = await runtime.open(spec("b_2"));
+  assert.notEqual(first, second);
+  assert.equal(await runtime.open(spec("b_1")), first);
+  runtime.handle("b_1").emit({
+    type: "append",
+    trace,
+    message: { id: "e_1", role: "user", state: "complete", createdAt: "x", blocks: [], requestId },
+  });
+  assert.equal((await first.history({ limit: 10 })).messages.length, 1);
+  assert.equal((await second.history({ limit: 10 })).messages.length, 0);
+});
+
+test("emitted events are visible through the query methods", async () => {
+  const runtime = new FakeRuntime();
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  const fake = runtime.handle("b_1");
+  fake.emit({
+    type: "submission",
+    trace,
+    record: { id: "s_1", requestId, status: "placed", entryId: "e_1" },
+  });
+  assert.deepEqual(await handle.submission({ requestId }), {
+    id: "s_1",
+    requestId,
+    status: "placed",
+    entryId: "e_1",
+  });
+  assert.equal((await handle.busy()).run, false);
+  fake.emit({ type: "status", trace, running: true, streaming: "p_a1", inbox: [] });
+  assert.equal((await handle.busy()).run, true);
 });
