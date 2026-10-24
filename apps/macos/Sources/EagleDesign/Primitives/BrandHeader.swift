@@ -86,8 +86,9 @@ public struct BrandHeader: View {
       IconButton(
         systemName: "sidebar.left", label: "收起侧栏", style: .circled, action: onCollapse)
     }
-    .padding(.horizontal, Theme.Metric.contentInset)
+    .padding(.leading, Theme.Metric.headerLeadingInset)
+    .padding(.trailing, Theme.Metric.contentInset)
     .padding(.top, Theme.Metric.toolbarTopInset)
-    .frame(height: Theme.Metric.toolbarTopInset + Theme.Metric.headerHeight)
+    .frame(height: Theme.Metric.toolbarTopInset + Theme.Metric.headerControlHeight)
   }
 }

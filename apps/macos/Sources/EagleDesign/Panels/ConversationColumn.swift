@@ -60,10 +60,6 @@ public struct ConversationColumn: View {
 
   public var body: some View {
     VStack(spacing: 0) {
-      if !showsSidebar || !showsInspector {
-        controlStrip
-      }
-
       header
 
       transcript
@@ -75,67 +71,64 @@ public struct ConversationColumn: View {
         onSend: onSend
       )
       .padding(.horizontal, Theme.Metric.conversationInset)
-      .padding(.bottom, Theme.Metric.composerBottomInset + Theme.Metric.windowInset)
+      .padding(.bottom, Theme.Metric.composerBottomInset)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.Palette.surface)
   }
 
-  private var controlStrip: some View {
-    HStack(spacing: 10) {
-      if !showsSidebar {
-        // Clear the traffic lights, which float over the window's top-left.
-        IconButton(
-          systemName: "sidebar.left", label: "展开侧栏", style: .circled, action: onShowSidebar)
-        Avatar(
-          initial: String(title.prefix(1)), tint: Theme.Palette.avatarTint(tintIndex), size: 24)
-        Text(title)
-          .font(Theme.TypeScale.cardTitle)
-          .foregroundStyle(Theme.Palette.textSecondary)
-          .transition(.opacity)
-      }
-      Spacer(minLength: 0)
-      if !showsInspector {
-        IconButton(
-          systemName: "sidebar.right", label: "展开检查器", style: .circled, action: onToggleInspector)
-      }
-    }
-    .padding(
-      .leading, showsSidebar ? Theme.Metric.conversationInset - 8 : Theme.Metric.trafficLightsEnd
-    )
-    .padding(.trailing, Theme.Metric.conversationInset - 8)
-    .padding(.top, Theme.Metric.toolbarTopInset)
-    .frame(height: Theme.Metric.toolbarTopInset + Theme.Metric.toolbarHeight)
-  }
-
-  /// Header with the participant identity. Clicking it toggles the inspector.
+  /// Fixed header row. The participant bubble is centred and never moves on the
+  /// Y axis: the reveal buttons are overlaid at the edges instead of sitting in
+  /// the flow.
   private var header: some View {
-    Button(action: onToggleInspector) {
-      HStack(spacing: 8) {
-        Avatar(
-          initial: String(title.prefix(1)),
-          tint: Theme.Palette.avatarTint(tintIndex),
-          size: 24,
-          shape: .blob
+    ZStack {
+      Button(action: onToggleInspector) {
+        HStack(spacing: 8) {
+          Avatar(
+            initial: String(title.prefix(1)),
+            tint: Theme.Palette.avatarTint(tintIndex),
+            size: 22,
+            shape: .blob
+          )
+          Text(title)
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(Theme.Palette.textPrimary)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: Theme.Metric.headerControlHeight)
+        .background(
+          Capsule(style: .continuous)
+            .fill(hoveringHeader ? Theme.Palette.hover : .clear)
         )
-        Text(title)
-          .font(.system(size: 14, weight: .medium))
-          .foregroundStyle(Theme.Palette.textPrimary)
+        .overlay(
+          Capsule(style: .continuous)
+            .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+        )
+        .contentShape(Capsule())
       }
-      .padding(.horizontal, 12)
-      .frame(height: 32)
-      .background(
-        Capsule(style: .continuous)
-          .fill(hoveringHeader ? Theme.Palette.hover : .clear)
+      .buttonStyle(.plain)
+      .onHover { hoveringHeader = $0 }
+      .accessibilityLabel("\(title)，切换检查器")
+
+      HStack(spacing: 8) {
+        if !showsSidebar {
+          IconButton(
+            systemName: "sidebar.left", label: "展开侧栏", style: .circled, action: onShowSidebar)
+        }
+        Spacer(minLength: 0)
+        if !showsInspector {
+          IconButton(
+            systemName: "sidebar.right", label: "展开检查器", style: .circled,
+            action: onToggleInspector)
+        }
+      }
+      .padding(
+        .leading, showsSidebar ? Theme.Metric.conversationInset : Theme.Metric.trafficLightsEnd
       )
-      .contentShape(Capsule())
-      .frame(maxWidth: .infinity)
+      .padding(.trailing, Theme.Metric.conversationInset)
     }
-    .buttonStyle(.plain)
-    .onHover { hoveringHeader = $0 }
     .padding(.top, Theme.Metric.toolbarTopInset)
-    .padding(.bottom, 6)
-    .accessibilityLabel("\(title)，切换检查器")
+    .frame(height: Theme.Metric.toolbarTopInset + Theme.Metric.headerControlHeight)
   }
 
   private var transcript: some View {

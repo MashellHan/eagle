@@ -52,10 +52,13 @@ public enum Theme {
     /// Traffic lights: 13.5 pt circles at (16, 15) with a 23 pt pitch.
     public static let trafficLightInset: CGFloat = 15
     public static let trafficLightsEnd: CGFloat = 75
-    public static let toolbarHeight: CGFloat = 34
-    public static let toolbarTopInset: CGFloat = 6
+    public static let toolbarHeight: CGFloat = 32
+    public static let toolbarTopInset: CGFloat = 12
     public static let headerHeight: CGFloat = 44
-    public static let logoSize: CGFloat = 22
+    public static let logoSize: CGFloat = 33
+    /// The brand header starts after the traffic lights.
+    public static let headerLeadingInset: CGFloat = 95
+    public static let headerControlHeight: CGFloat = 32
 
     public static let contentInset: CGFloat = 20
     public static let rowHeight: CGFloat = 58
@@ -66,21 +69,21 @@ public enum Theme {
     public static let unreadPillHeight: CGFloat = 28
     public static let unreadPillBottom: CGFloat = 16
     public static let footerHeight: CGFloat = 54
-    public static let footerBottom: CGFloat = 14
+    public static let footerBottom: CGFloat = 7
 
     public static let panelInset: CGFloat = 16
     public static let conversationInset: CGFloat = 24
     public static let turnGap: CGFloat = 24
     public static let inspectorRowHeight: CGFloat = 40
     public static let composerHeight: CGFloat = 54
-    public static let composerBottomInset: CGFloat = 14
+    public static let composerBottomInset: CGFloat = 7
     public static let windowInset: CGFloat = 8
 
     public static let avatarRow: CGFloat = 34
     public static let avatarProfile: CGFloat = 55
     public static let avatarInspector: CGFloat = 76
     public static let avatarNote: CGFloat = 18
-    public static let iconButton: CGFloat = 30
+    public static let iconButton: CGFloat = 32
     public static let hitTarget: CGFloat = 28
 
     public static let cardRadius: CGFloat = 12
