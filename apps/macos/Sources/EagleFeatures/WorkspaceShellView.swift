@@ -7,37 +7,45 @@ public struct WorkspaceShellView: View {
   @StateObject private var list: WorkspaceListViewModel
   @StateObject private var chat: ChatViewModel
   @StateObject private var inspector: InspectorViewModel
-  @LocalState private var showsSidebar: Bool
-  @LocalState private var showsInspector: Bool
+  @StateObject private var layout: ShellLayoutViewModel
 
   public init(
     list: WorkspaceListViewModel = WorkspaceListViewModel(),
     chat: ChatViewModel = ChatViewModel(),
     inspector: InspectorViewModel = InspectorViewModel(),
-    showsSidebar: Bool = true,
-    showsInspector: Bool = true
+    layout: ShellLayoutViewModel = ShellLayoutViewModel()
   ) {
     _list = StateObject(wrappedValue: list)
     _chat = StateObject(wrappedValue: chat)
     _inspector = StateObject(wrappedValue: inspector)
-    _showsSidebar = LocalState(wrappedValue: showsSidebar)
-    _showsInspector = LocalState(wrappedValue: showsInspector)
+    _layout = StateObject(wrappedValue: layout)
   }
 
   public var body: some View {
     let item = list.selectedItem
     ThreeColumnShell(
-      showsSidebar: showsSidebar,
-      showsInspector: showsInspector
+      showsSidebar: layout.showsSidebar,
+      showsInspector: layout.showsInspector,
+      sidebarWidth: layout.sidebarWidth,
+      inspectorWidth: layout.inspectorWidth,
+      onResizeSidebar: { layout.resizeSidebar(by: $0) },
+      onResizeInspector: { layout.resizeInspector(by: $0) }
     ) {
       SidebarPanel(
         profileInitial: "监",
         profileName: "监察御史",
         profilePlan: "Personal",
-        groups: list.groups,
+        sections: list.sections,
         selection: list.selection,
+        width: layout.sidebarWidth,
         onSelect: { list.select($0) },
-        onCollapse: { showsSidebar = false },
+        onToggleSection: { list.toggleSection($0) },
+        onRenameSection: { list.renameSection($0, to: $1) },
+        onDeleteSection: { list.deleteSection($0) },
+        onCreateSection: { list.createSection() },
+        onRenameItem: { list.renameItem($0, to: $1) },
+        onDeleteItem: { list.deleteItem($0) },
+        onCollapse: { layout.toggleSidebar() },
         unreadCount: 2
       )
     } conversation: {
@@ -48,28 +56,27 @@ public struct WorkspaceShellView: View {
         entries: chat.entries,
         draft: $chat.draft,
         onSend: { chat.send() },
-        showsSidebar: showsSidebar,
-        showsInspector: showsInspector,
-        onToggleSidebar: { showsSidebar.toggle() },
-        onToggleInspector: { showsInspector.toggle() }
+        showsSidebar: layout.showsSidebar,
+        onShowSidebar: { layout.toggleSidebar() }
       )
     } inspector: {
       InspectorColumn(
         name: item?.title ?? "依赖修复专家",
         subtitle: item?.tag ?? "GitHub",
         tintIndex: item?.tintIndex ?? 2,
+        width: layout.inspectorWidth,
         artifacts: inspector.artifacts,
         jobs: inspector.jobs,
         tab: $inspector.tab,
         onToggleJob: { inspector.setJob($0, isOn: $1) },
-        onCollapse: { showsInspector = false }
+        onCollapse: { layout.toggleInspector() }
       )
     }
     .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSidebar)) { _ in
-      showsSidebar.toggle()
+      layout.toggleSidebar()
     }
     .onReceive(NotificationCenter.default.publisher(for: .eagleToggleInspector)) { _ in
-      showsInspector.toggle()
+      layout.toggleInspector()
     }
   }
 }

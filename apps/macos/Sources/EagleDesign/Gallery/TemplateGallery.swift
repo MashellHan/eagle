@@ -137,12 +137,12 @@ public struct TemplateGallery: View {
           profileInitial: "监",
           profileName: "监察御史",
           profilePlan: "Personal",
-          groups: [
-            SidebarGroup(id: "s", title: "秘书处", items: [
+          sections: [
+            SidebarSection(id: "s", title: "秘书处", items: [
               SidebarItem(id: "1", title: "首席调查官", subtitle: "哥，最值得借鉴的是 OpenClaw 的聊天界面模块...", tintIndex: 0),
               SidebarItem(id: "2", title: "工作秘书", subtitle: "哥，周末早上有两件事：", tag: "Personal", tintIndex: 1),
             ]),
-            SidebarGroup(id: "n", title: "新闻组", count: 9, items: [
+            SidebarSection(id: "n", title: "新闻组", count: 9, items: [
               SidebarItem(id: "3", title: "知识库", subtitle: "哥，我查过了：翻墙大师的知识库 key 现在只能...", tintIndex: 5),
             ]),
           ],

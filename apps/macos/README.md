@@ -37,9 +37,10 @@ Sources/
     Theme.swift        palette, metrics, type scale sampled from the reference
     LocalState.swift   macro-free @State replacement
     Primitives/        Avatar, Tag, SectionLabel, IconButton, ChevronRow,
-                       ToggleRow, SwitchToggle, SpinnerArc, SegmentedTabs
-    Chat/              AssistantTurn, UserBubble, DeliveryNote, TypingIndicator,
-                       Composer
+                       ToggleRow, SwitchToggle, SpinnerArc, SegmentedTabs,
+                       EdgeFade, ResizeHandle
+    Chat/              AssistantTurn, UserBubble, SenderChip, DeliveryNote,
+                       TypingIndicator, Composer
     Panels/            SidebarPanel, ConversationColumn, InspectorColumn,
                        ThreeColumnShell
     Gallery/           TemplateGallery
@@ -50,8 +51,11 @@ Sources/
 ```
 
 Design rules: one component per file, colors and spacing only from `Theme`, no
-global state inside components, no elevation or gradients, monochrome plus one
-green. See [DESIGN.md](DESIGN.md) for the measurements and the decisions taken.
+global state inside components, no elevation except the sender chip and the
+unread pill, monochrome plus one green, and scroll edges fade instead of
+clipping. Groups expand and collapse with animation; right-clicking a group or a
+conversation offers rename/delete, and the header menu creates groups. Column
+widths are draggable and both side columns collapse. See [DESIGN.md](DESIGN.md).
 
 ## Next
 

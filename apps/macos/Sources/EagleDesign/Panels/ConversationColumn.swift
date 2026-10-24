@@ -34,10 +34,8 @@ public struct ConversationColumn: View {
   private let entries: [TranscriptEntry]
   @Binding private var draft: String
   private let onSend: () -> Void
-  private let onToggleSidebar: () -> Void
-  private let onToggleInspector: () -> Void
+  private let onShowSidebar: () -> Void
   private let showsSidebar: Bool
-  private let showsInspector: Bool
 
   public init(
     title: String,
@@ -47,9 +45,7 @@ public struct ConversationColumn: View {
     draft: Binding<String>,
     onSend: @escaping () -> Void,
     showsSidebar: Bool = true,
-    showsInspector: Bool = true,
-    onToggleSidebar: @escaping () -> Void = {},
-    onToggleInspector: @escaping () -> Void = {}
+    onShowSidebar: @escaping () -> Void = {}
   ) {
     self.title = title
     self.subtitle = subtitle
@@ -58,14 +54,14 @@ public struct ConversationColumn: View {
     self._draft = draft
     self.onSend = onSend
     self.showsSidebar = showsSidebar
-    self.showsInspector = showsInspector
-    self.onToggleSidebar = onToggleSidebar
-    self.onToggleInspector = onToggleInspector
+    self.onShowSidebar = onShowSidebar
   }
 
   public var body: some View {
     VStack(spacing: 0) {
-      controlStrip
+      if !showsSidebar {
+        controlStrip
+      }
 
       ZStack(alignment: .top) {
         transcript
@@ -78,37 +74,27 @@ public struct ConversationColumn: View {
         onSend: onSend
       )
       .padding(.horizontal, Theme.Metric.conversationInset)
-      .padding(.bottom, Theme.Metric.composerBottomInset)
+      .padding(.bottom, Theme.Metric.composerBottomInset + Theme.Metric.windowInset)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.Palette.surface)
   }
 
   private var controlStrip: some View {
-    HStack(spacing: 4) {
+    HStack(spacing: 10) {
       if !showsSidebar {
-        IconButton(systemName: "sidebar.left", label: "展开侧栏", action: onToggleSidebar)
+        IconButton(systemName: "sidebar.left", label: "展开侧栏", action: onShowSidebar)
+        Avatar(initial: String(title.prefix(1)), tint: Theme.Palette.avatarTint(tintIndex), size: 24)
+        Text(title)
+          .font(Theme.TypeScale.cardTitle)
+          .foregroundStyle(Theme.Palette.textSecondary)
+          .transition(.opacity)
       }
       Spacer(minLength: 0)
-      if !showsSidebar {
-        HStack(spacing: 8) {
-          Avatar(initial: String(title.prefix(1)), tint: Theme.Palette.avatarTint(tintIndex), size: 22)
-          Text(title)
-            .font(Theme.TypeScale.cardTitle)
-            .foregroundStyle(Theme.Palette.textSecondary)
-        }
-        .transition(.opacity)
-      }
-      Spacer(minLength: 0)
-      if showsInspector {
-        IconButton(systemName: "sidebar.right", label: "收起检查器", action: onToggleInspector)
-      } else {
-        IconButton(systemName: "sidebar.right", label: "展开检查器", action: onToggleInspector)
-      }
     }
-    .padding(.horizontal, Theme.Metric.conversationInset - 12)
-    .padding(.top, 8)
-    .frame(height: 44)
+    .padding(.horizontal, Theme.Metric.conversationInset - 8)
+    .padding(.top, Theme.Metric.windowInset + 2)
+    .frame(height: Theme.Metric.windowInset + 40)
   }
 
   private var transcript: some View {
@@ -123,7 +109,7 @@ public struct ConversationColumn: View {
         .frame(maxWidth: Theme.Metric.conversationMaxContentWidth, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.Metric.conversationInset)
-        .padding(.top, 10)
+        .padding(.top, showsSidebar ? Theme.Metric.windowInset + 6 : 6)
         .padding(.bottom, 12)
         .animation(.easeOut(duration: 0.2), value: entries.count)
       }

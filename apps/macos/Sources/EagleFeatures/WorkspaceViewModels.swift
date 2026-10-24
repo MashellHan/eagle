@@ -1,12 +1,27 @@
 import EagleDesign
+import SwiftUI
 import Foundation
 import Combine
 
 /// Static demo content so the shell and the template library can be judged
 /// before any real Herdr data is wired in.
+public struct WorkspaceGroup: Identifiable, Hashable, Sendable {
+  public let id: String
+  public var title: String
+  public var count: Int?
+  public var items: [SidebarItem]
+
+  public init(id: String, title: String, count: Int? = nil, items: [SidebarItem]) {
+    self.id = id
+    self.title = title
+    self.count = count
+    self.items = items
+  }
+}
+
 public enum MockWorkspace {
-  public static let groups: [SidebarGroup] = [
-    SidebarGroup(id: "secretariat", title: "秘书处", items: [
+  public static let groups: [WorkspaceGroup] = [
+    WorkspaceGroup(id: "secretariat", title: "秘书处", items: [
       SidebarItem(
         id: "investigator", title: "首席调查官",
         subtitle: "哥，最值得借鉴的是 OpenClaw 的聊天界面模块...", tintIndex: 0),
@@ -38,7 +53,7 @@ public enum MockWorkspace {
         id: "finance", title: "财务助手",
         subtitle: "规则已写进知识库；脚本也是按「远期」标识...", tag: "Personal", tintIndex: 4),
     ]),
-    SidebarGroup(id: "news", title: "新闻组", count: 9, items: [
+    WorkspaceGroup(id: "news", title: "新闻组", count: 9, items: [
       SidebarItem(
         id: "translator", title: "首席翻译官",
         subtitle: "已经发给 @博客秘书 了，附上了终稿路径、Xra...", tag: "News", tintIndex: 3),
@@ -52,7 +67,7 @@ public enum MockWorkspace {
         id: "research", title: "调研助手",
         subtitle: "查到 4 家同类产品的定价，最低的是按席位计费。", tag: "News", tintIndex: 7),
     ]),
-    SidebarGroup(id: "review", title: "审查组", count: 4, items: [
+    WorkspaceGroup(id: "review", title: "审查组", count: 4, items: [
       SidebarItem(
         id: "deps", title: "依赖修复专家",
         subtitle: "第一批 8 个仓库已经开始修了，每小时给你发一次进度",
@@ -64,7 +79,7 @@ public enum MockWorkspace {
         id: "codex", title: "Codex 审查",
         subtitle: "PR #854 第 1 轮通过，没有需要追加的修改。", tag: "GitHub", tintIndex: 1),
     ]),
-    SidebarGroup(id: "ops", title: "运维组", items: [
+    WorkspaceGroup(id: "ops", title: "运维组", items: [
       SidebarItem(
         id: "build", title: "构建守护",
         subtitle: "main 分支 3 次构建失败，都是同一个快照测试。", tintIndex: 6),
@@ -157,18 +172,33 @@ public enum MockWorkspace {
 }
 
 /// Left column state. Later this list is built from `/api/v1/overview`, one
-/// Herdr Space per conversation.
+/// Herdr Space per conversation. Group expansion and group/conversation editing
+/// live here so the views stay dumb.
 public final class WorkspaceListViewModel: ObservableObject {
-  @Published public var groups: [SidebarGroup]
+  @Published public var groups: [WorkspaceGroup]
+  @Published public var expanded: Set<String>
   @Published public var selection: String?
 
-  public init(groups: [SidebarGroup] = MockWorkspace.groups, selection: String? = "deps") {
+  public init(groups: [WorkspaceGroup] = MockWorkspace.groups, selection: String? = "deps") {
     self.groups = groups
+    self.expanded = Set(groups.map(\.id))
     self.selection = selection
   }
 
   public func select(_ id: String) {
     selection = id
+  }
+
+  public var sections: [SidebarSection] {
+    groups.map { group in
+      SidebarSection(
+        id: group.id,
+        title: group.title,
+        count: group.count,
+        isExpanded: expanded.contains(group.id),
+        items: group.items
+      )
+    }
   }
 
   public var selectedItem: SidebarItem? {
@@ -177,6 +207,112 @@ public final class WorkspaceListViewModel: ObservableObject {
 
   public var totalConversations: Int {
     groups.reduce(0) { $0 + $1.items.count }
+  }
+
+  public func toggleSection(_ id: String) {
+    if expanded.contains(id) {
+      expanded.remove(id)
+    } else {
+      expanded.insert(id)
+    }
+  }
+
+  public func createSection() {
+    var index = 1
+    var id = "group-\(index)"
+    while groups.contains(where: { $0.id == id }) {
+      index += 1
+      id = "group-\(index)"
+    }
+    groups.append(WorkspaceGroup(id: id, title: "新分组 \(index)", items: []))
+    expanded.insert(id)
+  }
+
+  public func renameSection(_ id: String, to title: String) {
+    guard let index = groups.firstIndex(where: { $0.id == id }) else { return }
+    let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return }
+    groups[index].title = trimmed
+  }
+
+  public func deleteSection(_ id: String) {
+    guard let index = groups.firstIndex(where: { $0.id == id }) else { return }
+    let removed = groups.remove(at: index)
+    expanded.remove(id)
+    if let selection, removed.items.contains(where: { $0.id == selection }) {
+      self.selection = groups.flatMap(\.items).first?.id
+    }
+  }
+
+  public func renameItem(_ id: String, to title: String) {
+    let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return }
+    for groupIndex in groups.indices {
+      guard let itemIndex = groups[groupIndex].items.firstIndex(where: { $0.id == id }) else { continue }
+      let item = groups[groupIndex].items[itemIndex]
+      groups[groupIndex].items[itemIndex] = SidebarItem(
+        id: item.id,
+        title: trimmed,
+        subtitle: item.subtitle,
+        tag: item.tag,
+        tintIndex: item.tintIndex
+      )
+      return
+    }
+  }
+
+  public func deleteItem(_ id: String) {
+    for groupIndex in groups.indices {
+      guard let itemIndex = groups[groupIndex].items.firstIndex(where: { $0.id == id }) else { continue }
+      groups[groupIndex].items.remove(at: itemIndex)
+      if selection == id {
+        selection = groups.flatMap(\.items).first?.id
+      }
+      return
+    }
+  }
+}
+
+/// Window layout state: column widths and collapse flags, driven by the
+/// draggable dividers and the collapse buttons.
+public final class ShellLayoutViewModel: ObservableObject {
+  @Published public var sidebarWidth: CGFloat
+  @Published public var inspectorWidth: CGFloat
+  @Published public var showsSidebar: Bool
+  @Published public var showsInspector: Bool
+
+  public init(
+    sidebarWidth: CGFloat = Theme.Metric.sidebarWidth,
+    inspectorWidth: CGFloat = Theme.Metric.inspectorWidth,
+    showsSidebar: Bool = true,
+    showsInspector: Bool = true
+  ) {
+    self.sidebarWidth = sidebarWidth
+    self.inspectorWidth = inspectorWidth
+    self.showsSidebar = showsSidebar
+    self.showsInspector = showsInspector
+  }
+
+  public func resizeSidebar(by delta: CGFloat) {
+    sidebarWidth = min(
+      Theme.Metric.sidebarMaxWidth,
+      max(Theme.Metric.sidebarMinWidth, sidebarWidth + delta)
+    )
+  }
+
+  public func resizeInspector(by delta: CGFloat) {
+    inspectorWidth = min(
+      Theme.Metric.inspectorMaxWidth,
+      max(Theme.Metric.inspectorMinWidth, inspectorWidth - delta)
+    )
+  }
+
+  public func toggleSidebar() {
+    showsSidebar.toggle()
+  }
+
+  public func toggleInspector() {
+    showsInspector.toggle()
   }
 }
 

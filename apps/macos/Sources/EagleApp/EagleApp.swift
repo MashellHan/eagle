@@ -10,7 +10,7 @@ struct EagleApp: App {
   var body: some Scene {
     WindowGroup("Eagle") {
       WorkspaceShellView()
-        .frame(minWidth: 1160, minHeight: 700)
+        .frame(minWidth: 1240, minHeight: 700)
         .background(WindowConfigurator())
         .preferredColorScheme(.light)
     }

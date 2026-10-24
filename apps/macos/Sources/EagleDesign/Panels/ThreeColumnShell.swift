@@ -1,23 +1,35 @@
 import SwiftUI
 
-/// The whole window: sidebar, conversation, inspector with hairline dividers.
-/// Both side columns collapse with a slide and spring.
+/// The whole window: sidebar, conversation, inspector. Side columns collapse
+/// with a slide; their dividers drag to resize.
 public struct ThreeColumnShell<Sidebar: View, Conversation: View, Inspector: View>: View {
   private let sidebar: Sidebar
   private let conversation: Conversation
   private let inspector: Inspector
   private let showsSidebar: Bool
   private let showsInspector: Bool
+  private let sidebarWidth: CGFloat
+  private let inspectorWidth: CGFloat
+  private let onResizeSidebar: (CGFloat) -> Void
+  private let onResizeInspector: (CGFloat) -> Void
 
   public init(
     showsSidebar: Bool = true,
     showsInspector: Bool = true,
+    sidebarWidth: CGFloat = Theme.Metric.sidebarWidth,
+    inspectorWidth: CGFloat = Theme.Metric.inspectorWidth,
+    onResizeSidebar: @escaping (CGFloat) -> Void = { _ in },
+    onResizeInspector: @escaping (CGFloat) -> Void = { _ in },
     @ViewBuilder sidebar: () -> Sidebar,
     @ViewBuilder conversation: () -> Conversation,
     @ViewBuilder inspector: () -> Inspector
   ) {
     self.showsSidebar = showsSidebar
     self.showsInspector = showsInspector
+    self.sidebarWidth = sidebarWidth
+    self.inspectorWidth = inspectorWidth
+    self.onResizeSidebar = onResizeSidebar
+    self.onResizeInspector = onResizeInspector
     self.sidebar = sidebar()
     self.conversation = conversation()
     self.inspector = inspector()
@@ -27,18 +39,20 @@ public struct ThreeColumnShell<Sidebar: View, Conversation: View, Inspector: Vie
     HStack(spacing: 0) {
       if showsSidebar {
         sidebar
-          .frame(width: Theme.Metric.sidebarWidth)
+          .frame(width: sidebarWidth)
           .transition(.move(edge: .leading).combined(with: .opacity))
-        PanelDivider(vertical: true).transition(.opacity)
+        ResizeHandle(onDrag: onResizeSidebar)
+          .transition(.opacity)
       }
 
       conversation
         .frame(maxWidth: .infinity)
 
       if showsInspector {
-        PanelDivider(vertical: true).transition(.opacity)
+        ResizeHandle(onDrag: onResizeInspector)
+          .transition(.opacity)
         inspector
-          .frame(width: Theme.Metric.inspectorWidth)
+          .frame(width: inspectorWidth)
           .transition(.move(edge: .trailing).combined(with: .opacity))
       }
     }

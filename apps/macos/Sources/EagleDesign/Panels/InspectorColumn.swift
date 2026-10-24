@@ -35,6 +35,7 @@ public struct InspectorColumn: View {
   private let name: String
   private let subtitle: String
   private let tintIndex: Int
+  private let width: CGFloat
   private let artifacts: [InspectorArtifact]
   private let jobs: [InspectorJob]
   @Binding private var tab: Tab
@@ -47,6 +48,7 @@ public struct InspectorColumn: View {
     name: String,
     subtitle: String,
     tintIndex: Int,
+    width: CGFloat = Theme.Metric.inspectorWidth,
     artifacts: [InspectorArtifact],
     jobs: [InspectorJob],
     tab: Binding<Tab>,
@@ -58,6 +60,7 @@ public struct InspectorColumn: View {
     self.name = name
     self.subtitle = subtitle
     self.tintIndex = tintIndex
+    self.width = width
     self.artifacts = artifacts
     self.jobs = jobs
     self._tab = tab
@@ -74,8 +77,8 @@ public struct InspectorColumn: View {
         IconButton(systemName: "square.and.arrow.up", label: "分享", action: onShare)
         IconButton(systemName: "xmark", label: "收起检查器", action: onCollapse)
       }
-      .padding(.horizontal, Theme.Metric.panelInset - 8)
-      .padding(.top, 10)
+      .padding(.horizontal, Theme.Metric.panelInset - 6)
+      .padding(.top, Theme.Metric.windowInset + 2)
       .frame(height: Theme.Metric.headerHeight)
 
       Identity(name: name, subtitle: subtitle, tintIndex: tintIndex)
@@ -90,12 +93,12 @@ public struct InspectorColumn: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.easeOut(duration: 0.18), value: tab)
         .padding(.horizontal, Theme.Metric.panelInset)
-        .padding(.top, 18)
-        .padding(.bottom, 24)
+        .padding(.top, 16)
+        .padding(.bottom, 20)
       }
       .scrollEdgeFades(Theme.Palette.surface)
     }
-    .frame(width: Theme.Metric.inspectorWidth)
+    .frame(width: width)
     .frame(maxHeight: .infinity)
     .background(Theme.Palette.surface)
   }
@@ -163,7 +166,7 @@ private struct Identity: View {
       }
     }
     .frame(maxWidth: .infinity)
-    .padding(.top, 22)
-    .padding(.bottom, 22)
+    .padding(.top, 16)
+    .padding(.bottom, 18)
   }
 }

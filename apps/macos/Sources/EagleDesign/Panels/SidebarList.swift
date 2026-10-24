@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Presentation data for the left column. Deliberately dumb: the feature layer
-/// maps Herdr Spaces onto these rows later.
+/// owns the groups and maps them onto these sections.
 public struct SidebarItem: Identifiable, Hashable, Sendable {
   public let id: String
   public let title: String
@@ -18,16 +18,18 @@ public struct SidebarItem: Identifiable, Hashable, Sendable {
   }
 }
 
-public struct SidebarGroup: Identifiable, Hashable, Sendable {
+public struct SidebarSection: Identifiable, Hashable, Sendable {
   public let id: String
   public let title: String
   public let count: Int?
+  public let isExpanded: Bool
   public let items: [SidebarItem]
 
-  public init(id: String, title: String, count: Int? = nil, items: [SidebarItem]) {
+  public init(id: String, title: String, count: Int? = nil, isExpanded: Bool = true, items: [SidebarItem]) {
     self.id = id
     self.title = title
     self.count = count
+    self.isExpanded = isExpanded
     self.items = items
   }
 }

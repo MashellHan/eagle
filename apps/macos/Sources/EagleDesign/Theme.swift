@@ -36,31 +36,36 @@ public enum Theme {
 
   public enum Metric {
     public static let sidebarWidth: CGFloat = 411
+    public static let sidebarMinWidth: CGFloat = 300
+    public static let sidebarMaxWidth: CGFloat = 540
     public static let inspectorWidth: CGFloat = 330
+    public static let inspectorMinWidth: CGFloat = 280
+    public static let inspectorMaxWidth: CGFloat = 460
     public static let conversationMaxContentWidth: CGFloat = 720
 
     /// Room for the traffic lights when the title bar is hidden.
-    public static let trafficLightInset: CGFloat = 30
-    public static let headerHeight: CGFloat = 48
-    public static let sidebarInset: CGFloat = 22
-    public static let rowInset: CGFloat = 12
-    public static let panelInset: CGFloat = 26
-    public static let conversationInset: CGFloat = 40
-    public static let sectionGap: CGFloat = 24
-    public static let sectionHeaderHeight: CGFloat = 30
-    public static let turnGap: CGFloat = 28
+    public static let trafficLightInset: CGFloat = 28
+    public static let windowInset: CGFloat = 8
+    public static let headerHeight: CGFloat = 44
+    public static let sidebarInset: CGFloat = 14
+    public static let rowInset: CGFloat = 10
+    public static let panelInset: CGFloat = 16
+    public static let conversationInset: CGFloat = 24
+    public static let sectionGap: CGFloat = 18
+    public static let sectionHeaderHeight: CGFloat = 28
+    public static let turnGap: CGFloat = 24
 
-    public static let rowHeight: CGFloat = 48
-    public static let inspectorRowHeight: CGFloat = 38
-    public static let composerHeight: CGFloat = 52
-    public static let composerBottomInset: CGFloat = 24
+    public static let rowHeight: CGFloat = 50
+    public static let inspectorRowHeight: CGFloat = 40
+    public static let composerHeight: CGFloat = 54
+    public static let composerBottomInset: CGFloat = 14
 
-    public static let avatarRow: CGFloat = 32
-    public static let avatarProfile: CGFloat = 60
-    public static let avatarInspector: CGFloat = 72
-    public static let avatarNote: CGFloat = 16
-    public static let iconButton: CGFloat = 30
-    public static let hitTarget: CGFloat = 26
+    public static let avatarRow: CGFloat = 34
+    public static let avatarProfile: CGFloat = 64
+    public static let avatarInspector: CGFloat = 76
+    public static let avatarNote: CGFloat = 18
+    public static let iconButton: CGFloat = 32
+    public static let hitTarget: CGFloat = 28
 
     public static let cardRadius: CGFloat = 12
     public static let controlRadius: CGFloat = 9
@@ -70,18 +75,18 @@ public enum Theme {
   }
 
   public enum TypeScale {
-    public static let rowTitle = Font.system(size: 14, weight: .semibold)
-    public static let rowSubtitle = Font.system(size: 13)
-    public static let sectionLabel = Font.system(size: 12, weight: .medium)
-    public static let body = Font.system(size: 14)
-    public static let bodyEmphasis = Font.system(size: 14, weight: .medium)
-    public static let bubble = Font.system(size: 14)
-    public static let note = Font.system(size: 12)
-    public static let composer = Font.system(size: 14)
-    public static let inspectorTitle = Font.system(size: 17, weight: .semibold)
-    public static let cardTitle = Font.system(size: 13, weight: .medium)
-    public static let mono = Font.system(size: 12.5, design: .monospaced)
-    public static let pill = Font.system(size: 11, weight: .medium)
+    public static let rowTitle = Font.system(size: 15, weight: .semibold)
+    public static let rowSubtitle = Font.system(size: 14)
+    public static let sectionLabel = Font.system(size: 13, weight: .medium)
+    public static let body = Font.system(size: 15)
+    public static let bodyEmphasis = Font.system(size: 15, weight: .medium)
+    public static let bubble = Font.system(size: 15)
+    public static let note = Font.system(size: 13)
+    public static let composer = Font.system(size: 15)
+    public static let inspectorTitle = Font.system(size: 18, weight: .semibold)
+    public static let cardTitle = Font.system(size: 14, weight: .medium)
+    public static let mono = Font.system(size: 13, design: .monospaced)
+    public static let pill = Font.system(size: 11.5, weight: .medium)
   }
 }
 
