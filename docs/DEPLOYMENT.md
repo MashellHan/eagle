@@ -80,6 +80,11 @@ npx wrangler secret bulk /secure/path/platform-secrets.json --config apps/web/wr
 npm run deploy
 ```
 
+`npm run deploy` stays the manual path; `.github/workflows/deploy.yml` also
+deploys every green `Check` on main through the `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` secrets, then polls `/api/live` for the exact revision
+and skips with a notice when the secrets are absent.
+
 The Worker owns `eagle.hexly.ai` as a custom domain. `https://eagle-ingest.hexly.ai/api/live` publicly probes the first configured machine DO and returns no inventory. The read-only reviewers are advisory; the integrator commits on `main`. See [checkpoints](CHECKPOINTS.md) for real data verification and [API](API.md) for ingestion/query semantics.
 
 ## AI daily reports

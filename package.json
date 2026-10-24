@@ -24,7 +24,9 @@
     "deploy": "node scripts/deploy.ts",
     "agent": "node packages/agent/cli.ts",
     "db:local": "wrangler d1 migrations apply eagle --local --config apps/web/wrangler.jsonc",
-    "db:remote": "wrangler d1 migrations apply eagle --remote --config apps/web/wrangler.jsonc"
+    "db:remote": "wrangler d1 migrations apply eagle --remote --config apps/web/wrangler.jsonc",
+    "prepare": "sh scripts/install-hooks.sh",
+    "verify": "npm run check && npm run test:browser"
   },
   "overrides": {
     "undici": "7.29.1",

@@ -107,10 +107,13 @@ requirements. Configuration evidence is separate from successful execution.
 | G2 | Planned: dependency and secret scanning with missing required tools failing. No scanner step is configured in `check.yml` or a project push hook. |
 | D1 | Planned: isolated per-run test state, local targets and guards before fixture writes/cleanup. API tests allocate temporary storage; browser tests use a dedicated port/cache. Complete fixture/marker, daily-dev separation and cleanup proof remain unverified. |
 
-There are no tracked project commit/push hooks or manifest hook installation.
-Target: unified L1 on the index snapshot in pre-commit (<30s); applicable L2/G2
-on stdin push refs in pre-push (<3min). These targets are not implemented by CI
-alone. Never lower thresholds, skip/focus tests, bypass hooks or suppress failures.
+Hooks live in `.githooks/` and are installed by `npm ci` through the `prepare`
+script (`core.hooksPath`). Pre-commit lints the staged snapshot with Biome and
+swift-format; pre-push runs `npm run check`, the browser suite and the macOS
+package tests. `.github/workflows/check.yml` runs the same gates in CI and
+`deploy.yml` deploys main after a green Check, skipping with a notice until
+`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets exist. Never lower
+thresholds, skip/focus tests, bypass hooks or suppress failures.
 
 ## Resources and operations
 
