@@ -28,8 +28,8 @@ public struct WorkspaceShellView: View {
       showsInspector: layout.showsInspector,
       sidebarWidth: layout.sidebarWidth,
       inspectorWidth: layout.inspectorWidth,
-      onResizeSidebar: { layout.resizeSidebar(by: $0) },
-      onResizeInspector: { layout.resizeInspector(by: $0) }
+      onResizeSidebar: { layout.setSidebarWidth($0) },
+      onResizeInspector: { layout.setInspectorWidth($0) }
     ) {
       SidebarPanel(
         profileInitial: "监",

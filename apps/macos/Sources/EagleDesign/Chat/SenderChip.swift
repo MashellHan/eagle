@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Attribution chip shown above the first assistant turn: white capsule with
-/// the participant avatar and name, floating on the right of the column.
+/// Attribution chip shown above the first assistant turn: a soft capsule with
+/// the participant avatar and name, centred over the column.
 public struct SenderChip: View {
   private let name: String
   private let tintIndex: Int
@@ -12,23 +12,26 @@ public struct SenderChip: View {
   }
 
   public var body: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: 9) {
       Avatar(
         initial: String(name.prefix(1)),
         tint: Theme.Palette.avatarTint(tintIndex),
-        size: 22,
+        size: 24,
         shape: .blob
       )
       Text(name)
         .font(Theme.TypeScale.cardTitle)
         .foregroundStyle(Theme.Palette.textPrimary)
     }
-    .padding(.leading, 6)
-    .padding(.trailing, 14)
-    .padding(.vertical, 6)
-    .background(Capsule().fill(Theme.Palette.card))
-    .overlay(Capsule().strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline))
-    .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
+    .padding(.leading, 8)
+    .padding(.trailing, 16)
+    .padding(.vertical, 8)
+    .background(Capsule(style: .continuous).fill(Theme.Palette.card))
+    .overlay(
+      Capsule(style: .continuous)
+        .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+    )
+    .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
     .accessibilityElement(children: .combine)
   }
 }

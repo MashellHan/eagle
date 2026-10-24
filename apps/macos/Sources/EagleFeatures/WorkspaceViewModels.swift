@@ -293,18 +293,12 @@ public final class ShellLayoutViewModel: ObservableObject {
     self.showsInspector = showsInspector
   }
 
-  public func resizeSidebar(by delta: CGFloat) {
-    sidebarWidth = min(
-      Theme.Metric.sidebarMaxWidth,
-      max(Theme.Metric.sidebarMinWidth, sidebarWidth + delta)
-    )
+  public func setSidebarWidth(_ width: CGFloat) {
+    sidebarWidth = min(Theme.Metric.sidebarMaxWidth, max(Theme.Metric.sidebarMinWidth, width))
   }
 
-  public func resizeInspector(by delta: CGFloat) {
-    inspectorWidth = min(
-      Theme.Metric.inspectorMaxWidth,
-      max(Theme.Metric.inspectorMinWidth, inspectorWidth - delta)
-    )
+  public func setInspectorWidth(_ width: CGFloat) {
+    inspectorWidth = min(Theme.Metric.inspectorMaxWidth, max(Theme.Metric.inspectorMinWidth, width))
   }
 
   public func toggleSidebar() {

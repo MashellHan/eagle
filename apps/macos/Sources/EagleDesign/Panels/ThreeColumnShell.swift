@@ -41,16 +41,35 @@ public struct ThreeColumnShell<Sidebar: View, Conversation: View, Inspector: Vie
         sidebar
           .frame(width: sidebarWidth)
           .transition(.move(edge: .leading).combined(with: .opacity))
-        ResizeHandle(onDrag: onResizeSidebar)
-          .transition(.opacity)
       }
 
       conversation
         .frame(maxWidth: .infinity)
+        .overlay(alignment: .leading) {
+          if showsSidebar {
+            ResizeHandle(
+              width: sidebarWidth,
+              minimum: Theme.Metric.sidebarMinWidth,
+              maximum: Theme.Metric.sidebarMaxWidth,
+              onChange: onResizeSidebar
+            )
+            .offset(x: -5)
+          }
+        }
+        .overlay(alignment: .trailing) {
+          if showsInspector {
+            ResizeHandle(
+              width: inspectorWidth,
+              minimum: Theme.Metric.inspectorMinWidth,
+              maximum: Theme.Metric.inspectorMaxWidth,
+              inverted: true,
+              onChange: onResizeInspector
+            )
+            .offset(x: 5)
+          }
+        }
 
       if showsInspector {
-        ResizeHandle(onDrag: onResizeInspector)
-          .transition(.opacity)
         inspector
           .frame(width: inspectorWidth)
           .transition(.move(edge: .trailing).combined(with: .opacity))

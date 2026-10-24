@@ -59,8 +59,10 @@ struct WindowConfigurator: NSViewRepresentable {
     let view = NSView()
     DispatchQueue.main.async {
       view.window?.isMovableByWindowBackground = true
+      view.window?.styleMask.insert(.fullSizeContentView)
       view.window?.titlebarAppearsTransparent = true
       view.window?.titleVisibility = .hidden
+      view.window?.toolbar = nil
     }
     return view
   }

@@ -1,46 +1,59 @@
 import AppKit
 import SwiftUI
 
-/// One-pixel divider that can be dragged horizontally. Reports incremental
-/// translation so the owning view model keeps the width.
+/// One-pixel divider that drags a column width. It reports the *absolute* width
+/// from the drag origin measured in the global coordinate space, so the layout
+/// cannot feed back into the gesture and jitter.
 public struct ResizeHandle: View {
-  private let onDrag: (CGFloat) -> Void
-  @LocalState private var active = false
-  @LocalState private var lastTranslation: CGFloat = 0
+  private let width: CGFloat
+  private let minimum: CGFloat
+  private let maximum: CGFloat
+  private let inverted: Bool
+  private let onChange: (CGFloat) -> Void
 
-  public init(onDrag: @escaping (CGFloat) -> Void) {
-    self.onDrag = onDrag
+  @LocalState private var active = false
+  @LocalState private var startX: CGFloat?
+
+  public init(
+    width: CGFloat,
+    minimum: CGFloat,
+    maximum: CGFloat,
+    inverted: Bool = false,
+    onChange: @escaping (CGFloat) -> Void
+  ) {
+    self.width = width
+    self.minimum = minimum
+    self.maximum = maximum
+    self.inverted = inverted
+    self.onChange = onChange
   }
 
   public var body: some View {
     ZStack {
       Rectangle()
-        .fill(active ? Theme.Palette.accent.opacity(0.55) : Theme.Palette.line)
+        .fill(active ? Theme.Palette.accent.opacity(0.6) : Theme.Palette.line)
         .frame(width: active ? 2 : Theme.Metric.hairline)
       Rectangle()
         .fill(Color.clear)
-        .frame(width: 10)
+        .frame(width: 11)
         .contentShape(Rectangle())
     }
-    .frame(width: 10)
+    .frame(width: 11)
     .onHover { hovering in
       active = hovering
-      if hovering {
-        NSCursor.resizeLeftRight.push()
-      } else {
-        NSCursor.pop()
-      }
+      if hovering { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
     }
     .gesture(
-      DragGesture(minimumDistance: 1)
+      DragGesture(minimumDistance: 0, coordinateSpace: .global)
         .onChanged { value in
-          let delta = value.translation.width - lastTranslation
-          lastTranslation = value.translation.width
-          onDrag(delta)
+          let origin = startX ?? value.location.x
+          if startX == nil { startX = origin }
+          let delta = value.location.x - origin
+          let target = inverted ? width - delta : width + delta
+          onChange(min(max(target, minimum), maximum))
         }
-        .onEnded { _ in lastTranslation = 0 }
+        .onEnded { _ in startX = nil }
     )
     .accessibilityLabel("调整栏宽")
-    .accessibilityAdjustableAction { _ in }
   }
 }

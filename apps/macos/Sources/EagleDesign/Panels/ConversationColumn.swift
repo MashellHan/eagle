@@ -129,6 +129,7 @@ public struct ConversationColumn: View {
           HStack {
             Spacer(minLength: 0)
             SenderChip(name: sender.name, tintIndex: sender.tintIndex)
+            Spacer(minLength: 0)
           }
         }
         AssistantTurn(blocks)

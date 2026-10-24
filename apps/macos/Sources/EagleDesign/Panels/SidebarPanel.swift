@@ -243,15 +243,17 @@ public struct SidebarPanel: View {
     }
   }
 
+  /// No card and no border: the avatar lines up with the list avatars at the
+  /// shared 20 pt content inset.
   private var footer: some View {
-    HStack(spacing: 10) {
+    HStack(spacing: Theme.Metric.rowAvatarGap) {
       Avatar(initial: "Z", tint: Theme.Palette.avatarTint(2), size: Theme.Metric.avatarRow)
       Text(userName)
         .font(Theme.TypeScale.rowTitle)
         .foregroundStyle(Theme.Palette.textPrimary)
         .lineLimit(1)
       Spacer(minLength: 0)
-      HStack(spacing: 10) {
+      HStack(spacing: 12) {
         Image(systemName: "bell")
           .font(.system(size: 13))
           .foregroundStyle(Theme.Palette.textSecondary)
@@ -260,17 +262,9 @@ public struct SidebarPanel: View {
           .foregroundStyle(Theme.Palette.textSecondary)
       }
     }
-    .padding(.horizontal, 14)
+    .padding(.leading, Theme.Metric.contentInset)
+    .padding(.trailing, Theme.Metric.contentInset)
     .frame(height: Theme.Metric.footerHeight)
-    .background(
-      RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
-        .fill(Theme.Palette.card)
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
-        .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
-    )
-    .padding(.horizontal, Theme.Metric.contentInset)
     .padding(.bottom, Theme.Metric.footerBottom)
   }
 
