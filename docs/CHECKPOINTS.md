@@ -1454,3 +1454,8 @@ serving and the first catalogue-derived production Cron observation.
   `CLOUDFLARE_API_TOKEN` are now configured and this push exercises the path.
 - Unchanged: no D1 migration in this round, no secrets rotated, no npm
   publication and no change to the Agent.
+- Result: `Check` 40061505182 succeeded at `b96535a` (test + macos jobs), and
+  `Deploy` 40061775145 uploaded Worker version
+  `a4cff5c9-6ad6-4c30-bfe4-5defcd79895b`, then its `/api/live` poll reported
+  `b96535aa266c6fc91342a49e13c9056cd8a9545d`. `eagle.hexly.ai` returns 200.
+  This is the first deployment performed by CI/CD rather than by hand.
