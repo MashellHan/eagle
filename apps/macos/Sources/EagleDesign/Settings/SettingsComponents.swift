@@ -184,11 +184,11 @@ public struct DeviceRow: View {
   }
 
   public var body: some View {
-    HStack(spacing: 14) {
+    HStack(spacing: Theme.Metric.rowAvatarGap) {
       Image(systemName: symbol)
-        .font(.system(size: 18, weight: .regular))
+        .font(.system(size: 15, weight: .regular))
         .foregroundStyle(Theme.Palette.textSecondary)
-        .frame(width: 24)
+        .frame(width: Theme.Metric.avatarRow)
 
       VStack(alignment: .leading, spacing: 5) {
         HStack(spacing: 6) {

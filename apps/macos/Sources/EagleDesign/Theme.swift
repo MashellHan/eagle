@@ -64,7 +64,7 @@ public enum Theme {
 
     public static let contentInset: CGFloat = 20
     /// Rows sit on cards inset from the panel edges; avatars keep the 20 pt line.
-    public static let listCardInset: CGFloat = 8
+    public static let listCardInset: CGFloat = 12
     public static let rowContentInset: CGFloat = contentInset - listCardInset
     /// Every scrolling surface fades over the same distance.
     public static let edgeFadeHeight: CGFloat = 20
