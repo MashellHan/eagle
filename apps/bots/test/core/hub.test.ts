@@ -483,3 +483,29 @@ test("a snapshot that exceeds the byte budget also becomes the anchor", () => {
   );
   assert.equal(events.degraded(subscription.id), false);
 });
+
+test("adjacent appends for different block indexes are not merged", () => {
+  const scheduled: (() => void)[] = [];
+  const events = hub({ schedule: (run) => scheduled.push(run) });
+  const seen: unknown[] = [];
+  events.subscribe((event) => {
+    if (event.type === "delta") seen.push(event.changes);
+  });
+  events.publish({
+    type: "delta",
+    trace,
+    messageId: "p_a1",
+    changes: [{ kind: "text", index: 0, append: "A" }],
+  });
+  events.publish({
+    type: "delta",
+    trace,
+    messageId: "p_a1",
+    changes: [{ kind: "text", index: 1, append: "B" }],
+  });
+  scheduled.shift()?.();
+  assert.deepEqual(seen[0], [
+    { kind: "text", index: 0, append: "A" },
+    { kind: "text", index: 1, append: "B" },
+  ]);
+});
