@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// One conversation row: avatar, bold title, muted subtitle, optional tag.
+/// One conversation row on the 20 / 34 / 58 grid measured from the reference:
+/// 20 pt inset, 34 pt avatar, 58 pt pitch, text at 65 pt.
 public struct ConversationRow: View {
   private let item: SidebarItem
   private let selected: Bool
@@ -12,8 +13,12 @@ public struct ConversationRow: View {
   }
 
   public var body: some View {
-    HStack(spacing: 11) {
-      Avatar(initial: String(item.title.prefix(1)), tint: Theme.Palette.avatarTint(item.tintIndex))
+    HStack(spacing: Theme.Metric.rowAvatarGap) {
+      Avatar(
+        initial: String(item.title.prefix(1)),
+        tint: Theme.Palette.avatarTint(item.tintIndex),
+        size: Theme.Metric.avatarRow
+      )
       VStack(alignment: .leading, spacing: 3) {
         HStack(spacing: 7) {
           Text(item.title)
@@ -26,13 +31,14 @@ public struct ConversationRow: View {
         }
         Text(item.subtitle)
           .font(Theme.TypeScale.rowSubtitle)
-          .foregroundStyle(Theme.Palette.textSecondary)
+          .foregroundStyle(Theme.Palette.textMuted)
           .lineLimit(1)
           .truncationMode(.tail)
       }
       Spacer(minLength: 0)
     }
-    .padding(.horizontal, Theme.Metric.rowInset)
+    .padding(.leading, Theme.Metric.contentInset)
+    .padding(.trailing, 10)
     .frame(height: Theme.Metric.rowHeight)
     .background(
       RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)

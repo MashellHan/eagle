@@ -39,9 +39,9 @@ struct EagleChecks {
     }
 
     print("design tokens")
-    check("sidebar width 411", Theme.Metric.sidebarWidth == 411)
-    check("inspector width 330", Theme.Metric.inspectorWidth == 330)
-    check("row height 50", Theme.Metric.rowHeight == 50)
+    check("sidebar width 374", Theme.Metric.sidebarWidth == 374)
+    check("inspector width 319", Theme.Metric.inspectorWidth == 319)
+    check("row height 58", Theme.Metric.rowHeight == 58)
     check("composer height 54", Theme.Metric.composerHeight == 54)
     check("inspector row height 40", Theme.Metric.inspectorRowHeight == 40)
     check("card radius 12", Theme.Metric.cardRadius == 12)
@@ -49,17 +49,27 @@ struct EagleChecks {
     check("inspector avatar 76", Theme.Metric.avatarInspector == 76)
     check("content width 720", Theme.Metric.conversationMaxContentWidth == 720)
 
+    check("content inset 20", Theme.Metric.contentInset == 20)
+    check("row pitch 58", Theme.Metric.rowHeight == 58)
+    check("section header 24", Theme.Metric.sectionHeaderHeight == 24)
+    check("section gap 22", Theme.Metric.sectionGap == 22)
+    check("profile avatar 55", Theme.Metric.profileAvatar == 55)
+    check("toolbar 36 tall", Theme.Metric.toolbarHeight == 36)
+    check("unread pill 28", Theme.Metric.unreadPillHeight == 28)
+    check("footer card 62", Theme.Metric.footerHeight == 62)
+
     print("palette")
     expectColor("canvas", Theme.Palette.canvas, 0xF7F7F5)
     expectColor("surface", Theme.Palette.surface, 0xFFFFFF)
     expectColor("card", Theme.Palette.card, 0xFFFFFF)
     expectColor("line", Theme.Palette.line, 0xECECEA)
-    expectColor("textPrimary", Theme.Palette.textPrimary, 0x1F1F1D)
-    expectColor("textSecondary", Theme.Palette.textSecondary, 0x84847F)
+    expectColor("textPrimary", Theme.Palette.textPrimary, 0x252525)
+    expectColor("textSecondary", Theme.Palette.textSecondary, 0x757575)
+    expectColor("textMuted", Theme.Palette.textMuted, 0xA7A7A7)
     expectColor("accent", Theme.Palette.accent, 0x3B7DCD)
     expectColor("accentFill", Theme.Palette.accentFill, 0x4FA46A)
     expectColor("accentStrong", Theme.Palette.accentStrong, 0x58B378)
-    check("avatar tints rotate", Theme.Palette.avatarTints.count == 8)
+    check("avatar tints rotate", Theme.Palette.avatarTints.count == 7)
 
     // LocalState wraps a StateObject, which SwiftUI only installs inside a view
     // graph. The box itself is what carries the value, so exercise it directly.

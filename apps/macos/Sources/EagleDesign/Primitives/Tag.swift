@@ -11,7 +11,7 @@ public struct Tag: View {
   public var body: some View {
     Text(text)
       .font(Theme.TypeScale.pill)
-      .foregroundStyle(Theme.Palette.textSecondary)
+      .foregroundStyle(Theme.Palette.textMuted)
       .padding(.horizontal, 6)
       .padding(.vertical, 2)
       .background(
@@ -63,7 +63,6 @@ public struct SectionLabel: View {
           .foregroundStyle(Theme.Palette.textSecondary)
       }
     }
-    .frame(height: Theme.Metric.sectionHeaderHeight, alignment: .bottom)
     .accessibilityElement(children: .combine)
   }
 }

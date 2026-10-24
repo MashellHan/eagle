@@ -26,7 +26,7 @@ public struct IconButton: View {
   public var body: some View {
     Button(action: action) {
       Image(systemName: systemName)
-        .font(.system(size: size * 0.46, weight: .medium))
+        .font(.system(size: size * 0.55, weight: .medium))
         .foregroundStyle(tint)
         .frame(width: size, height: size)
         .background(

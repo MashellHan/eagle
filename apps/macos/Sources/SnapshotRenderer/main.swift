@@ -25,8 +25,8 @@ struct SnapshotRenderer {
 
     capture(
       WorkspaceShellView().preferredColorScheme(.light),
-      size: CGSize(width: 1840, height: 1196),
-      named: "shell-1840x1196",
+      size: CGSize(width: 1728, height: 1082),
+      named: "shell-1728x1082",
       in: directory
     )
     capture(

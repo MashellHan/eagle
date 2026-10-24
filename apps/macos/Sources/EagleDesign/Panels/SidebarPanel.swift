@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Left column: window actions, organization header, collapsible groups with
-/// context-menu editing, unread pill and the current user row.
+/// Left column on the reference grid: traffic lights at (16, 15), toolbar at
+/// 36 pt, profile avatar 55 pt starting at 79, first section header at 214,
+/// 58 pt rows, unread pill at 28 pt and a 62 pt user card.
 public struct SidebarPanel: View {
   private let profileInitial: String
   private let profileName: String
@@ -21,12 +22,12 @@ public struct SidebarPanel: View {
   private let unreadCount: Int
   private let onUnread: () -> Void
   private let userName: String
-  private let reservesTrafficLights: Bool
   private let width: CGFloat
 
   @LocalState private var editingSection: String?
   @LocalState private var editingItem: String?
   @LocalState private var draftTitle = ""
+  @LocalState private var hoveringSection: String?
 
   public init(
     profileInitial: String,
@@ -47,8 +48,7 @@ public struct SidebarPanel: View {
     onCollapse: @escaping () -> Void = {},
     unreadCount: Int = 0,
     onUnread: @escaping () -> Void = {},
-    userName: String = "Zheng Li",
-    reservesTrafficLights: Bool = true
+    userName: String = "Zheng Li"
   ) {
     self.profileInitial = profileInitial
     self.profileName = profileName
@@ -69,40 +69,13 @@ public struct SidebarPanel: View {
     self.unreadCount = unreadCount
     self.onUnread = onUnread
     self.userName = userName
-    self.reservesTrafficLights = reservesTrafficLights
   }
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      header
+      toolbar
       profile
-
-      ScrollViewReader { proxy in
-        ScrollView {
-          VStack(alignment: .leading, spacing: 0) {
-            ForEach(sections) { section in
-              sectionHeader(section)
-              if section.isExpanded {
-                ForEach(section.items) { item in
-                  row(item)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-              }
-            }
-          }
-          .padding(.horizontal, Theme.Metric.sidebarInset - Theme.Metric.rowInset)
-          .padding(.bottom, 12)
-        }
-        .scrollIndicators(.never)
-        .scrollEdgeFades(Theme.Palette.canvas, top: 18, bottom: 18)
-        .overlay(alignment: .bottom) { unreadPill }
-        .onChange(of: selection) {
-          if let selection {
-            withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(selection, anchor: .center) }
-          }
-        }
-      }
-
+      list
       footer
     }
     .frame(width: width)
@@ -110,31 +83,69 @@ public struct SidebarPanel: View {
     .background(Theme.Palette.canvas)
   }
 
-  private var header: some View {
+  /// Traffic lights occupy 0…75 pt; the actions sit on the right edge.
+  private var toolbar: some View {
     HStack(spacing: 2) {
-      IconButton(systemName: "sidebar.left", label: "收起侧栏", action: onCollapse)
       Spacer(minLength: 0)
       IconButton(systemName: "magnifyingglass", label: "搜索", action: onSearch)
       IconButton(systemName: "plus", label: "新建会话", action: onCompose)
-      Menu {
-        Button("新建分组", action: onCreateSection)
-      } label: {
-        Image(systemName: "ellipsis")
-          .font(.system(size: Theme.Metric.iconButton * 0.42, weight: .medium))
-          .foregroundStyle(Theme.Palette.textSecondary)
-          .frame(width: Theme.Metric.iconButton, height: Theme.Metric.iconButton)
-          .contentShape(Rectangle())
-      }
-      .menuStyle(.borderlessButton)
-      .menuIndicator(.hidden)
-      .frame(width: Theme.Metric.iconButton)
-      .accessibilityLabel("更多操作")
+      IconButton(systemName: "sidebar.left", label: "收起侧栏", action: onCollapse)
     }
-    .padding(.horizontal, Theme.Metric.sidebarInset - 8)
-    .padding(.top, reservesTrafficLights ? Theme.Metric.trafficLightInset : 6)
+    .padding(.trailing, 12)
+    .padding(.top, 10)
+    .frame(height: 10 + Theme.Metric.toolbarHeight)
   }
 
-  private func sectionHeader(_ section: SidebarSection) -> some View {
+  private var profile: some View {
+    VStack(spacing: 0) {
+      Avatar(
+        initial: profileInitial,
+        tint: Theme.Palette.avatarTint(1),
+        size: Theme.Metric.profileAvatar,
+        badge: Theme.Palette.avatarTint(3)
+      )
+      .padding(.top, Theme.Metric.profileTop)
+      Text(profileName)
+        .font(Theme.TypeScale.profileName)
+        .foregroundStyle(Theme.Palette.textPrimary)
+        .padding(.top, Theme.Metric.profileNameGap)
+      Text(profilePlan)
+        .font(Theme.TypeScale.profilePlan)
+        .foregroundStyle(Theme.Palette.textMuted)
+        .padding(.top, 3)
+    }
+    .frame(maxWidth: .infinity)
+  }
+
+  private var list: some View {
+    ScrollViewReader { proxy in
+      ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
+          ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+            sectionHeader(section, isFirst: index == 0)
+            if section.isExpanded {
+              ForEach(section.items) { item in
+                row(item)
+                  .transition(.opacity.combined(with: .move(edge: .top)))
+              }
+            }
+          }
+        }
+        .padding(.bottom, 8)
+      }
+      .scrollIndicators(.never)
+      .scrollEdgeFades(Theme.Palette.canvas, top: 0, bottom: 18)
+      .overlay(alignment: .bottom) { unreadPill }
+      .onChange(of: selection) {
+        if let selection {
+          withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(selection, anchor: .center) }
+        }
+      }
+    }
+    .padding(.top, Theme.Metric.listTopGap)
+  }
+
+  private func sectionHeader(_ section: SidebarSection, isFirst: Bool) -> some View {
     HStack(spacing: 6) {
       Button {
         withAnimation(.snappy(duration: 0.22)) { onToggleSection(section.id) }
@@ -142,8 +153,10 @@ public struct SidebarPanel: View {
         HStack(spacing: 5) {
           Image(systemName: "chevron.right")
             .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(Theme.Palette.textSecondary.opacity(0.8))
+            .foregroundStyle(Theme.Palette.textSecondary.opacity(0.75))
             .rotationEffect(.degrees(section.isExpanded ? 90 : 0))
+            .opacity(hoveringSection == section.id ? 1 : 0)
+            .frame(width: 9)
           if editingSection == section.id {
             TextField("", text: $draftTitle)
               .textFieldStyle(.plain)
@@ -164,10 +177,13 @@ public struct SidebarPanel: View {
       }
       Spacer(minLength: 0)
     }
-    .padding(.horizontal, Theme.Metric.rowInset)
-    .frame(height: Theme.Metric.sectionHeaderHeight)
-    .padding(.top, Theme.Metric.sectionGap)
+    .padding(.leading, Theme.Metric.contentInset - 4)
+    .padding(.trailing, Theme.Metric.contentInset)
+    .frame(height: Theme.Metric.sectionHeaderHeight, alignment: .top)
+    .padding(.top, isFirst ? 0 : Theme.Metric.sectionGap)
+    .onHover { hoveringSection = $0 ? section.id : nil }
     .animation(.easeOut(duration: 0.12), value: section.isExpanded)
+    .animation(.easeOut(duration: 0.12), value: hoveringSection)
   }
 
   private func row(_ item: SidebarItem) -> some View {
@@ -179,7 +195,7 @@ public struct SidebarPanel: View {
           .textFieldStyle(.plain)
           .font(Theme.TypeScale.rowTitle)
           .foregroundStyle(Theme.Palette.textPrimary)
-          .padding(.horizontal, Theme.Metric.rowInset)
+          .padding(.leading, Theme.Metric.contentInset)
           .frame(height: Theme.Metric.rowHeight)
           .background(
             RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
@@ -206,46 +222,25 @@ public struct SidebarPanel: View {
         HStack(spacing: 8) {
           Circle()
             .fill(.white.opacity(0.22))
-            .frame(width: 20, height: 20)
+            .frame(width: 18, height: 18)
             .overlay {
               Image(systemName: "chevron.down")
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(.white)
             }
           Text("更多未读消息")
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(.white)
         }
-        .padding(.horizontal, 12)
-        .frame(height: 34)
+        .padding(.horizontal, 11)
+        .frame(height: Theme.Metric.unreadPillHeight)
         .background(Capsule().fill(Theme.Palette.accent))
         .shadow(color: Theme.Palette.accent.opacity(0.28), radius: 10, y: 3)
       }
       .buttonStyle(.plain)
-      .padding(.bottom, 8)
+      .frame(maxWidth: .infinity, alignment: .center)
+      .padding(.bottom, Theme.Metric.unreadPillBottom)
     }
-  }
-
-  private var profile: some View {
-    VStack(spacing: 10) {
-      Avatar(
-        initial: profileInitial,
-        tint: Theme.Palette.avatarTint(1),
-        size: Theme.Metric.avatarProfile,
-        badge: Theme.Palette.avatarTint(3)
-      )
-      VStack(spacing: 3) {
-        Text(profileName)
-          .font(.system(size: 16, weight: .semibold))
-          .foregroundStyle(Theme.Palette.textPrimary)
-        Text(profilePlan)
-          .font(Theme.TypeScale.note)
-          .foregroundStyle(Theme.Palette.textSecondary)
-      }
-    }
-    .frame(maxWidth: .infinity)
-    .padding(.top, 4)
-    .padding(.bottom, 14)
   }
 
   private var footer: some View {
@@ -256,21 +251,17 @@ public struct SidebarPanel: View {
         .foregroundStyle(Theme.Palette.textPrimary)
         .lineLimit(1)
       Spacer(minLength: 0)
-      HStack(spacing: 6) {
+      HStack(spacing: 10) {
         Image(systemName: "bell")
-          .font(.system(size: 12))
+          .font(.system(size: 13))
           .foregroundStyle(Theme.Palette.textSecondary)
-          .frame(width: 22, height: 22)
-          .background(Circle().fill(Theme.Palette.hover))
         Image(systemName: "square.grid.2x2")
-          .font(.system(size: 12))
+          .font(.system(size: 13))
           .foregroundStyle(Theme.Palette.textSecondary)
-          .frame(width: 22, height: 22)
-          .background(Circle().fill(Theme.Palette.hover))
       }
     }
-    .padding(.horizontal, 12)
-    .frame(height: 54)
+    .padding(.horizontal, 14)
+    .frame(height: Theme.Metric.footerHeight)
     .background(
       RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
         .fill(Theme.Palette.card)
@@ -279,8 +270,8 @@ public struct SidebarPanel: View {
       RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
         .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
     )
-    .padding(.horizontal, Theme.Metric.sidebarInset - 4)
-    .padding(.bottom, Theme.Metric.windowInset + 2)
+    .padding(.horizontal, Theme.Metric.contentInset)
+    .padding(.bottom, Theme.Metric.footerBottom)
   }
 
   private func beginSectionRename(_ section: SidebarSection) {

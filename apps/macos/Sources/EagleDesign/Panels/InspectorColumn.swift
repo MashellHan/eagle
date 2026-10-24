@@ -79,7 +79,7 @@ public struct InspectorColumn: View {
       }
       .padding(.horizontal, Theme.Metric.panelInset - 6)
       .padding(.top, Theme.Metric.windowInset + 2)
-      .frame(height: Theme.Metric.headerHeight)
+      .frame(height: Theme.Metric.toolbarHeight)
 
       Identity(name: name, subtitle: subtitle, tintIndex: tintIndex)
 

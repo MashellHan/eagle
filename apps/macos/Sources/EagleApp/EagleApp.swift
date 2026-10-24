@@ -10,11 +10,11 @@ struct EagleApp: App {
   var body: some Scene {
     WindowGroup("Eagle") {
       WorkspaceShellView()
-        .frame(minWidth: 1240, minHeight: 700)
+        .frame(minWidth: 1280, minHeight: 760)
         .background(WindowConfigurator())
         .preferredColorScheme(.light)
     }
-    .defaultSize(width: 1440, height: 920)
+    .defaultSize(width: Theme.Metric.windowWidth, height: Theme.Metric.windowHeight)
     // Immersive: no title bar, traffic lights float over the sidebar.
     .windowStyle(.hiddenTitleBar)
     .windowResizability(.contentMinSize)
