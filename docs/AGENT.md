@@ -49,7 +49,7 @@ Open **Connect** on the Eagle website. Add a machine ID, display name and option
 
 The platform signs machine-scoped tokens using the `AGENT_SIGNING_KEY` Worker secret (at least 32 random characters). Raw tokens and the signing key never enter a database. Each machine DO stores only its configuration, public credential ID, enabled state and expiry. Tokens expire after one year. The directory DO indexes machine IDs only; ingestion goes directly to the corresponding machine DO. The old `AGENT_TOKENS` secret remains compatible; Connect can rotate a legacy machine to signed credentials or disable it. Removing a legacy secret alone does not disable a machine already migrated to signed credentials; use Connect.
 
-Install Agent v1.0.0 from npm. The Agent version comes from `agent/package.json`; website-only releases do not require an Agent update or npm publication. Check `node --version`, `npm --version` and `herdr --version`: Node 24+ and a running Herdr installation are required. Node downloads: https://nodejs.org/en/download. The installed Agent needs no Eagle checkout or TypeScript compiler.
+Install Agent v1.0.0 from npm. The Agent version comes from `packages/agent/package.json`; website-only releases do not require an Agent update or npm publication. Check `node --version`, `npm --version` and `herdr --version`: Node 24+ and a running Herdr installation are required. Node downloads: https://nodejs.org/en/download. The installed Agent needs no Eagle checkout or TypeScript compiler.
 
 ```sh
 npm install -g @nocoo/eagle-agent@1.0.0 --registry=https://registry.npmjs.org
@@ -78,7 +78,7 @@ eagle-agent upload /private/path/report.json
 eagle-agent heartbeat
 ```
 
-`eagle-agent init` accepts config JSON through stdin, writes a 0600 file in a 0700 directory, and refuses to overwrite existing configuration. Never pass tokens in command arguments. Existing checkout commands (`node agent/cli.ts …`) remain supported. For local package verification use `npm pack ./agent --pack-destination .local`, then install that tarball in an isolated directory.
+`eagle-agent init` accepts config JSON through stdin, writes a 0600 file in a 0700 directory, and refuses to overwrite existing configuration. Never pass tokens in command arguments. Existing checkout commands (`node packages/agent/cli.ts …`) remain supported. For local package verification use `npm pack ./packages/agent --pack-destination .local`, then install that tarball in an isolated directory.
 
 `EAGLE_CONFIG` selects another 0600 config. `once` collects, atomically writes a 0600 spool entry, then drains pending reports newest first. Network/429/5xx failures retry with backoff using the same report body and ID; 400/409/413/415 或损坏 JSON 会移入 `spool/rejected/` 保留，并在心跳中提示；后续有效快照继续发送。401/403 和网络故障保留整个待发送队列等待修复。Reports remain on disk until acknowledged or explicitly quarantined. At 1000 pending entries the spool first attempts to drain before collecting more; it never deletes unacknowledged data. An explicit auth/schema failure requires operator correction; do not discard old reports to make the queue green. `watch` repeats after the configured interval. Alternatively run `once` with launchd/systemd at the same interval; prevent overlapping invocations.
 
@@ -98,7 +98,7 @@ Restart the collector after editing its configuration. For an upgrade, deploy th
 
 ## Installed on MBPM5MSFT
 
-The production machine ID is `mbpm5msft`. Its macOS LaunchAgent at `~/Library/LaunchAgents/com.hexly.eagle-agent.plist` runs this checkout's `agent/cli.ts watch` every 30 seconds and restarts on failure. Configuration, the latest report copy, the durable spool, and `agent.stdout.log` / `agent.stderr.log` are under `~/.config/eagle/`. The website uses Cloudflare Access; the former viewer-token file has been removed. Machine Bearer credentials remain required for reporting.
+The production machine ID is `mbpm5msft`. Its macOS LaunchAgent at `~/Library/LaunchAgents/com.hexly.eagle-agent.plist` runs this checkout's `packages/agent/cli.ts watch` every 30 seconds and restarts on failure. Configuration, the latest report copy, the durable spool, and `agent.stdout.log` / `agent.stderr.log` are under `~/.config/eagle/`. The website uses Cloudflare Access; the former viewer-token file has been removed. Machine Bearer credentials remain required for reporting.
 
 ```sh
 # Restart after updating collector code:
@@ -111,4 +111,4 @@ launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.hexly.eagle-agent.plist
 
 These commands are for this machine's user ID 501. Other machines need their own token, identity, checkout path and service configuration. A valid success acknowledgement is required before a queued report is removed; malformed responses preserve the report for an idempotent retry.
 
-The Eagle LaunchAgent on this Mac uses direct connections by default. Proxying is an explicit per-machine option through `NODE_USE_ENV_PROXY=1` and a verified `HTTPS_PROXY` URL; no proxy host or port is fixed. See [optional reporting proxy](../agent/README.md#optional-reporting-proxy) for enabling it or returning to direct connections. Preserve the spool when reloading services.
+The Eagle LaunchAgent on this Mac uses direct connections by default. Proxying is an explicit per-machine option through `NODE_USE_ENV_PROXY=1` and a verified `HTTPS_PROXY` URL; no proxy host or port is fixed. See [optional reporting proxy](../packages/agent/README.md#optional-reporting-proxy) for enabling it or returning to direct connections. Preserve the spool when reloading services.

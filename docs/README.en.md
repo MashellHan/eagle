@@ -52,7 +52,7 @@ If npm downloads fail, use the Tencent Cloud mirror instead. Choose one installa
 npm install -g @nocoo/eagle-agent@1.0.0 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
-The expected version is `1.0.0`. These commands select a registry for this installation only, without changing the global npm registry. Mirrors may lag (`404` / `ETARGET`); retry later and keep the pinned version. Save onboarding credentials following the [installation and configuration guide](../agent/README.md), then run:
+The expected version is `1.0.0`. These commands select a registry for this installation only, without changing the global npm registry. Mirrors may lag (`404` / `ETARGET`); retry later and keep the pinned version. Save onboarding credentials following the [installation and configuration guide](../packages/agent/README.md), then run:
 
 ```sh
 eagle-agent once
@@ -125,7 +125,7 @@ npm run test:browser
 
 ## Documentation
 
-- [Agent installation](../agent/README.md) and [configuration/reporting contract](AGENT.md).
+- [Agent installation](../packages/agent/README.md) and [configuration/reporting contract](AGENT.md).
 - [API](API.md) and [realtime mode](REALTIME.md).
 - [Deployment and live verification](DEPLOYMENT.md), [implementation plan](PLAN.md) and [verification checkpoints](CHECKPOINTS.md).
 - [Brand provenance](../assets/brand/provenance.json), [Hexly archive](https://hexly.ai/projects/eagle) and [service status](https://status.hexly.ai).

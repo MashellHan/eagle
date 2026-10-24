@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Adopt an npm workspace layout: `apps/web` (dashboard, Worker, D1 migrations),
+  `apps/macos` (client placeholder), `packages/contracts` (shared schemas) and
+  `packages/agent` (published Agent). The root manifest stays the version and
+  workspace authority; the Agent tarball layout and `bin` path are unchanged.
+- Contracts no longer import the website manifest; onboarding receives the
+  published Agent version as an argument.
+- CI cancels superseded runs on the same ref and documents that the workspace
+  install covers every package.
+
 ## v0.14.1 — 2026-10-24
 
 - Dependency maintenance: lucide-react 1.61.0, the AI SDK trio (`ai` 7.0.152,

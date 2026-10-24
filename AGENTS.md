@@ -6,8 +6,8 @@ Durable Objects/D1 and a standalone Node Agent. Human overview: [README.md](READ
 ## Scope and sources
 
 Maintain project instructions only in this root AGENTS.md; do not create a
-CLAUDE.md alias or copy. Root `package.json` owns the website/Worker release
-version; keep its lockfile synchronized. `agent/package.json` owns the independent
+CLAUDE.md alias or copy. Root `package.json` is the npm workspace root and owns
+the website/Worker release version; keep its lockfile synchronized. `packages/agent/package.json` owns the independent
 Agent version; CLI output and packed artifacts derive from it. Website onboarding
 uses root `config.publishedAgentVersion`, which must reference a verified published
 Agent version and can differ from an unpublished source candidate.
@@ -17,6 +17,21 @@ unchanged. Changes to those require an Agent version bump and publication before
 onboarding uses it.
 Package tests must verify the packed manifest and installed CLI match the Agent
 manifest, while website health/UI versions match the root manifest.
+
+### Repository layout
+
+```
+apps/web          Vite dashboard, Cloudflare Worker, D1 migrations, public assets
+apps/macos        macOS client placeholder; no source or CI job yet
+packages/contracts  shared zod contracts and pure helpers (private, not published)
+packages/agent    @nocoo/eagle-agent, published to npm
+tests             one Node/Playwright suite at the root, spanning all packages
+scripts           live verification and deployment entry points
+```
+
+Workspace scripts at the root delegate to `@eagle/web`; run them from the root.
+`packages/agent` compiles `packages/contracts/src` into its own `dist`, so the
+published tarball stays self-contained and its `bin` path is unchanged.
 
 - [Environment resources](docs/RESOURCES.md) defines cadence, OS evidence and resource history.
 - [Agent contract](docs/AGENT.md), [real-time protocol](docs/REALTIME.md),
@@ -50,7 +65,7 @@ manifest, while website health/UI versions match the root manifest.
 
 Run from the root with Node.js 24+ and npm; CI uses Node 26. Actual collection
 requires Herdr, but documentation checks do not run the installed live Agent.
-Use the machine-approved registry. Ignored `.dev.vars` holds `AGENT_SIGNING_KEY`
+Use the machine-approved registry. Ignored `apps/web/.dev.vars` holds `AGENT_SIGNING_KEY`
 (at least 32 random characters, file mode 0600), `LOCAL_DEV="true"` for local
 browsing, optional `LOCAL_USER_EMAIL`, and optional existing `AGENT_TOKENS`.
 Never copy production credentials into tests. Restart Wrangler after changes.

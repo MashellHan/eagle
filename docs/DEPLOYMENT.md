@@ -1,6 +1,6 @@
 # Deployment and live verification
 
-Commands run from the repository root. See [local setup](../README.md#开发) before verifying the development origin.
+Commands run from the repository root. The workspace root delegates website and Worker scripts to `@eagle/web`; `wrangler` reads `apps/web/wrangler.jsonc`, so pass `--config apps/web/wrangler.jsonc` for direct invocations. See [local setup](../README.md#开发) before verifying the development origin.
 
 ## Local frontend, Local or Prod backend
 
@@ -43,7 +43,7 @@ NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" node scripts/verify-live.ts
 The root manifest owns the website/Worker version and
 `config.publishedAgentVersion` owns its verified npm onboarding pin. An
 unpublished Agent source version is not an installation target. A website-only
-release may leave `agent/package.json` unchanged and use the existing published
+release may leave `packages/agent/package.json` unchanged and use the existing published
 Agent; do not publish npm, restart collectors, or change real machine configs.
 
 The current GitHub workflow runs checks on main/PR only; it has no npm/tag/release
@@ -52,7 +52,7 @@ Eagle Worker with `BUILD_REVISION` from a clean, committed HEAD. Inspect these
 triggers again for every release before pushing a tag. Use an ordinary version
 tag and GitHub Release only after exact-SHA CI and the authorized deployment.
 
-Run `wrangler d1 migrations list eagle --remote` first. Apply only genuinely
+Run `wrangler d1 migrations list eagle --remote --config apps/web/wrangler.jsonc` first. Apply only genuinely
 pending required migrations; the resource-history table is initialized inside
 each existing machine DO, with no new D1 migration. Preserve Worker secrets.
 
@@ -76,7 +76,7 @@ npm run check
 npm run test:browser
 npm run db:remote
 # Never put secret values on the command line or in source.
-npx wrangler secret bulk /secure/path/platform-secrets.json
+npx wrangler secret bulk /secure/path/platform-secrets.json --config apps/web/wrangler.jsonc
 npm run deploy
 ```
 
@@ -88,7 +88,7 @@ Migration `0004_daily_reports.sql` creates the daily archive and drops the old
 hourly archive; apply it immediately before deploying the matching Worker. The
 new Worker installs only `59 15 * * *` (Beijing 23:59). Each machine DO drops old
 hourly jobs/steps and the retired semantic tables when initialized, retaining raw snapshots. The
-existing AI connection and encrypted credential are preserved. Set `AI_ENCRYPTION_KEY` once using a cryptographically random value of at least 32 characters (`npx wrangler secret put AI_ENCRYPTION_KEY`, interactive input or secure file stdin). Do not overwrite an existing wrapping key. Local development uses the same binding in gitignored `.dev.vars`.
+existing AI connection and encrypted credential are preserved. Set `AI_ENCRYPTION_KEY` once using a cryptographically random value of at least 32 characters (`npx wrangler secret put AI_ENCRYPTION_KEY --config apps/web/wrangler.jsonc`, interactive input or secure file stdin). Do not overwrite an existing wrapping key. Local development uses the same binding in gitignored `apps/web/.dev.vars`.
 
 Users save provider/model and API keys in `/settings`. The directory DO stores authenticated ciphertext in the separate `ai-credential` record; API responses never return the key. Blank input keeps the existing credential, explicit clearing removes it, and changing provider/endpoint/protocol/authentication requires a new key. Without a complete AI configuration the schedule is a no-op.
 

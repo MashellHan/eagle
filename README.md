@@ -53,7 +53,7 @@ eagle-agent --version
 npm install -g @nocoo/eagle-agent@1.0.0 --registry=https://mirrors.cloud.tencent.com/npm/
 ```
 
-预期版本为 `1.0.0`。命令仅为本次安装指定源，不修改全局 npm 源；镜像可能延迟同步，遇到 `404` / `ETARGET` 时稍后重试，保持固定版本。按照[安装与配置说明](agent/README.md)保存接入凭据后运行：
+预期版本为 `1.0.0`。命令仅为本次安装指定源，不修改全局 npm 源；镜像可能延迟同步，遇到 `404` / `ETARGET` 时稍后重试，保持固定版本。按照[安装与配置说明](packages/agent/README.md)保存接入凭据后运行：
 
 ```sh
 eagle-agent once
@@ -126,7 +126,7 @@ npm run test:browser
 
 ## 文档
 
-- [Agent 安装说明](agent/README.md)与[配置及上报契约](docs/AGENT.md)。
+- [Agent 安装说明](packages/agent/README.md)与[配置及上报契约](docs/AGENT.md)。
 - [API](docs/API.md)与[实时模式](docs/REALTIME.md)。
 - [部署及真实链路核验](docs/DEPLOYMENT.md)、[实施计划](docs/PLAN.md)与[验证检查点](docs/CHECKPOINTS.md)。
 - [品牌来源](assets/brand/provenance.json)、[Hexly 档案](https://hexly.ai/projects/eagle)与[服务状态](https://status.hexly.ai)。
