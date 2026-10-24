@@ -267,7 +267,7 @@ Screens redact known machine credentials across line wraps and recognizable view
 Native attach briefly controls terminal geometry and can resume a pending agent. Layout dimensions are only an estimate; attach/detach can resize the terminal and cause Herdr to reapply other tab geometry. There is no no-resize input API in protocol 22. Text uses a complete bracketed-paste message so Herdr applies the target’s paste mode; embedded escape/control bytes are rejected. Basic keys support legacy, Kitty and modifyOtherKeys modes. Up/down require Kitty disambiguation flag 1 or report-all-keys flag 8, which both prove canonical CSI encoding ([Kitty protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/#report-all-keys-as-escape-codes)); other modes reject direction input because protocol 22 does not expose application-cursor mode (DECCKM). Event reporting flag 2 adds press/release events in either supported mode. Explicit Ctrl+P/N shortcuts remain available for applications with compatible history bindings; they are not automatically substituted. No terminal mouse/color/graphics/resize emulator is implied. Text containing newlines may execute when the target does not use bracketed paste.
 
 The new keys require Agent/bridge 1.0.0 and the matching upgraded Worker.
-Website/Worker 0.14.0 pins the independently verified Agent 1.0.0 artifact.
+Website/Worker 0.14.1 pins the independently verified Agent 1.0.0 artifact.
 Restart existing bridges after upgrading; npm publication alone does not replace
 running processes. Do not deploy only the website and claim key support.
 

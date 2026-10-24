@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.14.1 — 2026-10-24
+
+- Dependency maintenance: lucide-react 1.61.0, the AI SDK trio (`ai` 7.0.152,
+  `@ai-sdk/openai` 4.0.101, `@ai-sdk/anthropic` 4.0.87, all pinned to provider
+  4.0.33), vite 8.3.5, wrangler 4.152.0 and @biomejs/biome 2.6.2.
+- Adopt biome 2.6.2 without reformatting the hand-authored docs: Markdown is
+  excluded from the formatted set, `noInvalidGridAreas` is off because it
+  reports valid multi-row `grid-template-areas`, and the new template-literal
+  and `textContent` findings are fixed in code.
+- No runtime behaviour, schema, API or Agent change; the published onboarding
+  pin stays at Agent 1.0.0.
+
 ## v0.14.0 — 2026-10-24
 
 - Remove the optional semantic layer end to end: the Manager, the summary
