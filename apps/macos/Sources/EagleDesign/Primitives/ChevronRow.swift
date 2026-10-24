@@ -17,13 +17,13 @@ public struct ChevronRow: View {
     Button {
       action?()
     } label: {
-      HStack(spacing: Theme.Metric.rowAvatarGap) {
+      HStack(spacing: 9) {
         Image(systemName: systemName)
           .font(.system(size: 12, weight: .medium))
           .foregroundStyle(Theme.Palette.textSecondary)
-          .frame(width: Theme.Metric.avatarRow)
+          .frame(width: 20)
         Text(title)
-          .font(Theme.TypeScale.rowTitle)
+          .font(Theme.TypeScale.cardTitle)
           .foregroundStyle(Theme.Palette.textPrimary)
           .lineLimit(1)
           .truncationMode(.middle)
@@ -67,7 +67,7 @@ public struct ToggleRow: View {
     HStack(alignment: .center, spacing: 10) {
       VStack(alignment: .leading, spacing: 3) {
         Text(title)
-          .font(Theme.TypeScale.rowTitle)
+          .font(Theme.TypeScale.cardTitle)
           .foregroundStyle(Theme.Palette.textPrimary)
         if let detail {
           Text(detail)

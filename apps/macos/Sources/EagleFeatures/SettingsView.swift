@@ -31,7 +31,6 @@ public struct SettingsView: View {
 
   private var general: some View {
     VStack(alignment: .leading, spacing: 18) {
-      SettingsTitle("通用")
       SettingsCard {
         VStack(spacing: 0) {
           SettingsRow("登录时自动启动", detail: "让 Eagle 在后台保持机器在线") {
@@ -75,7 +74,6 @@ public struct SettingsView: View {
 
   private var machines: some View {
     VStack(alignment: .leading, spacing: 18) {
-      SettingsTitle("机器")
       SettingsCard {
         VStack(spacing: 2) {
           ForEach(model.machines) { machine in
@@ -130,7 +128,6 @@ public struct SettingsView: View {
 
   private var realtime: some View {
     VStack(alignment: .leading, spacing: 18) {
-      SettingsTitle("实时")
       SettingsCard {
         VStack(spacing: 0) {
           SettingsRow("自动跟随终端输出", detail: "打开 Space 时立即显示最新画面") {
@@ -154,7 +151,6 @@ public struct SettingsView: View {
 
   private var usage: some View {
     VStack(alignment: .leading, spacing: 18) {
-      SettingsTitle("用量与账单")
       SettingsCard {
         VStack(spacing: 0) {
           SettingsRow("今日上报", detail: "全部机器的完整快照") {
@@ -179,7 +175,6 @@ public struct SettingsView: View {
 
   private var updates: some View {
     VStack(alignment: .leading, spacing: 18) {
-      SettingsTitle("更新")
       SettingsCard {
         VStack(alignment: .leading, spacing: 12) {
           switch model.updateState {

@@ -28,12 +28,6 @@ public struct WorkspaceShellView: View {
 
   public var body: some View {
     let item = list.selectedItem
-    let visibleColumns = (layout.showsSidebar ? 1 : 0) + (layout.showsInspector ? 1 : 0)
-    let contentWidth: CGFloat =
-      visibleColumns >= 2
-      ? Theme.Metric.conversationMaxContentWidth
-      : (visibleColumns == 1 ? 900 : 1_040)
-
     ZStack(alignment: .bottomLeading) {
       ThreeColumnShell(
         showsSidebar: layout.showsSidebar,
@@ -68,7 +62,6 @@ public struct WorkspaceShellView: View {
           onSend: { chat.send() },
           showsSidebar: layout.showsSidebar,
           showsInspector: layout.showsInspector,
-          maxContentWidth: contentWidth,
           onShowSidebar: { layout.toggleSidebar() },
           onToggleInspector: { layout.toggleInspector() }
         )

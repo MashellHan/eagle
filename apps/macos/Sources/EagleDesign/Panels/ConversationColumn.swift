@@ -28,7 +28,6 @@ public struct ConversationColumn: View {
   private let onToggleInspector: () -> Void
   private let showsSidebar: Bool
   private let showsInspector: Bool
-  private let maxContentWidth: CGFloat
 
   public init(
     title: String,
@@ -39,7 +38,6 @@ public struct ConversationColumn: View {
     onSend: @escaping () -> Void,
     showsSidebar: Bool = true,
     showsInspector: Bool = true,
-    maxContentWidth: CGFloat = Theme.Metric.conversationMaxContentWidth,
     onShowSidebar: @escaping () -> Void = {},
     onToggleInspector: @escaping () -> Void = {}
   ) {
@@ -51,7 +49,6 @@ public struct ConversationColumn: View {
     self.onSend = onSend
     self.showsSidebar = showsSidebar
     self.showsInspector = showsInspector
-    self.maxContentWidth = maxContentWidth
     self.onShowSidebar = onShowSidebar
     self.onToggleInspector = onToggleInspector
   }
@@ -113,7 +110,6 @@ public struct ConversationColumn: View {
           }
           Color.clear.frame(height: 1).id("bottom")
         }
-        .frame(maxWidth: maxContentWidth, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.Metric.conversationInset)
         .padding(.top, 6)

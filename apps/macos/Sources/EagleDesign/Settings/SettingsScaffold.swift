@@ -58,7 +58,7 @@ public struct SettingsRail: View {
       Spacer(minLength: 0)
     }
     .padding(.horizontal, 12)
-    .padding(.top, 40)
+    .padding(.top, 16)
     .frame(width: Theme.Metric.settingsRailWidth)
     .frame(maxHeight: .infinity, alignment: .top)
     .background(Theme.Palette.surface)
@@ -87,20 +87,32 @@ public struct SettingsScaffold<Content: View>: View {
       Rectangle()
         .fill(Theme.Palette.line)
         .frame(width: Theme.Metric.hairline)
-      ZStack(alignment: .topTrailing) {
+      VStack(spacing: 0) {
+        HStack(spacing: 16) {
+          Text(selection.rawValue)
+            .font(.system(size: 22, weight: .semibold))
+            .foregroundStyle(Theme.Palette.textPrimary)
+          Spacer(minLength: 0)
+          IconButton(
+            systemName: "xmark",
+            label: "关闭设置",
+            size: Theme.Metric.headerControlHeight,
+            style: .circled,
+            action: onClose
+          )
+        }
+        .padding(.horizontal, Theme.Metric.settingsContentInset)
+        .padding(.top, 16)
+        .padding(.bottom, 10)
+
         ScrollView {
           content
-            .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, Theme.Metric.settingsContentInset)
-            .padding(.top, 34)
-            .padding(.bottom, 40)
+            .padding(.top, 6)
+            .padding(.bottom, 32)
         }
         .scrollIndicators(.never)
-
-        IconButton(systemName: "xmark", label: "关闭设置", style: .plain, action: onClose)
-          .padding(.top, 12)
-          .padding(.trailing, 14)
       }
     }
     .frame(minWidth: 760, minHeight: 560)
