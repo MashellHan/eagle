@@ -127,6 +127,22 @@ client: a model picker needs the `agent` capability.
 // streamed is finalized by an `append` with `replaces` pointing at it, so a
 // reconnecting client sees the same notice from `snapshot`/`history` (same id, same
 // text) and no duplicate. `status.streaming` becomes null at that point.
+//
+// Over-limit *in-flight* attempt, before its entry exists. The snapshot must never
+// carry content over the cap, so the attempt is withdrawn atomically instead of
+// being projected:
+//   1. the adapter stops forwarding deltas for that attempt;
+//   2. it emits `snapshot` with `streaming:null`, `running:true`, and no message for
+//      that attempt — a client that had the provisional drops it (the snapshot
+//      replaces state);
+//   3. when the entry commits, the withheld notice is appended with
+//      `replaces:"p_a<n>"`; a client that no longer holds that provisional ignores
+//      the field (upsert by the notice's own id);
+//   4. a retry starts a new attempt with a new provisional id, and a deferred poll
+//      uses the same withdrawal rule.
+// A late join, `resync`, or watch rerender during step 2 therefore sees
+// `streaming:null` and a transcript without that attempt — never an oversized
+// partial and never stale content.
 
 // ContentBlock
 { "type": "text",     "text": "…" }
@@ -203,6 +219,9 @@ Snapshot semantics:
   runtime's watch fell behind).
 - `truncatedBefore` means older messages exist and are loadable with `history`.
   Its presence is not an error and does not block the composer.
+- `streaming` is null while an over-limit attempt is withdrawn (see above): absence
+  of a provisional never means the run has no work, which is why `running` is a
+  separate field.
 - When `unavailable` is present, every collection is still present and empty and
   `streaming` is `null`, but they mean **unknown**, not empty: the client renders the
   reason and offers `recover`, and never treats the empty arrays as truth. `agent`
@@ -346,11 +365,15 @@ recovery guarantees depend on them.
    Entries are never re-sent with a new id, and no entry is removed before its
    terminal record has been stored.
 
-3. **Disposition decides the outbox.** Every `error` carries `disposition`:
+3. **Disposition decides the outbox.** Every `error` emitted after `welcome` carries
+   `disposition`. The handshake failure (`version_mismatch`), which is sent before a
+   session exists, is exempt and carries `server` instead. `requestId` is required on
+   `not_admitted` only for a rejected `send`, which always has one; a rejected
+   command without a requestId never touches the outbox.
 
    | `disposition` | Meaning | Outbox |
    | --- | --- | --- |
-   | `not_admitted` | The daemon refused the command before admission (validation, limits, busy with `reject`, unknown bot). Carries `requestId` | Remove the entry and restore its text as a draft; the user decides |
+   | `not_admitted` | The daemon refused the command before admission (validation, limits, busy with `reject`, unknown bot). Carries `requestId` when the command was a `send` | Remove that entry and restore its text as a draft; the user decides |
    | `unknown` | Admission could not be confirmed (a storage or read failure between `submit()` and reading its record) | Keep the entry; it is reconciled by re-sending the same `requestId` |
    | `runtime` | A run-time failure reported later (parked task, storage failure, watch escalation). May carry `requestId` for correlation | Keep the entry or not; it is about the bot, not that command |
 
@@ -423,7 +446,7 @@ sides.
 | `history.client.json`, `history.server.json` | message paging |
 
 | `status.server.json`, `submission.server.json`, `submission.connection.server.json` | run state and the connection-scoped duplicate reply |
-| `bots.server.json`, `error.server.json`, `error-rejected.server.json` | catalog, runtime failure, definite rejection |
+| `bots.server.json`, `error.server.json`, `error-rejected.server.json`, `version-mismatch.server.json` | catalog, runtime failure, definite rejection, exempt handshake failure |
 | `send.client.json`, `abort.client.json`, `recover.client.json`, `resync.client.json` | commands |
 | `ping.client.json`, `pong.server.json` | liveness |
 | `entities.json` | `BotSummary`, `Message`, `InboxItem` samples |

@@ -123,6 +123,7 @@ is never started before its preconditions are green.
 | 52c | `test/e2e/paging.test.ts` | `history pages older messages and the newest window is never re-fetched` | 49 |
 | 52e | `test/e2e/outbox.test.ts` | `a not_admitted rejection restores the draft, an unknown result keeps the requestId` | 49 |
 | 52f | `test/e2e/outbox.test.ts` | `an admitted input whose status read fails keeps the outbox entry and reconciles on re-send` | 49 |
+| 52g | `test/e2e/overflow.test.ts` | `an over-limit attempt is withdrawn; a late join during it sees streaming null, and the notice replaces it after commit` | 49 |
 | 52d | `test/e2e/ordering.test.ts` | `a late connection-scoped record never downgrades a settlement` | 49 |
 | 53 | `test/crash/sigkill.test.ts` | `killing the daemon mid-answer loses no message and duplicates none` | 49 |
 | 53b | `test/crash/delete.test.ts` | `R4: a delete killed after rename reconciles on the next start` | 49 |
@@ -147,6 +148,7 @@ is never started before its preconditions are green.
 | 66 | `BotsFeaturesTests/ComposerTests.swift` | `sending while busy queues with followUp and survives a restart of the view` | 64 |
 | 67 | `BotsFeaturesTests/CatalogTests.swift` | `create selects the new bot; delete removes it; a push updates the list` | 61 |
 | 68 | `BotsFeaturesTests/RecoveryTests.swift` | `recover reopens an unavailable bot and leaves a healthy one untouched` | 63 |
+| 68b | `BotsFeaturesTests/ComposerTests.swift` | `only not_admitted clears the outbox entry; unknown and runtime keep it` | 64 |
 | 69 | `BotsCoreTests/DependencyRulesTests.swift` | `no networking API in core or features; no wire decoding outside transport` | 55 |
 
 ## Golden fixtures
@@ -179,7 +181,8 @@ is never started before its preconditions are green.
 | Reply to `send` lost | Re-send the same `requestId` returns the record; no duplicate entry |
 | Provider error | `unanswered{reason:"model_error"}`; provider text absent from logs |
 | `runtime.open` rejects | `error` carries `failure` whose origin is `runtime`; core logs `warn` with the same id |
-| Oversized message projection | Message withheld, `notice` delivered, submission still settles, no frame over 256 KiB |
+| Oversized message projection | Attempt withdrawn via snapshot (streaming null), notice replaces it after commit, no frame over 256 KiB |
+| Late join during an over-limit attempt | Snapshot has no oversized partial; client never receives stale content |
 | Abort with a queued input | Both settle `unanswered{reason:"aborted"}`; inbox empty |
 | Parked task | One `error{kind:"task_parked"}` within 60 s; `recover` clears it |
 | `listener_error` watch end once | Reattach + snapshot; no client-visible error, no failure minted |

@@ -232,9 +232,14 @@ public struct ConversationEvent {
     case status(running: Bool, inbox: [InboxItem], streaming: String?)
     case submission(Submission)
     case history([Message], hasMore: Bool)
-    case error(kind: ErrorKind, message: String, failure: String?, requestId: String?)
+    case error(kind: ErrorKind, disposition: ErrorDisposition, message: String,
+               failure: String?, requestId: String?)
   }
 }
+
+// Mirrors the wire field verbatim: only `.notAdmitted` clears an outbox entry, so
+// the transport must not collapse it into an ErrorKind.
+public enum ErrorDisposition: String { case notAdmitted = "not_admitted", unknown, runtime }
 
 // Command context is created by the view model, so the call site and the daemon
 // share one trace and one requestId.
