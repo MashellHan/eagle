@@ -136,3 +136,16 @@ Next broken hop: stage 2 has no code. `src/core` contains only `domain.ts` and t
 components `BotDirectory`, `EventHub`, `ConversationService`, `RuntimePort` and
 `BotRegistry` do not exist, so rows 9-22 (directory, hub, service) cannot start. The
 agent runtime, transports and client remain unimplemented.
+
+## 2026-10-26 — stage 2 halfway, plan recorded
+
+Observed: rows 1-10 are signed off; rows 11-16 are implemented with 143 tests passing
+but are waiting on a review round. The daemon still cannot start: there is no
+`ConversationService`, no transport and no entrypoint.
+
+Verified: `npm run check` in `apps/bots` (fixtures 26 files, 143 tests, typecheck, lint,
+coverage above thresholds). The catalog, fake runtime and hub are the only core modules.
+
+Next broken hop: `send` has no owner. `src/core/ConversationService.ts` does not exist,
+so rows 17-22 cannot start, and nothing wires the protocol codec to a socket. The full
+state and order of work now lives in [PLAN.md](PLAN.md).

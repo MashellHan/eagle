@@ -22,8 +22,14 @@ The contract is documentation-first:
 
 ## Status
 
-Phase 1, implementation starting. No daemon code exists yet; the repository holds
-the contract, the protocol fixtures and a model smoke script.
+Implementation in progress (stage 2 of 5). What exists: the protocol codec, command
+validation and budgets, the layered log, the bot catalog with delete reconciliation,
+the revision hub with delta coalescing, and the runtime port with a fake runtime.
+143 tests, coverage above the gate. What does not exist yet: the conversation
+service, the pi-durable adapter, the transport, the entrypoint and the macOS client,
+so nothing listens on a socket.
+
+`docs/bots/PLAN.md` is the authoritative status and order of work.
 
 ## Setup
 

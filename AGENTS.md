@@ -41,6 +41,7 @@ format` lint and the 90% logic-coverage gate need the Xcode toolchain, which
 `packages/agent` compiles `packages/contracts/src` into its own `dist`, so the
 published tarball stays self-contained and its `bin` path is unchanged.
 
+- [Bots plan](docs/bots/PLAN.md) owns what is built and what is next.
 - [Environment resources](docs/RESOURCES.md) defines cadence, OS evidence and resource history.
 - [Agent contract](docs/AGENT.md), [real-time protocol](docs/REALTIME.md),
   [daily reports](docs/DAILY-REPORTS.md) describe product behavior.
@@ -103,16 +104,18 @@ product that lives in this repository:
 
 - No code, protocol or build coupling with the website, Worker, Agent or
   contracts. `apps/bots` is not a root workspace member, root `check` and CI do
-  not run it, and root `biome.json` must exclude it. The only shared code is
-  `apps/macos/Sources/EagleDesign`.
+  not run it, and root `biome.json` must exclude it. The client is its own SPM
+  package, `apps/bots-macos`, which depends only on the dependency-free
+  `EagleDesign` product from `apps/macos`.
 - Documentation is the contract and precedes code: `docs/bots/PRODUCT.md`,
   `ARCHITECTURE.md`, `PROTOCOL.md`, `RUNTIME.md`, `OBSERVABILITY.md`,
-  `TESTING.md`. A behaviour, protocol or log-event change lands with its document
+  `TESTING.md`, with [PLAN.md](docs/bots/PLAN.md) owning what is built and what is
+  next. A behaviour, protocol or log-event change lands with its document
   in the same commit; [PROTOCOL.md](docs/bots/PROTOCOL.md) v1 is additive only and
   `fixtures/bots-protocol/` is normative for both languages.
 - Strict TDD per `docs/bots/TESTING.md`: demonstrate the failing test, then the
-  smallest implementation, then `cd apps/bots && npm run check` and
-  `cd apps/macos && swift test`. Never skip or focus a test, never widen a limit
+  smallest implementation, then `cd apps/bots && npm run check` (the client gate,
+  `cd apps/bots-macos && swift test`, starts in stage 5). Never skip or focus a test, never widen a limit
   or silence a log to pass.
 - Layer attribution is part of correctness: every crossing logs its layer with
   the shared `trace`, the innermost failure is the only error logged, and the
