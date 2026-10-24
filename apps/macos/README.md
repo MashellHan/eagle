@@ -10,7 +10,8 @@ network access yet; `EagleFeatures` view models hold static demo content.
 
 ```sh
 cd apps/macos
-swift run EagleApp          # three-column window; ⌘⇧G opens the template gallery
+./Scripts/build-app.sh && open .build/Eagle.app   # normal app window, Dock icon
+swift run EagleApp          # same shell without a bundle; ⌘⇧G opens the gallery
 swift run EagleChecks       # dependency-free assertions, exits non-zero on failure
 swift run SnapshotRenderer ../../.local/macos-snapshots   # PNGs for review
 ```
