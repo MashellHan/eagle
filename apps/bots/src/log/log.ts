@@ -56,13 +56,51 @@ const redact = (value: string): string => {
   return text;
 };
 
-const redactDetail = (detail: Readonly<Record<string, unknown>>): Record<string, unknown> => {
+// Per-event detail whitelist. An event without an entry carries only framework keys,
+// so a record can never borrow another event's fields.
+const DETAIL_SCHEMA: Readonly<Record<string, readonly string[]>> = {
+  "core.singleton.start": ["reason"],
+  "core.singleton.fail": ["reason"],
+  "core.hub.publish.ok": ["count", "bytes", "kind", "messageId"],
+  "core.hub.coalesce.ok": ["count", "bytes"],
+  "core.hub.degrade": ["reason", "count"],
+  "core.bot.close.degrade": ["reason"],
+  "core.recovery.bot.ok": ["finished"],
+  "core.delete.ok": ["finished"],
+  "core.delete.fail": ["reason"],
+  "core.submit.ok": ["queued", "count"],
+  "core.history.ok": ["count"],
+  "runtime.subscribe.ok": ["reattach"],
+  "runtime.close.ok": ["quarantined"],
+  "runtime.failure.classify": ["providerCode", "reason"],
+  "runtime.submit.fail": ["providerCode", "reason"],
+  "runtime.watch.end.ok": ["reason"],
+  "pi.report": ["kind", "reason"],
+};
+const FRAMEWORK_DETAIL = new Set(["propagated"]);
+const COUNT_KEYS = new Set(["count", "bytes", "len"]);
+
+const redactDetail = (
+  evt: EventName,
+  detail: Readonly<Record<string, unknown>>,
+): Record<string, unknown> => {
+  const allowed = DETAIL_SCHEMA[evt] ?? [];
   const clean: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(detail)) {
+    if (!FRAMEWORK_DETAIL.has(key) && !allowed.includes(key)) {
+      throw new Error(`log detail ${key} is not declared for ${evt}`);
+    }
     const expected = (DETAIL_TYPES as Record<string, string | undefined>)[key];
     if (expected === undefined) throw new Error(`undeclared log detail key: ${key}`);
-    if (typeof value !== expected) {
-      throw new Error(`log detail ${key} must be a ${expected}`);
+    if (typeof value !== expected) throw new Error(`log detail ${key} must be a ${expected}`);
+    if (typeof value === "number" && !Number.isFinite(value)) {
+      throw new Error(`log detail ${key} must be a finite number`);
+    }
+    if (
+      COUNT_KEYS.has(key) &&
+      (typeof value !== "number" || !Number.isInteger(value) || value < 0)
+    ) {
+      throw new Error(`log detail ${key} must be a non-negative integer`);
     }
     clean[key] = expected === "string" ? redact(value as string) : value;
   }
@@ -140,7 +178,7 @@ export class Log {
       ...(fields.detail === undefined && fields.propagated === undefined
         ? {}
         : {
-            detail: redactDetail({
+            detail: redactDetail(evt, {
               ...(fields.detail ?? {}),
               ...(fields.propagated === true ? { propagated: true } : {}),
             }),

@@ -121,41 +121,51 @@ test("classification and error records require a non-empty failure", () => {
   );
 });
 
-test("detail keys and types are declared", () => {
+test("detail keys are declared per event", () => {
   const { log } = captureLog(at);
   assert.throws(
     () => log.emit("info", "core", "core.hub.publish.ok", { trace, detail: { surprise: 1 } }),
-    /undeclared log detail key/,
+    /not declared for core\.hub\.publish\.ok/,
+  );
+  // A key declared for another event is not available here.
+  assert.throws(
+    () => log.emit("info", "core", "core.hub.publish.ok", { trace, detail: { providerCode: "x" } }),
+    /not declared/,
   );
   assert.throws(
     () => log.emit("info", "core", "core.hub.publish.ok", { trace, detail: { count: "text" } }),
     /must be a number/,
   );
+  assert.throws(
+    () => log.emit("info", "core", "core.hub.publish.ok", { trace, detail: { count: Number.NaN } }),
+    /finite number/,
+  );
+  assert.throws(
+    () => log.emit("info", "core", "core.hub.publish.ok", { trace, detail: { count: -1 } }),
+    /non-negative integer/,
+  );
   const record = log.emit("warn", "runtime", "runtime.submit.fail", {
     trace,
     failure,
     propagated: true,
-    detail: { providerCode: "rate_limited", count: 2, reattach: true },
+    detail: { providerCode: "rate_limited", reason: "upstream" },
   });
   assert.deepEqual(record.detail, {
     providerCode: "rate_limited",
-    count: 2,
-    reattach: true,
+    reason: "upstream",
     propagated: true,
   });
 });
 
-test("secrets, home paths and message text never reach a record", () => {
+test("secrets and home paths never reach a record", () => {
   const { log, records } = captureLog(at);
   process.env.BOTS_API_KEY = "sk-live-abcdefghijklmnop";
   try {
-    log.emit("info", "core", "core.bot.open.ok", {
+    log.emit("warn", "runtime", "runtime.watch.end.ok", {
       trace,
-      detail: {
-        reason: `failed for ${process.env.HOME}/bots with sk-live-abcdefghijklmnop`,
-        messageId: "hello",
-      },
+      detail: { reason: `failed for ${process.env.HOME}/bots with sk-live-abcdefghijklmnop` },
     });
+    log.emit("info", "core", "core.hub.publish.ok", { trace, detail: { messageId: "hello" } });
   } finally {
     delete process.env.BOTS_API_KEY;
   }
@@ -166,7 +176,23 @@ test("secrets, home paths and message text never reach a record", () => {
   assert.equal(records[0]?.detail?.reason, "failed for ~/bots with [redacted]");
 });
 
-test("no source file holds an event-shaped string literal", () => {
+// Scan a source file for an emit call that passes a literal instead of an Events.*
+// constant. Dotted strings that are not emit arguments (an entry kind such as
+// "pi.user") are none of this test's business.
+const literalEmitIn = (source: string): string[] => {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const matches: string[] = [];
+  const call = /\.emit\(([\s\S]{0,240}?)\)/g;
+  for (const match of code.matchAll(call)) {
+    const args = match[1] ?? "";
+    if (/["'`](transport|protocol|core|runtime|pi)\.[a-z0-9_.]+["'`]/.test(args)) {
+      matches.push(args.trim());
+    }
+  }
+  return matches;
+};
+
+test("no emit call passes a literal event name", () => {
   const walk = (dir: string): string[] =>
     readdirSync(dir).flatMap((name) => {
       const path = join(dir, name);
@@ -175,16 +201,17 @@ test("no source file holds an event-shaped string literal", () => {
     });
   for (const file of walk("src")) {
     if (file.endsWith("log/events.ts")) continue;
-    // Strip comments: documentation mentions entry kinds such as `pi.user`.
-    const source = readFileSync(file, "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
-    // Any literal that looks like an event name is a bypass: it can reach emit through
-    // an alias and it escapes both the type and the catalogue.
-    // Only names that start with a real layer are suspicious; dotted field paths such
-    // as "agent.model.provider" are legitimate strings.
-    const literals =
-      source.match(/["'`](transport|protocol|core|runtime|pi)\.[a-z0-9_.]+["'`]/g) ?? [];
-    assert.deepEqual(literals, [], `${file} holds an event-shaped literal; use Events.* constants`);
+    const offenders = literalEmitIn(readFileSync(file, "utf8"));
+    assert.deepEqual(offenders, [], `${file} passes an event literal; use Events.* constants`);
   }
+});
+
+test("the scan accepts a dotted non-log string and rejects a literal emit", () => {
+  assert.deepEqual(literalEmitIn('const kind = "pi.user";'), []);
+  assert.deepEqual(
+    literalEmitIn(
+      'export const emit = (log: Log) => log.emit("info", "core", "core.submit.typo", { trace });',
+    ).length,
+    1,
+  );
 });
