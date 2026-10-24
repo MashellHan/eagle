@@ -83,6 +83,11 @@ const isBotRecord = (value: unknown): value is BotConfig => {
   );
 };
 
+const assertRecord = (bot: unknown, what: string): BotConfig => {
+  if (!isBotRecord(bot)) throw new DirectoryError("corrupt_catalog", `${what} is malformed`);
+  return bot;
+};
+
 export class BotDirectory {
   readonly #root: string;
   readonly #fs: DirectoryFs;
@@ -164,6 +169,9 @@ export class BotDirectory {
 
   /** Persists the bot config, then publishes the catalog entry. */
   async create(config: BotConfig): Promise<void> {
+    // Validate before touching the filesystem: a malformed config must not leave a
+    // directory or a bot.json behind.
+    assertRecord(config, "bot config");
     await this.#serial(async () => {
       const bots = await this.load();
       if (bots.some((bot) => bot.id === config.id)) {

@@ -326,6 +326,8 @@ test("a malformed record is refused on write as well as on read", async () => {
       dir.create(smuggled),
       (error: DirectoryError) => error.reason === "corrupt_catalog",
     );
+    // Nothing was created on disk either.
+    await assert.rejects(readFile(join(root, "bots", "b_2", "bot.json")), /ENOENT/);
     assert.equal(await readFile(join(root, "catalog.json"), "utf8"), before);
   } finally {
     await rm(root, { recursive: true, force: true });
