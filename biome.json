@@ -4,6 +4,7 @@
     "includes": [
       "**",
       "!**/worker-configuration.d.ts",
+      "!apps/bots",
       "!dist",
       "!**/.build",
       "!apps/web/dist",

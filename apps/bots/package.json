@@ -1,0 +1,33 @@
+{
+  "name": "@nocoo/bots-daemon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local multi-bot chat daemon backed by pi-durable",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/main.ts",
+    "test": "node --test src/**/*.test.ts test/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check --error-on-warnings .",
+    "format": "biome check --write .",
+    "coverage": "node --test --experimental-test-coverage --test-coverage-lines=90 src/**/*.test.ts test/**/*.test.ts",
+    "fixtures:check": "node --experimental-strip-types scripts/fixtures.ts check",
+    "fixtures:write": "node --experimental-strip-types scripts/fixtures.ts write",
+    "smoke:model": "node --env-file-if-exists=.env --experimental-strip-types scripts/smoke-model.ts",
+    "check": "npm run fixtures:check && npm test && npm run typecheck && npm run lint"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-durable": "1.4.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.2",
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2"
+  }
+}
