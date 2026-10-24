@@ -100,7 +100,7 @@ test("the source graph satisfies the layer allowlist", () => {
   assert.deepEqual(violations(graph), []);
 });
 
-test("every import form is extracted, and look-alikes are not", () => {
+test("only real import nodes count as dependencies", () => {
   const source = [
     'import { a } from "./a.ts";',
     'export { b } from "./b.ts";',
@@ -111,12 +111,15 @@ test("every import form is extracted, and look-alikes are not", () => {
     '/* from "./block-commented.ts" */',
     "const text = 'import(\"./in-a-string.ts\")';",
     'const template = `from "./in-a-template.ts"`;',
-    'const plain = "from \\"../protocol/version.ts\\"";',
+    'const metadata = { import: "../protocol/version.ts" };',
+    'export const alsoMetadata = { from: "../protocol/version.ts" };',
+    `const lazy = \`${"$"}{await import("./in-interpolation.ts")}\`;`,
   ].join("\n");
   assert.deepEqual(dependenciesOf(source).sort(), [
     "./a.ts",
     "./b.ts",
     "./c.ts",
+    "./in-interpolation.ts",
     "./side-effect.ts",
     "@earendil-works/pi-durable",
   ]);

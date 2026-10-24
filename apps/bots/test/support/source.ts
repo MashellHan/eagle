@@ -1,107 +1,57 @@
-// A minimal, syntax-aware dependency extractor for the architecture test. It walks the
-// source once, tracking comments, strings and templates, so a mention of `from "./x"`
-// inside a comment or a plain string is not mistaken for an import, and dynamic
-// imports with options are still found.
-type Token =
-  | { readonly kind: "ident"; readonly value: string }
-  | { readonly kind: "string"; readonly value: string }
-  | { readonly kind: "punct"; readonly value: string };
+// Dependency extraction for the architecture test, using a real parser (@babel/parser)
+// rather than a hand-rolled scanner: only import/export nodes and dynamic imports count,
+// so a look-alike inside a comment, a string, a template body or an object key is not a
+// dependency, while a dynamic import inside a template interpolation still is.
+import { parse } from "@babel/parser";
 
-export function tokenize(source: string): Token[] {
-  const tokens: Token[] = [];
-  let index = 0;
-  const push = (kind: Token["kind"], value: string) => tokens.push({ kind, value });
-  while (index < source.length) {
-    const char = source[index];
-    const next = source[index + 1];
-    if (char === "/" && next === "/") {
-      index = source.indexOf("\n", index);
-      if (index === -1) break;
-      continue;
-    }
-    if (char === "/" && next === "*") {
-      const end = source.indexOf("*/", index + 2);
-      index = end === -1 ? source.length : end + 2;
-      continue;
-    }
-    if (char === '"' || char === "'" || char === "`") {
-      const quote = char;
-      index += 1;
-      let value = "";
-      while (index < source.length && source[index] !== quote) {
-        if (source[index] === "\\") {
-          value += source[index + 1] ?? "";
-          index += 2;
-          continue;
-        }
-        if (quote === "`" && source[index] === "$" && source[index + 1] === "{") {
-          // Skip an interpolation: it cannot contain a module specifier we want.
-          let depth = 1;
-          index += 2;
-          while (index < source.length && depth > 0) {
-            if (source[index] === "{") depth += 1;
-            if (source[index] === "}") depth -= 1;
-            index += 1;
-          }
-          continue;
-        }
-        value += source[index];
-        index += 1;
-      }
-      index += 1;
-      push("string", value);
-      continue;
-    }
-    if (/[A-Za-z_$]/.test(char ?? "")) {
-      let value = "";
-      while (index < source.length && /[A-Za-z0-9_$]/.test(source[index] ?? "")) {
-        value += source[index];
-        index += 1;
-      }
-      push("ident", value);
-      continue;
-    }
-    if (/[(){};,]/.test(char ?? "")) {
-      push("punct", char as string);
-      index += 1;
-      continue;
-    }
-    index += 1;
-  }
-  return tokens;
-}
+type Node = {
+  readonly type: string;
+  readonly source?: { readonly value?: unknown } | null;
+  readonly arguments?: readonly Node[];
+  readonly callee?: Node;
+  readonly expressions?: readonly Node[];
+  readonly quasis?: readonly Node[];
+  readonly body?: readonly Node[] | Node | null;
+  readonly [key: string]: unknown;
+};
 
-/** Every module specifier the source depends on, in any import form. */
+const specifier = (node: Node | undefined | null): string | undefined => {
+  const value = node?.source?.value;
+  return typeof value === "string" ? value : undefined;
+};
+
 export function dependenciesOf(source: string): string[] {
-  const tokens = tokenize(source);
+  const file = parse(source, {
+    sourceType: "module",
+    plugins: ["typescript"],
+    errorRecovery: false,
+  }) as unknown as Node;
   const found = new Set<string>();
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (token?.kind !== "ident") continue;
-    if (token.value === "import") {
-      const after = tokens[index + 1];
-      if (after?.kind === "string") {
-        found.add(after.value); // side-effect import
-        continue;
-      }
-      if (after?.kind === "punct" && after.value === "(") {
-        const argument = tokens[index + 2];
-        if (argument?.kind === "string") found.add(argument.value); // dynamic import
-        continue;
-      }
+
+  const visit = (node: Node | null | undefined): void => {
+    if (!node || typeof node !== "object") return;
+    if (
+      node.type === "ImportDeclaration" ||
+      node.type === "ExportNamedDeclaration" ||
+      node.type === "ExportAllDeclaration"
+    ) {
+      const value = specifier(node);
+      if (value !== undefined) found.add(value);
     }
-    if ((token.value === "import" || token.value === "export") && tokens[index + 1]) {
-      // Walk to `from "..."` before the statement ends.
-      for (let cursor = index + 1; cursor < tokens.length; cursor += 1) {
-        const current = tokens[cursor];
-        if (current?.kind === "punct" && (current.value === ";" || current.value === ")")) break;
-        if (current?.kind === "ident" && current.value === "from") {
-          const specifier = tokens[cursor + 1];
-          if (specifier?.kind === "string") found.add(specifier.value);
-          break;
-        }
-      }
+    if (node.type === "CallExpression" && node.callee?.type === "Import") {
+      const argument = node.arguments?.[0];
+      const value =
+        argument?.type === "StringLiteral" ? (argument as { value?: unknown }).value : undefined;
+      if (typeof value === "string") found.add(value);
     }
-  }
+    for (const [key, value] of Object.entries(node)) {
+      if (key === "loc" || key === "leadingComments" || key === "trailingComments") continue;
+      if (Array.isArray(value)) {
+        for (const child of value) visit(child as Node);
+      } else if (value && typeof value === "object") visit(value as Node);
+    }
+  };
+
+  visit(file);
   return [...found];
 }
