@@ -5,7 +5,7 @@ public struct ChevronRow: View {
   private let systemName: String
   private let title: String
   private let action: (() -> Void)?
-  @LocalState private var hovering = false
+  @State private var hovering = false
 
   public init(systemName: String, title: String, action: (() -> Void)? = nil) {
     self.systemName = systemName

@@ -12,7 +12,7 @@ public struct ResizeHandle: View {
   private let inverted: Bool
   private let onChange: (CGFloat) -> Void
 
-  @LocalState private var startX: CGFloat?
+  @State private var startX: CGFloat?
 
   public init(
     width: CGFloat,

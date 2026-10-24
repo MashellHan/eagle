@@ -24,7 +24,8 @@ limits shape the code:
   export `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` when Xcode
   is installed; with Command Line Tools only, `swift build` still works but the
   test targets do not. View models use `ObservableObject` and views keep the
-  `LocalState` shim so the app itself builds either way.
+  Xcode toolchain for tests; `swift build` also works with Command Line
+  Tools alone.
 - `SnapshotRenderer` hosts each view in an offscreen `NSWindow` because
   `ImageRenderer` cannot draw AppKit-backed views such as `ScrollView` and
   `TextField`.
@@ -36,7 +37,6 @@ Package.swift
 Sources/
   EagleDesign/       tokens and components, no feature state
     Theme.swift        palette, metrics, type scale sampled from the reference
-    LocalState.swift   macro-free @State replacement
     Primitives/        Avatar, Tag, SectionLabel, IconButton, ChevronRow,
                        ToggleRow, SwitchToggle, SpinnerArc, SegmentedTabs,
                        EdgeFade, ResizeHandle

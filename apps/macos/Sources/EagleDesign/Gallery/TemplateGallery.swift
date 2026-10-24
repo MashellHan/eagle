@@ -3,11 +3,11 @@ import SwiftUI
 /// Visual reference for every token and component. Used while the shell is
 /// still being aligned to the reference design.
 public struct TemplateGallery: View {
-  @LocalState private var tab: InspectorColumn.Tab = .detail
-  @LocalState private var toggleOne = true
-  @LocalState private var toggleTwo = true
-  @LocalState private var draft = ""
-  @LocalState private var draftFilled = "把 sleepy 那个 PR 一起并掉"
+  @State private var tab: InspectorColumn.Tab = .detail
+  @State private var toggleOne = true
+  @State private var toggleTwo = true
+  @State private var draft = ""
+  @State private var draftFilled = "把 sleepy 那个 PR 一起并掉"
 
   public init() {}
 

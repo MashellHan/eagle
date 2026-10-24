@@ -15,7 +15,7 @@ public struct IconButton: View {
   private let tint: Color
   private let style: Style
   private let action: () -> Void
-  @LocalState private var hovering = false
+  @State private var hovering = false
 
   public init(
     systemName: String,

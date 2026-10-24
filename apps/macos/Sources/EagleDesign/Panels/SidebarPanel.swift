@@ -24,10 +24,10 @@ public struct SidebarPanel: View {
   private let userName: String
   private let width: CGFloat
 
-  @LocalState private var editingSection: String?
-  @LocalState private var editingItem: String?
-  @LocalState private var draftTitle = ""
-  @LocalState private var hoveringSection: String?
+  @State private var editingSection: String?
+  @State private var editingItem: String?
+  @State private var draftTitle = ""
+  @State private var hoveringSection: String?
 
   public init(
     profileInitial: String,

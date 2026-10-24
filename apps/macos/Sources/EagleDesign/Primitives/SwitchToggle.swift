@@ -39,7 +39,7 @@ public struct SwitchToggle: View {
 public struct SpinnerArc: View {
   private let size: CGFloat
   private let lineWidth: CGFloat
-  @LocalState private var spinning = false
+  @State private var spinning = false
 
   public init(size: CGFloat = 12, lineWidth: CGFloat = 1.6) {
     self.size = size

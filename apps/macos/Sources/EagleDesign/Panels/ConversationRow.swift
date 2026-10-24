@@ -5,7 +5,7 @@ import SwiftUI
 public struct ConversationRow: View {
   private let item: SidebarItem
   private let selected: Bool
-  @LocalState private var hovering = false
+  @State private var hovering = false
 
   public init(item: SidebarItem, selected: Bool) {
     self.item = item

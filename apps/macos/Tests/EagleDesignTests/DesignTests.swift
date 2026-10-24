@@ -106,24 +106,6 @@ struct TranscriptTests {
   }
 }
 
-@Suite("Local state")
-struct LocalStateTests {
-  @Test("binding writes through to the value")
-  func writesThrough() {
-    let state = LocalStateStorage(1)
-    #expect(state.value == 1)
-    state.value = 7
-    #expect(state.value == 7)
-  }
-
-  @Test("collections keep reference semantics")
-  func collections() {
-    let state = LocalStateStorage(["a"])
-    state.value.append("b")
-    #expect(state.value == ["a", "b"])
-  }
-}
-
 private func expectColor(
   _ color: Color,
   _ hex: UInt32,
