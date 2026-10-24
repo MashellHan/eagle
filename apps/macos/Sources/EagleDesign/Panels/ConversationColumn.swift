@@ -106,15 +106,16 @@ public struct ConversationColumn: View {
     VStack(spacing: 0) {
       if let sender {
         SenderChip(name: sender.name, tintIndex: sender.tintIndex)
-          .padding(.top, Theme.Metric.chipTopInset)
-          .padding(.bottom, 10)
+          .padding(.vertical, Theme.Metric.chipTopInset)
+          .frame(maxWidth: .infinity)
+          .background(Theme.Palette.surface)
       }
       LinearGradient(
         colors: [Theme.Palette.surface, Theme.Palette.surface.opacity(0)],
         startPoint: .top,
         endPoint: .bottom
       )
-      .frame(height: 14)
+      .frame(height: 18)
     }
     .frame(maxWidth: .infinity)
     .allowsHitTesting(false)

@@ -12,14 +12,53 @@ import Foundation
 ///     swift Scripts/make-icon.swift
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-let source = root.appendingPathComponent("Support/Brand/eagle-hero-square.png")
+let texture = root.appendingPathComponent("Support/Brand/eagle-texture.png")
+let mark = root.appendingPathComponent("Support/Brand/eagle-mark.png")
 let iconset = root.appendingPathComponent("Support/AppIcon.iconset")
 let output = root.appendingPathComponent("Support/AppIcon.icns")
 
-guard let image = NSImage(contentsOf: source) else {
-  print("missing \(source.path)")
+guard let textureImage = NSImage(contentsOf: texture), let markImage = NSImage(contentsOf: mark) else {
+  print("missing brand artwork under Support/Brand")
   exit(1)
 }
+
+/// Paper, mountain-birch leaves on the left, faceted eagle over them. The
+/// texture is mirrored so the leaf cluster sits opposite the streamer instead of
+/// underneath it.
+func composition() -> NSImage {
+  let canvas = NSImage(size: NSSize(width: 1024, height: 1024))
+  canvas.lockFocus()
+  NSColor(srgbRed: 0.969, green: 0.953, blue: 0.918, alpha: 1).setFill()
+  NSRect(x: 0, y: 0, width: 1024, height: 1024).fill()
+
+  NSGraphicsContext.saveGraphicsState()
+  let flip = NSAffineTransform()
+  flip.translateX(by: 1024, yBy: 0)
+  flip.scaleX(by: -1, yBy: 1)
+  flip.concat()
+  textureImage.draw(
+    in: NSRect(x: -60, y: -60, width: 1144, height: 1144),
+    from: .zero,
+    operation: .sourceOver,
+    fraction: 0.92
+  )
+  NSGraphicsContext.restoreGraphicsState()
+
+  // Oversized so the bust runs past the squircle body: the artwork has a hard
+  // bottom edge that must stay outside the mask.
+  let size: CGFloat = 1024
+  let inset = (1024 - size) / 2
+  markImage.draw(
+    in: NSRect(x: inset + 14, y: -86, width: size, height: size),
+    from: .zero,
+    operation: .sourceOver,
+    fraction: 1
+  )
+  canvas.unlockFocus()
+  return canvas
+}
+
+let image = composition()
 
 /// Apple's macOS icon grid: an 824 pt body centred in a 1024 pt canvas with a
 /// 185 pt corner radius.

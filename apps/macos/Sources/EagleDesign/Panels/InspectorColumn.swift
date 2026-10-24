@@ -74,8 +74,10 @@ public struct InspectorColumn: View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(spacing: 4) {
         Spacer(minLength: 0)
-        IconButton(systemName: "square.and.arrow.up", label: "分享", action: onShare)
-        IconButton(systemName: "xmark", label: "收起检查器", action: onCollapse)
+        IconButton(
+          systemName: "square.and.arrow.up", label: "分享", style: .circled, action: onShare)
+        IconButton(
+          systemName: "xmark", label: "收起检查器", style: .circled, action: onCollapse)
       }
       .padding(.horizontal, Theme.Metric.panelInset - 6)
       .padding(.top, Theme.Metric.toolbarTopInset)
