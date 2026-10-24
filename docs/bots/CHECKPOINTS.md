@@ -114,3 +114,25 @@ Verified:
 Next broken hop: no command validation, no limits enforcement, no log module and no
 architecture guard test, so ladder rows 3-8 cannot run. The next commit adds command
 validation and limits, then the log module, then the guard tests.
+
+## 2026-10-25 23:20 — stage 1 complete and signed off
+
+Observed: all eight stage-1 ladder rows are implemented, tested and reviewed. The
+daemon can decode and encode every protocol frame, validate commands, enforce the wire
+budgets, ignore unknown events while consuming their revision, log through a declared
+catalogue with redaction, and prove its own layer boundaries by parsing its source.
+
+Verified (all run just now in `apps/bots`):
+
+- `npm test`: 104 tests pass.
+- `npm run check`: `fixtures:check` (26 files), tests, `tsc --noEmit`, Biome and
+  coverage all pass; coverage is 93.72% lines, 90.30% branches, 96.00% functions.
+- Codex reviewed each batch and signed off: rows 1-4 (6 rounds), rows 5-6 (5 rounds),
+  rows 7-8 (5 rounds). Every review finding was fixed and re-reviewed; the recurring
+  themes were "a test that only round-trips proves nothing", "budgets must measure the
+  bytes actually written", and "enforce boundaries with a parser, not a regex".
+
+Next broken hop: stage 2 has no code. `src/core` contains only `domain.ts` and the
+components `BotDirectory`, `EventHub`, `ConversationService`, `RuntimePort` and
+`BotRegistry` do not exist, so rows 9-22 (directory, hub, service) cannot start. The
+agent runtime, transports and client remain unimplemented.
