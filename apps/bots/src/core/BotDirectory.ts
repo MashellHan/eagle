@@ -50,9 +50,27 @@ export type ReconcileResult = {
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const RECORD_KEYS = new Set([
+  "id",
+  "title",
+  "createdAt",
+  "updatedAt",
+  "model",
+  "instructions",
+  "thinkingLevel",
+]);
+
 const isBotRecord = (value: unknown): value is BotConfig => {
   if (!isObject(value)) return false;
-  const model = value.model;
+  if (Object.keys(value).some((key) => !RECORD_KEYS.has(key))) return false;
+  if (!isObject(value.model)) return false;
+  if (Object.keys(value.model).some((key) => key !== "provider" && key !== "modelId")) return false;
+  const optional = value as { instructions?: unknown; thinkingLevel?: unknown };
+  if (optional.instructions !== undefined && typeof optional.instructions !== "string")
+    return false;
+  if (optional.thinkingLevel !== undefined && typeof optional.thinkingLevel !== "string") {
+    return false;
+  }
   return (
     typeof value.id === "string" &&
     BOT_ID_PATTERN.test(value.id) &&
@@ -60,9 +78,8 @@ const isBotRecord = (value: unknown): value is BotConfig => {
     value.title.trim().length > 0 &&
     typeof value.createdAt === "string" &&
     typeof value.updatedAt === "string" &&
-    isObject(model) &&
-    typeof model.provider === "string" &&
-    typeof model.modelId === "string"
+    typeof value.model.provider === "string" &&
+    typeof value.model.modelId === "string"
   );
 };
 
@@ -122,7 +139,18 @@ export class BotDirectory {
     return bots as readonly BotConfig[];
   }
 
-  async writeAll(bots: readonly BotConfig[]): Promise<void> {
+  #writeAll(bots: readonly BotConfig[]): Promise<void> {
+    for (const [index, bot] of bots.entries()) {
+      if (!isBotRecord(bot)) {
+        return Promise.reject(
+          new DirectoryError("corrupt_catalog", `refusing to write malformed entry ${index}`),
+        );
+      }
+    }
+    return this.#writeCatalog(bots);
+  }
+
+  async #writeCatalog(bots: readonly BotConfig[]): Promise<void> {
     const temp = `${this.catalogPath}.${randomUUID()}.tmp`;
     const body = `${JSON.stringify({ version: CATALOG_VERSION, bots }, null, 2)}\n`;
     try {
@@ -153,7 +181,7 @@ export class BotDirectory {
           cause: error,
         });
       }
-      await this.writeAll([...bots, config]);
+      await this.#writeAll([...bots, config]);
     });
   }
 
@@ -164,7 +192,7 @@ export class BotDirectory {
       if (index === -1) throw new DirectoryError("unknown_bot", `bot ${id} does not exist`);
       const current = bots[index] as BotConfig;
       const updated: BotConfig = { ...current, title, updatedAt: at };
-      await this.writeAll(bots.map((bot, position) => (position === index ? updated : bot)));
+      await this.#writeAll(bots.map((bot, position) => (position === index ? updated : bot)));
       return updated;
     });
   }
@@ -180,20 +208,23 @@ export class BotDirectory {
       if (!bots.some((bot) => bot.id === id)) {
         throw new DirectoryError("unknown_bot", `bot ${id} does not exist`);
       }
-      await this.#fs.mkdir(`${this.#root}/trash`, { recursive: true });
       try {
+        await this.#fs.mkdir(`${this.#root}/trash`, { recursive: true });
         await this.#fs.rename(this.botDir(id), this.trashDir(id));
       } catch (error) {
         const code = (error as NodeJS.ErrnoException).code;
         const sourceGone = !(await this.#exists(this.botDir(id)));
         const trashed = await this.#exists(this.trashDir(id));
+        if (!trashed && (await this.#exists(this.trashDir(id)))) {
+          throw new DirectoryError("storage_failed", `trash path for ${id} is not a directory`);
+        }
         if (!(code === "ENOENT" && sourceGone && trashed)) {
           throw new DirectoryError("storage_failed", `cannot move bot ${id} to trash`, {
             cause: error,
           });
         }
       }
-      await this.writeAll(bots.filter((bot) => bot.id !== id));
+      await this.#writeAll(bots.filter((bot) => bot.id !== id));
     });
   }
 
@@ -206,7 +237,7 @@ export class BotDirectory {
         .filter((bot) => !present.has(bot.id) && trashed.has(bot.id))
         .map((bot) => bot.id);
       if (finishedDeletes.length > 0) {
-        await this.writeAll(bots.filter((bot) => !finishedDeletes.includes(bot.id)));
+        await this.#writeAll(bots.filter((bot) => !finishedDeletes.includes(bot.id)));
       }
       const catalogIds = new Set(bots.map((bot) => bot.id));
       return {
@@ -227,8 +258,8 @@ export class BotDirectory {
 
   async #exists(path: string): Promise<boolean> {
     try {
-      await this.#fs.stat(path);
-      return true;
+      const stats = await this.#fs.stat(path);
+      return stats.isDirectory();
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
       throw new DirectoryError("storage_failed", `cannot inspect ${path}`, { cause: error });

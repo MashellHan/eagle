@@ -314,3 +314,20 @@ test("remove refuses when neither the bot nor its trash exists", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("a malformed record is refused on write as well as on read", async () => {
+  const { root, dir } = await workspace();
+  try {
+    await dir.create(record("b_1"));
+    const before = await readFile(join(root, "catalog.json"), "utf8");
+    // A caller cannot smuggle an unknown or mistyped field into the catalog.
+    const smuggled = { ...record("b_2"), surprise: 1 } as never;
+    await assert.rejects(
+      dir.create(smuggled),
+      (error: DirectoryError) => error.reason === "corrupt_catalog",
+    );
+    assert.equal(await readFile(join(root, "catalog.json"), "utf8"), before);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
