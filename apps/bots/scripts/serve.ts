@@ -16,6 +16,9 @@ process.stdout.write(
 );
 
 const shutdown = async (): Promise<void> => {
+  // A last-resort deadline: the process leaves even if a subsystem never returns.
+  const hard = setTimeout(() => process.exit(1), handle.config.closeDeadlineMs + 2_000);
+  hard.unref();
   await handle.close();
   process.exit(0);
 };

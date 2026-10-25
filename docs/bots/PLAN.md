@@ -71,8 +71,8 @@ after a full review round; a row can be implemented and reviewed but not yet sig
 | 53-54 | 4 | crash and perf suites | implemented (`test:crash`, `perf`) |
 | 55-69 | 5 | macOS client: decoding, reducer, transport, view models, app | **not started** |
 
-Current tree: 343 deterministic tests plus five crash cases and four perf
-measurements, coverage 94.8% lines / 90.0% branches / 90.3% functions, `typecheck`,
+Current tree: 344 deterministic tests plus five crash cases and four perf
+measurements, coverage 94.9% lines / 89.8% branches / 90.3% functions, `typecheck`,
 `lint`, `fixtures:check`, `test:crash` and `perf` green. The daemon runs: it binds a
 loopback port, checks a bearer token, serves the catalog, streams a bot over a
 socket, records every crossing in the declared log catalogue, survives a `SIGKILL`
@@ -110,7 +110,7 @@ review round closed eight P1 and eleven P2 findings, and rows 42-54 are written.
 
 ## Next work, in order
 
-1. Sign stage 4 off: the third review round is running against the fixes below.
+1. Sign stage 4 off: the fifth review round is running against the fixes below.
 2. Stage 5: `apps/bots-macos/` (separate package, `EagleDesign` product only).
 
 ### What the adapter can do today (rows 23-36, signed off)
@@ -174,9 +174,27 @@ warm-up open to prove in-flight sharing, the overflow journey joins during the
 withdrawal window, the delete crash test runs the production `remove`, the outbox
 journey covers an admitted input whose record read failed, quarantine retry recovery,
 a second crash without any provisional, two daemons starting at once, a junk sqlite
-beside a healthy bot, and the catalog following a run. Two findings are deferred by
-design: I14's ranking is a client reducer duty (stage 5), and the transport's
-unsent-byte threshold shares the hub's proven mechanism without its own slow-TCP test.
+beside a healthy bot, and the catalog following a run. Then a third round found eight
+P1s (a handle held across a close or delete, history byte-paging that skipped
+messages, a snapshot budget that ignored the rest of the frame, an unavailable
+snapshot the decoder would reject, leaking or early-freed reservations, a
+backpressure bound only on the hub path, a silent client holding the lock server,
+and concurrent `recover` attaching two watches); a fourth round found five more in
+those fixes (reservations counted twice or leaked, an escalated watch dropping a live
+Harness so `recover` could open a second owner, two concurrent subscribes building two
+views and so bypassing the eight-subscriber cap, and a summary only budgeted in its
+healthy form). A fifth round found three more (the delete window being replaced by
+its close, a snapshot reconciling a reservation whose submit had not returned, and an
+unavailable bot bypassing the admission budget through its still-live handle). All are
+closed with tests that fail without the fix.
+
+Four test-fidelity findings remain deferred with their reasons: the outbox's
+admitted-then-unreadable case is asserted at the service and adapter boundaries
+because no fault can be injected at that read; a retired-watch reattach has no
+integration injection because pi-durable exposes no hook (the classifier and reattach
+paths are tested); the transport's unsent-byte threshold shares the hub's proven
+mechanism and has no slow-TCP test of its own; and I14's ranking is a client reducer
+duty in stage 5.
 
 Stage 3 (rows 23-36) is signed off. Its review rounds closed, in order: a
 fail log record built from another layer's identity, a reattach that dropped its

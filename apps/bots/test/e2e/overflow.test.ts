@@ -2,9 +2,15 @@
 // the withheld entry's id after the commit, and nothing above the transport cap is ever
 // presented as the answer (docs/bots/PROTOCOL.md, "Message").
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import { WebSocket } from "ws";
 import type { Message } from "../../src/core/domain.ts";
 import { OVERSIZED_NOTICE } from "../../src/runtime/pi/limits.ts";
+import { startProvider } from "../crash/support/provider.ts";
 import { text } from "../support/pi.ts";
 import { frameQueue, hello, send, startStack } from "../support/server.ts";
 
@@ -271,5 +277,112 @@ test("a client that joins inside the withdrawal window sees no partial", async (
   } finally {
     release();
     await stack.close();
+  }
+});
+
+test("the real adapter leaves a joining client the withdrawn state, not a partial", async () => {
+  // A real daemon over a provider that streams one chunk and then never returns: the
+  // chunk exceeds the message cap, so the attempt is withdrawn and the run stays open.
+  const root = await mkdtemp(join(tmpdir(), "bots-window-"));
+  // One chunk over the 96 KiB projection cap: the attempt is withdrawn immediately.
+  const provider = await startProvider(join(root, "blocked"), { text: "长".repeat(40 * 1024) });
+  const child = spawn(
+    process.execPath,
+    [
+      "--experimental-strip-types",
+      join(process.cwd(), "scripts/serve.ts"),
+      "--root",
+      root,
+      "--port",
+      "0",
+    ],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        BOTS_BASE_URL: provider.baseUrl,
+        BOTS_API_KEY: "test-key-0123456789",
+        BOTS_MODEL: "auto/stub",
+        BOTS_MODEL_PROVIDER: "stub",
+      },
+    },
+  );
+  let output = "";
+  child.stdout?.setEncoding("utf8");
+  child.stdout?.on("data", (chunk: string) => {
+    output += chunk;
+  });
+  try {
+    for (let index = 0; index < 600 && !output.includes('"daemon.start"'); index += 1) {
+      if (child.exitCode !== null) throw new Error(`the daemon exited: ${output}`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    const line = output.split("\n").find((entry) => entry.includes('"daemon.start"'));
+    assert.ok(line !== undefined);
+    const port = (JSON.parse(line) as { port: number }).port;
+    const token = (await readFile(join(root, "token"), "utf8")).trim();
+    const connect = () =>
+      new WebSocket(`ws://127.0.0.1:${port}/v1/socket`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+    const created = await fetch(`http://127.0.0.1:${port}/v1/bots`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ title: "窗口" }),
+    });
+    const botId = ((await created.json()) as { bot: { id: string } }).bot.id;
+
+    const first = connect();
+    const frames = frameQueue(first);
+    await send(first, hello);
+    await frames.next();
+    await send(first, { type: "subscribe", botId, trace: tr("real1") });
+    await frames.next();
+    await send(first, {
+      type: "send",
+      requestId: "r_real_00001",
+      text: "请长一点",
+      whenBusy: "followUp",
+      trace: tr("real2"),
+    });
+    for (;;) {
+      const frame = await frames.next(20_000);
+      const value = frame.value as { running?: boolean; streaming?: unknown } | undefined;
+      if (frame.type === "snapshot" && value?.running === true && value.streaming === null) break;
+    }
+    await provider.blocked;
+    const late = connect();
+    const joined = frameQueue(late);
+    await send(late, hello);
+    await joined.next();
+    await send(late, { type: "subscribe", botId, trace: tr("real3") });
+    let baseline: Record<string, unknown> | undefined;
+    for (;;) {
+      const frame = await joined.next(20_000);
+      if (frame.type !== "snapshot") continue;
+      baseline = frame;
+      break;
+    }
+    const value = baseline.value as {
+      running: boolean;
+      streaming: unknown;
+      messages: Message[];
+    };
+    assert.equal(value.running, true, "the run is still open behind the withdrawn attempt");
+    assert.equal(value.streaming, null, "nothing is streaming");
+    assert.equal(
+      value.messages.some((message) => message.role === "assistant"),
+      false,
+      "the withheld attempt is not in the transcript",
+    );
+    late.close();
+    first.close();
+  } finally {
+    child.kill("SIGKILL");
+    await provider.close();
+    await rm(root, { recursive: true, force: true });
   }
 });

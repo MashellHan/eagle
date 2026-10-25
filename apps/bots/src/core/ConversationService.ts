@@ -66,7 +66,7 @@ export type ConversationServiceOptions = {
     dropHandle: boolean,
   ) => void;
   /** `recover` brought the bot back, so the catalog may leave `unavailable`. */
-  readonly onRecovered?: (botId: string) => void;
+  readonly onRecovered?: (botId: string, running: boolean) => void;
 };
 
 /** Only `not_admitted` lets a client drop its outbox entry (docs/bots/PROTOCOL.md). */
@@ -97,6 +97,8 @@ type Bot = {
   readonly ranks: SubmissionRanks;
   /** Admissions in flight, counted until their own submission event arrives. */
   readonly reserved: Set<string>;
+  /** The reservations whose `submit` already returned: only those a snapshot may judge. */
+  readonly settledSubmits: Set<string>;
   /** Detaches the runtime subscription this bot holds, when it has one. */
   detach: (() => void) | undefined;
   /** Publishes what the runtime delivered while the first subscription was rendering. */
@@ -127,7 +129,7 @@ export class ConversationService {
   readonly #onSessionFailed:
     | ((botId: string, reason: ErrorKind, message: string, dropHandle: boolean) => void)
     | undefined;
-  readonly #onRecovered: ((botId: string) => void) | undefined;
+  readonly #onRecovered: ((botId: string, running: boolean) => void) | undefined;
   /** Per-bot admission serialization: check-then-submit is one serial section. */
   readonly #admissions = new Map<string, Promise<unknown>>();
   /** Per-bot view serialization: subscribe and recover never rebuild one view twice. */
@@ -298,11 +300,15 @@ export class ConversationService {
     await this.#serializeView(bot.snapshot.botId, async () => {
       if (bot.degraded !== undefined && bot.handle === undefined) {
         const rebuilt = await this.#reopen(bot, connection.botId, trace);
-        this.#onRecovered?.(bot.snapshot.botId);
+        // The snapshot first, then the catalog: a client learns the recovery from the
+        // frame that carries its content (PROTOCOL I1/I3).
         bot.hub.publishSnapshot(rebuilt, trace);
+        bot.hub.drain();
+        this.#onRecovered?.(bot.snapshot.botId, rebuilt.running);
         return;
       }
-      const handle = this.#handle(connectionId);
+      // A degraded-but-owned bot still has its handle: recover must ask that owner.
+      const handle = bot.handle ?? this.#handle(connectionId);
       await handle.recover(trace);
       if (bot.degraded !== undefined) {
         // The harness survived; its watch was re-attached by the runtime. Re-render from
@@ -310,7 +316,7 @@ export class ConversationService {
         bot.detach?.();
         const attached = await this.#attach(handle, bot.hub, trace, bot);
         attached.release();
-        this.#onRecovered?.(bot.snapshot.botId);
+        this.#onRecovered?.(bot.snapshot.botId, bot.snapshot.running);
       }
       bot.hub.publishSnapshot(bot.snapshot, trace);
     });
@@ -421,6 +427,7 @@ export class ConversationService {
         // only the view's pending list may count it.
         if (stored.status === "done" || stored.status === "unanswered") {
           bot.reserved.delete(input.requestId);
+          bot.settledSubmits.delete(input.requestId);
         }
         return stored;
       }
@@ -442,6 +449,7 @@ export class ConversationService {
       bot.reserved.add(input.requestId);
       try {
         const record = await handle.submit(input);
+        bot.settledSubmits.add(input.requestId);
         if (record.status === "done" || record.status === "unanswered") {
           bot.reserved.delete(input.requestId);
         }
@@ -453,7 +461,10 @@ export class ConversationService {
         const known =
           cause instanceof ClassifiedFailure &&
           (cause.disposition === "not_admitted" || cause.disposition === "runtime");
-        if (known) bot.reserved.delete(input.requestId);
+        if (known) {
+          bot.reserved.delete(input.requestId);
+          bot.settledSubmits.delete(input.requestId);
+        }
         // A failure the runtime already classified keeps its identity and disposition;
         // only an unclassified one becomes "admission unconfirmed", where the client
         // keeps its outbox entry and retries with the same requestId.
@@ -597,7 +608,7 @@ export class ConversationService {
   /** A live bot that can actually run; an unavailable one refuses the command. */
   #handle(connectionId: string, requestId?: string): RuntimeHandle {
     const bot = this.#botOf(connectionId, requestId);
-    if (bot.handle === undefined) {
+    if (bot.degraded !== undefined || bot.handle === undefined) {
       throw new CommandError(
         this.#mint(bot.degraded?.reason ?? "storage_failed"),
         "runtime",
@@ -633,16 +644,18 @@ export class ConversationService {
         const settling = this.#settlingOf?.(botId) === true;
         // A live handle that the registry still owns is this view's handle: no extra open.
         if (!settling && (this.#handleOf === undefined || bot.handle === live)) return bot;
-        // A close or delete in flight owns the handle: ask the registry, which waits for
-        // it, so a subscribe can never hold a handle the registry is about to drop.
-        const opened = await this.#open(botId, trace).catch((error: unknown) => {
-          if (error instanceof ClassifiedFailure && error.failure.kind === "unknown_bot") {
-            throw error;
-          }
-          return undefined;
-        });
-        if (opened !== undefined && bot.handle === opened) return bot;
-        if (opened === undefined && bot.handle === undefined) return bot;
+        if (settling) {
+          // A close or delete in flight owns the handle: ask the registry, which waits
+          // for it, so a subscribe never holds a handle the registry is about to drop.
+          const opened = await this.#open(botId, trace).catch((error: unknown) => {
+            if (error instanceof ClassifiedFailure && error.failure.kind === "unknown_bot") {
+              throw error;
+            }
+            return undefined;
+          });
+          if (opened !== undefined && bot.handle === opened) return bot;
+          if (opened === undefined && bot.handle === undefined) return bot;
+        }
       }
       this.#bots.delete(botId);
     }
@@ -689,6 +702,7 @@ export class ConversationService {
         },
         ranks: new Map(),
         reserved: new Set<string>(),
+        settledSubmits: new Set<string>(),
         detach: undefined,
         release: () => undefined,
       };
@@ -701,11 +715,16 @@ export class ConversationService {
     let bot: Bot;
     const apply = (event: RuntimeEvent): void => {
       const wasRunning = bot.snapshot.running;
-      if (event.type === "submission") bot.reserved.delete(event.record.requestId);
+      if (event.type === "submission") {
+        bot.reserved.delete(event.record.requestId);
+        bot.settledSubmits.delete(event.record.requestId);
+      }
       if (event.type === "snapshot") {
         // A lost settlement event cannot hold a slot forever: a snapshot that no longer
-        // lists the submission is the daemon's own reconciliation.
+        // lists an admitted submission is the daemon's own reconciliation. A submit that
+        // has not returned yet may commit *after* this snapshot, so it is not judged.
         for (const requestId of [...bot.reserved]) {
+          if (!bot.settledSubmits.has(requestId)) continue;
           const listed =
             event.value.pending.some((record) => record.requestId === requestId) ||
             event.value.messages.some(
@@ -768,6 +787,7 @@ export class ConversationService {
       snapshot: this.#fitPage(subscription.snapshot),
       ranks,
       reserved: new Set<string>(),
+      settledSubmits: new Set<string>(),
       release: () => {
         // Stay buffering while draining: an event produced by a sink mid-release must
         // queue behind the earlier ones instead of overtaking them.

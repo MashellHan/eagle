@@ -1469,40 +1469,58 @@ test("two subscriptions after an eviction share one view and one runtime watch",
   };
   let opens = 0;
   let watches = 0;
+  let live = false;
+  let current: RuntimeHandle | undefined;
   let release: () => void = () => undefined;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
+  const handle = (): RuntimeHandle => ({
+    subscribe: async (_trace, next) => {
+      watches += 1;
+      if (watches > 1) await gate;
+      next({ type: "snapshot", trace, value: snapshot });
+      return { snapshot, detach: () => undefined };
+    },
+    submission: async () => undefined,
+    submit: async (input) => ({
+      id: `s_${input.requestId}`,
+      requestId: input.requestId,
+      status: "queued",
+    }),
+    history: async () => ({ messages: [], hasMore: false }),
+    abort: async () => undefined,
+    recover: async () => undefined,
+    busy: async () => ({ run: false, tasks: false }),
+    close: async () => {
+      live = false;
+      return "closed";
+    },
+  });
   const service = new ConversationService({
     open: async () => {
       opens += 1;
-      return {
-        subscribe: async () => {
-          watches += 1;
-          await gate;
-          return { snapshot, detach: () => undefined };
-        },
-        submission: async () => undefined,
-        submit: async (input) => ({
-          id: `s_${input.requestId}`,
-          requestId: input.requestId,
-          status: "queued",
-        }),
-        history: async () => ({ messages: [], hasMore: false }),
-        abort: async () => undefined,
-        recover: async () => undefined,
-        busy: async () => ({ run: false, tasks: false }),
-        close: async () => "closed",
-      };
+      live = true;
+      current = handle();
+      return current;
     },
+    handleOf: () => (live ? current : undefined),
+    // The idle close cleared the handle: this is what an eviction looks like to a subscriber.
+    settlingOf: () => false,
     measure: utf8,
   });
-  const first = service.subscribe("c_1", "b_1", trace, () => undefined);
-  const second = service.subscribe("c_2", "b_1", trace, () => undefined);
+  const first = await subscribe(service, [], "c_1");
+  assert.equal(opens, 1);
+  service.unsubscribe("c_1");
+  live = false;
+  // Two callers arrive after the eviction, while the new watch is still being acquired.
+  const one = service.subscribe("c_2", "b_1", trace, () => undefined);
+  const two = service.subscribe("c_3", "b_1", trace, () => undefined);
   release();
-  const baselines = await Promise.all([first, second]);
-  assert.equal(opens, 1, "one bot opened once");
-  assert.equal(watches, 1, "one runtime watch behind one view");
+  const baselines = await Promise.all([one, two]);
+  assert.equal(opens, 2, "one reopen for the evicted bot");
+  assert.equal(watches, 2, "one watch for the first subscription, one for the shared reopen");
   assert.equal(baselines[0].snapshot.botId, "b_1");
   assert.equal(baselines[1].snapshot.botId, "b_1");
+  void first;
 });

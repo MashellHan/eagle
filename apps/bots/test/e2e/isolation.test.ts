@@ -125,6 +125,22 @@ test("recover re-opens a bot that was unavailable and the next turn works", asyn
       );
       break;
     }
+    // The catalog has to leave `unavailable` for clients that already show it.
+    const seen: string[] = [];
+    const catalog = await (async () => {
+      for (;;) {
+        const frame = await frames.next(3_000).catch(() => undefined);
+        if (frame === undefined) return undefined;
+        seen.push(String(frame.type));
+        if (frame.type === "bots") return frame;
+      }
+    })();
+    assert.ok(catalog !== undefined, `no catalog frame after recover (saw ${seen.join(",")})`);
+    assert.equal(
+      (catalog.bots as { id: string; state: string }[])[0]?.state,
+      "idle",
+      "the recovered bot is announced as idle",
+    );
     await send(socket, {
       type: "send",
       requestId: "r_repair_0001",
@@ -142,39 +158,32 @@ test("recover re-opens a bot that was unavailable and the next turn works", asyn
   }
 });
 
-test("a bot created at the summary budget still fits the catalog when it fails", async () => {
-  // Every value below is inside its character cap; together they are at the encoded edge.
-  const stack = await startStack({
-    real: true,
-    model: { provider: "p".repeat(40), modelId: "m".repeat(20) },
-    prepare: async ({ directory }) => {
-      await directory.create({
-        id: "b_edge",
-        title: "题".repeat(80),
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-        model: { provider: "p".repeat(40), modelId: "m".repeat(20) },
-      });
-      await mkdir(directory.botDir("b_edge"), { recursive: true });
-      await writeFile(join(directory.botDir("b_edge"), "session.sqlite"), "not sqlite");
-    },
-  });
+test("a summary whose failed variant would not fit is refused with an origin record", async () => {
+  // Each value is inside its character cap. The healthy summary fits 1 200 bytes and the
+  // unavailable variant does not, so creation must be refused — otherwise a failure
+  // later turns a legal bot into a catalog event the frame budget refuses.
+  const model = { provider: "界".repeat(40), modelId: "界".repeat(200) };
+  const stack = await startStack({ real: true, model });
   try {
-    const summaries = stack.registry.summaries();
-    assert.equal(summaries.length, 1);
-    const unavailable = summaries[0]?.unavailable;
-    assert.ok(unavailable !== undefined, "the open failed, so the summary carries the reason");
-    const encoded = Buffer.byteLength(JSON.stringify(summaries[0]));
-    assert.ok(encoded <= 1_200, `the failing summary fits the bound (${encoded} bytes)`);
-
-    // A new connection still receives its welcome with that summary in the catalog.
-    const socket = stack.connect();
-    const frames = frameQueue(socket);
-    await send(socket, hello);
-    const welcome = await frames.next();
-    assert.equal(welcome.type, "welcome");
-    assert.equal((welcome.bots as { id: string }[])[0]?.id, "b_edge");
-    socket.close();
+    const before = stack.records.length;
+    const refused = await fetch(`http://127.0.0.1:${stack.port}/v1/bots`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${stack.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ title: "问".repeat(80) }),
+    });
+    assert.equal(refused.status, 400);
+    assert.equal(
+      ((await refused.json()) as { error: { kind: string } }).error.kind,
+      "limit_exceeded",
+    );
+    assert.deepEqual(stack.registry.summaries(), [], "nothing was written");
+    const failure = stack.records.slice(before).filter((record) => record.level === "error");
+    assert.equal(failure.length, 1, "the refusal is recorded, not silent");
+    assert.equal(failure[0]?.evt, "core.catalog.write.fail");
+    assert.equal(failure[0]?.err?.origin, true);
   } finally {
     await stack.close();
   }

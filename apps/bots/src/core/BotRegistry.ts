@@ -199,7 +199,7 @@ export class BotRegistry {
       model: this.#options.model,
     };
     // Checked before the write: a summary the `bots` event cannot carry must not exist.
-    this.#assertSummary({ ...config, state: "catalogued" });
+    this.#assertSummary({ ...config, state: "catalogued" }, trace);
     await this.#write(trace, config.id, () => this.#options.directory.create(config));
     const entry: Entry = {
       config,
@@ -222,7 +222,7 @@ export class BotRegistry {
   async rename(botId: string, title: string, trace: string): Promise<BotSummary> {
     const entry = this.#entry(botId, trace);
     const at = (this.#options.now?.() ?? new Date()).toISOString();
-    this.#assertSummary({ ...entry.config, title, updatedAt: at, state: entry.state });
+    this.#assertSummary({ ...entry.config, title, updatedAt: at, state: entry.state }, trace);
     const config = await this.#write(trace, botId, () =>
       this.#options.directory.rename(botId, title, at),
     );
@@ -263,13 +263,9 @@ export class BotRegistry {
     // would own an sqlite file the delete already moved to `trash/`.
     if (entry.opening !== undefined) await entry.opening.catch(() => undefined);
     if (entry.handle !== undefined) {
-      const closing = entry.handle.close(trace, this.#options.closeDeadlineMs);
-      entry.settling = closing.then(
-        () => undefined,
-        () => undefined,
-      );
-      const outcome = await closing;
-      entry.settling = undefined;
+      // The outer delete window is the settling promise: the close must not replace it,
+      // or the directory move would run unprotected.
+      const outcome = await entry.handle.close(trace, this.#options.closeDeadlineMs);
       if (outcome === "timeout") {
         // A close that did not finish owns the handle: nothing may move or rewrite the
         // directory until the retry reports `closed` (ARCHITECTURE.md, quarantine).
@@ -370,10 +366,10 @@ export class BotRegistry {
   }
 
   /** `recover` brought the bot back: the catalog may say idle again. */
-  markRecovered(botId: string): boolean {
+  markRecovered(botId: string, running: boolean): boolean {
     const entry = this.#entries.get(botId);
     if (entry === undefined || entry.state !== "unavailable") return false;
-    entry.state = "idle";
+    entry.state = running ? "running" : "idle";
     entry.unavailable = undefined;
     return true;
   }
@@ -670,7 +666,7 @@ export class BotRegistry {
   }
 
   /** Refuses a summary the derived 240 200-byte catalog bound cannot hold. */
-  #assertSummary(summary: BotSummary): void {
+  #assertSummary(summary: BotSummary, trace: string): void {
     const measure = this.#options.measureSummary ?? jsonBytes;
     // The failure that makes a bot unavailable adds a reason and a message to the same
     // summary, so the budget has to hold that variant too: otherwise a failure turns a
@@ -680,11 +676,15 @@ export class BotRegistry {
       unavailable: { reason: "storage_failed", message: "x".repeat(200) },
     };
     if (measure(worstCase) > (this.#options.maxSummaryBytes ?? MAX_SUMMARY_BYTES)) {
-      throw new ClassifiedFailure(
-        newFailure("limit_exceeded"),
-        "not_admitted",
-        "the title does not fit the catalog budget",
-      );
+      // The refusal happens before any write, so this is the only record it gets.
+      const failure = newFailure("limit_exceeded", "core");
+      this.#options.log.emit("error", "core", Events.catalogWriteFail, {
+        trace,
+        botId: summary.id,
+        failure,
+        origin: true,
+      });
+      throw new ClassifiedFailure(failure, "not_admitted", "the summary does not fit the budget");
     }
   }
 

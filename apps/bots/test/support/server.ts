@@ -81,7 +81,10 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     );
     const models = createModels();
     models.setProvider(faux.provider);
-    model = { provider: faux.getModel().provider, modelId: faux.getModel().id };
+    model = options.model ?? {
+      provider: faux.getModel().provider,
+      modelId: faux.getModel().id,
+    };
     const adapter = new PiDurableRuntime({
       models,
       log,
@@ -135,8 +138,11 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     onSessionFailed: (botId, reason, message, dropHandle) => {
       if (registry.markUnavailable(botId, reason, message, { dropHandle })) broadcast?.();
     },
-    onRecovered: (botId) => {
-      if (registry.markRecovered(botId)) broadcast?.();
+    onRecovered: (botId, running) => {
+      // Always push: the client that showed `unavailable` has to see the recovery even
+      // when the registry's own state already moved on.
+      registry.markRecovered(botId, running);
+      broadcast?.();
     },
     ...(options.windowMessages === undefined ? {} : { windowMessages: options.windowMessages }),
   });

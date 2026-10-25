@@ -154,7 +154,9 @@ test("the documented operations stay inside their bounds", async () => {
         },
         BACKGROUND_CONTEXT,
       );
-      await submission.status(BACKGROUND_CONTEXT);
+      // The measurement is an *answered* turn: wait for the settlement.
+      const settled = await submission.wait(BACKGROUND_CONTEXT);
+      assert.equal(settled.status, "done");
       await one.close(BACKGROUND_CONTEXT);
     });
     report("one answered turn (faux provider)", turn, 200);

@@ -56,7 +56,7 @@ const finish = (id: string, text: string): string => {
 
 export const startProvider = async (
   sentinel: string,
-  options: { readonly chunk?: boolean } = {},
+  options: { readonly chunk?: boolean; readonly text?: string } = {},
 ): Promise<Provider> => {
   let requests = 0;
   let release: (() => void) | undefined;
@@ -90,7 +90,9 @@ export const startProvider = async (
       connection: "keep-alive",
     });
     response.write(opening(`resp_${current}`));
-    if (options.chunk !== false) response.write(delta(`resp_${current}`, "会被杀死的第一段"));
+    if (options.chunk !== false) {
+      response.write(delta(`resp_${current}`, options.text ?? "会被杀死的第一段"));
+    }
     hanging.push(() => {
       response.destroy();
     });

@@ -288,3 +288,23 @@ Verified (all run just now in `apps/bots`):
   reopen asserts the documented 400-message load.
 
 Next broken hop: the reviewer's round-five verdict; then stage 5 (the client).
+
+## 2026-10-26 — stage 4 fifth review round closed
+
+Observed: the fifth round found three more one-owner and budgeting defects — the
+delete's settling window was being replaced by its close's window, a snapshot could
+reconcile a reservation whose `submit` had not returned, and an unavailable bot with a
+live Harness still admitted work past the 32-entry budget. Also fixed: the catalog
+after a recovery, the oversize-versus-backlog order in the writer, validation and
+version refusals as origin errors, a recorded refusal for a summary over budget, the
+answered-turn measurement, and a real-adapter window test that joins a client while a
+provider-blocked over-limit attempt is withdrawn.
+
+Verified (all run just now in `apps/bots`):
+
+- `npm run check` exited 0: `fixtures:check`, 344 tests, `tsc --noEmit`, Biome,
+  coverage 94.86 % lines / 89.76 % branches / 90.33 % functions.
+- `npm run test:crash` exited 0: 5/5.
+- `npm run perf` exited 0 with the settlement waited for.
+
+Next broken hop: the reviewer's round-six verdict; then stage 5 (the client).

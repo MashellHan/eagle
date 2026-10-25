@@ -163,16 +163,6 @@ export const attachConnection = (
       close(CLOSE.internal, "encode failed");
       return;
     }
-    if (socket.bufferedAmount > maxBufferedBytes) {
-      // Every path is bounded, not only the hub's: a client that is not reading cannot
-      // make the daemon buffer command replies or catalog events without a limit.
-      log.emit("warn", "transport", Events.frameSendDrop, {
-        trace,
-        connId,
-        detail: { evt: event.type, bytes: text.length },
-      });
-      return;
-    }
     try {
       assertFrameBudget(wire);
     } catch {
@@ -184,6 +174,16 @@ export const attachConnection = (
       // A single frame over the transport cap is a protocol violation even when this
       // daemon produced it: the client cannot decode it (PROTOCOL.md, "Close codes").
       close(CLOSE.protocol, "frame exceeds the transport cap");
+      return;
+    }
+    if (socket.bufferedAmount > maxBufferedBytes) {
+      // Every path is bounded, not only the hub's: a client that is not reading cannot
+      // make the daemon buffer command replies or catalog events without a limit.
+      log.emit("warn", "transport", Events.frameSendDrop, {
+        trace,
+        connId,
+        detail: { evt: event.type, bytes: text.length },
+      });
       return;
     }
     socket.send(text);
@@ -297,7 +297,7 @@ export const attachConnection = (
       }
       helloSent = true;
       if (command.protocolVersion !== PROTOCOL_VERSION) {
-        log.emit("warn", "protocol", Events.versionFail, {
+        log.emit("error", "protocol", Events.versionFail, {
           trace,
           connId,
           failure: { id: `f_${connId}`, kind: "version_mismatch", layer: "protocol" },
@@ -340,7 +340,7 @@ export const attachConnection = (
       const kind = reason === "limit_exceeded" ? "limit_exceeded" : "invalid_command";
       const refusal = serverFailure(kind, "protocol");
       log.emit(
-        "warn",
+        "error",
         "protocol",
         reason === "limit_exceeded" ? Events.limitFail : Events.decodeFail,
         {

@@ -118,8 +118,11 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     onSessionFailed: (botId, reason, message, dropHandle) => {
       if (registry.markUnavailable(botId, reason, message, { dropHandle })) broadcast?.();
     },
-    onRecovered: (botId) => {
-      if (registry.markRecovered(botId)) broadcast?.();
+    onRecovered: (botId, running) => {
+      // Always push: the client that showed `unavailable` has to see the recovery even
+      // when the registry's own state already moved on.
+      registry.markRecovered(botId, running);
+      broadcast?.();
     },
   });
   const capabilities = {
@@ -142,10 +145,25 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   });
   broadcast = daemon.broadcastCatalog;
   const close = async (): Promise<void> => {
-    await daemon.close();
-    await registry.shutdown();
-    await sink.close();
-    await lock.close();
+    // One absolute deadline for the whole shutdown: a stalled socket grace, handle close
+    // or log flush must not add up past the configured budget.
+    const budget = canonical.closeDeadlineMs + 1_000;
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, budget);
+      timer.unref?.();
+    });
+    const stopped = (async () => {
+      await daemon.close();
+      await registry.shutdown();
+      await sink.close();
+      await lock.close();
+    })();
+    try {
+      await Promise.race([stopped, deadline]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   };
   return { config: canonical, port: daemon.port, token, daemon, registry, close };
 };
