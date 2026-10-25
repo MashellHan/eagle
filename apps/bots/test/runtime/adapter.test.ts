@@ -44,15 +44,20 @@ test("one turn appends exactly one pi.assistant entry", async () => {
       "the run to settle",
     );
     const appends = of(events, "append");
+    // The entry ids depend on the system entries a run writes (the tools section is one),
+    // so the shape is asserted instead of fixed numbers.
     assert.deepEqual(
-      appends.map((event) => [event.message.id, event.message.role, event.message.state]),
+      appends.map((event) => [event.message.role, event.message.state]),
       [
-        ["e_7", "user", "complete"],
-        ["p_a1", "assistant", "streaming"],
-        ["e_10", "assistant", "complete"],
+        ["user", "complete"],
+        ["assistant", "streaming"],
+        ["assistant", "complete"],
       ],
       "the host commits nothing: the generation task appended the answer itself (F1)",
     );
+    assert.equal(appends[1]?.message.id, "p_a1");
+    assert.equal(appends[2]?.replaces, "p_a1");
+    assert.match(appends[2]?.message.id ?? "", /^e_\d+$/);
     assert.deepEqual(appends[1]?.message.blocks, [{ type: "text", text: "巴黎是法国的首都。" }]);
     assert.equal(appends[2]?.replaces, "p_a1");
     // F24: the record read at admission may already be settled or still be `placed`;
@@ -68,15 +73,17 @@ test("one turn appends exactly one pi.assistant entry", async () => {
         entryId: settled?.entryId,
         answerEntryId: settled?.answerEntryId,
       },
-      { status: "done", requestId, entryId: "e_7", answerEntryId: "e_10" },
+      {
+        status: "done",
+        requestId,
+        entryId: appends[0]?.message.id,
+        answerEntryId: appends[2]?.message.id,
+      },
     );
     const history = await handle.history({ limit: 10 });
     assert.deepEqual(
-      history.messages.map((message) => [message.id, message.role]),
-      [
-        ["e_7", "user"],
-        ["e_10", "assistant"],
-      ],
+      history.messages.map((message) => message.role),
+      ["user", "assistant"],
       "no second assistant entry, no host-written duplicate",
     );
     assert.equal(history.hasMore, false);

@@ -42,9 +42,13 @@ const EDGES: ReadonlyArray<{
     prefix: "src/runtime/",
     allows: (target) =>
       target.startsWith("src/runtime/") ||
+      target.startsWith("src/tools/") ||
       target === "src/core/domain.ts" ||
       target === "src/core/RuntimePort.ts",
   },
+  // The tool extension is part of the adapter boundary: it defines pi-durable tools, so
+  // it may import pi-durable and may not reach core, protocol or transport.
+  { prefix: "src/tools/", allows: (target) => target.startsWith("src/tools/") },
   { prefix: "src/log/", allows: (target) => target.startsWith("src/log/") },
 ];
 
@@ -73,7 +77,7 @@ export const violations = (
     const layer = layerOf(file);
     for (const specifier of dependencies) {
       if (PACKAGE_IMPORT.test(specifier)) {
-        if (file.startsWith("src/runtime/")) continue;
+        if (file.startsWith("src/runtime/") || file.startsWith("src/tools/")) continue;
         found.push({ file, specifier, reason: "pi-durable belongs to the adapter" });
         continue;
       }
@@ -136,6 +140,7 @@ test("the rules reject every forbidden edge", () => {
     { file: "src/core/domain.ts", specifier: "@earendil-works/pi-durable" },
     { file: "src/protocol/frames.ts", specifier: "../runtime/pi/mapEvents.ts" },
     { file: "src/runtime/pi/mapEvents.ts", specifier: "../../protocol/encode.ts" },
+    { file: "src/tools/registry.ts", specifier: "../core/BotDirectory.ts" },
     { file: "src/runtime/pi/mapEvents.ts", specifier: "../../core/BotDirectory.ts" },
     { file: "src/log/log.ts", specifier: "../server/auth.ts" },
     { file: "src/core/BotDirectory.ts", specifier: "../server/http.ts" },
@@ -154,6 +159,8 @@ test("the rules allow the documented edges", () => {
     { file: "src/server/http.ts", specifier: "../protocol/frames.ts" },
     { file: "src/runtime/pi/PiDurableRuntime.ts", specifier: "@earendil-works/pi-durable" },
     { file: "src/runtime/pi/PiDurableRuntime.ts", specifier: "../../core/RuntimePort.ts" },
+    { file: "src/runtime/pi/PiDurableRuntime.ts", specifier: "../../tools/registry.ts" },
+    { file: "src/tools/registry.ts", specifier: "@earendil-works/pi-ai" },
     { file: "src/main.ts", specifier: "./server/http.ts" },
   ];
   assert.deepEqual(

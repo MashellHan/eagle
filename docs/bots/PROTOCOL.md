@@ -153,7 +153,8 @@ client: a model picker needs the `agent` capability.
 // `streaming:null` and a transcript without that attempt — never an oversized
 // partial and never stale content.
 
-// ContentBlock
+// ContentBlock — a toolCall block now also occurs inside an assistant message; a
+// toolResult entry stays out of the wire until tool rendering ships.
 { "type": "text",     "text": "…" }
 { "type": "thinking", "text": "…" }                                   // reserved, not rendered
 { "type": "toolCall", "callId": "…", "name": "…", "args": {} }         // reserved

@@ -66,7 +66,7 @@ Two depend on the third:
 - `server/` depends on `protocol/` and `core/`; it owns sockets only.
 
 Guard tests: `test/architecture.test.ts` asserts (a) no `@earendil-works/*`
-import outside `src/runtime/**`, (b) `src/core/**` and `src/protocol/**` do not
+import outside `src/runtime/**` and `src/tools/**` (the adapter boundary), (b) `src/core/**` and `src/protocol/**` do not
 import each other's internals in the forbidden direction (`core` imports nothing
 from `protocol`), (c) `src/runtime/**` imports no `core/` module other than
 `core/domain.ts` and `core/RuntimePort.ts`.
@@ -94,10 +94,15 @@ src/
   protocol/
     version.ts  limits.ts     PROTOCOL_VERSION, frame and page budgets
     events.ts   commands.ts   encode/decode domain ⇄ frames, validation
+  tools/                      the bot's tools, inside the adapter boundary
+    registry.ts               `bots-tools` extension: four tools + a workspace section
+    files.ts                  read_file, write_file, list_files
+    shell.ts                  run_command (deadline, output cap, minimal env)
+    workspace.ts              confinement: every path resolves inside the workspace
+    limits.ts types.ts        budgets and the ToolOutcome shape
   runtime/pi/
     mapEvents.ts              pi AgentEvent / reports / watch end → RuntimeEvent
     PiDurableRuntime.ts       Harness ownership, submission ledger, close, recover
-    registry.ts               empty extension set in phase 1
   server/
     http.ts ws.ts auth.ts     catalog endpoints, socket, bearer
   log/                        see OBSERVABILITY.md

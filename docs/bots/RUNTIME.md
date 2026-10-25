@@ -294,11 +294,35 @@ Projection, which is also part of the mapping contract:
 Each bot owns its settings object so one bot's policy cannot affect another
 (F19).
 
-## No tools (phase 1)
+## Tools (phase 2, slice 1)
 
-Phase 1 installs an empty registry and provides no `env`. A model that asks for a
-tool receives an error result, the run continues, and nothing crashes.
-`capabilities.tools` is `false`, so the client renders no tool UI.
+A bot is born with four tools, installed as the `bots-tools` extension in its Harness
+registry and bound to that bot's workspace:
+
+| Tool | Behaviour |
+| --- | --- |
+| `read_file` | A text page (`offset`, `limit`): at most 2 000 lines and 64 KiB, with a note naming the lines it showed |
+| `write_file` | Writes one UTF-8 file (at most 512 KiB), creating parent directories, mode 0600 |
+| `list_files` | A bounded recursive walk (2 000 entries) that skips `.git`, `node_modules`, `.venv`, `dist` and `.build`; directories end with `/` |
+| `run_command` | `/bin/sh -c` in the workspace: stdout, stderr and the exit code, killed at the deadline (default 30 s, max 120 s) with the output capped at 64 KiB |
+
+Rules:
+
+- **Auto-execute.** There is no approval gate and no hook that asks the user; execution
+  is the product. Tools do not receive a separate switch per call.
+- **Workspace confinement.** The workspace is `<bot dir>/workspace`, created 0700 on open
+  and the agent's `cwd`. Every path resolves inside it lexically and through symlinks;
+  an escape is a tool result the model reads, never an exception.
+- **No daemon secrets.** A command's environment is an allowlist (`PATH`, `HOME`, `LANG`,
+  `LC_ALL`, `TMPDIR`, `SHELL`, plus `TERM=dumb` and `PWD`), so a command cannot read
+  `BOTS_API_KEY`, the bearer token or the signing key.
+- **Failures are results.** A refusal, a missing file, a timeout and a non-zero exit are
+  returned to the model as text; a run never crashes because a tool failed.
+- **Replay.** `read_file` and `list_files` are `replay: "safe"`; `write_file` and
+  `run_command` stay unsafe, so an interrupted call is not rerun after a restart.
+- **What the client sees.** `toolcall` deltas and `toolCall` blocks are produced and
+  already fit the wire; `pi.tool-result` entries stay off the wire until a later slice
+  renders them, so a transcript shows the answer but not its tool rows in phase 2 slice 1.
 
 ## Reserved capability enable paths
 
@@ -308,7 +332,7 @@ own change set:
 
 | Capability | Work required when enabling |
 | --- | --- |
-| `tools` | Install tool extensions; provide `env`; map `tool_execution_*` to `delta`/blocks; render approvals; flip the flag |
+| `tools` | Enabled in phase 2 slice 1 (the four workspace tools, auto-executed); rendering tool calls and results in the client is the next slice |
 | `agent` | Add a `configure` command and a model catalog endpoint; add `configure` to the port; render the settings panel |
 | `tasks` | Emit `task` events from `watchTaskGraph`; add a `retry` command; make the close condition task-aware |
 | `entries` | Serve raw entries from `conversation.entries()` behind a paging command |

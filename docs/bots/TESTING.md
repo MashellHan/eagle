@@ -269,7 +269,7 @@ bound means changing [PRODUCT.md](PRODUCT.md#speed-targets) in the same commit.
 ```sh
 cd apps/bots
 npm run fixtures:check
-npm test                # deterministic unit and integration tests only
+npm test                # deterministic unit and integration tests only (test/tools included)
 npm run typecheck       # tsc --noEmit
 npm run lint            # biome check --error-on-warnings .
 npm run coverage        # same file list as `npm test`, thresholds enforced
@@ -330,6 +330,7 @@ that only stage 4 can run.
 | `test/log/origin.test.ts` for each layer that exists | stage 4 |
 | `npm run test:crash` | stage 4 |
 | `npm run perf` | stage 4 |
+| `test/tools/**` per-tool tests and the faux-provider tool round | phase 2 slice 1 |
 | `swift test` + `Scripts/coverage.sh` | stage 5 |
 
 Per stage:

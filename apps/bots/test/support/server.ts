@@ -180,7 +180,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     instance: "i_test",
     capabilities: {
       agent: false,
-      tools: false,
+      tools: true,
       tasks: false,
       entries: false,
       usage: false,

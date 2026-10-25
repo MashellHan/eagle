@@ -526,3 +526,20 @@ Deferred, not claimed fixed (also listed in [PLAN.md](PLAN.md#phase-1-close-owne
 Next broken hop: Phase 2 — tool calls auto-execute, no approval gate; first the common
 local coding commands, then herdr/CLI space control. The brief is
 `.herdr-brief-phase2-tools.md`.
+
+## 2026-10-27 — Phase 2 slice 1: the bot's four workspace tools
+
+Observed: a bot now executes tools without asking. `read_file`, `write_file`,
+`list_files` and `run_command` work inside `<bot dir>/workspace`; paths cannot leave it
+(including through a symlink), a command is killed at its deadline with the output capped
+at 64 KiB, and the child environment is an allowlist that never carries the daemon's
+credentials. A refusal is text the model reads, and a run survives it. `capabilities.tools`
+is true; `toolcall` deltas already fit the wire.
+
+Verified just now in `apps/bots`: `npm run check` 370 tests (10 file-tool tests, 5 shell
+tests, the registry test, 4 faux-model tool rounds), coverage 95.11/89.52/90.91; the
+faux-provider round proves a read result reached the model, a write and a command took
+effect, and a `../../etc/hosts` read came back as a refusal instead of a run failure.
+
+Next broken hop: Slice 2 — the herdr tools (open a space, schedule the controller, monitor,
+fetch results, bidirectional messages), then Codex review at max reasoning.

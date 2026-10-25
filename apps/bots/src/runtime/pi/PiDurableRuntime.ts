@@ -34,10 +34,11 @@ import type {
 } from "../../core/RuntimePort.ts";
 import { type DeclaredEvent, declareEvent } from "../../log/events.ts";
 import type { Log } from "../../log/log.ts";
+import { createToolRegistry } from "../../tools/registry.ts";
+import { ensureWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
 import { entryMessageId } from "./convert.ts";
 import { convertSubmission, EventMapper } from "./mapEvents.ts";
-import { createPhaseOneRegistry } from "./registry.ts";
 
 const Events = {
   openStart: declareEvent("runtime.open.start"),
@@ -99,6 +100,8 @@ export type PiRuntimeOptions = {
   readonly clock?: () => Date;
   readonly windowMessages?: number;
   readonly maxMessageBytes?: number;
+  /** Where the bot's tools work; defaults to `<bot dir>/workspace`. */
+  readonly workspaceRoot?: (spec: RuntimeBotSpec) => string;
 };
 
 export class PiDurableRuntime implements RuntimePort {
@@ -118,6 +121,8 @@ export class PiDurableRuntime implements RuntimePort {
     // buffered and replayed rather than dropped.
     const pending: ReportInfo[] = [];
     try {
+      const workspaceRoot = this.#options.workspaceRoot?.(spec) ?? join(spec.dir, "workspace");
+      await ensureWorkspace(workspaceRoot);
       const storage = await (this.#options.storage ?? defaultStorage)(
         join(spec.dir, "session.sqlite"),
       );
@@ -125,7 +130,7 @@ export class PiDurableRuntime implements RuntimePort {
         storage,
         {
           models: this.#options.models,
-          registry: createPhaseOneRegistry(),
+          registry: createToolRegistry(workspaceRoot),
           settings: { ...DEFAULT_SETTINGS, ...this.#options.settings?.(spec) } as never,
           onReport: (_error, info) => {
             if (handle === undefined) pending.push(info);
@@ -135,7 +140,10 @@ export class PiDurableRuntime implements RuntimePort {
         BACKGROUND_CONTEXT,
       );
       const root = await harness.root(BACKGROUND_CONTEXT, {
-        agent: { model: { provider: spec.model.provider, modelId: spec.model.modelId } },
+        agent: {
+          model: { provider: spec.model.provider, modelId: spec.model.modelId },
+          cwd: workspaceRoot,
+        },
       });
       handle = new PiRuntimeHandle({
         spec,

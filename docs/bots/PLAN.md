@@ -217,6 +217,21 @@ record, a failed `directory.remove` can leave a closed handle that `open` reuses
 catalog-full refusal has no origin record; and long or hostile markdown has parser tests
 but no measured layout pass.
 
+## Phase 2: tools (slice 1 done)
+
+`apps/bots/src/tools/` installs the `bots-tools` extension in every Harness: `read_file`,
+`write_file`, `list_files` and `run_command`, bound to `<bot dir>/workspace`, executed
+without an approval gate. Paths are confined lexically and through symlinks, commands get
+a deadline and a 64 KiB output cap, the child environment is an allowlist (no daemon
+secrets), and a refusal or a non-zero exit is a tool result the model reads. The agent's
+`cwd` is the workspace, `capabilities.tools` is true, and a tool round works over the real
+adapter (tests drive a faux model that calls a tool, checks the result reached the model,
+and asserts the file/command effect). Tool calls already fit the wire; rendering tool
+rows in the client is the next slice, so `pi.tool-result` stays off the wire for now.
+
+Slice 2 (herdr: open a space, schedule the controller, monitor, fetch, bidirectional
+messages) is next, as a second extension with the same layering.
+
 ## Next work, in order
 
 1. Finish the client surface: history paging, bot settings behind the `agent`

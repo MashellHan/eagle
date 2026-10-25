@@ -109,7 +109,7 @@ what is enabled, so later phases flip flags instead of rebuilding screens.
 
 | Capability | Phase 1 | What actually exists in phase 1 | Reserved for |
 | --- | --- | --- | --- |
-| `tools` | `false` | Block types and delta kinds that can carry tool calls; nothing produces them | Tool calls, approvals, result rendering |
+| `tools` | `true` (phase 2) | Block types and delta kinds that carry tool calls; the bot's four workspace tools produce them | Approvals (none: tools execute without asking), result rendering (next slice) |
 | `tasks` | `false` | An `error` kind for parked tasks and a `recover` command | Task panel, per-task retry, compaction control |
 | `entries` | `false` | Nothing beyond the transcript itself | Raw entry inspector |
 | `usage` | `false` | A `usage` field in snapshots, populated from `pi.usage` (the data is live; only the panel is missing) | Token and cost panel |
