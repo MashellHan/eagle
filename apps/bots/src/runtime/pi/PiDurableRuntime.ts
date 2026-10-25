@@ -548,8 +548,9 @@ class PiRuntimeHandle implements RuntimeHandle {
       }
       await this.#consumeGuarded(state, batch, trace);
     });
-    for (const record of active) this.#rememberId(record);
-    const baseline = this.#mapper.seed(stream.snapshot, trace, active)[0];
+    const records = await this.#namedRecords(stream.snapshot, active);
+    for (const record of records) this.#rememberId(record);
+    const baseline = this.#mapper.seed(stream.snapshot, trace, records)[0];
     const snapshot =
       baseline !== undefined && baseline.type === "snapshot" ? baseline.value : this.#mapper.view();
     this.#resumeRunTrace(stream.snapshot);
@@ -582,6 +583,37 @@ class PiRuntimeHandle implements RuntimeHandle {
     return inspection.submissions
       .map((record) => convertSubmission(record))
       .filter((record): record is Submission => record !== undefined);
+  }
+
+  /**
+   * Completes the record set for the ids a snapshot names. Work admitted between the
+   * record read and the acquisition is named by the snapshot but absent from the earlier
+   * read, so each missing id is read again — and only unsettled work is pending.
+   */
+  async #namedRecords(
+    snapshot: {
+      readonly run?: { readonly inputs: readonly unknown[] };
+      readonly inbox: readonly { readonly id: unknown }[];
+    },
+    known: readonly Submission[],
+  ): Promise<Submission[]> {
+    const have = new Set(known.map((record) => record.id));
+    const named = [
+      ...(snapshot.run?.inputs ?? []).map((id) => String(id)),
+      ...snapshot.inbox.map((item) => String(item.id)),
+    ];
+    const completed = [...known];
+    for (const id of named) {
+      if (have.has(id)) continue;
+      have.add(id);
+      const found = await this.#harness.submission(Number(id) as never, BACKGROUND_CONTEXT);
+      if (found === undefined) continue;
+      const record = convertSubmission(await found.status(BACKGROUND_CONTEXT));
+      if (record === undefined) continue;
+      if (record.status !== "queued" && record.status !== "placed") continue;
+      completed.push(record);
+    }
+    return completed;
   }
 
   /** A run interrupted by a reconnect keeps the trace of the send that started it. */
@@ -648,9 +680,12 @@ class PiRuntimeHandle implements RuntimeHandle {
       if (own !== undefined && record?.entryId !== undefined) byEntry.set(record.entryId, own);
     }
     // A snapshot names work but cannot describe it: read the records it names first.
-    const active = batch.some((event) => event.type === "snapshot")
+    let active = batch.some((event) => event.type === "snapshot")
       ? await this.#activeRecords()
       : [];
+    for (const event of batch) {
+      if (event.type === "snapshot") active = await this.#namedRecords(event, active);
+    }
     for (const record of active) this.#rememberId(record);
     for (const event of batch) {
       for (const mapped of this.#mapOne(event, trace, byEntry, active)) {
