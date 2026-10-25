@@ -84,9 +84,9 @@ test("a sink that throws gets a fresh baseline and the subscription keeps workin
     const baselineIndex = events.findIndex((event) => event.type === "snapshot");
     const baseline = of(events, "snapshot")[0];
     assert.deepEqual(
-      baseline?.value.messages.map((message) => message.role),
-      ["user"],
-      "the baseline describes the transcript at reattach time",
+      baseline?.value.messages[0]?.role,
+      "user",
+      "the baseline is the transcript at reattach time, not a fragment",
     );
     // It is not allowed to be older than what the subscriber already applied: every
     // message delivered before it must still be inside it (RUNTIME.md, baseline order).

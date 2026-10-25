@@ -203,6 +203,8 @@ class PiRuntimeHandle implements RuntimeHandle {
   readonly #undelivered: Extract<RuntimeEvent, { type: "error" }>[] = [];
   /** Submission ledger: both ids resolve, and settlement does not remove the entry. */
   readonly #submissionIds = new Map<string, string>();
+  /** The reverse edge, so an id found in a snapshot can be resolved to its send. */
+  readonly #requestIds = new Map<string, string>();
   readonly #traces = new Map<string, string>();
   #runTrace: string | undefined;
   /** The submission id of a run whose send is not yet known, when one is waiting. */
@@ -251,7 +253,7 @@ class PiRuntimeHandle implements RuntimeHandle {
     this.#currentEpisode = state.episode;
     this.#subscriptions.set(sink, state);
     try {
-      const snapshot = await this.#acquire(state, trace, () => undefined);
+      const snapshot = await this.#acquire(state, trace, { deferDelivery: true });
       this.#flushUndelivered(state);
       log.emit("info", "runtime", Events.subscribeOk, {
         trace,
@@ -308,6 +310,7 @@ class PiRuntimeHandle implements RuntimeHandle {
       this.#mapper.observe(record);
       this.#submissionIds.set(input.requestId, String(record.id));
       this.#submissionIds.set(String(record.id), String(record.id));
+      this.#requestIds.set(String(record.id), input.requestId);
       this.#traces.set(input.requestId, input.trace);
       this.#traces.set(String(record.id), input.trace);
       // A run that started before its admission record existed is waiting for this id;
@@ -518,14 +521,19 @@ class PiRuntimeHandle implements RuntimeHandle {
   }
 
   /**
-   * Acquires a watch, hands over its baseline and only then delivers live commits. The
-   * baseline is computed from the acquisition snapshot and delivered through
-   * `deliverBaseline`, so nothing older can ever be applied after something newer.
+   * Acquires a watch, hands over its baseline and only then delivers live commits.
+   * Delivery opens after the caller has the baseline: for a first subscription that
+   * means the next macrotask, because the caller applies the returned snapshot right
+   * after its `await`. A sink that throws while the baseline or the buffer is being
+   * delivered is one lost listener episode, exactly like one that throws on a live batch.
    */
   async #acquire(
     state: Subscription,
     trace: string,
-    deliverBaseline: (snapshot: ConversationSnapshot) => void,
+    options: {
+      readonly deliverBaseline?: (snapshot: ConversationSnapshot) => void;
+      readonly deferDelivery?: boolean;
+    } = {},
   ): Promise<ConversationSnapshot> {
     const stream = await watchEvents(this.#harness, this.#rootId, BACKGROUND_CONTEXT);
     let ready = false;
@@ -535,37 +543,95 @@ class PiRuntimeHandle implements RuntimeHandle {
         buffered.push(batch);
         return;
       }
-      this.#consume(state, batch, trace);
+      await this.#consumeGuarded(state, batch, trace);
     });
-    const inspection = await this.#harness.inspect(BACKGROUND_CONTEXT);
-    const active = inspection.submissions
-      .map((record) => convertSubmission(record))
-      .filter((record): record is Submission => record !== undefined);
+    const active = await this.#activeRecords();
     for (const record of active) this.#rememberId(record);
     const baseline = this.#mapper.seed(stream.snapshot, trace, active)[0];
     const snapshot =
       baseline !== undefined && baseline.type === "snapshot" ? baseline.value : this.#mapper.view();
+    this.#resumeRunTrace(stream.snapshot);
     if (state.stream !== undefined) void state.stream.stop();
     state.stream = stream;
     stream.closed.then((end) => this.#watchEnd(end, trace, state));
-    deliverBaseline(snapshot);
-    ready = true;
-    for (const batch of buffered.splice(0)) {
-      // A sink that throws while draining is a lost listener, exactly like one that
-      // throws on a live batch: it reports, escalates, and reattaches.
-      try {
-        this.#consume(state, batch, trace);
-      } catch {
-        // The upstream watch ends with `listener_error`, and that channel classifies the
-        // fault and reattaches; only a stream it has not replaced yet needs this.
-        if (state.stream === stream) this.#reattach(state, trace);
-        return snapshot;
-      }
+    try {
+      options.deliverBaseline?.(snapshot);
+    } catch {
+      this.#listenerFault(state, trace);
+      return snapshot;
     }
+    const open = (): void => {
+      if (state.detached || state.stream !== stream) return;
+      ready = true;
+      void (async () => {
+        for (const batch of buffered.splice(0)) {
+          if (!(await this.#consumeGuarded(state, batch, trace))) return;
+        }
+      })();
+    };
+    if (options.deferDelivery === true) setImmediate(open);
+    else open();
     return snapshot;
   }
 
-  #consume(state: Subscription, batch: readonly AgentEvent[], trace: string): void {
+  /** Records the live submissions, so a cold start can describe the work it inherits. */
+  async #activeRecords(): Promise<Submission[]> {
+    const inspection = await this.#harness.inspect(BACKGROUND_CONTEXT);
+    return inspection.submissions
+      .map((record) => convertSubmission(record))
+      .filter((record): record is Submission => record !== undefined);
+  }
+
+  /** A run interrupted by a reconnect keeps the trace of the send that started it. */
+  #resumeRunTrace(snapshot: { readonly run?: { readonly inputs: readonly unknown[] } }): void {
+    const first = snapshot.run?.inputs[0];
+    if (first === undefined) return;
+    const id = String(first);
+    const requestId = this.#requestIds.get(id);
+    const own =
+      this.#traces.get(id) ?? (requestId === undefined ? undefined : this.#traces.get(requestId));
+    if (own !== undefined) this.#runTrace = own;
+    else this.#unresolvedRun = id;
+  }
+
+  /** Delivers one batch; a throw is a lost listener, never a silent subscription. */
+  async #consumeGuarded(
+    state: Subscription,
+    batch: readonly AgentEvent[],
+    trace: string,
+  ): Promise<boolean> {
+    try {
+      await this.#consume(state, batch, trace);
+      return true;
+    } catch {
+      this.#listenerFault(state, trace);
+      return false;
+    }
+  }
+
+  /** Classifies one listener episode, then either escalates or reattaches. */
+  #listenerFault(state: Subscription, trace: string): void {
+    const minted = this.#classifier.listenerError(state.episode);
+    this.#options.log.emit("warn", "runtime", Events.watchEndOk, {
+      trace,
+      botId: this.#spec.id,
+      detail: { reason: "listener_error" },
+      ...(minted === undefined ? {} : { failure: minted.classification.failure }),
+    });
+    if (minted !== undefined) {
+      this.#logFailure(minted, trace, Events.watchEndOk, minted.classification.failure.layer);
+      this.#announce({
+        type: "error",
+        trace,
+        failure: minted.classification.failure,
+        message: minted.classification.message,
+      });
+      return;
+    }
+    this.#reattach(state, trace);
+  }
+
+  async #consume(state: Subscription, batch: readonly AgentEvent[], trace: string): Promise<void> {
     // A user entry is published before the record that names its send, so attribute the
     // whole batch first and then map it.
     const byEntry = new Map<string, string>();
@@ -576,8 +642,15 @@ class PiRuntimeHandle implements RuntimeHandle {
       const own = this.#traceOf(event.record.id, event.record.requestId);
       if (own !== undefined && record?.entryId !== undefined) byEntry.set(record.entryId, own);
     }
+    // A snapshot names work but cannot describe it: read the records it names first.
+    const active = batch.some((event) => event.type === "snapshot")
+      ? await this.#activeRecords()
+      : [];
+    for (const record of active) this.#rememberId(record);
     for (const event of batch) {
-      for (const mapped of this.#mapOne(event, trace, byEntry)) this.#deliver(state, mapped);
+      for (const mapped of this.#mapOne(event, trace, byEntry, active)) {
+        this.#deliver(state, mapped);
+      }
     }
     // The commit belongs to the run it ends, including the settlement that follows
     // `run_end` in the same batch; a run that starts in this batch sets its own trace.
@@ -628,10 +701,11 @@ class PiRuntimeHandle implements RuntimeHandle {
     if (state.detached) return;
     state.episode = `listener:${++this.#watchSequence}`;
     this.#currentEpisode = state.episode;
-    void this.#acquire(state, trace, (snapshot) => {
+    void this.#acquire(state, trace, {
       // Handed over before any buffered commit, so a subscriber that missed frames can
       // never have an older snapshot replace a newer one.
-      this.#deliver(state, { type: "snapshot", trace, value: snapshot });
+      deliverBaseline: (snapshot) =>
+        this.#deliver(state, { type: "snapshot", trace, value: snapshot }),
     }).catch(() => undefined);
   }
 
@@ -667,10 +741,11 @@ class PiRuntimeHandle implements RuntimeHandle {
     event: AgentEvent,
     trace: string,
     byEntry: ReadonlyMap<string, string> = new Map(),
+    active: readonly Submission[] = [],
   ): RuntimeEvent[] {
     const owned = this.#traceFor(event, trace, byEntry);
     if (event.type === "submission") this.#rememberId(convertSubmission(event.record));
-    if (event.type !== "task_failed") return this.#mapper.map(event, owned);
+    if (event.type !== "task_failed") return this.#mapper.map(event, owned, active);
     const minted = this.#classifier.taskFailed({
       taskId: String(event.taskId),
       kind: event.kind,

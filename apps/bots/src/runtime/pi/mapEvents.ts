@@ -165,11 +165,16 @@ export class EventMapper {
     return [{ type: "snapshot", trace, value: this.view() }];
   }
 
-  /** Translates one pi commit. Unknown or reserved events map to nothing. */
-  map(event: AgentEvent, trace: string): RuntimeEvent[] {
+  /**
+   * Translates one pi commit. Unknown or reserved events map to nothing. A snapshot
+   * event carries only the ids of the work it names, so the adapter supplies the records
+   * it read for them; without them `pending` still drops settled work but cannot
+   * describe new work.
+   */
+  map(event: AgentEvent, trace: string, active: readonly Submission[] = []): RuntimeEvent[] {
     switch (event.type) {
       case "snapshot":
-        return this.seed(event, trace);
+        return this.seed(event, trace, active);
       case "message_start":
         return this.#messageStart(event.message, trace);
       case "message_update":
