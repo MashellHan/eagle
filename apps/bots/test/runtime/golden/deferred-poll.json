@@ -1,0 +1,341 @@
+{
+  "scenario": "deferred-poll",
+  "description": "a deferred response commits no assistant entry; the poll then answers",
+  "events": [
+    [
+      {
+        "type": "message_start",
+        "message": {
+          "role": "user",
+          "content": "延迟的问题",
+          "timestamp": 1792910123248
+        }
+      },
+      {
+        "type": "message_end",
+        "entry": {
+          "model": [
+            {
+              "role": "user",
+              "content": "延迟的问题",
+              "timestamp": 1792910123248
+            }
+          ],
+          "kind": "pi.user",
+          "id": 7,
+          "conversationId": 1
+        }
+      },
+      {
+        "type": "submission",
+        "record": {
+          "conversationId": 1,
+          "requestId": "r_0000008",
+          "type": "input",
+          "status": "placed",
+          "entry": 7,
+          "id": 8
+        }
+      },
+      {
+        "type": "run_start",
+        "inputs": [8]
+      },
+      {
+        "type": "turn_start"
+      }
+    ],
+    [
+      {
+        "type": "deferred_poll",
+        "pollAt": 1792910123255
+      }
+    ],
+    [
+      {
+        "type": "deferred_poll",
+        "pollAt": 1792910123262
+      }
+    ],
+    [
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "轮询之后才有的答案"
+            }
+          ],
+          "api": "faux:1792910123246:5rzf5zdwte",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 3,
+            "output": 3,
+            "cacheRead": 0,
+            "cacheWrite": 3,
+            "totalTokens": 9,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792910123247
+        }
+      },
+      {
+        "type": "message_end",
+        "entry": {
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "轮询之后才有的答案"
+                }
+              ],
+              "api": "faux:1792910123246:5rzf5zdwte",
+              "provider": "faux",
+              "model": "faux-1",
+              "usage": {
+                "input": 3,
+                "output": 3,
+                "cacheRead": 0,
+                "cacheWrite": 3,
+                "totalTokens": 9,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "stop",
+              "timestamp": 1792910123247
+            }
+          ],
+          "kind": "pi.assistant",
+          "id": 10,
+          "conversationId": 1,
+          "byTaskId": 9
+        }
+      },
+      {
+        "type": "turn_end"
+      },
+      {
+        "type": "run_end",
+        "inputs": [8]
+      },
+      {
+        "type": "submission",
+        "record": {
+          "conversationId": 1,
+          "requestId": "r_0000008",
+          "type": "input",
+          "status": "done",
+          "entry": 7,
+          "id": 8,
+          "answer": 10
+        }
+      },
+      {
+        "type": "usage_changed",
+        "usage": {
+          "models": {
+            "faux/faux-1": {
+              "input": 3,
+              "output": 3,
+              "cacheRead": 0,
+              "cacheWrite": 3,
+              "totalTokens": 9,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            }
+          },
+          "tools": {}
+        }
+      }
+    ]
+  ],
+  "expected": [
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "e_7",
+        "role": "user",
+        "state": "complete",
+        "createdAt": "2026-10-25T06:35:23.248Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "延迟的问题"
+          }
+        ]
+      }
+    },
+    {
+      "type": "submission",
+      "trace": "tr_golden",
+      "record": {
+        "id": "8",
+        "requestId": "r_0000008",
+        "status": "placed",
+        "entryId": "e_7"
+      }
+    },
+    {
+      "type": "status",
+      "trace": "tr_golden",
+      "running": true,
+      "streaming": null,
+      "inbox": []
+    },
+    {
+      "type": "snapshot",
+      "trace": "tr_golden",
+      "value": {
+        "botId": "b_golden",
+        "messages": [
+          {
+            "id": "e_7",
+            "role": "user",
+            "state": "complete",
+            "createdAt": "2026-10-25T06:35:23.248Z",
+            "blocks": [
+              {
+                "type": "text",
+                "text": "延迟的问题"
+              }
+            ],
+            "requestId": "r_0000008"
+          }
+        ],
+        "streaming": null,
+        "pending": [
+          {
+            "id": "8",
+            "requestId": "r_0000008",
+            "status": "placed",
+            "entryId": "e_7"
+          }
+        ],
+        "inbox": [],
+        "running": true
+      }
+    },
+    {
+      "type": "status",
+      "trace": "tr_golden",
+      "running": true,
+      "streaming": null,
+      "inbox": []
+    },
+    {
+      "type": "snapshot",
+      "trace": "tr_golden",
+      "value": {
+        "botId": "b_golden",
+        "messages": [
+          {
+            "id": "e_7",
+            "role": "user",
+            "state": "complete",
+            "createdAt": "2026-10-25T06:35:23.248Z",
+            "blocks": [
+              {
+                "type": "text",
+                "text": "延迟的问题"
+              }
+            ],
+            "requestId": "r_0000008"
+          }
+        ],
+        "streaming": null,
+        "pending": [
+          {
+            "id": "8",
+            "requestId": "r_0000008",
+            "status": "placed",
+            "entryId": "e_7"
+          }
+        ],
+        "inbox": [],
+        "running": true
+      }
+    },
+    {
+      "type": "status",
+      "trace": "tr_golden",
+      "running": true,
+      "streaming": null,
+      "inbox": []
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "p_a1",
+        "role": "assistant",
+        "state": "streaming",
+        "createdAt": "2026-10-25T06:35:23.247Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "轮询之后才有的答案"
+          }
+        ]
+      }
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "e_10",
+        "role": "assistant",
+        "state": "complete",
+        "createdAt": "2026-10-25T06:35:23.247Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "轮询之后才有的答案"
+          }
+        ],
+        "stopReason": "stop"
+      },
+      "replaces": "p_a1"
+    },
+    {
+      "type": "status",
+      "trace": "tr_golden",
+      "running": false,
+      "streaming": null,
+      "inbox": []
+    },
+    {
+      "type": "submission",
+      "trace": "tr_golden",
+      "record": {
+        "id": "8",
+        "requestId": "r_0000008",
+        "status": "done",
+        "entryId": "e_7",
+        "answerEntryId": "e_10"
+      }
+    }
+  ]
+}

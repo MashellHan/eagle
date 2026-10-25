@@ -10,6 +10,9 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env src/main.ts",
     "test": "sh scripts/run-tests.sh",
+    "test:runtime": "sh scripts/run-suite.sh test/runtime",
+    "test:protocol": "sh scripts/run-suite.sh test/protocol",
+    "golden:record": "node --experimental-strip-types scripts/record-golden.ts --write",
     "test:crash": "sh scripts/run-suite.sh test/crash",
     "perf": "sh scripts/run-suite.sh test/perf",
     "typecheck": "tsc --noEmit",

@@ -1,0 +1,678 @@
+{
+  "scenario": "provider-error",
+  "description": "a provider error settles the input unanswered with reason model_error",
+  "events": [
+    [
+      {
+        "type": "message_start",
+        "message": {
+          "role": "user",
+          "content": "会失败的问题",
+          "timestamp": 1792910109207
+        }
+      },
+      {
+        "type": "message_end",
+        "entry": {
+          "model": [
+            {
+              "role": "user",
+              "content": "会失败的问题",
+              "timestamp": 1792910109207
+            }
+          ],
+          "kind": "pi.user",
+          "id": 7,
+          "conversationId": 1
+        }
+      },
+      {
+        "type": "submission",
+        "record": {
+          "conversationId": 1,
+          "requestId": "r_0000007",
+          "type": "input",
+          "status": "placed",
+          "entry": 7,
+          "id": 8
+        }
+      },
+      {
+        "type": "run_start",
+        "inputs": [8]
+      },
+      {
+        "type": "turn_start"
+      }
+    ],
+    [
+      {
+        "type": "auto_retry_start",
+        "attempt": 1,
+        "at": 1792910111211,
+        "errorMessage": "upstream 500"
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": ""
+            }
+          ],
+          "api": "faux:1792910109205:v6jcp2ic4w",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 3,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 3,
+            "totalTokens": 6,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "error",
+          "errorMessage": "upstream 500",
+          "timestamp": 1792910109207
+        }
+      },
+      {
+        "type": "message_end",
+        "entry": {
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": ""
+                }
+              ],
+              "api": "faux:1792910109205:v6jcp2ic4w",
+              "provider": "faux",
+              "model": "faux-1",
+              "usage": {
+                "input": 3,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 3,
+                "totalTokens": 6,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "error",
+              "errorMessage": "upstream 500",
+              "timestamp": 1792910109207
+            }
+          ],
+          "kind": "pi.assistant",
+          "id": 10,
+          "conversationId": 1,
+          "byTaskId": 9
+        }
+      },
+      {
+        "type": "usage_changed",
+        "usage": {
+          "models": {
+            "faux/faux-1": {
+              "input": 3,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 3,
+              "totalTokens": 6,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            }
+          },
+          "tools": {}
+        }
+      }
+    ],
+    [
+      {
+        "type": "auto_retry_end",
+        "attempt": 1
+      }
+    ],
+    [
+      {
+        "type": "auto_retry_start",
+        "attempt": 2,
+        "at": 1792910115216,
+        "errorMessage": "upstream 500"
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": ""
+            }
+          ],
+          "api": "faux:1792910109205:v6jcp2ic4w",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 3,
+            "cacheWrite": 0,
+            "totalTokens": 3,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "error",
+          "errorMessage": "upstream 500",
+          "timestamp": 1792910109207
+        }
+      },
+      {
+        "type": "message_end",
+        "entry": {
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": ""
+                }
+              ],
+              "api": "faux:1792910109205:v6jcp2ic4w",
+              "provider": "faux",
+              "model": "faux-1",
+              "usage": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 3,
+                "cacheWrite": 0,
+                "totalTokens": 3,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "error",
+              "errorMessage": "upstream 500",
+              "timestamp": 1792910109207
+            }
+          ],
+          "kind": "pi.assistant",
+          "id": 11,
+          "conversationId": 1,
+          "byTaskId": 9
+        }
+      },
+      {
+        "type": "usage_changed",
+        "usage": {
+          "models": {
+            "faux/faux-1": {
+              "input": 3,
+              "output": 0,
+              "cacheRead": 3,
+              "cacheWrite": 3,
+              "totalTokens": 9,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            }
+          },
+          "tools": {}
+        }
+      }
+    ],
+    [
+      {
+        "type": "auto_retry_end",
+        "attempt": 2
+      }
+    ],
+    [
+      {
+        "type": "auto_retry_start",
+        "attempt": 3,
+        "at": 1792910123219,
+        "errorMessage": "upstream 500"
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": ""
+            }
+          ],
+          "api": "faux:1792910109205:v6jcp2ic4w",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 3,
+            "cacheWrite": 0,
+            "totalTokens": 3,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "error",
+          "errorMessage": "upstream 500",
+          "timestamp": 1792910109207
+        }
+      },
+      {
+        "type": "message_end",
+        "entry": {
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": ""
+                }
+              ],
+              "api": "faux:1792910109205:v6jcp2ic4w",
+              "provider": "faux",
+              "model": "faux-1",
+              "usage": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 3,
+                "cacheWrite": 0,
+                "totalTokens": 3,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "error",
+              "errorMessage": "upstream 500",
+              "timestamp": 1792910109207
+            }
+          ],
+          "kind": "pi.assistant",
+          "id": 12,
+          "conversationId": 1,
+          "byTaskId": 9
+        }
+      },
+      {
+        "type": "usage_changed",
+        "usage": {
+          "models": {
+            "faux/faux-1": {
+              "input": 3,
+              "output": 0,
+              "cacheRead": 6,
+              "cacheWrite": 3,
+              "totalTokens": 12,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            }
+          },
+          "tools": {}
+        }
+      }
+    ],
+    [
+      {
+        "type": "auto_retry_end",
+        "attempt": 3
+      }
+    ],
+    [
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": ""
+            }
+          ],
+          "api": "faux:1792910109205:v6jcp2ic4w",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 3,
+            "cacheWrite": 0,
+            "totalTokens": 3,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "error",
+          "errorMessage": "upstream 500",
+          "timestamp": 1792910109207
+        }
+      },
+      {
+        "type": "message_end",
+        "entry": {
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": ""
+                }
+              ],
+              "api": "faux:1792910109205:v6jcp2ic4w",
+              "provider": "faux",
+              "model": "faux-1",
+              "usage": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 3,
+                "cacheWrite": 0,
+                "totalTokens": 3,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "error",
+              "errorMessage": "upstream 500",
+              "timestamp": 1792910109207
+            }
+          ],
+          "kind": "pi.assistant",
+          "id": 13,
+          "conversationId": 1,
+          "byTaskId": 9
+        }
+      },
+      {
+        "type": "turn_end"
+      },
+      {
+        "type": "run_end",
+        "inputs": [8]
+      },
+      {
+        "type": "submission",
+        "record": {
+          "conversationId": 1,
+          "requestId": "r_0000007",
+          "type": "input",
+          "status": "unanswered",
+          "entry": 7,
+          "id": 8,
+          "reason": "model_error",
+          "detail": "upstream 500"
+        }
+      },
+      {
+        "type": "usage_changed",
+        "usage": {
+          "models": {
+            "faux/faux-1": {
+              "input": 3,
+              "output": 0,
+              "cacheRead": 9,
+              "cacheWrite": 3,
+              "totalTokens": 15,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            }
+          },
+          "tools": {}
+        }
+      }
+    ]
+  ],
+  "expected": [
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "e_7",
+        "role": "user",
+        "state": "complete",
+        "createdAt": "2026-10-25T06:35:09.207Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "会失败的问题"
+          }
+        ]
+      }
+    },
+    {
+      "type": "submission",
+      "trace": "tr_golden",
+      "record": {
+        "id": "8",
+        "requestId": "r_0000007",
+        "status": "placed",
+        "entryId": "e_7"
+      }
+    },
+    {
+      "type": "status",
+      "trace": "tr_golden",
+      "running": true,
+      "streaming": null,
+      "inbox": []
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "p_a1",
+        "role": "assistant",
+        "state": "streaming",
+        "createdAt": "2026-10-25T06:35:09.207Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ]
+      }
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "e_10",
+        "role": "assistant",
+        "state": "error",
+        "createdAt": "2026-10-25T06:35:09.207Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ],
+        "stopReason": "error"
+      },
+      "replaces": "p_a1"
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "p_a2",
+        "role": "assistant",
+        "state": "streaming",
+        "createdAt": "2026-10-25T06:35:09.207Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ]
+      }
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "e_11",
+        "role": "assistant",
+        "state": "error",
+        "createdAt": "2026-10-25T06:35:09.207Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ],
+        "stopReason": "error"
+      },
+      "replaces": "p_a2"
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "p_a3",
+        "role": "assistant",
+        "state": "streaming",
+        "createdAt": "2026-10-25T06:35:09.207Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ]
+      }
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "e_12",
+        "role": "assistant",
+        "state": "error",
+        "createdAt": "2026-10-25T06:35:09.207Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ],
+        "stopReason": "error"
+      },
+      "replaces": "p_a3"
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "p_a4",
+        "role": "assistant",
+        "state": "streaming",
+        "createdAt": "2026-10-25T06:35:09.207Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ]
+      }
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "e_13",
+        "role": "assistant",
+        "state": "error",
+        "createdAt": "2026-10-25T06:35:09.207Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ],
+        "stopReason": "error"
+      },
+      "replaces": "p_a4"
+    },
+    {
+      "type": "status",
+      "trace": "tr_golden",
+      "running": false,
+      "streaming": null,
+      "inbox": []
+    },
+    {
+      "type": "submission",
+      "trace": "tr_golden",
+      "record": {
+        "id": "8",
+        "requestId": "r_0000007",
+        "status": "unanswered",
+        "entryId": "e_7",
+        "reason": "model_error"
+      }
+    }
+  ]
+}

@@ -1,0 +1,501 @@
+{
+  "scenario": "tool-call",
+  "description": "the model asks for an unregistered tool: an error result, and the run continues",
+  "events": [
+    [
+      {
+        "type": "message_start",
+        "message": {
+          "role": "user",
+          "content": "搜索一下",
+          "timestamp": 1792910108402
+        }
+      },
+      {
+        "type": "message_end",
+        "entry": {
+          "model": [
+            {
+              "role": "user",
+              "content": "搜索一下",
+              "timestamp": 1792910108402
+            }
+          ],
+          "kind": "pi.user",
+          "id": 7,
+          "conversationId": 1
+        }
+      },
+      {
+        "type": "submission",
+        "record": {
+          "conversationId": 1,
+          "requestId": "r_0000004",
+          "type": "input",
+          "status": "placed",
+          "entry": 7,
+          "id": 8
+        }
+      },
+      {
+        "type": "run_start",
+        "inputs": [8]
+      },
+      {
+        "type": "turn_start"
+      }
+    ],
+    [
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "我查一下。"
+            },
+            {
+              "type": "toolCall",
+              "id": "tool:1792910108401:spl42t1wge7",
+              "name": "search",
+              "arguments": {
+                "q": "paris"
+              }
+            }
+          ],
+          "api": "faux:1792910108398:6pic6ygz8s5",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 3,
+            "output": 7,
+            "cacheRead": 0,
+            "cacheWrite": 3,
+            "totalTokens": 13,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "toolUse",
+          "timestamp": 1792910108401
+        }
+      },
+      {
+        "type": "message_end",
+        "entry": {
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "我查一下。"
+                },
+                {
+                  "type": "toolCall",
+                  "id": "tool:1792910108401:spl42t1wge7",
+                  "name": "search",
+                  "arguments": {
+                    "q": "paris"
+                  }
+                }
+              ],
+              "api": "faux:1792910108398:6pic6ygz8s5",
+              "provider": "faux",
+              "model": "faux-1",
+              "usage": {
+                "input": 3,
+                "output": 7,
+                "cacheRead": 0,
+                "cacheWrite": 3,
+                "totalTokens": 13,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "toolUse",
+              "timestamp": 1792910108401
+            }
+          ],
+          "kind": "pi.assistant",
+          "id": 10,
+          "conversationId": 1,
+          "byTaskId": 9
+        }
+      },
+      {
+        "type": "tool_execution_end",
+        "toolCallId": "tool:1792910108401:spl42t1wge7",
+        "toolName": "search",
+        "entry": {
+          "model": [
+            {
+              "role": "toolResult",
+              "toolCallId": "tool:1792910108401:spl42t1wge7",
+              "toolName": "search",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<harness>\n[error] Tool search is not available\n</harness>"
+                }
+              ],
+              "isError": true,
+              "timestamp": 1792910108405
+            }
+          ],
+          "data": {
+            "diagnostics": [
+              {
+                "severity": "error",
+                "code": "tool_unavailable",
+                "message": "Tool search is not available"
+              }
+            ]
+          },
+          "kind": "pi.tool-result",
+          "id": 11,
+          "conversationId": 1,
+          "byTaskId": 9
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "toolResult",
+          "toolCallId": "tool:1792910108401:spl42t1wge7",
+          "toolName": "search",
+          "content": [
+            {
+              "type": "text",
+              "text": "<harness>\n[error] Tool search is not available\n</harness>"
+            }
+          ],
+          "isError": true,
+          "timestamp": 1792910108405
+        }
+      },
+      {
+        "type": "message_end",
+        "entry": {
+          "model": [
+            {
+              "role": "toolResult",
+              "toolCallId": "tool:1792910108401:spl42t1wge7",
+              "toolName": "search",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<harness>\n[error] Tool search is not available\n</harness>"
+                }
+              ],
+              "isError": true,
+              "timestamp": 1792910108405
+            }
+          ],
+          "data": {
+            "diagnostics": [
+              {
+                "severity": "error",
+                "code": "tool_unavailable",
+                "message": "Tool search is not available"
+              }
+            ]
+          },
+          "kind": "pi.tool-result",
+          "id": 11,
+          "conversationId": 1,
+          "byTaskId": 9
+        }
+      },
+      {
+        "type": "usage_changed",
+        "usage": {
+          "models": {
+            "faux/faux-1": {
+              "input": 3,
+              "output": 7,
+              "cacheRead": 0,
+              "cacheWrite": 3,
+              "totalTokens": 13,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            }
+          },
+          "tools": {}
+        }
+      }
+    ],
+    [
+      {
+        "type": "turn_end"
+      },
+      {
+        "type": "turn_start"
+      }
+    ],
+    [
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "没有这个工具，我直接回答。"
+            }
+          ],
+          "api": "faux:1792910108398:6pic6ygz8s5",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 28,
+            "output": 4,
+            "cacheRead": 3,
+            "cacheWrite": 29,
+            "totalTokens": 64,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792910108401
+        }
+      },
+      {
+        "type": "message_end",
+        "entry": {
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "没有这个工具，我直接回答。"
+                }
+              ],
+              "api": "faux:1792910108398:6pic6ygz8s5",
+              "provider": "faux",
+              "model": "faux-1",
+              "usage": {
+                "input": 28,
+                "output": 4,
+                "cacheRead": 3,
+                "cacheWrite": 29,
+                "totalTokens": 64,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "stop",
+              "timestamp": 1792910108401
+            }
+          ],
+          "kind": "pi.assistant",
+          "id": 13,
+          "conversationId": 1,
+          "byTaskId": 12
+        }
+      },
+      {
+        "type": "turn_end"
+      },
+      {
+        "type": "run_end",
+        "inputs": [8]
+      },
+      {
+        "type": "submission",
+        "record": {
+          "conversationId": 1,
+          "requestId": "r_0000004",
+          "type": "input",
+          "status": "done",
+          "entry": 7,
+          "id": 8,
+          "answer": 13
+        }
+      },
+      {
+        "type": "usage_changed",
+        "usage": {
+          "models": {
+            "faux/faux-1": {
+              "input": 31,
+              "output": 11,
+              "cacheRead": 3,
+              "cacheWrite": 32,
+              "totalTokens": 77,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            }
+          },
+          "tools": {}
+        }
+      }
+    ]
+  ],
+  "expected": [
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "e_7",
+        "role": "user",
+        "state": "complete",
+        "createdAt": "2026-10-25T06:35:08.402Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "搜索一下"
+          }
+        ]
+      }
+    },
+    {
+      "type": "submission",
+      "trace": "tr_golden",
+      "record": {
+        "id": "8",
+        "requestId": "r_0000004",
+        "status": "placed",
+        "entryId": "e_7"
+      }
+    },
+    {
+      "type": "status",
+      "trace": "tr_golden",
+      "running": true,
+      "streaming": null,
+      "inbox": []
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "p_a1",
+        "role": "assistant",
+        "state": "streaming",
+        "createdAt": "2026-10-25T06:35:08.401Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "我查一下。"
+          },
+          {
+            "type": "toolCall",
+            "callId": "tool:1792910108401:spl42t1wge7",
+            "name": "search",
+            "args": {
+              "q": "paris"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "e_10",
+        "role": "assistant",
+        "state": "complete",
+        "createdAt": "2026-10-25T06:35:08.401Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "我查一下。"
+          },
+          {
+            "type": "toolCall",
+            "callId": "tool:1792910108401:spl42t1wge7",
+            "name": "search",
+            "args": {
+              "q": "paris"
+            }
+          }
+        ],
+        "stopReason": "toolUse"
+      },
+      "replaces": "p_a1"
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "p_a2",
+        "role": "assistant",
+        "state": "streaming",
+        "createdAt": "2026-10-25T06:35:08.401Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "没有这个工具，我直接回答。"
+          }
+        ]
+      }
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
+        "id": "e_13",
+        "role": "assistant",
+        "state": "complete",
+        "createdAt": "2026-10-25T06:35:08.401Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "没有这个工具，我直接回答。"
+          }
+        ],
+        "stopReason": "stop"
+      },
+      "replaces": "p_a2"
+    },
+    {
+      "type": "status",
+      "trace": "tr_golden",
+      "running": false,
+      "streaming": null,
+      "inbox": []
+    },
+    {
+      "type": "submission",
+      "trace": "tr_golden",
+      "record": {
+        "id": "8",
+        "requestId": "r_0000004",
+        "status": "done",
+        "entryId": "e_7",
+        "answerEntryId": "e_13"
+      }
+    }
+  ]
+}
