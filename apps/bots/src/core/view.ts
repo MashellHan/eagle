@@ -1,13 +1,44 @@
 // The projected conversation view: a pure fold of runtime events into a snapshot
 // (docs/bots/PROTOCOL.md, "Subscription"). Both the daemon's service and the fake
 // runtime render from it, so a late joiner and a replayed client agree on content.
-import type { ConversationSnapshot, DeltaChange, Message } from "./domain.ts";
+import type {
+  ConversationSnapshot,
+  DeltaChange,
+  Message,
+  Submission,
+  SubmissionStatus,
+} from "./domain.ts";
 import type { RuntimeEvent } from "./RuntimePort.ts";
+
+/** Ranked so a late record can never downgrade a settlement (PROTOCOL I14). */
+const RANK: Record<SubmissionStatus, number> = {
+  queued: 0,
+  placed: 1,
+  done: 2,
+  unanswered: 2,
+};
+
+/**
+ * The highest status seen per submission, across snapshots. A fold keeps it because a
+ * settled record leaves `pending`, and a stale duplicate must not resurrect it.
+ */
+export type SubmissionRanks = Map<string, SubmissionStatus>;
+
+/** Seeds the ranks from a snapshot's pending records. */
+export const seedRanks = (ranks: SubmissionRanks, records: readonly Submission[]): void => {
+  for (const record of records) {
+    const known = ranks.get(record.id);
+    if (known === undefined || RANK[record.status] > RANK[known]) {
+      ranks.set(record.id, record.status);
+    }
+  }
+};
 
 /** Applies one runtime event to the view. Snapshots replace it wholesale. */
 export const reduceView = (
   view: ConversationSnapshot,
   event: RuntimeEvent,
+  ranks: SubmissionRanks,
 ): ConversationSnapshot => {
   if (event.type === "append") {
     const messages = upsert(view.messages, event.message, event.replaces);
@@ -30,15 +61,26 @@ export const reduceView = (
     return { ...view, running: event.running, streaming: event.streaming, inbox: event.inbox };
   }
   if (event.type === "submission") {
-    const settled = event.record.status === "done" || event.record.status === "unanswered";
+    const record = event.record;
+    const known = ranks.get(record.id);
+    if (known !== undefined && RANK[known] > RANK[record.status]) {
+      // A ranked-lower duplicate: the client ranks for itself, but the daemon view must
+      // not show settled work as queued again.
+      return view;
+    }
+    ranks.set(record.id, record.status);
+    const settled = record.status === "done" || record.status === "unanswered";
     return {
       ...view,
       pending: view.pending
-        .filter((record) => record.id !== event.record.id)
-        .concat(settled ? [] : [event.record]),
+        .filter((known) => known.id !== record.id)
+        .concat(settled ? [] : [record]),
     };
   }
-  if (event.type === "snapshot") return event.value;
+  if (event.type === "snapshot") {
+    seedRanks(ranks, event.value.pending);
+    return event.value;
+  }
   return view;
 };
 

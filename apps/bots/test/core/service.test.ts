@@ -353,11 +353,21 @@ test("events produced while the buffer is releasing keep their order", async () 
   const seen: string[] = [];
   await service.subscribe("c_1", "b_1", trace, (event) => {
     seen.push(event.type === "append" ? event.message.id : event.type);
-    if (event.type === "snapshot" && event.value.messages.length === 0) {
+    if (event.type === "append" && event.message.id === "e_1") {
       runtime.handle("b_1").emit({ type: "append", trace, message: message("e_3") });
     }
   });
-  assert.deepEqual(seen, ["snapshot", "e_1", "snapshot", "e_3"]);
+  assert.deepEqual(
+    seen,
+    ["snapshot", "e_1", "snapshot", "e_3"],
+    "an event produced inside the release lands after the buffered ones, not before",
+  );
+  const joined = await service.subscribe("c_2", "b_1", trace, () => {});
+  assert.deepEqual(
+    joined.snapshot.messages.map((entry) => entry.id),
+    ["e_1", "e_2", "e_3"],
+    "the view kept the event that arrived during the release",
+  );
 });
 
 test("a failed admission answers an unknown disposition instead of escaping", async () => {
@@ -420,5 +430,53 @@ test("a submit that fails after the read is unconfirmed admission, not a refusal
       error.disposition === "unknown" &&
       error.requestId === requestId &&
       error.cause instanceof Error,
+  );
+});
+
+test("unanswered keeps its reason and a late queued record cannot resurrect it", async () => {
+  const runtime = new FakeRuntime({
+    script: {
+      onSubmit: (input) => [
+        {
+          type: "submission",
+          trace: input.trace,
+          record: { id: "s_1", requestId: input.requestId, status: "queued" },
+        },
+        {
+          type: "submission",
+          trace: input.trace,
+          record: {
+            id: "s_1",
+            requestId: input.requestId,
+            status: "unanswered",
+            reason: "model_error",
+          },
+        },
+      ],
+    },
+  });
+  const service = serviceFor(runtime);
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  const reply = await service.send("c_1", { requestId, text: "hi", whenBusy: "followUp", trace });
+  assert.equal(reply.status, "unanswered");
+  assert.equal(reply.reason, "model_error");
+  assert.equal(reply.answerEntryId, undefined, "no settlement is invented");
+  const statuses = received.flatMap((event) =>
+    event.type === "submission" ? [event.record.status] : [],
+  );
+  assert.deepEqual(statuses, ["queued", "unanswered"]);
+  assert.equal(statuses.includes("done"), false);
+
+  runtime.handle("b_1").emit({
+    type: "submission",
+    trace,
+    record: { id: "s_1", requestId, status: "queued" },
+  });
+  const joined = await service.subscribe("c_2", "b_1", trace, () => {});
+  assert.deepEqual(
+    joined.snapshot.pending,
+    [],
+    "a ranked-lower duplicate never becomes pending again",
   );
 });

@@ -11,7 +11,7 @@ import type {
 } from "./domain.ts";
 import { EventHub, type HubSubscriber, type HubSubscription } from "./EventHub.ts";
 import type { RuntimeEvent, RuntimeHandle, SubmitInput } from "./RuntimePort.ts";
-import { reduceView } from "./view.ts";
+import { reduceView, type SubmissionRanks, seedRanks } from "./view.ts";
 
 /** Opens (or recovers) one bot. The registry owns catalog policy; the service owns routing. */
 export type OpenBot = (botId: string, trace: string) => Promise<RuntimeHandle>;
@@ -57,6 +57,7 @@ type Bot = {
   readonly handle: RuntimeHandle;
   readonly hub: EventHub;
   snapshot: ConversationSnapshot;
+  readonly ranks: SubmissionRanks;
   /** Publishes what the runtime delivered while the first subscription was rendering. */
   readonly release: () => void;
 };
@@ -115,17 +116,30 @@ export class ConversationService {
       throw new CommandError(failure("internal"), "unknown", "the subscription was cancelled");
     }
     bot.hub.drain();
+    // A sink drained by the flush can disconnect this connection; only a connection that
+    // is still pending may be attached.
+    if (this.#connections.get(connectionId) !== connection || connection.state !== "pending") {
+      throw new CommandError(failure("internal"), "unknown", "the subscription was cancelled");
+    }
     const snapshot = bot.snapshot;
     let baseline: number | undefined;
     connection.hub = bot.hub.subscribe((event) => {
-      baseline ??= event.rev;
+      // Frames published before the baseline belong to no client yet: the snapshot that
+      // follows already contains their effect, so delivering them first would break the
+      // first-frame rule and the baseline revision.
+      if (baseline === undefined) {
+        if (event.type !== "snapshot") return;
+        baseline = event.rev;
+      }
       sink(event);
     });
     connection.bot = bot;
     connection.state = "live";
     bot.hub.publishSnapshot(snapshot, trace);
     bot.release();
-    return { rev: baseline ?? bot.hub.rev, snapshot };
+    if (baseline === undefined)
+      throw new CommandError(failure("internal"), "unknown", "no baseline");
+    return { rev: baseline, snapshot };
   }
 
   /** Ends a connection's subscription. The bot stays open for the registry to reclaim. */
@@ -148,6 +162,7 @@ export class ConversationService {
     try {
       stored = await bot.handle.submission({ requestId: input.requestId });
     } catch (cause) {
+      if (cause instanceof CommandError) throw cause;
       throw new CommandError(
         failure("internal"),
         "unknown",
@@ -160,8 +175,10 @@ export class ConversationService {
     try {
       return await bot.handle.submit(input);
     } catch (cause) {
-      // Admission is unconfirmed, so the client keeps its outbox entry and retries with
-      // the same requestId rather than dropping the text.
+      // A failure the runtime already classified keeps its identity and disposition; only
+      // an unclassified one becomes "admission unconfirmed", where the client keeps its
+      // outbox entry and retries with the same requestId.
+      if (cause instanceof CommandError) throw cause;
       throw new CommandError(
         failure("internal"),
         "unknown",
@@ -203,9 +220,10 @@ export class ConversationService {
     let ready = false;
     let bot: Bot;
     const apply = (event: RuntimeEvent): void => {
-      bot.snapshot = reduceView(bot.snapshot, event);
+      bot.snapshot = reduceView(bot.snapshot, event, bot.ranks);
       hub.publish(event);
     };
+    const ranks: SubmissionRanks = new Map();
     const subscription = await handle.subscribe(trace, (event) => {
       if (!ready) {
         buffered.push(event);
@@ -213,10 +231,12 @@ export class ConversationService {
       }
       apply(event);
     });
+    seedRanks(ranks, subscription.snapshot.pending);
     bot = {
       handle,
       hub,
       snapshot: subscription.snapshot,
+      ranks,
       release: () => {
         // Stay buffering while draining: an event produced by a sink mid-release must
         // queue behind the earlier ones instead of overtaking them.

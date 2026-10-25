@@ -1,7 +1,12 @@
 // A scripted runtime for core tests. Each bot id gets its own handle and state, opening
 // the same id twice returns the same handle, and every emitted event is applied to that
 // state, so `submission()`, `history()` and `subscribe()` answer from what was delivered.
-import type { ConversationSnapshot, Message, Submission } from "../core/domain.ts";
+import type {
+  ConversationSnapshot,
+  Message,
+  Submission,
+  SubmissionStatus,
+} from "../core/domain.ts";
 import type {
   RuntimeBotSpec,
   RuntimeEvent,
@@ -11,7 +16,7 @@ import type {
   RuntimeSubscription,
   SubmitInput,
 } from "../core/RuntimePort.ts";
-import { applyChanges, mergeOrdered, reduceView } from "../core/view.ts";
+import { applyChanges, mergeOrdered, reduceView, seedRanks } from "../core/view.ts";
 
 export type FakeScript = {
   /** Events emitted after a submit is admitted. */
@@ -28,6 +33,7 @@ export class FakeHandle implements RuntimeHandle {
   #committed: Message[] = [];
   #sink: ((event: RuntimeEvent) => void) | undefined;
   #submissions = new Map<string, Submission>();
+  #ranks = new Map<string, SubmissionStatus>();
 
   closed = false;
 
@@ -47,6 +53,7 @@ export class FakeHandle implements RuntimeHandle {
     };
     this.#committed = this.#snapshot.messages.filter((message) => message.state !== "streaming");
     for (const record of this.#snapshot.pending) this.#submissions.set(record.requestId, record);
+    seedRanks(this.#ranks, this.#snapshot.pending);
   }
 
   get snapshot(): ConversationSnapshot {
@@ -133,7 +140,7 @@ export class FakeHandle implements RuntimeHandle {
   }
 
   #apply(event: RuntimeEvent): void {
-    const next = reduceView(this.#snapshot, event);
+    const next = reduceView(this.#snapshot, event, this.#ranks);
     if (event.type === "append" && event.message.state !== "streaming") {
       // Only committed entries belong to history: a provisional is projection-only, so a
       // withdrawn attempt leaves no message behind. A finalization takes the position the
