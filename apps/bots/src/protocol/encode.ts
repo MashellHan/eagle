@@ -47,6 +47,8 @@ const encodeBot = (b: BotSummary): Wire => {
     model: { provider: b.model.provider, modelId: b.model.modelId },
     state: b.state,
   };
+  if (b.label !== undefined) wire.label = b.label;
+  if (b.appearance) wire.appearance = { shape: b.appearance.shape, tint: b.appearance.tint };
   if (b.unavailable) {
     wire.unavailable = { reason: b.unavailable.reason, message: b.unavailable.message };
   }

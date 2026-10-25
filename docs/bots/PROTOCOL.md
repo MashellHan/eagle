@@ -38,6 +38,8 @@ Runtime details live in [RUNTIME.md](RUNTIME.md), layers in
 | --- | --- | --- |
 | `send.text` | 8 000 characters | `error{invalid_command}` |
 | `bot.title` (HTTP) | 80 characters | HTTP `400` |
+| `bot.label` (HTTP) | 24 characters, optional | HTTP `400` |
+| `bot.appearance` (HTTP) | one shape and one tint from the closed sets | HTTP `400` |
 | Any single frame | 256 KiB, measured on the **encoded** frame | Close `1008`; a daemon-produced frame that cannot fit is dropped and the socket closes `1008`, because the client cannot decode it either |
 | Single message payload | ≤ 96 KiB encoded | Withheld and replaced by a notice, see below |
 | `notice` text | ≤ 500 bytes, and for the withheld case a fixed constant | — |
@@ -78,7 +80,7 @@ version, the instance id, the pid and a bot count, never bot content.
 | --- | --- | --- | --- |
 | `GET` | `/v1/health` | — | `{ "version", "protocolVersion", "instance", "pid", "bots" }` |
 | `GET` | `/v1/bots` | — | `{ "bots": [BotSummary] }` |
-| `POST` | `/v1/bots` | `{ "title" }` | `201 { "bot": BotSummary }` |
+| `POST` | `/v1/bots` | `{ "title", "label"?, "appearance"? }` — `appearance` is `{ "shape", "tint" }` | `201 { "bot": BotSummary }` |
 | `PATCH` | `/v1/bots/:id` | `{ "title" }` | `{ "bot": BotSummary }` |
 | `DELETE` | `/v1/bots/:id` | — | `204` |
 
@@ -97,6 +99,11 @@ client: a model picker needs the `agent` capability.
 {
   "id": "b_0190a1b0-…",                 // UUIDv7 with a "b_" prefix
   "title": "研究员",
+  "label": "研究",                       // optional; at most 24 characters
+  "appearance": {                        // optional; the client's closed sets
+    "shape": "blob",                     // blob|pebble|squircle|star|cloud|shield|drop|hex
+    "tint": "green"                      // paper|clay|red|orange|yellow|green|teal|sky|blue|violet|pink|graphite
+  },
   "createdAt": "2026-10-25T02:11:03.412Z",
   "updatedAt": "2026-10-25T02:11:03.412Z",
   "model": { "provider": "magpie", "modelId": "auto/gpt-6-luna" },

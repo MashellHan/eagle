@@ -134,3 +134,42 @@ struct BotsPresenterTests {
       }())
   }
 }
+
+@Suite("Bot faces")
+struct BotFaceTests {
+  private let presenter = BotsPresenter()
+
+  @Test("the sidebar item carries the chosen face and the optional label")
+  func faceAndLabel() {
+    let bot = BotSummary(
+      id: "b_1",
+      title: "研究员",
+      label: "研究",
+      appearance: BotAppearance(shape: .star, tint: .violet),
+      createdAt: "x",
+      updatedAt: "x",
+      model: ModelRef(provider: "p", modelId: "m"),
+      state: .idle
+    )
+    let item = presenter.sidebarItem(for: bot)
+    #expect(item.tag == "研究")
+    #expect(item.face?.shape == .star)
+    #expect(item.face?.tint == .violet)
+  }
+
+  @Test("a bot written before appearance draws the default face")
+  func defaultFace() {
+    let bot = BotSummary(
+      id: "b_1",
+      title: "旧的",
+      createdAt: "x",
+      updatedAt: "x",
+      model: ModelRef(provider: "p", modelId: "m"),
+      state: .idle
+    )
+    #expect(bot.face == .standard)
+    let item = presenter.sidebarItem(for: bot)
+    #expect(item.face?.shape == .blob)
+    #expect(item.face?.tint == .green)
+  }
+}

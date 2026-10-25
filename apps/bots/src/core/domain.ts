@@ -99,9 +99,50 @@ export type AgentView = {
   readonly instructions: string;
 };
 
+/** The closed sets the client and the daemon share for a bot's face. */
+export const BOT_SHAPES = [
+  "blob",
+  "pebble",
+  "squircle",
+  "star",
+  "cloud",
+  "shield",
+  "drop",
+  "hex",
+] as const;
+export type BotShape = (typeof BOT_SHAPES)[number];
+
+export const BOT_TINTS = [
+  "paper",
+  "clay",
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "teal",
+  "sky",
+  "blue",
+  "violet",
+  "pink",
+  "graphite",
+] as const;
+export type BotTint = (typeof BOT_TINTS)[number];
+
+/** How the client draws a bot: one shape and one tint from the closed sets. */
+export type BotAppearance = {
+  readonly shape: BotShape;
+  readonly tint: BotTint;
+};
+
+export const DEFAULT_APPEARANCE: BotAppearance = { shape: "blob", tint: "green" };
+
 export type BotSummary = {
   readonly id: BotId;
   readonly title: string;
+  /** Optional short label the user typed; never user content beyond this field. */
+  readonly label?: string;
+  /** Absent only in a catalog written before appearance existed. */
+  readonly appearance?: BotAppearance;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly model: { readonly provider: string; readonly modelId: string };
@@ -189,6 +230,9 @@ export class ClassifiedFailure extends Error {
 export type BotRecord = {
   readonly id: BotId;
   readonly title: string;
+  readonly label?: string;
+  /** Absent in catalogs written before appearance existed; defaults on load. */
+  readonly appearance?: BotAppearance;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly model: { readonly provider: string; readonly modelId: string };

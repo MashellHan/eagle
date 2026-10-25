@@ -1,6 +1,9 @@
 // Ladder row 41: create, rename and delete over HTTP keep the catalog absolute, and every
 // change reaches a connected client as one `bots` event.
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { frameQueue, hello, send, startStack } from "../support/server.ts";
 
@@ -220,5 +223,95 @@ test("the catalog follows the run state and pushes it to clients", async () => {
     socket.close();
   } finally {
     await stack.close();
+  }
+});
+
+test("creating a bot stores its label and face, and a bad face is refused", async () => {
+  const stack = await startStack();
+  try {
+    const headers = {
+      authorization: `Bearer ${stack.token}`,
+      "content-type": "application/json",
+    };
+    const created = await fetch(`http://127.0.0.1:${stack.port}/v1/bots`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        title: "研究员",
+        label: "研究",
+        appearance: { shape: "star", tint: "violet" },
+      }),
+    });
+    assert.equal(created.status, 201);
+    const body = (await created.json()) as {
+      bot: { label?: string; appearance?: { shape: string; tint: string } };
+    };
+    assert.equal(body.bot.label, "研究");
+    assert.deepEqual(body.bot.appearance, { shape: "star", tint: "violet" });
+
+    // The catalog is the authority: the same fields come back on every connection.
+    const listed = await fetch(`http://127.0.0.1:${stack.port}/v1/bots`, { headers });
+    const bots = (
+      (await listed.json()) as {
+        bots: { label?: string; appearance?: { shape: string; tint: string } }[];
+      }
+    ).bots;
+    assert.equal(bots[0]?.label, "研究");
+    assert.deepEqual(bots[0]?.appearance, { shape: "star", tint: "violet" });
+
+    const refused = await fetch(`http://127.0.0.1:${stack.port}/v1/bots`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ title: "坏的", appearance: { shape: "triangle", tint: "red" } }),
+    });
+    assert.equal(refused.status, 400);
+    assert.equal(
+      ((await refused.json()) as { error: { kind: string } }).error.kind,
+      "invalid_command",
+    );
+
+    const longLabel = await fetch(`http://127.0.0.1:${stack.port}/v1/bots`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ title: "长的", label: "x".repeat(25) }),
+    });
+    assert.equal(longLabel.status, 400);
+    assert.deepEqual(
+      stack.registry.summaries().map((bot) => bot.title),
+      ["研究员"],
+      "nothing was written for a refused create",
+    );
+  } finally {
+    await stack.close();
+  }
+});
+
+test("a label and face survive a restart", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-catalog-persist-"));
+  const first = await startStack({ root });
+  try {
+    await fetch(`http://127.0.0.1:${first.port}/v1/bots`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${first.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "持久",
+        label: "存下来",
+        appearance: { shape: "cloud", tint: "pink" },
+      }),
+    });
+  } finally {
+    await first.close();
+  }
+  const second = await startStack({ root });
+  try {
+    const bot = second.registry.summaries()[0];
+    assert.equal(bot?.label, "存下来");
+    assert.deepEqual(bot?.appearance, { shape: "cloud", tint: "pink" });
+  } finally {
+    await second.close();
+    await rm(root, { recursive: true, force: true });
   }
 });

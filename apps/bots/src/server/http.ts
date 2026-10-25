@@ -4,11 +4,17 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { WebSocket, WebSocketServer } from "ws";
 import type { BotRegistry } from "../core/BotRegistry.ts";
 import type { ConversationService } from "../core/ConversationService.ts";
-import { ClassifiedFailure } from "../core/domain.ts";
+import {
+  BOT_SHAPES,
+  BOT_TINTS,
+  type BotShape,
+  type BotTint,
+  ClassifiedFailure,
+} from "../core/domain.ts";
 import { declareEvent } from "../log/events.ts";
 import type { Log } from "../log/log.ts";
 import type { ServerEvent } from "../protocol/frames.ts";
-import { MAX_TITLE_CHARS } from "../protocol/limits.ts";
+import { MAX_LABEL_CHARS, MAX_TITLE_CHARS } from "../protocol/limits.ts";
 import { PROTOCOL_VERSION } from "../protocol/version.ts";
 import { parseBearer, tokenMatches } from "./auth.ts";
 import { serverFailure } from "./failures.ts";
@@ -84,6 +90,36 @@ const title = (body: unknown): string | undefined => {
   return typeof value === "string" ? value.trim() : undefined;
 };
 
+/** The optional label and face a create request may carry. */
+const extras = (
+  body: unknown,
+): { label?: string; appearance?: { shape: BotShape; tint: BotTint } } | undefined => {
+  if (typeof body !== "object" || body === null) return undefined;
+  const raw = body as { label?: unknown; appearance?: unknown };
+  const result: { label?: string; appearance?: { shape: BotShape; tint: BotTint } } = {};
+  if (raw.label !== undefined) {
+    if (typeof raw.label !== "string") return undefined;
+    const label = raw.label.trim();
+    if (label.length > MAX_LABEL_CHARS) return undefined;
+    if (label.length > 0) result.label = label;
+  }
+  if (raw.appearance !== undefined) {
+    const appearance = raw.appearance;
+    if (typeof appearance !== "object" || appearance === null) return undefined;
+    const face = appearance as { shape?: unknown; tint?: unknown };
+    if (
+      typeof face.shape !== "string" ||
+      !(BOT_SHAPES as readonly string[]).includes(face.shape) ||
+      typeof face.tint !== "string" ||
+      !(BOT_TINTS as readonly string[]).includes(face.tint)
+    ) {
+      return undefined;
+    }
+    result.appearance = { shape: face.shape as BotShape, tint: face.tint as BotTint };
+  }
+  return result;
+};
+
 export const startServer = async (options: ServerOptions): Promise<Daemon> => {
   const { log, registry, service, token } = options;
   let connections = 0;
@@ -143,14 +179,25 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
         return;
       }
       if (path === "/v1/bots" && request.method === "POST") {
-        const name = title(await readBody(request));
+        const body = await readBody(request);
+        const name = title(body);
         if (name === undefined || name.length === 0 || name.length > MAX_TITLE_CHARS) {
           json(response, 400, {
             error: { kind: "invalid_command", message: "a title is required" },
           });
           return;
         }
-        const bot = await registry.create(name, `tr_http_${++sequence}`);
+        const face = extras(body);
+        if (face === undefined) {
+          json(response, 400, {
+            error: {
+              kind: "invalid_command",
+              message: `a label is at most ${MAX_LABEL_CHARS} characters and a face is one of the documented shapes and tints`,
+            },
+          });
+          return;
+        }
+        const bot = await registry.create(name, `tr_http_${++sequence}`, face);
         broadcastCatalog();
         json(response, 201, { bot });
         return;

@@ -103,8 +103,14 @@ final class BotsWorkspaceViewModel: ObservableObject {
   }
 
   func createBot() async {
+    await createBot(title: "", label: nil, appearance: .standard)
+  }
+
+  /// A created bot is real immediately: the daemon writes it, the catalog returns it, and
+  /// the sidebar selects it.
+  func createBot(title: String, label: String?, appearance: BotAppearance) async {
     guard let app else { return }
-    await app.createBot(title: "")
+    await app.createBot(title: title, label: label, appearance: appearance)
     if let created = app.selection {
       selectedId = created
       onSelect?(created)
@@ -252,8 +258,18 @@ struct BotsPresenter {
       id: bot.id,
       title: bot.title,
       subtitle: stateLabel(for: bot),
-      tag: bot.state == .running ? "回答中" : nil,
-      tintIndex: tintIndex(for: bot)
+      tag: bot.state == .running ? "回答中" : bot.label,
+      tintIndex: tintIndex(for: bot),
+      face: faceStyle(for: bot)
+    )
+  }
+
+  /// The daemon's closed sets and Eagle's are the same ids, so the picker and the row
+  /// draw what the user chose.
+  func faceStyle(for bot: BotSummary) -> BotFace.Style {
+    BotFace.Style(
+      shape: BotFace.Shape(rawValue: bot.face.shape.rawValue) ?? .blob,
+      tint: Theme.Palette.BotTint(rawValue: bot.face.tint.rawValue) ?? .green
     )
   }
 

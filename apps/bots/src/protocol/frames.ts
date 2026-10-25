@@ -1,6 +1,7 @@
 // Wire ⇄ domain for protocol v1 (docs/bots/PROTOCOL.md). Strict on everything the
 // contract calls required, tolerant only of *unknown* fields, which are dropped on
 // encode. Nothing reaches a domain type without passing its closed union.
+
 import type {
   BotSummary,
   ContentBlock,
@@ -17,6 +18,7 @@ import type {
   SubmissionStatus,
   Usage,
 } from "../core/domain.ts";
+import { BOT_SHAPES, BOT_TINTS } from "../core/domain.ts";
 import { PROTOCOL_VERSION } from "./version.ts";
 
 export type ClientCommand =
@@ -539,9 +541,21 @@ const decodeBotSummary = (ctx: Ctx, raw: unknown): BotSummary => {
   if (state !== "unavailable" && unavailable !== undefined) {
     fail(ctx, "only an unavailable bot carries a reason");
   }
+  const label = present(raw, "label") ? str(ctx, raw.label, "bot.label") : undefined;
+  let appearance: BotSummary["appearance"];
+  if (present(raw, "appearance")) {
+    const face = raw.appearance;
+    if (!isObject(face)) fail(ctx, "bot.appearance must be an object");
+    appearance = {
+      shape: oneOf(ctx, face.shape, BOT_SHAPES, "bot.appearance.shape"),
+      tint: oneOf(ctx, face.tint, BOT_TINTS, "bot.appearance.tint"),
+    };
+  }
   return {
     id: str(ctx, raw.id, "bot.id"),
     title: str(ctx, raw.title, "bot.title"),
+    ...(label === undefined ? {} : { label }),
+    ...(appearance === undefined ? {} : { appearance }),
     createdAt: str(ctx, raw.createdAt, "bot.createdAt"),
     updatedAt: str(ctx, raw.updatedAt, "bot.updatedAt"),
     model: {

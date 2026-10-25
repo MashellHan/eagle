@@ -59,15 +59,27 @@ public final class AppViewModel: ObservableObject {
     if !newBotTitle.isEmpty { newBotTitle = "" }
   }
 
-  /// The sidebar's compose button creates a bot with a default name; rename is the
-  /// sidebar's own affordance, so no separate dialog is needed.
   public func createBot(title rawTitle: String) async {
+    await createBot(title: rawTitle, label: nil, appearance: .standard)
+  }
+
+  /// A bot is its name, an optional label and a face; everything else is the daemon's.
+  public func createBot(
+    title rawTitle: String,
+    label: String?,
+    appearance: BotAppearance
+  ) async {
     var title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
     if title.isEmpty { title = "新 Bot" }
+    let trimmedLabel = label?.trimmingCharacters(in: .whitespacesAndNewlines)
     isLoading = true
     defer { isLoading = false }
     do {
-      let created = try await catalog.create(title: title)
+      let created = try await catalog.create(
+        title: title,
+        label: trimmedLabel?.isEmpty == true ? nil : trimmedLabel,
+        appearance: appearance
+      )
       if rawTitle == newBotTitle { newBotTitle = "" }
       bots = try await catalog.load()
       select(created.id)

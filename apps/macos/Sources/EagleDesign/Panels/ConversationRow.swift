@@ -14,11 +14,15 @@ public struct ConversationRow: View {
 
   public var body: some View {
     HStack(spacing: Theme.Metric.rowAvatarGap) {
-      Avatar(
-        initial: String(item.title.prefix(1)),
-        tint: Theme.Palette.avatarTint(item.tintIndex),
-        size: Theme.Metric.avatarRow
-      )
+      if let face = item.face {
+        BotFace(style: face, size: Theme.Metric.avatarRow)
+      } else {
+        Avatar(
+          initial: String(item.title.prefix(1)),
+          tint: Theme.Palette.avatarTint(item.tintIndex),
+          size: Theme.Metric.avatarRow
+        )
+      }
       VStack(alignment: .leading, spacing: 3) {
         HStack(spacing: 7) {
           Text(item.title)

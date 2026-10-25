@@ -88,16 +88,17 @@ public struct SidebarPanel: View {
   private var list: some View {
     ScrollViewReader { proxy in
       ScrollView {
-        // A small gap keeps the selected row's card and a hovered neighbour from
-        // touching (they are separate boxes, not one stacked list).
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 0) {
           ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
             sectionHeader(section, isFirst: index == 0)
             if section.isExpanded {
-              ForEach(section.items) { item in
-                row(item)
-                  .transition(.opacity.combined(with: .move(edge: .top)))
+              VStack(alignment: .leading, spacing: 2) {
+                ForEach(section.items) { item in
+                  row(item)
+                    .transition(.opacity)
+                }
               }
+              .animation(.easeInOut(duration: 0.18), value: section.isExpanded)
             }
           }
         }
@@ -111,8 +112,9 @@ public struct SidebarPanel: View {
       )
       .overlay(alignment: .bottom) { unreadPill }
       .onChange(of: selection) {
-        if let selection {
-          withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(selection, anchor: .center) }
+        guard let selection else { return }
+        withAnimation(.easeOut(duration: 0.16)) {
+          proxy.scrollTo(selection, anchor: .center)
         }
       }
     }
@@ -184,9 +186,9 @@ public struct SidebarPanel: View {
     .buttonStyle(.plain)
     .id(item.id)
     .contextMenu {
-      Button("重命名") { beginItemRename(item) }
+      Button("重命名 Bot") { beginItemRename(item) }
       Divider()
-      Button("删除对话", role: .destructive) { onDeleteItem(item.id) }
+      Button("删除 Bot", role: .destructive) { onDeleteItem(item.id) }
     }
   }
 

@@ -97,7 +97,8 @@ public enum MockWorkspace {
       ]),
   ]
 
-  public static let transcript: [TranscriptEntry] = [
+  /// The demo bots a fresh shell shows before a daemon answers.
+  public static let botTranscript: [TranscriptEntry] = [
     .assistant(
       id: "a1",
       blocks: [
@@ -179,9 +180,8 @@ public enum MockWorkspace {
   ]
 }
 
-/// Left column state. Later this list is built from `/api/v1/overview`, one
-/// Herdr Space per conversation. Group expansion and group/conversation editing
-/// live here so the views stay dumb.
+/// Left column state. Every item is a bot; the groups are how the user files them.
+/// Group expansion and item editing live here so the views stay dumb.
 public final class WorkspaceListViewModel: ObservableObject {
   @Published public var groups: [WorkspaceGroup]
   @Published public var expanded: Set<String>
@@ -213,7 +213,7 @@ public final class WorkspaceListViewModel: ObservableObject {
     groups.flatMap(\.items).first { $0.id == selection }
   }
 
-  public var totalConversations: Int {
+  public var totalBots: Int {
     groups.reduce(0) { $0 + $1.items.count }
   }
 
@@ -323,12 +323,13 @@ public final class ShellLayoutViewModel: ObservableObject {
 }
 
 /// Middle column state. `send()` only appends locally until the daemon is wired.
-public final class ChatViewModel: ObservableObject {
+/// The transcript of the selected bot (the demo bots before a daemon is connected).
+public final class BotChatViewModel: ObservableObject {
   @Published public var entries: [TranscriptEntry]
   @Published public var draft: String = ""
   @Published public private(set) var sentCount = 0
 
-  public init(entries: [TranscriptEntry] = MockWorkspace.transcript) {
+  public init(entries: [TranscriptEntry] = MockWorkspace.botTranscript) {
     self.entries = entries
   }
 

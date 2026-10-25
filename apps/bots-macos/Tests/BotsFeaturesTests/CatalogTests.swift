@@ -94,6 +94,8 @@ final class CatalogTests: XCTestCase {
 final class FakeCatalog: CatalogPort {
   var bots: [BotSummary] = []
   var created: [String] = []
+  var labels: [String?] = []
+  var faces: [BotAppearance] = []
   var deleted: [String] = []
   var failNext = false
 
@@ -105,11 +107,19 @@ final class FakeCatalog: CatalogPort {
     return bots
   }
 
-  func create(title: String) async throws -> BotSummary {
+  func create(
+    title: String,
+    label: String?,
+    appearance: BotAppearance
+  ) async throws -> BotSummary {
     created.append(title)
+    labels.append(label)
+    faces.append(appearance)
     let bot = BotSummary(
       id: "b_\(UUID().uuidString.prefix(8))",
       title: title,
+      label: label,
+      appearance: appearance,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
       model: ModelRef(provider: "faux", modelId: "faux-1"),

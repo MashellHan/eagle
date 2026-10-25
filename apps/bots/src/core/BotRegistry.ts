@@ -6,9 +6,11 @@ import { declareEvent } from "../log/events.ts";
 import type { Log } from "../log/log.ts";
 import type { BotConfig, BotDirectory } from "./BotDirectory.ts";
 import {
+  type BotAppearance,
   type BotState,
   type BotSummary,
   ClassifiedFailure,
+  DEFAULT_APPEARANCE,
   type ErrorKind,
   type Failure,
 } from "./domain.ts";
@@ -174,19 +176,27 @@ export class BotRegistry {
     return this.#entries.get(botId)?.handle;
   }
 
-  async create(title: string, trace: string): Promise<BotSummary> {
+  async create(
+    title: string,
+    trace: string,
+    appearance: { readonly label?: string; readonly appearance?: BotAppearance } = {},
+  ): Promise<BotSummary> {
     if (this.#entries.size + this.#creating >= MAX_CATALOG_BOTS) {
       throw new ClassifiedFailure(newFailure("limit_exceeded"), "not_admitted", "catalog is full");
     }
     this.#creating += 1;
     try {
-      return await this.#create(title, trace);
+      return await this.#create(title, trace, appearance);
     } finally {
       this.#creating -= 1;
     }
   }
 
-  async #create(title: string, trace: string): Promise<BotSummary> {
+  async #create(
+    title: string,
+    trace: string,
+    extras: { readonly label?: string; readonly appearance?: BotAppearance },
+  ): Promise<BotSummary> {
     if (this.#entries.size >= MAX_CATALOG_BOTS) {
       throw new ClassifiedFailure(newFailure("limit_exceeded"), "not_admitted", "catalog is full");
     }
@@ -194,6 +204,8 @@ export class BotRegistry {
     const config: BotConfig = {
       id: (this.#options.newBotId ?? (() => newBotId()))(),
       title,
+      ...(extras.label === undefined ? {} : { label: extras.label }),
+      appearance: extras.appearance ?? DEFAULT_APPEARANCE,
       createdAt: at,
       updatedAt: at,
       model: this.#options.model,
@@ -692,6 +704,8 @@ export class BotRegistry {
     return {
       id: entry.config.id,
       title: entry.config.title,
+      ...(entry.config.label === undefined ? {} : { label: entry.config.label }),
+      appearance: entry.config.appearance ?? DEFAULT_APPEARANCE,
       createdAt: entry.config.createdAt,
       updatedAt: entry.config.updatedAt,
       model: entry.config.model,

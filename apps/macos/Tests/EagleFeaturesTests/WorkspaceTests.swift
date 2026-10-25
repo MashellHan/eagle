@@ -26,7 +26,7 @@ struct MockWorkspaceTests {
 
   @Test("the transcript covers assistant, note, user and typing rows")
   func transcript() {
-    let entries = MockWorkspace.transcript
+    let entries = MockWorkspace.botTranscript
     #expect(entries.contains { if case .assistant = $0 { true } else { false } })
     #expect(entries.contains { if case .user = $0 { true } else { false } })
     #expect(entries.contains { if case .note = $0 { true } else { false } })
@@ -97,7 +97,7 @@ struct WorkspaceListTests {
   @Test("conversations can be renamed and deleted")
   func itemCRUD() {
     let model = WorkspaceListViewModel()
-    let before = model.totalConversations
+    let before = model.totalBots
 
     model.renameItem("deps", to: "  依赖修复专家 A  ")
     let renamed = model.groups.flatMap(\.items).first { $0.id == "deps" }
@@ -107,7 +107,7 @@ struct WorkspaceListTests {
     #expect(model.groups.flatMap(\.items).first { $0.id == "deps" }?.title == "依赖修复专家 A")
 
     model.deleteItem("deps")
-    #expect(model.totalConversations == before - 1)
+    #expect(model.totalBots == before - 1)
     #expect(model.selection != "deps")
     #expect(model.selectedItem != nil)
   }
@@ -128,7 +128,7 @@ struct WorkspaceListTests {
 struct ChatTests {
   @Test("send appends a user turn and a typing row, then clears the draft")
   func send() {
-    let model = ChatViewModel(entries: [])
+    let model = BotChatViewModel(entries: [])
     model.draft = "  今天 eagle 会修吗  "
     model.send()
 
@@ -146,7 +146,7 @@ struct ChatTests {
 
   @Test("blank drafts do not send")
   func blank() {
-    let model = ChatViewModel(entries: [])
+    let model = BotChatViewModel(entries: [])
     model.draft = "  \n "
     model.send()
     #expect(model.entries.isEmpty)
@@ -155,7 +155,7 @@ struct ChatTests {
 
   @Test("repeated sends keep identifiers unique")
   func uniqueIdentifiers() {
-    let model = ChatViewModel(entries: [])
+    let model = BotChatViewModel(entries: [])
     for text in ["一", "二", "三"] {
       model.draft = text
       model.send()

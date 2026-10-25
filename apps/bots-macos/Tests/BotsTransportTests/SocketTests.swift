@@ -21,8 +21,15 @@ final class SocketTests: XCTestCase {
     let before = try await catalog.load()
     XCTAssertEqual(before.count, 0, "a fresh daemon has an empty catalog")
 
-    let created = try await catalog.create(title: "客户端自测")
+    let created = try await catalog.create(
+      title: "客户端自测",
+      label: "自测",
+      appearance: BotAppearance(shape: .star, tint: .violet)
+    )
     XCTAssertEqual(created.title, "客户端自测")
+    XCTAssertEqual(created.label, "自测", "the daemon stores the label")
+    XCTAssertEqual(created.face.shape, .star, "and the chosen face")
+    XCTAssertEqual(created.face.tint, .violet)
     XCTAssertTrue(created.id.hasPrefix("b_"))
     let listed = try await catalog.load()
     XCTAssertEqual(listed.map(\.id), [created.id])
@@ -114,8 +121,8 @@ final class SocketTests: XCTestCase {
 
   func testCatalogIsAbsoluteAndSurvivesAReconnect() async throws {
     let catalog = CatalogHTTPClient(baseURL: fixture.baseURL, token: fixture.token)
-    let first = try await catalog.create(title: "一")
-    let second = try await catalog.create(title: "二")
+    let first = try await catalog.create(title: "一", label: nil, appearance: .standard)
+    let second = try await catalog.create(title: "二", label: nil, appearance: .standard)
     let created = try await catalog.load()
     XCTAssertEqual(Set(created.map(\.id)), [first.id, second.id])
 

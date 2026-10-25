@@ -8,13 +8,23 @@ public struct SidebarItem: Identifiable, Hashable, Sendable {
   public let subtitle: String
   public let tag: String?
   public let tintIndex: Int
+  /// A bot draws its own face instead of the circled initial.
+  public let face: BotFace.Style?
 
-  public init(id: String, title: String, subtitle: String, tag: String? = nil, tintIndex: Int = 0) {
+  public init(
+    id: String,
+    title: String,
+    subtitle: String,
+    tag: String? = nil,
+    tintIndex: Int = 0,
+    face: BotFace.Style? = nil
+  ) {
     self.id = id
     self.title = title
     self.subtitle = subtitle
     self.tag = tag
     self.tintIndex = tintIndex
+    self.face = face
   }
 }
 

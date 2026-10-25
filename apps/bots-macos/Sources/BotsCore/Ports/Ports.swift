@@ -62,7 +62,11 @@ public enum Identifiers {
 
 public protocol CatalogPort: AnyObject {
   func load() async throws -> [BotSummary]
-  func create(title: String) async throws -> BotSummary
+  func create(
+    title: String,
+    label: String?,
+    appearance: BotAppearance
+  ) async throws -> BotSummary
   func rename(id: String, title: String) async throws -> BotSummary
   func delete(id: String) async throws
   func catalogEvents() -> AsyncStream<[BotSummary]>

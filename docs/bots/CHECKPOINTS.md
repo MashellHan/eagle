@@ -350,5 +350,20 @@ Verified (run just now):
   touching, and one send no longer paints two user bubbles (the placement removes the
   optimistic bubble even when the daemon's append carries no `requestId`).
 
+## 2026-10-26 — bot identity: name, label and a face
+
+Observed: creating a bot opens a sheet on the main window with a required name, an
+optional label, one of eight silhouettes and one of twelve tints. The daemon stores the
+label and the face on `bot.json`, returns them in every catalog payload, and the sidebar
+row draws the chosen silhouette with its two eyes; a bot written before appearance
+existed renders the default face. Sidebar wording is bot vocabulary (`重命名 Bot`,
+`删除 Bot`), the group collapse animates as a fade with a small gap between cards, and
+the demo workspace is the same shape: every item is a bot.
+
+Verified: `cd apps/bots && npm run check` (346 tests), `cd apps/bots-macos && swift test`
++ `./Scripts/coverage.sh` (90.2%), `cd apps/macos && swift test` (37 tests) and
+`Scripts/build-app.sh`; a screenshot of the sheet shows the preview, the shape grid and
+the swatches, and the sidebar renders the green blob face.
+
 Next broken hop: history paging from the transcript, bot settings and per-bot inspector
 content; stage 4's three deferred daemon races are still open.

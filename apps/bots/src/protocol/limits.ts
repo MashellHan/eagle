@@ -4,6 +4,8 @@
 export const MAX_FRAME_BYTES = 256 * 1024;
 export const MAX_SEND_TEXT = 8_000;
 export const MAX_TITLE_CHARS = 80;
+/** A bot's optional label: short enough to sit next to the title in the sidebar. */
+export const MAX_LABEL_CHARS = 24;
 export const MAX_NOTICE_BYTES = 500;
 export const MAX_MESSAGE_BYTES = 96 * 1024;
 export const MAX_BOT_SUMMARY_BYTES = 1_200;

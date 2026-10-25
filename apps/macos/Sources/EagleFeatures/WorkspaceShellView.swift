@@ -5,19 +5,20 @@ import SwiftUI
 /// where design components and feature state meet.
 public struct WorkspaceShellView: View {
   @StateObject private var list: WorkspaceListViewModel
-  @StateObject private var chat: ChatViewModel
+  @StateObject private var chat: BotChatViewModel
   @StateObject private var inspector: InspectorViewModel
   @StateObject private var layout: ShellLayoutViewModel
   @StateObject private var account = AccountMenuViewModel()
   @StateObject private var settings = SettingsViewModel()
   @StateObject private var bots = BotsWorkspaceViewModel()
   @State private var showsAccountMenu = false
+  @State private var showsBotCreate = false
   @State private var showsSettings = false
   @AppStorage("eagle.appearance") private var appearance = "system"
 
   public init(
     list: WorkspaceListViewModel = WorkspaceListViewModel(),
-    chat: ChatViewModel = ChatViewModel(),
+    chat: BotChatViewModel = BotChatViewModel(),
     inspector: InspectorViewModel = InspectorViewModel(),
     layout: ShellLayoutViewModel = ShellLayoutViewModel()
   ) {
@@ -77,7 +78,7 @@ public struct WorkspaceShellView: View {
           },
           onCompose: {
             if bots.isConnected {
-              Task { await bots.createBot() }
+              showsBotCreate = true
             } else {
               list.createSection()
             }
@@ -115,6 +116,15 @@ public struct WorkspaceShellView: View {
       .task {
         bots.onSelect = { id in list.selection = id }
         await bots.start()
+      }
+      .sheet(isPresented: $showsBotCreate) {
+        BotCreateSheet(
+          onCreate: { title, label, appearance in
+            showsBotCreate = false
+            Task { await bots.createBot(title: title, label: label, appearance: appearance) }
+          },
+          onCancel: { showsBotCreate = false }
+        )
       }
       .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSidebar)) { _ in
         layout.toggleSidebar()

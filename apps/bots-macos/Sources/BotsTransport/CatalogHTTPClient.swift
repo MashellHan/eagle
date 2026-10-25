@@ -19,14 +19,18 @@ public final class CatalogHTTPClient: CatalogPort {
     return try await request(path: "/v1/bots", method: "GET", body: nil, as: Payload.self).bots
   }
 
-  public func create(title: String) async throws -> BotSummary {
+  public func create(
+    title: String,
+    label: String?,
+    appearance: BotAppearance
+  ) async throws -> BotSummary {
     struct Payload: Decodable { let bot: BotSummary }
-    return try await request(
-      path: "/v1/bots",
-      method: "POST",
-      body: ["title": title],
-      as: Payload.self
-    ).bot
+    var body: [String: Any] = [
+      "title": title,
+      "appearance": ["shape": appearance.shape.rawValue, "tint": appearance.tint.rawValue],
+    ]
+    if let label, !label.isEmpty { body["label"] = label }
+    return try await request(path: "/v1/bots", method: "POST", body: body, as: Payload.self).bot
   }
 
   public func rename(id: String, title: String) async throws -> BotSummary {
@@ -61,7 +65,7 @@ public final class CatalogHTTPClient: CatalogPort {
   private func request<T: Decodable>(
     path: String,
     method: String,
-    body: [String: String]?,
+    body: [String: Any]?,
     as: T.Type
   ) async throws -> T {
     let data = try await raw(path: path, method: method, body: body)
@@ -72,14 +76,14 @@ public final class CatalogHTTPClient: CatalogPort {
     }
   }
 
-  private func raw(path: String, method: String, body: [String: String]?) async throws -> Data {
+  private func raw(path: String, method: String, body: [String: Any]?) async throws -> Data {
     var request = URLRequest(url: baseURL.appendingPathComponent(path))
     request.httpMethod = method
     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     if let body {
       request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-      request.httpBody = try JSONEncoder().encode(body)
+      request.httpBody = try JSONSerialization.data(withJSONObject: body)
     }
     let data: Data
     let response: URLResponse

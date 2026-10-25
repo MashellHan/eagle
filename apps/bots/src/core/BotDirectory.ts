@@ -53,6 +53,8 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const RECORD_KEYS = new Set([
   "id",
   "title",
+  "label",
+  "appearance",
   "createdAt",
   "updatedAt",
   "model",
@@ -68,6 +70,13 @@ const isBotRecord = (value: unknown): value is BotConfig => {
   const optional = value as { instructions?: unknown; thinkingLevel?: unknown };
   if (optional.instructions !== undefined && typeof optional.instructions !== "string")
     return false;
+  const labelled = value as { label?: unknown; appearance?: unknown };
+  if (labelled.label !== undefined && typeof labelled.label !== "string") return false;
+  if (labelled.appearance !== undefined) {
+    const appearance = labelled.appearance;
+    if (!isObject(appearance)) return false;
+    if (typeof appearance.shape !== "string" || typeof appearance.tint !== "string") return false;
+  }
   if (optional.thinkingLevel !== undefined && typeof optional.thinkingLevel !== "string") {
     return false;
   }

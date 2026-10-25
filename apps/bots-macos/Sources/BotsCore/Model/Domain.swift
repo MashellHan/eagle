@@ -162,9 +162,33 @@ public struct BotUnavailable: Codable, Sendable, Equatable {
   }
 }
 
+/// How a bot draws itself: one silhouette from a closed set and one tint. The daemon
+/// stores both; the client only renders them.
+public struct BotAppearance: Codable, Sendable, Equatable, Hashable {
+  public enum Shape: String, Codable, Sendable, CaseIterable {
+    case blob, pebble, squircle, star, cloud, shield, drop, hex
+  }
+
+  public enum Tint: String, Codable, Sendable, CaseIterable {
+    case paper, clay, red, orange, yellow, green, teal, sky, blue, violet, pink, graphite
+  }
+
+  public var shape: Shape
+  public var tint: Tint
+
+  public init(shape: Shape = .blob, tint: Tint = .green) {
+    self.shape = shape
+    self.tint = tint
+  }
+
+  public static let standard = BotAppearance()
+}
+
 public struct BotSummary: Codable, Sendable, Equatable, Identifiable {
   public var id: String
   public var title: String
+  public var label: String?
+  public var appearance: BotAppearance?
   public var createdAt: String
   public var updatedAt: String
   public var model: ModelRef
@@ -174,6 +198,8 @@ public struct BotSummary: Codable, Sendable, Equatable, Identifiable {
   public init(
     id: String,
     title: String,
+    label: String? = nil,
+    appearance: BotAppearance? = nil,
     createdAt: String,
     updatedAt: String,
     model: ModelRef,
@@ -182,12 +208,17 @@ public struct BotSummary: Codable, Sendable, Equatable, Identifiable {
   ) {
     self.id = id
     self.title = title
+    self.label = label
+    self.appearance = appearance
     self.createdAt = createdAt
     self.updatedAt = updatedAt
     self.model = model
     self.state = state
     self.unavailable = unavailable
   }
+
+  /// The face to draw, with the default for a bot written before appearance existed.
+  public var face: BotAppearance { appearance ?? .standard }
 }
 
 public enum SubmissionStatus: String, Codable, Sendable {
