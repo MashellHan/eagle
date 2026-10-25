@@ -715,3 +715,147 @@ test("a runtime snapshot seeds ranks for records a connection never saw", async 
     expected,
   );
 });
+
+test("queued, placed and done keep one submission id and settle the pending list", async () => {
+  const runtime = new FakeRuntime({
+    script: {
+      onSubmit: (input) => [
+        {
+          type: "submission",
+          trace: input.trace,
+          record: { id: "s_1", requestId: input.requestId, status: "queued" },
+        },
+        {
+          type: "submission",
+          trace: input.trace,
+          record: {
+            id: "s_1",
+            requestId: input.requestId,
+            status: "placed",
+            entryId: "e_1",
+          },
+        },
+        {
+          type: "submission",
+          trace: input.trace,
+          record: {
+            id: "s_1",
+            requestId: input.requestId,
+            status: "done",
+            entryId: "e_1",
+            answerEntryId: "e_2",
+          },
+        },
+      ],
+    },
+  });
+  const service = serviceFor(runtime);
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  const reply = await service.send("c_1", { requestId, text: "hi", whenBusy: "followUp", trace });
+  const records = received.flatMap((event) => (event.type === "submission" ? [event.record] : []));
+  assert.deepEqual(
+    records.map((record) => [record.id, record.status]),
+    [
+      ["s_1", "queued"],
+      ["s_1", "placed"],
+      ["s_1", "done"],
+    ],
+    "one submission id across every status",
+  );
+  assert.equal(reply.id, "s_1");
+  assert.equal(reply.status, "done", "the reply may already carry the settlement");
+
+  const later: HubEvent[] = [];
+  const joined = await service.subscribe("c_2", "b_1", trace, (event) => later.push(event));
+  assert.deepEqual(
+    joined.snapshot.pending,
+    [],
+    "a settled submission is not pending for a new joiner",
+  );
+  assert.deepEqual(
+    later.map((event) => event.type),
+    ["snapshot"],
+  );
+});
+
+test("unanswered keeps its reason and a late queued record cannot resurrect it", async () => {
+  const runtime = new FakeRuntime({
+    script: {
+      onSubmit: (input) => [
+        {
+          type: "submission",
+          trace: input.trace,
+          record: { id: "s_1", requestId: input.requestId, status: "queued" },
+        },
+        {
+          type: "submission",
+          trace: input.trace,
+          record: {
+            id: "s_1",
+            requestId: input.requestId,
+            status: "unanswered",
+            reason: "model_error",
+          },
+        },
+      ],
+    },
+  });
+  const service = serviceFor(runtime);
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  const reply = await service.send("c_1", { requestId, text: "hi", whenBusy: "followUp", trace });
+  assert.equal(reply.status, "unanswered");
+  assert.equal(reply.reason, "model_error");
+  assert.equal(reply.answerEntryId, undefined, "no settlement is invented");
+  const statuses = received.flatMap((event) =>
+    event.type === "submission" ? [event.record.status] : [],
+  );
+  assert.deepEqual(statuses, ["queued", "unanswered"]);
+  assert.equal(statuses.includes("done"), false);
+
+  runtime.handle("b_1").emit({
+    type: "submission",
+    trace,
+    record: { id: "s_1", requestId, status: "queued" },
+  });
+  const joined = await service.subscribe("c_2", "b_1", trace, () => {});
+  assert.deepEqual(
+    joined.snapshot.pending,
+    [],
+    "a ranked-lower duplicate never becomes pending again",
+  );
+});
+test("a runtime error never fabricates a settlement", async () => {
+  const runtime = new FakeRuntime({
+    script: {
+      onSubmit: (input) => [
+        {
+          type: "submission",
+          trace: input.trace,
+          record: { id: "s_1", requestId: input.requestId, status: "queued" },
+        },
+      ],
+    },
+  });
+  const service = serviceFor(runtime);
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  await service.send("c_1", { requestId, text: "hi", whenBusy: "followUp", trace });
+  runtime.handle("b_1").emit({
+    type: "error",
+    trace,
+    failure: { id: "f_7f3a", kind: "task_parked", layer: "runtime" },
+    message: "a task is parked",
+  });
+  const joined = await service.subscribe("c_2", "b_1", trace, () => {});
+  assert.deepEqual(
+    joined.snapshot.pending.map((record) => [record.id, record.status]),
+    [["s_1", "queued"]],
+    "an error does not settle the submission",
+  );
+  assert.deepEqual(
+    received.flatMap((event) => (event.type === "submission" ? [event.record.status] : [])),
+    ["queued"],
+  );
+});
