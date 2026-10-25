@@ -118,3 +118,43 @@ test("a tool refusal is a result the model can read, not a failed run", async ()
     await bench.cleanup();
   }
 });
+
+test("a long command output keeps its exit line through the SDK", async () => {
+  const bench = await createBench();
+  try {
+    const handle = await bench.runtime.open(bench.spec());
+    const { final } = await settle(handle, bench, [
+      assistant([toolCall("run_command", { command: "seq 1 3000" })], { stopReason: "toolUse" }),
+      (context: { messages: { role: string; content: unknown }[] }) => {
+        const seen = JSON.stringify(context.messages);
+        return assistant(seen.includes("[exit code 0]") ? "exit seen" : "exit lost");
+      },
+    ]);
+    assert.equal(final?.blocks[0]?.type === "text" ? final.blocks[0].text : "", "exit seen");
+  } finally {
+    await bench.cleanup();
+  }
+});
+
+test("a full read page keeps its total note through the SDK", async () => {
+  const bench = await createBench();
+  try {
+    const handle = await bench.runtime.open(bench.spec());
+    const workspace = workspaceOf(bench);
+    await mkdir(workspace, { recursive: true });
+    await writeFile(
+      join(workspace, "long.txt"),
+      Array.from({ length: 2_500 }, (_, index) => `row ${index + 1}`).join("\n"),
+    );
+    const { final } = await settle(handle, bench, [
+      assistant([toolCall("read_file", { path: "long.txt" })], { stopReason: "toolUse" }),
+      (context: { messages: { role: string; content: unknown }[] }) => {
+        const seen = JSON.stringify(context.messages);
+        return assistant(seen.includes("[lines 1-2000 of 2500]") ? "note seen" : "note lost");
+      },
+    ]);
+    assert.equal(final?.blocks[0]?.type === "text" ? final.blocks[0].text : "", "note seen");
+  } finally {
+    await bench.cleanup();
+  }
+});

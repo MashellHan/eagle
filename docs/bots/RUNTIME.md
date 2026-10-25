@@ -301,7 +301,7 @@ registry and bound to that bot's workspace:
 
 | Tool | Behaviour |
 | --- | --- |
-| `read_file` | A text page (`offset`, `limit`): at most 2 000 lines and 64 KiB, with a note naming the lines it showed |
+| `read_file` | A text page (`offset`, `limit`): at most 2 000 lines and 64 KiB, streamed from the file and with a note naming the lines it showed and the total |
 | `write_file` | Writes one UTF-8 file (at most 512 KiB), creating parent directories, mode 0600 |
 | `list_files` | A bounded recursive walk (2 000 entries) that skips `.git`, `node_modules`, `.venv`, `dist` and `.build`; directories end with `/` |
 | `run_command` | `/bin/sh -c` in the workspace: stdout, stderr and the exit code, killed at the deadline (default 30 s, max 120 s) with the output capped at 64 KiB |
@@ -311,33 +311,40 @@ Rules:
 - **Auto-execute.** There is no approval gate and no hook that asks the user; execution
   is the product. Tools do not receive a separate switch per call.
 - **Workspace confinement.** The workspace is `<bot dir>/workspace`, created 0700 on open
-  and the agent's `cwd`; it is refused if it is itself a symlink. Every file tool path is
+  and the agent's `cwd`; it is refused if it is itself a symlink, and its `dev`/`ino` are
+  captured at open. Every call first re-checks that identity, so a root replaced by a link
+  or a different directory after open is refused, never re-trusted. Every file tool path is
   resolved inside the canonical root lexically **and** component by component; a symlink
   anywhere at or below the root — including a dangling one — is refused rather than
-  followed. The final component is opened with `O_NOFOLLOW`, only a regular file is read
-  (a FIFO or device cannot stall or redirect a call), and an overwrite is tightened to
-  0600. An escape is a tool result the model reads, never an exception.
+  followed. The final component is opened with `O_NOFOLLOW`, only a regular file is read or
+  written (`O_NONBLOCK` so a FIFO or device can neither block nor be redirected), and an
+  overwrite is tightened to 0600. An escape is a tool result the model reads, never an
+  exception.
 - **The daemon root is out of reach.** A command runs under a macOS Seatbelt profile
   (`/usr/bin/sandbox-exec`) that denies reading and writing everything under the daemon
   root — the token, the catalog, every other bot — while allowing the bot's own
   workspace. Outside that root the shell is the agent's own machine, by design: a coding
-  agent needs to run toolchains, and there is no approval gate. Where `sandbox-exec` does
-  not exist the command runs unsandboxed and this document is the contract that says so.
+  agent needs to run toolchains, and there is no approval gate. On a platform without
+  `sandbox-exec` the command runs unsandboxed; on a machine that has it but cannot stat it,
+  the command fails instead of silently dropping the sandbox.
 - **No daemon secrets.** A command's environment is an allowlist (`PATH`, `HOME`, `LANG`,
-  `LC_ALL`, `TMPDIR`, `SHELL`, plus `TERM=dumb` and `PWD`), and the child is `detached` in
-  its own process group so a timeout or an abort kills its descendants too.
+  `LC_ALL`, `TMPDIR`, `SHELL`, plus `TERM=dumb` and `PWD`). The child is `detached` in its
+  own process group, and a timeout or an abort walks the `ps` tree before killing, so a
+  descendant that left the group with `setsid` dies too and cannot hold the pipes open.
 - **Bounded output.** Both streams share one 64 KiB budget, decoded as UTF-8 across chunk
-  boundaries; `[stderr]` marks the switch, the exit code is always the last line, and each
-  tool's SDK `outputLimits` matches its own cap so the SDK never cuts the result — a
-  timed-out command still carries the stderr collected before the deadline.
+  boundaries; `[stderr]` marks the first stderr byte once (not every chunk), the exit code
+  is always the last line, and each tool's SDK `outputLimits` is set above the tool's own
+  cap so the SDK never cuts the result, its note or a command's exit status — a timed-out
+  command still carries the stderr and the reason, and a command killed at the deadline
+  returns then rather than waiting for its pipes to close.
 - **Cancellation.** `run_command` follows the run's abort signal: an aborted run kills the
   process group and the model sees an aborted result instead of a live command.
 - **Residual race.** A process that can already write inside the workspace could swap an
   intermediate directory for a link between the component check and the open. The final
-  component is protected by `O_NOFOLLOW`, every directory is re-checked before it is
-  listed, and commands are additionally confined by the sandbox; closing the intermediate
-  window fully would need `openat` chains the Node API does not expose, and is recorded
-  as a known limit rather than claimed fixed.
+  component is protected by `O_NOFOLLOW`, the root identity is checked on every call, every
+  directory is re-checked before it is listed, and commands are additionally confined by
+  the sandbox; closing the intermediate window fully would need `openat` chains the Node
+  API does not expose, and is recorded as a known limit rather than claimed fixed.
 - **Hard kill of the daemon.** A deadline or an abort kills the command's process group,
   but `SIGKILL` of the daemon itself orphans whatever is already running: the restart marks
   the run interrupted and cannot stop the orphan. A persisted process-group id would let a

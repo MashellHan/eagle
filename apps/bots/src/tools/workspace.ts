@@ -1,11 +1,12 @@
 // Workspace confinement (docs/bots/RUNTIME.md, "Tools"): every path a tool touches is
 // resolved inside the bot's workspace, and a symlink is refused anywhere below it, so an
 // auto-executed tool cannot reach the daemon's root or another bot through the file
-// system. The workspace is refused if it is itself a link.
+// system. The root's identity is fixed when it is opened: a root that is later replaced
+// by a link or a different directory is refused instead of being re-trusted.
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { MAX_PATH_CHARS } from "./limits.ts";
-import { ToolError } from "./types.ts";
+import { type BotWorkspace, ToolError } from "./types.ts";
 
 /** Creates the workspace and refuses a pre-existing symlink or non-directory. */
 export const ensureWorkspace = async (root: string): Promise<void> => {
@@ -20,6 +21,33 @@ export const ensureWorkspace = async (root: string): Promise<void> => {
 
 /** The root every tool resolves against: its real path, so paths above it may be links. */
 export const canonicalWorkspace = (root: string): Promise<string> => realpath(root);
+
+/** Opens the workspace once: the returned root is canonical and carries its identity. */
+export const openWorkspace = async (root: string, daemonRoot: string): Promise<BotWorkspace> => {
+  await ensureWorkspace(root);
+  const canonical = await canonicalWorkspace(root);
+  const info = await lstat(canonical);
+  if (info.isSymbolicLink() || !info.isDirectory()) {
+    throw new ToolError(`the workspace is not a directory: ${canonical}`);
+  }
+  return {
+    root: canonical,
+    daemonRoot: await canonicalWorkspace(daemonRoot),
+    identity: { dev: info.dev, ino: info.ino },
+  };
+};
+
+/** Refuses a root that is no longer the directory opened: a swap is never re-trusted. */
+export const assertWorkspaceIdentity = async (workspace: BotWorkspace): Promise<void> => {
+  const info = await lstat(workspace.root).catch(() => undefined);
+  if (info === undefined) throw new ToolError("the workspace is gone");
+  if (info.isSymbolicLink() || !info.isDirectory()) {
+    throw new ToolError("the workspace root was replaced");
+  }
+  if (info.dev !== workspace.identity.dev || info.ino !== workspace.identity.ino) {
+    throw new ToolError("the workspace root was replaced");
+  }
+};
 
 const isInside = (root: string, candidate: string): boolean =>
   candidate === root || candidate.startsWith(`${root}${sep}`);

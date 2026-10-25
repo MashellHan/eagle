@@ -35,7 +35,7 @@ import type {
 import { type DeclaredEvent, declareEvent } from "../../log/events.ts";
 import type { Log } from "../../log/log.ts";
 import { createToolRegistry } from "../../tools/registry.ts";
-import { ensureWorkspace } from "../../tools/workspace.ts";
+import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
 import { entryMessageId } from "./convert.ts";
 import { convertSubmission, EventMapper } from "./mapEvents.ts";
@@ -121,8 +121,11 @@ export class PiDurableRuntime implements RuntimePort {
     // buffered and replayed rather than dropped.
     const pending: ReportInfo[] = [];
     try {
-      const workspaceRoot = this.#options.workspaceRoot?.(spec) ?? join(spec.dir, "workspace");
-      await ensureWorkspace(workspaceRoot);
+      const workspace = await openWorkspace(
+        this.#options.workspaceRoot?.(spec) ?? join(spec.dir, "workspace"),
+        // The daemon's root: the token, the catalog and every other bot's files.
+        resolve(spec.dir, "..", ".."),
+      );
       const storage = await (this.#options.storage ?? defaultStorage)(
         join(spec.dir, "session.sqlite"),
       );
@@ -130,11 +133,7 @@ export class PiDurableRuntime implements RuntimePort {
         storage,
         {
           models: this.#options.models,
-          registry: createToolRegistry({
-            workspaceRoot,
-            // The daemon's root: the token, the catalog and every other bot's files.
-            daemonRoot: resolve(spec.dir, "..", ".."),
-          }),
+          registry: createToolRegistry(workspace),
           settings: { ...DEFAULT_SETTINGS, ...this.#options.settings?.(spec) } as never,
           onReport: (_error, info) => {
             if (handle === undefined) pending.push(info);
@@ -146,7 +145,7 @@ export class PiDurableRuntime implements RuntimePort {
       const root = await harness.root(BACKGROUND_CONTEXT, {
         agent: {
           model: { provider: spec.model.provider, modelId: spec.model.modelId },
-          cwd: workspaceRoot,
+          cwd: workspace.root,
         },
       });
       handle = new PiRuntimeHandle({

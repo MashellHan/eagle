@@ -1,11 +1,18 @@
 // The shape every bot tool speaks (docs/bots/RUNTIME.md, "Tools"): a handler receives the
 // workspace and validated arguments and returns what the model should see. Failures are
 // results, not exceptions, so one bad path cannot fail the run.
+export type WorkspaceIdentity = {
+  readonly dev: number;
+  readonly ino: number;
+};
+
 export type BotWorkspace = {
   /** Absolute, canonical path of the bot's workspace; every tool path resolves inside it. */
   readonly root: string;
   /** The daemon's root (token, catalog, other bots), which a command may not touch. */
   readonly daemonRoot: string;
+  /** The root's identity at open: a replaced root is refused, not re-trusted. */
+  readonly identity: WorkspaceIdentity;
 };
 
 export type ToolOutcome = {

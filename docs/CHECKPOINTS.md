@@ -1484,9 +1484,12 @@ A checkpoint is what a person can actually see, so this records the absence too.
   another bot's files (Seatbelt denies the daemon root), a background process cannot
   outlive its deadline, and a symlink inside the workspace cannot redirect a read or a
   write outside it.
-- **Evidence:** `cd apps/bots && npm run check` — 376/376 tests, coverage 95.02/89.24/91.02;
-  `test:crash` 5/5; `perf` 1/1. The new tests run real commands and real temp trees:
-  daemon-root denial, process-group timeout, abort, UTF-8 split across chunks, FIFO
-  refusal, mode tightening, unreadable directory surfacing, and the six escape paths.
+- **Evidence:** `cd apps/bots && npm run check` — 381/381 tests, coverage 94.95/88.97/90.80
+  (statements/branches/functions; lines 90.80); `test:crash` 5/5; `perf` 1/1. The tests run
+  real commands and real temp trees: daemon-root denial, process-group and `setsid` timeout,
+  abort, UTF-8 split across chunks, FIFO read and write refusal, root replaced after open,
+  mode tightening, unreadable directory surfacing, a streamed page of a 530 KB file, and the
+  six escape paths — plus two faux-model rounds proving the SDK keeps a 3 000-line command's
+  exit line and a 2 500-line read page's note.
 - **Next broken hop:** rendering tool rows in the client (still off the wire), then the
   herdr tools of slice 2.

@@ -9,17 +9,16 @@ import test from "node:test";
 import { MAX_COMMAND_OUTPUT_BYTES } from "../../src/tools/limits.ts";
 import { runCommandTool } from "../../src/tools/shell.ts";
 import type { BotWorkspace } from "../../src/tools/types.ts";
-import { ensureWorkspace } from "../../src/tools/workspace.ts";
+import { openWorkspace } from "../../src/tools/workspace.ts";
 
 const bench = async (): Promise<{
   workspace: BotWorkspace;
   cleanup: () => Promise<void>;
 }> => {
   const daemonRoot = await mkdtemp(join(tmpdir(), "bots-shell-"));
-  const workspaceRoot = join(daemonRoot, "bots", "a", "workspace");
-  await ensureWorkspace(workspaceRoot);
+  const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"), daemonRoot);
   return {
-    workspace: { root: workspaceRoot, daemonRoot },
+    workspace,
     cleanup: () => rm(daemonRoot, { recursive: true, force: true }),
   };
 };
@@ -112,6 +111,46 @@ test("an abort kills the command and says so", async () => {
     assert.equal(aborted.isError, true);
     assert.match(aborted.output, /aborted/);
     assert.ok(Date.now() - started < 1_000, "abort does not wait for the command");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a setsid descendant cannot outlive the deadline", async () => {
+  const { workspace, cleanup } = await bench();
+  try {
+    const started = Date.now();
+    const timedOut = await runCommandTool(workspace, {
+      command:
+        "perl -e 'if (fork() == 0) { setsid(); sleep 0.4; open(F, q{>}, q{late.txt}); print F q{survived}; }' ; sleep 0.4",
+      timeoutMs: 100,
+    });
+    assert.equal(timedOut.isError, true);
+    assert.ok(Date.now() - started < 280, "a detached descendant does not stretch the deadline");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.equal(
+      await readFile(join(workspace.root, "late.txt"), "utf8").catch(() => "absent"),
+      "absent",
+      "a descendant that left the process group is killed too",
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a stderr marker is written once, even across many chunks", async () => {
+  const { workspace, cleanup } = await bench();
+  try {
+    const split = await runCommandTool(workspace, {
+      command: "printf BUILD_ >&2; sleep 0.05; printf FAILED >&2",
+    });
+    assert.match(split.output, /\[stderr\]\nBUILD_FAILED/);
+    assert.equal((split.output.match(/\[stderr\]/g) ?? []).length, 1);
+
+    const many = await runCommandTool(workspace, {
+      command: "perl -e 'for (1..10000) { print STDERR q{x}; }' 2>&1 1>/dev/null",
+    });
+    assert.ok(Buffer.byteLength(many.output) <= 64 * 1024 + 100);
   } finally {
     await cleanup();
   }

@@ -34,8 +34,9 @@ export const createBotsTools = (workspace: BotWorkspace): readonly ToolRegistrat
     }),
     // A read has no side effect, so an interrupted call may rerun after a restart.
     replay: "safe",
-    // The page the tool returns is what the SDK keeps, so its own budget is the ceiling.
-    outputLimits: { maxBytes: 64 * 1024, maxLines: 2_000, retain: "head" },
+    // The SDK budget is a backstop above the tool's own cap, so it can never cut the
+    // page, its note or a command's exit line.
+    outputLimits: { maxBytes: 256 * 1024, maxLines: 100_000, retain: "head" },
     execute: async (args) => result(await readFileTool(workspace, args)),
   }),
   defineTool({
@@ -46,7 +47,7 @@ export const createBotsTools = (workspace: BotWorkspace): readonly ToolRegistrat
       path: Type.String({ description: "File path, relative to the workspace" }),
       content: Type.String({ description: "The complete file content" }),
     }),
-    outputLimits: { maxBytes: 64 * 1024, maxLines: 2_000, retain: "head" },
+    outputLimits: { maxBytes: 256 * 1024, maxLines: 100_000, retain: "head" },
     execute: async (args) => result(await writeFileTool(workspace, args)),
   }),
   defineTool({
@@ -60,7 +61,7 @@ export const createBotsTools = (workspace: BotWorkspace): readonly ToolRegistrat
       limit: Type.Optional(Type.Number({ description: "Maximum entries (default 2000)" })),
     }),
     replay: "safe",
-    outputLimits: { maxBytes: 64 * 1024, maxLines: 2_000, retain: "head" },
+    outputLimits: { maxBytes: 256 * 1024, maxLines: 100_000, retain: "head" },
     execute: async (args) => result(await listFilesTool(workspace, args)),
   }),
   defineTool({
@@ -74,8 +75,9 @@ export const createBotsTools = (workspace: BotWorkspace): readonly ToolRegistrat
       ),
       timeoutMs: Type.Optional(Type.Number({ description: "Deadline in milliseconds" })),
     }),
-    // The exit code is the last line, so the SDK keeps the tail of the output.
-    outputLimits: { maxBytes: 64 * 1024, retain: "tail" },
+    // The exit code is the last line; the tool already capped the body, so the SDK must
+    // not cut the timeout reason, the stderr or the exit line behind it.
+    outputLimits: { maxBytes: 256 * 1024, maxLines: 100_000, retain: "tail" },
     execute: async (args, _api, context) =>
       result(await runCommandTool(workspace, args, context.abortSignal)),
   }),
@@ -85,15 +87,7 @@ export const createBotsTools = (workspace: BotWorkspace): readonly ToolRegistrat
  * A registry holding the bots-tools extension for one workspace. It is built per Harness:
  * the tools are bound to that bot's workspace, never to another bot's.
  */
-export const createToolRegistry = (options: {
-  readonly workspaceRoot: string;
-  readonly daemonRoot: string;
-}) => {
-  const workspace: BotWorkspace = {
-    root: options.workspaceRoot,
-    daemonRoot: options.daemonRoot,
-  };
-  const workspaceRoot = options.workspaceRoot;
+export const createToolRegistry = (workspace: BotWorkspace) => {
   const registry = createRegistry();
   registry.install(
     defineExtension({
@@ -102,7 +96,7 @@ export const createToolRegistry = (options: {
       sections: [
         section("bots-tools", () =>
           [
-            `Your workspace is ${workspaceRoot}. All tool paths are relative to it and cannot leave it.`,
+            `Your workspace is ${workspace.root}. All tool paths are relative to it and cannot leave it.`,
             "Use read_file and list_files before editing, write_file to save a whole file, and run_command for builds and tests.",
             "Tool calls run without asking the user first.",
           ].join("\n"),

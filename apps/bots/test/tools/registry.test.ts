@@ -1,14 +1,17 @@
 // The tools a bot is born with (docs/bots/RUNTIME.md, "Tools"): one extension, four tools,
 // bound to the bot's workspace and offered without an approval hook.
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { BOTS_TOOLS_EXTENSION, createToolRegistry } from "../../src/tools/registry.ts";
+import { openWorkspace } from "../../src/tools/workspace.ts";
 
-test("the bots-tools extension installs the four tools and a workspace section", () => {
-  const registry = createToolRegistry({
-    workspaceRoot: "/tmp/workspace-of-a-bot",
-    daemonRoot: "/tmp/daemons",
-  });
+test("the bots-tools extension installs the four tools and a workspace section", async () => {
+  const daemonRoot = await mkdtemp(join(tmpdir(), "bots-registry-"));
+  const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"), daemonRoot);
+  const registry = createToolRegistry(workspace);
   const snapshot = registry.snapshot();
   assert.deepEqual(
     snapshot
@@ -33,4 +36,5 @@ test("the bots-tools extension installs the four tools and a workspace section",
   }
   const command = snapshot.tools().find(({ tool }) => tool.name === "run_command");
   assert.equal(command?.tool.outputLimits?.retain, "tail");
+  await rm(daemonRoot, { recursive: true, force: true });
 });

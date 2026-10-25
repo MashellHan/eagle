@@ -235,9 +235,14 @@ rows in the client is the next slice, so `pi.tool-result` stays off the wire for
 The first Codex review of slice 1 (reasoning max) returned six P1s: a shell with no
 filesystem isolation, a dangling-link write-through, a check/use race in path resolution,
 a workspace root that trusted a symlink, a timeout that killed only the shell PID, and a
-tool that ignored cancellation. The hardening above closes the first five and adds abort
-handling; the remaining intermediate-directory race is recorded in RUNTIME.md as a known
-limit (it needs `openat`, which Node does not expose). Slice 2 (herdr: open a space,
+tool that ignored cancellation. The hardening above closes them; the remaining
+intermediate-directory race is recorded in RUNTIME.md as a known limit (it needs `openat`,
+which Node does not expose). A second review found three more: a workspace root that could
+be re-bound after open, a `write_file` that blocked on a FIFO (abort could not finish), and
+a `setsid` descendant that outlived the deadline. All three are fixed (open-time
+`dev`/`ino` identity, non-blocking regular-file writes, `ps`-tree kill), together with its
+P2s: no silent sandbox degradation, SDK budgets set as a backstop above the tool caps, one
+`[stderr]` marker, and a streamed page instead of a whole-file size limit. Slice 2 (herdr: open a space,
 schedule the controller, monitor, fetch, bidirectional messages) is next, as a second
 extension with the same layering.
 
