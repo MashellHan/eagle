@@ -48,6 +48,8 @@ export type StackOptions = {
   readonly model?: { provider: string; modelId: string };
   /** Run the real pi-durable adapter over real sqlite; only the model network is faked. */
   readonly real?: boolean;
+  /** Seeds the root before the catalog is loaded, for a fault the daemon must survive. */
+  readonly prepare?: (context: { root: string; directory: BotDirectory }) => Promise<void>;
 };
 
 export const startStack = async (options: StackOptions = {}): Promise<Stack> => {
@@ -72,6 +74,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     openRuntime = (spec) => runtime.open(spec);
   }
   const directory = new BotDirectory(root, await nodeDirectoryFs());
+  await options.prepare?.({ root, directory });
   let opens = 0;
   const registry = new BotRegistry({
     directory,
@@ -101,6 +104,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     open: (botId, trace) => registry.open(botId, trace),
     handleOf: (botId) => registry.handleOf(botId),
     measure: measureEvent,
+    log,
   });
   const daemon = await startServer({
     token,

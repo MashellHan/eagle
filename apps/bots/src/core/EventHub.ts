@@ -2,8 +2,18 @@
 // The hub numbers every bot-scoped event on a per-bot sequence and is the only place
 // that decides what a subscriber receives. It speaks domain events: encoding a frame is
 // the wire layer's job, so core never imports protocol and the encoded size is injected.
+import { declareEvent } from "../log/events.ts";
+import type { Log } from "../log/log.ts";
 import type { ConversationSnapshot, DeltaChange } from "./domain.ts";
+import { newFailure } from "./failures.ts";
 import type { RuntimeEvent } from "./RuntimePort.ts";
+
+const Events = {
+  publishOk: declareEvent("core.hub.publish.ok"),
+  coalesceOk: declareEvent("core.hub.coalesce.ok"),
+  snapshotOk: declareEvent("core.hub.snapshot.ok"),
+  degrade: declareEvent("core.hub.degrade"),
+} as const;
 
 /** A runtime event after the hub has given it a revision. */
 export type HubEvent = RuntimeEvent & { readonly rev: number };
@@ -23,6 +33,8 @@ export type HubOptions = {
   /** Encoded bytes of one event, measured by the transport that will write it. */
   readonly measure: (event: RuntimeEvent) => number;
   readonly schedule?: (run: () => void) => void;
+  /** Fanout is a crossing, so it is recorded; the hub owns no logging policy itself. */
+  readonly log?: Log;
 };
 
 type Queued = { readonly event: HubEvent; readonly bytes: number };
@@ -53,6 +65,7 @@ export class EventHub {
   readonly #slots = new Map<string, Slot>();
   readonly #schedule: (run: () => void) => void;
   readonly #measure: (event: RuntimeEvent) => number;
+  readonly #log: Log | undefined;
   #rev = 0;
   #nextId = 1;
   /** Deltas still inside the coalescing window; they do not consume a revision yet. */
@@ -69,6 +82,7 @@ export class EventHub {
     this.#botId = botId;
     this.#defaultTrace = trace;
     this.#measure = options.measure;
+    this.#log = options.log;
     this.#schedule =
       options.schedule ??
       ((run) => {
@@ -206,17 +220,31 @@ export class EventHub {
     for (const group of groupChanges(pending)) {
       const last = group[group.length - 1];
       if (last === undefined) continue;
+      const changes = mergeChanges(group.map((item) => item.change));
+      const bytes = group.reduce((total, item) => total + item.bytes, 0);
+      this.#log?.emit("debug", "core", Events.coalesceOk, {
+        trace: last.trace,
+        botId: this.#botId,
+        detail: { count: group.length, bytes },
+      });
       this.#push({
         type: "delta",
         trace: last.trace,
         messageId: last.messageId,
-        changes: mergeChanges(group.map((item) => item.change)),
+        changes,
         rev: this.#nextRevision(),
       });
     }
   }
 
   #push(event: HubEvent): void {
+    if (event.type === "snapshot") {
+      this.#log?.emit("info", "core", Events.snapshotOk, {
+        trace: event.trace,
+        botId: this.#botId,
+        rev: event.rev,
+      });
+    }
     this.#dispatch.push(event);
   }
 
@@ -251,6 +279,16 @@ export class EventHub {
 
   #fanout(event: HubEvent): void {
     const bytes = this.#measure(event);
+    this.#log?.emit("info", "core", Events.publishOk, {
+      trace: event.trace,
+      botId: this.#botId,
+      rev: event.rev,
+      detail: {
+        kind: event.type,
+        count: this.#slots.size,
+        ...(event.type === "delta" ? { messageId: event.messageId } : {}),
+      },
+    });
     for (const slot of this.#slots.values()) this.#offer(slot, event, bytes);
   }
 
@@ -273,6 +311,12 @@ export class EventHub {
       // Falling behind downgrades the subscriber instead of stalling the hub. A snapshot
       // is itself the recovery, so the event that triggers the overflow becomes the
       // anchor instead of being thrown away.
+      this.#log?.emit("warn", "core", Events.degrade, {
+        trace: event.trace,
+        botId: this.#botId,
+        failure: newFailure("internal", "core"),
+        detail: { reason: "queue_overflow", count: slot.queue.length + 1 },
+      });
       slot.degraded = true;
       slot.queue = [];
       slot.bytes = 0;

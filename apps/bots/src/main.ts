@@ -8,7 +8,9 @@ import { type DaemonConfig, readConfig } from "./config.ts";
 import { BotDirectory, nodeDirectoryFs } from "./core/BotDirectory.ts";
 import { BotRegistry } from "./core/BotRegistry.ts";
 import { ConversationService } from "./core/ConversationService.ts";
+import { newFailure } from "./core/failures.ts";
 import type { RuntimeEvent } from "./core/RuntimePort.ts";
+import { declareEvent } from "./log/events.ts";
 import { Log } from "./log/log.ts";
 import { FileLogSink } from "./log/sink.ts";
 import { encodeServerEvent } from "./protocol/encode.ts";
@@ -39,6 +41,12 @@ const packageVersion = (): string => {
 };
 
 /** Encoded bytes of one event, measured on the frame the wire layer would write. */
+const StartupEvents = {
+  singletonStart: declareEvent("core.singleton.start"),
+  singletonOk: declareEvent("core.singleton.ok"),
+  singletonFail: declareEvent("core.singleton.fail"),
+} as const;
+
 export const measureEvent = (event: RuntimeEvent): number =>
   Buffer.byteLength(JSON.stringify(encodeServerEvent(toServerEvent({ ...event, rev: 0 }))));
 
@@ -52,21 +60,33 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     process.exit(1);
   });
   const canonical: DaemonConfig = { ...config, root };
+  const token = await loadToken(root);
+  // The log exists before the lock so a refused second start is on record, and it holds
+  // the token as a secret for redaction from its first record.
+  const sink = new FileLogSink({ root, minimum: canonical.logLevel });
+  const log = new Log(sink.sink, undefined, {
+    secrets: () => [token, process.env.BOTS_API_KEY ?? ""],
+  });
+  const startup = "tr_boot_1";
+  log.emit("info", "core", StartupEvents.singletonStart, { trace: startup });
   let lock: Awaited<ReturnType<typeof acquireLock>>;
   try {
     lock = await acquireLock({ root });
   } catch (error) {
     if (error instanceof LockError) {
+      log.emit("error", "core", StartupEvents.singletonFail, {
+        trace: startup,
+        failure: newFailure("internal", "core"),
+        origin: true,
+        detail: { reason: "startup" },
+      });
+      await sink.close();
       process.stderr.write(`bots: ${error.message}\n`);
       process.exit(1);
     }
     throw error;
   }
-  const token = await loadToken(root);
-  const sink = new FileLogSink({ root, minimum: canonical.logLevel });
-  const log = new Log(sink.sink, undefined, {
-    secrets: () => [token, process.env.BOTS_API_KEY ?? ""],
-  });
+  log.emit("info", "core", StartupEvents.singletonOk, { trace: startup });
   const directory = new BotDirectory(root, await nodeDirectoryFs());
   const models = createDaemonModels({
     baseUrl: process.env.BOTS_BASE_URL?.trim() ?? "",
@@ -89,6 +109,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     open: (botId, trace) => registry.open(botId, trace),
     handleOf: (botId) => registry.handleOf(botId),
     measure: measureEvent,
+    log,
   });
   const capabilities = {
     agent: false,

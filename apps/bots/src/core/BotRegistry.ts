@@ -17,6 +17,9 @@ import type { RuntimeBotSpec, RuntimeHandle } from "./RuntimePort.ts";
 
 const Events = {
   catalogLoadOk: declareEvent("core.catalog.load.ok"),
+  catalogWriteOk: declareEvent("core.catalog.write.ok"),
+  catalogWriteFail: declareEvent("core.catalog.write.fail"),
+  resolveFail: declareEvent("core.bot.resolve.fail"),
   catalogLoadFail: declareEvent("core.catalog.load.fail"),
   openStart: declareEvent("core.bot.open.start"),
   openOk: declareEvent("core.bot.open.ok"),
@@ -172,7 +175,7 @@ export class BotRegistry {
     };
     // Checked before the write: a summary the `bots` event cannot carry must not exist.
     this.#assertSummary({ ...config, state: "catalogued" });
-    await this.#options.directory.create(config);
+    await this.#write(trace, config.id, () => this.#options.directory.create(config));
     const entry: Entry = {
       config,
       state: "catalogued",
@@ -191,10 +194,12 @@ export class BotRegistry {
   }
 
   async rename(botId: string, title: string, trace: string): Promise<BotSummary> {
-    const entry = this.#entry(botId);
+    const entry = this.#entry(botId, trace);
     const at = (this.#options.now?.() ?? new Date()).toISOString();
     this.#assertSummary({ ...entry.config, title, updatedAt: at, state: entry.state });
-    const config = await this.#options.directory.rename(botId, title, at);
+    const config = await this.#write(trace, botId, () =>
+      this.#options.directory.rename(botId, title, at),
+    );
     entry.config = config;
     void trace;
     return this.#summary(entry);
@@ -202,7 +207,7 @@ export class BotRegistry {
 
   /** Closes the handle, then removes the directory in its two idempotent steps. */
   async remove(botId: string, trace: string): Promise<void> {
-    const entry = this.#entry(botId);
+    const entry = this.#entry(botId, trace);
     if (entry.state === "quarantined") {
       throw new ClassifiedFailure(
         newFailure("internal"),
@@ -252,7 +257,7 @@ export class BotRegistry {
    * classification the caller must carry.
    */
   async open(botId: string, trace: string): Promise<RuntimeHandle> {
-    const entry = this.#entry(botId);
+    const entry = this.#entry(botId, trace);
     if (entry.state === "quarantined") {
       throw new ClassifiedFailure(
         newFailure("unknown_bot"),
@@ -267,7 +272,7 @@ export class BotRegistry {
 
   /** `recover`: re-opens an unavailable bot, retries parked work otherwise. */
   async recover(botId: string, trace: string): Promise<void> {
-    const entry = this.#entry(botId);
+    const entry = this.#entry(botId, trace);
     if (entry.state === "quarantined") {
       throw new ClassifiedFailure(
         newFailure("internal"),
@@ -316,10 +321,18 @@ export class BotRegistry {
     }
   }
 
-  #entry(botId: string): Entry {
+  #entry(botId: string, trace: string): Entry {
     const entry = this.#entries.get(botId);
     if (entry === undefined) {
-      throw new ClassifiedFailure(newFailure("unknown_bot"), "not_admitted", "unknown bot");
+      // The id never resolved, so nothing below core is reached: this is the origin.
+      const failure = newFailure("unknown_bot", "core");
+      this.#options.log.emit("error", "core", Events.resolveFail, {
+        trace,
+        botId,
+        failure,
+        origin: true,
+      });
+      throw new ClassifiedFailure(failure, "not_admitted", "unknown bot");
     }
     return entry;
   }
@@ -452,14 +465,20 @@ export class BotRegistry {
     this.#options.log.emit("info", "core", Events.recoveryStart, { trace });
     let resumed = 0;
     for (const entry of this.#entries.values()) {
+      let failure: Failure | undefined;
       const busy = await this.open(entry.config.id, trace)
         .then((handle) => handle.busy())
-        .catch(() => undefined);
+        .catch((error: unknown) => {
+          // The identity the open minted travels with the report: one episode, one id.
+          failure =
+            error instanceof ClassifiedFailure ? error.failure : newFailure("storage_failed");
+          return undefined;
+        });
       if (busy === undefined) {
         this.#options.log.emit("warn", "core", Events.recoveryBotFail, {
           trace,
           botId: entry.config.id,
-          failure: newFailure("storage_failed"),
+          failure: failure ?? newFailure("storage_failed"),
           detail: { reason: "upstream", propagated: true },
         });
         continue;
@@ -487,6 +506,33 @@ export class BotRegistry {
     entry.cancelIdle = undefined;
     entry.cancelRetry?.();
     entry.cancelRetry = undefined;
+  }
+
+  /** One catalog mutation, one outcome record, at the layer that owns the file. */
+  async #write<T>(trace: string, botId: string, work: () => Promise<T>): Promise<T> {
+    try {
+      const result = await work();
+      this.#options.log.emit("info", "core", Events.catalogWriteOk, {
+        trace,
+        botId,
+        detail: { count: 1 },
+      });
+      return result;
+    } catch (error) {
+      const classified = error instanceof ClassifiedFailure ? error : undefined;
+      const failure = classified?.failure ?? newFailure("storage_failed", "core");
+      this.#options.log.emit("error", "core", Events.catalogWriteFail, {
+        trace,
+        botId,
+        failure,
+        origin: true,
+      });
+      throw error instanceof ClassifiedFailure
+        ? error
+        : new ClassifiedFailure(failure, "runtime", "the catalog could not be written", {
+            cause: error,
+          });
+    }
   }
 
   /** Refuses a summary the derived 240 200-byte catalog bound cannot hold. */

@@ -307,11 +307,20 @@ test("close resolves timeout without dropping the handle", async () => {
       "a second close joins the close already in flight, so the handle is retained",
     );
     assert.equal(storage.counter.calls, 1, "the storage close is not started twice");
-    const closeStarted = bench.records.filter((record) => record.evt === "runtime.close.ok");
-    assert.deepEqual(closeStarted.length, 2, "each close call reports the deadline it hit");
+    const timedOut = bench.records.filter((record) => record.evt === "runtime.close.fail");
+    assert.equal(timedOut.length, 2, "each close call reports the deadline it hit");
     assert.deepEqual(
-      closeStarted.map((record) => record.detail?.quarantined),
-      [true, true],
+      timedOut.map((record) => [record.level, record.detail?.reason]),
+      [
+        ["warn", "timeout"],
+        ["warn", "timeout"],
+      ],
+      "a timeout is never logged as success (ARCHITECTURE.md, bot lifecycle)",
+    );
+    assert.equal(
+      bench.records.filter((record) => record.evt === "runtime.close.ok").length,
+      0,
+      "no close is reported as closed",
     );
   } finally {
     await bench.cleanup();

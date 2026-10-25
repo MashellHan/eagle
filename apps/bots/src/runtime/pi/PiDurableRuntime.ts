@@ -2,6 +2,7 @@
 // submission ledger, the close deadline and the failure classification; it owns no
 // catalog, no transport and no revision.
 
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
@@ -56,6 +57,7 @@ const Events = {
   recoverFail: declareEvent("runtime.recover.fail"),
   closeStart: declareEvent("runtime.close.start"),
   closeOk: declareEvent("runtime.close.ok"),
+  closeFail: declareEvent("runtime.close.fail"),
   watchEndOk: declareEvent("runtime.watch.end.ok"),
   classify: declareEvent("runtime.failure.classify"),
   piReport: declareEvent("pi.report"),
@@ -206,6 +208,10 @@ class PiRuntimeHandle implements RuntimeHandle {
   /** The reverse edge, so an id found in a snapshot can be resolved to its send. */
   readonly #requestIds = new Map<string, string>();
   readonly #traces = new Map<string, string>();
+  /** Admitted submissions no run has claimed yet: one of them owns pre-run progress. */
+  readonly #unclaimed = new Set<string>();
+  /** Sends whose admission is still in flight: the first of them owns the commits it makes. */
+  readonly #admitting: string[] = [];
   #runTrace: string | undefined;
   /** The submission id of a run whose send is not yet known, when one is waiting. */
   #unresolvedRun: string | undefined;
@@ -289,6 +295,7 @@ class PiRuntimeHandle implements RuntimeHandle {
     // The admission commit can be published before `submit` returns, so the request id
     // knows its trace first; the submission id is filled in once it exists.
     this.#traces.set(input.requestId, input.trace);
+    this.#admitting.push(input.trace);
     log.emit("info", "runtime", Events.submitStart, {
       trace: input.trace,
       botId: this.#spec.id,
@@ -313,6 +320,7 @@ class PiRuntimeHandle implements RuntimeHandle {
       this.#requestIds.set(String(record.id), input.requestId);
       this.#traces.set(input.requestId, input.trace);
       this.#traces.set(String(record.id), input.trace);
+      this.#unclaimed.add(String(record.id));
       // A run that started before its admission record existed is waiting for this id;
       // a settled duplicate belongs to no run and must not adopt one.
       if (this.#unresolvedRun === String(record.id)) {
@@ -348,6 +356,9 @@ class PiRuntimeHandle implements RuntimeHandle {
         minted.classification.message,
         { cause },
       );
+    } finally {
+      const at = this.#admitting.indexOf(input.trace);
+      if (at !== -1) this.#admitting.splice(at, 1);
     }
   }
 
@@ -475,10 +486,25 @@ class PiRuntimeHandle implements RuntimeHandle {
     });
     const outcome = await Promise.race([closing.then(() => "closed" as const), timeout]);
     if (timer !== undefined) clearTimeout(timer);
+    if (outcome === "timeout") {
+      // A close that did not finish is a failure, not a success: the handle stays owned
+      // by the registry, which quarantines the bot (ARCHITECTURE.md, "Bot lifecycle").
+      log.emit("warn", "runtime", Events.closeFail, {
+        trace,
+        botId: this.#spec.id,
+        failure: {
+          id: `f_${randomUUID().replaceAll("-", "").slice(0, 12)}`,
+          kind: "internal",
+          layer: "runtime",
+        },
+        detail: { reason: "timeout" },
+      });
+      return outcome;
+    }
     log.emit("info", "runtime", Events.closeOk, {
       trace,
       botId: this.#spec.id,
-      detail: { quarantined: outcome === "timeout" },
+      detail: { quarantined: false },
     });
     return outcome;
   }
@@ -769,12 +795,18 @@ class PiRuntimeHandle implements RuntimeHandle {
    * The trace that owns an event: the send behind its own submission, else the send that
    * started the run, else the connection watching it.
    */
-  #traceFor(event: AgentEvent, trace: string, byEntry: ReadonlyMap<string, string>): string {
+  #traceFor(
+    event: AgentEvent,
+    trace: string,
+    byEntry: ReadonlyMap<string, string>,
+    active: readonly Submission[] = [],
+  ): string {
     if (event.type === "submission") {
       const own = this.#traceOf(event.record.id, event.record.requestId);
       if (own !== undefined) return own;
     }
     if (event.type === "run_start") {
+      for (const input of event.inputs) this.#unclaimed.delete(String(input));
       const first = event.inputs[0];
       const own = first === undefined ? undefined : this.#traces.get(String(first));
       if (own !== undefined) {
@@ -790,7 +822,21 @@ class PiRuntimeHandle implements RuntimeHandle {
       const own = byEntry.get(entryMessageId(event.entry.id));
       if (own !== undefined) return own;
     }
-    return this.#runTrace ?? trace;
+    if (this.#runTrace !== undefined) return this.#runTrace;
+    // `run_start` may not have named the run yet (a placement or queue change can arrive
+    // first). While exactly one send is in flight, that send owns the progress it caused
+    // (OBSERVABILITY.md, trace ownership rule 2).
+    const only = active.length === 1 ? active[0] : undefined;
+    const own = only === undefined ? undefined : this.#traceOf(only.id, only.requestId);
+    if (own !== undefined) return own;
+    const admitting = this.#admitting[0];
+    if (admitting !== undefined) return admitting;
+    if (this.#unclaimed.size === 1) {
+      const [first] = this.#unclaimed;
+      const pending = first === undefined ? undefined : this.#traces.get(first);
+      if (pending !== undefined) return pending;
+    }
+    return trace;
   }
 
   #mapOne(
@@ -799,8 +845,14 @@ class PiRuntimeHandle implements RuntimeHandle {
     byEntry: ReadonlyMap<string, string> = new Map(),
     active: readonly Submission[] = [],
   ): RuntimeEvent[] {
-    const owned = this.#traceFor(event, trace, byEntry);
-    if (event.type === "submission") this.#rememberId(convertSubmission(event.record));
+    const owned = this.#traceFor(event, trace, byEntry, active);
+    if (event.type === "submission") {
+      const record = convertSubmission(event.record);
+      this.#rememberId(record);
+      if (record?.status === "done" || record?.status === "unanswered") {
+        this.#unclaimed.delete(String(event.record.id));
+      }
+    }
     if (event.type !== "task_failed") return this.#mapper.map(event, owned, active);
     const minted = this.#classifier.taskFailed({
       taskId: String(event.taskId),

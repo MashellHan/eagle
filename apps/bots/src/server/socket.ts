@@ -32,6 +32,7 @@ const Events = {
   frameSendOk: declareEvent("transport.frame.send.ok"),
   frameSendDrop: declareEvent("transport.frame.send.drop"),
   decodeFail: declareEvent("protocol.decode.fail"),
+  encodeFail: declareEvent("protocol.encode.fail"),
   limitFail: declareEvent("protocol.limit.fail"),
   versionFail: declareEvent("protocol.version.fail"),
   commandStart: declareEvent("protocol.command.start"),
@@ -41,6 +42,7 @@ const Events = {
 
 export const CLOSE = {
   normal: 1000,
+  internal: 1011,
   auth: 4001,
   protocol: 1008,
   idle: 4000,
@@ -123,6 +125,9 @@ export const attachConnection = (
   deps: ConnectionDeps,
 ): ((event: ServerEvent) => void) => {
   const { log, service, registry, connId } = deps;
+  // The connection's own trace, used until a command supplies one (OBSERVABILITY.md,
+  // "Trace ownership": `tr_conn_<n>`).
+  const connTrace = `tr_conn_${connId.replace(/^c_/, "")}`;
   const idleMs = deps.idleMs ?? IDLE_FRAME_MS;
   let helloSent = false;
   let subscribed = false;
@@ -133,13 +138,30 @@ export const attachConnection = (
 
   const emit = (event: ServerEvent): void => {
     if (closed) return;
-    const wire = encodeServerEvent(event);
-    const text = serializeFrame(wire);
+    const trace = "trace" in event && event.trace !== undefined ? event.trace : connTrace;
+    let wire: Record<string, unknown>;
+    let text: string;
+    try {
+      wire = encodeServerEvent(event);
+      text = serializeFrame(wire);
+    } catch {
+      // A frame this daemon cannot encode is a daemon defect, not a client mistake: the
+      // socket closes with 1011 so the client reconnects instead of waiting forever.
+      log.emit("error", "protocol", Events.encodeFail, {
+        trace,
+        connId,
+        failure: serverFailure("internal", "protocol"),
+        origin: true,
+        detail: { reason: "invalid" },
+      });
+      close(CLOSE.internal, "encode failed");
+      return;
+    }
     try {
       assertFrameBudget(wire);
     } catch {
       log.emit("warn", "transport", Events.frameSendDrop, {
-        trace: "trace" in event && event.trace !== undefined ? event.trace : `tr_${connId}`,
+        trace,
         connId,
         detail: { evt: event.type },
       });
@@ -147,7 +169,7 @@ export const attachConnection = (
     }
     socket.send(text);
     log.emit("trace", "transport", Events.frameSendOk, {
-      trace: "trace" in event && event.trace !== undefined ? event.trace : `tr_${connId}`,
+      trace,
       connId,
       detail: { evt: event.type, bytes: Buffer.byteLength(text) },
     });
@@ -158,7 +180,7 @@ export const attachConnection = (
     closed = true;
     if (idleTimer !== undefined) clearTimeout(idleTimer);
     socket.close(code, reason.slice(0, 120));
-    log.emit("info", "transport", Events.closeOk, { trace: `tr_${connId}`, connId });
+    log.emit("info", "transport", Events.closeOk, { trace: connTrace, connId });
   };
 
   const armIdle = (): void => {
@@ -173,7 +195,7 @@ export const attachConnection = (
     service.unsubscribe(deps.connId);
     if (subscribed) registry.release(connectionBot);
     deps.unregister(socket);
-    log.emit("info", "transport", Events.closeEnd, { trace: `tr_${connId}`, connId });
+    log.emit("info", "transport", Events.closeEnd, { trace: connTrace, connId });
   });
   socket.on("error", () => close(CLOSE.normal, "socket error"));
 
@@ -186,7 +208,7 @@ export const attachConnection = (
     const text = isBinary ? undefined : data.toString();
     if (text === undefined) {
       log.emit("warn", "protocol", Events.decodeFail, {
-        trace: `tr_${connId}`,
+        trace: connTrace,
         connId,
         failure: { id: `f_${connId}`, kind: "invalid_command", layer: "protocol" },
         origin: true,
@@ -196,7 +218,7 @@ export const attachConnection = (
       return;
     }
     log.emit("trace", "transport", Events.frameRecvOk, {
-      trace: `tr_${connId}`,
+      trace: connTrace,
       connId,
       detail: { bytes: Buffer.byteLength(text) },
     });
@@ -243,8 +265,7 @@ export const attachConnection = (
   });
 
   const dispatch = async (command: ClientCommand, text: string): Promise<void> => {
-    const trace =
-      "trace" in command && command.trace !== undefined ? command.trace : `tr_${connId}`;
+    const trace = "trace" in command && command.trace !== undefined ? command.trace : connTrace;
     if (!helloSent) {
       if (command.type !== "hello") {
         close(CLOSE.protocol, "hello must be the first frame");
@@ -389,10 +410,11 @@ export const attachConnection = (
       service.resync(connId, trace);
       return;
     }
-    const history = await service.history(connId, {
-      beforeEntryId: command.before,
-      limit: command.limit,
-    });
+    const history = await service.history(
+      connId,
+      { beforeEntryId: command.before, limit: command.limit },
+      trace,
+    );
     emit({ type: "history", trace, messages: history.messages, hasMore: history.hasMore });
   };
 
@@ -434,7 +456,7 @@ export const attachConnection = (
 
   armIdle();
   deps.register(socket);
-  log.emit("info", "transport", Events.openOk, { trace: `tr_${connId}`, connId });
+  log.emit("info", "transport", Events.openOk, { trace: connTrace, connId });
   return emit;
 };
 
@@ -450,7 +472,7 @@ const frameTrace = (text: string, connId: string): string => {
   } catch {
     // not JSON: fall through
   }
-  return `tr_${connId}`;
+  return `tr_conn_${connId.replace(/^c_/, "")}`;
 };
 
 /** Rejects authentication and connection-count limits before any upgrade happens. */

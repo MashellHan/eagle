@@ -877,7 +877,7 @@ test("history pages older messages without touching the newest window", async ()
     handle.emit({ type: "append", trace, message: message(id) });
   }
   const revBefore = received.at(-1)?.rev;
-  const page = await service.history("c_1", { beforeEntryId: "e_3", limit: 1 });
+  const page = await service.history("c_1", { beforeEntryId: "e_3", limit: 1 }, trace);
   assert.deepEqual(
     page.messages.map((entry) => entry.id),
     ["e_2"],
