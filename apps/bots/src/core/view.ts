@@ -95,6 +95,9 @@ export const reduceView = (
     const settled = record.status === "done" || record.status === "unanswered";
     return {
       ...view,
+      // The user entry is appended before its submission is known, so this is where the
+      // message learns the send that produced it (PROTOCOL, `Message.requestId`).
+      messages: attachRequestId(view.messages, record),
       pending: view.pending
         .filter((known) => known.id !== record.id)
         .concat(settled ? [] : [record]),
@@ -106,6 +109,35 @@ export const reduceView = (
     return pending === event.value.pending ? event.value : { ...event.value, pending };
   }
   return view;
+};
+
+/** Gives the placed user entry the request id its submission names, once. */
+const attachRequestId = (messages: readonly Message[], record: Submission): readonly Message[] => {
+  if (record.entryId === undefined) return messages;
+  const index = messages.findIndex((message) => message.id === record.entryId);
+  const message = index < 0 ? undefined : messages[index];
+  if (message === undefined || message.requestId !== undefined) return messages;
+  const patched = [...messages];
+  patched[index] = { ...message, requestId: record.requestId };
+  return patched;
+};
+
+/**
+ * Keeps the newest page and remembers what fell out, so a snapshot stays inside the
+ * documented page and `truncatedBefore` still points at the oldest dropped entry
+ * (PROTOCOL.md, "snapshot.messages page").
+ */
+export const trimWindow = (view: ConversationSnapshot, window: number): ConversationSnapshot => {
+  if (view.messages.length <= window) return view;
+  const dropped = view.messages.slice(0, view.messages.length - window);
+  const first = dropped.find((message) => message.id.startsWith("e_"));
+  return {
+    ...view,
+    messages: view.messages.slice(-window),
+    ...(view.truncatedBefore !== undefined || first === undefined
+      ? {}
+      : { truncatedBefore: first.id }),
+  };
 };
 
 /** Applies delta changes in order: a message replacement swaps the working message. */

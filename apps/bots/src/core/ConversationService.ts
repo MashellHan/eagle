@@ -15,7 +15,7 @@ import { ClassifiedFailure } from "./domain.ts";
 import { EventHub, type HubSubscriber, type HubSubscription } from "./EventHub.ts";
 import { newFailure } from "./failures.ts";
 import type { RuntimeEvent, RuntimeHandle, RuntimeHistory, SubmitInput } from "./RuntimePort.ts";
-import { reduceView, type SubmissionRanks, seedRanks } from "./view.ts";
+import { reduceView, type SubmissionRanks, seedRanks, trimWindow } from "./view.ts";
 
 const Events = {
   subscribeStart: declareEvent("core.subscribe.start"),
@@ -34,6 +34,8 @@ export const MAX_SUBSCRIBERS_PER_BOT = 8;
 /** Admitted-but-unsettled entries, and the runtime inbox, are both bounded (same table). */
 export const MAX_PENDING = 32;
 export const MAX_INBOX = 32;
+/** The newest page a snapshot carries; older messages are reachable through `history`. */
+export const MAX_WINDOW_MESSAGES = 200;
 
 /** Opens (or recovers) one bot. The registry owns catalog policy; the service owns routing. */
 export type OpenBot = (botId: string, trace: string) => Promise<RuntimeHandle>;
@@ -47,6 +49,8 @@ export type ConversationServiceOptions = {
   readonly schedule?: (run: () => void) => void;
   /** Every crossing is recorded; the service owns the core outcome of its commands. */
   readonly log?: Log;
+  /** Newest messages kept in a rendered snapshot (PROTOCOL.md, "snapshot.messages page"). */
+  readonly windowMessages?: number;
 };
 
 /** Only `not_admitted` lets a client drop its outbox entry (docs/bots/PROTOCOL.md). */
@@ -97,6 +101,7 @@ export class ConversationService {
     readonly log?: Log;
   };
   readonly #log: Log | undefined;
+  readonly #window: number;
   /** Failure ids this service minted: only those may be recorded as an origin here. */
   readonly #minted = new Set<string>();
   readonly #bots = new Map<string, Promise<Bot>>();
@@ -106,6 +111,7 @@ export class ConversationService {
     this.#open = options.open;
     this.#handleOf = options.handleOf;
     this.#log = options.log;
+    this.#window = options.windowMessages ?? MAX_WINDOW_MESSAGES;
     this.#hubOptions = {
       measure: options.measure,
       ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
@@ -518,7 +524,7 @@ export class ConversationService {
     let ready = false;
     let bot: Bot;
     const apply = (event: RuntimeEvent): void => {
-      const next = reduceView(bot.snapshot, event, bot.ranks);
+      const next = trimWindow(reduceView(bot.snapshot, event, bot.ranks), this.#window);
       bot.snapshot = next;
       // A snapshot from the runtime may carry a stale pending list; broadcast the one the
       // bot actually holds so a client never adopts a downgraded submission.

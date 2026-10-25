@@ -8,6 +8,7 @@ import { WebSocket } from "ws";
 import { BotDirectory, nodeDirectoryFs } from "../../src/core/BotDirectory.ts";
 import { BotRegistry, type RegistryOptions } from "../../src/core/BotRegistry.ts";
 import { ConversationService } from "../../src/core/ConversationService.ts";
+import type { RuntimePort } from "../../src/core/RuntimePort.ts";
 import { captureLog, type LogRecord } from "../../src/log/log.ts";
 import { measureEvent } from "../../src/main.ts";
 import { PiDurableRuntime } from "../../src/runtime/pi/PiDurableRuntime.ts";
@@ -50,10 +51,19 @@ export type StackOptions = {
   readonly real?: boolean;
   /** Seeds the root before the catalog is loaded, for a fault the daemon must survive. */
   readonly prepare?: (context: { root: string; directory: BotDirectory }) => Promise<void>;
+  /** Reuse a root, so a restart is a restart and not a new daemon on new state. */
+  readonly root?: string;
+  /** A runtime the test builds itself, for a fault the standard wiring cannot express. */
+  readonly runtime?: RuntimePort;
+  /** Real-adapter limits: the message projection cap and the snapshot window. */
+  readonly maxMessageBytes?: number;
+  readonly windowMessages?: number;
+  /** Model streaming pace, for a test that has to attach mid-answer. */
+  readonly tokensPerSecond?: number;
 };
 
 export const startStack = async (options: StackOptions = {}): Promise<Stack> => {
-  const root = await mkdtemp(join(tmpdir(), "bots-server-"));
+  const root = options.root ?? (await mkdtemp(join(tmpdir(), "bots-server-")));
   const { log, records } = captureLog();
   const fake =
     options.real === true
@@ -62,12 +72,24 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
   let faux: FauxProviderHandle | undefined;
   let model = options.model ?? { provider: "faux", modelId: "faux-1" };
   let openRuntime: RegistryOptions["openRuntime"];
-  if (options.real === true) {
-    faux = fauxProvider({});
+  if (options.runtime !== undefined) {
+    const runtime = options.runtime;
+    openRuntime = (spec) => runtime.open(spec);
+  } else if (options.real === true) {
+    faux = fauxProvider(
+      options.tokensPerSecond === undefined ? {} : { tokensPerSecond: options.tokensPerSecond },
+    );
     const models = createModels();
     models.setProvider(faux.provider);
     model = { provider: faux.getModel().provider, modelId: faux.getModel().id };
-    const adapter = new PiDurableRuntime({ models, log });
+    const adapter = new PiDurableRuntime({
+      models,
+      log,
+      ...(options.maxMessageBytes === undefined
+        ? {}
+        : { maxMessageBytes: options.maxMessageBytes }),
+      ...(options.windowMessages === undefined ? {} : { windowMessages: options.windowMessages }),
+    });
     openRuntime = (spec) => adapter.open(spec);
   } else {
     const runtime = fake as FakeRuntime;
@@ -105,6 +127,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     handleOf: (botId) => registry.handleOf(botId),
     measure: measureEvent,
     log,
+    ...(options.windowMessages === undefined ? {} : { windowMessages: options.windowMessages }),
   });
   const daemon = await startServer({
     token,
@@ -147,7 +170,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     close: async () => {
       await daemon.close();
       await registry.shutdown();
-      await rm(root, { recursive: true, force: true });
+      if (options.root === undefined) await rm(root, { recursive: true, force: true });
     },
   };
 };
