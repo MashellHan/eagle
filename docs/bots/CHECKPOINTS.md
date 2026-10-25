@@ -492,3 +492,37 @@ coverage 93.2%; Eagle 48 tests.
 
 Next broken hop: the recorded deferrals in PLAN.md and the reviewer's eighth pass
 (closeout).
+
+## 2026-10-26 — Phase 1 stages 4-5 closed by owner; fine issues deferred
+
+Observed: the owner closed the Phase 1 stages 4-5 closeout without waiting for another
+signoff round ("太细致不修，进入 tool call 开发") and asked for the findings to be written
+down. The eighth review was interrupted on purpose, issued no verdict, and its one
+confirmed observation — after a daemon reopen the recovery affordance can disappear
+because `parked` is not carried on that path — is open, not fixed. Phase 2 (tool calls)
+is the next work.
+
+Tip at close: `e70547c` (`docs(bots): document snapshot.parked`); only this
+documentation commit moves HEAD after it.
+
+Verified at close: daemon `npm run check` 355 tests, coverage 95.07/89.95/91.11,
+`test:crash` 5/5, `perf` 4/4; Bots client `swift test` and `./Scripts/coverage.sh`
+93.2%; Eagle `swift test` 48 tests.
+
+Deferred, not claimed fixed (also listed in [PLAN.md](PLAN.md#phase-1-close-owner-decision-2026-10-26)):
+
+- client `os.Logger` crossing contract and its `LoggingTests.swift`
+- the transport fault-injection matrix beyond `ResyncState` (real-socket gap, unknown
+  event with a gap, resync timeout with a fake clock, the full close-code matrix)
+- the outbox across two real windows
+- daemon: abort-refusal origin record, a failed `directory.remove` leaving a closed
+  handle, the catalog-full origin record
+- the recovery affordance after a daemon reopen (unfinished round 8)
+- a measured long-markdown layout
+- the adapter's admitted-then-unreadable storage fault and the retired-watch integration
+  injection (recorded in TESTING.md)
+- history paging, bot settings and per-bot inspector content
+
+Next broken hop: Phase 2 — tool calls auto-execute, no approval gate; first the common
+local coding commands, then herdr/CLI space control. The brief is
+`.herdr-brief-phase2-tools.md`.

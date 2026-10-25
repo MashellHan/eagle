@@ -63,16 +63,16 @@ after a full review round; a row can be implemented and reviewed but not yet sig
 | 21 | 2 | history pages older messages, newest window untouched | **signed off** |
 | 22 | 2 | resync returns a snapshot at the last published revision | **signed off** |
 | 23-36 | 3 | pi-durable adapter: mapping, idempotency, failures, recovery | **signed off** |
-| 37-41 | 4 | auth, handshake, close codes, catalog HTTP | implemented, P2 closed |
-| 42-43 | 4 | log origin and trace recipes | implemented |
-| 44-48 | 4 | registry lifecycle, singleton lock | implemented, P2 closed |
-| 49 | 4 | the end-to-end journey | implemented over the real adapter |
-| 50-52g | 4 | the remaining journeys (bots, outbox, paging, ordering, overflow) | implemented |
-| 53-54 | 4 | crash and perf suites | implemented (`test:crash`, `perf`) |
-| 55-60 | 5 | decoding, reducer, gap rule, ranked submissions, optimistic send | implemented (Bots package tests) |
-| 61-62b | 5 | the socket speaks the real daemon, close codes, gap reset | implemented (integration tests spawn the daemon) |
-| 63-68b | 5 | view models: connection, composer, outbox reconciliation, catalog, recovery | implemented (fake-port tests) |
-| 69 | 5 | dependency rules | the Bots package imports nothing from Eagle; Eagle imports it one way |
+| 37-41 | 4 | auth, handshake, close codes, catalog HTTP | implemented, review rounds closed, owner-closed |
+| 42-43 | 4 | log origin and trace recipes | implemented, review rounds closed, owner-closed |
+| 44-48 | 4 | registry lifecycle, singleton lock | implemented, review rounds closed, owner-closed |
+| 49 | 4 | the end-to-end journey | implemented over the real adapter, owner-closed |
+| 50-52g | 4 | the remaining journeys (bots, outbox, paging, ordering, overflow) | implemented, owner-closed |
+| 53-54 | 4 | crash and perf suites | implemented (`test:crash`, `perf`), owner-closed |
+| 55-60 | 5 | decoding, reducer, gap rule, ranked submissions, optimistic send | implemented (Bots package tests), owner-closed |
+| 61-62b | 5 | the socket speaks the real daemon, close codes, gap reset | implemented (integration tests spawn the daemon), owner-closed |
+| 63-68b | 5 | view models: connection, composer, outbox reconciliation, catalog, recovery | implemented (fake-port tests), owner-closed |
+| 69 | 5 | dependency rules | the Bots package imports nothing from Eagle; Eagle imports it one way, owner-closed |
 
 Current tree: 344 deterministic tests plus five crash cases and four perf
 measurements, coverage 94.9% lines / 89.8% branches / 90.3% functions, `typecheck`,
@@ -241,28 +241,38 @@ record first so a retry is silent, `history` pages without touching the window,
 `abort`/`recover` pass through behind the same subscription guard, and `resync`
 broadcasts the only reply it produces, at a revision that names its content.
 
-## Deferred daemon races (recorded, not fixed)
+## Phase 1 close (owner decision, 2026-10-26)
 
-Stage 4 is implemented but **not signed off**. The sixth review round left three
-reproducible races in the daemon, recorded here so stage 5 can start without pretending
-they are closed:
+The owner closed stages 4-5 on 2026-10-26 without waiting for another signoff round
+("太细致不修，进入 tool call 开发"). Tip at close: `e70547c`. The eighth review was
+interrupted on purpose and issued no verdict; its one confirmed observation — after a
+daemon reopen the recover affordance can disappear because `parked` is not carried on that
+path — is recorded as open, not fixed. Phase 2 (tool calls) proceeds next.
 
-1. An idle close finishing while a delete is in flight clears the delete's settling
-   window, so a subscribe during the directory move can open a handle nothing owns.
-2. A snapshot captured before an admission but delivered after it releases that
-   admission's reservation, so 33 concurrent sends can cross the 32-entry budget.
-3. `#handle` checks availability before an `await`, so an escalation during the lookup
-   still admits work through the handle captured before it.
+Closed by the review rounds: the three daemon races that were recorded here earlier (an
+idle close clearing a delete's window, a stale snapshot releasing a reservation, an
+availability check across an await) plus the transport, budget, logging, lifecycle,
+client and presentation defects listed under "Stages 4-5 review round".
 
-Its P2s are recorded too: a second failure during `recover` still marks the catalog
-healthy; an oversized hub frame plus a backlog degrades instead of closing `1008`; a
-refused `abort` on an unavailable bot has no originating record; a failed
-`directory.remove` leaves a closed handle that `open` reuses; an `unknown` admission
-confirmed by a queued retry can hold its reservation forever; and two of the round's
-regression tests are insensitive to the bugs they name.
+Deferred, not claimed fixed:
 
-Stage 5 (the client) is being built against the protocol as documented; these races are
-daemon-side and do not change the wire contract.
+- client `os.Logger` crossing contract ([OBSERVABILITY.md](OBSERVABILITY.md), "Client
+  logging") and its `LoggingTests.swift`
+- the transport's fault-injection matrix beyond `ResyncState`: real-socket gap, unknown
+  event with a gap, resync timeout with a fake clock, and the complete close-code matrix
+  (the policy table and the resync state machine are tested; the injected journeys are
+  not)
+- the outbox across two real windows (the store merges on write and is tested that way;
+  no two-window UI test exists)
+- daemon: a refused `abort` on an unavailable bot has no originating record; a failed
+  `directory.remove` can leave a closed handle that `open` reuses; the catalog-full
+  refusal has no origin record
+- the recover affordance after a daemon reopen (unfinished round 8, above)
+- a measured long-markdown layout (the parser has unit tests; no layout pass)
+- test-fidelity deferrals noted in [TESTING.md](TESTING.md): an admitted-then-unreadable
+  storage fault inside the adapter and a retired-watch integration injection
+- history paging from the transcript, bot settings behind the `agent` capability and an
+  inspector that renders a bot's own state
 
 ## Open review queue
 
