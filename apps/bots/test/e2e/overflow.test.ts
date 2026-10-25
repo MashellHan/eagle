@@ -131,3 +131,145 @@ test("an over-limit answer is withheld, announced after commit and stable on rec
     await stack.close();
   }
 });
+
+test("a client that joins inside the withdrawal window sees no partial", async () => {
+  // The window is a fact about the runtime, not about timing: the attempt is withdrawn,
+  // the run is still going, and the commit waits for this gate.
+  let release: () => void = () => undefined;
+  const commit = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const user = {
+    id: "e_7",
+    role: "user" as const,
+    state: "complete" as const,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    blocks: [{ type: "text" as const, text: "请长一点" }],
+    requestId: "r_window_0001",
+  };
+  const base = {
+    botId: "b_window",
+    messages: [user],
+    pending: [],
+    inbox: [],
+    running: false,
+    streaming: null as string | null,
+  };
+  let sink: ((event: import("../../src/core/RuntimePort.ts").RuntimeEvent) => void) | undefined;
+  const runtime = {
+    async open() {
+      return {
+        subscribe: async (
+          _trace: string,
+          next: (event: import("../../src/core/RuntimePort.ts").RuntimeEvent) => void,
+        ) => {
+          sink = next;
+          return { snapshot: { ...base }, detach: () => undefined };
+        },
+        submission: async () => undefined,
+        submit: async (input: import("../../src/core/RuntimePort.ts").SubmitInput) => {
+          sink?.({ type: "append", trace: input.trace, message: user });
+          sink?.({
+            type: "snapshot",
+            trace: input.trace,
+            value: { ...base, running: true, streaming: null },
+          });
+          void commit.then(() => {
+            sink?.({
+              type: "append",
+              trace: input.trace,
+              message: {
+                id: "e_10",
+                role: "notice",
+                state: "complete",
+                createdAt: "2026-01-01T00:00:01.000Z",
+                blocks: [{ type: "text", text: "回答超出传输上限" }],
+              },
+            });
+            sink?.({
+              type: "submission",
+              trace: input.trace,
+              record: {
+                id: "s_1",
+                requestId: input.requestId,
+                status: "done",
+                entryId: "e_7",
+                answerEntryId: "e_10",
+              },
+            });
+            sink?.({
+              type: "status",
+              trace: input.trace,
+              running: false,
+              streaming: null,
+              inbox: [],
+            });
+          });
+          return { id: "s_1", requestId: input.requestId, status: "queued" as const };
+        },
+        history: async () => ({ messages: [], hasMore: false }),
+        abort: async () => undefined,
+        recover: async () => undefined,
+        busy: async () => ({ run: true, tasks: false }),
+        close: async () => "closed" as const,
+      };
+    },
+  };
+  const stack = await startStack({ runtime });
+  try {
+    const botId = await stack.createBot("窗口");
+    const first = stack.connect();
+    const frames = frameQueue(first);
+    await send(first, hello);
+    await frames.next();
+    await send(first, { type: "subscribe", botId, trace: tr("win1") });
+    await frames.next();
+    await send(first, {
+      type: "send",
+      requestId: "r_window_0001",
+      text: "请长一点",
+      whenBusy: "followUp",
+      trace: tr("win2"),
+    });
+    for (;;) {
+      const frame = await frames.next(10_000);
+      const value = frame.value as { running?: boolean; streaming?: unknown } | undefined;
+      if (frame.type === "snapshot" && value?.running === true && value.streaming === null) break;
+    }
+    // The run is still going and the commit is gated: join now.
+    const join = stack.connect();
+    const joined = frameQueue(join);
+    await send(join, hello);
+    await joined.next();
+    await send(join, { type: "subscribe", botId, trace: tr("win3") });
+    let baseline: Record<string, unknown> | undefined;
+    for (;;) {
+      const frame = await joined.next(10_000);
+      if (frame.type !== "snapshot") continue;
+      baseline = frame;
+      break;
+    }
+    const value = baseline.value as {
+      running: boolean;
+      streaming: unknown;
+      messages: Message[];
+    };
+    assert.equal(value.running, true, "the join happened while the run was still going");
+    assert.equal(value.streaming, null, "the withdrawn attempt is not streaming");
+    assert.deepEqual(
+      value.messages.map((message) => message.role),
+      ["user"],
+      "and it is not in the transcript",
+    );
+    release();
+    for (;;) {
+      const frame = await frames.next(10_000);
+      if (frame.type === "submission" && frame.status === "done") break;
+    }
+    join.close();
+    first.close();
+  } finally {
+    release();
+    await stack.close();
+  }
+});

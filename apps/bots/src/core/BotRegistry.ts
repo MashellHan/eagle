@@ -351,13 +351,30 @@ export class BotRegistry {
    * The runtime reported its session dead: the Harness closed itself, so the handle is
    * gone and the bot is unavailable until `recover` opens it again.
    */
-  markUnavailable(botId: string, reason: ErrorKind, message: string): boolean {
+  markUnavailable(
+    botId: string,
+    reason: ErrorKind,
+    message: string,
+    options: { readonly dropHandle?: boolean } = {},
+  ): boolean {
     const entry = this.#entries.get(botId);
     if (entry === undefined) return false;
-    entry.handle = undefined;
+    // A dead session takes the handle with it; an escalated watch leaves the harness
+    // alive, so the handle stays owned and `recover` re-attaches it instead of opening a
+    // second owner over the same sqlite file.
+    if (options.dropHandle !== false) entry.handle = undefined;
     entry.state = "unavailable";
     entry.unavailable = unavailable(reason, message);
     entry.closing = false;
+    return true;
+  }
+
+  /** `recover` brought the bot back: the catalog may say idle again. */
+  markRecovered(botId: string): boolean {
+    const entry = this.#entries.get(botId);
+    if (entry === undefined || entry.state !== "unavailable") return false;
+    entry.state = "idle";
+    entry.unavailable = undefined;
     return true;
   }
 
@@ -365,14 +382,9 @@ export class BotRegistry {
   markRunning(botId: string, running: boolean): boolean {
     const entry = this.#entries.get(botId);
     if (entry === undefined) return false;
-    const next: BotState = running ? "running" : "idle";
-    // A bot that was unavailable and now has a live harness is a catalog change too.
-    if (entry.state === "unavailable") {
-      entry.state = next;
-      entry.unavailable = undefined;
-      return true;
-    }
+    // An unavailable bot is not made healthy by a status event: only `recover` clears it.
     if (entry.state !== "idle" && entry.state !== "running") return false;
+    const next: BotState = running ? "running" : "idle";
     if (entry.state === next) return false;
     entry.state = next;
     return true;
@@ -660,7 +672,14 @@ export class BotRegistry {
   /** Refuses a summary the derived 240 200-byte catalog bound cannot hold. */
   #assertSummary(summary: BotSummary): void {
     const measure = this.#options.measureSummary ?? jsonBytes;
-    if (measure(summary) > (this.#options.maxSummaryBytes ?? MAX_SUMMARY_BYTES)) {
+    // The failure that makes a bot unavailable adds a reason and a message to the same
+    // summary, so the budget has to hold that variant too: otherwise a failure turns a
+    // legal bot into a catalog event the frame budget refuses.
+    const worstCase: BotSummary = {
+      ...summary,
+      unavailable: { reason: "storage_failed", message: "x".repeat(200) },
+    };
+    if (measure(worstCase) > (this.#options.maxSummaryBytes ?? MAX_SUMMARY_BYTES)) {
       throw new ClassifiedFailure(
         newFailure("limit_exceeded"),
         "not_admitted",

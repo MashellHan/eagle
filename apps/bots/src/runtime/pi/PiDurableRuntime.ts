@@ -180,6 +180,8 @@ type Subscription = {
   episode: string;
   stream?: AgentEventStream;
   detached: boolean;
+  /** The watch ended and escalation stopped reattaching it. */
+  watchEnded?: boolean;
 };
 
 type HandleOptions = {
@@ -384,13 +386,17 @@ class PiRuntimeHandle implements RuntimeHandle {
   }
 
   /** Older messages, oldest first; the newest window is not re-fetched. */
-  async history(input: { beforeEntryId?: string; limit: number }): Promise<RuntimeHistory> {
+  async history(input: {
+    beforeEntryId?: string;
+    limit: number;
+    trace?: string;
+  }): Promise<RuntimeHistory> {
     try {
       return await this.#history(input);
     } catch (cause) {
       if (cause instanceof ClassifiedFailure) throw cause;
       const minted = this.#classifier.classify("history", "storage_failed", "runtime");
-      this.#logFailure(minted, this.#spec.trace, Events.classify, "runtime");
+      this.#logFailure(minted, input.trace ?? this.#spec.trace, Events.classify, "runtime");
       throw new ClassifiedFailure(
         minted.classification.failure,
         "runtime",
@@ -462,6 +468,14 @@ class PiRuntimeHandle implements RuntimeHandle {
     const log = this.#options.log;
     log.emit("info", "runtime", Events.recoverStart, { trace, botId: this.#spec.id });
     try {
+      // An escalated listener stops reattaching itself; `recover` is the explicit retry,
+      // and it re-attaches before it retries parked work.
+      for (const state of this.#subscriptions.values()) {
+        if (state.watchEnded === true && state.detached !== true) {
+          state.watchEnded = false;
+          this.#reattach(state, trace);
+        }
+      }
       const inspection = await this.#harness.inspect(BACKGROUND_CONTEXT);
       let retried = 0;
       for (const task of inspection.tasks) {
@@ -779,6 +793,7 @@ class PiRuntimeHandle implements RuntimeHandle {
     });
     if (minted !== undefined) {
       // An escalated listener is a runtime failure; a failed session belongs to pi.
+      if (end.reason === "listener_error") state.watchEnded = true;
       const layer = minted.classification.failure.layer;
       this.#logFailure(minted, trace, layer === "pi" ? Events.piReport : Events.watchEndOk, layer);
       this.#announce({

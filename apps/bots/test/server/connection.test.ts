@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 import type { WebSocket } from "ws";
-import type { HubEvent } from "../../src/core/EventHub.ts";
+import { type HubEvent, SubscriberTooSlow } from "../../src/core/EventHub.ts";
 import { captureLog } from "../../src/log/log.ts";
 import { attachConnection } from "../../src/server/socket.ts";
 
@@ -28,6 +28,7 @@ class FakeSocket extends EventEmitter {
 }
 
 const connect = (options: { maxBufferedBytes?: number; idleMs?: number } = {}) => {
+  const sinks: ((event: HubEvent) => void)[] = [];
   const socket = new FakeSocket();
   const { log, records } = captureLog();
   const events: HubEvent[] = [];
@@ -51,6 +52,7 @@ const connect = (options: { maxBufferedBytes?: number; idleMs?: number } = {}) =
         _trace: string,
         sink: (event: HubEvent) => void,
       ) => {
+        sinks.push(sink);
         const snapshot = {
           botId: "b_1",
           messages: [],
@@ -75,7 +77,7 @@ const connect = (options: { maxBufferedBytes?: number; idleMs?: number } = {}) =
       : { maxBufferedBytes: options.maxBufferedBytes }),
     ...(options.idleMs === undefined ? {} : { idleMs: options.idleMs }),
   });
-  return { socket, written, records };
+  return { socket, written, records, sinks };
 };
 
 const hello = JSON.stringify({ type: "hello", protocolVersion: 1, client: "BotsTest/0" });
@@ -97,8 +99,9 @@ test("the socket writer is the connection's, and it is gated on the handshake", 
 });
 
 test("a subscriber sink refuses to accept more when the socket is behind", async () => {
-  const { socket } = connect({ maxBufferedBytes: 8 });
-  socket.bufferedAmount = 1_024;
+  // The connection's sink is the one the hub calls; with a socket that is behind it must
+  // raise the error the hub turns into a snapshot-only downgrade.
+  const { socket, sinks } = connect({ maxBufferedBytes: 8 });
   socket.emit("message", Buffer.from(hello), false);
   await new Promise((resolve) => setImmediate(resolve));
   socket.emit(
@@ -106,60 +109,65 @@ test("a subscriber sink refuses to accept more when the socket is behind", async
     Buffer.from(JSON.stringify({ type: "subscribe", botId: "b_1", trace: "tr_conn_test_1" })),
     false,
   );
-  // The refusal reaches the hub, which is what turns it into a snapshot-only downgrade.
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  const degraded = (socket as unknown as FakeSocket).frames();
-  assert.ok(
-    degraded.every((frame) => frame.type !== "snapshot"),
-    "nothing is buffered for a client that is not reading",
+  for (let index = 0; index < 100 && sinks.length === 0; index += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(sinks.length, 1, "the service subscribed through this connection");
+  const sink = sinks[0] as (event: HubEvent) => void;
+  socket.bufferedAmount = 1_024;
+  assert.throws(
+    () =>
+      sink({
+        type: "status",
+        rev: 2,
+        trace: "tr_conn_test_1",
+        running: false,
+        streaming: null,
+        inbox: [],
+      }),
+    (error: unknown) => error instanceof SubscriberTooSlow,
+    "the sink refuses instead of buffering",
   );
 });
 
-test("an oversized or unencodable frame is refused instead of written", async () => {
-  const { socket, written } = connect();
+test("a frame over the transport cap closes 1008 and is never written", async () => {
+  const { socket, written, records } = connect();
   socket.emit("message", Buffer.from(hello), false);
   await new Promise((resolve) => setImmediate(resolve));
   const before = socket.sent.length;
-  // An event this version cannot encode closes the connection with 1011.
-  written({ type: "snapshot", rev: 1, trace: "tr_x", value: { botId: "b_1" } as never });
+  written({
+    type: "append",
+    rev: 2,
+    trace: "tr_x",
+    message: {
+      id: "e_1",
+      role: "user",
+      state: "complete",
+      createdAt: "x",
+      blocks: [{ type: "text", text: "x".repeat(300 * 1024) }],
+    },
+  });
+  assert.equal(socket.closeCode, 1008, "the protocol violation closes the connection");
+  assert.equal(socket.sent.length, before, "and the frame is not written");
+  assert.equal(
+    records.filter((record) => record.evt === "transport.frame.send.drop").length,
+    1,
+    "the drop is recorded once",
+  );
+});
+
+test("an event this version cannot encode closes 1011 without throwing at its caller", async () => {
+  const { socket, written } = connect();
+  socket.emit("message", Buffer.from(hello), false);
+  await new Promise((resolve) => setImmediate(resolve));
   let threw = false;
   try {
-    written({
-      type: "append",
-      rev: 2,
-      trace: "tr_x",
-      message: undefined as never,
-    });
+    written({ type: "append", rev: 2, trace: "tr_x", message: undefined as never });
   } catch {
     threw = true;
   }
   assert.equal(threw, false, "the writer never throws at its caller");
-  assert.ok(socket.sent.length >= before, "a half-written frame is never appended");
-  assert.ok(
-    [undefined, 1011].includes(socket.closeCode),
-    "an unencodable frame closes the connection instead of stalling it",
-  );
-});
-
-test("the transport records a dropped frame when the budget is exceeded", async () => {
-  const { socket, records } = connect();
-  socket.emit("message", Buffer.from(hello), false);
-  await new Promise((resolve) => setImmediate(resolve));
-  const before = records.length;
-  // Nothing here exceeds the budget by construction, so the assertion is on the absence
-  // of a silent path: every write is either recorded as sent or as dropped.
-  socket.emit("message", Buffer.from(JSON.stringify({ type: "ping" })), false);
-  await new Promise((resolve) => setImmediate(resolve));
-  const written = records.slice(before);
-  assert.ok(
-    written.some((record) => record.evt === "transport.frame.send.ok"),
-    "a frame is recorded when it is written",
-  );
-  assert.equal(
-    written.filter((record) => record.evt === "transport.frame.send.drop").length,
-    0,
-    "and only a real overflow is recorded as a drop",
-  );
+  assert.equal(socket.closeCode, 1011, "an unencodable frame is a daemon defect, not a stall");
 });
 
 test("a socket error and an idle connection both close through the documented path", async () => {

@@ -268,3 +268,23 @@ Verified (all run just now in `apps/bots`):
 
 Next broken hop: waiting on the reviewer's round-four verdict; the client still does
 not exist.
+
+## 2026-10-26 — stage 4 fourth review round closed
+
+Observed: the fourth round found five P1s inside the third round's fixes, all of them
+one-owner problems: reservations that double-counted or leaked, an escalated watch that
+dropped a live Harness so `recover` could open a second owner over one sqlite file, a
+view that two concurrent subscribes could build twice (and so exceed the eight-
+subscriber cap per hub), and a summary that was only budgeted in its healthy form
+although the unavailable variant is longer and could stop a `welcome` from fitting.
+All are fixed with tests that fail without the fix, and the P2s are closed too.
+
+Verified (all run just now in `apps/bots`):
+
+- `npm run check` exited 0: `fixtures:check`, 343 tests, `tsc --noEmit`, Biome,
+  coverage 94.82 % lines / 89.97 % branches / 90.33 % functions.
+- `npm run test:crash` exited 0: 5/5.
+- `npm run perf` exited 0: the answered-turn measurement now waits for `done`, and the
+  reopen asserts the documented 400-message load.
+
+Next broken hop: the reviewer's round-five verdict; then stage 5 (the client).

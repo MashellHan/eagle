@@ -115,8 +115,11 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     onRunning: (botId, running) => {
       if (registry.markRunning(botId, running)) broadcast?.();
     },
-    onSessionFailed: (botId, reason, message) => {
-      if (registry.markUnavailable(botId, reason, message)) broadcast?.();
+    onSessionFailed: (botId, reason, message, dropHandle) => {
+      if (registry.markUnavailable(botId, reason, message, { dropHandle })) broadcast?.();
+    },
+    onRecovered: (botId) => {
+      if (registry.markRecovered(botId)) broadcast?.();
     },
   });
   const capabilities = {

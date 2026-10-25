@@ -179,8 +179,11 @@ export const attachConnection = (
       log.emit("warn", "transport", Events.frameSendDrop, {
         trace,
         connId,
-        detail: { evt: event.type },
+        detail: { evt: event.type, bytes: Buffer.byteLength(text) },
       });
+      // A single frame over the transport cap is a protocol violation even when this
+      // daemon produced it: the client cannot decode it (PROTOCOL.md, "Close codes").
+      close(CLOSE.protocol, "frame exceeds the transport cap");
       return;
     }
     socket.send(text);
@@ -223,7 +226,7 @@ export const attachConnection = (
     armIdle();
     const text = isBinary ? undefined : data.toString();
     if (text === undefined) {
-      log.emit("warn", "protocol", Events.decodeFail, {
+      log.emit("error", "protocol", Events.decodeFail, {
         trace: connTrace,
         connId,
         failure: { id: `f_${connId}`, kind: "invalid_command", layer: "protocol" },

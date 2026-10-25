@@ -422,9 +422,9 @@ then goes live, so a first frame is always the snapshot whose `rev` the reply na
 | Unknown bot id | L2 core | Close `4004`, no runtime call |
 | Model/provider error | L0 → L1 | Submission settles `unanswered{reason:"model_error"}`; bot usable |
 | Provider error echoing user text | L1 | `err.kind` only; provider text never logged, message redacted to a fixed notice |
-| Storage error (`SessionFailed`) | L0 | Harness closes itself; L1 classifies `storage_failed`, L2 marks `unavailable` |
+| Storage error (`SessionFailed`) | L0 | Harness closes itself; L1 classifies `storage_failed`, L2 marks `unavailable` and drops the handle, so `recover` opens a new Harness |
 | Parked task (`onReport`) | L0 → L1 | `error{kind:"task_parked"}`; `recover` clears it |
-| Watch ended (`listener_error`) | L0 → L1 | Reattach with a fresh snapshot; no client-visible error on the first, three within 60 s mint one `internal` failure and mark the bot `unavailable` |
+| Watch ended (`listener_error`) | L0 → L1 | Reattach with a fresh snapshot; no client-visible error on the first, three within 60 s mint one `internal` failure and mark the bot `unavailable` while keeping the Harness it owns. `recover` re-attaches that harness's watch; only a dead session may open a second one |
 | Watch ended (`session_failed`) | L0 → L1 | Immediate `storage_failed` failure, same identity as `harness.closed{failed}`; no reattach counting |
 | Whole process crash | — | Next start resumes; `SIGKILL` recovery is a mandatory test |
 | `close()` timeout | L2 | Bot quarantined; open/delete refused until closed |

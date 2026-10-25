@@ -58,8 +58,15 @@ export type ConversationServiceOptions = {
   readonly windowMessages?: number;
   /** The bot started or stopped working, so the catalog state can follow the run. */
   readonly onRunning?: (botId: string, running: boolean) => void;
-  /** The runtime's session died: the handle is dead and the bot must be re-opened. */
-  readonly onSessionFailed?: (botId: string, reason: ErrorKind, message: string) => void;
+  /** The runtime reported a failure the view can no longer serve. */
+  readonly onSessionFailed?: (
+    botId: string,
+    reason: ErrorKind,
+    message: string,
+    dropHandle: boolean,
+  ) => void;
+  /** `recover` brought the bot back, so the catalog may leave `unavailable`. */
+  readonly onRecovered?: (botId: string) => void;
 };
 
 /** Only `not_admitted` lets a client drop its outbox entry (docs/bots/PROTOCOL.md). */
@@ -118,10 +125,13 @@ export class ConversationService {
   readonly #window: number;
   readonly #onRunning: ((botId: string, running: boolean) => void) | undefined;
   readonly #onSessionFailed:
-    | ((botId: string, reason: ErrorKind, message: string) => void)
+    | ((botId: string, reason: ErrorKind, message: string, dropHandle: boolean) => void)
     | undefined;
+  readonly #onRecovered: ((botId: string) => void) | undefined;
   /** Per-bot admission serialization: check-then-submit is one serial section. */
   readonly #admissions = new Map<string, Promise<unknown>>();
+  /** Per-bot view serialization: subscribe and recover never rebuild one view twice. */
+  readonly #views = new Map<string, Promise<unknown>>();
   /** Failure ids this service minted: only those may be recorded as an origin here. */
   readonly #minted = new Set<string>();
   readonly #bots = new Map<string, Promise<Bot>>();
@@ -135,6 +145,7 @@ export class ConversationService {
     this.#window = options.windowMessages ?? MAX_WINDOW_MESSAGES;
     this.#onRunning = options.onRunning;
     this.#onSessionFailed = options.onSessionFailed;
+    this.#onRecovered = options.onRecovered;
     this.#hubOptions = {
       measure: options.measure,
       ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
@@ -167,7 +178,7 @@ export class ConversationService {
     this.#connections.set(connectionId, connection);
     let bot: Bot;
     try {
-      bot = await this.#bot(botId, trace);
+      bot = await this.#serializeView(botId, () => this.#bot(botId, trace));
     } catch (error) {
       if (this.#connections.get(connectionId) === connection)
         this.#connections.delete(connectionId);
@@ -284,13 +295,23 @@ export class ConversationService {
     const bot = connection.bot;
     // Concurrent recovers must not attach a second watch to one handle: one serial
     // section per bot re-checks the state it saw before it acts.
-    await this.#serialize(bot.snapshot.botId, async () => {
-      if (bot.degraded !== undefined) {
+    await this.#serializeView(bot.snapshot.botId, async () => {
+      if (bot.degraded !== undefined && bot.handle === undefined) {
         const rebuilt = await this.#reopen(bot, connection.botId, trace);
+        this.#onRecovered?.(bot.snapshot.botId);
         bot.hub.publishSnapshot(rebuilt, trace);
         return;
       }
-      await this.#handle(connectionId).recover(trace);
+      const handle = this.#handle(connectionId);
+      await handle.recover(trace);
+      if (bot.degraded !== undefined) {
+        // The harness survived; its watch was re-attached by the runtime. Re-render from
+        // the same owner rather than opening a second Harness over one sqlite file.
+        bot.detach?.();
+        const attached = await this.#attach(handle, bot.hub, trace, bot);
+        attached.release();
+        this.#onRecovered?.(bot.snapshot.botId);
+      }
       bot.hub.publishSnapshot(bot.snapshot, trace);
     });
   }
@@ -321,7 +342,7 @@ export class ConversationService {
       connId: connectionId,
     });
     try {
-      const page = await this.#handle(connectionId).history(input);
+      const page = await this.#handle(connectionId).history({ ...input, trace });
       // A page is bounded by count and encoded bytes. The page must stay contiguous with
       // the cursor, so the *newest* messages are kept and the older ones come next time.
       const kept: Message[] = [];
@@ -396,12 +417,19 @@ export class ConversationService {
         );
       }
       if (stored !== undefined) {
-        // The retry found the record: whatever admission it was waiting for has settled.
-        bot.reserved.delete(input.requestId);
+        // A terminal record settles its reservation; a queued one is still outstanding, and
+        // only the view's pending list may count it.
+        if (stored.status === "done" || stored.status === "unanswered") {
+          bot.reserved.delete(input.requestId);
+        }
         return stored;
       }
+      // A reservation already visible as pending is the same admission, not a second one.
+      const unlisted = [...bot.reserved].filter(
+        (requestId) => !bot.snapshot.pending.some((record) => record.requestId === requestId),
+      ).length;
       if (
-        bot.snapshot.pending.length + bot.reserved.size >= MAX_PENDING ||
+        bot.snapshot.pending.length + unlisted >= MAX_PENDING ||
         bot.snapshot.inbox.length >= MAX_INBOX
       ) {
         throw new CommandError(
@@ -443,9 +471,21 @@ export class ConversationService {
 
   /** One bot's admissions never interleave, so a budget check is atomic with its submit. */
   #serialize<T>(botId: string, run: () => Promise<T>): Promise<T> {
-    const previous = this.#admissions.get(botId) ?? Promise.resolve();
+    return this.#chain(this.#admissions, botId, run);
+  }
+
+  #serializeView<T>(botId: string, run: () => Promise<T>): Promise<T> {
+    return this.#chain(this.#views, botId, run);
+  }
+
+  #chain<T>(
+    chains: Map<string, Promise<unknown>>,
+    botId: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const previous = chains.get(botId) ?? Promise.resolve();
     const next = previous.then(run, run);
-    this.#admissions.set(
+    chains.set(
       botId,
       next.then(
         () => undefined,
@@ -679,6 +719,7 @@ export class ConversationService {
         event.type === "error" &&
         (event.failure.kind === "storage_failed" || event.failure.kind === "internal")
       ) {
+        const dead = event.failure.kind === "storage_failed";
         // The harness closed itself or the watch escalated: the handle is dead, so the bot
         // is unavailable until `recover` opens it again (ARCHITECTURE.md, "Failure
         // containment"). An unavailable snapshot's collections are unknown, so they are
@@ -693,9 +734,11 @@ export class ConversationService {
           inbox: [],
           unavailable: { reason: event.failure.kind, message: event.message },
         };
-        bot.handle = undefined;
+        bot.handle = dead ? undefined : bot.handle;
         bot.degraded = { reason: event.failure.kind, message: event.message };
-        this.#onSessionFailed?.(next.botId, event.failure.kind, event.message);
+        // A dead session takes the handle; an escalated watch leaves the harness owned, so
+        // the registry keeps it and `recover` re-attaches instead of opening a second one.
+        this.#onSessionFailed?.(next.botId, event.failure.kind, event.message, dead);
       }
       next = this.#fitPage(next);
       bot.snapshot = next;

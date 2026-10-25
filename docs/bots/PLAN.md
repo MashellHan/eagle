@@ -71,8 +71,8 @@ after a full review round; a row can be implemented and reviewed but not yet sig
 | 53-54 | 4 | crash and perf suites | implemented (`test:crash`, `perf`) |
 | 55-69 | 5 | macOS client: decoding, reducer, transport, view models, app | **not started** |
 
-Current tree: 338 deterministic tests plus five crash cases and four perf
-measurements, coverage 95.1% lines / 90.2% branches / 90.4% functions, `typecheck`,
+Current tree: 343 deterministic tests plus five crash cases and four perf
+measurements, coverage 94.8% lines / 90.0% branches / 90.3% functions, `typecheck`,
 `lint`, `fixtures:check`, `test:crash` and `perf` green. The daemon runs: it binds a
 loopback port, checks a bearer token, serves the catalog, streams a bot over a
 socket, records every crossing in the declared log catalogue, survives a `SIGKILL`

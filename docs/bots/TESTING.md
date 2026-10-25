@@ -189,6 +189,8 @@ is never started before its preconditions are green.
 | Admission succeeded, reading its record failed | `error{disposition:"unknown"}`, outbox entry kept, reconciled by re-sending |
 | Create or rename whose `BotSummary` would exceed 1 200 encoded bytes (a long title or a long model id) | Refused before the write; the catalog frame stays inside 200 × 1 200 B |
 | Session failure on all three channels | One failure identity; a reopen then a new failure gets a new one |
+| Retired watch | Re-attach, fresh snapshot, no counter, no error (classifier level; no integration injection exists upstream) |
+| Admitted input whose record read fails inside the adapter | Asserted at the service and adapter boundaries; a real storage fault on that read has no injection point yet |
 | Reply to `send` lost | Re-send the same `requestId` returns the record; no duplicate entry |
 | Provider error | `unanswered{reason:"model_error"}`; provider text absent from logs |
 | `runtime.open` rejects | `error` carries `failure` whose origin is `runtime`; core logs `warn` with the same id |
@@ -197,7 +199,7 @@ is never started before its preconditions are green.
 | Abort with a queued input | Both settle `unanswered{reason:"aborted"}`; inbox empty |
 | Parked task | One `error{kind:"task_parked"}` within 60 s; `recover` clears it |
 | `listener_error` watch end once | Reattach + snapshot; no client-visible error, no failure minted |
-| `listener_error` watch end three times in 60 s | Exactly one `error{kind:"internal"}`; bot `unavailable` |
+| `listener_error` watch end three times in 60 s | Exactly one `error{kind:"internal"}`; bot `unavailable` while it keeps its Harness; `recover` re-attaches that harness's watch, never a second owner |
 | `session_failed` watch end | Immediate `storage_failed` failure, same id as `harness.closed{failed}`; one error |
 | `retired` watch end | Re-acquire, no counter, no error |
 | `session.sqlite` replaced with junk | That bot `unavailable`; other bots unaffected; daemon alive |

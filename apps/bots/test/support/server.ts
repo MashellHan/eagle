@@ -132,8 +132,11 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     onRunning: (botId, running) => {
       if (registry.markRunning(botId, running)) broadcast?.();
     },
-    onSessionFailed: (botId, reason, message) => {
-      if (registry.markUnavailable(botId, reason, message)) broadcast?.();
+    onSessionFailed: (botId, reason, message, dropHandle) => {
+      if (registry.markUnavailable(botId, reason, message, { dropHandle })) broadcast?.();
+    },
+    onRecovered: (botId) => {
+      if (registry.markRecovered(botId)) broadcast?.();
     },
     ...(options.windowMessages === undefined ? {} : { windowMessages: options.windowMessages }),
   });

@@ -1359,10 +1359,17 @@ test("an escalated watch makes the bot unavailable and recover opens it again", 
   const scripted = gatedHandle({ snapshot });
   const handle = scripted.handle;
   let opens = 0;
+  let recovered = 0;
+  const recoveredHandle = {
+    ...handle,
+    recover: async () => {
+      recovered += 1;
+    },
+  };
   const service = new ConversationService({
     open: async () => {
       opens += 1;
-      return handle;
+      return recoveredHandle;
     },
     measure: utf8,
   });
@@ -1382,5 +1389,120 @@ test("an escalated watch makes the bot unavailable and recover opens it again", 
   assert.equal(degraded.value.unavailable?.reason, "internal");
   assert.deepEqual(degraded.value.messages, [], "an unavailable snapshot carries no collections");
   await service.recover("c_1", trace);
-  assert.equal(opens, 2, "recover re-opens instead of retrying a dead watch");
+  assert.equal(opens, 1, "the harness survived, so recover must not open a second owner");
+  assert.equal(recovered, 1, "the runtime is asked to re-attach its own watch");
+  const revived = received.filter((event) => event.type === "snapshot").at(-1);
+  assert.ok(revived?.type === "snapshot");
+  assert.equal(revived.value.unavailable, undefined, "the bot is available again");
+});
+
+test("a reservation the view already lists is not counted twice", async () => {
+  const pending = Array.from({ length: 16 }, (_, index) => ({
+    id: `s_${index + 1}`,
+    requestId: `r_dup_${String(index).padStart(4, "0")}`,
+    status: "queued" as const,
+  }));
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    pending,
+    inbox: [],
+    running: true,
+    streaming: null,
+  };
+  const scripted = gatedHandle({ snapshot });
+  const service = new ConversationService({ open: async () => scripted.handle, measure: utf8 });
+  await subscribe(service, []);
+  // A snapshot that lists the work the service is already counting must not double it:
+  // 16 pending + 16 duplicated reservations is 16 admissions, so a 17th still fits.
+  scripted.emit({ type: "snapshot", trace, value: snapshot });
+  const admitted = await service
+    .send("c_1", { requestId: "r_dup_9999", text: "还行", whenBusy: "followUp", trace })
+    .then(
+      () => true,
+      () => false,
+    );
+  assert.equal(admitted, true, "the budget counts distinct admissions");
+});
+
+test("a lost settlement event cannot hold a slot forever", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    pending: [],
+    inbox: [],
+    running: false,
+    streaming: null,
+  };
+  const scripted = gatedHandle({ snapshot });
+  const service = new ConversationService({ open: async () => scripted.handle, measure: utf8 });
+  await subscribe(service, []);
+  // Fill the budget with admissions whose events never arrive.
+  const sent = Array.from({ length: 32 }, (_, index) =>
+    service.send("c_1", {
+      requestId: `r_lost_${String(index).padStart(4, "0")}`,
+      text: "丢了",
+      whenBusy: "followUp",
+      trace,
+    }),
+  );
+  await Promise.all(sent);
+  // A snapshot reconciles them away: the daemon's own view is the authority.
+  scripted.emit({ type: "snapshot", trace, value: { ...snapshot } });
+  const admitted = await service
+    .send("c_1", { requestId: "r_lost_9999", text: "又来了", whenBusy: "followUp", trace })
+    .then(
+      () => true,
+      () => false,
+    );
+  assert.equal(admitted, true, "a snapshot released reservations no longer in flight");
+});
+
+test("two subscriptions after an eviction share one view and one runtime watch", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    pending: [],
+    inbox: [],
+    running: false,
+    streaming: null,
+  };
+  let opens = 0;
+  let watches = 0;
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const service = new ConversationService({
+    open: async () => {
+      opens += 1;
+      return {
+        subscribe: async () => {
+          watches += 1;
+          await gate;
+          return { snapshot, detach: () => undefined };
+        },
+        submission: async () => undefined,
+        submit: async (input) => ({
+          id: `s_${input.requestId}`,
+          requestId: input.requestId,
+          status: "queued",
+        }),
+        history: async () => ({ messages: [], hasMore: false }),
+        abort: async () => undefined,
+        recover: async () => undefined,
+        busy: async () => ({ run: false, tasks: false }),
+        close: async () => "closed",
+      };
+    },
+    measure: utf8,
+  });
+  const first = service.subscribe("c_1", "b_1", trace, () => undefined);
+  const second = service.subscribe("c_2", "b_1", trace, () => undefined);
+  release();
+  const baselines = await Promise.all([first, second]);
+  assert.equal(opens, 1, "one bot opened once");
+  assert.equal(watches, 1, "one runtime watch behind one view");
+  assert.equal(baselines[0].snapshot.botId, "b_1");
+  assert.equal(baselines[1].snapshot.botId, "b_1");
 });

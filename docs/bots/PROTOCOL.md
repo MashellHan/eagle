@@ -38,7 +38,7 @@ Runtime details live in [RUNTIME.md](RUNTIME.md), layers in
 | --- | --- | --- |
 | `send.text` | 8 000 characters | `error{invalid_command}` |
 | `bot.title` (HTTP) | 80 characters | HTTP `400` |
-| Any single frame | 256 KiB, measured on the **encoded** frame | Close `1008` |
+| Any single frame | 256 KiB, measured on the **encoded** frame | Close `1008`; a daemon-produced frame that cannot fit is dropped and the socket closes `1008`, because the client cannot decode it either |
 | Single message payload | ≤ 96 KiB encoded | Withheld and replaced by a notice, see below |
 | `notice` text | ≤ 500 bytes, and for the withheld case a fixed constant | — |
 | One `BotSummary` | ≤ 1 200 bytes **after JSON encoding** (escaping included) | Creation or rename refuses a value that would exceed it |

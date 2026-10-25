@@ -68,7 +68,12 @@ export interface RuntimeHandle {
   submission(
     key: { submissionId: string } | { requestId: string },
   ): Promise<Submission | undefined>;
-  history(input: { beforeEntryId?: string; limit: number }): Promise<RuntimeHistory>;
+  /** Older messages, oldest first. The trace names the command that asked for them. */
+  history(input: {
+    beforeEntryId?: string;
+    limit: number;
+    trace?: string;
+  }): Promise<RuntimeHistory>;
   abort(trace: string): Promise<void>;
   /** Retries parked work; never aborts a running answer. */
   recover(trace: string): Promise<void>;

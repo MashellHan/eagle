@@ -141,3 +141,41 @@ test("recover re-opens a bot that was unavailable and the next turn works", asyn
     await stack.close();
   }
 });
+
+test("a bot created at the summary budget still fits the catalog when it fails", async () => {
+  // Every value below is inside its character cap; together they are at the encoded edge.
+  const stack = await startStack({
+    real: true,
+    model: { provider: "p".repeat(40), modelId: "m".repeat(20) },
+    prepare: async ({ directory }) => {
+      await directory.create({
+        id: "b_edge",
+        title: "题".repeat(80),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        model: { provider: "p".repeat(40), modelId: "m".repeat(20) },
+      });
+      await mkdir(directory.botDir("b_edge"), { recursive: true });
+      await writeFile(join(directory.botDir("b_edge"), "session.sqlite"), "not sqlite");
+    },
+  });
+  try {
+    const summaries = stack.registry.summaries();
+    assert.equal(summaries.length, 1);
+    const unavailable = summaries[0]?.unavailable;
+    assert.ok(unavailable !== undefined, "the open failed, so the summary carries the reason");
+    const encoded = Buffer.byteLength(JSON.stringify(summaries[0]));
+    assert.ok(encoded <= 1_200, `the failing summary fits the bound (${encoded} bytes)`);
+
+    // A new connection still receives its welcome with that summary in the catalog.
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    const welcome = await frames.next();
+    assert.equal(welcome.type, "welcome");
+    assert.equal((welcome.bots as { id: string }[])[0]?.id, "b_edge");
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});
