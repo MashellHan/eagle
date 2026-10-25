@@ -126,7 +126,9 @@ public struct SidebarPanel: View {
             .font(.system(size: 9, weight: .bold))
             .foregroundStyle(Theme.Palette.textSecondary.opacity(0.75))
             .rotationEffect(.degrees(section.isExpanded ? 90 : 0))
-            .opacity(hoveringSection == section.id ? 1 : 0)
+            // The collapse control is always visible: a group's state should be readable
+            // without hovering.
+            .opacity(section.isExpanded ? 0.8 : 0.5)
             .frame(width: 9)
           if editingSection == section.id {
             TextField("", text: $draftTitle)

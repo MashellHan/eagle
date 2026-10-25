@@ -323,3 +323,32 @@ and chat — and wire the client to the real daemon for every new bot. Stage 5 i
 reviewed with the same loop before the user sees it working.
 
 Next broken hop: `apps/bots-macos` does not exist yet.
+
+## 2026-10-26 — stage 5 MVP in the Eagle main window
+
+Observed: the Bots client lives in the Eagle app, not in a second app. The sidebar has a
+`Bots` group whose items are the daemon's bots; `+` creates one, rename and delete are
+the sidebar's own menu, and selecting a bot turns the middle column into its
+conversation. Against the real daemon and the real model endpoint, a created bot
+answers: the transcript shows the user pill, the streamed assistant text as it grows,
+the typing row before the first token, and the settlement. The optimistic bubble is
+replaced by the committed entry, the outbox survives a restart, and `unavailable` offers
+`recover`.
+
+Verified (run just now):
+
+- `cd apps/bots-macos && swift test`: 44 tests, including an integration test that
+  spawns the production daemon with a stub model endpoint, creates a bot, chats and
+  rebuilds the transcript from a second subscription.
+- `cd apps/bots-macos && ./Scripts/coverage.sh`: 90.2% logic lines (minimum 90).
+- `cd apps/macos && swift build` and `Scripts/build-app.sh`: the Eagle app builds with
+  the Bots group; launched against the real daemon it listed the existing bots and
+  rendered their conversation in the main window. `EagleDesignTests`' palette-sampling
+  tests fail in this shell (they read dynamic NSColors; untouched by this change).
+- The reviewer's two observations from the first hands-on pass were fixed: the sidebar
+  group chevron is always visible instead of hover-only, and one send no longer paints
+  two user bubbles (the placement removes the optimistic bubble even when the daemon's
+  append carries no `requestId`).
+
+Next broken hop: history paging from the transcript, bot settings and per-bot inspector
+content; stage 4's three deferred daemon races are still open.

@@ -13,17 +13,19 @@ Bots is a separate project that happens to live in this repository.
 | Aspect | Rule |
 | --- | --- |
 | Daemon | `apps/bots/**`. Own `package.json`, `package-lock.json`, `tsconfig.json`, `biome.json`. Not a member of the root npm workspace |
-| Client | `apps/bots-macos/**`: a **separate SPM package** with its own executable, tests and gates |
-| Shared code | `apps/macos` exposes `EagleDesign` as a library product; `apps/bots-macos` depends on it by path. Adding that product is the only edit to the Eagle package, and it changes no Eagle target |
-| Forbidden imports | No Bots file imports `apps/web`, `packages/agent`, `packages/contracts`, or the Eagle `EagleFeatures`/`EagleApp` targets |
+| Client logic | `apps/bots-macos/**`: an SPM package (BotsCore, BotsTransport, BotsFeatures) with its own tests and gates; it depends on nothing from Eagle |
+| Client UI | `apps/macos/Sources/EagleFeatures/BotsWorkspace.swift` and `WorkspaceShellView.swift`: a Bots group in the Eagle main window, built from EagleDesign components; the Eagle app depends on the Bots package, never the reverse |
+| Shared code | `apps/macos` exposes `EagleDesign` as a library product for the Eagle targets; Bots logic does not import it |
+| Forbidden imports | No Bots package file imports `apps/web`, `packages/agent`, `packages/contracts` or any Eagle target; the Eagle app is the only side that imports Bots |
 | Gates | `apps/bots` and `apps/bots-macos` have their own gates. Root `npm run check`, the Eagle Swift package tests and CI do not run Bots |
 | Biome | Root `biome.json` excludes `apps/bots`; the Bots daemon lints itself with its own Biome version |
 | Docs | `docs/bots/**`; the root `AGENTS.md` carries a short rules section only |
 
-Because the client is its own package, implementing `Bots*` targets cannot leak
-into the Eagle build. The direction of the one shared dependency is fixed:
-`EagleDesign` must stay dependency-free and feature-free, so bots code never
-reaches it.
+The client UI is one window inside Eagle, not a second app: a bot is a sidebar
+item, and selecting it turns the middle column into that bot's conversation. The
+logic package stays free of Eagle so it keeps its own tests and gates, and the
+dependency direction is fixed: Eagle imports Bots, Bots never imports Eagle (and
+`EagleDesign` stays dependency-free).
 
 ## Layers
 
@@ -104,30 +106,42 @@ test/
   protocol/ core/ runtime/ server/ e2e/ log/ perf/ crash/ architecture.test.ts
 ```
 
-### Client (`apps/bots-macos`)
+### Client logic (`apps/bots-macos`) and its UI in Eagle
 
 ```
-Package.swift                 depends on ../macos (EagleDesign product only)
+apps/bots-macos/
+Package.swift                 no Eagle dependency; swiftLanguageModes: [.v5]
 Sources/
   BotsCore/
-    Model/                    domain types mirroring core/domain.ts names
-    Logic/                    ConversationReducer (pure), TranscriptBuilder, RevisionGap
-    Ports/                    CatalogPort, ConversationPort, Clock
+    Model/Domain.swift        domain types mirroring core/domain.ts names
+    Logic/Reducer.swift       pure fold into ConversationState, ranked submissions
+    Logic/RevisionGap.swift   the gap rule the transport applies
+    Ports/Ports.swift         CatalogPort, ConversationPort, ConversationEvent, ConnectionState
   BotsTransport/
-    CatalogHTTPClient.swift   /v1/bots
-    ConversationSocket.swift  frames ⇄ domain, backoff, trace ids, paging
-    TokenStore.swift          Keychain
+    Wire.swift                frame codec (decode server events, encode commands)
+    CatalogHTTPClient.swift   /v1/bots over HTTP
+    ConversationSocket.swift  handshake, subscribe, gap/resync, close codes, backoff
+    TokenStore.swift          `<root>/token` (env override for a dev shell), AppPaths
   BotsFeatures/
-    AppViewModel.swift        selection, lifecycle, window visibility
-    BotCatalogViewModel.swift
-    ConversationViewModel.swift
-    ComposerViewModel.swift
-    BotSettingsViewModel.swift   reserved; not rendered in phase 1
-    OutboxStore.swift            persisted unsent commands (see PROTOCOL client duties)
-  BotsApp/                    main.swift = composition root only
+    AppViewModel.swift        catalog, selection, create/rename/delete
+    ConversationViewModel.swift  connection, transcript, composer, outbox reconciliation
+    OutboxStore.swift         persisted unsent sends (PROTOCOL.md, client duties)
 Tests/
-  BotsCoreTests/ BotsFeaturesTests/ BotsTransportTests/
+  BotsCoreTests/ BotsTransportTests/ BotsFeaturesTests/
+Scripts/coverage.sh           logic coverage gate (90% lines)
+
+apps/macos/Sources/EagleFeatures/
+  BotsWorkspace.swift         BotsWorkspaceViewModel (observes the logic view models,
+                              republishes as SidebarSection/TranscriptEntry), BotsPresenter
+  WorkspaceShellView.swift    merges the Bots group into the sidebar and routes the
+                              conversation column to it when a bot is selected
 ```
+
+The UI is the existing Eagle shell: `SidebarPanel`, `ConversationColumn` and
+`InspectorColumn` are unchanged, and a bot is a sidebar item whose conversation is
+rendered through them. Streaming is real: the reducer folds each delta into the
+message, and the presenter re-emits the assistant paragraph as it grows (with the
+typing row while an attempt has no text yet).
 
 `BotsCore` names mirror `core/domain.ts` one-to-one so a log line, a fixture and a
 Swift type use the same word. Wire decoding is confined to `BotsTransport`.

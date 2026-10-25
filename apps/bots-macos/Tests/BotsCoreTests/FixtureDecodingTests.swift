@@ -1,0 +1,174 @@
+import BotsCore
+import BotsTransport
+import XCTest
+
+/// Rows 55-58, 60: every committed fixture decodes, and the reducer folds the transcript
+/// the way the daemon's own fold does.
+final class FixtureDecodingTests: XCTestCase {
+  static var fixtures: URL {
+    URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .appendingPathComponent("fixtures/bots-protocol", isDirectory: true)
+  }
+
+  private static let serverFixtures = [
+    "welcome.server.json",
+    "snapshot.server.json",
+    "snapshot.streaming.server.json",
+    "snapshot.unavailable.server.json",
+    "append.server.json",
+    "append.streaming.server.json",
+    "append.finalize.server.json",
+    "delta.server.json",
+    "history.server.json",
+    "status.server.json",
+    "submission.server.json",
+    "submission.connection.server.json",
+    "bots.server.json",
+    "error.server.json",
+    "error-rejected.server.json",
+    "version-mismatch.server.json",
+    "pong.server.json",
+  ]
+
+  func testEveryServerFixtureDecodes() throws {
+    for name in Self.serverFixtures {
+      let url = Self.fixtures.appendingPathComponent(name)
+      let data = try Data(contentsOf: url)
+      XCTAssertNoThrow(try Wire.decode(data), "\(name) must decode")
+    }
+  }
+
+  func testTheSnapshotCarriesItsTranscript() throws {
+    let data = try Data(
+      contentsOf: Self.fixtures.appendingPathComponent("snapshot.server.json")
+    )
+    let decoded = try Wire.decode(data)
+    guard case .snapshot(let snapshot) = decoded.event else {
+      return XCTFail("expected a snapshot")
+    }
+    XCTAssertEqual(snapshot.botId, "b_0190a1b0-1c2d-7e3f-8a9b-0c1d2e3f4a5b")
+    XCTAssertEqual(snapshot.messages.map(\.role), [.user, .assistant])
+    XCTAssertEqual(snapshot.messages.first?.requestId, "r_0190a1b4-5061-7c72-8d3e-4f5061728394")
+    XCTAssertEqual(snapshot.messages.last?.text, "巴黎。")
+    XCTAssertEqual(snapshot.running, false)
+    XCTAssertEqual(decoded.rev, 42)
+  }
+
+  func testTheStreamingSnapshotNamesItsAttempt() throws {
+    let data = try Data(
+      contentsOf: Self.fixtures.appendingPathComponent("snapshot.streaming.server.json")
+    )
+    let decoded = try Wire.decode(data)
+    guard case .snapshot(let snapshot) = decoded.event else {
+      return XCTFail("expected a snapshot")
+    }
+    XCTAssertEqual(snapshot.streaming, "p_a2")
+    XCTAssertTrue(snapshot.running)
+    XCTAssertEqual(snapshot.messages.last?.state, .streaming)
+  }
+
+  func testTheUnavailableSnapshotIsEmptyAndReasoned() throws {
+    let data = try Data(
+      contentsOf: Self.fixtures.appendingPathComponent("snapshot.unavailable.server.json")
+    )
+    let decoded = try Wire.decode(data)
+    guard case .snapshot(let snapshot) = decoded.event else {
+      return XCTFail("expected a snapshot")
+    }
+    XCTAssertTrue(snapshot.messages.isEmpty)
+    XCTAssertTrue(snapshot.pending.isEmpty)
+    XCTAssertEqual(snapshot.unavailable?.reason, .storageFailed)
+    XCTAssertEqual(snapshot.streaming, nil)
+  }
+
+  func testADeltaKeepsEveryChangeInOrder() throws {
+    let data = try Data(contentsOf: Self.fixtures.appendingPathComponent("delta.server.json"))
+    let decoded = try Wire.decode(data)
+    guard case .delta(let messageId, let changes) = decoded.event else {
+      return XCTFail("expected a delta")
+    }
+    XCTAssertEqual(messageId, "p_a2")
+    XCTAssertEqual(changes.count, 3)
+    guard case .text(0, let appended) = changes[0] else {
+      return XCTFail("the first change is a text append")
+    }
+    XCTAssertEqual(appended, "首都")
+    guard case .block(0, let block) = changes[1] else {
+      return XCTFail("the second change is a block")
+    }
+    XCTAssertEqual(block, .text("巴黎是法国的首都"))
+    guard case .message(let message) = changes[2] else {
+      return XCTFail("the third change is a message")
+    }
+    XCTAssertEqual(message.state, .streaming)
+  }
+
+  func testTheConnectionScopedSubmissionHasNoRevision() throws {
+    let data = try Data(
+      contentsOf: Self.fixtures.appendingPathComponent("submission.connection.server.json")
+    )
+    let decoded = try Wire.decode(data)
+    guard case .submission(let record) = decoded.event else {
+      return XCTFail("expected a submission")
+    }
+    XCTAssertEqual(decoded.rev, nil, "a reply carries no revision, so it is not a gap")
+    XCTAssertEqual(record.requestId, "r_0190a1b4-5061-7c72-8d3e-4f5061728394")
+  }
+
+  func testRefusedAndRuntimeErrorsDifferOnlyInDisposition() throws {
+    let rejected = try Wire.decode(
+      Data(contentsOf: Self.fixtures.appendingPathComponent("error-rejected.server.json"))
+    )
+    guard case .error(_, let disposition, _, let failure, _) = rejected.event else {
+      return XCTFail("expected an error")
+    }
+    XCTAssertEqual(disposition, .notAdmitted)
+    XCTAssertEqual(failure, "f_91c2")
+
+    let runtime = try Wire.decode(
+      Data(contentsOf: Self.fixtures.appendingPathComponent("error.server.json"))
+    )
+    guard case .error(_, let runtimeDisposition, _, _, _) = runtime.event else {
+      return XCTFail("expected an error")
+    }
+    XCTAssertEqual(runtimeDisposition, .runtime)
+  }
+
+  func testACommandCarriesItsTraceAndIdentity() throws {
+    let hello = try Wire.decodeEnvelopeForTests(Wire.hello())
+    XCTAssertEqual(hello["type"] as? String, "hello")
+    XCTAssertEqual(hello["protocolVersion"] as? Int, 1)
+
+    let requestId = Identifiers.request()
+    let send = try Wire.decodeEnvelopeForTests(
+      Wire.send(requestId: requestId, text: "hi", whenBusy: .followUp, trace: "tr_test_1")
+    )
+    XCTAssertEqual(send["type"] as? String, "send")
+    XCTAssertEqual(send["requestId"] as? String, requestId)
+    XCTAssertEqual(send["trace"] as? String, "tr_test_1")
+
+    for command in [
+      try Wire.abort(trace: "tr_test_2"),
+      try Wire.recover(trace: "tr_test_3"),
+      try Wire.resync(trace: "tr_test_4"),
+      try Wire.history(before: "e_7", limit: 50, trace: "tr_test_5"),
+    ] {
+      let object = try Wire.decodeEnvelopeForTests(command)
+      XCTAssertNotNil(object["trace"] as? String)
+    }
+  }
+}
+
+extension Wire {
+  static func decodeEnvelopeForTests(_ data: Data) throws -> [String: Any] {
+    guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw ClientError("not an object")
+    }
+    return object
+  }
+}

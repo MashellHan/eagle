@@ -69,7 +69,10 @@ after a full review round; a row can be implemented and reviewed but not yet sig
 | 49 | 4 | the end-to-end journey | implemented over the real adapter |
 | 50-52g | 4 | the remaining journeys (bots, outbox, paging, ordering, overflow) | implemented |
 | 53-54 | 4 | crash and perf suites | implemented (`test:crash`, `perf`) |
-| 55-69 | 5 | macOS client: decoding, reducer, transport, view models, app | **not started** |
+| 55-60 | 5 | decoding, reducer, gap rule, ranked submissions, optimistic send | implemented (Bots package tests) |
+| 61-62b | 5 | the socket speaks the real daemon, close codes, gap reset | implemented (integration tests spawn the daemon) |
+| 63-68b | 5 | view models: connection, composer, outbox reconciliation, catalog, recovery | implemented (fake-port tests) |
+| 69 | 5 | dependency rules | the Bots package imports nothing from Eagle; Eagle imports it one way |
 
 Current tree: 344 deterministic tests plus five crash cases and four perf
 measurements, coverage 94.9% lines / 89.8% branches / 90.3% functions, `typecheck`,
@@ -108,12 +111,32 @@ What is missing, and why the product still cannot ship:
 Stage 3 (rows 23-36) is signed off. Stage 4 is implemented end to end: its first
 review round closed eight P1 and eleven P2 findings, and rows 42-54 are written.
 
+## Stage 5, as built
+
+The client is not a second app. Its logic is `apps/bots-macos` (BotsCore,
+BotsTransport, BotsFeatures), and its UI is a Bots group in the Eagle main window
+(`apps/macos/Sources/EagleFeatures/BotsWorkspace.swift`), rendered by the existing
+`SidebarPanel`/`ConversationColumn`: a bot is a sidebar item, selecting it shows the
+conversation, `+` creates one, and rename/delete are the sidebar's own affordances.
+
+What works end to end against the real daemon: connect (token from the root), absolute
+catalog, create/rename/delete, subscribe, real streaming answers (each delta folded and
+re-rendered), typing while an attempt has no text, the ranked submission rule, an
+optimistic bubble replaced by the committed entry, the persisted outbox replayed on
+connect, unavailable/recover, gap detection with one resync, and close-code driven
+reconnection.
+
+Deliberately not built in this pass: bot settings (model, instructions), usage,
+inspector content for a bot (the inspector is emptied rather than showing another
+bot's), and history paging from the transcript.
+
 ## Next work, in order
 
 1. Close the sixth round's three remaining races (delete-during-close, a stale
    snapshot reconciling a reservation, and an unavailable bot admitted during a
    lookup) and its P2s, then sign stage 4 off.
-2. Stage 5: `apps/bots-macos/` (separate package, `EagleDesign` product only).
+2. Finish the client surface: history paging, bot settings behind the `agent`
+   capability, and an inspector that renders a bot's own state.
 
 ### What the adapter can do today (rows 23-36, signed off)
 

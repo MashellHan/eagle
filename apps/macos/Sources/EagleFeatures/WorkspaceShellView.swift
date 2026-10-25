@@ -10,6 +10,7 @@ public struct WorkspaceShellView: View {
   @StateObject private var layout: ShellLayoutViewModel
   @StateObject private var account = AccountMenuViewModel()
   @StateObject private var settings = SettingsViewModel()
+  @StateObject private var bots = BotsWorkspaceViewModel()
   @State private var showsAccountMenu = false
   @State private var showsSettings = false
   @AppStorage("eagle.appearance") private var appearance = "system"
@@ -26,6 +27,13 @@ public struct WorkspaceShellView: View {
     _layout = StateObject(wrappedValue: layout)
   }
 
+  private var sidebarSections: [SidebarSection] {
+    guard let section = bots.section else { return list.sections }
+    return [section] + list.sections
+  }
+
+  private var selectedIsBot: Bool { bots.owns(list.selection) }
+
   public var body: some View {
     let item = list.selectedItem
     ZStack(alignment: .bottomLeading) {
@@ -38,28 +46,54 @@ public struct WorkspaceShellView: View {
         onResizeInspector: { layout.setInspectorWidth($0) }
       ) {
         SidebarPanel(
-          sections: list.sections,
+          sections: sidebarSections,
           selection: list.selection,
           width: layout.sidebarWidth,
-          onSelect: { list.select($0) },
+          onSelect: { id in
+            if bots.owns(id) {
+              bots.select(id)
+              list.selection = id
+            } else {
+              list.select(id)
+            }
+          },
           onToggleSection: { list.toggleSection($0) },
           onRenameSection: { list.renameSection($0, to: $1) },
           onDeleteSection: { list.deleteSection($0) },
           onCreateSection: { list.createSection() },
-          onRenameItem: { list.renameItem($0, to: $1) },
-          onDeleteItem: { list.deleteItem($0) },
+          onRenameItem: { id, title in
+            if bots.owns(id) {
+              Task { await bots.rename(id, to: title) }
+            } else {
+              list.renameItem(id, to: title)
+            }
+          },
+          onDeleteItem: { id in
+            if bots.owns(id) {
+              Task { await bots.remove(id) }
+            } else {
+              list.deleteItem(id)
+            }
+          },
+          onCompose: {
+            if bots.isConnected {
+              Task { await bots.createBot() }
+            } else {
+              list.createSection()
+            }
+          },
           onCollapse: { layout.toggleSidebar() },
           onAccount: { showsAccountMenu = true },
           unreadCount: 2
         )
       } conversation: {
         ConversationColumn(
-          title: item?.title ?? "依赖修复专家",
-          subtitle: item?.tag ?? "GitHub",
-          tintIndex: item?.tintIndex ?? 2,
-          entries: chat.entries,
-          draft: $chat.draft,
-          onSend: { chat.send() },
+          title: selectedIsBot ? bots.title : (item?.title ?? "依赖修复专家"),
+          subtitle: selectedIsBot ? bots.subtitle : (item?.tag ?? "GitHub"),
+          tintIndex: selectedIsBot ? bots.tintIndex : (item?.tintIndex ?? 2),
+          entries: selectedIsBot ? bots.entries : chat.entries,
+          draft: selectedIsBot ? $bots.draft : $chat.draft,
+          onSend: { selectedIsBot ? bots.send() : chat.send() },
           showsSidebar: layout.showsSidebar,
           showsInspector: layout.showsInspector,
           onShowSidebar: { layout.toggleSidebar() },
@@ -67,16 +101,20 @@ public struct WorkspaceShellView: View {
         )
       } inspector: {
         InspectorColumn(
-          name: item?.title ?? "依赖修复专家",
-          subtitle: item?.tag ?? "GitHub",
-          tintIndex: item?.tintIndex ?? 2,
+          name: selectedIsBot ? bots.title : (item?.title ?? "依赖修复专家"),
+          subtitle: selectedIsBot ? "Bots" : (item?.tag ?? "GitHub"),
+          tintIndex: selectedIsBot ? bots.tintIndex : (item?.tintIndex ?? 2),
           width: layout.inspectorWidth,
-          artifacts: inspector.artifacts,
-          jobs: inspector.jobs,
+          artifacts: selectedIsBot ? [] : inspector.artifacts,
+          jobs: selectedIsBot ? [] : inspector.jobs,
           tab: $inspector.tab,
           onToggleJob: { inspector.setJob($0, isOn: $1) },
           onCollapse: { layout.toggleInspector() }
         )
+      }
+      .task {
+        bots.onSelect = { id in list.selection = id }
+        await bots.start()
       }
       .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSidebar)) { _ in
         layout.toggleSidebar()

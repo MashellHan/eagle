@@ -22,7 +22,8 @@ manifest, while website health/UI versions match the root manifest.
 
 ```
 apps/web          Vite dashboard, Cloudflare Worker, D1 migrations, public assets
-apps/macos        SwiftUI client (SPM, zero dependencies, macOS 15+); see its README
+apps/macos        Eagle SwiftUI app (SPM, macOS 15+); it also hosts the Bots client UI
+apps/bots-macos   Bots client logic (SPM package: BotsCore/BotsTransport/BotsFeatures); see its README
 packages/contracts  shared zod contracts and pure helpers (private, not published)
 packages/agent    @nocoo/eagle-agent, published to npm
 apps/bots         Bots daemon: independent product, not a workspace member
@@ -104,9 +105,11 @@ product that lives in this repository:
 
 - No code, protocol or build coupling with the website, Worker, Agent or
   contracts. `apps/bots` is not a root workspace member, root `check` and CI do
-  not run it, and root `biome.json` must exclude it. The client is its own SPM
-  package, `apps/bots-macos`, which depends only on the dependency-free
-  `EagleDesign` product from `apps/macos`.
+  not run it, and root `biome.json` must exclude it. The client logic is the
+  separate SPM package `apps/bots-macos` (BotsCore, BotsTransport, BotsFeatures),
+  which depends on nothing from Eagle; the Eagle app depends on it and hosts the
+  Bots group in the main window (`apps/macos/Sources/EagleFeatures/BotsWorkspace.swift`).
+  The dependency direction is one way: Eagle → Bots logic, never back.
 - Documentation is the contract and precedes code: `docs/bots/PRODUCT.md`,
   `ARCHITECTURE.md`, `PROTOCOL.md`, `RUNTIME.md`, `OBSERVABILITY.md`,
   `TESTING.md`, with [PLAN.md](docs/bots/PLAN.md) owning what is built and what is

@@ -1,0 +1,255 @@
+import Foundation
+
+/// The transcript the client renders. Pure: it folds transport events and never performs
+/// I/O, so every rule here is testable without a socket
+/// (docs/bots/ARCHITECTURE.md, "Layers").
+public struct ConversationState: Sendable, Equatable {
+  public var botId: String
+  public var messages: [Message]
+  public var truncatedBefore: String?
+  public var streaming: String?
+  public var running: Bool
+  public var inbox: [InboxItem]
+  public var pending: [Submission]
+  public var unavailable: BotUnavailable?
+  /// The newest revision applied; a snapshot resets the baseline (PROTOCOL I1/I3).
+  public var lastRev: Int?
+  /// Highest-ranked record per submission id, so a late reply never downgrades one (I14).
+  public var ranks: [String: Submission]
+
+  public init(
+    botId: String,
+    messages: [Message] = [],
+    truncatedBefore: String? = nil,
+    streaming: String? = nil,
+    running: Bool = false,
+    inbox: [InboxItem] = [],
+    pending: [Submission] = [],
+    unavailable: BotUnavailable? = nil,
+    lastRev: Int? = nil,
+    ranks: [String: Submission] = [:]
+  ) {
+    self.botId = botId
+    self.messages = messages
+    self.truncatedBefore = truncatedBefore
+    self.streaming = streaming
+    self.running = running
+    self.inbox = inbox
+    self.pending = pending
+    self.unavailable = unavailable
+    self.lastRev = lastRev
+    self.ranks = ranks
+  }
+
+  public var isBusy: Bool { running || !pending.isEmpty || !inbox.isEmpty }
+
+  /// The message currently streaming, when there is one.
+  public var streamingMessage: Message? {
+    guard let streaming else { return nil }
+    return messages.first { $0.id == streaming }
+  }
+}
+
+public enum Reducer {
+  /// A snapshot replaces state and seeds the submission ranks from its pending list.
+  public static func snapshot(_ value: ConversationSnapshot, rev: Int?) -> ConversationState {
+    var ranks: [String: Submission] = [:]
+    for record in value.pending { ranks[record.id] = record }
+    return ConversationState(
+      botId: value.botId,
+      messages: value.messages,
+      truncatedBefore: value.truncatedBefore,
+      streaming: value.streaming,
+      running: value.running,
+      inbox: value.inbox,
+      pending: value.pending,
+      unavailable: value.unavailable,
+      lastRev: rev,
+      ranks: ranks
+    )
+  }
+
+  /// Applies one event. `rev` is the envelope's revision, absent on connection-scoped
+  /// replies and on `bots`/`pong` (PROTOCOL I11).
+  public static func apply(
+    _ event: ConversationEvent,
+    to state: ConversationState,
+    rev: Int? = nil
+  ) -> ConversationState {
+    var next = state
+    switch event {
+    case .snapshot(let value):
+      return snapshot(value, rev: rev)
+    case .append(let message, let replaces):
+      next.messages = upsert(next.messages, message, replaces: replaces)
+      if !message.isOptimistic {
+        next.messages = next.messages.filter { candidate in
+          // The optimistic bubble and the daemon's entry describe one send (PROTOCOL I4).
+          guard let requestId = message.requestId, candidate.isOptimistic else { return true }
+          return candidate.requestId != requestId
+        }
+      }
+      if message.state == .streaming {
+        next.streaming = message.id
+      } else if next.streaming == message.id || next.streaming == replaces {
+        next.streaming = nil
+      }
+    case .delta(let messageId, let changes):
+      next.messages = next.messages.map { message in
+        message.id == messageId ? applyChanges(changes, to: message) : message
+      }
+    case .status(let running, let inbox, let streaming):
+      next.running = running
+      next.inbox = inbox
+      next.streaming = streaming
+    case .submission(let record):
+      next = applySubmission(record, to: next)
+    case .history(let page):
+      let known = Set(next.messages.map(\.id))
+      let older = page.messages.filter { !known.contains($0.id) }
+      next.messages = older + next.messages
+      next.truncatedBefore = page.hasMore ? (next.truncatedBefore ?? older.first?.id) : nil
+    case .connection, .error, .catalog:
+      break
+    }
+    if let rev, rev > (next.lastRev ?? rev - 1) {
+      next.lastRev = rev
+    }
+    return next
+  }
+
+  /// A submission record only moves up: `queued < placed < done = unanswered`.
+  public static func applySubmission(
+    _ record: Submission,
+    to state: ConversationState
+  ) -> ConversationState {
+    var next = state
+    if let known = state.ranks[record.id], known.status.rank > record.status.rank {
+      return state
+    }
+    next.ranks[record.id] = record
+    if let entryId = record.entryId {
+      next.messages = attachRequestId(
+        record.requestId,
+        to: next.messages,
+        entryId: entryId
+      )
+      // The entry is now in the transcript: the optimistic bubble it replaced is a
+      // duplicate, and the append that carried the entry may have had no requestId
+      // (the daemon attaches it when the submission names the entry).
+      next.messages = next.messages.filter { message in
+        !(message.isOptimistic && message.requestId == record.requestId)
+      }
+    }
+    let others = next.pending.filter { $0.id != record.id }
+    next.pending = record.status.isTerminal ? others : others + [record]
+    return next
+  }
+
+  /// The placement names the user entry, so the transcript can tie it to the send.
+  public static func attachRequestId(
+    _ requestId: String,
+    to messages: [Message],
+    entryId: String
+  ) -> [Message] {
+    guard let index = messages.firstIndex(where: { $0.id == entryId }) else { return messages }
+    guard messages[index].requestId == nil else { return messages }
+    var next = messages
+    next[index].requestId = requestId
+    return next
+  }
+
+  /// `append` is an upsert by id; `replaces` finalizes a provisional (PROTOCOL I10).
+  public static func upsert(
+    _ messages: [Message],
+    _ message: Message,
+    replaces: String? = nil
+  ) -> [Message] {
+    var next = messages
+    if let replaces, let index = next.firstIndex(where: { $0.id == replaces }) {
+      next[index] = message
+      return next
+    }
+    if let index = next.firstIndex(where: { $0.id == message.id }) {
+      next[index] = message
+    } else {
+      next.append(message)
+    }
+    return next
+  }
+
+  /// Applies delta changes in order: a message change swaps the whole message and later
+  /// changes in the same list apply to the new one.
+  public static func applyChanges(_ changes: [DeltaChange], to message: Message) -> Message {
+    var current = message
+    for change in changes {
+      switch change {
+      case .text(let index, let append):
+        current = appendToBlock(current, index: index, append: append, kind: .text)
+      case .thinking(let index, let append):
+        current = appendToBlock(current, index: index, append: append, kind: .thinking)
+      case .toolCall(let index, _, let path, let append):
+        current = appendToolCall(current, index: index, path: path, append: append)
+      case .block(let index, let block):
+        if index < current.blocks.count {
+          current.blocks[index] = block
+        }
+      case .message(let replacement):
+        current = replacement
+      }
+    }
+    return current
+  }
+
+  private enum BlockKind { case text, thinking }
+
+  private static func appendToBlock(
+    _ message: Message,
+    index: Int,
+    append: String,
+    kind: BlockKind
+  ) -> Message {
+    guard index < message.blocks.count else { return message }
+    var next = message
+    switch (kind, message.blocks[index]) {
+    case (.text, .text(let text)):
+      next.blocks[index] = .text(text + append)
+    case (.thinking, .thinking(let text)):
+      next.blocks[index] = .thinking(text + append)
+    default:
+      break
+    }
+    return next
+  }
+
+  /// A toolcall delta walks the block's path; phase 1 never renders tool content, so the
+  /// text is kept on the call for completeness only.
+  private static func appendToolCall(
+    _ message: Message,
+    index: Int,
+    path: [String],
+    append: String
+  ) -> Message {
+    guard index < message.blocks.count else { return message }
+    guard case .toolCall(let callId, let name) = message.blocks[index] else { return message }
+    var next = message
+    next.blocks[index] = .toolCall(callId: callId, name: name + (path.isEmpty ? append : ""))
+    return next
+  }
+}
+
+extension Message {
+  /// A bubble the client rendered before the daemon confirmed it (PROTOCOL I4).
+  public var isOptimistic: Bool { id.hasPrefix("local_") }
+
+  public static func optimistic(requestId: String, text: String) -> Message {
+    Message(
+      id: "local_\(requestId)",
+      role: .user,
+      state: .complete,
+      createdAt: ISO8601DateFormatter().string(from: Date()),
+      blocks: [.text(text)],
+      requestId: requestId
+    )
+  }
+}
