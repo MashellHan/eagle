@@ -577,6 +577,13 @@ test("a refused replacement is not adopted even after a failed create", async ()
     const saved = JSON.parse(await readFile(bench_.statePath, "utf8")) as { spaceId: string };
     assert.notEqual(saved.spaceId, "w1");
     assert.equal(bench_.client.calls.filter((call) => call.method === "closeWorkspace").length, 0);
+
+    // Closing the new space must not resurrect the refused replacement either.
+    await bench_.call("herdr_close_space", {});
+    const again = await bench_.call("herdr_open_space", {});
+    assert.match(again.text, /opened space w3/);
+    const after = JSON.parse(await readFile(bench_.statePath, "utf8")) as { spaceId: string };
+    assert.notEqual(after.spaceId, "w1");
   } finally {
     await bench_.cleanup();
   }

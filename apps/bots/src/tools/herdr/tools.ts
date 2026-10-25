@@ -93,6 +93,61 @@ export const agentPrefixOf = (botId: string): string => `bot-${shortId(botId)}`;
 
 const statePathOf = (stateDir: string): string => join(stateDir, "herdr.json");
 
+/** Refused spaces, kept apart from the live record so a close cannot resurrect one. */
+const tombstonesPathOf = (stateDir: string): string => join(stateDir, "herdr.revoked.json");
+
+type Tombstones = {
+  readonly owner: string;
+  readonly spaces: readonly { readonly spaceId: string; readonly spaceLabel: string }[];
+};
+
+const readTombstones = async (path: string, botId: string): Promise<readonly string[]> => {
+  const text = await readFile(path, "utf8").catch(() => undefined);
+  if (text === undefined) return [];
+  try {
+    const parsed = JSON.parse(text) as Partial<Tombstones>;
+    if (parsed.owner !== botId || !Array.isArray(parsed.spaces)) return [];
+    return parsed.spaces.flatMap((entry) =>
+      typeof entry?.spaceId === "string" ? [entry.spaceId] : [],
+    );
+  } catch {
+    return [];
+  }
+};
+
+const addTombstone = async (
+  path: string,
+  botId: string,
+  space: { readonly spaceId: string; readonly spaceLabel: string },
+): Promise<void> => {
+  const text = await readFile(path, "utf8").catch(() => undefined);
+  let existing: { spaceId: string; spaceLabel: string }[] = [];
+  let owner = botId;
+  if (text !== undefined) {
+    try {
+      const parsed = JSON.parse(text) as Partial<Tombstones>;
+      if (parsed.owner === botId && Array.isArray(parsed.spaces)) {
+        existing = parsed.spaces.flatMap((entry) =>
+          typeof entry?.spaceId === "string" && typeof entry.spaceLabel === "string"
+            ? [{ spaceId: entry.spaceId, spaceLabel: entry.spaceLabel }]
+            : [],
+        );
+      }
+    } catch {
+      existing = [];
+    }
+    owner = botId;
+  }
+  if (existing.some((entry) => entry.spaceId === space.spaceId)) return;
+  const spaces = [...existing, space].slice(-20);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const temporary = `${path}.tmp`;
+  await writeFile(temporary, `${JSON.stringify({ owner, spaces }, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  await rename(temporary, path);
+};
+
 const timeoutOf = (value: number | undefined, fallback: number): number =>
   Math.min(Math.max(value ?? fallback, 1), MAX_TIMEOUT_MS);
 
@@ -184,6 +239,7 @@ const clipTail = (text: string): string => {
 export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegistration[] => {
   const { client, workspace, botId } = options;
   const statePath = statePathOf(options.stateDir);
+  const tombstonesPath = tombstonesPathOf(options.stateDir);
   const labelPrefix = spaceLabelOf(botId);
   const prefix = agentPrefixOf(botId);
   // The tools share one state file; a call at a time keeps open/start/close ordered.
@@ -318,6 +374,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
                 if (!spaceGone(error) && !(error instanceof ToolError)) throw error;
                 untrusted = true;
                 await writeState(statePath, { ...existing, revoked: true }).catch(() => undefined);
+                await addTombstone(tombstonesPath, botId, existing).catch(() => undefined);
               }
             }
             // Without a record, adopt the one space that carries this bot's label prefix
@@ -326,9 +383,13 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
               signal: context.abortSignal,
               timeoutMs: 30_000,
             });
+            const tombstones = await readTombstones(tombstonesPath, botId);
             const matching = untrusted
               ? []
-              : spaces.filter((space) => space.label.startsWith(`${labelPrefix}-`));
+              : spaces.filter(
+                  (space) =>
+                    space.label.startsWith(`${labelPrefix}-`) && !tombstones.includes(space.id),
+                );
             if (matching.length > 1) {
               return failed(
                 `several herdr spaces claim ${labelPrefix}; close the stale ones before opening again`,

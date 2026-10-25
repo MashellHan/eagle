@@ -386,11 +386,13 @@ Rules:
   model's workspace). Every call re-reads the space from herdr and requires **both** the
   recorded label and the recorded root pane in that space, so neither a different space
   nor a same-id replacement is ever touched; a space that disappeared is replaced by a
-  fresh instance. With no usable state (missing or corrupt file), exactly one space with
+  fresh instance, and the refused id stays tombstoned across that replacement and a later
+  close. With no usable state (missing or corrupt file), exactly one space with
   this bot's prefix is adopted, and several are refused rather than guessed; a recorded
-  space that fails verification is revoked in place (never adopted by a later retry) and a
-  fresh instance is opened; a record whose owner is another bot, or whose label carries
-  another bot's prefix, is foreign and is never obeyed. A space that could not be recorded
+  space that fails verification is revoked in place, and its id is also written to
+  `herdr.revoked.json` beside the record, so replacing the space and closing the new one
+  cannot make a later open adopt it. A record whose owner is another bot, or whose label
+  carries another bot's prefix, is foreign and is never obeyed. A space that could not be recorded
   is closed again; when even that close fails, the result names the leftover space so a
   person can close it.
   `herdr_list`, `herdr_send`, `herdr_wait`, `herdr_read` and `herdr_keys` resolve their
