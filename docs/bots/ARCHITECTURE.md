@@ -87,7 +87,8 @@ src/
     BotDirectory.ts           catalog.json CRUD, atomic write
     BotRegistry.ts            open/close/quarantine, idle close, recovery scan, deadlock-free lock
     EventHub.ts               per-bot rev, fanout, coalescing, snapshot rerender, paging
-    ConversationService.ts    command routing, submission ledger, history paging
+    view.ts                   pure fold of runtime events into a ConversationSnapshot
+    ConversationService.ts    connections, command routing, submission ranking, history, resync
   protocol/
     version.ts  limits.ts     PROTOCOL_VERSION, frame and page budgets
     events.ts   commands.ts   encode/decode domain ⇄ frames, validation

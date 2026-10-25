@@ -171,3 +171,27 @@ Verified (all run just now in `apps/bots`):
 Next broken hop: `send` and the connection still have no owner. `ConversationService`
 does not exist, so rows 17-22 cannot start and nothing turns a domain event into a
 frame.
+
+## 2026-10-26 14:05 — stage 2 complete
+
+Observed: ladder rows 9-22 are implemented, tested and signed off. The catalog is
+atomic and resumable, the hub owns revisions, coalescing and per-bot serial fanout,
+the fake runtime satisfies the port, and `ConversationService` turns a connection into
+a subscription: a current baseline rendered before it goes live, a silent duplicate
+send, broadcasts for settlements, paging that leaves the window alone, and a resync
+whose only reply is the snapshot it publishes.
+
+Verified (all run just now in `apps/bots`):
+
+- `npm run check` exited 0: `fixtures:check` (26 files), 199 tests, `tsc --noEmit`,
+  Biome, coverage 96.49 % lines, 91.60 % branches, 97.40 % functions.
+- Codex signed off rows 17-18 on 80315bd and rows 19-22 on cf33bee after 13 in-memory
+  reproductions and 6 mutations; six review rounds closed rows 11-16 on fc7fddc.
+- Mutation spot checks in this session: a fat batch split, the first-frame guard, the
+  post-drain re-check, both rank seedings, the snapshot normalization, the normalized
+  broadcast, the resync trace, the resync window and a thin settlement record each
+  fail the suite when removed.
+
+Next broken hop: nothing turns a runtime event into a frame and nothing listens on a
+socket. `src/runtime/pi/` (stage 3) has no adapter, so there is no real Harness, no
+`mapEvents`, and the daemon cannot start; stage 4's server and `main.ts` are next.

@@ -374,3 +374,18 @@ While inspecting the retained Playwright trace, the controller initially assumed
 screencast records used a `sha1` field; this installed trace format uses `file`.
 The archive read failed without changing tracked files. Inspect record keys
 before extracting artifacts rather than assuming a trace-version schema.
+
+## 2026-10-26 — A filtered check hid a type error, and a test hung the session
+
+Three process failures while closing the Bots stage-2 ladder. First, `npm run check`
+output was filtered through `rg` for test counts and coverage lines, which hid a
+`tsc --noEmit` failure for one commit; the reviewer found it with a direct `tsc`. Check
+the command's exit status, never a filtered view of its output. Second, two commits
+described regression cases they did not actually contain, because the work-in-progress
+tree was split into commits by slicing files and the slices dropped the cases; the
+reviewer caught it twice. Verify a promised test exists in the commit itself
+(`git show <sha>:path | rg "name"`), not just in the working tree. Third, a new test
+made one sink publish a delta on every delta it received, so the serial fanout loop
+never terminated and a `node --test` process ran for hours until the user killed it.
+Any reentrancy test must bound its trigger to a single occurrence, and a test run needs
+a timeout.
