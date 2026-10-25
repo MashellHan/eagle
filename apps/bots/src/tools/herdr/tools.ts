@@ -108,7 +108,11 @@ type TombstoneRead = {
 };
 
 const readTombstones = async (path: string, botId: string): Promise<TombstoneRead> => {
-  const text = await readFile(path, "utf8").catch(() => undefined);
+  const text = await readFile(path, "utf8").catch((error: NodeJS.ErrnoException) => {
+    // Only a missing file is "no refusals"; an unreadable one must not read as empty.
+    return error.code === "ENOENT" ? undefined : "unreadable";
+  });
+  if (text === "unreadable") return { ids: [], trusted: false };
   if (text === undefined) return { ids: [], trusted: true };
   try {
     const parsed = JSON.parse(text) as Partial<Tombstones>;
@@ -144,21 +148,26 @@ const addTombstone = async (
   botId: string,
   space: { readonly spaceId: string; readonly spaceLabel: string },
 ): Promise<void> => {
-  const text = await readFile(path, "utf8").catch(() => undefined);
+  const text = await readFile(path, "utf8").catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return undefined;
+    throw new ToolError("the refused-space record cannot be read; repair or remove it");
+  });
   let existing: { spaceId: string; spaceLabel: string }[] = [];
   if (text !== undefined) {
+    let parsed: Partial<Tombstones> | undefined;
     try {
-      const parsed = JSON.parse(text) as Partial<Tombstones>;
-      if (parsed.owner === botId && Array.isArray(parsed.spaces)) {
-        existing = parsed.spaces.flatMap((entry) =>
-          typeof entry?.spaceId === "string" && typeof entry.spaceLabel === "string"
-            ? [{ spaceId: entry.spaceId, spaceLabel: entry.spaceLabel }]
-            : [],
-        );
-      }
+      parsed = JSON.parse(text) as Partial<Tombstones>;
     } catch {
-      existing = [];
+      throw new ToolError("the refused-space record is unusable; repair or remove it");
     }
+    if (parsed.owner !== botId || !Array.isArray(parsed.spaces)) {
+      throw new ToolError("the refused-space record belongs to another bot; repair or remove it");
+    }
+    existing = parsed.spaces.flatMap((entry) =>
+      typeof entry?.spaceId === "string" && typeof entry.spaceLabel === "string"
+        ? [{ spaceId: entry.spaceId, spaceLabel: entry.spaceLabel }]
+        : [],
+    );
   }
   if (existing.some((entry) => entry.spaceId === space.spaceId)) return;
   // No silent eviction: a dropped entry could be adopted later. Pruning happens only
@@ -367,18 +376,13 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
             const cwd = await resolveWorkspacePath(args.path);
             const existing = await readState(statePath, botId, labelPrefix);
             let untrusted = false;
+            let pendingTombstone: HerdrState | undefined;
             if (existing === "foreign") {
               untrusted = true;
             } else if (existing !== undefined && existing.revoked === true) {
               untrusted = true;
               // A revoked record whose tombstone was lost must not be replaced unsafely.
-              try {
-                await addTombstone(tombstonesPath, botId, existing);
-              } catch (error) {
-                return failed(
-                  `the refused herdr space could not be recorded (${describeError(error)}); nothing was changed`,
-                );
-              }
+              pendingTombstone = existing;
             } else if (existing !== undefined) {
               try {
                 await verifySpace(existing, context.abortSignal);
@@ -403,15 +407,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
                 if (!spaceGone(error) && !(error instanceof ToolError)) throw error;
                 untrusted = true;
                 await writeState(statePath, { ...existing, revoked: true }).catch(() => undefined);
-                try {
-                  await addTombstone(tombstonesPath, botId, existing);
-                } catch (error) {
-                  // Without the tombstone a later adoption could take the refused space:
-                  // stop here instead of replacing it.
-                  return failed(
-                    `the refused herdr space could not be recorded (${describeError(error)}); nothing was changed`,
-                  );
-                }
+                pendingTombstone = existing;
               }
             }
             // Without a record, adopt the one space that carries this bot's label prefix
@@ -430,6 +426,17 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
                 .filter((space) => tombstoned.includes(space.id))
                 .map((space) => ({ spaceId: space.id, spaceLabel: space.label }));
               await writeTombstones(tombstonesPath, botId, kept).catch(() => undefined);
+            }
+            // The tombstone is written only after pruning, so a list that is full because
+            // its spaces are gone still recovers; and without it, nothing is replaced.
+            if (pendingTombstone !== undefined && !tombstoned.includes(pendingTombstone.spaceId)) {
+              try {
+                await addTombstone(tombstonesPath, botId, pendingTombstone);
+              } catch (error) {
+                return failed(
+                  `the refused herdr space could not be recorded (${describeError(error)}); nothing was changed`,
+                );
+              }
             }
             const matching =
               untrusted || !tombstones.trusted

@@ -392,10 +392,12 @@ Rules:
   space that fails verification is revoked in place, and its id is also written to
   `herdr.revoked.json` beside the record, so replacing the space and closing the new one
   cannot make a later open adopt it. If that tombstone cannot be written, the replacement
-  does not happen at all ("nothing was changed"); tombstones are pruned only for spaces
-  herdr no longer reports, never evicted while live, and a full list fails safely rather
-  than forgetting one. A tombstone file that exists but cannot be attributed to this bot is
-  not trusted as empty: adoption is disabled instead. A record whose owner is another bot, or whose label
+  does not happen at all ("nothing was changed"); tombstones are pruned (before the size
+  ceiling is judged) only for spaces herdr no longer reports, never evicted while live, and
+  a list that is still full of live entries fails safely rather than forgetting one. Only a
+  missing file means "no refusals": a tombstone that cannot be read, parsed or attributed
+  to this bot disables adoption and is never overwritten — a refusal that cannot be
+  recorded fails with nothing changed. A record whose owner is another bot, or whose label
   carries another bot's prefix, is foreign and is never obeyed. A space that could not be recorded
   is closed again; when even that close fails, the result names the leftover space so a
   person can close it.

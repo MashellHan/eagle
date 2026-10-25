@@ -710,3 +710,75 @@ test("with both records removed, adoption resumes as documented", async () => {
     await bench_.cleanup();
   }
 });
+
+test("an unreadable tombstone is not read as an empty list", async () => {
+  const bench_ = await bench();
+  try {
+    await bench_.call("herdr_open_space", {});
+    bench_.client.panesBySpace.set("w1", [{ paneId: "w1:p9", workspaceId: "w1" }]);
+    await bench_.call("herdr_open_space", {});
+    await bench_.call("herdr_close_space", {});
+    await chmod(tombstonePathOf(bench_.statePath), 0o000);
+    const reopened = await bench_.call("herdr_open_space", {});
+    assert.match(reopened.text, /opened space w3/);
+  } finally {
+    await chmod(tombstonePathOf(bench_.statePath), 0o600).catch(() => undefined);
+    await bench_.cleanup();
+  }
+});
+
+test("an unattributable tombstone disables adoption and blocks a later revocation", async () => {
+  const bench_ = await bench();
+  try {
+    bench_.client.workspaces.push({ id: "w1", label: "bots-abot-abcd" });
+    bench_.client.panesBySpace.set("w1", [{ paneId: "w1:p1", workspaceId: "w1" }]);
+    bench_.client.nextId = 2;
+    await writeFile(
+      tombstonePathOf(bench_.statePath),
+      JSON.stringify({ owner: "b-bot", spaces: [{ spaceId: "w1", spaceLabel: "x" }] }),
+    );
+    // No state: the foreign file prevents adoption (w1 is never adopted) but creating is safe.
+    const opened = await bench_.call("herdr_open_space", {});
+    assert.match(opened.text, /opened space w2/);
+
+    // A refusal now must not overwrite the unattributable file and lose its refusals.
+    bench_.client.panesBySpace.set("w2", [{ paneId: "w2:p9", workspaceId: "w2" }]);
+    const before = bench_.client.calls.filter((call) => call.method === "createWorkspace").length;
+    const refused = await bench_.call("herdr_open_space", {});
+    assert.equal(refused.isError, true);
+    assert.match(refused.text, /belongs to another bot/);
+    assert.equal(
+      bench_.client.calls.filter((call) => call.method === "createWorkspace").length,
+      before,
+    );
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("the tombstone cap recovers by pruning spaces herdr no longer reports", async () => {
+  const bench_ = await bench();
+  try {
+    const spaces = Array.from({ length: 4_096 }, (_, index) => ({
+      spaceId: `w${index + 1}`,
+      spaceLabel: `bots-abot-${String(index).padStart(4, "0")}`,
+    }));
+    const first = spaces[0] as { spaceLabel: string };
+    bench_.client.workspaces.push({ id: "w1", label: first.spaceLabel });
+    bench_.client.panesBySpace.set("w1", [{ paneId: "w1:p1", workspaceId: "w1" }]);
+    bench_.client.nextId = 5_000;
+    await writeFile(tombstonePathOf(bench_.statePath), JSON.stringify({ owner: "a-bot", spaces }));
+    const opened = await bench_.call("herdr_open_space", {});
+    assert.equal(opened.isError, false, "pruning makes room before the cap is judged");
+    assert.match(opened.text, /opened space w5000/);
+    const pruned = JSON.parse(await readFile(tombstonePathOf(bench_.statePath), "utf8")) as {
+      spaces: { spaceId: string }[];
+    };
+    assert.deepEqual(
+      pruned.spaces.map((space) => space.spaceId),
+      ["w1"],
+    );
+  } finally {
+    await bench_.cleanup();
+  }
+});
