@@ -466,4 +466,18 @@ rank key is the submission id, and the lock probe resolves on a partial answer.
 Verified just now: daemon 353 tests, coverage 95.07/90.01/91.06, crash 5/5; client
 coverage 93.4%; Eagle 48 tests.
 
-Next broken hop: the recorded deferrals in PLAN.md and the reviewer's sixth pass (closeout).
+A sixth pass found three more, closed with tests: a degraded subscriber whose recovery
+snapshot was also lost is retried on a timer until its anchor is delivered (the final
+events of a run can no longer be lost behind a backpressure episode); a refusal whose
+support directory is unwritable still becomes a durable tombstone (a user-private
+temporary fallback), so a restarted process cannot replay it; and a command issued while
+reconnecting is refused instead of silently dropped, so a recover never clears the parked
+affordance without reaching the daemon. P2/P3: the TTL test now exercises only the
+reserved ids, a snapshot can no longer resurrect a settled submission as pending, and the
+plan's stale "no client" row is gone.
+
+Verified just now: daemon 354 tests, coverage 95.05/89.92/91.11, crash 5/5, perf 4/4;
+client coverage 93.1%; Eagle 48 tests.
+
+Next broken hop: the recorded deferrals in PLAN.md and the reviewer's seventh pass
+(closeout).

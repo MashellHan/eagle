@@ -102,6 +102,13 @@ public final class ConversationSocket: NSObject {
     openTask(in: session)
   }
 
+  /// True between the welcome and the close.
+  public var isReady: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return !closed && handshakeDone
+  }
+
   public func close() {
     lock.lock()
     if closed {
@@ -487,14 +494,10 @@ public final class BotsConnection: ConversationPort {
     context: CommandContext,
     botId: String
   ) async throws {
-    guard let socket, let requestId = context.requestId else {
-      throw ClientError("there is no connection to send on")
+    guard let requestId = context.requestId else {
+      throw ClientError("the send has no request id")
     }
-    guard socket.botId == botId else {
-      // The user switched bots while the send was being prepared: this text belongs to
-      // the other connection, so it is refused rather than written to the wrong bot.
-      throw ClientError("the connection now belongs to another bot")
-    }
+    let socket = try require(botId)
     try socket.send(
       text: text,
       requestId: requestId,
@@ -531,6 +534,10 @@ public final class BotsConnection: ConversationPort {
     guard socket.botId == botId else {
       throw ClientError("the connection now belongs to another bot")
     }
+    // Between the close and the new handshake the socket cannot carry a command; a
+    // dropped frame would look like a successful request to the view model.
+    guard socket.isReady else { throw ClientError("the connection is not ready yet") }
     return socket
   }
+
 }

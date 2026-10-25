@@ -475,13 +475,13 @@ final class ConversationLifecycleTests: XCTestCase {
     try await Task.sleep(nanoseconds: 80_000_000)
     XCTAssertEqual(fake.sent.count, sendsBefore, "a refused request is never replayed")
 
-    // Once the store is writable again the refusal becomes durable, so a new client that
-    // starts from the same file does not replay it either.
-    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
-    fake.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
-    try await Task.sleep(nanoseconds: 80_000_000)
-    XCTAssertTrue(try outbox.refusedRequests().contains(requestId), "the refusal is durable")
-
+    // The refusal is durable even while the support directory is unwritable: the
+    // tombstone falls back to a user-private temporary directory, so a new process that
+    // starts from the same file still does not replay it.
+    XCTAssertTrue(
+      try OutboxStore(directory: directory).refusedRequests().contains(requestId),
+      "the refusal survives a restart"
+    )
     let restarted = FakeConversation()
     let reopened = OutboxStore(directory: directory)
     let next = ConversationViewModel(botId: "b_1", conversation: restarted, outbox: reopened)

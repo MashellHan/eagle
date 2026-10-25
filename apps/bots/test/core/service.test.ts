@@ -1489,8 +1489,13 @@ test("a lost settlement event expires, but a stale snapshot does not release it"
   // A status read that fails is not evidence that the admission ended.
   records.clear();
   const originalSubmission = scripted.handle.submission;
-  scripted.handle.submission = async () => {
-    throw new Error("the ledger is unreadable");
+  scripted.handle.submission = async (key) => {
+    // Only the already-reserved ids fail: a new request is looked up normally, so the
+    // budget check (not the lookup) has to refuse it.
+    if ("requestId" in key && key.requestId.startsWith("r_lost_")) {
+      throw new Error("the ledger is unreadable");
+    }
+    return originalSubmission(key);
   };
   now += RESERVATION_TTL_MS + 1;
   assert.equal(await attempt(), false, "an unreadable status keeps the slot");
@@ -1768,5 +1773,52 @@ test("a subscriber that never reads does not spin the daemon", async () => {
   assert.ok(
     calls <= 4,
     `a client that never reads gets one refresh attempt per episode, saw ${calls}`,
+  );
+});
+
+test("the final events of a run are recoverable after the backpressure clears", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    pending: [],
+    inbox: [],
+    running: false,
+    streaming: null,
+  };
+  const runtime = new FakeRuntime({ snapshot: () => snapshot });
+  const service = serviceFor(runtime);
+  const received: HubEvent[] = [];
+  let blocked = true;
+  await service
+    .subscribe("c_1", "b_1", trace, (event) => {
+      if (blocked) throw new SubscriberTooSlow();
+      received.push(event);
+    })
+    .catch(() => undefined);
+  // The final append and the stop status are lost while the client is not reading, and so
+  // is the compensating snapshot; nothing else happens afterwards.
+  runtime.handle("b_1").emit({
+    type: "append",
+    trace,
+    message: {
+      id: "e_10",
+      role: "assistant",
+      state: "complete",
+      createdAt: "x",
+      blocks: [{ type: "text", text: "最终回答" }],
+    },
+  });
+  runtime.handle("b_1").emit({ type: "status", trace, running: false, streaming: null, inbox: [] });
+  blocked = false;
+  for (
+    let index = 0;
+    index < 100 && !received.some((event) => event.type === "snapshot");
+    index += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.ok(
+    received.some((event) => event.type === "snapshot"),
+    "the degraded subscriber is refreshed without a new bot event",
   );
 });

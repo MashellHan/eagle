@@ -106,7 +106,7 @@ What is missing, and why the product still cannot ship:
 | Gap | Consequence |
 | --- | --- |
 | stage-4/5 signoff | five review passes are closed; the closeout pass is running |
-| `apps/bots-macos/` | no client, so there is no product to use, only a daemon and its tests |
+| client surface | the MVP is complete (see "Stage 5, as built"); history paging, bot settings and an inspector that renders a bot's own state remain |
 
 Stage 3 (rows 23-36) is signed off. Stage 4 is implemented end to end: its first
 review round closed eight P1 and eleven P2 findings, and rows 42-54 are written.
@@ -186,6 +186,14 @@ follows a connection generation (a welcome no longer stops it), a refusal is a d
 tombstone written as soon as the outbox is writable, a restored settlement ranks by its
 submission id, a half-spoken lock owner cannot hang the probe, the initial snapshot sets
 the history flag, and the window test asserts the published transcript.
+
+A sixth pass found three more, closed with tests: the recovery anchor of a degraded
+subscriber is retried on a timer until it is delivered; a refusal becomes durable even
+when the support directory is unwritable (a temporary fallback), so a restart cannot
+replay it; and a command issued while reconnecting is refused instead of dropped. Its
+P2/P3 are closed too: the TTL test only fails the reserved lookups, a snapshot cannot
+resurrect a settled submission as pending, and the plan no longer claims there is no
+client.
 
 The third pass's four follow-ups now have regression tests: `BotsWindowTests` (the
 window's one draft, the published transcript/status/actions and a refusal's restored

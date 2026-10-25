@@ -105,7 +105,11 @@ export const reduceView = (
   }
   if (event.type === "snapshot") {
     seedRanks(ranks, event.value.pending);
-    const pending = normalizePending(ranks, event.value.pending);
+    const pending = normalizePending(ranks, event.value.pending).filter(
+      // A settlement the snapshot no longer knows about still stands (I14).
+      (record) =>
+        ranks.get(record.id)?.status !== "done" && ranks.get(record.id)?.status !== "unanswered",
+    );
     return pending === event.value.pending ? event.value : { ...event.value, pending };
   }
   return view;

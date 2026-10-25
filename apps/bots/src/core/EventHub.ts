@@ -29,6 +29,9 @@ export class SubscriberTooSlow extends Error {
   }
 }
 
+/** A degraded subscriber is offered its anchor again this often until it is delivered. */
+export const DEGRADE_RETRY_MS = 250;
+
 /** A subscriber that falls this far behind is downgraded to snapshot-only. */
 export const SUBSCRIBER_QUEUE_LIMIT = 256;
 export const SUBSCRIBER_BYTE_LIMIT = 1024 * 1024;
@@ -77,6 +80,7 @@ export class EventHub {
   readonly #measure: (event: RuntimeEvent) => number;
   readonly #log: Log | undefined;
   readonly #onDegrade: (() => void) | undefined;
+  #refreshTimer: ReturnType<typeof setTimeout> | undefined;
   #rev = 0;
   #nextId = 1;
   /** Deltas still inside the coalescing window; they do not consume a revision yet. */
@@ -375,6 +379,31 @@ export class EventHub {
     // way to learn the state it missed. A snapshot that just failed to deliver is not
     // retried with another snapshot — the next event asks again instead.
     if (event.type !== "snapshot") this.#onDegrade?.();
+    this.#scheduleRefresh();
+  }
+
+  /**
+   * While a slot is degraded, its anchor (or a fresh snapshot) is retried until it is
+   * delivered: the final events of a run can be lost behind a backpressured socket, and
+   * nothing else would tell that client the run ended.
+   */
+  #scheduleRefresh(): void {
+    if (this.#refreshTimer !== undefined) return;
+    this.#refreshTimer = setTimeout(() => {
+      this.#refreshTimer = undefined;
+      let needed = false;
+      for (const slot of this.#slots.values()) {
+        if (!slot.degraded) continue;
+        needed = true;
+        if (slot.anchor !== undefined && !slot.stale) {
+          this.#drain(slot);
+        } else {
+          this.#onDegrade?.();
+        }
+      }
+      if (needed) this.#scheduleRefresh();
+    }, DEGRADE_RETRY_MS);
+    this.#refreshTimer.unref?.();
   }
 
   /** Takes the next deliverable event, or re-anchors a degraded subscriber. */

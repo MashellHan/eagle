@@ -92,6 +92,9 @@ public final class OutboxStore {
 
   private let directory: URL
   private let fileURL: URL
+  /// Refusals are also written here when the support directory cannot be written, so a
+  /// process restart still cannot replay a refused message.
+  private let refusalFallback: URL
   private var cache: [OutboxEntry] = []
   private var settled: [SettledRequest] = []
   private var refused: [String] = []
@@ -99,6 +102,8 @@ public final class OutboxStore {
   public init(directory: URL = AppPaths.supportDirectory) {
     self.directory = directory
     self.fileURL = directory.appendingPathComponent("outbox.json")
+    self.refusalFallback = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ai.hexly.bots-refused", isDirectory: true)
     if let document = try? Self.read(fileURL) {
       cache = document.entries
       settled = document.settled
@@ -110,7 +115,7 @@ public final class OutboxStore {
   /// refused are never returned for replay.
   public func entries(for botId: String) throws -> [OutboxEntry] {
     let document = try reload()
-    let refused = Set(document.refused)
+    let refused = Set(document.refused).union(fallbackRefusals())
     return document.entries.filter { $0.botId == botId && !refused.contains($0.requestId) }
   }
 
@@ -118,7 +123,9 @@ public final class OutboxStore {
 
   public func settledRequests() throws -> [SettledRequest] { try reload().settled }
 
-  public func refusedRequests() throws -> [String] { try reload().refused }
+  public func refusedRequests() throws -> [String] {
+    try Set(reload().refused).union(fallbackRefusals()).sorted()
+  }
 
   public func add(_ entry: OutboxEntry) throws {
     try mutate { entries, settled, refused in
@@ -133,14 +140,43 @@ public final class OutboxStore {
   /// remembered in one atomic write, so a later reconciliation (even in a new process)
   /// cannot replay it.
   public func refuse(requestId: String) throws {
-    try mutate { entries, settled, refused in
-      var next = entries
-      next.removeAll { $0.requestId == requestId }
-      var ids = refused.filter { $0 != requestId }
-      ids.append(requestId)
-      if ids.count > Self.settledLimit { ids.removeFirst(ids.count - Self.settledLimit) }
-      return (next, settled, ids)
+    do {
+      try mutate { entries, settled, refused in
+        var next = entries
+        next.removeAll { $0.requestId == requestId }
+        var ids = refused.filter { $0 != requestId }
+        ids.append(requestId)
+        if ids.count > Self.settledLimit { ids.removeFirst(ids.count - Self.settledLimit) }
+        return (next, settled, ids)
+      }
+      try? removeFallbackRefusal(requestId)
+    } catch {
+      // The support directory is not writable right now: the tombstone still has to
+      // survive a restart, so it goes to a user-private temporary directory.
+      try writeFallbackRefusal(requestId)
     }
+  }
+
+  private func fallbackRefusals() -> Set<String> {
+    let names = (try? FileManager.default.contentsOfDirectory(atPath: refusalFallback.path)) ?? []
+    return Set(names)
+  }
+
+  private func writeFallbackRefusal(_ requestId: String) throws {
+    do {
+      try FileManager.default.createDirectory(
+        at: refusalFallback,
+        withIntermediateDirectories: true,
+        attributes: [.posixPermissions: 0o700]
+      )
+      try Data().write(to: refusalFallback.appendingPathComponent(requestId), options: .atomic)
+    } catch {
+      throw ClientError("the refusal could not be recorded")
+    }
+  }
+
+  private func removeFallbackRefusal(_ requestId: String) throws {
+    try? FileManager.default.removeItem(at: refusalFallback.appendingPathComponent(requestId))
   }
 
   /// A refused command is not a settlement: its entry goes away and the text becomes a
