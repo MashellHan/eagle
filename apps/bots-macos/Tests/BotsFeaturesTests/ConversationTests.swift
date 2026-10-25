@@ -462,6 +462,10 @@ final class ConversationLifecycleTests: XCTestCase {
       )
     )
     try await Task.sleep(nanoseconds: 60_000_000)
+    XCTAssertNotNil(
+      model.errorBanner,
+      "a refusal whose entry could not be removed is reported, not swallowed"
+    )
     // A reconnect reconciles the outbox; the refused request must not be re-sent.
     fake.emit(.connection(.reconnecting(attempt: 1)))
     fake.emit(.connection(.ready))

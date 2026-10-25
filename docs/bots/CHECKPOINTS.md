@@ -428,10 +428,13 @@ client `swift test` and `./Scripts/coverage.sh` 93.1%; Eagle `swift test` 44 tes
 
 The third pass found four follow-ups inside those fixes (the draft binding, a failed
 status read releasing a reservation, a resync deadline closing a barrier a snapshot had
-opened, and a refused entry replayed after a failed removal). All four are fixed; the
-last two are verified by inspection rather than by an injected-scheduling test, which
-PLAN.md records.
+opened, and a refused entry replayed after a failed removal). All four are fixed and now
+have regression tests: `BotsWindowTests` binds the window the way the shell does and
+proves one draft plus the restored refusal text; the reservation test injects a failing
+status read and requires the slot to stay taken; `ResyncStateTests` drives the
+snapshot/deadline interleavings; and the refused-entry test makes the outbox write fail,
+reconnects, asserts no replay and asserts the failure is reported.
 
 Next broken hop: the deferred list in PLAN.md (client `os.Logger`, the socket
-fault-injection matrix, two real windows, three daemon origin/handle gaps, long-markdown
-layout) and the reviewer's third pass.
+fault-injection matrix beyond the resync state machine, two real windows, three daemon
+origin/handle gaps, long-markdown layout) and the reviewer's fourth pass.

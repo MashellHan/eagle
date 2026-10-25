@@ -176,9 +176,13 @@ ten-second deadline (gapped frames neither advance the baseline nor exhaust the 
 `abort`/`recover`/`history` name their bot like `send` does; and a refusal appends the
 rejected text to a newer draft instead of dropping it.
 
-Not yet covered by a test: the socket's deadline/snapshot interleaving (the last fix
-above) and the refused-entry replay guard are verified by inspection, and the stored
-`SettledRequest` is applied to the ranks on selection but has no UI for its reason.
+The third pass's four follow-ups now have regression tests: `BotsWindowTests` (the
+window's one draft, the published transcript/status/actions and a refusal's restored
+text), the reservation test's failing status read keeping its slot, `ResyncStateTests`
+(the snapshot/deadline interleavings, including a snapshot after the retry), and the
+refused-entry test (a failed removal, a reconnect, no replay, and a visible error). The
+stored `SettledRequest` is applied to the ranks on selection but has no UI for its
+reason.
 
 Still deferred, with reasons: the client logging contract (`os.Logger` crossings in
 OBSERVABILITY.md) is not implemented; the transport's gap/unknown/close-code/reconnect

@@ -44,13 +44,38 @@ final class BotsWorkspaceViewModel: ObservableObject {
   /// The shell owns the sidebar's selection; the view model reports the bot it selected.
   var onSelect: ((String) -> Void)?
 
+  /// Builds the connected client for a shell. Injectable so the window's contract (one
+  /// draft, published state) can be tested without a daemon.
+  typealias AppFactory = @MainActor (BotsSettings) async throws -> AppViewModel
+
   private let settings: BotsSettings
+  private let makeApp: AppFactory
   private let presenter = BotsPresenter()
   private var app: AppViewModel?
   private var cancellables = Set<AnyCancellable>()
 
-  init(settings: BotsSettings = BotsSettings()) {
+  init(
+    settings: BotsSettings = BotsSettings(),
+    makeApp: @escaping AppFactory = BotsWorkspaceViewModel.liveApp
+  ) {
     self.settings = settings
+    self.makeApp = makeApp
+  }
+
+  /// The production factory: token from the root, the HTTP catalog and one socket per bot.
+  static func liveApp(settings: BotsSettings) async throws -> AppViewModel {
+    let token = try TokenStore(root: settings.rootURL).read()
+    let catalog = CatalogHTTPClient(baseURL: settings.baseURL, token: token)
+    // A health check first: a missing token or a stopped daemon is a setup problem, not an
+    // empty catalog.
+    _ = try await catalog.load()
+    let connection = BotsConnection(baseURL: settings.baseURL, token: token)
+    let outbox = OutboxStore()
+    return AppViewModel(
+      catalog: catalog,
+      conversation: ConversationViewModel(conversation: connection, outbox: outbox),
+      outbox: outbox
+    )
   }
 
   var section: SidebarSection? {
@@ -69,15 +94,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
   func start() async {
     guard app == nil else { return }
     do {
-      let token = try TokenStore(root: settings.rootURL).read()
-      let catalog = CatalogHTTPClient(baseURL: settings.baseURL, token: token)
-      // A health check first: a missing token or a stopped daemon is a setup problem, not
-      // an empty catalog.
-      _ = try await catalog.load()
-      let connection = BotsConnection(baseURL: settings.baseURL, token: token)
-      let outbox = OutboxStore()
-      let conversation = ConversationViewModel(conversation: connection, outbox: outbox)
-      let model = AppViewModel(catalog: catalog, conversation: conversation, outbox: outbox)
+      let model = try await makeApp(settings)
       app = model
       bind(model)
       await model.refresh()

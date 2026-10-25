@@ -1,6 +1,48 @@
 import BotsCore
 import Foundation
 
+/// The resync state machine (PROTOCOL I2): one resync per gap, a ten-second deadline that
+/// either sends a second resync or reconnects, and a snapshot that always wins — it opens
+/// the barrier and resets the count, and a deadline that fires afterwards must not close
+/// the barrier again.
+public struct ResyncState: Sendable {
+  public enum Action: Equatable, Sendable {
+    case none
+    case resend
+    case reconnect
+  }
+
+  public private(set) var pending = false
+  public private(set) var attempts = 0
+
+  public init() {}
+
+  /// Starts waiting; false when a wait is already in place (the frame that noticed the gap
+  /// does not get a second request).
+  public mutating func begin() -> Bool {
+    guard !pending else { return false }
+    pending = true
+    return true
+  }
+
+  /// A snapshot repairs the stream: the barrier opens and the count resets.
+  public mutating func snapshotArrived() {
+    pending = false
+    attempts = 0
+  }
+
+  /// The deadline fired. When a snapshot already opened the barrier this is a no-op.
+  public mutating func deadlineFired() -> Action {
+    guard pending else { return .none }
+    attempts += 1
+    if attempts >= 2 {
+      pending = false
+      return .reconnect
+    }
+    return .resend
+  }
+}
+
 /// One bot's WebSocket (docs/bots/PROTOCOL.md, "Transport" and "Handshake"). It owns the
 /// frame codec's use, the revision baseline, the gap rule, liveness and the close codes;
 /// everything it observes becomes a `ConversationEvent`.
@@ -23,8 +65,7 @@ public final class ConversationSocket: NSObject {
   private var handshakeDone = false
   private var attempt = 0
   private var gap = RevisionGap()
-  private var resyncPending = false
-  private var resyncAttempts = 0
+  private var resync = ResyncState()
   private var resyncDeadline: Task<Void, Never>?
 
   public init(
@@ -185,12 +226,11 @@ public final class ConversationSocket: NSObject {
       lock.lock()
       if case .snapshot? = decoded.event {
         self.gap.reset(to: rev)
-        resyncPending = false
-        resyncAttempts = 0
+        self.resync.snapshotArrived()
         resyncDeadline?.cancel()
         resyncDeadline = nil
         accept = true
-      } else if resyncPending {
+      } else if self.resync.pending {
         // Waiting for the snapshot that repairs a gap: nothing else is applied.
         accept = false
       } else if self.gap.isStale(rev) {
@@ -221,11 +261,10 @@ public final class ConversationSocket: NSObject {
   /// that keeps sending gapped frames cannot exhaust the attempts.
   private func requestResync() {
     lock.lock()
-    if closed || resyncPending {
+    if closed || !resync.begin() {
       lock.unlock()
       return
     }
-    resyncPending = true
     lock.unlock()
     enqueue(try? Wire.resync(trace: Identifiers.trace("resync")))
     armResyncDeadline()
@@ -240,24 +279,23 @@ public final class ConversationSocket: NSObject {
       try? await Task.sleep(nanoseconds: 10_000_000_000)
       guard let self, !Task.isCancelled else { return }
       self.lock.lock()
-      guard self.resyncPending, !self.closed else {
+      guard !self.closed else {
         self.lock.unlock()
         return
       }
-      self.resyncAttempts += 1
-      let exhausted = self.resyncAttempts >= 2
+      let action = self.resync.deadlineFired()
+      let stillWaiting = self.resync.pending && !self.closed
       self.lock.unlock()
-      if exhausted {
-        self.disconnect(reason: "the stream kept losing revisions", code: 1011)
+      switch action {
+      case .none:
         return
+      case .reconnect:
+        self.disconnect(reason: "the stream kept losing revisions", code: 1011)
+      case .resend:
+        self.enqueue(try? Wire.resync(trace: Identifiers.trace("resync")))
+        // A snapshot that arrived meanwhile has opened the barrier: do not re-arm.
+        if stillWaiting { self.armResyncDeadline() }
       }
-      self.enqueue(try? Wire.resync(trace: Identifiers.trace("resync")))
-      // Only keep waiting when the barrier is still the one this task owns: a snapshot
-      // that arrived meanwhile has already opened it.
-      self.lock.lock()
-      let stillWaiting = self.resyncPending && !self.closed
-      self.lock.unlock()
-      if stillWaiting { self.armResyncDeadline() }
     }
   }
 
@@ -270,7 +308,7 @@ public final class ConversationSocket: NSObject {
     let previous = task
     task = nil
     handshakeDone = false
-    resyncPending = false
+    resync.snapshotArrived()
     resyncDeadline?.cancel()
     resyncDeadline = nil
     lock.unlock()
