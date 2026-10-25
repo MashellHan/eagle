@@ -47,7 +47,7 @@ export const CLOSE = {
   unknownBot: 4004,
   version: 4009,
   quarantined: 4090,
-  shutdown: 1001,
+  shutdown: 4010,
 } as const;
 
 /** A connection that sends no frame for this long is closed with 4000. */
@@ -115,13 +115,19 @@ export const toServerEvent = (event: HubEvent): ServerEvent => {
 /**
  * One connection. It answers `hello`, then routes commands to the service and encodes the
  * events the service publishes. Every refusal has one close code so the client can decide
- * whether to reconnect.
+ * whether to reconnect. Returns the connection's frame writer, so a daemon-wide event
+ * (the catalog) goes through the same encoder, budget and record as the rest.
  */
-export const attachConnection = (socket: WebSocket, deps: ConnectionDeps): void => {
+export const attachConnection = (
+  socket: WebSocket,
+  deps: ConnectionDeps,
+): ((event: ServerEvent) => void) => {
   const { log, service, registry, connId } = deps;
   const idleMs = deps.idleMs ?? IDLE_FRAME_MS;
   let helloSent = false;
   let subscribed = false;
+  /** Set synchronously when a `subscribe` is dispatched, cleared when it settles. */
+  let subscribing = false;
   let closed = false;
   let idleTimer: NodeJS.Timeout | undefined;
 
@@ -202,14 +208,19 @@ export const attachConnection = (socket: WebSocket, deps: ConnectionDeps): void 
       const frame = error instanceof FrameError ? error : undefined;
       const kind = frame?.reason === "limit_exceeded" ? "limit_exceeded" : "invalid_command";
       const evt = frame?.reason === "limit_exceeded" ? Events.limitFail : Events.decodeFail;
+      // One refusal, one identity: the record and the frame a client matches on it share
+      // this failure (PROTOCOL.md, "Client commands").
+      const refusal = serverFailure(kind, "protocol");
       log.emit("warn", "protocol", evt, {
         trace: frameTrace(text, connId),
         connId,
-        failure: { id: `f_${connId}_${Date.now()}`, kind, layer: "protocol" },
+        failure: refusal,
         origin: true,
         detail: { reason: "invalid" },
       });
-      if (frame?.reason === "invalid_command") {
+      // The handshake comes first: a frame that is not `hello` closes the connection, and
+      // nothing — not even an error — is written before `welcome` (PROTOCOL.md, "Handshake").
+      if (helloSent && frame?.reason === "invalid_command") {
         // A command this version does not know is refused, and the connection stays: the
         // client can carry on (PROTOCOL.md, "Client commands").
         emit({
@@ -217,12 +228,15 @@ export const attachConnection = (socket: WebSocket, deps: ConnectionDeps): void 
           trace: frameTrace(text, connId),
           kind: "invalid_command",
           disposition: "not_admitted",
-          failure: `f_${connId}`,
+          failure: refusal.id,
           message: "the command was refused",
         });
         return;
       }
-      close(CLOSE.protocol, frame?.reason ?? "bad frame");
+      close(
+        CLOSE.protocol,
+        helloSent ? (frame?.reason ?? "bad frame") : "hello must be the first frame",
+      );
       return;
     }
     void dispatch(command, text);
@@ -278,6 +292,8 @@ export const attachConnection = (socket: WebSocket, deps: ConnectionDeps): void 
       checked = validateCommand(command);
     } catch (error) {
       const reason = error instanceof FrameError ? error.reason : "invalid_command";
+      const kind = reason === "limit_exceeded" ? "limit_exceeded" : "invalid_command";
+      const refusal = serverFailure(kind, "protocol");
       log.emit(
         "warn",
         "protocol",
@@ -285,10 +301,7 @@ export const attachConnection = (socket: WebSocket, deps: ConnectionDeps): void 
         {
           trace,
           connId,
-          failure: serverFailure(
-            reason === "limit_exceeded" ? "limit_exceeded" : "invalid_command",
-            "protocol",
-          ),
+          failure: refusal,
           origin: true,
           detail: { reason: "invalid" },
         },
@@ -296,9 +309,9 @@ export const attachConnection = (socket: WebSocket, deps: ConnectionDeps): void 
       emit({
         type: "error",
         trace,
-        kind: reason === "limit_exceeded" ? "limit_exceeded" : "invalid_command",
+        kind,
         disposition: "not_admitted",
-        failure: serverFailure("invalid_command", "protocol").id,
+        failure: refusal.id,
         message: "the command was refused",
         ...(command.type === "send" ? { requestId: command.requestId } : {}),
       });
@@ -319,6 +332,7 @@ export const attachConnection = (socket: WebSocket, deps: ConnectionDeps): void 
         detail: { kind: command.type },
       });
     } catch (error) {
+      subscribing = false;
       await refuse(error, command, trace);
     }
     void text;
@@ -329,10 +343,13 @@ export const attachConnection = (socket: WebSocket, deps: ConnectionDeps): void 
     trace: string,
   ): Promise<void> => {
     if (command.type === "subscribe") {
-      if (subscribed) {
+      // The flag is set before the first await, so a second subscribe that arrives while
+      // the baseline is still being rendered is a protocol violation, not a race.
+      if (subscribed || subscribing) {
         close(CLOSE.protocol, "already subscribed");
         return;
       }
+      subscribing = true;
       if (registry.state(command.botId) === "quarantined") {
         close(CLOSE.quarantined, "quarantined");
         return;
@@ -345,6 +362,7 @@ export const attachConnection = (socket: WebSocket, deps: ConnectionDeps): void 
       registry.touch(command.botId);
       // The hub already published this baseline to the sink, numbered: sending it again
       // would paint an older snapshot over anything that arrived since (PROTOCOL I1/I3).
+      subscribing = false;
       void rev;
       void snapshot;
       return;
@@ -417,6 +435,7 @@ export const attachConnection = (socket: WebSocket, deps: ConnectionDeps): void 
   armIdle();
   deps.register(socket);
   log.emit("info", "transport", Events.openOk, { trace: `tr_${connId}`, connId });
+  return emit;
 };
 
 /** A rejection message is bounded and never carries model or provider content. */

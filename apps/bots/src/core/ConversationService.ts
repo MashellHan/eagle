@@ -15,6 +15,12 @@ import { EventHub, type HubSubscriber, type HubSubscription } from "./EventHub.t
 import type { RuntimeEvent, RuntimeHandle, RuntimeHistory, SubmitInput } from "./RuntimePort.ts";
 import { reduceView, type SubmissionRanks, seedRanks } from "./view.ts";
 
+/** A bot fans out to at most this many connections (PROTOCOL.md, "Limits"). */
+export const MAX_SUBSCRIBERS_PER_BOT = 8;
+/** Admitted-but-unsettled entries, and the runtime inbox, are both bounded (same table). */
+export const MAX_PENDING = 32;
+export const MAX_INBOX = 32;
+
 /** Opens (or recovers) one bot. The registry owns catalog policy; the service owns routing. */
 export type OpenBot = (botId: string, trace: string) => Promise<RuntimeHandle>;
 
@@ -119,6 +125,15 @@ export class ConversationService {
     if (connection.state !== "pending") {
       throw new CommandError(failure("internal"), "unknown", "the subscription was cancelled");
     }
+    if (bot.hub.subscriberCount >= MAX_SUBSCRIBERS_PER_BOT) {
+      // Refused, not closed: the connection can still be used for a different bot.
+      this.#connections.delete(connectionId);
+      throw new CommandError(
+        failure("limit_exceeded"),
+        "not_admitted",
+        "this bot already has the maximum number of subscribers",
+      );
+    }
     bot.hub.drain();
     // A sink drained by the flush can disconnect this connection; only a connection that
     // is still pending may be attached.
@@ -176,6 +191,15 @@ export class ConversationService {
       );
     }
     if (stored !== undefined) return stored;
+    const bot = this.#subscribed(connectionId, input.requestId);
+    if (bot.snapshot.pending.length >= MAX_PENDING || bot.snapshot.inbox.length >= MAX_INBOX) {
+      throw new CommandError(
+        failure("limit_exceeded"),
+        "not_admitted",
+        "the bot has no room for another admission",
+        input.requestId,
+      );
+    }
     try {
       return await handle.submit(input);
     } catch (cause) {

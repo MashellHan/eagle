@@ -26,6 +26,7 @@ export type Stack = {
   readonly directory: BotDirectory;
   readonly registry: BotRegistry;
   readonly service: ConversationService;
+  readonly daemon: Awaited<ReturnType<typeof startServer>>;
   readonly opens: () => number;
   createBot(title: string): Promise<string>;
   /** Puts a bot id in the quarantined state the transport refuses with 4090. */
@@ -37,7 +38,11 @@ export type Stack = {
 const token = "test-token-0123456789-abcdefghijklmnop";
 
 export const startStack = async (
-  options: { idleCloseMs?: number; script?: FakeScript } = {},
+  options: {
+    idleCloseMs?: number;
+    script?: FakeScript;
+    model?: { provider: string; modelId: string };
+  } = {},
 ): Promise<Stack> => {
   const root = await mkdtemp(join(tmpdir(), "bots-server-"));
   const { log, records } = captureLog();
@@ -50,7 +55,7 @@ export const startStack = async (
       opens += 1;
       return runtime.open(spec);
     },
-    model: { provider: "faux", modelId: "faux-1" },
+    model: options.model ?? { provider: "faux", modelId: "faux-1" },
     log,
     idleCloseMs: options.idleCloseMs ?? 10 * 60 * 1000,
     quarantineRetryMs: 30_000,
@@ -99,6 +104,7 @@ export const startStack = async (
     directory,
     registry,
     service,
+    daemon,
     opens: () => opens,
     createBot: async (title) => (await registry.create(title, "tr_create_probe")).id,
     quarantine: (botId) => quarantined.add(botId),

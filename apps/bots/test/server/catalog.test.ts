@@ -106,3 +106,43 @@ test("an unknown endpoint and an oversized body are refused", async () => {
     await stack.close();
   }
 });
+
+test("a title the catalog budget cannot hold is refused before it is stored", async () => {
+  const stack = await startStack({ model: { provider: "faux", modelId: `m${"x".repeat(1_400)}` } });
+  try {
+    const client = api(stack);
+    const refused = await client.create("太长");
+    assert.equal(refused.status, 400);
+    assert.equal(
+      ((await refused.json()) as { error: { kind: string } }).error.kind,
+      "limit_exceeded",
+    );
+    assert.deepEqual(stack.registry.summaries(), [], "nothing was written");
+  } finally {
+    await stack.close();
+  }
+});
+
+test("every catalog broadcast is a measured frame", async () => {
+  const stack = await startStack();
+  try {
+    const client = api(stack);
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    const before = stack.records.length;
+    await client.create("度量");
+    assert.equal((await frames.next()).type, "bots");
+    const sent = stack.records
+      .slice(before)
+      .filter(
+        (record) => record.evt === "transport.frame.send.ok" && record.detail?.evt === "bots",
+      );
+    assert.equal(sent.length, 1, "the broadcast goes through the frame writer");
+    assert.ok(Number(sent[0]?.detail?.bytes) > 0, "and its size is recorded");
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});

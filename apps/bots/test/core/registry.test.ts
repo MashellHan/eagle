@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { BotDirectory, nodeDirectoryFs } from "../../src/core/BotDirectory.ts";
 import { BotRegistry } from "../../src/core/BotRegistry.ts";
+import { ClassifiedFailure } from "../../src/core/domain.ts";
 import { captureLog } from "../../src/log/log.ts";
 import { FakeRuntime } from "../../src/testing/FakeRuntime.ts";
 
@@ -255,5 +256,58 @@ test("a delete whose close times out leaves the bot in quarantine", async () => 
     );
   } finally {
     await setup.cleanup();
+  }
+});
+
+test("an upstream open failure is propagated, not re-originated at core", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-registry-"));
+  const directory = new BotDirectory(root, await nodeDirectoryFs());
+  const { log, records } = captureLog();
+  const failure = { id: "f_runtime_1", kind: "session_failed" as const, layer: "runtime" as const };
+  const registry = new BotRegistry({
+    directory,
+    openRuntime: async () => {
+      throw new ClassifiedFailure(failure, "runtime", "the harness would not open");
+    },
+    model: { provider: "faux", modelId: "faux-1" },
+    log,
+    idleCloseMs: 60_000,
+    quarantineRetryMs: 60_000,
+    closeDeadlineMs: 100,
+    bootTrace: () => "tr_boot_probe",
+  });
+  try {
+    await directory.create({
+      id: "b_upstream",
+      title: "upstream",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      model: { provider: "faux", modelId: "faux-1" },
+    });
+    await registry.start();
+    const open = await registry
+      .open("b_upstream", "tr_open_upstream")
+      .then(() => undefined)
+      .catch((error: unknown) => error);
+    assert.ok(open instanceof ClassifiedFailure, "the refusal keeps its class and identity");
+    assert.equal(open.failure.id, failure.id);
+    assert.equal(registry.state("b_upstream"), "unavailable");
+    const core = records.filter((record) => record.evt === "core.bot.open.fail");
+    assert.equal(core.length, 2, "both the scan and the explicit open are recorded");
+    for (const record of core) {
+      assert.equal(record.level, "warn", "only the originating layer logs at error");
+      assert.equal(record.err?.failure, failure.id, "same identity as the runtime record");
+      assert.equal(record.err?.origin, undefined);
+      assert.equal(record.detail?.propagated, true, "the record says core propagated it");
+    }
+    assert.equal(
+      records.filter((record) => record.level === "error" && record.err?.failure === failure.id)
+        .length,
+      0,
+      "no second error record for one failure",
+    );
+  } finally {
+    await registry.shutdown();
+    await rm(root, { recursive: true, force: true });
   }
 });

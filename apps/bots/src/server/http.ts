@@ -1,18 +1,18 @@
 // The daemon's HTTP surface and its upgrade (docs/bots/PROTOCOL.md "HTTP endpoints"):
 // ready checks and the catalog, with the bearer token checked before anything else runs.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { WebSocket } from "ws";
-import { WebSocketServer } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import type { BotRegistry } from "../core/BotRegistry.ts";
 import type { ConversationService } from "../core/ConversationService.ts";
 import { ClassifiedFailure } from "../core/domain.ts";
 import { declareEvent } from "../log/events.ts";
 import type { Log } from "../log/log.ts";
+import type { ServerEvent } from "../protocol/frames.ts";
 import { MAX_TITLE_CHARS } from "../protocol/limits.ts";
 import { PROTOCOL_VERSION } from "../protocol/version.ts";
 import { parseBearer, tokenMatches } from "./auth.ts";
 import { serverFailure } from "./failures.ts";
-import { attachConnection, MAX_CONNECTIONS, refuseUpgrade } from "./socket.ts";
+import { attachConnection, CLOSE, MAX_CONNECTIONS, refuseUpgrade } from "./socket.ts";
 
 const Events = {
   authFail: declareEvent("transport.auth.fail"),
@@ -39,6 +39,18 @@ export type Daemon = {
   broadcastCatalog(): void;
   close(): Promise<void>;
 };
+
+/** How long a shutdown waits for clients to acknowledge the close frame. */
+const SHUTDOWN_GRACE_MS = 500;
+
+const onceClosed = (socket: WebSocket): Promise<void> =>
+  new Promise((resolve) => {
+    if (socket.readyState === WebSocket.CLOSED) {
+      resolve();
+      return;
+    }
+    socket.once("close", () => resolve());
+  });
 
 const json = (response: ServerResponse, status: number, body: unknown): void => {
   const text = JSON.stringify(body);
@@ -72,7 +84,13 @@ const title = (body: unknown): string | undefined => {
 export const startServer = async (options: ServerOptions): Promise<Daemon> => {
   const { log, registry, service, token } = options;
   let connections = 0;
+  /** Upgrades accepted but not completed: a refused upgrade must not hold a slot. */
+  let pending = 0;
+  let closing = false;
+  let shutdown: Promise<void> | undefined;
   const sockets = new Set<WebSocket>();
+  /** One frame writer per live connection, for the daemon-wide catalog event. */
+  const writers = new Map<WebSocket, (event: ServerEvent) => void>();
   const instance = options.instance ?? `i_${process.pid}`;
   let sequence = 0;
 
@@ -82,12 +100,19 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
   const wss = new WebSocketServer({ noServer: true });
 
   const broadcastCatalog = (): void => {
-    const event = JSON.stringify({ type: "bots", bots: registry.summaries() });
-    for (const socket of sockets) socket.send(event);
+    const bots = registry.summaries();
+    for (const writer of writers.values()) writer({ type: "bots", bots });
   };
 
   const route = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const path = (request.url ?? "/").split("?")[0] ?? "/";
+    if (closing) {
+      // PROTOCOL.md, "Close codes": the daemon is going away, so no new work is accepted.
+      json(response, 503, {
+        error: { kind: "internal", message: "the daemon is shutting down" },
+      });
+      return;
+    }
     if (path === "/v1/health") {
       json(response, 200, {
         version: options.version,
@@ -154,7 +179,14 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
     } catch (error) {
       const classified = error instanceof ClassifiedFailure ? error : undefined;
       const kind = classified?.failure.kind ?? "storage_failed";
-      const status = kind === "unknown_bot" ? 404 : kind === "internal" ? 409 : 500;
+      const status =
+        kind === "unknown_bot"
+          ? 404
+          : kind === "internal"
+            ? 409
+            : kind === "limit_exceeded" || kind === "invalid_command"
+              ? 400
+              : 500;
       json(response, status, {
         error: { kind, message: classified?.message ?? "the request failed" },
       });
@@ -162,6 +194,10 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
   };
 
   server.on("upgrade", (request, socket, head) => {
+    if (closing) {
+      refuseUpgrade(socket, 503, "Service Unavailable");
+      return;
+    }
     if (!tokenMatches(token, parseBearer(request.headers.authorization))) {
       log.emit("warn", "transport", Events.authFail, {
         trace: `tr_http_${process.pid}`,
@@ -171,7 +207,7 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       refuseUpgrade(socket, 401, "Unauthorized");
       return;
     }
-    if (connections >= MAX_CONNECTIONS) {
+    if (connections + pending >= MAX_CONNECTIONS) {
       log.emit("warn", "transport", Events.openReject, {
         trace: `tr_http_${process.pid}`,
         failure: serverFailure("limit_exceeded", "transport"),
@@ -180,10 +216,19 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       refuseUpgrade(socket, 503, "Service Unavailable");
       return;
     }
-    connections += 1;
+    pending += 1;
+    // A handshake ws refuses (bad headers, wrong method) aborts the socket without ever
+    // calling back, so the slot has to be released from the socket's own close event.
+    let upgraded = false;
+    socket.once("close", () => {
+      if (!upgraded) pending = Math.max(0, pending - 1);
+    });
     wss.handleUpgrade(request, socket, head, (ws) => {
+      upgraded = true;
+      pending = Math.max(0, pending - 1);
+      connections += 1;
       const connId = `c_${++sequence}`;
-      attachConnection(ws, {
+      const write = attachConnection(ws, {
         log,
         service,
         registry,
@@ -195,23 +240,44 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
         },
         unregister: (socket) => {
           sockets.delete(socket);
+          writers.delete(socket);
           connections = Math.max(0, connections - 1);
         },
       });
+      writers.set(ws, write);
     });
   });
 
   await new Promise<void>((resolve) => server.listen(options.port ?? 0, "127.0.0.1", resolve));
   const address = server.address();
   const port = typeof address === "object" && address !== null ? address.port : 0;
+  const stop = async (): Promise<void> => {
+    closing = true;
+    const open = [...sockets];
+    // Tell every client the daemon is going away (4001/4010 in PROTOCOL.md) instead of
+    // dropping the TCP connection: a terminate reads as a crash and skips the backoff.
+    for (const socket of open) {
+      if (socket.readyState === WebSocket.OPEN) socket.close(CLOSE.shutdown, "shutdown");
+    }
+    await Promise.race([
+      Promise.all(open.map((socket) => onceClosed(socket))),
+      new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, SHUTDOWN_GRACE_MS);
+        timer.unref?.();
+      }),
+    ]);
+    for (const socket of sockets) socket.terminate();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  };
+
   return {
     server,
     port,
     broadcastCatalog,
-    close: async () => {
-      for (const socket of sockets) socket.terminate();
-      server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+    close: () => {
+      shutdown ??= stop();
+      return shutdown;
     },
   };
 };

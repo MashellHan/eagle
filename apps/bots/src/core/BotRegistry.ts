@@ -61,7 +61,16 @@ export type RegistryOptions = {
   readonly newBotId?: () => string;
   /** Trace for daemon-created work: idle closes, retries, the recovery scan. */
   readonly bootTrace?: () => string;
+  /** Encoded size of one `BotSummary`: the catalog event has to fit the frame cap. */
+  readonly measureSummary?: (summary: BotSummary) => number;
+  /** PROTOCOL.md, "Limits": one `BotSummary` is at most 1 200 encoded bytes. */
+  readonly maxSummaryBytes?: number;
 };
+
+export const MAX_SUMMARY_BYTES = 1_200;
+
+const jsonBytes = (summary: BotSummary): number =>
+  Buffer.byteLength(JSON.stringify(summary), "utf8");
 
 /** UUIDv7: the timestamp prefix keeps catalog and directory order stable. */
 export const newBotId = (now: number = Date.now()): string => {
@@ -161,6 +170,8 @@ export class BotRegistry {
       updatedAt: at,
       model: this.#options.model,
     };
+    // Checked before the write: a summary the `bots` event cannot carry must not exist.
+    this.#assertSummary({ ...config, state: "catalogued" });
     await this.#options.directory.create(config);
     const entry: Entry = {
       config,
@@ -182,6 +193,7 @@ export class BotRegistry {
   async rename(botId: string, title: string, trace: string): Promise<BotSummary> {
     const entry = this.#entry(botId);
     const at = (this.#options.now?.() ?? new Date()).toISOString();
+    this.#assertSummary({ ...entry.config, title, updatedAt: at, state: entry.state });
     const config = await this.#options.directory.rename(botId, title, at);
     entry.config = config;
     void trace;
@@ -338,12 +350,12 @@ export class BotRegistry {
         error instanceof ClassifiedFailure ? error.failure : newFailure("storage_failed");
       entry.state = "unavailable";
       entry.unavailable = unavailable(failure.kind, "the bot could not be opened");
-      this.#options.log.emit("error", "core", Events.openFail, {
+      const own = failure.layer === "core";
+      this.#options.log.emit(own ? "error" : "warn", "core", Events.openFail, {
         trace,
         botId: entry.config.id,
         failure,
-        origin: failure.layer === "core",
-        ...(failure.layer === "core" ? {} : { propagated: true }),
+        ...(own ? { origin: true as const } : { propagated: true }),
         durMs: Math.round(performance.now() - started),
       });
       throw error instanceof ClassifiedFailure
@@ -475,6 +487,18 @@ export class BotRegistry {
     entry.cancelIdle = undefined;
     entry.cancelRetry?.();
     entry.cancelRetry = undefined;
+  }
+
+  /** Refuses a summary the derived 240 200-byte catalog bound cannot hold. */
+  #assertSummary(summary: BotSummary): void {
+    const measure = this.#options.measureSummary ?? jsonBytes;
+    if (measure(summary) > (this.#options.maxSummaryBytes ?? MAX_SUMMARY_BYTES)) {
+      throw new ClassifiedFailure(
+        newFailure("limit_exceeded"),
+        "not_admitted",
+        "the title does not fit the catalog budget",
+      );
+    }
   }
 
   #summary(entry: Entry): BotSummary {

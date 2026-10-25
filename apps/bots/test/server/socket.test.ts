@@ -1,5 +1,6 @@
 // Ladder rows 38-40: the handshake, refusal close codes and the one-subscription rule.
 import assert from "node:assert/strict";
+import net from "node:net";
 import test from "node:test";
 import { closeCode, frameQueue, hello, nextFrame, send, startStack } from "../support/server.ts";
 
@@ -342,6 +343,160 @@ test("the wire limits refuse a bad requestId and an over-long text", async () =>
     );
     assert.equal(long.requestId, "r_long_000001", "the client can clear that outbox entry");
     socket.close();
+  } finally {
+    await stack.close();
+  }
+});
+
+test("a refused upgrade does not consume one of the sixteen slots", async () => {
+  const stack = await startStack();
+  try {
+    const port = stack.port;
+    const bad = async (): Promise<void> => {
+      await new Promise<void>((resolve) => {
+        const socket = net.connect({ host: "127.0.0.1", port }, () => {
+          socket.write(
+            "GET /v1/socket HTTP/1.1\r\nHost: 127.0.0.1\r\n" +
+              `Authorization: Bearer ${stack.token}\r\n` +
+              "Upgrade: websocket\r\nConnection: Upgrade\r\n" +
+              "Sec-WebSocket-Version: 13\r\n\r\n",
+          );
+        });
+        socket.on("data", () => undefined);
+        socket.on("close", () => resolve());
+        socket.on("error", () => resolve());
+      });
+    };
+    for (let index = 0; index < 16; index += 1) await bad();
+    const socket = stack.connect();
+    const opened = await new Promise<string>((resolve) => {
+      socket.once("open", () => resolve("open"));
+      socket.once("unexpected-response", (_request, response) =>
+        resolve(`status ${String(response.statusCode)}`),
+      );
+      socket.once("error", (error: Error) => resolve(`error ${error.message}`));
+    });
+    assert.equal(opened, "open", "a failed upgrade frees its slot");
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    assert.equal((await frames.next()).type, "welcome");
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});
+
+test("a ninth subscriber is refused with limit_exceeded and the connection kept", async () => {
+  const stack = await startStack();
+  try {
+    const botId = await stack.createBot("上限");
+    const sockets = [];
+    for (let index = 0; index < 8; index += 1) {
+      const socket = stack.connect();
+      const frames = frameQueue(socket);
+      await send(socket, hello);
+      await frames.next();
+      await send(socket, { type: "subscribe", botId, trace: tr(`sub${index}`) });
+      assert.equal((await frames.next()).type, "snapshot");
+      sockets.push({ socket, frames });
+    }
+    const ninth = stack.connect();
+    const frames = frameQueue(ninth);
+    await send(ninth, hello);
+    await frames.next();
+    await send(ninth, { type: "subscribe", botId, trace: tr("ninth") });
+    const refused = await frames.next();
+    assert.equal(refused.type, "error");
+    assert.equal(refused.kind, "limit_exceeded");
+    assert.equal(refused.disposition, "not_admitted");
+    await send(ninth, { type: "ping" });
+    assert.equal((await frames.next()).type, "pong", "the refusal keeps the connection");
+    ninth.close();
+    for (const held of sockets) held.socket.close();
+  } finally {
+    await stack.close();
+  }
+});
+
+test("nothing reaches the client before welcome", async () => {
+  const stack = await startStack();
+  try {
+    const socket = stack.connect();
+    const seen: Record<string, unknown>[] = [];
+    socket.on("message", (data: { toString(): string }) => {
+      seen.push(JSON.parse(data.toString()) as Record<string, unknown>);
+    });
+    await send(socket, { type: "nonsense", trace: tr("earlyframe") });
+    assert.equal(await closeCode(socket), 1008, "hello must be the first frame");
+    assert.deepEqual(seen, [], "no error frame overtakes the handshake");
+  } finally {
+    await stack.close();
+  }
+});
+
+test("a second subscribe in flight closes 1008", async () => {
+  const stack = await startStack();
+  try {
+    const botId = await stack.createBot("并发订阅");
+    const socket = stack.connect();
+    await send(socket, hello);
+    await nextFrame(socket);
+    await send(socket, { type: "subscribe", botId, trace: tr("burst1") });
+    await send(socket, { type: "subscribe", botId, trace: tr("burst2") });
+    assert.equal(await closeCode(socket), 1008);
+  } finally {
+    await stack.close();
+  }
+});
+
+test("a refusal carries the same failure id in the frame and the log", async () => {
+  const stack = await startStack();
+  try {
+    const botId = await stack.createBot("身份");
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    await send(socket, { type: "subscribe", botId, trace: tr("identity") });
+    await frames.next();
+    const before = stack.records.length;
+    await send(socket, {
+      type: "send",
+      requestId: "x",
+      text: "hi",
+      whenBusy: "followUp",
+      trace: tr("identity2"),
+    });
+    const refused = await frames.next();
+    assert.equal(refused.type, "error");
+    const rejection = stack.records
+      .slice(before)
+      .find((record) => record.trace === tr("identity2") && record.err !== undefined);
+    assert.ok(rejection, "the refusal is logged");
+    assert.equal(
+      refused.failure,
+      rejection.err?.failure,
+      "one identity for one refusal (PROTOCOL.md, Client commands)",
+    );
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});
+
+test("shutting down closes 4010 so the client reconnects with backoff", async () => {
+  const stack = await startStack();
+  try {
+    const botId = await stack.createBot("关停");
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    await send(socket, { type: "subscribe", botId, trace: tr("shutdown") });
+    await frames.next();
+    const closing = closeCode(socket);
+    await stack.daemon.close();
+    assert.equal(await closing, 4010, "the close code names a shutdown, not a crash");
   } finally {
     await stack.close();
   }

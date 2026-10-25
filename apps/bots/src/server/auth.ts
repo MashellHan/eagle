@@ -2,7 +2,7 @@
 // `<root>/token`, mode 0600, generated on first start; a comparison is constant time and a
 // missing token never authenticates.
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 /** 32 random bytes, base64url: long enough that a bearer guess is hopeless. */
@@ -15,13 +15,19 @@ export const loadToken = async (root: string): Promise<string> => {
   const path = join(root, "token");
   try {
     const existing = (await readFile(path, "utf8")).trim();
-    if (existing.length >= 32) return existing;
+    if (existing.length >= 32) {
+      // 0600 is the contract (PROTOCOL.md, "Transport"), so a file someone loosened is
+      // tightened again instead of being trusted by name alone.
+      await chmod(path, 0o600);
+      return existing;
+    }
   } catch {
     // fall through to creation
   }
   await mkdir(root, { recursive: true, mode: 0o700 });
   const token = generateToken();
   await writeFile(path, `${token}\n`, { mode: 0o600 });
+  await chmod(path, 0o600);
   return token;
 };
 

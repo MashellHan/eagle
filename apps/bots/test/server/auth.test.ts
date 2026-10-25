@@ -1,7 +1,11 @@
 // Ladder row 37: the bearer token gates HTTP and the upgrade, and a refusal never reaches
 // core or the runtime.
 import assert from "node:assert/strict";
+import { chmod, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import { loadToken } from "../../src/server/auth.ts";
 import { hello, nextFrame, send, startStack } from "../support/server.ts";
 
 test("rejects a wrong bearer token before upgrade", async () => {
@@ -53,5 +57,21 @@ test("rejects a wrong bearer token before upgrade", async () => {
     authorised.close();
   } finally {
     await stack.close();
+  }
+});
+
+test("an existing token file is tightened to 0600 and reused", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-token-"));
+  try {
+    const path = join(root, "token");
+    const issued = "existing-token-0123456789-abcdefghijklmnop";
+    await writeFile(path, `${issued}\n`, { mode: 0o644 });
+    await chmod(path, 0o644);
+    const token = await loadToken(root);
+    assert.equal(token, issued, "an existing token is never replaced");
+    const stats = await stat(path);
+    assert.equal(stats.mode & 0o777, 0o600, "the token file is readable by its owner only");
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });

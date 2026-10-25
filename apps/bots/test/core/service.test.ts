@@ -1128,3 +1128,53 @@ test("an unanswered broadcast keeps its reason and carries no answer entry", asy
   );
   assert.deepEqual(reply, expected);
 });
+
+test("send is refused when the pending or inbox budget is full", async () => {
+  const input = {
+    requestId: "r_budget_0001",
+    text: "预算",
+    whenBusy: "followUp" as const,
+    trace,
+  };
+  const full = (overrides: Partial<ConversationSnapshot>): ConversationSnapshot => ({
+    botId: "b_1",
+    messages: [],
+    pending: [],
+    inbox: [],
+    running: false,
+    streaming: null,
+    ...overrides,
+  });
+  const queued = Array.from({ length: 32 }, (_, index) => ({
+    id: `s_${index + 1}`,
+    requestId: `r_pending_${String(index).padStart(4, "0")}`,
+    status: "queued" as const,
+  }));
+  const inbox = Array.from({ length: 32 }, (_, index) => ({
+    id: `s_i${index + 1}`,
+    mode: "followUp" as const,
+  }));
+
+  for (const snapshot of [full({ pending: queued }), full({ inbox })]) {
+    const runtime = new FakeRuntime({ snapshot: () => snapshot });
+    const service = serviceFor(runtime);
+    const received: HubEvent[] = [];
+    await subscribe(service, received);
+    await assert.rejects(
+      () => service.send("c_1", input),
+      (error: unknown) =>
+        error instanceof CommandError &&
+        error.kind === "limit_exceeded" &&
+        error.disposition === "not_admitted" &&
+        error.requestId === input.requestId,
+      "admission beyond the budget restores the draft",
+    );
+  }
+
+  // A duplicate requestId is not new admission: the stored record still comes back.
+  const runtime = new FakeRuntime({ snapshot: () => full({ pending: queued }) });
+  const service = serviceFor(runtime);
+  await subscribe(service, []);
+  const stored = await service.send("c_1", { ...input, requestId: queued[0]?.requestId ?? "" });
+  assert.equal(stored.id, "s_1");
+});
