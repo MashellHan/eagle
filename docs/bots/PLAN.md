@@ -246,7 +246,10 @@ P2s: no silent sandbox degradation, SDK budgets set as a backstop above the tool
 whole-file size limit. A third review confirmed those and left one limit: a daemon whose
 parent already exited is reparented and cannot be killed by a tree walk, which RUNTIME.md
 now states; the same review's two page-limit defects (an unterminated last line bypassing
-`limit`, and a page-budget refusal reported as "no such line") are fixed. Slice 2 (herdr: open a space,
+`limit`, and a page-budget refusal reported as "no such line") are fixed. A fourth review
+confirmed the page fixes and found the output budget still counted pre-decode bytes at the
+cut: a lossy decode now clips on a UTF-8 boundary and the decoders' tail is budgeted too,
+and the stderr test now writes stderr (with the redirect removed). Slice 2 (herdr: open a space,
 schedule the controller, monitor, fetch, bidirectional messages) is next, as a second
 extension with the same layering.
 

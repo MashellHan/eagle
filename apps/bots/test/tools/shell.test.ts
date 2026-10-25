@@ -166,10 +166,24 @@ test("a stderr marker is written once, even across many chunks", async () => {
     assert.match(split.output, /\[stderr\]\nBUILD_FAILED/);
     assert.equal((split.output.match(/\[stderr\]/g) ?? []).length, 1);
 
+    // Two large stderr writes with a pause between them: one marker, one shared budget.
     const many = await runCommandTool(workspace, {
-      command: "perl -e 'for (1..10000) { print STDERR q{x}; }' 2>&1 1>/dev/null",
+      command:
+        "perl -e 'print STDERR q{x} x 40000; select(undef, undef, undef, 0.05); print STDERR q{y} x 40000'",
     });
     assert.ok(Buffer.byteLength(many.output) <= 64 * 1024 + 100);
+    assert.equal((many.output.match(/\[stderr\]/g) ?? []).length, 1);
+    assert.match(many.output, /\[output truncated\]|\[exit code 0\]/);
+
+    // A lossy decode expands each input byte into three: the budget counts what the model
+    // reads, and a cut multi-byte sequence never re-expands past it.
+    const expanded = await runCommandTool(workspace, {
+      command: "head -c 65536 /dev/zero | LC_ALL=C tr '\\0' '\\377'",
+    });
+    const body = expanded.output
+      .replace(/\n\[exit code \d+\]$/, "")
+      .replace(/\n\[output truncated\]$/, "");
+    assert.ok(Buffer.byteLength(body) <= 64 * 1024);
   } finally {
     await cleanup();
   }

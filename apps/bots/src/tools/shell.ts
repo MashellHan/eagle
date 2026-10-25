@@ -124,6 +124,21 @@ const killTree = (pid: number): void => {
 
 type Stream = "stdout" | "stderr";
 
+/** The longest prefix of `encoded` at most `max` bytes that decodes without U+FFFD. */
+const clipUtf8 = (encoded: Buffer, max: number): { text: string; bytes: number } => {
+  let slice = encoded.subarray(0, Math.max(max, 0));
+  let text = slice.toString("utf8");
+  let guard = 0;
+  // A cut in the middle of a multi-byte sequence would decode to a longer replacement
+  // character and break the byte budget it was cut for.
+  while (text.endsWith("\uFFFD") && slice.length > 0 && guard < 4) {
+    slice = slice.subarray(0, slice.length - 1);
+    text = slice.toString("utf8");
+    guard += 1;
+  }
+  return { text, bytes: Buffer.byteLength(text) };
+};
+
 export const runCommandTool = async (
   workspace: BotWorkspace,
   args: RunCommandArgs,
@@ -187,8 +202,9 @@ export const runCommandTool = async (
       const encoded = Buffer.from(decoded);
       const remaining = MAX_COMMAND_OUTPUT_BYTES - bytes;
       if (encoded.length > remaining) {
-        text += encoded.subarray(0, remaining).toString("utf8");
-        bytes += remaining;
+        const clipped = clipUtf8(encoded, remaining);
+        text += clipped.text;
+        bytes += clipped.bytes;
         truncated = true;
         return;
       }
@@ -197,6 +213,20 @@ export const runCommandTool = async (
     };
     child.stdout.on("data", append("stdout"));
     child.stderr.on("data", append("stderr"));
+    // The decoders' final bytes obey the same budget as the chunks before them.
+    const flush = (): string => {
+      const tail = decoders.stdout.end() + decoders.stderr.end();
+      const encoded = Buffer.from(tail);
+      const remaining = MAX_COMMAND_OUTPUT_BYTES - bytes;
+      if (encoded.length <= remaining) {
+        bytes += encoded.length;
+        return tail;
+      }
+      truncated = true;
+      const clipped = clipUtf8(encoded, remaining);
+      bytes += clipped.bytes;
+      return clipped.text;
+    };
     let settled = false;
     const settle = (outcome: ToolOutcome) => {
       if (settled) return;
@@ -213,8 +243,7 @@ export const runCommandTool = async (
       stopped = reason;
       if (child.pid !== undefined) killTree(child.pid);
       // Flush whatever was decoded so the model keeps the diagnostics it already has.
-      const tail = text + decoders.stdout.end() + decoders.stderr.end();
-      const body = tail.replace(/\n$/, "");
+      const body = (text + flush()).replace(/\n$/, "");
       const why =
         reason === "abort"
           ? "the command was aborted"
@@ -228,7 +257,7 @@ export const runCommandTool = async (
     child.once("error", () => settle(failed(`the command could not be started: ${command}`)));
     child.once("close", (code, signalName) => {
       if (stopped !== undefined) return; // a killed command already answered
-      const body = (text + decoders.stdout.end() + decoders.stderr.end()).replace(/\n$/, "");
+      const body = (text + flush()).replace(/\n$/, "");
       const parts: string[] = [];
       if (body.length > 0) parts.push(body);
       if (truncated) parts.push("[output truncated]");

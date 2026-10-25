@@ -1490,6 +1490,7 @@ A checkpoint is what a person can actually see, so this records the absence too.
   abort, UTF-8 split across chunks, FIFO read and write refusal, root replaced after open,
   mode tightening, unreadable directory surfacing, a streamed page of a 530 KB file, and the
   six escape paths — plus two faux-model rounds proving the SDK keeps a 3 000-line command's
-  exit line and a 2 500-line read page's note.
+  exit line and a 2 500-line read page's note. A lossy-decode probe confirms the decoded
+  body never passes the 64 KiB budget, and the stderr tests exercise stderr.
 - **Next broken hop:** rendering tool rows in the client (still off the wire), then the
   herdr tools of slice 2.
