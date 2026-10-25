@@ -375,3 +375,20 @@ hidden rows dropping out of the list.
 
 Next broken hop: history paging from the transcript, bot settings and per-bot inspector
 content; stage 4's three deferred daemon races are still open.
+
+## 2026-10-26 — stage 5 MVP observed end to end
+
+Observed: the Eagle main window has a `Bots` group whose rows are daemon bots drawn with
+their own face; `+` opens the create sheet (required name, optional label, ten shapes,
+twelve tints, live preview, reference proportions), `+`-created bots appear in the list
+immediately and chat over a real socket; answers stream into markdown dialog bubbles;
+the row menu matches the reference (置顶, 移至 ▸, 标为未读, 重命名 Bot, 复制对话 ID, 从侧
+边栏隐藏, 删除); bots keep their label and face across daemon restarts.
+
+Verified just now: `apps/bots` `npm run check` 346 tests, coverage 94.87/89.71/90.35;
+`apps/bots-macos` `swift test` 44 tests and `./Scripts/coverage.sh` 90.2%;
+`apps/macos` `swift test` 39 tests; `Scripts/build-app.sh` builds the app; a live chat
+against the real model rendered as a markdown bubble (heading, bullets, `bash` block).
+
+Next broken hop: the independent review of stages 4 and 5 (this round), then the
+daemon's three deferred races and the client items listed in PLAN.md.
