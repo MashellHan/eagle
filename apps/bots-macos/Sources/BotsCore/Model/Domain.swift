@@ -60,12 +60,21 @@ public enum ContentBlock: Codable, Sendable, Equatable {
         args: try container.decode([String: JSONValue].self, forKey: .args)
       )
     case "toolResult":
-      let durationMs = try container.decodeIfPresent(Int.self, forKey: .durationMs)
-      if let durationMs, durationMs < 0 {
+      // Follow the daemon codec exactly: `null` is not "absent", and the bound is the
+      // largest safe integer, because the value crosses a JSON number boundary.
+      if container.contains(.durationMs), try container.decodeNil(forKey: .durationMs) {
         throw DecodingError.dataCorruptedError(
           forKey: .durationMs,
           in: container,
-          debugDescription: "durationMs must not be negative"
+          debugDescription: "durationMs must be a number"
+        )
+      }
+      let durationMs = try container.decodeIfPresent(Int.self, forKey: .durationMs)
+      if let durationMs, durationMs < 0 || durationMs > 9_007_199_254_740_991 {
+        throw DecodingError.dataCorruptedError(
+          forKey: .durationMs,
+          in: container,
+          debugDescription: "durationMs must be a non-negative safe integer"
         )
       }
       self = .toolResult(
@@ -421,10 +430,50 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
   }
 }
 
+/// One step of a toolcall delta's path. pi streams a call's arguments as JSON text and
+/// names array positions with numbers, so the type is preserved across the wire; a
+/// numeric-looking object key stays a key (PROTOCOL I13).
+public enum JSONPathComponent: Codable, Sendable, Hashable {
+  case key(String)
+  case index(Int)
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    if let index = try? container.decode(Int.self) {
+      self = .index(index)
+      return
+    }
+    if let key = try? container.decode(String.self) {
+      self = .key(key)
+      return
+    }
+    throw DecodingError.dataCorruptedError(
+      in: container,
+      debugDescription: "not a path component"
+    )
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .key(let key): try container.encode(key)
+    case .index(let index): try container.encode(index)
+    }
+  }
+}
+
+extension JSONPathComponent: ExpressibleByStringLiteral {
+  public init(stringLiteral value: String) { self = .key(value) }
+}
+
+extension JSONPathComponent: ExpressibleByIntegerLiteral {
+  public init(integerLiteral value: Int) { self = .index(value) }
+}
+
 public enum DeltaChange: Codable, Sendable, Equatable {
   case text(index: Int, append: String)
   case thinking(index: Int, append: String)
-  case toolCall(index: Int, callId: String, path: [String], append: String)
+  case toolCall(index: Int, callId: String, path: [JSONPathComponent], append: String)
   case block(index: Int, block: ContentBlock)
   case message(Message)
 
@@ -449,9 +498,7 @@ public enum DeltaChange: Codable, Sendable, Equatable {
       self = .toolCall(
         index: try container.decode(Int.self, forKey: .index),
         callId: try container.decodeIfPresent(String.self, forKey: .callId) ?? "",
-        path: (try container.decodeIfPresent([JSONPathComponent].self, forKey: .path) ?? []).map(
-          \.value
-        ),
+        path: try container.decodeIfPresent([JSONPathComponent].self, forKey: .path) ?? [],
         append: try container.decodeIfPresent(String.self, forKey: .append) ?? ""
       )
     case "block":
@@ -485,7 +532,7 @@ public enum DeltaChange: Codable, Sendable, Equatable {
       try container.encode("toolcall", forKey: .kind)
       try container.encode(index, forKey: .index)
       try container.encode(callId, forKey: .callId)
-      try container.encode(path.map(JSONPathComponent.string), forKey: .path)
+      try container.encode(path, forKey: .path)
       try container.encode(append, forKey: .append)
     case .block(let index, let block):
       try container.encode("block", forKey: .kind)
@@ -498,31 +545,7 @@ public enum DeltaChange: Codable, Sendable, Equatable {
   }
 
   /// A tool path mixes object keys and array indexes; the client never writes one.
-  private enum JSONPathComponent: Codable {
-    case string(String)
-    case number(Int)
-    var value: String {
-      switch self {
-      case .string(let text): return text
-      case .number(let number): return String(number)
-      }
-    }
-    init(from decoder: Decoder) throws {
-      let container = try decoder.singleValueContainer()
-      if let text = try? container.decode(String.self) {
-        self = .string(text)
-      } else {
-        self = .number(try container.decode(Int.self))
-      }
-    }
-    func encode(to encoder: Encoder) throws {
-      var container = encoder.singleValueContainer()
-      switch self {
-      case .string(let text): try container.encode(text)
-      case .number(let number): try container.encode(number)
-      }
-    }
-  }
+
 }
 
 public enum BusyMode: String, Codable, Sendable {

@@ -283,33 +283,55 @@ struct BotsPresenter {
 
   private struct ToolCallKey: Hashable {
     let messageId: String
+    let block: Int
+  }
+
+  private struct CallRef {
+    let key: ToolCallKey
+    let messageIndex: Int
     let callId: String
   }
 
-  /// Pairs the i-th call with the i-th result of the same `callId`, in message order. A
-  /// repeated `callId` therefore keeps each round's own result, and a result whose call is
-  /// no longer in the page stays unconsumed, so it is rendered as a row of its own.
+  /// A result pairs with the **latest unmatched call of the same id before it**. A repeated
+  /// `callId` therefore keeps each round's own result, and a call trimmed out of the page
+  /// leaves its result orphaned instead of shifting every later pairing by one. A result
+  /// with no preceding unmatched call stays unconsumed, so it is rendered as its own row.
   private func pairTools(_ messages: [Message]) -> ([ToolCallKey: ToolResult], Set<String>) {
-    var queues: [String: [ToolResult]] = [:]
-    for message in messages where message.role == .tool {
-      for block in message.blocks {
-        if case .toolResult(let callId, _, let text, let isError, let durationMs) = block {
-          queues[callId, default: []].append(
-            ToolResult(messageId: message.id, text: text, isError: isError, durationMs: durationMs)
+    var calls: [CallRef] = []
+    for (messageIndex, message) in messages.enumerated() where message.role == .assistant {
+      for (blockIndex, block) in message.blocks.enumerated() {
+        guard case .toolCall(let callId, _, _) = block else { continue }
+        calls.append(
+          CallRef(
+            key: ToolCallKey(messageId: message.id, block: blockIndex),
+            messageIndex: messageIndex,
+            callId: callId
           )
-        }
+        )
       }
     }
+    var used: Set<Int> = []
     var paired: [ToolCallKey: ToolResult] = [:]
     var consumed: Set<String> = []
-    for message in messages where message.role == .assistant {
+    for (messageIndex, message) in messages.enumerated() where message.role == .tool {
       for block in message.blocks {
-        guard case .toolCall(let callId, _, _) = block else { continue }
-        guard var queue = queues[callId], !queue.isEmpty else { continue }
-        let result = queue.removeFirst()
-        queues[callId] = queue
-        paired[ToolCallKey(messageId: message.id, callId: callId)] = result
-        consumed.insert(result.messageId)
+        guard case .toolResult(let callId, _, let text, let isError, let durationMs) = block else {
+          continue
+        }
+        let match = calls.indices.last { index in
+          let call = calls[index]
+          return call.callId == callId && call.messageIndex < messageIndex
+            && !used.contains(index)
+        }
+        guard let match else { continue }
+        used.insert(match)
+        paired[calls[match].key] = ToolResult(
+          messageId: message.id,
+          text: text,
+          isError: isError,
+          durationMs: durationMs
+        )
+        consumed.insert(message.id)
       }
     }
     return (paired, consumed)
@@ -373,7 +395,7 @@ struct BotsPresenter {
         text = ""
         runs += 1
       }
-      for block in message.blocks {
+      for (blockIndex, block) in message.blocks.enumerated() {
         switch block {
         case .text(let value):
           text += value
@@ -382,10 +404,10 @@ struct BotsPresenter {
         case .toolCall(let callId, let name, let args):
           hasTool = true
           flush()
-          let result = paired[ToolCallKey(messageId: message.id, callId: callId)]
+          let result = paired[ToolCallKey(messageId: message.id, block: blockIndex)]
           rows.append(
             .tool(
-              id: "call-\(message.id)-\(callId)",
+              id: "call-\(message.id)-\(blockIndex)",
               row: ToolRow(
                 name: name,
                 subtitle: summary(of: args),

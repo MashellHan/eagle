@@ -842,13 +842,55 @@ test("a toolcall delta carries a block-rooted path and the fold agrees", () => {
     new Map(),
   );
   for (const event of events.slice(1)) view = reduceView(view, event, new Map());
+  const expected = { nested: { q: "aZ" } };
   const block = view.messages[0]?.blocks[0];
   assert.equal(block?.type, "toolCall");
   assert.deepEqual(
     block?.type === "toolCall" ? block.args : undefined,
-    { nested: { q: "aZ" } },
+    expected,
     "the emitted events fold to the same arguments the mapper holds",
   );
+  const own = mapper.view().messages[0]?.blocks[0];
+  assert.deepEqual(
+    own?.type === "toolCall" ? own.args : undefined,
+    expected,
+    "the mapper's own view folds the same path, not only the wire copy",
+  );
+});
+
+test("a tool argument that grows past the budget withdraws the attempt", () => {
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock, maxMessageBytes: 4_096 });
+  mapper.map({ type: "message_start", message: assistantMessage("", "pending") } as never, trace);
+  mapper.map(
+    {
+      type: "message_update",
+      usage: usage(),
+      changes: [
+        {
+          type: "toolcall_start",
+          contentIndex: 0,
+          block: { type: "toolCall", id: "c_1", name: "search", arguments: {} },
+        },
+      ],
+    } as never,
+    trace,
+  );
+  const events = mapper.map(
+    {
+      type: "message_update",
+      usage: usage(),
+      changes: [
+        { type: "toolcall_delta", contentIndex: 0, path: ["q"], delta: "x".repeat(100_000) },
+      ],
+    } as never,
+    trace,
+  );
+  assert.equal(
+    events.some((event) => event.type === "snapshot"),
+    true,
+  );
+  assert.equal(mapper.view().streaming, null);
+  assert.equal(mapper.view().messages.length, 0, "the oversized attempt is withdrawn");
 });
 
 test("an oversized tool result is clamped to the message budget, not turned into a notice", () => {

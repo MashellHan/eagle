@@ -245,7 +245,7 @@ extension ReducerTests {
         messageId: "p_a1",
         changes: [
           .toolCall(index: 0, callId: "c_1", path: ["args", "nested", "q"], append: "Z"),
-          .toolCall(index: 0, callId: "c_1", path: ["args", "items", "0"], append: "Z"),
+          .toolCall(index: 0, callId: "c_1", path: ["args", "items", 0], append: "Z"),
         ]
       ),
       to: state
@@ -255,6 +255,34 @@ extension ReducerTests {
     }
     XCTAssertEqual(args["nested"], .object(["q": .string("aZ")]))
     XCTAssertEqual(args["items"], .array([.string("aZ")]))
+  }
+
+  func testToolDeltaCreatesContainersAndRefusesNegativeIndexes() {
+    func fold(_ path: [JSONPathComponent], append: String = "Z") -> [String: JSONValue] {
+      let message = Reducer.apply(
+        .delta(
+          messageId: "p_a1",
+          changes: [.toolCall(index: 0, callId: "c_1", path: ["args"] + path, append: append)]
+        ),
+        to: ConversationState(
+          botId: "b_1",
+          messages: [
+            Message(
+              id: "p_a1",
+              role: .assistant,
+              state: .streaming,
+              createdAt: "x",
+              blocks: [.toolCall(callId: "c_1", name: "search", args: [:])]
+            )
+          ]
+        )
+      )
+      guard case .toolCall(_, _, let args) = message.messages.first?.blocks[0] else { return [:] }
+      return args
+    }
+    XCTAssertEqual(fold(["nested", "-1"]), ["nested": .object(["-1": .string("Z")])])
+    XCTAssertEqual(fold(["items", 0]), ["items": .array([.string("Z")])])
+    XCTAssertEqual(fold(["items", -1]), [:], "a negative index is ignored, never indexed")
   }
 
   func testThinkingToolAndUnknownTargetsAreTolerated() {

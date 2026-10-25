@@ -467,3 +467,59 @@ struct BotsToolPairingTests {
     #expect(entries.contains { if case .typing = $0 { true } else { false } })
   }
 }
+
+@Suite("Bots tool rows in a trimmed page")
+struct BotsTrimmedToolPageTests {
+  private let presenter = BotsPresenter()
+
+  private func message(_ id: String, role: MessageRole, blocks: [ContentBlock]) -> Message {
+    Message(
+      id: id,
+      role: role,
+      state: .complete,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      blocks: blocks
+    )
+  }
+
+  @Test("a trimmed call leaves its result orphaned instead of taking the next call's place")
+  func trimmedFirstCall() {
+    let state = ConversationState(
+      botId: "b_1",
+      messages: [
+        message(
+          "e_12",
+          role: .tool,
+          blocks: [
+            .toolResult(
+              callId: "c_1", name: "run_command", text: "FIRST", isError: false, durationMs: nil)
+          ]
+        ),
+        message(
+          "e_13",
+          role: .assistant,
+          blocks: [
+            .toolCall(callId: "c_1", name: "run_command", args: ["command": .string("second")])
+          ]
+        ),
+        message(
+          "e_14",
+          role: .tool,
+          blocks: [
+            .toolResult(
+              callId: "c_1", name: "run_command", text: "SECOND", isError: false, durationMs: nil)
+          ]
+        ),
+      ]
+    )
+    let entries = presenter.transcript(for: state)
+    let rows = entries.compactMap {
+      if case .tool(_, let row) = $0 { return row }
+      return nil
+    }
+    // The visible round keeps its own result; the first round's result is still shown.
+    #expect(rows.map(\.output) == ["FIRST", "SECOND"])
+    #expect(rows[1].input.contains("second"))
+    #expect(rows[0].input.isEmpty, "an orphan result has no call to show")
+  }
+}

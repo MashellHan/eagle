@@ -253,17 +253,25 @@ public enum Reducer {
   private static func appendToolCall(
     _ message: Message,
     index: Int,
-    path: [String],
+    path: [JSONPathComponent],
     append: String
   ) -> Message {
     guard index < message.blocks.count else { return message }
     guard case .toolCall(let callId, let name, let args) = message.blocks[index] else {
       return message
     }
-    var next = message
     // The wire's path is rooted at the block with an `args` head (PROTOCOL I13); the
     // arguments themselves are what grows.
-    guard path.first == "args" else { return message }
+    guard path.first == .key("args") else { return message }
+    // A negative position can never be folded; refusing the whole delta keeps the client
+    // and the daemon on the same result instead of inventing a container for it.
+    guard
+      !path.contains(where: {
+        if case .index(let index) = $0 { return index < 0 }
+        return false
+      })
+    else { return message }
+    var next = message
     if case .object(let grown) = appendValue(.object(args), path.dropFirst(), append) {
       next.blocks[index] = .toolCall(callId: callId, name: name, args: grown)
     } else {
@@ -272,46 +280,43 @@ public enum Reducer {
     return next
   }
 
+  /// Folds one delta into the arguments, creating the container the next component names.
+  /// A position that does not exist yet is appended only at the end of an array; anything
+  /// else is ignored, never indexed blindly.
   private static func appendValue(
     _ value: JSONValue,
-    _ path: ArraySlice<String>,
+    _ path: ArraySlice<JSONPathComponent>,
     _ append: String
   ) -> JSONValue {
-    guard let key = path.first else {
+    guard let component = path.first else {
       if case .string(let text) = value { return .string(text + append) }
       return .string(append)
     }
     let rest = path.dropFirst()
-    if rest.isEmpty {
-      switch value {
-      case .object(var object):
+    switch (value, component) {
+    case (.object(var object), .key(let key)):
+      if rest.isEmpty {
         let prior: String = {
           if case .string(let text) = object[key] { return text }
           return ""
         }()
         object[key] = .string(prior + append)
         return .object(object)
-      case .array(var array):
-        guard let index = Int(key), index < array.count else { return value }
+      }
+      object[key] = appendValue(object[key] ?? emptyContainer(for: rest.first), rest, append)
+      return .object(object)
+    case (.array(var array), .index(let index)):
+      guard index >= 0 else { return value }
+      if rest.isEmpty {
+        if index == array.count { array.append(.string("")) }
+        guard index < array.count else { return value }
         let prior: String = {
           if case .string(let text) = array[index] { return text }
           return ""
         }()
         array[index] = .string(prior + append)
         return .array(array)
-      default:
-        return value
       }
-    }
-    switch value {
-    case .object(var object):
-      // pi streams JSON text: an intermediate container may not exist yet, so create the
-      // one the next component implies instead of dropping the delta.
-      let child = object[key] ?? emptyContainer(for: rest.first)
-      object[key] = appendValue(child, rest, append)
-      return .object(object)
-    case .array(var array):
-      guard let index = Int(key), index >= 0 else { return value }
       if index == array.count { array.append(emptyContainer(for: rest.first)) }
       guard index < array.count else { return value }
       array[index] = appendValue(array[index], rest, append)
@@ -321,10 +326,12 @@ public enum Reducer {
     }
   }
 
-  private static func emptyContainer(for key: String?) -> JSONValue {
-    guard let key else { return .string("") }
-    return Int(key) == nil ? .object([:]) : .array([])
+  private static func emptyContainer(for component: JSONPathComponent?) -> JSONValue {
+    guard let component else { return .string("") }
+    if case .index = component { return .array([]) }
+    return .object([:])
   }
+
 }
 
 extension Message {

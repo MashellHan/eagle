@@ -156,9 +156,18 @@ export const trimWindow = (
   if (keep === view.messages.length) return view;
   const dropped = view.messages.slice(0, view.messages.length - keep);
   const first = dropped.find((message) => message.id.startsWith("e_"));
+  const messages = view.messages.slice(view.messages.length - keep);
+  // `streaming` must name a message the trimmed view still holds; a provisional that fell
+  // out of the window is no longer representable, and its finalized append carries no
+  // `replaces`, so keeping the pointer would leave a dangling id forever.
+  const streaming =
+    view.streaming === null || messages.some((message) => message.id === view.streaming)
+      ? view.streaming
+      : null;
   return {
     ...view,
-    messages: view.messages.slice(view.messages.length - keep),
+    messages,
+    streaming,
     ...(view.truncatedBefore !== undefined || first === undefined
       ? {}
       : { truncatedBefore: first.id }),
@@ -203,6 +212,8 @@ export const applyChanges = (message: Message, changes: readonly DeltaChange[]):
  * it is created from the next path component instead of dropping the delta.
  */
 const appendAtPath = (root: object, path: readonly (string | number)[], append: string): void => {
+  // A negative position can never be folded; refusing the whole delta matches the client.
+  if (path.some((key) => typeof key === "number" && key < 0)) return;
   let node = root as Record<string | number, unknown>;
   for (let index = 0; index < path.length - 1; index += 1) {
     const key = path[index];

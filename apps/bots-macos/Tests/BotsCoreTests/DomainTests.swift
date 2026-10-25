@@ -281,7 +281,7 @@ final class DomainCoverageMoreTests: XCTestCase {
     let change = DeltaChange.toolCall(
       index: 2,
       callId: "c_1",
-      path: ["args", "0"],
+      path: ["args", 0],
       append: "x"
     )
     let data = try JSONEncoder().encode(change)
@@ -322,6 +322,25 @@ final class DomainCoverageMoreTests: XCTestCase {
     XCTAssertEqual(message.blocks.count, 1)
   }
 
+  func testAToolCallPathKeepsNumbersAndKeysApart() throws {
+    let change = DeltaChange.toolCall(
+      index: 0,
+      callId: "c_1",
+      path: ["args", "items", 0, "q"],
+      append: "x"
+    )
+    let decoded = try JSONDecoder().decode(
+      DeltaChange.self,
+      from: JSONEncoder().encode(change)
+    )
+    XCTAssertEqual(decoded, change)
+    let raw = try JSONSerialization.jsonObject(with: JSONEncoder().encode(change))
+    let path = (raw as? [String: Any])?["path"] as? [Any]
+    XCTAssertEqual(path?.count, 4)
+    XCTAssertEqual(path?[1] as? String, "items")
+    XCTAssertEqual(path?[2] as? Int, 0)
+  }
+
   func testToolBlocksRefuseWhatTheDaemonRefuses() throws {
     let decoder = JSONDecoder()
     for json in [
@@ -329,6 +348,8 @@ final class DomainCoverageMoreTests: XCTestCase {
       #"{"type":"toolCall","callId":"","name":"n","args":{}}"#,
       #"{"type":"toolCall","callId":"c","name":"","args":{}}"#,
       #"{"type":"toolResult","callId":"c","name":"n","text":"t","isError":false,"durationMs":-1}"#,
+      #"{"type":"toolResult","callId":"c","name":"n","text":"t","isError":false,"durationMs":9007199254740992}"#,
+      #"{"type":"toolResult","callId":"c","name":"n","text":"t","isError":false,"durationMs":null}"#,
       #"{"type":"toolResult","callId":"c","name":"","text":"t","isError":false}"#,
     ] {
       XCTAssertThrowsError(
@@ -336,6 +357,17 @@ final class DomainCoverageMoreTests: XCTestCase {
         json
       )
     }
+    let largest = try decoder.decode(
+      ContentBlock.self,
+      from: Data(
+        #"{"type":"toolResult","callId":"c","name":"n","text":"t","isError":false,"durationMs":9007199254740991}"#
+          .utf8
+      )
+    )
+    XCTAssertEqual(
+      largest,
+      .toolResult(callId: "c", name: "n", text: "t", isError: false, durationMs: 9_007_199_254_740_991)
+    )
     // Unknown extra fields are still tolerated: additive evolution is the protocol's rule.
     let extra = try decoder.decode(
       ContentBlock.self,

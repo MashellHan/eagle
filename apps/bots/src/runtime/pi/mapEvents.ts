@@ -584,20 +584,36 @@ export const applyChange = (message: Message, change: DeltaChange): Message => {
   if (change.kind === "toolcall" && block.type === "toolCall") {
     const call: ContentBlock = structuredClone(block);
     if (call.type !== "toolCall") return message;
-    let node = call.args as Record<string | number, unknown>;
-    for (const key of change.path.slice(0, -1)) {
-      const next = node[key];
-      if (next === null || typeof next !== "object") return message;
-      node = next as Record<string | number, unknown>;
-    }
-    const leaf = change.path[change.path.length - 1];
-    if (leaf === undefined) return message;
-    const prior = node[leaf];
-    node[leaf] = `${typeof prior === "string" ? prior : ""}${change.append}`;
+    appendAtPath(call as unknown as object, change.path, change.append);
     blocks[change.index] = call;
     return { ...message, blocks };
   }
   return message;
+};
+
+/**
+ * The same fold the wire and the service use: the path is rooted at the block, and a
+ * missing intermediate object or array is created from the next component. pi streams JSON
+ * arguments as text, so the containers it names do not exist until the client folds them.
+ */
+const appendAtPath = (root: object, path: readonly (string | number)[], append: string): void => {
+  if (path.some((key) => typeof key === "number" && key < 0)) return;
+  let node = root as Record<string | number, unknown>;
+  for (let index = 0; index < path.length - 1; index += 1) {
+    const key = path[index];
+    if (key === undefined) return;
+    const next = path[index + 1];
+    let child = node[key];
+    if (child === null || typeof child !== "object") {
+      child = typeof next === "number" ? [] : {};
+      node[key] = child;
+    }
+    node = child as Record<string | number, unknown>;
+  }
+  const leaf = path[path.length - 1];
+  if (leaf === undefined) return;
+  const prior = node[leaf];
+  node[leaf] = `${typeof prior === "string" ? prior : ""}${append}`;
 };
 
 export const createEventMapper = (options: EventMapperOptions): EventMapper =>
