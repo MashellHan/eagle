@@ -59,15 +59,15 @@ after a full review round; a row can be implemented and reviewed but not yet sig
 | 21 | 2 | history pages older messages, newest window untouched | **signed off** |
 | 22 | 2 | resync returns a snapshot at the last published revision | **signed off** |
 | 23-36 | 3 | pi-durable adapter: mapping, idempotency, failures, recovery | **signed off** |
-| 37-41 | 4 | auth, handshake, close codes, catalog HTTP | implemented, **awaiting review** |
+| 37-41 | 4 | auth, handshake, close codes, catalog HTTP | implemented, reviewed (8 P1 fixed, P2 open) |
 | 42-43 | 4 | log origin and trace recipes | **not started** |
-| 44-48 | 4 | registry lifecycle, singleton lock | implemented, **awaiting review** |
-| 49 | 4 | the end-to-end journey | implemented, **awaiting review** |
+| 44-48 | 4 | registry lifecycle, singleton lock | implemented, reviewed (8 P1 fixed, P2 open) |
+| 49 | 4 | the end-to-end journey | implemented, reviewed (test fidelity open) |
 | 50-52g | 4 | the remaining journeys (bots, outbox, paging, ordering, overflow) | **not started** |
 | 53-54 | 4 | crash and perf suites | **not started** |
 | 55-69 | 5 | macOS client: decoding, reducer, transport, view models, app | **not started** |
 
-Current tree: 276 tests, coverage 93.0% lines / 89.0% branches / 90.4% functions,
+Current tree: 280 tests, coverage 92.9% lines / 89.0% branches / 90.3% functions,
 `typecheck`, `lint`, `fixtures:check` green. The core is complete (catalog, hub,
 service, fake runtime) and the pi-durable adapter now runs real Harness instances over
 real sqlite, so a script can open a bot, talk to a model and read the transcript.
@@ -98,17 +98,24 @@ What is missing, and why the product still cannot ship:
 | Gap | Consequence |
 | --- | --- |
 | rows 42-43, 50-54 | the log recipes, the outbox/paging/ordering/overflow journeys, and the crash and perf suites do not exist yet |
+| stage-4 review, P2 | eleven findings are open: the upgrade counter, the 8-subscriber cap, two handshake bypasses, the unbudgeted send and catalog broadcast, the token file mode, the log origin on an upstream open failure, the error identity split, shutdown `4010`, cross-day log retention, and two test-fidelity gaps (rows 44 and 49) |
 | `apps/bots-macos/` | no client |
 
 The daemon now runs: `npm start` binds a loopback port, checks a bearer token,
 serves the catalog, and streams a bot over a socket. Stage 3 (rows 23-36) is signed
-off; stage 4 is half implemented and has not been reviewed.
+off. Stage 4 is half implemented and has had one review round: its eight P1 findings
+are closed, its eleven P2 findings are open, and rows 42-54 are not written.
 
 ## Next work, in order
 
-1. Finish stage 4: log recipes (42-43), the remaining journeys (50-52g), the crash
-   suites (53-54) and the perf suite, then review the whole stage.
-2. Stage 5: `apps/bots-macos/` (separate package, `EagleDesign` product only).
+1. Close the stage-4 P2 findings, cheapest first: the upgrade counter and the
+   subscriber cap, then the two handshake bypasses, then the send/catalog budgets,
+   then the token mode, the log origin, the error identity, `4010` on shutdown and
+   the log retention. Rows 44 and 49 need their fidelity gaps closed with them.
+2. Write rows 42-43 (log recipes), 50-52g (the remaining journeys) and 53-54 (the
+   crash and perf suites).
+3. Review the whole of stage 4 and sign it off.
+4. Stage 5: `apps/bots-macos/` (separate package, `EagleDesign` product only).
 
 ### What the adapter can do today (rows 23-36, signed off)
 
@@ -131,8 +138,15 @@ broadcasts the only reply it produces, at a revision that names its content.
 
 ## Open review queue
 
-Stage 4 rows 37-41, 44-49 are implemented and not yet reviewed; 42-43 and 50-54 are
-open work. Stage 3 (rows 23-36) is signed off. Its review rounds closed, in order: a
+Stage 4's first review round is in. Its eight P1 findings are closed, in order: the
+lock port derived from a non-canonical root, a delete that ran on after a timed-out
+close, a handle that a new subscription could still take while closing, a baseline
+the socket sent twice so an older snapshot could paint over a newer append, a
+`recover` whose events updated a different Bot object, a service that kept a closed
+handle, a socket close that never unsubscribed, and a `validateCommand` the wire
+never called. Its eleven P2 findings are listed in the gap table above.
+
+Stage 3 (rows 23-36) is signed off. Its review rounds closed, in order: a
 fail log record built from another layer's identity, a reattach that dropped its
 recovery snapshot, a listener escalation counted per notification, a park found
 during `open` that no subscriber could see, `pending` rebuilt from the ledger
