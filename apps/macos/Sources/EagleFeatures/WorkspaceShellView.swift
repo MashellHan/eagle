@@ -127,17 +127,6 @@ public struct WorkspaceShellView: View {
               onDismiss: { bots.dismissModelSetup() }
             )
           }
-          if selectedIsBot {
-            BotStatusStrip(
-              subtitle: bots.subtitle,
-              error: bots.error,
-              canRecover: bots.canRecover,
-              running: bots.running,
-              onRecover: { bots.recover() },
-              onAbort: { bots.abort() },
-              onDismissError: { bots.dismissError() }
-            )
-          }
           ConversationColumn(
             title: selectedIsBot ? bots.title : (item?.title ?? "依赖修复专家"),
             subtitle: selectedIsBot ? bots.subtitle : (item?.tag ?? "GitHub"),
@@ -154,6 +143,32 @@ public struct WorkspaceShellView: View {
             onShowSidebar: { layout.toggleSidebar() },
             onToggleInspector: { layout.toggleInspector() }
           )
+          // Status is an overlay, not a row: the three column headers keep one baseline.
+          .overlay(alignment: .topLeading) {
+            if selectedIsBot, bots.running || bots.error != nil || bots.canRecover {
+              BotStatusStrip(
+                subtitle: bots.subtitle,
+                error: bots.error,
+                canRecover: bots.canRecover,
+                running: bots.running,
+                onRecover: { bots.recover() },
+                onAbort: { bots.abort() },
+                onDismissError: { bots.dismissError() }
+              )
+              .frame(maxWidth: 300, alignment: .leading)
+              .padding(
+                .leading,
+                layout.showsSidebar
+                  ? Theme.Metric.conversationInset
+                  : Theme.Metric.trafficLightsEnd + Theme.Metric.headerControlHeight + 8
+              )
+              .padding(
+                .top,
+                Theme.Metric.headerHeight - Theme.Metric.headerBottomInset
+                  - (Theme.Metric.headerControlHeight + 26) / 2
+              )
+            }
+          }
         }
       } inspector: {
         InspectorColumn(
