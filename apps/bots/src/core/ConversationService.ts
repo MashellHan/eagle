@@ -206,15 +206,15 @@ export class ConversationService {
   }
 
   /**
-   * Answers the view at the last published revision. Pending deltas are flushed first, so
-   * the snapshot a client adopts cannot be ahead of the revision it is told about.
+   * Answers a snapshot of the current view. It is published like any other bot-scoped
+   * event, so its revision names exactly the content it carries and no later increment
+   * can be replayed on top of it; pending deltas are folded in first.
    */
-  async resync(
-    connectionId: string,
-  ): Promise<{ readonly rev: number; readonly snapshot: ConversationSnapshot }> {
+  resync(connectionId: string): { readonly rev: number; readonly snapshot: ConversationSnapshot } {
     const bot = this.#subscribed(connectionId);
-    bot.hub.drain();
-    return { rev: bot.hub.rev, snapshot: bot.snapshot };
+    const snapshot = bot.snapshot;
+    const event = bot.hub.publishSnapshot(snapshot);
+    return { rev: event.rev, snapshot };
   }
 
   #refuse(message: string, requestId?: string): CommandError {

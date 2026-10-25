@@ -149,8 +149,13 @@ export class EventHub {
     this.#runSerial();
   }
 
-  publishSnapshot(value: ConversationSnapshot, trace = this.#defaultTrace): void {
-    this.publish({ type: "snapshot", trace, value });
+  /** Publishes a snapshot and returns it, so a caller can name the revision it carries. */
+  publishSnapshot(value: ConversationSnapshot, trace = this.#defaultTrace): HubEvent {
+    this.#flushDeltas();
+    const stamped: HubEvent = { type: "snapshot", trace, value, rev: this.#nextRevision() };
+    this.#push(stamped);
+    this.#runSerial();
+    return stamped;
   }
 
   /** Delivers anything still coalescing. Tests call this instead of waiting. */

@@ -886,20 +886,21 @@ test("history pages older messages without touching the newest window", async ()
   );
 });
 
-test("resync answers a snapshot at the last published revision", async () => {
+test("resync publishes a snapshot at its own revision", async () => {
   const runtime = new FakeRuntime();
   const service = serviceFor(runtime);
   const received: HubEvent[] = [];
   await subscribe(service, received);
   runtime.handle("b_1").emit({ type: "status", trace, running: true, streaming: null, inbox: [] });
-  const eventsBefore = received.length;
   const resync = await service.resync("c_1");
-  assert.equal(resync.rev, received.at(-1)?.rev);
-  assert.equal(received.length, eventsBefore, "resync mints no new event");
+  const last = received.at(-1);
+  assert.equal(last?.type, "snapshot");
+  assert.equal(resync.rev, last?.rev, "the answer names the revision it publishes");
+  assert.deepEqual(last?.type === "snapshot" ? last.value : undefined, resync.snapshot);
   assert.equal(resync.snapshot.running, true);
 });
 
-test("a pending delta is flushed before resync quotes a revision", async () => {
+test("resync folds a pending delta before it names the revision", async () => {
   const runtime = new FakeRuntime();
   const service = serviceFor(runtime);
   const received: HubEvent[] = [];
@@ -912,13 +913,38 @@ test("a pending delta is flushed before resync quotes a revision", async () => {
     changes: [{ kind: "text", index: 0, append: "!" }],
   });
   const resync = await service.resync("c_1");
-  assert.equal(resync.rev, received.at(-1)?.rev, "the quote is the last event, not a pending one");
-  const block = resync.snapshot.messages[0]?.blocks[0];
-  assert.equal(
-    block?.type === "text" ? block.text : "",
-    "e_1!",
-    "the view is folded up to that rev",
+  assert.deepEqual(
+    received.map((event) => event.type),
+    ["snapshot", "append", "delta", "snapshot"],
+    "the delta is broadcast, not skipped",
   );
+  assert.equal(resync.rev, received.at(-1)?.rev);
+  const block = resync.snapshot.messages[0]?.blocks[0];
+  assert.equal(block?.type === "text" ? block.text : "", "e_1!", "the snapshot covers that delta");
+});
+
+test("resync answers a snapshot that is complete for its window", async () => {
+  const streaming = {
+    id: "p_a1",
+    role: "assistant" as const,
+    state: "streaming" as const,
+    createdAt: "x",
+    blocks: [{ type: "text" as const, text: "half" }],
+  };
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [message("e_0"), message("e_1"), streaming],
+    truncatedBefore: "e_0",
+    streaming: "p_a1",
+    pending: [{ id: "s_1", requestId, status: "placed", entryId: "e_1" }],
+    inbox: [{ id: "i_1", mode: "followUp" }],
+    running: true,
+  };
+  const scripted = scriptedHandle({ snapshot });
+  const service = new ConversationService({ open: async () => scripted.handle, measure: utf8 });
+  await subscribe(service, []);
+  const resync = await service.resync("c_1");
+  assert.deepEqual(resync.snapshot, snapshot, "provisional, pending and paging survive");
 });
 
 test("abort and recover reach the runtime and need a subscription", async () => {
@@ -951,4 +977,97 @@ test("abort and recover reach the runtime and need a subscription", async () => 
   await service.abort("c_1", trace);
   await service.recover("c_1", trace);
   assert.deepEqual(calls, [`abort:${trace}`, `recover:${trace}`]);
+});
+
+test("a broadcast settlement carries every field of the record", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    streaming: null,
+    pending: [],
+    inbox: [],
+    running: false,
+  };
+  const placed = (input: SubmitInput): Submission => ({
+    id: "s_2",
+    requestId: input.requestId,
+    status: "placed",
+    entryId: "e_5",
+  });
+  const done = (input: SubmitInput): Submission => ({
+    id: "s_2",
+    requestId: input.requestId,
+    status: "done",
+    entryId: "e_5",
+    answerEntryId: "e_6",
+  });
+  const scripted = scriptedHandle({
+    snapshot,
+    record: done,
+    onSubmit: (input) => [
+      { type: "submission", trace: input.trace, record: placed(input) },
+      { type: "submission", trace: input.trace, record: done(input) },
+    ],
+  });
+  const service = new ConversationService({ open: async () => scripted.handle, measure: utf8 });
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  const reply = await service.send("c_1", {
+    requestId,
+    text: "hi",
+    whenBusy: "followUp",
+    trace,
+  });
+  assert.deepEqual(
+    received.flatMap((event) => (event.type === "submission" ? [event.record] : [])),
+    [
+      placed({ requestId, text: "hi", whenBusy: "followUp", trace }),
+      done({ requestId, text: "hi", whenBusy: "followUp", trace }),
+    ],
+  );
+  assert.deepEqual(reply, done({ requestId, text: "hi", whenBusy: "followUp", trace }));
+});
+
+test("an unanswered broadcast keeps its reason and carries no answer entry", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    streaming: null,
+    pending: [],
+    inbox: [],
+    running: false,
+  };
+  const failed = (input: SubmitInput): Submission => ({
+    id: "s_3",
+    requestId: input.requestId,
+    status: "unanswered",
+    reason: "model_error",
+    entryId: "e_7",
+  });
+  const scripted = scriptedHandle({
+    snapshot,
+    record: failed,
+    onSubmit: (input) => [{ type: "submission", trace: input.trace, record: failed(input) }],
+  });
+  const service = new ConversationService({ open: async () => scripted.handle, measure: utf8 });
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  const reply = await service.send("c_1", {
+    requestId,
+    text: "hi",
+    whenBusy: "followUp",
+    trace,
+  });
+  const expected = {
+    id: "s_3",
+    requestId,
+    status: "unanswered",
+    reason: "model_error",
+    entryId: "e_7",
+  };
+  assert.deepEqual(
+    received.flatMap((event) => (event.type === "submission" ? [event.record] : [])),
+    [expected],
+  );
+  assert.deepEqual(reply, expected);
 });
