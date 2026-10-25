@@ -10,49 +10,84 @@ const task = (id: string) =>
 
 test("every watch end is either followed or classified, never guessed", () => {
   const ends = [
-    { reason: "stopped", failure: undefined },
-    { reason: "cancelled", failure: undefined },
-    { reason: "session_closed", failure: undefined },
-    { reason: "retired", failure: undefined },
-    { reason: "listener_error", failure: undefined },
-    { reason: "listener_error", failure: undefined },
-    { reason: "listener_error", failure: "internal" },
-    { reason: "session_failed", failure: "storage_failed" },
+    { reason: "stopped", failure: undefined, episode: "listener:1" },
+    { reason: "cancelled", failure: undefined, episode: "listener:1" },
+    { reason: "session_closed", failure: undefined, episode: "listener:1" },
+    { reason: "retired", failure: undefined, episode: "listener:1" },
+    { reason: "session_failed", failure: "storage_failed", episode: "listener:1" },
+    { reason: "listener_error", failure: undefined, episode: "listener:1" },
+    { reason: "listener_error", failure: undefined, episode: "listener:2" },
+    { reason: "listener_error", failure: "internal", episode: "listener:3" },
   ] as const;
   const classifier = new FailureClassifier({ now: () => 0 });
   for (const [index, end] of ends.entries()) {
-    const minted = classifier.watchEnd({ reason: end.reason, error: new Error("x") } as never);
+    const minted = classifier.watchEnd(
+      { reason: end.reason, error: new Error("x") } as never,
+      end.episode,
+    );
     assert.equal(
       minted?.classification.failure.kind,
       end.failure,
       `${end.reason} #${index} classifies as ${String(end.failure)}`,
     );
     if (end.reason === "listener_error" && minted !== undefined) {
-      assert.equal(minted.classification.failure.layer, "pi");
+      assert.equal(
+        minted.classification.failure.layer,
+        "runtime",
+        "an escalated listener is the adapter's failure, not pi's",
+      );
     }
   }
 });
 
-test("a listener error escalates once per three inside a minute, and the window resets", () => {
+test("a listener error escalates per episode, once per three, and the window resets", () => {
   let now = 0;
   const classifier = new FailureClassifier({ now: () => now });
-  const escalate = () =>
-    classifier.watchEnd({ reason: "listener_error", error: new Error("x") } as never);
-  assert.equal(escalate(), undefined, "the first is recoverable");
+  const fault = (episode: string) =>
+    classifier.watchEnd({ reason: "listener_error", error: new Error("x") } as never, episode);
+  assert.equal(fault("listener:1"), undefined, "the first episode is recoverable");
+  assert.equal(
+    fault("listener:1"),
+    undefined,
+    "the second notification of the same fault is not a second episode",
+  );
   now += 1_000;
-  assert.equal(escalate(), undefined, "the second is recoverable");
+  assert.equal(fault("listener:2"), undefined, "the second episode is recoverable");
   now += 1_000;
-  const third = escalate();
+  const third = fault("listener:3");
   assert.equal(third?.classification.failure.kind, "internal");
   assert.equal(third?.minted, true);
+  assert.equal(fault("listener:3"), undefined, "re-reporting the escalated episode is a duplicate");
   now += 1_000;
-  assert.equal(escalate(), undefined, "the fourth is recoverable again");
+  assert.equal(fault("listener:4"), undefined, "the fourth episode is recoverable again");
   now += 70_000;
-  assert.equal(escalate(), undefined, "the window emptied");
-  now += 1;
-  assert.equal(escalate(), undefined);
-  now += 1;
-  assert.equal(escalate()?.classification.failure.kind, "internal", "three more inside the window");
+  assert.equal(fault("listener:5"), undefined, "the window emptied");
+  assert.equal(fault("listener:6"), undefined);
+  const escalated = fault("listener:7");
+  assert.equal(
+    escalated?.classification.failure.kind,
+    "internal",
+    "three episodes inside a window",
+  );
+  assert.notEqual(
+    escalated?.classification.failure.id,
+    third?.classification.failure.id,
+    "a new escalation is a new identity",
+  );
+});
+
+test("one listener fault reported on both channels counts once", () => {
+  const classifier = new FailureClassifier({ now: () => 0 });
+  const report = (episode: string) => classifier.report({ type: "listener_error" }, episode);
+  const watchEnd = (episode: string) =>
+    classifier.watchEnd({ reason: "listener_error", error: new Error("x") } as never, episode);
+  assert.equal(report("listener:1"), undefined, "the first fault");
+  assert.equal(watchEnd("listener:1"), undefined, "its watch end is the same episode");
+  assert.equal(report("listener:2"), undefined, "the second fault");
+  assert.equal(watchEnd("listener:2"), undefined, "its watch end too");
+  const third = report("listener:3");
+  assert.equal(third?.classification.failure.kind, "internal", "the third fault escalates");
+  assert.equal(watchEnd("listener:3"), undefined, "its watch end is a duplicate");
 });
 
 test("one episode gets one identity across every channel", () => {
@@ -116,8 +151,13 @@ test("each report type maps to a declared kind", () => {
       "the report's own text never travels",
     );
   }
-  const extension = classifier.report({ type: "extension_error", extension: "x" });
-  assert.equal(extension?.minted, false, "a repeated extension error is the same episode");
+  const first = classifier.report({ type: "extension_error", extension: "x" });
+  const second = classifier.report({ type: "extension_error", extension: "x" });
+  assert.notEqual(
+    second?.classification.failure.id,
+    first?.classification.failure.id,
+    "without a task there is no correlation key: each report is its own episode",
+  );
 });
 
 test("a refused submit is not_admitted and its own episode", () => {
@@ -132,8 +172,8 @@ test("a refused submit is not_admitted and its own episode", () => {
   assert.equal(session.classification.failure.kind, "storage_failed");
   assert.equal(
     session.classification.failure.layer,
-    "pi",
-    "a session failure belongs to the pi layer",
+    "runtime",
+    "the channel that reported the episode first owns the record",
   );
   assert.equal(
     session.classification.failure.id,

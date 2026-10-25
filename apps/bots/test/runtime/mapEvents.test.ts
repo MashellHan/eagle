@@ -470,6 +470,150 @@ test("maps every stopReason to a message state", () => {
   }
 });
 
+test("an attach snapshot that already counts the attempt keeps its provisional id", () => {
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock });
+  const snapshot = {
+    type: "snapshot",
+    entries: [userEntry()],
+    run: { inputs: ["8"] },
+    generation: { attempt: 1 },
+    tools: [],
+    nestedTools: [],
+    compactions: [],
+    inbox: [],
+    agent: {},
+    usage: { models: {}, tools: {} },
+  };
+  mapper.seed(snapshot as never, trace);
+  assert.equal(mapper.view().streaming, null, "an attempt with no partial is not streaming yet");
+  const events = mapper.map(
+    { type: "message_start", message: assistantMessage("答", "pending") } as never,
+    trace,
+  );
+  assert.deepEqual(
+    of(events, "append").map((event) => event.message.id),
+    ["p_a1"],
+    "the attempt already in flight is p_a1, not p_a2",
+  );
+});
+
+test("a re-announced whole message over the limit is withdrawn like the first one", () => {
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock, maxMessageBytes: 200 });
+  mapper.map({ type: "run_start", inputs: ["8"] } as never, trace);
+  const first = mapper.map(
+    { type: "message_start", message: assistantMessage("短", "pending") } as never,
+    trace,
+  );
+  assert.deepEqual(
+    of(first, "append").map((event) => event.message.id),
+    ["p_a1"],
+  );
+  const reannounced = mapper.map(
+    { type: "message_start", message: assistantMessage("x".repeat(400), "pending") } as never,
+    trace,
+  );
+  assert.deepEqual(of(reannounced, "delta"), [], "the oversized replacement is never sent");
+  assert.deepEqual(
+    of(reannounced, "snapshot").map((event) => [
+      event.value.streaming,
+      event.value.messages.length,
+    ]),
+    [[null, 0]],
+    "the attempt is withdrawn through a snapshot instead",
+  );
+  assert.equal(mapper.view().streaming, null);
+});
+
+test("a withheld notice is identical on every read, whatever the clock says", () => {
+  const huge = "x".repeat(2_000);
+  const entry = hugeAssistantEntry(huge);
+  const first = new EventMapper({
+    botId: "b_golden",
+    now: () => new Date(1_000),
+    maxMessageBytes: 500,
+  });
+  const second = new EventMapper({
+    botId: "b_golden",
+    now: () => new Date(9_999_999),
+    maxMessageBytes: 500,
+  });
+  first.seed(
+    {
+      type: "snapshot",
+      entries: [entry],
+      tools: [],
+      nestedTools: [],
+      compactions: [],
+      inbox: [],
+      agent: {},
+      usage: { models: {}, tools: {} },
+    } as never,
+    trace,
+  );
+  second.seed(
+    {
+      type: "snapshot",
+      entries: [entry],
+      tools: [],
+      nestedTools: [],
+      compactions: [],
+      inbox: [],
+      agent: {},
+      usage: { models: {}, tools: {} },
+    } as never,
+    trace,
+  );
+  const [a] = first.view().messages;
+  const [b] = second.view().messages;
+  assert.deepEqual(a, b, "the notice keeps the entry's own timestamp");
+  assert.equal(a?.role, "notice");
+  assert.equal(a?.id, "e_10");
+});
+
+test("a start block with no delta is announced once and never invented", () => {
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock });
+  mapper.map({ type: "message_start", message: assistantMessage("", "pending") } as never, trace);
+  const block = mapper.map(
+    {
+      type: "message_update",
+      usage: usage(),
+      changes: [{ type: "text_start", contentIndex: 0, block: { type: "text", text: "" } }],
+    } as never,
+    trace,
+  );
+  assert.deepEqual(of(block, "delta")[0]?.changes, [
+    { kind: "block", index: 0, block: { type: "text", text: "" } },
+  ]);
+  assert.deepEqual(
+    mapper.map({ type: "message_update", usage: usage(), changes: [] } as never, trace),
+    [],
+    "an empty batch is not a change",
+  );
+  assert.deepEqual(mapper.view().messages[0]?.blocks, [{ type: "text", text: "" }]);
+});
+
+test("a whole-message change replaces the content and keeps the attempt streaming", () => {
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock });
+  mapper.map({ type: "message_start", message: assistantMessage("dr", "pending") } as never, trace);
+  const events = mapper.map(
+    {
+      type: "message_update",
+      usage: usage(),
+      changes: [{ type: "message", message: assistantMessage("draft done", "pending") }],
+    } as never,
+    trace,
+  );
+  const message = of(events, "delta")[0]?.changes[0];
+  assert.equal(message?.kind, "message");
+  assert.deepEqual(
+    message?.kind === "message" ? [message.message.state, message.message.blocks] : undefined,
+    ["streaming", [{ type: "text", text: "draft done" }]],
+    "the replacement is streaming, so the client's pointer still names a live attempt",
+  );
+  assert.equal(mapper.view().streaming, provisionalMessageId(1));
+  assert.deepEqual(mapper.view().messages[0]?.blocks, [{ type: "text", text: "draft done" }]);
+});
+
 test("the mapper's view agrees with the service's fold of the same events", () => {
   for (const name of ["answer-with-deltas", "abort-with-queued", "tool-call", "two-text-blocks"]) {
     const mapper = new EventMapper({ botId: "b_golden", now: fixedClock });

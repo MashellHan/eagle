@@ -76,6 +76,17 @@ test("a parked task surfaces as task_parked from onReport, once", async () => {
 
     const events: RuntimeEvent[] = [];
     await handle.subscribe(trace, (event) => events.push(event));
+    // The park was reported before anyone was listening, so the first subscriber gets it
+    // after its baseline instead of the daemon having to replay a log line.
+    await waitFor(
+      () => of(events, "error").some((event) => event.failure.kind === "task_parked"),
+      "the parked failure to reach the first subscriber",
+    );
+    assert.equal(
+      of(events, "error").filter((event) => event.failure.kind === "task_parked").length,
+      1,
+      "once, with the identity the log recorded",
+    );
     await handle.recover(trace);
     await waitFor(
       () => of(events, "submission").some((event) => event.record.status === "done"),

@@ -66,6 +66,8 @@ export class EventMapper {
   readonly #now: () => Date;
 
   #attempt = 0;
+  /** True while pi has an attempt in flight that has not committed an entry yet. */
+  #attemptOpen = false;
   #provisional: string | null = null;
   #withheld = false;
   #messages: Message[] = [];
@@ -101,11 +103,21 @@ export class EventMapper {
     };
   }
 
-  /** Resets adapter state from an attach or reattach snapshot and returns its baseline. */
-  seed(event: SnapshotEvent, trace: string): RuntimeEvent[] {
+  /**
+   * Resets adapter state from an attach or reattach snapshot and returns its baseline.
+   * `active` is the authoritative set of unsettled submissions, so `pending` is the
+   * current state rather than whatever the ledger happened to remember.
+   */
+  seed(event: SnapshotEvent, trace: string, active: readonly Submission[] = []): RuntimeEvent[] {
     this.#attempt = event.generation?.attempt ?? 0;
+    this.#attemptOpen = event.generation !== undefined;
     this.#provisional = null;
     this.#withheld = false;
+    const live = new Set(active.map((record) => record.id));
+    for (const record of active) this.#records.set(record.id, record);
+    for (const id of [...this.#records.keys()]) {
+      if (!live.has(id)) this.#records.delete(id);
+    }
     this.#running = event.run !== undefined;
     this.#inbox = event.inbox.map((item) => ({ id: String(item.id), mode: inboxMode(item.mode) }));
     this.#usage = convertUsage(event.usage);
@@ -127,10 +139,12 @@ export class EventMapper {
 
     const partial = event.generation?.message;
     if (partial !== undefined) {
-      const message = convertMessage(partial, {
-        id: provisionalMessageId(this.#attempt),
-        now: this.#now,
-      });
+      const message = asStreaming(
+        convertMessage(partial, {
+          id: provisionalMessageId(this.#attempt),
+          now: this.#now,
+        }),
+      );
       if (message !== undefined) this.#openProvisional(message);
     }
     return [{ type: "snapshot", trace, value: this.view() }];
@@ -153,6 +167,7 @@ export class EventMapper {
       case "run_end":
         this.#running = false;
         this.#closeProvisional();
+        this.#attemptOpen = false;
         return [this.#status(trace)];
       case "inbox_update":
         this.#inbox = event.items.map((item) => ({
@@ -242,7 +257,11 @@ export class EventMapper {
   ): RuntimeEvent[] {
     if (message.role !== "assistant") return [];
     if (message.stopReason === "deferred") return [];
-    const id = this.#provisional ?? provisionalMessageId(this.#attempt + 1);
+    // A re-announcement keeps its attempt; a genuinely new attempt is the last one plus
+    // one, even when the attach snapshot already counted the current attempt.
+    const id =
+      this.#provisional ??
+      provisionalMessageId(this.#attemptOpen ? Math.max(this.#attempt, 1) : this.#attempt + 1);
     // A partial is always in flight, whatever the resolved message's `stopReason` says:
     // the entry that ends the attempt is what carries the final state.
     const converted = asStreaming(convertMessage(message, { id, now: this.#now }));
@@ -251,11 +270,13 @@ export class EventMapper {
       // The same attempt re-announced with its accumulated content (F4): keep the id and
       // replace the content wholesale instead of streaming it twice.
       if (this.#withheld) return [];
+      if (messageBytes(converted) > this.#maxMessageBytes) return this.#withdrawProvisional(trace);
       this.#replaceMessage(converted);
       const changes: DeltaChange[] = [{ kind: "message", message: converted }];
       return [{ type: "delta", trace, messageId: id, changes }];
     }
-    this.#attempt += 1;
+    if (!this.#attemptOpen) this.#attempt += 1;
+    this.#attemptOpen = true;
     this.#provisional = id;
     return this.#appendProvisional(converted, trace);
   }
@@ -289,7 +310,7 @@ export class EventMapper {
           break;
         }
         case "message": {
-          const message = convertMessage(change.message, { id, now: this.#now });
+          const message = asStreaming(convertMessage(change.message, { id, now: this.#now }));
           if (message !== undefined) converted.push({ kind: "message", message });
           break;
         }
@@ -315,6 +336,7 @@ export class EventMapper {
     const message = this.#convertEntry(entry);
     this.#provisional = null;
     this.#withheld = false;
+    if (entry.kind === "pi.assistant") this.#attemptOpen = false;
     if (message === undefined) return [];
     this.#upsert(message, replaces);
     return [
@@ -400,17 +422,17 @@ export class EventMapper {
       ...(requestId === undefined ? {} : { requestId }),
     });
     if (message === undefined) return undefined;
-    if (messageBytes(message) > this.#maxMessageBytes) return this.#notice(id);
+    if (messageBytes(message) > this.#maxMessageBytes) return this.#notice(id, message.createdAt);
     return message;
   }
 
-  /** The withheld answer's replacement: the entry's own id, so a reconnect sees the same. */
-  #notice(id: string): Message {
+  /** The withheld answer's replacement: the entry's own id and timestamp, so a reconnect sees the same. */
+  #notice(id: string, createdAt: string): Message {
     return {
       id,
       role: "notice",
       state: "complete",
-      createdAt: this.#now().toISOString(),
+      createdAt,
       blocks: [{ type: "text", text: OVERSIZED_NOTICE }],
     };
   }

@@ -55,9 +55,11 @@ test("one turn appends exactly one pi.assistant entry", async () => {
     );
     assert.deepEqual(appends[1]?.message.blocks, [{ type: "text", text: "巴黎是法国的首都。" }]);
     assert.equal(appends[2]?.replaces, "p_a1");
-    // F24: the record read at admission can still be `placed`; the settlement follows
-    // on the event stream, and the client ranks statuses rather than downgrading.
-    assert.equal(record.status, "placed");
+    // F24: the record read at admission may already be settled or still be `placed`;
+    // either is legal, and the settlement follows on the event stream.
+    assert.ok(record.status === "placed" || record.status === "done");
+    assert.equal(record.requestId, requestId);
+    assert.equal(record.entryId, "e_7");
     const settled = of(events, "submission").at(-1)?.record;
     assert.deepEqual(
       {
@@ -119,6 +121,21 @@ test("abort settles the running and queued inputs with reason aborted", async ()
     const settlements = of(events, "submission")
       .filter((event) => event.record.status === "unanswered")
       .map((event) => [event.record.requestId, event.record.reason]);
+    const byRequest = new Map(
+      of(events, "submission")
+        .filter((event) => event.record.status === "unanswered")
+        .map((event) => [event.record.requestId, event.record]),
+    );
+    assert.notEqual(
+      byRequest.get("r_running_1")?.entryId,
+      undefined,
+      "F10: the running input settles with its entry",
+    );
+    assert.equal(
+      byRequest.get("r_queued_1")?.entryId,
+      undefined,
+      "F10: a queued input that never placed settles without one",
+    );
     assert.deepEqual(settlements.sort(), [
       ["r_queued_1", "aborted"],
       ["r_running_1", "aborted"],
@@ -139,7 +156,13 @@ test("a provider error settles unanswered with reason model_error", async () => 
   // One attempt: the retry policy is its own case, and its backoff is real time.
   const bench = await createBench({ settings: { retry: { maxRetries: 0 } } });
   try {
-    bench.faux.setResponses([providerError(), providerError(), providerError(), providerError()]);
+    const echoed = "upstream 500 while handling 会失败的问题";
+    bench.faux.setResponses([
+      providerError(echoed),
+      providerError(echoed),
+      providerError(echoed),
+      providerError(echoed),
+    ]);
     const handle = await bench.runtime.open(bench.spec());
     const { events } = await collect(handle);
     const record = await handle.submit({
@@ -161,6 +184,7 @@ test("a provider error settles unanswered with reason model_error", async () => 
     assert.equal(record.status, "placed");
     const logged = JSON.stringify(bench.records);
     assert.ok(!logged.includes("upstream 500"), "provider text never reaches a log");
+    assert.ok(!logged.includes(echoed), "a provider error that echoes the prompt stays out too");
     assert.ok(!logged.includes("会失败的问题"), "message text never reaches a log");
     await handle.close(trace, 5_000);
   } finally {
@@ -171,11 +195,15 @@ test("a provider error settles unanswered with reason model_error", async () => 
 test("a model asking for a tool gets an error result and the run continues", async () => {
   const bench = await createBench();
   try {
+    let secondRequest: unknown;
     bench.faux.setResponses([
       assistant([textBlock("我查一下。"), toolCall("search", { q: "paris" })], {
         stopReason: "toolUse",
       }),
-      text("没有这个工具，我直接回答。"),
+      (context: unknown) => {
+        secondRequest = context;
+        return text("没有这个工具，我直接回答。");
+      },
     ]);
     const handle = await bench.runtime.open(bench.spec());
     const { events } = await collect(handle);
@@ -208,6 +236,10 @@ test("a model asking for a tool gets an error result and the run continues", asy
       ["user", "assistant", "assistant"],
       "the tool result entry is not rendered: phase 1 has no tools capability",
     );
+    const asked = JSON.stringify(secondRequest);
+    assert.match(asked, /toolResult/, "RUNTIME.md: the model gets a result for the call it made");
+    assert.match(asked, /"isError":true/, "and that result is an error, not a silent skip");
+    assert.match(asked, /not available/, "the result says the tool is not available");
     await handle.close(trace, 5_000);
   } finally {
     await bench.cleanup();

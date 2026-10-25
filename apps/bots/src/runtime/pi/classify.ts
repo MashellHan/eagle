@@ -43,8 +43,14 @@ const MESSAGE: Readonly<Record<ErrorKind, string>> = {
 };
 
 const LISTENER_WINDOW_MS = 60_000;
-/** The first two listener errors of a window are recoverable; every third mints one. */
+/** The first two listener-error episodes of a window are recoverable; the third mints one. */
 const LISTENER_ESCALATE_AT = 3;
+
+/**
+ * Failure identities are unique for the process, not for one Harness: two bots, or one
+ * bot reopened, must never report the same id (docs/bots/OBSERVABILITY.md, dedupe unit).
+ */
+let nextFailureId = 0;
 
 export type ClassifierOptions = {
   readonly now?: () => number;
@@ -53,9 +59,11 @@ export type ClassifierOptions = {
 export class FailureClassifier {
   readonly #now: () => number;
   readonly #episodes = new Map<string, Classification>();
-  #next = 0;
   #generation = 1;
-  #listenerErrors: number[] = [];
+  #reports = 0;
+  #escalations = 0;
+  /** One entry per listener-error episode: several notifications share one key. */
+  readonly #listenerEpisodes = new Map<string, number>();
 
   constructor(options: ClassifierOptions = {}) {
     this.#now = options.now ?? Date.now;
@@ -68,7 +76,7 @@ export class FailureClassifier {
 
   nextGeneration(): number {
     this.#generation += 1;
-    this.#listenerErrors = [];
+    this.#listenerEpisodes.clear();
     return this.#generation;
   }
 
@@ -76,9 +84,9 @@ export class FailureClassifier {
   classify(key: string, kind: ErrorKind, layer: "runtime" | "pi"): Minted {
     const known = this.#episodes.get(key);
     if (known !== undefined) return { classification: known, minted: false };
-    this.#next += 1;
+    nextFailureId += 1;
     const classification: Classification = {
-      failure: { id: `f_${this.#next}`, kind, layer },
+      failure: { id: `f_${nextFailureId}`, kind, layer },
       message: MESSAGE[kind],
       reason: kind,
     };
@@ -91,8 +99,12 @@ export class FailureClassifier {
     return this.classify(`task:${event.taskId}`, "task_faulted", "pi");
   }
 
-  /** `HarnessOptions.onReport`; the channel never mints on its own. */
-  report(info: ReportInfo): Minted | undefined {
+  /**
+   * `HarnessOptions.onReport`; the channel never mints on its own. `episode` names the
+   * stream a listener failure belongs to, so its two notifications count once.
+   */
+  report(info: ReportInfo, episode = "report"): Minted | undefined {
+    this.#reports += 1;
     switch (info.type) {
       case "task_parked":
         return this.classify(`task:${info.task.id}`, "task_parked", "pi");
@@ -104,10 +116,10 @@ export class FailureClassifier {
       case "task_outdated":
         return this.classify(`task:${info.task.id}`, "internal", "pi");
       case "extension_error":
+        // Without a task there is no correlation key, so each report is its own episode
+        // (RUNTIME.md: "taskId when present, else the report's sequence").
         return this.classify(
-          info.task === undefined
-            ? `extension:${info.extension ?? "unknown"}`
-            : `task:${info.task.id}`,
+          info.task === undefined ? `report:${this.#reports}` : `task:${info.task.id}`,
           "extension_error",
           "pi",
         );
@@ -116,20 +128,49 @@ export class FailureClassifier {
       case "session_failed":
         return this.#sessionFailed();
       case "listener_error":
-        return this.#listenerError();
+        return this.listenerError(episode);
     }
   }
 
-  /** A watch that ended. Only `listener_error` and `session_failed` are faults. */
-  watchEnd(end: WatchEnd): Minted | undefined {
-    if (end.reason === "listener_error") return this.#listenerError();
+  /**
+   * A watch that ended. Only `listener_error` and `session_failed` are faults; both
+   * notifications of one listener failure pass the same `episode` key, so one fault
+   * counts once.
+   */
+  watchEnd(end: WatchEnd, episode = "listener:0"): Minted | undefined {
+    if (end.reason === "listener_error") return this.listenerError(episode);
     if (end.reason === "session_failed") return this.#sessionFailed();
     return undefined;
+  }
+
+  /** Counts one listener-error episode; the third inside a minute escalates once. */
+  listenerError(episode: string): Minted | undefined {
+    const now = this.#now();
+    for (const [key, at] of this.#listenerEpisodes) {
+      if (now - at >= LISTENER_WINDOW_MS) this.#listenerEpisodes.delete(key);
+    }
+    if (this.#listenerEpisodes.has(episode)) return undefined;
+    this.#listenerEpisodes.set(episode, now);
+    if (this.#listenerEpisodes.size < LISTENER_ESCALATE_AT) return undefined;
+    if (this.#listenerEpisodes.size % LISTENER_ESCALATE_AT !== 0) return undefined;
+    this.#escalations += 1;
+    // An escalated listener is a runtime failure, not a pi one: the stream we failed to
+    // keep up with belongs to the adapter.
+    return this.classify(`listener-escalation:${this.#escalations}`, "internal", "runtime");
   }
 
   /** `harness.closed`: a close we asked for is not a failure, a failed session is. */
   sessionEnd(end: SessionEnd): Minted | undefined {
     return end.reason === "failed" ? this.#sessionFailed() : undefined;
+  }
+
+  /**
+   * The session failure already reported for this harness, if any: a submit that fails
+   * while the session is failing must reuse that identity, not mint a second one.
+   */
+  sessionEpisode(): Minted | undefined {
+    const known = this.#episodes.get(`harness:${this.#generation}`);
+    return known === undefined ? undefined : { classification: known, minted: false };
   }
 
   /** A submit the daemon refused before admission: the client keeps its text. */
@@ -139,24 +180,15 @@ export class FailureClassifier {
 
   /** Storage or session trouble inside one submit. */
   submitFailed(cause: unknown): Minted {
-    // A failed session is one episode: the same identity the session's other channels
-    // report, so the daemon never shows two failures for one storage error.
+    // A failed session is one episode key, whichever channel reports it first. Whichever
+    // gets there first owns the record, so the layer of the identity is that channel's.
     if (isSessionFailure(cause))
-      return this.classify(`harness:${this.#generation}`, "storage_failed", "pi");
+      return this.classify(`harness:${this.#generation}`, "storage_failed", "runtime");
     return this.classify(`submit:${this.#generation}`, "internal", "runtime");
   }
 
   #sessionFailed(): Minted {
     return this.classify(`harness:${this.#generation}`, "storage_failed", "pi");
-  }
-
-  #listenerError(): Minted | undefined {
-    const now = this.#now();
-    this.#listenerErrors = this.#listenerErrors.filter((at) => now - at < LISTENER_WINDOW_MS);
-    this.#listenerErrors.push(now);
-    const count = this.#listenerErrors.length;
-    if (count < LISTENER_ESCALATE_AT || count % LISTENER_ESCALATE_AT !== 0) return undefined;
-    return this.classify(`listener:${count}`, "internal", "pi");
   }
 }
 

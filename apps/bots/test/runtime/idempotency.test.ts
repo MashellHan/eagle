@@ -50,8 +50,8 @@ test("the same requestId returns one record and emits no new events", async () =
     );
     assert.deepEqual(
       await handle.submission({ requestId }),
-      undefined,
-      "it settled, so it left the ledger",
+      settled,
+      "the ledger keeps the request id, so a settled input is still readable",
     );
     const byId = await handle.submission({ submissionId: settled?.id as string });
     assert.deepEqual(byId, settled);
