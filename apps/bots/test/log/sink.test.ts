@@ -69,3 +69,27 @@ test("records below the minimum level never reach the file", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("a new day prunes older days so five files stay five files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-sink-"));
+  let day = 1;
+  try {
+    const sink = new FileLogSink({ root, keep: 5, now: () => new Date(Date.UTC(2026, 0, day)) });
+    for (day = 1; day <= 8; day += 1) {
+      sink.write(record(day));
+      await sink.flush();
+    }
+    const files = (await readdir(join(root, "logs"))).sort();
+    assert.equal(files.length, 5, "the retention bound holds across day boundaries");
+    assert.deepEqual(files, [
+      "daemon-20260104.jsonl",
+      "daemon-20260105.jsonl",
+      "daemon-20260106.jsonl",
+      "daemon-20260107.jsonl",
+      "daemon-20260108.jsonl",
+    ]);
+    await sink.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -1,7 +1,7 @@
 // The daemon's log files (docs/bots/OBSERVABILITY.md, "Record shape"): one JSON object per
 // line, `<root>/logs/daemon-YYYYMMDD.jsonl`, rotated at 10 MB with five files kept, and a
 // `flush()` barrier so a test can assert absence instead of racing a sleep.
-import { type FileHandle, mkdir, open, rename, unlink } from "node:fs/promises";
+import { type FileHandle, mkdir, open, readdir, rename, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { LEVELS, type Level, type LogRecord, type LogSink } from "./log.ts";
 
@@ -9,6 +9,17 @@ export const MAX_LOG_BYTES = 10 * 1024 * 1024;
 export const KEEP_LOG_FILES = 5;
 
 const rank = (level: Level): number => LEVELS.indexOf(level);
+
+/** `daemon-YYYYMMDD.jsonl` and its rotations: the only files the sink deletes. */
+const FILE_PATTERN = /^daemon-\d{8}\.jsonl(?:\.\d+)?$/;
+
+/** Sort key: day first, then rotation index, so the oldest file is the smallest rank. */
+const rankOf = (name: string): number => {
+  const match = /^daemon-(\d{8})\.jsonl(?:\.(\d+))?$/.exec(name);
+  const day = Number(match?.[1] ?? 0);
+  const rotation = Number(match?.[2] ?? 0);
+  return day * 100 + rotation;
+};
 
 export type FileSinkOptions = {
   readonly root: string;
@@ -81,6 +92,24 @@ export class FileLogSink {
     this.#day = day;
     this.#handle = await open(current, "a", 0o600);
     this.#bytes = (await this.#handle.stat()).size;
+    // Rotation alone keeps five files within one day; a new day starts a sixth unless
+    // the oldest days go (OBSERVABILITY.md, "Record shape").
+    await this.#prune(current);
+  }
+
+  async #prune(current: string): Promise<void> {
+    const names = await readdir(this.#dir).catch(() => [] as string[]);
+    const logs = names
+      .filter((name) => FILE_PATTERN.test(name))
+      .map((name) => ({ name, rank: rankOf(name) }))
+      .sort((left, right) => left.rank - right.rank);
+    if (logs.length <= this.#keep) return;
+    const doomed = logs.slice(0, logs.length - this.#keep);
+    for (const file of doomed) {
+      const path = join(this.#dir, file.name);
+      if (path === current) continue;
+      await unlink(path).catch(() => undefined);
+    }
   }
 
   async #shift(current: string): Promise<void> {
