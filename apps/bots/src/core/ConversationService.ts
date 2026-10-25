@@ -9,6 +9,7 @@ import type {
   Failure,
   Submission,
 } from "./domain.ts";
+import { ClassifiedFailure } from "./domain.ts";
 import { EventHub, type HubSubscriber, type HubSubscription } from "./EventHub.ts";
 import type { RuntimeEvent, RuntimeHandle, SubmitInput } from "./RuntimePort.ts";
 import { reduceView, type SubmissionRanks, seedRanks } from "./view.ts";
@@ -24,10 +25,8 @@ export type ConversationServiceOptions = {
 };
 
 /** Only `not_admitted` lets a client drop its outbox entry (docs/bots/PROTOCOL.md). */
-export class CommandError extends Error {
+export class CommandError extends ClassifiedFailure {
   readonly kind: ErrorKind;
-  readonly disposition: ErrorDisposition;
-  readonly failure: Failure;
   readonly requestId: string | undefined;
 
   constructor(
@@ -37,11 +36,9 @@ export class CommandError extends Error {
     requestId?: string,
     options?: { cause?: unknown },
   ) {
-    super(message, options);
+    super(failure, disposition, message, options);
     this.name = "CommandError";
     this.kind = failure.kind;
-    this.disposition = disposition;
-    this.failure = failure;
     this.requestId = requestId;
   }
 }
@@ -162,7 +159,7 @@ export class ConversationService {
     try {
       stored = await bot.handle.submission({ requestId: input.requestId });
     } catch (cause) {
-      if (cause instanceof CommandError) throw cause;
+      if (cause instanceof ClassifiedFailure) throw cause;
       throw new CommandError(
         failure("internal"),
         "unknown",
@@ -178,7 +175,7 @@ export class ConversationService {
       // A failure the runtime already classified keeps its identity and disposition; only
       // an unclassified one becomes "admission unconfirmed", where the client keeps its
       // outbox entry and retries with the same requestId.
-      if (cause instanceof CommandError) throw cause;
+      if (cause instanceof ClassifiedFailure) throw cause;
       throw new CommandError(
         failure("internal"),
         "unknown",
@@ -220,8 +217,13 @@ export class ConversationService {
     let ready = false;
     let bot: Bot;
     const apply = (event: RuntimeEvent): void => {
-      bot.snapshot = reduceView(bot.snapshot, event, bot.ranks);
-      hub.publish(event);
+      const next = reduceView(bot.snapshot, event, bot.ranks);
+      bot.snapshot = next;
+      // A snapshot from the runtime may carry a stale pending list; broadcast the one the
+      // bot actually holds so a client never adopts a downgraded submission.
+      hub.publish(
+        event.type === "snapshot" && next !== event.value ? { ...event, value: next } : event,
+      );
     };
     const ranks: SubmissionRanks = new Map();
     const subscription = await handle.subscribe(trace, (event) => {

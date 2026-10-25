@@ -16,7 +16,7 @@ import type {
   RuntimeSubscription,
   SubmitInput,
 } from "../core/RuntimePort.ts";
-import { applyChanges, mergeOrdered, reduceView, seedRanks } from "../core/view.ts";
+import { applyChanges, mergeOrdered, reduceView, seedRanks, statusRank } from "../core/view.ts";
 
 export type FakeScript = {
   /** Events emitted after a submit is admitted. */
@@ -52,7 +52,7 @@ export class FakeHandle implements RuntimeHandle {
       running: false,
     };
     this.#committed = this.#snapshot.messages.filter((message) => message.state !== "streaming");
-    for (const record of this.#snapshot.pending) this.#submissions.set(record.requestId, record);
+    for (const record of this.#snapshot.pending) this.#remember(record);
     seedRanks(this.#ranks, this.#snapshot.pending);
   }
 
@@ -74,7 +74,7 @@ export class FakeHandle implements RuntimeHandle {
       requestId: input.requestId,
       status: "queued",
     };
-    this.#submissions.set(input.requestId, record);
+    this.#remember(record);
     this.#snapshot = { ...this.#snapshot, pending: [...this.#snapshot.pending, record] };
     for (const event of this.#script.onSubmit?.(input) ?? []) this.emit(event);
     return this.#submissions.get(input.requestId) ?? record;
@@ -129,6 +129,14 @@ export class FakeHandle implements RuntimeHandle {
     this.#sink?.(event);
   }
 
+  /** A ranked-lower duplicate never overwrites the record a client already settled. */
+  #remember(record: Submission): void {
+    const known = this.#submissions.get(record.requestId);
+    if (known === undefined || statusRank(record.status) >= statusRank(known.status)) {
+      this.#submissions.set(record.requestId, record);
+    }
+  }
+
   /** Never collides with an id restored from a snapshot. */
   #nextSubmissionId(): string {
     let highest = 0;
@@ -165,9 +173,9 @@ export class FakeHandle implements RuntimeHandle {
         this.#committed,
         event.value.messages.filter((message) => message.state !== "streaming"),
       );
-      for (const record of event.value.pending) this.#submissions.set(record.requestId, record);
+      for (const record of event.value.pending) this.#remember(record);
     }
-    if (event.type === "submission") this.#submissions.set(event.record.requestId, event.record);
+    if (event.type === "submission") this.#remember(event.record);
     this.#snapshot = next;
   }
 }

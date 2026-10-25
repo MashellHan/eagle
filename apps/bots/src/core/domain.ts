@@ -163,6 +163,28 @@ export type Failure = {
   readonly layer: "transport" | "protocol" | "core" | "runtime" | "pi";
 };
 
+/**
+ * A failure a layer already classified. The identity and the disposition travel with it,
+ * so an upper layer rethrows instead of minting a second failure for one episode. It
+ * lives in the domain so adapters can throw it without depending on the service.
+ */
+export class ClassifiedFailure extends Error {
+  readonly failure: Failure;
+  readonly disposition: ErrorDisposition;
+
+  constructor(
+    failure: Failure,
+    disposition: ErrorDisposition,
+    message: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = "ClassifiedFailure";
+    this.failure = failure;
+    this.disposition = disposition;
+  }
+}
+
 /** A bot as the catalog stores it. Runtime state is not persisted here. */
 export type BotRecord = {
   readonly id: BotId;

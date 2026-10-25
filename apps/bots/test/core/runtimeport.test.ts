@@ -685,3 +685,45 @@ test("a finalization keeps the window and history in one order", async () => {
     ["e_1", "e_3"],
   );
 });
+
+test("the fake ledger never downgrades a settled record", async () => {
+  const runtime = new FakeRuntime();
+  const handle = await runtime.open({
+    id: "b_1",
+    dir: "/tmp/b_1",
+    model: { provider: "faux", modelId: "faux-1" },
+    trace,
+  });
+  const fake = runtime.handle("b_1");
+  const settled = {
+    id: "s_1",
+    requestId,
+    status: "done" as const,
+    entryId: "e_1",
+    answerEntryId: "e_2",
+  };
+  fake.emit({ type: "submission", trace, record: settled });
+  fake.emit({
+    type: "submission",
+    trace,
+    record: { id: "s_1", requestId, status: "queued" },
+  });
+  fake.emit({
+    type: "snapshot",
+    trace,
+    value: {
+      botId: "b_1",
+      messages: [],
+      streaming: null,
+      pending: [{ id: "s_1", requestId, status: "queued" }],
+      inbox: [],
+      running: false,
+    },
+  });
+  assert.deepEqual(await handle.submission({ requestId }), settled);
+  assert.deepEqual(
+    await handle.submit({ requestId, text: "again", whenBusy: "followUp", trace }),
+    settled,
+    "a repeated send answers the settlement, not the stale duplicate",
+  );
+});

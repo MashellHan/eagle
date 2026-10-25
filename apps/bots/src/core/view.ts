@@ -11,6 +11,8 @@ import type {
 import type { RuntimeEvent } from "./RuntimePort.ts";
 
 /** Ranked so a late record can never downgrade a settlement (PROTOCOL I14). */
+export const statusRank = (status: SubmissionStatus): number => RANK[status];
+
 const RANK: Record<SubmissionStatus, number> = {
   queued: 0,
   placed: 1,
@@ -19,19 +21,40 @@ const RANK: Record<SubmissionStatus, number> = {
 };
 
 /**
- * The highest status seen per submission, across snapshots. A fold keeps it because a
- * settled record leaves `pending`, and a stale duplicate must not resurrect it.
+ * The highest-ranked record seen per submission, across snapshots. A fold keeps it
+ * because a settled record leaves `pending`, and a stale duplicate must not resurrect
+ * or downgrade it.
  */
-export type SubmissionRanks = Map<string, SubmissionStatus>;
+export type SubmissionRanks = Map<string, Submission>;
 
-/** Seeds the ranks from a snapshot's pending records. */
+/** Seeds the ranks from a snapshot's records without ever downgrading a known one. */
 export const seedRanks = (ranks: SubmissionRanks, records: readonly Submission[]): void => {
   for (const record of records) {
     const known = ranks.get(record.id);
-    if (known === undefined || RANK[record.status] > RANK[known]) {
-      ranks.set(record.id, record.status);
+    if (known === undefined || RANK[record.status] > RANK[known.status]) {
+      ranks.set(record.id, record);
     }
   }
+};
+
+/** A snapshot may be older than what this bot already applied; normalize its pending. */
+const normalizePending = (
+  ranks: SubmissionRanks,
+  pending: readonly Submission[],
+): readonly Submission[] => {
+  let changed = false;
+  const normalized: Submission[] = [];
+  for (const record of pending) {
+    const known = ranks.get(record.id);
+    if (known === undefined || RANK[known.status] <= RANK[record.status]) {
+      normalized.push(record);
+      continue;
+    }
+    changed = true;
+    const settled = known.status === "done" || known.status === "unanswered";
+    if (!settled) normalized.push(known);
+  }
+  return changed ? normalized : pending;
 };
 
 /** Applies one runtime event to the view. Snapshots replace it wholesale. */
@@ -63,12 +86,12 @@ export const reduceView = (
   if (event.type === "submission") {
     const record = event.record;
     const known = ranks.get(record.id);
-    if (known !== undefined && RANK[known] > RANK[record.status]) {
+    if (known !== undefined && RANK[known.status] > RANK[record.status]) {
       // A ranked-lower duplicate: the client ranks for itself, but the daemon view must
       // not show settled work as queued again.
       return view;
     }
-    ranks.set(record.id, record.status);
+    ranks.set(record.id, record);
     const settled = record.status === "done" || record.status === "unanswered";
     return {
       ...view,
@@ -79,7 +102,8 @@ export const reduceView = (
   }
   if (event.type === "snapshot") {
     seedRanks(ranks, event.value.pending);
-    return event.value;
+    const pending = normalizePending(ranks, event.value.pending);
+    return pending === event.value.pending ? event.value : { ...event.value, pending };
   }
   return view;
 };
