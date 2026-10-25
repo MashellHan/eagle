@@ -10,6 +10,12 @@ import {
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { listFilesTool, readFileTool, writeFileTool } from "./files.ts";
+import {
+  createHerdrTools,
+  HERDR_TOOLS_EXTENSION,
+  type HerdrToolOptions,
+  herdrSection,
+} from "./herdr/tools.ts";
 import { runCommandTool } from "./shell.ts";
 import type { BotWorkspace, ToolOutcome } from "./types.ts";
 
@@ -87,7 +93,10 @@ export const createBotsTools = (workspace: BotWorkspace): readonly ToolRegistrat
  * A registry holding the bots-tools extension for one workspace. It is built per Harness:
  * the tools are bound to that bot's workspace, never to another bot's.
  */
-export const createToolRegistry = (workspace: BotWorkspace) => {
+export const createToolRegistry = (
+  workspace: BotWorkspace,
+  herdr?: Omit<HerdrToolOptions, "workspace">,
+) => {
   const registry = createRegistry();
   registry.install(
     defineExtension({
@@ -104,5 +113,14 @@ export const createToolRegistry = (workspace: BotWorkspace) => {
       ],
     }),
   );
+  if (herdr !== undefined) {
+    registry.install(
+      defineExtension({
+        name: HERDR_TOOLS_EXTENSION,
+        tools: createHerdrTools({ ...herdr, workspace }),
+        sections: [section("bots-herdr", () => herdrSection(herdr.botId))],
+      }),
+    );
+  }
   return registry;
 };

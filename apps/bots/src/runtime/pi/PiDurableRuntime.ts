@@ -34,6 +34,7 @@ import type {
 } from "../../core/RuntimePort.ts";
 import { type DeclaredEvent, declareEvent } from "../../log/events.ts";
 import type { Log } from "../../log/log.ts";
+import { createHerdrClient } from "../../tools/herdr/client.ts";
 import { createToolRegistry } from "../../tools/registry.ts";
 import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
@@ -133,7 +134,11 @@ export class PiDurableRuntime implements RuntimePort {
         storage,
         {
           models: this.#options.models,
-          registry: createToolRegistry(workspace),
+          registry: createToolRegistry(workspace, {
+            client: createHerdrClient(),
+            stateDir: spec.dir,
+            botId: spec.id,
+          }),
           settings: { ...DEFAULT_SETTINGS, ...this.#options.settings?.(spec) } as never,
           onReport: (_error, info) => {
             if (handle === undefined) pending.push(info);

@@ -217,7 +217,7 @@ record, a failed `directory.remove` can leave a closed handle that `open` reuses
 catalog-full refusal has no origin record; and long or hostile markdown has parser tests
 but no measured layout pass.
 
-## Phase 2: tools (slice 1 signed off)
+## Phase 2: tools and herdr (slice 1 signed off, slice 2 implemented)
 
 `apps/bots/src/tools/` installs the `bots-tools` extension in every Harness: `read_file`,
 `write_file`, `list_files` and `run_command`, bound to `<bot dir>/workspace`, executed

@@ -95,11 +95,13 @@ src/
     version.ts  limits.ts     PROTOCOL_VERSION, frame and page budgets
     events.ts   commands.ts   encode/decode domain ⇄ frames, validation
   tools/                      the bot's tools, inside the adapter boundary
-    registry.ts               `bots-tools` extension: four tools + a workspace section
+    registry.ts               installs `bots-tools` and, when configured, `bots-herdr`
     files.ts                  read_file, write_file, list_files
-    shell.ts                  run_command (deadline, output cap, minimal env)
+    shell.ts                  run_command (deadline, output cap, minimal env, sandbox)
     workspace.ts              confinement: every path resolves inside the workspace
     limits.ts types.ts        budgets and the ToolOutcome shape
+    herdr/client.ts           the herdr CLI as typed calls (argv, JSON, deadline, abort)
+    herdr/tools.ts            the eight herdr tools and the one-space-per-bot rule
   runtime/pi/
     mapEvents.ts              pi AgentEvent / reports / watch end → RuntimeEvent
     PiDurableRuntime.ts       Harness ownership, submission ledger, close, recover

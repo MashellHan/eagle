@@ -362,6 +362,46 @@ Rules:
   already fit the wire; `pi.tool-result` entries stay off the wire until a later slice
   renders them, so a transcript shows the answer but not its tool rows in phase 2 slice 1.
 
+## Herdr tools (phase 2, slice 2)
+
+A second extension, `bots-herdr`, gives a bot a terminal collaborator. It talks to the
+installed `herdr` CLI over the running session; the bot owns exactly one space and every
+target is resolved inside it.
+
+| Tool | Behaviour |
+| --- | --- |
+| `herdr_open_space` | Opens this bot's space (a workspace labelled `bots-<bot id prefix>` with one shell pane) and returns its ids; calling it again reuses the live space |
+| `herdr_start_controller` | Starts one controller agent in that space's root pane with a herdr kind (`pi`, `codex`, `grok`, ...) and native arguments after `--`; idempotent while the controller lives |
+| `herdr_list` | Lists the panes and agents of that space only |
+| `herdr_send` | Submits a prompt to an agent in the space (default the controller) and by default waits for a settled state |
+| `herdr_wait` | Waits for a named state (`idle`, `working`, `blocked`, `done`, `unknown`) or a settled one |
+| `herdr_read` | Reads that agent's screen text (`visible`, `recent`, `recent-unwrapped`, `detection`), keeping the newest 64 KiB |
+| `herdr_keys` | Sends logical keys (`esc`, `enter`, `ctrl+c`, `1`, ...), for a dialog the controller is blocked on |
+| `herdr_close_space` | Closes this bot's own space and forgets it |
+
+Rules:
+
+- **One space, and only its contents.** The space id and its root pane live in
+  `<bot dir>/herdr.json` (0600, outside the model's workspace). Every call re-reads the
+  space from herdr and refuses when its label is not this bot's, so a recorded id that
+  points elsewhere is never touched; a space that disappeared says to open a new one.
+  `herdr_list`, `herdr_send`, `herdr_wait`, `herdr_read` and `herdr_keys` resolve their
+  target against the agents herdr reports **in that space**; an agent, pane or workspace
+  outside it is refused.
+- **argv, not a shell.** Each call is one `herdr` argv with a deadline (30 s default,
+  120 s for talk, at most 600 s) and a bounded answer; the run's abort signal kills the
+  CLI process group. A herdr JSON error becomes the tool result with its own code and
+  message; a non-zero exit without JSON keeps the exit and the detail.
+- **The bot's own sandbox does not apply to the CLI.** `herdr` is a host tool (it needs the
+  session socket), so it is not run through the workspace sandbox; what it may touch is
+  bounded by the space rule above, not by the file system profile.
+- **Reading is evidence, not proof.** `idle`/`done` mean herdr saw a settled agent, not
+  that its work finished; `blocked` is a dialog the controller raised, and the bot may
+  inspect it with `herdr_read` and answer it with `herdr_keys`.
+- **Replay and state.** `herdr_open_space`, `herdr_list`, `herdr_wait` and `herdr_read`
+  are `replay: "safe"`; prompting, keying, starting and closing are not, so a restart does
+  not repeat them. The tools share one state file and run one call at a time.
+
 ## Reserved capability enable paths
 
 "Reserved" means the wire can represent it and the client must ignore it while
@@ -370,7 +410,7 @@ own change set:
 
 | Capability | Work required when enabling |
 | --- | --- |
-| `tools` | Enabled in phase 2 slice 1 (the four workspace tools, auto-executed); rendering tool calls and results in the client is the next slice |
+| `tools` | Enabled in phase 2: the four workspace tools (slice 1) and the herdr tools (slice 2), all auto-executed; rendering tool calls and results in the client is the next slice |
 | `agent` | Add a `configure` command and a model catalog endpoint; add `configure` to the port; render the settings panel |
 | `tasks` | Emit `task` events from `watchTaskGraph`; add a `retry` command; make the close condition task-aware |
 | `entries` | Serve raw entries from `conversation.entries()` behind a paging command |

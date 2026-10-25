@@ -1496,3 +1496,18 @@ A checkpoint is what a person can actually see, so this records the absence too.
   SIGN OFF for slice 1; slice 2 (herdr tools) may start.
 - **Next broken hop:** rendering tool rows in the client (still off the wire), then the
   herdr tools of slice 2.
+
+## 2026-10-26 — Bots phase 2 slice 2 (herdr tools)
+
+- **What a person can observe:** a bot can now open its own herdr space, start a controller
+  agent there, send it a message, wait, read its screen, send logical keys and close the
+  space. Watching the herdr session, the space appears with the label `bots-<id prefix>` and
+  stays out of focus; the bot cannot touch any other space, pane or agent.
+- **Evidence:** `cd apps/bots && npm run check` — see the run recorded with the next
+  checkpoint. Tool layer: fake client, nine scenarios (reuse, kind/name validation,
+  space-scoped targets, read cap, close refusal, herdr error results). CLI client: fake
+  binary, six scenarios (argv shape, JSON mapping, stderr JSON errors, deadline, abort,
+  non-JSON exit). A real-session smoke with the real client created a space, read its pane,
+  and closed it.
+- **Next broken hop:** the client still does not render tool calls or results; and the
+  herdr tools are not yet exercised by a full faux-model round inside a conversation.
