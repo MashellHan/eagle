@@ -136,20 +136,11 @@ final class BotsWorkspaceViewModel: ObservableObject {
     publish()
   }
 
+  /// The composer's text lives in the conversation view model (the only draft); this
+  /// wrapper only publishes the result, so a refusal's restored draft is what the user
+  /// sees.
   func send() {
     guard let app else { return }
-    let text = draft
-    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-    // Not ready yet: keep the text instead of clearing a draft that cannot be sent.
-    guard app.conversation.canSend else {
-      subtitle = presenter.subtitle(
-        for: app.conversation.state,
-        connection: app.conversation.connection
-      )
-      return
-    }
-    app.conversation.draft = text
-    draft = ""
     app.conversation.send()
     publish()
   }

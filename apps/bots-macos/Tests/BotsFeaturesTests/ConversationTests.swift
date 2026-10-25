@@ -209,18 +209,23 @@ final class FakeConversation: ConversationPort {
     lastBotId = botId
   }
 
-  func abort(context: CommandContext) async throws {
+  func abort(context: CommandContext, botId: String) async throws {
     aborted += 1
+    lastBotId = botId
   }
 
-  func recover(context: CommandContext) async throws {
+  func recover(context: CommandContext, botId: String) async throws {
     recovered += 1
+    lastBotId = botId
   }
 
-  func resync(context: CommandContext) async throws {}
+  func resync(context: CommandContext, botId: String) async throws {
+    lastBotId = botId
+  }
 
-  func loadHistory(before messageId: String, context: CommandContext) async throws {
+  func loadHistory(before messageId: String, context: CommandContext, botId: String) async throws {
     historyRequests.append(messageId)
+    lastBotId = botId
   }
 
   func close() {
@@ -350,6 +355,58 @@ final class ConversationLifecycleTests: XCTestCase {
     XCTAssertEqual(model.errorBanner, "refused")
     model.dismissError()
     XCTAssertNil(model.errorBanner)
+  }
+
+  func testARefusalKeepsARejectedTextAndANewerDraft() async throws {
+    let (model, fake) = make()
+    model.select(botId: "b_1")
+    fake.emit(.connection(.ready))
+    fake.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await Task.sleep(nanoseconds: 40_000_000)
+    model.draft = "A"
+    model.send()
+    try await Task.sleep(nanoseconds: 40_000_000)
+    let requestId = try XCTUnwrap(fake.sent.last?.requestId)
+    model.draft = "B"
+    fake.emit(
+      .error(
+        kind: .invalidCommand,
+        disposition: .notAdmitted,
+        message: "refused",
+        failure: "f_1",
+        requestId: requestId
+      )
+    )
+    try await Task.sleep(nanoseconds: 40_000_000)
+    XCTAssertTrue(model.draft.contains("A"), "the refused text is recoverable")
+    XCTAssertTrue(model.draft.contains("B"), "and the newer draft is not overwritten")
+  }
+
+  func testAReconnectReconcilesTheOutboxAgain() async throws {
+    let (model, fake) = make()
+    model.select(botId: "b_1")
+    fake.emit(.connection(.ready))
+    fake.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await Task.sleep(nanoseconds: 40_000_000)
+    model.draft = "第一次"
+    model.send()
+    try await Task.sleep(nanoseconds: 40_000_000)
+    let firstSends = fake.sent.count
+
+    fake.emit(.connection(.reconnecting(attempt: 1)))
+    fake.emit(.connection(.ready))
+    fake.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await Task.sleep(nanoseconds: 60_000_000)
+    XCTAssertGreaterThan(
+      fake.sent.count,
+      firstSends,
+      "the stored request is re-sent with its original requestId after a reconnect"
+    )
+    XCTAssertEqual(
+      fake.sent.last?.requestId,
+      fake.sent.first?.requestId,
+      "reconciliation never invents a new request id"
+    )
   }
 
   func testRetryReusesTheStoredRequestId() async throws {

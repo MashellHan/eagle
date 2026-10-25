@@ -190,6 +190,9 @@ public final class ConversationSocket: NSObject {
         resyncDeadline?.cancel()
         resyncDeadline = nil
         accept = true
+      } else if resyncPending {
+        // Waiting for the snapshot that repairs a gap: nothing else is applied.
+        accept = false
       } else if self.gap.isStale(rev) {
         accept = false
       } else if self.gap.accept(rev) {
@@ -198,7 +201,6 @@ public final class ConversationSocket: NSObject {
         gapped = true
         accept = false
       }
-      _ = decoded.event
       lock.unlock()
       if gapped {
         requestResync()
@@ -215,45 +217,42 @@ public final class ConversationSocket: NSObject {
   }
 
   /// One resync per gap; a second failure without a snapshot reconnects (PROTOCOL I2).
+  /// One resync per gap; only the ten-second deadline advances the retry count, so a stream
+  /// that keeps sending gapped frames cannot exhaust the attempts.
   private func requestResync() {
     lock.lock()
-    if closed {
+    if closed || resyncPending {
       lock.unlock()
-      return
-    }
-    if resyncPending {
-      resyncAttempts += 1
-      let exhausted = resyncAttempts >= 2
-      lock.unlock()
-      if exhausted {
-        disconnect(reason: "the stream kept losing revisions", code: 1011)
-        return
-      }
-      // A second resync is sent and the deadline re-armed, so a stream that stays silent
-      // still ends this wait instead of hanging on a timeout that never fires again.
-      enqueue(try? Wire.resync(trace: Identifiers.trace("resync")))
-      resyncDeadline?.cancel()
-      resyncDeadline = Task { [weak self] in
-        try? await Task.sleep(nanoseconds: 10_000_000_000)
-        guard let self, !Task.isCancelled else { return }
-        self.lock.lock()
-        let waiting = self.resyncPending && !self.closed
-        self.lock.unlock()
-        if waiting { self.requestResync() }
-      }
       return
     }
     resyncPending = true
     lock.unlock()
     enqueue(try? Wire.resync(trace: Identifiers.trace("resync")))
+    armResyncDeadline()
+  }
+
+  /// After the deadline: one more resync, then a reconnect; never a third silent wait.
+  private func armResyncDeadline() {
     resyncDeadline?.cancel()
     resyncDeadline = Task { [weak self] in
       try? await Task.sleep(nanoseconds: 10_000_000_000)
       guard let self, !Task.isCancelled else { return }
       self.lock.lock()
       let waiting = self.resyncPending && !self.closed
+      self.resyncPending = false
+      self.resyncAttempts += 1
+      let exhausted = self.resyncAttempts >= 2
       self.lock.unlock()
-      if waiting { self.requestResync() }
+      guard waiting else { return }
+      if exhausted {
+        self.disconnect(reason: "the stream kept losing revisions", code: 1011)
+        return
+      }
+      self.enqueue(try? Wire.resync(trace: Identifiers.trace("resync")))
+      self.lock.lock()
+      self.resyncPending = true
+      self.lock.unlock()
+      self.armResyncDeadline()
     }
   }
 
@@ -374,10 +373,11 @@ public final class ConversationSocket: NSObject {
       do {
         try await task.send(.string(String(decoding: next, as: UTF8.self)))
       } catch {
-        // Release the writer before reconnecting, or the hello of the next attempt would
-        // queue behind a drain that never resumes.
+        // Release the writer *and* drop the queue it belonged to: those frames were for a
+        // connection that is gone, and the next one must start with `hello`.
         lock.lock()
         writing = false
+        writeQueue.removeAll()
         lock.unlock()
         disconnect(reason: "the write failed", code: 1006)
         return
@@ -449,20 +449,20 @@ public final class BotsConnection: ConversationPort {
     )
   }
 
-  public func abort(context: CommandContext) async throws {
-    try require().abort(trace: context.trace)
+  public func abort(context: CommandContext, botId: String) async throws {
+    try require(botId).abort(trace: context.trace)
   }
 
-  public func recover(context: CommandContext) async throws {
-    try require().recover(trace: context.trace)
+  public func recover(context: CommandContext, botId: String) async throws {
+    try require(botId).recover(trace: context.trace)
   }
 
-  public func resync(context: CommandContext) async throws {
-    try require().resync(trace: context.trace)
+  public func resync(context: CommandContext, botId: String) async throws {
+    try require(botId).resync(trace: context.trace)
   }
 
-  public func loadHistory(before messageId: String, context: CommandContext) async throws {
-    try require().loadHistory(before: messageId, limit: 50, trace: context.trace)
+  public func loadHistory(before messageId: String, context: CommandContext, botId: String) async throws {
+    try require(botId).loadHistory(before: messageId, limit: 50, trace: context.trace)
   }
 
   public func close() {
@@ -470,8 +470,11 @@ public final class BotsConnection: ConversationPort {
     socket = nil
   }
 
-  private func require() throws -> ConversationSocket {
+  private func require(_ botId: String) throws -> ConversationSocket {
     guard let socket else { throw ClientError("there is no connection") }
+    guard socket.botId == botId else {
+      throw ClientError("the connection now belongs to another bot")
+    }
     return socket
   }
 }

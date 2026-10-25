@@ -89,10 +89,11 @@ public final class ConversationViewModel: ObservableObject {
   }
 
   public func abort() {
+    guard let botId = selectedBotId else { return }
     let context = CommandContext.command("abort")
     Task { [weak self] in
       do {
-        try await self?.conversation.abort(context: context)
+        try await self?.conversation.abort(context: context, botId: botId)
       } catch {
         self?.errorBanner = Self.describe(error)
       }
@@ -100,10 +101,11 @@ public final class ConversationViewModel: ObservableObject {
   }
 
   public func recover() {
+    guard let botId = selectedBotId else { return }
     let context = CommandContext.command("recover")
     Task { [weak self] in
       do {
-        try await self?.conversation.recover(context: context)
+        try await self?.conversation.recover(context: context, botId: botId)
       } catch {
         self?.errorBanner = Self.describe(error)
       }
@@ -111,11 +113,13 @@ public final class ConversationViewModel: ObservableObject {
   }
 
   public func loadOlder() {
-    guard let oldest = state.messages.first(where: { !$0.isOptimistic })?.id else { return }
+    guard let oldest = state.messages.first(where: { !$0.isOptimistic })?.id,
+      let botId = selectedBotId
+    else { return }
     let context = CommandContext.command("history")
     Task { [weak self] in
       do {
-        try await self?.conversation.loadHistory(before: oldest, context: context)
+        try await self?.conversation.loadHistory(before: oldest, context: context, botId: botId)
       } catch {
         self?.errorBanner = Self.describe(error)
       }
@@ -183,6 +187,11 @@ public final class ConversationViewModel: ObservableObject {
   private func apply(_ event: ConversationEvent) {
     switch event {
     case .connection(let next):
+      if case .ready = next {
+        // the first snapshot after any connection reconciles
+      } else {
+        reconciled = false
+      }
       connection = next
 
     case .snapshot(let value):
@@ -204,9 +213,9 @@ public final class ConversationViewModel: ObservableObject {
       state = Reducer.apply(.submission(record), to: state)
       if record.status.isTerminal {
         inFlight.removeValue(forKey: record.requestId)
-        // A terminal record is the only thing that removes the entry (PROTOCOL.md,
-        // client duties 2); a placement in a snapshot is not a settlement.
-        try? outbox.remove(requestId: record.requestId)
+        // The terminal record is stored in the same atomic write that removes the entry
+        // (PROTOCOL.md, client duties 2); a placement in a snapshot is not a settlement.
+        try? outbox.settle(record)
       }
     case .history(let page):
       state = Reducer.apply(.history(page: page), to: state)
@@ -224,7 +233,10 @@ public final class ConversationViewModel: ObservableObject {
           let text = inFlight.removeValue(forKey: requestId)
           try? outbox.remove(requestId: requestId)
           state.messages.removeAll { $0.id == "local_\(requestId)" }
-          if let text, draft.isEmpty { draft = text }
+          if let text {
+            // Neither the refused text nor a newer draft may be lost.
+            draft = draft.isEmpty ? text : draft + "\n\n" + text
+          }
         }
       case .unknown:
         // Admission could not be confirmed: keep the bubble and the entry for a retry.

@@ -412,3 +412,20 @@ Verified just now: `apps/bots` `npm run check` 348 tests, coverage 94.99/89.82/9
 Next broken hop: the deferred list in PLAN.md — client `os.Logger` contract, the
 transport fault-injection matrix, the outbox across two windows, three daemon origin/
 handle gaps, and a measured long-markdown layout.
+
+## 2026-10-26 — stages 4-5 review, second pass
+
+Observed: the reviewer's second pass confirmed thirteen findings as fixed and found nine
+regressions inside the fixes. All nine are closed: one draft shared by the shell and the
+view model, evidence-based reservation expiry, a fail-closed outbox with durable terminal
+records, reconciliation after every reconnect, a cleared write queue on failure,
+one-resync-per-gap with a ten-second deadline and a drop barrier, bot-bound
+abort/recover/history, refusal text preserved next to a newer draft, and the send path
+fixed by the single draft.
+
+Verified just now: daemon `npm run check` 348 tests, coverage 95.00/89.89/90.51;
+client `swift test` and `./Scripts/coverage.sh` 93.1%; Eagle `swift test` 44 tests.
+
+Next broken hop: the deferred list in PLAN.md (client `os.Logger`, the socket
+fault-injection matrix, two real windows, three daemon origin/handle gaps, long-markdown
+layout) and the reviewer's third pass.

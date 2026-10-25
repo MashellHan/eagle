@@ -183,6 +183,55 @@ final class SettingsTests: XCTestCase {
     )
   }
 
+  func testATerminalRecordIsStoredBeforeItsEntryLeaves() throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bots-outbox-settle-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = OutboxStore(directory: directory)
+    try store.add(OutboxEntry(botId: "b_1", requestId: "r_1", text: "问"))
+    try store.settle(
+      Submission(
+        id: "s_1",
+        requestId: "r_1",
+        status: .unanswered,
+        reason: "aborted"
+      )
+    )
+    XCTAssertEqual(store.all(), [], "the entry leaves")
+    let settled = store.settledRequests()
+    XCTAssertEqual(settled.map(\.requestId), ["r_1"], "the settlement is durable")
+    XCTAssertEqual(settled.first?.status, .unanswered)
+    XCTAssertEqual(settled.first?.reason, "aborted")
+  }
+
+  func testAnUnreadableOutboxIsNeverTreatedAsEmpty() throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bots-outbox-broken-\(UUID().uuidString)", isDirectory: true)
+    let file = directory.appendingPathComponent("outbox.json")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+      try? FileManager.default.removeItem(at: directory)
+    }
+    try "{\"entries\":[{\"botId\":\"b_1\",\"requestId\":\"r_1\",\"text\":\"一\",\"whenBusy\":\"followUp\",\"createdAt\":\"x\"}],\"settled\":[]}".write(
+      to: file,
+      atomically: true,
+      encoding: .utf8
+    )
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
+    let store = OutboxStore(directory: directory)
+    XCTAssertThrowsError(
+      try store.add(OutboxEntry(botId: "b_1", requestId: "r_2", text: "二")),
+      "a read failure must fail the write, not overwrite the file"
+    )
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    XCTAssertEqual(
+      OutboxStore(directory: directory).all().map(\.requestId),
+      ["r_1"],
+      "the existing entry survived"
+    )
+  }
+
   func testOutboxSurvivesARestartAndKeepsItsMode() throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("bots-outbox-\(UUID().uuidString)", isDirectory: true)

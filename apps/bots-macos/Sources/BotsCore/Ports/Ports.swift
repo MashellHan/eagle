@@ -82,10 +82,10 @@ public protocol ConversationPort: AnyObject {
     context: CommandContext,
     botId: String
   ) async throws
-  func abort(context: CommandContext) async throws
-  func recover(context: CommandContext) async throws
-  func resync(context: CommandContext) async throws
-  func loadHistory(before messageId: String, context: CommandContext) async throws
+  func abort(context: CommandContext, botId: String) async throws
+  func recover(context: CommandContext, botId: String) async throws
+  func resync(context: CommandContext, botId: String) async throws
+  func loadHistory(before messageId: String, context: CommandContext, botId: String) async throws
   func close()
 }
 

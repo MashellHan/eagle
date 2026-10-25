@@ -440,11 +440,18 @@ export class ConversationService {
         return stored;
       }
       // A reservation already visible as pending is the same admission, not a second one.
-      // One whose events never arrived is released by time, never by a snapshot: a
-      // snapshot may have been captured before this admission existed.
+      // An expired one is released only after the runtime says it is not outstanding:
+      // time alone is not evidence that an admission ended.
       const now = this.#now();
-      for (const [requestId, at] of bot.reserved) {
-        if (now - at > RESERVATION_TTL_MS) bot.reserved.delete(requestId);
+      for (const [requestId, at] of [...bot.reserved]) {
+        if (now - at <= RESERVATION_TTL_MS) continue;
+        const record = await handle.submission({ requestId }).catch(() => undefined);
+        if (record === undefined || record.status === "done" || record.status === "unanswered") {
+          bot.reserved.delete(requestId);
+        } else {
+          // Still queued or placed: it owns its slot, so the clock restarts.
+          bot.reserved.set(requestId, now);
+        }
       }
       const unlisted = [...bot.reserved.keys()].filter(
         (requestId) => !bot.snapshot.pending.some((record) => record.requestId === requestId),

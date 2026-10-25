@@ -159,6 +159,18 @@ races already on this list, and twelve client/integration defects. Fixed:
   snapshot, draft restoration, store-level outbox merge, single typing row, the
   appearance set, and the daemon races above
 
+A second pass found nine more P1s, mostly regressions inside those fixes; they are
+closed too: the shell and the conversation view model now share one draft (the new
+readiness guard had made the first message unsendable); a reservation expires only after
+the runtime says the request is not outstanding (time alone was not evidence); the outbox
+fails closed on an unreadable file, always reads the file, and stores a terminal record
+in the same atomic write that removes its entry; reconciliation runs after every
+reconnect, not only the first; a failed socket write clears the queue it belonged to so
+the next connection starts with `hello`; a gap is repaired by one resync and a
+ten-second deadline (gapped frames neither advance the baseline nor exhaust the retries);
+`abort`/`recover`/`history` name their bot like `send` does; and a refusal appends the
+rejected text to a newer draft instead of dropping it.
+
 Still deferred, with reasons: the client logging contract (`os.Logger` crossings in
 OBSERVABILITY.md) is not implemented; the transport's gap/unknown/close-code/reconnect
 fault-injection matrix is only unit-tested at the gap rule and exercised by the happy

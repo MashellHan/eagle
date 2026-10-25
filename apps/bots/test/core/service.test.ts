@@ -1187,6 +1187,7 @@ const gatedHandle = (options: {
   snapshot: ConversationSnapshot;
   onOpen?: () => void;
   openGate?: Promise<void>;
+  records?: Map<string, Submission>;
 }) => {
   let sink: ((event: RuntimeEvent) => void) | undefined;
   const handle: RuntimeHandle = {
@@ -1201,7 +1202,9 @@ const gatedHandle = (options: {
     },
     submission: async (key) =>
       "requestId" in key
-        ? [...records.values()].find((record) => record.requestId === key.requestId)
+        ? [...(options.records ?? records).values()].find(
+            (record) => record.requestId === key.requestId,
+          )
         : undefined,
     submit: async (input) => {
       await options.openGate;
@@ -1438,7 +1441,8 @@ test("a lost settlement event expires, but a stale snapshot does not release it"
     running: false,
     streaming: null,
   };
-  const scripted = gatedHandle({ snapshot });
+  const records = new Map<string, Submission>();
+  const scripted = gatedHandle({ snapshot, records });
   let now = 1_000;
   const service = new ConversationService({
     open: async () => scripted.handle,
@@ -1470,9 +1474,21 @@ test("a lost settlement event expires, but a stale snapshot does not release it"
   scripted.emit({ type: "snapshot", trace, value: { ...snapshot } });
   assert.equal(await attempt(), false, "a stale snapshot never releases a reservation");
 
-  // The reservation expires by time, which bounds the leak without a snapshot.
+  // Time alone is not evidence: the runtime still reports each admission as queued.
+  for (const [index] of Array.from({ length: 32 }).entries()) {
+    records.set(`r_lost_${String(index).padStart(4, "0")}_1000`, {
+      id: `s_${index + 1}`,
+      requestId: `r_lost_${String(index).padStart(4, "0")}_1000`,
+      status: "queued",
+    });
+  }
   now += RESERVATION_TTL_MS + 1;
-  assert.equal(await attempt(), true, "an expired reservation frees its slot");
+  assert.equal(await attempt(), false, "an outstanding admission keeps its slot after the TTL");
+
+  // Once the runtime reports no such record, the next expiry check releases it.
+  records.clear();
+  now += RESERVATION_TTL_MS + 1;
+  assert.equal(await attempt(), true, "a reservation the runtime no longer knows is released");
 });
 
 test("a bot that becomes unavailable during the lookup refuses the admission", async () => {
