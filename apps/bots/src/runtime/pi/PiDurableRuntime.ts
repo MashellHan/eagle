@@ -588,7 +588,10 @@ class PiRuntimeHandle implements RuntimeHandle {
   /**
    * Completes the record set for the ids a snapshot names. Work admitted between the
    * record read and the acquisition is named by the snapshot but absent from the earlier
-   * read, so each missing id is read again — and only unsettled work is pending.
+   * read, so each missing id is read again. A record that settled while the projection
+   * was being prepared still describes work the snapshot called active, so it keeps the
+   * status the snapshot implies (a run input is placed, an inbox item is queued) instead
+   * of vanishing; the next settlement event moves it up, and it is never downgraded.
    */
   async #namedRecords(
     snapshot: {
@@ -602,6 +605,7 @@ class PiRuntimeHandle implements RuntimeHandle {
       ...(snapshot.run?.inputs ?? []).map((id) => String(id)),
       ...snapshot.inbox.map((item) => String(item.id)),
     ];
+    const inRun = new Set((snapshot.run?.inputs ?? []).map((id) => String(id)));
     const completed = [...known];
     for (const id of named) {
       if (have.has(id)) continue;
@@ -610,8 +614,20 @@ class PiRuntimeHandle implements RuntimeHandle {
       if (found === undefined) continue;
       const record = convertSubmission(await found.status(BACKGROUND_CONTEXT));
       if (record === undefined) continue;
-      if (record.status !== "queued" && record.status !== "placed") continue;
-      completed.push(record);
+      if (record.status === "queued" || record.status === "placed") {
+        completed.push(record);
+        continue;
+      }
+      completed.push(
+        inRun.has(id)
+          ? {
+              id: record.id,
+              requestId: record.requestId,
+              status: "placed",
+              ...(record.entryId === undefined ? {} : { entryId: record.entryId }),
+            }
+          : { id: record.id, requestId: record.requestId, status: "queued" },
+      );
     }
     return completed;
   }
