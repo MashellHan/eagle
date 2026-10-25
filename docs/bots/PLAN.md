@@ -63,6 +63,37 @@ Current tree: 199 tests, coverage 96.5% lines, `typecheck`, `lint`, `fixtures:ch
 green. The core is complete: catalog, hub, service, fake runtime. Nothing listens on a
 socket yet and no real runtime adapter exists, so the product is not runnable.
 
+### What the core can do today
+
+Signed off and usable as a library (rows 9-22):
+
+- protocol: every committed fixture decodes and re-encodes byte-identically, commands
+  are validated at the wire boundary, and frame, page, message, catalog and inbound
+  budgets are enforced
+- catalog: atomic `catalog.json`, a delete that survives a crash between its two
+  steps, serialized mutations
+- hub: strictly increasing per-bot revisions, 50 ms delta coalescing under a 96 KiB
+  batch limit split between whole changes, snapshot-only downgrade with a recovery
+  anchor that is never served stale, one serial fanout per bot
+- view: a pure fold into `ConversationSnapshot`, with submission ranking (I14)
+- service: a connection-scoped subscription whose baseline is rendered before it goes
+  live, an idempotent `send` that answers the stored record and emits nothing, hub
+  broadcasts for settlements, `history` paging that leaves the newest window alone, a
+  single-frame `resync`, `abort` and `recover`
+- log: a declared event catalogue, key whitelist, redaction and parser-enforced layer
+  boundaries
+
+What is missing, and why the product still cannot run:
+
+| Gap | Consequence |
+| --- | --- |
+| `src/runtime/pi/` | no real Harness and no model; only the scripted fake runtime exists |
+| `src/server/` and `src/main.ts` | no socket, no bearer, no catalog endpoints, no registry lifecycle, no singleton lock; `npm start` fails on the missing entrypoint |
+| log sink | events can be built and validated, but no daemon writes them to disk |
+| `apps/bots-macos/` | no client |
+
+Stage 3 (rows 23-36, the pi adapter) is next, then the server, then the client.
+
 ## Next work, in order
 
 1. Stage 3: `src/runtime/pi/` (mapEvents, PiDurableRuntime) with the golden
