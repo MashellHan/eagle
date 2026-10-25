@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   ConversationSnapshot,
+  EntryId,
   ErrorDisposition,
   ErrorKind,
   Failure,
@@ -11,7 +12,7 @@ import type {
 } from "./domain.ts";
 import { ClassifiedFailure } from "./domain.ts";
 import { EventHub, type HubSubscriber, type HubSubscription } from "./EventHub.ts";
-import type { RuntimeEvent, RuntimeHandle, SubmitInput } from "./RuntimePort.ts";
+import type { RuntimeEvent, RuntimeHandle, RuntimeHistory, SubmitInput } from "./RuntimePort.ts";
 import { reduceView, type SubmissionRanks, seedRanks } from "./view.ts";
 
 /** Opens (or recovers) one bot. The registry owns catalog policy; the service owns routing. */
@@ -184,6 +185,36 @@ export class ConversationService {
         { cause },
       );
     }
+  }
+
+  /** `abort` withdraws the running input and everything queued behind it. */
+  async abort(connectionId: string, trace: string): Promise<void> {
+    await this.#subscribed(connectionId).handle.abort(trace);
+  }
+
+  /** `recover` retries parked work and never aborts a healthy answer. */
+  async recover(connectionId: string, trace: string): Promise<void> {
+    await this.#subscribed(connectionId).handle.recover(trace);
+  }
+
+  /** Older messages, oldest first. The newest window is not re-fetched. */
+  async history(
+    connectionId: string,
+    input: { readonly beforeEntryId?: EntryId; readonly limit: number },
+  ): Promise<RuntimeHistory> {
+    return this.#subscribed(connectionId).handle.history(input);
+  }
+
+  /**
+   * Answers the view at the last published revision. Pending deltas are flushed first, so
+   * the snapshot a client adopts cannot be ahead of the revision it is told about.
+   */
+  async resync(
+    connectionId: string,
+  ): Promise<{ readonly rev: number; readonly snapshot: ConversationSnapshot }> {
+    const bot = this.#subscribed(connectionId);
+    bot.hub.drain();
+    return { rev: bot.hub.rev, snapshot: bot.snapshot };
   }
 
   #refuse(message: string, requestId?: string): CommandError {

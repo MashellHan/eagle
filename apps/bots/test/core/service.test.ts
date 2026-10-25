@@ -859,3 +859,96 @@ test("a runtime error never fabricates a settlement", async () => {
     ["queued"],
   );
 });
+
+test("history pages older messages without touching the newest window", async () => {
+  const runtime = new FakeRuntime();
+  const service = serviceFor(runtime);
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  const handle = runtime.handle("b_1");
+  for (const id of ["e_1", "e_2", "e_3"]) {
+    handle.emit({ type: "append", trace, message: message(id) });
+  }
+  const revBefore = received.at(-1)?.rev;
+  const page = await service.history("c_1", { beforeEntryId: "e_3", limit: 1 });
+  assert.deepEqual(
+    page.messages.map((entry) => entry.id),
+    ["e_2"],
+  );
+  assert.equal(page.hasMore, true);
+  assert.equal(received.at(-1)?.rev, revBefore, "paging publishes nothing");
+
+  const joined = await service.subscribe("c_2", "b_1", trace, () => {});
+  assert.deepEqual(
+    joined.snapshot.messages.map((entry) => entry.id),
+    ["e_1", "e_2", "e_3"],
+    "the newest window is untouched by a history page",
+  );
+});
+
+test("resync answers a snapshot at the last published revision", async () => {
+  const runtime = new FakeRuntime();
+  const service = serviceFor(runtime);
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  runtime.handle("b_1").emit({ type: "status", trace, running: true, streaming: null, inbox: [] });
+  const eventsBefore = received.length;
+  const resync = await service.resync("c_1");
+  assert.equal(resync.rev, received.at(-1)?.rev);
+  assert.equal(received.length, eventsBefore, "resync mints no new event");
+  assert.equal(resync.snapshot.running, true);
+});
+
+test("a pending delta is flushed before resync quotes a revision", async () => {
+  const runtime = new FakeRuntime();
+  const service = serviceFor(runtime);
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  runtime.handle("b_1").emit({ type: "append", trace, message: message("e_1") });
+  runtime.handle("b_1").emit({
+    type: "delta",
+    trace,
+    messageId: "e_1",
+    changes: [{ kind: "text", index: 0, append: "!" }],
+  });
+  const resync = await service.resync("c_1");
+  assert.equal(resync.rev, received.at(-1)?.rev, "the quote is the last event, not a pending one");
+  const block = resync.snapshot.messages[0]?.blocks[0];
+  assert.equal(
+    block?.type === "text" ? block.text : "",
+    "e_1!",
+    "the view is folded up to that rev",
+  );
+});
+
+test("abort and recover reach the runtime and need a subscription", async () => {
+  const runtime = new FakeRuntime();
+  const calls: string[] = [];
+  const service = new ConversationService({
+    open: async (botId, openTrace) => {
+      const handle = await runtime.open({
+        id: botId,
+        dir: `/tmp/${botId}`,
+        model: { provider: "faux", modelId: "faux-1" },
+        trace: openTrace,
+      });
+      return proxyHandle(handle, {
+        abort: async (abortTrace) => {
+          calls.push(`abort:${abortTrace}`);
+        },
+        recover: async (recoverTrace) => {
+          calls.push(`recover:${recoverTrace}`);
+        },
+      });
+    },
+    measure: utf8,
+  });
+  await assert.rejects(
+    () => service.abort("c_1", trace),
+    (error: unknown) => error instanceof CommandError && error.disposition === "not_admitted",
+  );
+  await subscribe(service, []);
+  await service.abort("c_1", trace);
+  await service.recover("c_1", trace);
+  assert.deepEqual(calls, [`abort:${trace}`, `recover:${trace}`]);
+});
