@@ -105,16 +105,23 @@ export class EventMapper {
 
   /**
    * Resets adapter state from an attach or reattach snapshot and returns its baseline.
-   * `active` is the authoritative set of unsettled submissions, so `pending` is the
-   * current state rather than whatever the ledger happened to remember.
+   * `pending` is rebuilt from the snapshot itself — the submission ids the run and the
+   * inbox name — plus any record `active` supplies, because a snapshot says which work
+   * exists while only a record says what it is. A record that is not in the snapshot is
+   * dropped: it settled, whatever the ledger last saw.
    */
   seed(event: SnapshotEvent, trace: string, active: readonly Submission[] = []): RuntimeEvent[] {
     this.#attempt = event.generation?.attempt ?? 0;
     this.#attemptOpen = event.generation !== undefined;
     this.#provisional = null;
     this.#withheld = false;
-    const live = new Set(active.map((record) => record.id));
-    for (const record of active) this.#records.set(record.id, record);
+    const live = new Set<string>([
+      ...(event.run?.inputs ?? []).map((id) => String(id)),
+      ...event.inbox.map((item) => String(item.id)),
+    ]);
+    for (const record of active) {
+      if (live.has(record.id)) this.#records.set(record.id, record);
+    }
     for (const id of [...this.#records.keys()]) {
       if (!live.has(id)) this.#records.delete(id);
     }
@@ -376,11 +383,13 @@ export class EventMapper {
     return [{ type: "snapshot", trace, value: this.view() }, this.#status(trace)];
   }
 
-  /** Ends the attempt without a committed entry (a run that ended while streaming). */
+  /** Ends the attempt without a committed entry (a run that ended, or a deferred poll). */
   #closeProvisional(): void {
     this.#dropProvisional();
     this.#provisional = null;
     this.#withheld = false;
+    // The closed attempt keeps its id: the next attempt must not reuse `p_a<n>`.
+    this.#attemptOpen = false;
   }
 
   #dropProvisional(): void {

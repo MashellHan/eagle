@@ -34,6 +34,7 @@ import type {
 import { type DeclaredEvent, declareEvent } from "../../log/events.ts";
 import type { Log } from "../../log/log.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
+import { entryMessageId } from "./convert.ts";
 import { convertSubmission, EventMapper } from "./mapEvents.ts";
 import { createPhaseOneRegistry } from "./registry.ts";
 
@@ -245,6 +246,7 @@ class PiRuntimeHandle implements RuntimeHandle {
       detached: false,
       episode: `listener:${++this.#watchSequence}`,
     };
+    this.#currentEpisode = state.episode;
     this.#subscriptions.set(sink, state);
     try {
       const snapshot = await this.#acquire(state, trace);
@@ -280,9 +282,9 @@ class PiRuntimeHandle implements RuntimeHandle {
   async submit(input: SubmitInput): Promise<Submission> {
     const log = this.#options.log;
     const started = performance.now();
-    // Attribute the run before admission: its first commit can be published before
-    // `submit` returns, and that progress belongs to this send.
-    this.#runTrace = input.trace;
+    // The admission commit can be published before `submit` returns, so the request id
+    // knows its trace first; the submission id is filled in once it exists.
+    this.#traces.set(input.requestId, input.trace);
     log.emit("info", "runtime", Events.submitStart, {
       trace: input.trace,
       botId: this.#spec.id,
@@ -306,7 +308,9 @@ class PiRuntimeHandle implements RuntimeHandle {
       this.#submissionIds.set(String(record.id), String(record.id));
       this.#traces.set(input.requestId, input.trace);
       this.#traces.set(String(record.id), input.trace);
-      this.#runTrace = input.trace;
+      // A run that started before the admission record existed has no trace yet; the
+      // input that owns it supplies one. A queued follow-up finds it already set.
+      this.#runTrace ??= input.trace;
       const converted = convertSubmission(record);
       if (converted === undefined) {
         throw new ClassifiedFailure(
@@ -487,49 +491,84 @@ class PiRuntimeHandle implements RuntimeHandle {
   /** `HarnessOptions.onReport`, off the Session line; the channel never mints by itself. */
   report(info: ReportInfo): void {
     const minted = this.#classifier.report(info, this.#currentEpisode);
+    const trace = this.#runTrace ?? this.#spec.trace;
     const log = this.#options.log;
     if (minted === undefined) {
       log.emit("warn", "pi", Events.piReport, {
-        trace: this.#spec.trace,
+        trace,
         botId: this.#spec.id,
         detail: { kind: info.type },
       });
       return;
     }
-    this.#logFailure(minted, this.#spec.trace, Events.piReport, "pi");
+    this.#logFailure(minted, trace, Events.piReport, "pi");
     const task = "task" in info ? info.task : undefined;
     this.#announce({
       type: "error",
-      trace: this.#spec.trace,
+      trace,
       failure: minted.classification.failure,
       message: minted.classification.message,
       ...(task === undefined ? {} : { taskId: String(task.id) }),
     });
   }
 
-  /** Acquires a watch, seeds the mapper from it and starts delivering into `state`. */
+  /**
+   * Acquires a watch, hands over its baseline and only then delivers live commits. The
+   * baseline is computed from the acquisition snapshot, and events that arrive while it
+   * is being computed are buffered, so a subscriber can never see a newer answer and
+   * then have an older snapshot replace it.
+   */
   async #acquire(state: Subscription, trace: string): Promise<ConversationSnapshot> {
     const stream = await watchEvents(this.#harness, this.#rootId, BACKGROUND_CONTEXT);
+    let ready = false;
+    const buffered: (readonly AgentEvent[])[] = [];
+    stream.start(async (batch) => {
+      if (!ready) {
+        buffered.push(batch);
+        return;
+      }
+      this.#consume(state, batch, trace);
+    });
     const inspection = await this.#harness.inspect(BACKGROUND_CONTEXT);
     const active = inspection.submissions
       .map((record) => convertSubmission(record))
       .filter((record): record is Submission => record !== undefined);
-    // F8: the acquisition snapshot is the baseline; the listener sees later commits.
+    for (const record of active) this.#rememberId(record);
     const baseline = this.#mapper.seed(stream.snapshot, trace, active)[0];
     const snapshot =
       baseline !== undefined && baseline.type === "snapshot" ? baseline.value : this.#mapper.view();
-    if (state.stream !== undefined) state.stream.stop();
+    if (state.stream !== undefined) void state.stream.stop();
     state.stream = stream;
-    stream.start(async (batch) => {
-      for (const event of batch) {
-        for (const mapped of this.#mapOne(event, trace)) this.#deliver(state, mapped);
-      }
-      // The whole commit belongs to the send, including the settlement that follows
-      // `run_end` in the same batch; the next run sets its own trace.
-      if (batch.some((event) => event.type === "run_end")) this.#runTrace = undefined;
-    });
     stream.closed.then((end) => this.#watchEnd(end, trace, state));
+    ready = true;
+    for (const batch of buffered.splice(0)) this.#consume(state, batch, trace);
     return snapshot;
+  }
+
+  #consume(state: Subscription, batch: readonly AgentEvent[], trace: string): void {
+    // A user entry is published before the record that names its send, so attribute the
+    // whole batch first and then map it.
+    const byEntry = new Map<string, string>();
+    for (const event of batch) {
+      if (event.type !== "submission") continue;
+      const record = convertSubmission(event.record);
+      this.#rememberId(record);
+      const own = this.#traceOf(event.record.id, event.record.requestId);
+      if (own !== undefined && record?.entryId !== undefined) byEntry.set(record.entryId, own);
+    }
+    for (const event of batch) {
+      for (const mapped of this.#mapOne(event, trace, byEntry)) this.#deliver(state, mapped);
+    }
+    // The commit belongs to the run it ends, including the settlement that follows
+    // `run_end` in the same batch; a run that starts in this batch sets its own trace.
+    const started = batch.some((event) => event.type === "run_start");
+    if (!started && batch.some((event) => event.type === "run_end")) this.#runTrace = undefined;
+  }
+
+  #traceOf(submissionId: unknown, requestId?: string): string | undefined {
+    const byId = this.#traces.get(String(submissionId));
+    if (byId !== undefined) return byId;
+    return requestId === undefined ? undefined : this.#traces.get(requestId);
   }
 
   #deliver(state: Subscription, event: RuntimeEvent): void {
@@ -572,14 +611,45 @@ class PiRuntimeHandle implements RuntimeHandle {
     void this.#acquire(state, trace).then(
       (snapshot) => {
         if (state.detached) return;
+        // Delivered before any later commit: `#acquire` drains what it buffered after
+        // this point, and the sink has already replaced its state here.
         this.#deliver(state, { type: "snapshot", trace, value: snapshot });
       },
       () => undefined,
     );
   }
 
-  #mapOne(event: AgentEvent, trace: string): RuntimeEvent[] {
-    const owned = this.#runTrace ?? trace;
+  /**
+   * The trace that owns an event: the send behind its own submission, else the send that
+   * started the run, else the connection watching it.
+   */
+  #traceFor(event: AgentEvent, trace: string, byEntry: ReadonlyMap<string, string>): string {
+    if (event.type === "submission") {
+      const own = this.#traceOf(event.record.id, event.record.requestId);
+      if (own !== undefined) return own;
+    }
+    if (event.type === "run_start") {
+      const first = event.inputs[0];
+      const own = first === undefined ? undefined : this.#traces.get(String(first));
+      if (own !== undefined) {
+        this.#runTrace = own;
+        return own;
+      }
+    }
+    if (event.type === "message_end") {
+      const own = byEntry.get(entryMessageId(event.entry.id));
+      if (own !== undefined) return own;
+    }
+    return this.#runTrace ?? trace;
+  }
+
+  #mapOne(
+    event: AgentEvent,
+    trace: string,
+    byEntry: ReadonlyMap<string, string> = new Map(),
+  ): RuntimeEvent[] {
+    const owned = this.#traceFor(event, trace, byEntry);
+    if (event.type === "submission") this.#rememberId(convertSubmission(event.record));
     if (event.type !== "task_failed") return this.#mapper.map(event, owned);
     const minted = this.#classifier.taskFailed({
       taskId: String(event.taskId),
@@ -595,6 +665,13 @@ class PiRuntimeHandle implements RuntimeHandle {
     };
     this.#announce(error);
     return [];
+  }
+
+  /** Teaches the ledger both ids, so a settled input stays readable by request id. */
+  #rememberId(record: Submission | undefined): void {
+    if (record === undefined) return;
+    this.#submissionIds.set(record.id, record.id);
+    if (record.requestId.length > 0) this.#submissionIds.set(record.requestId, record.id);
   }
 
   #broadcast(event: RuntimeEvent): void {
@@ -633,6 +710,12 @@ class PiRuntimeHandle implements RuntimeHandle {
     const fields = { trace, botId: this.#spec.id, failure };
     if (!minted.minted || failure.layer !== localLayer) {
       this.#options.log.emit("warn", localLayer, local, { ...fields, propagated: true });
+      if (minted.minted) {
+        // The channel that classified it is not the layer that will log it, so this is
+        // the only place the origin record can come from: emit it on the owning layer.
+        const origin = failure.layer === "pi" ? Events.piReport : Events.classify;
+        this.#options.log.emit("error", failure.layer, origin, { ...fields, origin: true });
+      }
       return;
     }
     this.#options.log.emit("error", localLayer, local, { ...fields, origin: true });

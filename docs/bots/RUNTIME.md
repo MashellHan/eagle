@@ -144,6 +144,10 @@ Message identity, as built:
   rerender and a live frame describe the same message identically. A message
   without a timestamp uses the host clock, which only happens for a message pi
   never stamped.
+- Attribution: a run's progress carries the trace of the `send` that owns it, resolved
+  from the submission record; the `status` published by that same `run_start` can still
+  carry the watching connection's trace, because the admission record arrives after the
+  event. Everything the client turns into a message, and every settlement, is exact.
 - A user message carries `requestId` when the adapter knows it. The entry and its
   submission record land in the same commit, and `message_end` is published first,
   so the live `append` may lack the id: the adapter attaches it as soon as the
@@ -245,7 +249,15 @@ Projection, which is also part of the mapping contract:
 
 - A snapshot carries the newest `PAGE_MAX_MESSAGES` displayable messages, oldest
   first, with `truncatedBefore` naming the first message it could not keep;
-  `history` pages the rest from `Conversation.entries()` newest-first and reverses.
+  `history` pages the rest from `Conversation.entries()` newest-first, skipping
+  entries the wire does not show, and reverses.
+- `pending` is rebuilt from the snapshot itself: the submission ids the run and the
+  inbox name, with records the adapter already holds supplying their details. Work
+  the snapshot does not name is settled, so it leaves `pending` even if a settlement
+  event was missed, and a cold start still shows the input a crash interrupted.
+- The baseline of a subscription is delivered before any later commit: events that
+  arrive while it is being computed are buffered, so a fresh snapshot can never
+  replace content that is already newer.
 - Each converted message is measured as its encoded JSON; above `MAX_MESSAGE_BYTES`
   it is withheld and replaced by the notice (PROTOCOL.md). The adapter may not
   import the wire layer, so `src/runtime/pi/limits.ts` mirrors those two numbers and

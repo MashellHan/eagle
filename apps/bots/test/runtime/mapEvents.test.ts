@@ -614,6 +614,98 @@ test("a whole-message change replaces the content and keeps the attempt streamin
   assert.deepEqual(mapper.view().messages[0]?.blocks, [{ type: "text", text: "draft done" }]);
 });
 
+test("a snapshot from the stream rebuilds pending from the work it names", () => {
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock });
+  const record = {
+    id: "8",
+    requestId: "r_0000002",
+    status: "placed" as const,
+    entryId: "e_7",
+  };
+  const base = {
+    type: "snapshot",
+    entries: [userEntry()],
+    run: { inputs: ["8"] },
+    tools: [],
+    nestedTools: [],
+    compactions: [],
+    inbox: [],
+    agent: {},
+    usage: { models: {}, tools: {} },
+  };
+  mapper.seed(base as never, trace, [record]);
+  assert.deepEqual(
+    mapper.view().pending.map((item) => item.id),
+    ["8"],
+    "the active submission is pending",
+  );
+  // An overflow snapshot that still names the input keeps it…
+  mapper.map(base as never, trace);
+  assert.deepEqual(
+    mapper.view().pending.map((item) => item.id),
+    ["8"],
+    "a reattach that still names the input does not lose it",
+  );
+  // …and one that names nothing drops it, whatever the ledger last saw.
+  mapper.map({ ...base, run: undefined, entries: [] } as never, trace);
+  assert.deepEqual(mapper.view().pending, [], "a settled input leaves pending");
+});
+
+test("a deferred poll closes the attempt, so the next one gets a new id", () => {
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock });
+  mapper.map({ type: "run_start", inputs: ["8"] } as never, trace);
+  const first = mapper.map(
+    { type: "message_start", message: assistantMessage("partial", "pending") } as never,
+    trace,
+  );
+  assert.deepEqual(
+    of(first, "append").map((event) => event.message.id),
+    ["p_a1"],
+  );
+  mapper.map({ type: "deferred_poll", pollAt: 1 } as never, trace);
+  const second = mapper.map(
+    { type: "message_start", message: assistantMessage("after the poll", "pending") } as never,
+    trace,
+  );
+  assert.deepEqual(
+    of(second, "append").map((event) => event.message.id),
+    ["p_a2"],
+    "a withdrawn attempt never shares its id with the next one",
+  );
+});
+
+test("a block replacement carries real content, not only the empty start", () => {
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock });
+  mapper.map({ type: "message_start", message: assistantMessage("", "pending") } as never, trace);
+  const events = mapper.map(
+    {
+      type: "message_update",
+      usage: usage(),
+      changes: [{ type: "block", contentIndex: 0, block: { type: "text", text: "whole block" } }],
+    } as never,
+    trace,
+  );
+  assert.deepEqual(of(events, "delta")[0]?.changes, [
+    { kind: "block", index: 0, block: { type: "text", text: "whole block" } },
+  ]);
+  assert.deepEqual(mapper.view().messages[0]?.blocks, [{ type: "text", text: "whole block" }]);
+  const replaced = mapper.map(
+    {
+      type: "message_update",
+      usage: usage(),
+      changes: [{ type: "message", message: assistantMessage("done", "stop") }],
+    } as never,
+    trace,
+  );
+  const change = of(replaced, "delta")[0]?.changes[0];
+  assert.equal(
+    change?.kind === "message" ? change.message.state : undefined,
+    "streaming",
+    "a resolved replacement is still the attempt in flight, so it is normalized",
+  );
+  assert.deepEqual(mapper.view().messages[0]?.blocks, [{ type: "text", text: "done" }]);
+});
+
 test("the mapper's view agrees with the service's fold of the same events", () => {
   for (const name of ["answer-with-deltas", "abort-with-queued", "tool-call", "two-text-blocks"]) {
     const mapper = new EventMapper({ botId: "b_golden", now: fixedClock });

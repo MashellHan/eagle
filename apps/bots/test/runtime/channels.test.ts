@@ -102,6 +102,7 @@ test("a sink that throws gets a fresh baseline and the subscription keeps workin
     // The subscription still delivers: the next turn arrives without a new subscribe call.
     bench.faux.setResponses([text("第二次的答案。")]);
     const before = events.length;
+    const baselineIndex = events.length - 1;
     await handle.submit({ requestId: "r_throw_2", text: "第二次", whenBusy: "followUp", trace });
     await waitFor(
       () =>
@@ -111,7 +112,105 @@ test("a sink that throws gets a fresh baseline and the subscription keeps workin
       "the reattached stream to deliver the next answer",
       10_000,
     );
+    const firstNew = events.findIndex(
+      (event, index) => index > baselineIndex && event.type === "append",
+    );
+    assert.ok(
+      firstNew > baselineIndex,
+      "the baseline reaches the subscriber before any later commit",
+    );
     assert.equal(await handle.close(trace, 10_000), "closed");
+  } finally {
+    await bench.cleanup();
+  }
+});
+
+test("three listener faults escalate to one internal error, with one origin record", async () => {
+  const bench = await createBench();
+  try {
+    const handle = await bench.runtime.open(bench.spec());
+    const events: RuntimeEvent[] = [];
+    let throws = 0;
+    await handle.subscribe(trace, (event) => {
+      events.push(event);
+      if ((event.type === "append" || event.type === "delta") && throws < 3) {
+        throws += 1;
+        throw new Error("the sink threw again");
+      }
+    });
+    for (const [index, answer] of ["一。", "二。", "三。"].entries()) {
+      bench.faux.setResponses([text(answer)]);
+      await handle
+        .submit({
+          requestId: `r_listener_${index}`,
+          text: `第 ${index} 个`,
+          whenBusy: "followUp",
+          trace,
+        })
+        .catch(() => undefined);
+      await waitFor(() => throws > index, `fault ${index + 1}`, 10_000);
+    }
+    await waitFor(() => of(events, "error").length > 0, "the third fault to escalate", 10_000);
+    const escalated = of(events, "error");
+    assert.equal(escalated.length, 1, "one error event for the escalation");
+    assert.equal(escalated[0]?.failure.kind, "internal");
+    assert.equal(escalated[0]?.failure.layer, "runtime", "the adapter owns a lost watch");
+    const errors = bench.records.filter((record) => record.level === "error");
+    assert.equal(errors.length, 1, "and exactly one error record");
+    assert.equal(errors[0]?.err?.failure, escalated[0]?.failure.id, "with the same identity");
+    assert.equal(errors[0]?.err?.origin, true);
+    assert.equal(errors[0]?.layer, "runtime", "on the layer that owns it");
+    await handle.close(trace, 10_000);
+  } finally {
+    await bench.cleanup();
+  }
+});
+
+test("a queued follow-up keeps its own trace and does not take the running one", async () => {
+  const bench = await createBench({
+    provider: { tokensPerSecond: 20, tokenSize: { min: 2, max: 3 } },
+  });
+  try {
+    const handle = await bench.runtime.open(bench.spec());
+    const events: RuntimeEvent[] = [];
+    await handle.subscribe("tr_connection_probe", (event) => events.push(event));
+    bench.faux.setResponses([
+      text("第一个回答，慢一点，让第二个问题排队进来。"),
+      text("第二个回答。"),
+    ]);
+    await handle.submit({
+      requestId: "r_trace_a",
+      text: "第一个问题",
+      whenBusy: "followUp",
+      trace: "tr_send_a",
+    });
+    await handle.submit({
+      requestId: "r_trace_b",
+      text: "第二个问题",
+      whenBusy: "followUp",
+      trace: "tr_send_b",
+    });
+    await waitFor(
+      () => of(events, "submission").filter((event) => event.record.status === "done").length === 2,
+      "both turns to settle",
+      15_000,
+    );
+    const answerTraces = of(events, "append")
+      .filter((event) => event.message.role === "assistant" && event.message.id.startsWith("e_"))
+      .map((event) => event.trace);
+    assert.deepEqual(
+      answerTraces.slice(0, 2),
+      ["tr_send_a", "tr_send_b"],
+      "each answer belongs to the send that asked for it",
+    );
+    const settlements = of(events, "submission")
+      .filter((event) => event.record.status === "done")
+      .map((event) => [event.record.requestId, event.trace]);
+    assert.deepEqual(settlements, [
+      ["r_trace_a", "tr_send_a"],
+      ["r_trace_b", "tr_send_b"],
+    ]);
+    await handle.close(trace, 10_000);
   } finally {
     await bench.cleanup();
   }
@@ -224,6 +323,11 @@ test("a killed run is pending in the next snapshot, and leaves it once settled",
     );
     const reconnected = await handle.subscribe(trace, () => undefined);
     assert.deepEqual(reconnected.snapshot.pending, [], "a settled input leaves pending");
+    // The ledger is built from the recovered record, so the interrupted input is readable
+    // by request id before this process ever submitted anything.
+    const recovered = await handle.submission({ requestId: "r_interrupt_1" });
+    assert.equal(recovered?.status, "done");
+    assert.equal(recovered?.requestId, "r_interrupt_1");
     await handle.close(trace, 10_000);
   } finally {
     await bench.cleanup();
