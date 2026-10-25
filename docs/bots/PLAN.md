@@ -16,8 +16,9 @@ apps/bots/                 the daemon: own package, own lockfile, own gates
   src/protocol/            wire codec, limits, validation
   src/log/                 declared event catalogue and the layer logger
   src/runtime/pi/          pi-durable adapter, classifier, golden mapper
-  src/server/              http + websocket transport    (not started)
+  src/server/              http, websocket transport, auth, singleton lock
   src/testing/             fake runtime and test helpers
+  src/main.ts, config.ts   composition root; the only place env vars are read
   test/{protocol,core,log,runtime,architecture}.test.ts
   test/runtime/golden/     recorded pi sequences and their frozen mapping
 apps/bots-macos/           the client: separate SPM package   (not started)
@@ -58,10 +59,15 @@ after a full review round; a row can be implemented and reviewed but not yet sig
 | 21 | 2 | history pages older messages, newest window untouched | **signed off** |
 | 22 | 2 | resync returns a snapshot at the last published revision | **signed off** |
 | 23-36 | 3 | pi-durable adapter: mapping, idempotency, failures, recovery | **signed off** |
-| 37-54 | 4 | server, lifecycle, end-to-end, crash and perf suites | **not started** |
+| 37-41 | 4 | auth, handshake, close codes, catalog HTTP | implemented, **awaiting review** |
+| 42-43 | 4 | log origin and trace recipes | **not started** |
+| 44-48 | 4 | registry lifecycle, singleton lock | implemented, **awaiting review** |
+| 49 | 4 | the end-to-end journey | implemented, **awaiting review** |
+| 50-52g | 4 | the remaining journeys (bots, outbox, paging, ordering, overflow) | **not started** |
+| 53-54 | 4 | crash and perf suites | **not started** |
 | 55-69 | 5 | macOS client: decoding, reducer, transport, view models, app | **not started** |
 
-Current tree: 249 tests, coverage 94.9% lines / 90.5% branches / 94.2% functions,
+Current tree: 276 tests, coverage 93.0% lines / 89.0% branches / 90.4% functions,
 `typecheck`, `lint`, `fixtures:check` green. The core is complete (catalog, hub,
 service, fake runtime) and the pi-durable adapter now runs real Harness instances over
 real sqlite, so a script can open a bot, talk to a model and read the transcript.
@@ -87,19 +93,21 @@ Signed off and usable as a library (rows 9-22):
 - log: a declared event catalogue, key whitelist, redaction and parser-enforced layer
   boundaries
 
-What is missing, and why the product still cannot run:
+What is missing, and why the product still cannot ship:
 
 | Gap | Consequence |
 | --- | --- |
-| `src/server/` and `src/main.ts` | no socket, no bearer, no catalog endpoints, no registry lifecycle, no singleton lock; `npm start` fails on the missing entrypoint |
-| log sink | the adapter builds and validates records, but no daemon writes them to disk |
+| rows 42-43, 50-54 | the log recipes, the outbox/paging/ordering/overflow journeys, and the crash and perf suites do not exist yet |
 | `apps/bots-macos/` | no client |
 
-Stage 3 (rows 23-36, the pi adapter) is signed off; the server is next, then the client.
+The daemon now runs: `npm start` binds a loopback port, checks a bearer token,
+serves the catalog, and streams a bot over a socket. Stage 3 (rows 23-36) is signed
+off; stage 4 is half implemented and has not been reviewed.
 
 ## Next work, in order
 
-1. Stage 4: `src/server/`, `src/main.ts`, registry lifecycle, crash and perf suites.
+1. Finish stage 4: log recipes (42-43), the remaining journeys (50-52g), the crash
+   suites (53-54) and the perf suite, then review the whole stage.
 2. Stage 5: `apps/bots-macos/` (separate package, `EagleDesign` product only).
 
 ### What the adapter can do today (rows 23-36, signed off)
@@ -123,7 +131,8 @@ broadcasts the only reply it produces, at a revision that names its content.
 
 ## Open review queue
 
-Empty. Stage 3 (rows 23-36) is signed off. Its review rounds closed, in order: a
+Stage 4 rows 37-41, 44-49 are implemented and not yet reviewed; 42-43 and 50-54 are
+open work. Stage 3 (rows 23-36) is signed off. Its review rounds closed, in order: a
 fail log record built from another layer's identity, a reattach that dropped its
 recovery snapshot, a listener escalation counted per notification, a park found
 during `open` that no subscriber could see, `pending` rebuilt from the ledger
