@@ -230,6 +230,16 @@ colored when the tool failed. A result whose call was trimmed out of the page is
 row, so nothing disappears. Fixtures, the mapper, an end-to-end socket test and the
 presenter all cover it; PROTOCOL.md "Tool rows" is the contract.
 
+**Status: implemented, not signed off.** Three Codex rounds (reasoning max) reviewed it.
+The first two rounds' findings are fixed (encoded-size clamp, commit ordering, typed delta
+path, Swift codec parity, duplicate-call pairing, bounded rows, trim/pointer handling).
+The third round leaves one P1: after a page trim drops a provisional, a later `status` or
+`inbox_update` can re-publish that `streaming` id (`apps/bots/src/core/view.ts:156` only
+sanitizes inside `trimWindow`), making a resync snapshot name a missing message. A P2
+defensive gap remains for a `__proto__` path segment in the two fold copies
+(`mapEvents.ts:606`, `view.ts:222`); upstream Chord currently rejects such a path. Both are
+recorded in CHECKPOINTS as open, not fixed.
+
 `apps/bots/src/tools/` installs the `bots-tools` extension in every Harness: `read_file`,
 `write_file`, `list_files` and `run_command`, bound to `<bot dir>/workspace`, executed
 without an approval gate. Paths are confined lexically and component by component (a

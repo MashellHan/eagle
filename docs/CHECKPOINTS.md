@@ -1527,10 +1527,25 @@ A checkpoint is what a person can actually see, so this records the absence too.
   turns whose faux model calls `list_files` and a 64 KiB-quote `run_command`, and assert
   the live `append`, the late-join snapshot and the clamped row (the connection stays open).
   `cd apps/bots-macos && swift test` — 87 tests (44 BotsCore, 30 BotsFeatures, 13
-  BotsTransport), coverage 92.8% (90% gate); `apps/macos && swift test` — 57 tests (45
-  Swift Testing, 12 XCTest), including running, paired, failed, trimmed-page,
-  duplicate-callId and stale-call rows. A live check against the dev daemon and the built
-  Eagle app showed `list_files path=. · limit=2000` with `(the workspace is empty)` and
+  BotsTransport), coverage 92.8% (90% gate); `apps/macos && swift test` — 67 tests (54
+  `EagleFeaturesTests` + 13 `EagleDesignTests`, all Swift Testing; the XCTest runner ran 0),
+  measured again after rebasing onto `6ab9ddf` (`test(macos): restore logic-layer coverage
+  above 90%`), including running, paired, failed, trimmed-page, duplicate-callId and
+  stale-call rows. A live check against the dev daemon and the built Eagle app showed
+  `list_files path=. · limit=2000` with `(the workspace is empty)` and
   `run_command command=echo hello · cwd=.` with `hello`, each followed by the answer.
-- **Next broken hop:** the expanded body scrolls but has no copy affordance or filtering,
-  and the client still does not render raw `entries` or tasks.
+- **Review status (open, not fixed):** three Codex rounds ran. The first two were fixed in
+  `8970149`, `9808930` and `5352594` (wire clamp by encoded size, commit order, delta path
+  typing, Swift decoder strictness, duplicate-call pairing, bounded rows). The third round
+  left one **P1 open**: `apps/bots/src/core/view.ts:156` clears a dangling `streaming`
+  pointer only inside `trimWindow`; a later ordinary `status`/`inbox_update` re-publishes
+  `streaming: p_a1` against a trimmed page, so a resync `snapshot` names a message it does
+  not contain (`streaming id must be one of the snapshot messages`; reproduced with two
+  legal 98 304 / 98 303-byte messages). Also open, as a **P2 defensive gap**:
+  `apps/bots/src/runtime/pi/mapEvents.ts:606` and `apps/bots/src/core/view.ts:222` write a
+  `__proto__` path segment through the prototype chain; Chord currently rejects such a
+  path, so no real model has reached it. The earlier P3 (test-framework attribution) is
+  corrected above.
+- **Next broken hop:** the P1 above (status must not restore a pointer the page dropped),
+  the prototype-path guard, then the expanded body's copy/filter affordances and the raw
+  `entries`/tasks surfaces.
