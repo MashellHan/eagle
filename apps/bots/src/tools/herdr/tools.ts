@@ -53,9 +53,13 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_SPACE_LABEL = 40;
 
 type HerdrState = {
+  /** The bot that opened the space: a record copied from another bot is never obeyed. */
+  readonly owner: string;
   readonly spaceId: string;
   readonly spaceLabel: string;
   readonly rootPaneId: string;
+  /** Set when a recorded space failed verification: it is never adopted again. */
+  readonly revoked?: boolean;
   readonly controller?: {
     readonly name: string;
     readonly kind: string;
@@ -107,21 +111,28 @@ const spaceGone = (error: unknown): boolean =>
   error instanceof HerdrCommandError &&
   (error.code === "workspace_not_found" || error.code === "not_found");
 
-const readState = async (path: string): Promise<HerdrState | undefined> => {
+const readState = async (
+  path: string,
+  botId: string,
+  labelPrefix: string,
+): Promise<HerdrState | "foreign" | undefined> => {
   const text = await readFile(path, "utf8").catch(() => undefined);
   if (text === undefined) return undefined;
   try {
     const parsed = JSON.parse(text) as Partial<HerdrState>;
+    const owner = parsed.owner;
     const spaceId = parsed.spaceId;
     const spaceLabel = parsed.spaceLabel;
     const rootPaneId = parsed.rootPaneId;
     if (
+      typeof owner !== "string" ||
       typeof spaceId !== "string" ||
       typeof spaceLabel !== "string" ||
       typeof rootPaneId !== "string"
     ) {
       return undefined;
     }
+    if (owner !== botId || !spaceLabel.startsWith(`${labelPrefix}-`)) return "foreign";
     const controller =
       parsed.controller !== undefined &&
       typeof parsed.controller.name === "string" &&
@@ -134,9 +145,11 @@ const readState = async (path: string): Promise<HerdrState | undefined> => {
           }
         : undefined;
     return {
+      owner,
       spaceId,
       spaceLabel,
       rootPaneId,
+      ...(parsed.revoked === true ? { revoked: true } : {}),
       ...(controller === undefined ? {} : { controller }),
     };
   } catch {
@@ -185,9 +198,16 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
   };
 
   const requireState = async (): Promise<HerdrState> => {
-    const state = await readState(statePath);
-    if (state === undefined)
+    const state = await readState(statePath, botId, labelPrefix);
+    if (state === "foreign") {
+      throw new ToolError("the recorded herdr space is not this bot's own space");
+    }
+    if (state === undefined) {
       throw new ToolError("no herdr space is open; call herdr_open_space first");
+    }
+    if (state.revoked === true) {
+      throw new ToolError("the recorded herdr space was refused; call herdr_open_space again");
+    }
     return state;
   };
 
@@ -268,9 +288,13 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
         run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
             const cwd = await resolveWorkspacePath(args.path);
-            const existing = await readState(statePath);
+            const existing = await readState(statePath, botId, labelPrefix);
             let untrusted = false;
-            if (existing !== undefined) {
+            if (existing === "foreign") {
+              untrusted = true;
+            } else if (existing !== undefined && existing.revoked === true) {
+              untrusted = true;
+            } else if (existing !== undefined) {
               try {
                 await verifySpace(existing, context.abortSignal);
                 const agents = await agentsInSpace(existing, context.abortSignal);
@@ -290,10 +314,10 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
                 };
               } catch (error) {
                 // A space that is gone, or one this bot did not create, is never adopted:
-                // the state is dropped and a fresh instance is opened.
+                // the record is revoked so a later retry cannot adopt it either.
                 if (!spaceGone(error) && !(error instanceof ToolError)) throw error;
                 untrusted = true;
-                await clearState(statePath);
+                await writeState(statePath, { ...existing, revoked: true }).catch(() => undefined);
               }
             }
             // Without a record, adopt the one space that carries this bot's label prefix
@@ -336,13 +360,20 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
               created = true;
             }
             try {
-              await writeState(statePath, { spaceId, spaceLabel, rootPaneId });
+              await writeState(statePath, { owner: botId, spaceId, spaceLabel, rootPaneId });
             } catch {
               // A space nobody recorded would be abandoned: close it instead of leaking.
               if (created) {
-                await client
-                  .closeWorkspace(spaceId, { signal: context.abortSignal, timeoutMs: 30_000 })
-                  .catch(() => undefined);
+                try {
+                  await client.closeWorkspace(spaceId, {
+                    signal: context.abortSignal,
+                    timeoutMs: 30_000,
+                  });
+                } catch (closeError) {
+                  return failed(
+                    `the herdr space ${spaceId} (${spaceLabel}) was opened but its state could not be saved, and it could not be closed (${describeError(closeError)}); close it manually`,
+                  );
+                }
               }
               return failed("the herdr space was opened but its state could not be saved");
             }
@@ -418,6 +449,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
               );
               if (found === undefined) throw error;
               await writeState(statePath, {
+                owner: botId,
                 spaceId: state.spaceId,
                 spaceLabel: state.spaceLabel,
                 rootPaneId: state.rootPaneId,
@@ -428,6 +460,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
               );
             }
             await writeState(statePath, {
+              owner: botId,
               spaceId: state.spaceId,
               spaceLabel: state.spaceLabel,
               rootPaneId: state.rootPaneId,
@@ -636,8 +669,12 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       execute: (_args, _api, context) =>
         run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
-            const state = await readState(statePath);
+            const state = await readState(statePath, botId, labelPrefix);
+            if (state === "foreign")
+              return failed("the recorded herdr space is not this bot's own space");
             if (state === undefined) return { output: "no herdr space is open" };
+            if (state.revoked === true)
+              return failed("the recorded herdr space was refused; nothing to close");
             await verifySpace(state, context.abortSignal);
             await client.closeWorkspace(state.spaceId, {
               signal: context.abortSignal,

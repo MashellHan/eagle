@@ -388,8 +388,11 @@ Rules:
   nor a same-id replacement is ever touched; a space that disappeared is replaced by a
   fresh instance. With no usable state (missing or corrupt file), exactly one space with
   this bot's prefix is adopted, and several are refused rather than guessed; a recorded
-  space that fails verification is dropped and never adopted. A space that could not be
-  recorded is closed again instead of leaking.
+  space that fails verification is revoked in place (never adopted by a later retry) and a
+  fresh instance is opened; a record whose owner is another bot, or whose label carries
+  another bot's prefix, is foreign and is never obeyed. A space that could not be recorded
+  is closed again; when even that close fails, the result names the leftover space so a
+  person can close it.
   `herdr_list`, `herdr_send`, `herdr_wait`, `herdr_read` and `herdr_keys` resolve their
   target against the agents herdr reports **in that space**, and then address it by its
   workspace-qualified pane id — never by a name that can be reassigned or moved.
@@ -404,6 +407,11 @@ Rules:
 - **The bot's own sandbox does not apply to the CLI.** `herdr` is a host tool (it needs the
   session socket), so it is not run through the workspace sandbox; what it may touch is
   bounded by the space rule above, not by the file system profile.
+- **A label is not an ownership credential.** The nonce makes a collision with a user
+  workspace implausible, but a user who copies the exact label of a bot's space can be
+  adopted when that bot has lost its state file. That trade-off keeps a lost state from
+  leaking a second space; several candidates are refused instead of guessed, and a state
+  file that is present but fails verification is never adopted.
 - **Reading is evidence, not proof.** `idle`/`done` mean herdr saw a settled agent, not
   that its work finished; `blocked` is a dialog the controller raised, and the bot may
   inspect it with `herdr_read` and answer it with `herdr_keys`.

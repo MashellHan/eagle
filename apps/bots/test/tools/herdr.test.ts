@@ -35,6 +35,8 @@ class FakeHerdr implements HerdrClient {
   answer = "the answer";
   failWith: HerdrCommandError | undefined;
   getError: HerdrCommandError | undefined;
+  createError: HerdrCommandError | undefined;
+  closeError: HerdrCommandError | undefined;
   startError: HerdrCommandError | undefined;
   keepAgentOnStartError = false;
   readDelayMs = 0;
@@ -52,6 +54,7 @@ class FakeHerdr implements HerdrClient {
 
   async createWorkspace(input: { label: string; cwd: string }): Promise<HerdrCreation> {
     this.#record("createWorkspace", input);
+    if (this.createError !== undefined) throw this.createError;
     const id = `w${this.nextId}`;
     this.nextId += 1;
     this.workspaces.push({ id, label: input.label });
@@ -62,6 +65,7 @@ class FakeHerdr implements HerdrClient {
 
   async closeWorkspace(id: string): Promise<void> {
     this.#record("closeWorkspace", id);
+    if (this.closeError !== undefined) throw this.closeError;
     const index = this.workspaces.findIndex((space) => space.id === id);
     if (index >= 0) this.workspaces.splice(index, 1);
     this.panesBySpace.delete(id);
@@ -512,6 +516,84 @@ test("a not-ready start still records the controller for the next call", async (
     const sent = await bench_.call("herdr_send", { text: "hello" });
     assert.equal(sent.isError, false);
   } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("a record copied from another bot is refused and never adopted", async () => {
+  const bench_ = await bench();
+  try {
+    // Bot B's space and B's full state file, copied into bot A's directory.
+    bench_.client.nextId = 3;
+    bench_.client.workspaces.push({ id: "w2", label: "bots-bbeta-b7oe" });
+    bench_.client.panesBySpace.set("w2", [{ paneId: "w2:p1", workspaceId: "w2" }]);
+    await writeFile(
+      bench_.statePath,
+      JSON.stringify({
+        owner: "b-bot",
+        spaceId: "w2",
+        spaceLabel: "bots-bbeta-b7oe",
+        rootPaneId: "w2:p1",
+      }),
+    );
+    const read = await bench_.call("herdr_read", {});
+    assert.equal(read.isError, true);
+    assert.match(read.text, /not this bot's own space/);
+    const close = await bench_.call("herdr_close_space", {});
+    assert.equal(close.text.includes("not this bot's own space"), true);
+    assert.equal(
+      bench_.client.calls.some((call) => call.method === "closeWorkspace"),
+      false,
+    );
+
+    const opened = await bench_.call("herdr_open_space", {});
+    assert.match(opened.text, /opened space w3/);
+    const saved = JSON.parse(await readFile(bench_.statePath, "utf8")) as {
+      owner: string;
+      spaceId: string;
+    };
+    assert.equal(saved.owner, "a-bot");
+    assert.equal(saved.spaceId, "w3");
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("a refused replacement is not adopted even after a failed create", async () => {
+  const bench_ = await bench();
+  try {
+    await bench_.call("herdr_open_space", {});
+    // The user takes over w1 with the same id and label but a different pane.
+    bench_.client.panesBySpace.set("w1", [{ paneId: "w1:p9", workspaceId: "w1" }]);
+    bench_.client.createError = new HerdrCommandError("create_failed", "cannot create");
+    const refused = await bench_.call("herdr_open_space", {});
+    assert.equal(refused.isError, true);
+    const record = JSON.parse(await readFile(bench_.statePath, "utf8")) as { revoked: boolean };
+    assert.equal(record.revoked, true);
+
+    bench_.client.createError = undefined;
+    const opened = await bench_.call("herdr_open_space", {});
+    assert.match(opened.text, /opened space w2/);
+    const saved = JSON.parse(await readFile(bench_.statePath, "utf8")) as { spaceId: string };
+    assert.notEqual(saved.spaceId, "w1");
+    assert.equal(bench_.client.calls.filter((call) => call.method === "closeWorkspace").length, 0);
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("a failed rollback reports the space it left behind", async () => {
+  const bench_ = await bench();
+  try {
+    const stateDir = bench_.statePath.replace(/\/herdr\.json$/, "");
+    await chmod(stateDir, 0o500);
+    bench_.client.closeError = new HerdrCommandError("close_failed", "cannot close");
+    const opened = await bench_.call("herdr_open_space", {});
+    assert.equal(opened.isError, true);
+    assert.match(opened.text, /could not be closed \(close_failed: cannot close\)/);
+    assert.match(opened.text, /close it manually/);
+  } finally {
+    await chmod(bench_.statePath.replace(/\/herdr\.json$/, ""), 0o700).catch(() => undefined);
     await bench_.cleanup();
   }
 });
