@@ -1459,3 +1459,20 @@ serving and the first catalogue-derived production Cron observation.
   `a4cff5c9-6ad6-4c30-bfe4-5defcd79895b`, then its `/api/live` poll reported
   `b96535aa266c6fc91342a49e13c9056cd8a9545d`. `eagle.hexly.ai` returns 200.
   This is the first deployment performed by CI/CD rather than by hand.
+
+## 2026-10-25 — Bots stage 3 (pi adapter)
+
+A checkpoint is what a person can actually see, so this records the absence too.
+
+- **Herdr collection, authentication, D1, `eagle.hexly.ai` rendering:** unchanged
+  and untouched; this work is confined to `apps/bots`, its own package and gates.
+- **Bots UI:** none exists. `apps/bots-macos` is still absent, so there is nothing
+  to click and no way to create a bot in a window. `npm start` in `apps/bots` still
+  fails on the missing `src/main.ts`.
+- **What a person can observe today:** `cd apps/bots && npm test` (231 cases) and
+  `npm run coverage` (94.2% lines), including nine golden sequences recorded from a
+  real Harness, and an adapter that opens a real sqlite session, streams a model
+  answer and recovers a `SIGKILL`ed run.
+- **Next broken hop:** no socket. The runtime answers in-process only, so the first
+  user-visible milestone remains stage 4's `src/server/` plus `src/main.ts`, and the
+  first clickable one remains stage 5's macOS client.

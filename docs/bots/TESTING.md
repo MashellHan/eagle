@@ -96,7 +96,7 @@ is never started before its preconditions are green.
 | 32 | `test/runtime/adapter.test.ts` | `a model asking for a tool gets an error result and the run continues` | 28 |
 | 33 | `test/runtime/failures.test.ts` | `a parked task surfaces as task_parked from onReport, once` | 28 |
 | 34 | `test/runtime/failures.test.ts` | `a storage failure closes the harness and classifies storage_failed` | 28 |
-| 35 | `test/runtime/recovery.test.ts` | `open resumes a run interrupted by close` | 28 |
+| 35 | `test/runtime/failures.test.ts` | `open resumes a run interrupted by close` | 28 |
 | 36 | `test/runtime/adapter.test.ts` | `close resolves timeout without dropping the handle` | 28 |
 
 ### Stage 4 — server, lifecycle and end-to-end
@@ -161,9 +161,20 @@ is never started before its preconditions are green.
 - The Swift package decodes the same directory through a relative path, so one
   changed fixture breaks both sides in the same commit.
 - Golden event sequences (not just single frames) are checked in under
-  `test/runtime/golden/` for: a plain answer, an answer with deltas, a retry inside
-  one turn, a tool-call attempt, an abort with a queued input, and a provider
-  error.
+  `test/runtime/golden/` for: a plain answer, a `message_start` that already carries
+  content, an answer with deltas, two text blocks, a retry inside one turn, a
+  tool-call attempt, an abort with a queued input, a provider error and a deferred
+  poll. Each file holds the recorded pi events and the mapper's frozen output;
+  `scripts/record-golden.ts` records from a real Harness over pi-ai's faux provider
+  and `npm run golden:record` rewrites the frozen half, which is then reviewed like
+  code. Shapes a faux provider cannot reach (a withdrawn over-limit attempt, a
+  block change with no delta, the `deferred_poll` reset) are asserted from
+  hand-built events in `mapEvents.test.ts`.
+- `npm run test:runtime` and `npm run test:protocol` run one stage's suite; `npm test`
+  and `npm run coverage` run the deterministic file list that includes both.
+- Recovery (`test/runtime/failures.test.ts`) and the restart-count cases use a real
+  child process that is `SIGKILL`ed mid-answer, because no in-process shutdown
+  produces an interrupted task.
 
 ## Fault injection
 

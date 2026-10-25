@@ -137,6 +137,22 @@ Because `message_update` is optional (F5), the adapter must never treat deltas a
 the source of truth: the provisional content comes from `message_start`, and the
 final `append` from the entry.
 
+Message identity, as built:
+
+- A committed entry is `e_<entry id>`, a provisional is `p_a<attempt>`.
+- `createdAt` is the pi message's own `timestamp` (milliseconds), so a snapshot
+  rerender and a live frame describe the same message identically. A message
+  without a timestamp uses the host clock, which only happens for a message pi
+  never stamped.
+- A user message carries `requestId` when the adapter knows it. The entry and its
+  submission record land in the same commit, and `message_end` is published first,
+  so the live `append` may lack the id: the adapter attaches it as soon as the
+  record arrives, and the snapshot then carries it.
+- Phase 1 maps `pi.user`, `pi.assistant` and nothing else into the transcript. A
+  `pi.tool-result` entry is durable in pi and stays out of the wire in both paths,
+  because `capabilities.tools` is false: a reconnecting client must not see an
+  entry the live client never saw.
+
 ### Attempt lifecycle
 
 One run may contain several generation attempts (retries, deferred polls, a crash
@@ -224,6 +240,18 @@ The adapter keeps `requestId → submissionId` in memory and answers from it:
 - `submission(key)` resolves by either id for duplicate replies.
 - The ledger is not persisted: pi-dedupes by `requestId` in storage, so a daemon
   restart plus a re-sent `send` still converges (F7).
+
+Projection, which is also part of the mapping contract:
+
+- A snapshot carries the newest `PAGE_MAX_MESSAGES` displayable messages, oldest
+  first, with `truncatedBefore` naming the first message it could not keep;
+  `history` pages the rest from `Conversation.entries()` newest-first and reverses.
+- Each converted message is measured as its encoded JSON; above `MAX_MESSAGE_BYTES`
+  it is withheld and replaced by the notice (PROTOCOL.md). The adapter may not
+  import the wire layer, so `src/runtime/pi/limits.ts` mirrors those two numbers and
+  `test/runtime/limits.test.ts` fails if they drift.
+- An expired watch or a deferred poll re-emits a complete snapshot rather than a
+  patch, and the hub rerenders it at the next revision.
 
 `unanswered.reason` values the adapter can produce:
 
@@ -343,7 +371,9 @@ excluded from every number here.
 
 1. Bump the exact pin in `apps/bots/package.json`; install.
 2. Run `npm run test:runtime` and `npm run test:protocol`; the `mapEvents` golden
-   sequence is the early-warning signal.
+   sequence is the early-warning signal. `npm run golden:record -- <scenario>`
+   re-records a sequence from a real Harness over pi-ai's faux provider and rewrites
+   its frozen expectation, so review that diff before committing it.
 3. Read the upstream diff for `docs/spec.md` §2.1 (context), §5.6 (wakeups), §8.2
    (`pi.live`), §9.3–9.4 (views, agent events) and `CHANGELOG.md`.
 4. Update the fact table if any of F1–F21 changed; the pin bump commit names the

@@ -15,15 +15,17 @@ apps/bots/                 the daemon: own package, own lockfile, own gates
   src/core/                domain types, catalog, hub, view fold, runtime port, service
   src/protocol/            wire codec, limits, validation
   src/log/                 declared event catalogue and the layer logger
-  src/runtime/pi/          pi-durable adapter            (not started)
+  src/runtime/pi/          pi-durable adapter, classifier, golden mapper
   src/server/              http + websocket transport    (not started)
   src/testing/             fake runtime and test helpers
-  test/{protocol,core,log,architecture}.test.ts
+  test/{protocol,core,log,runtime,architecture}.test.ts
+  test/runtime/golden/     recorded pi sequences and their frozen mapping
 apps/bots-macos/           the client: separate SPM package   (not started)
 ```
 
 Gates, all run in `apps/bots`: `npm run check`
 (`fixtures:check`, `npm test`, `typecheck`, `lint`, `coverage` 90/85/90).
+`npm run test:runtime` and `npm run test:protocol` run one stage's suite;
 `npm run test:crash` and `npm run perf` are separate, from stage 4.
 
 ## Ladder state
@@ -55,13 +57,15 @@ after a full review round; a row can be implemented and reviewed but not yet sig
 | 20 | 2 | `unanswered` keeps its reason and never invents a settlement | **signed off** |
 | 21 | 2 | history pages older messages, newest window untouched | **signed off** |
 | 22 | 2 | resync returns a snapshot at the last published revision | **signed off** |
-| 23-36 | 3 | pi-durable adapter: mapping, idempotency, failures, recovery | **not started** |
+| 23-36 | 3 | pi-durable adapter: mapping, idempotency, failures, recovery | implemented, **awaiting review** |
 | 37-54 | 4 | server, lifecycle, end-to-end, crash and perf suites | **not started** |
 | 55-69 | 5 | macOS client: decoding, reducer, transport, view models, app | **not started** |
 
-Current tree: 199 tests, coverage 96.5% lines, `typecheck`, `lint`, `fixtures:check`
-green. The core is complete: catalog, hub, service, fake runtime. Nothing listens on a
-socket yet and no real runtime adapter exists, so the product is not runnable.
+Current tree: 231 tests, coverage 94.2% lines / 89.7% branches / 94.7% functions,
+`typecheck`, `lint`, `fixtures:check` green. The core is complete (catalog, hub,
+service, fake runtime) and the pi-durable adapter now runs real Harness instances over
+real sqlite, so a script can open a bot, talk to a model and read the transcript.
+Nothing listens on a socket yet, so the product is still not runnable.
 
 ### What the core can do today
 
@@ -87,19 +91,31 @@ What is missing, and why the product still cannot run:
 
 | Gap | Consequence |
 | --- | --- |
-| `src/runtime/pi/` | no real Harness and no model; only the scripted fake runtime exists |
 | `src/server/` and `src/main.ts` | no socket, no bearer, no catalog endpoints, no registry lifecycle, no singleton lock; `npm start` fails on the missing entrypoint |
-| log sink | events can be built and validated, but no daemon writes them to disk |
+| log sink | the adapter builds and validates records, but no daemon writes them to disk |
 | `apps/bots-macos/` | no client |
 
-Stage 3 (rows 23-36, the pi adapter) is next, then the server, then the client.
+Stage 3 (rows 23-36, the pi adapter) is implemented and waiting for its review round;
+the server is next, then the client.
 
 ## Next work, in order
 
-1. Stage 3: `src/runtime/pi/` (mapEvents, PiDurableRuntime) with the golden
-   sequences and fault channels in [RUNTIME.md](RUNTIME.md).
+1. Review stage 3 (rows 23-36) and sign it off; fix what the round finds.
 2. Stage 4: `src/server/`, `src/main.ts`, registry lifecycle, crash and perf suites.
 3. Stage 5: `apps/bots-macos/` (separate package, `EagleDesign` product only).
+
+### What the adapter can do today (rows 23-36, awaiting review)
+
+- `mapEvents.ts` replays recorded pi runs: append, delta, submission and status
+  events, an attempt-scoped provisional, an aborted entry that replaces it, a
+  withheld over-limit answer and a deferred poll that resets through a snapshot.
+- `PiDurableRuntime` opens one Harness per bot over real node:sqlite, resumes
+  recovery, answers a duplicate `requestId` from the stored record, aborts the
+  running and queued inputs, keeps a model's tool request from crashing the run,
+  pages history and turns a stalled `close` into `timeout`.
+- `classify.ts` mints one failure identity per episode across the four reporting
+  channels, announces one `error` event per identity, and escalates a repeated
+  listener error only at the third occurrence inside a minute.
 
 `ConversationService` (rows 17-22) is done: `subscribe` renders the current view as
 the connection's baseline and goes live in one serial section, `send` reads the stored
@@ -109,7 +125,9 @@ broadcasts the only reply it produces, at a revision that names its content.
 
 ## Open review queue
 
-Empty. Stage 2 (rows 9-22) is signed off. The review rounds closed, in order:
+Stage 3 (rows 23-36) is implemented and not yet reviewed: the mapper, the adapter,
+the classifier and nine recorded golden sequences. Stage 2 (rows 9-22) is signed
+off. Its review rounds closed, in order:
 revisions consumed before a delta was folded, unfaithful delta merging, a silently
 dead degraded subscriber, reentrant fanout, a missing byte trigger, non-wire byte
 counting, a detached subscriber still pumped, a fake-runtime toolcall path read from
