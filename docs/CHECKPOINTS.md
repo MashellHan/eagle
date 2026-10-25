@@ -1522,11 +1522,14 @@ A checkpoint is what a person can actually see, so this records the absence too.
   its duration (or 失败 in red), with the full arguments and the result text on click. The
   row appears live while the run streams and is still there after reopening the bot or
   reconnecting, because it is part of the snapshot like any message.
-- **Evidence (before the live check):** `cd apps/bots && npm run check` — see the run
-  recorded with the next checkpoint; the new end-to-end test sends a real socket turn whose
-  faux model calls `list_files` and asserts the live `append` and the late-join snapshot
-  carry the same rows. `apps/bots-macos`: `swift test` and coverage (90% logic) include the
-  new fixtures and decoder; `apps/macos`: presenter tests cover running, paired, failed and
-  trimmed-page rows.
-- **Next broken hop:** tool output is shown when a row is expanded; there is no filtering
-  or copy affordance yet, and the client still does not render raw `entries` or tasks.
+- **Evidence:** `cd apps/bots && npm run check` — 432/432 tests, coverage
+  95.34/88.51/91.23; `test:crash` 5/5; `perf` 1/1. The end-to-end socket tests send real
+  turns whose faux model calls `list_files` and a 64 KiB-quote `run_command`, and assert
+  the live `append`, the late-join snapshot and the clamped row (the connection stays open).
+  `cd apps/bots-macos`: `swift test` 40/40, coverage 92.5% (90% gate); `apps/macos`:
+  `swift test` 44/44, including running, paired, failed, trimmed-page, duplicate-callId and
+  stale-call rows. A live check against the dev daemon and the built Eagle app showed
+  `list_files path=. · limit=2000` with `(the workspace is empty)` and
+  `run_command command=echo hello · cwd=.` with `hello`, each followed by the answer.
+- **Next broken hop:** the expanded body scrolls but has no copy affordance or filtering,
+  and the client still does not render raw `entries` or tasks.

@@ -55,17 +55,25 @@ public enum ContentBlock: Codable, Sendable, Equatable {
       self = .thinking(try container.decode(String.self, forKey: .text))
     case "toolCall":
       self = .toolCall(
-        callId: try container.decode(String.self, forKey: .callId),
-        name: try container.decode(String.self, forKey: .name),
-        args: try container.decodeIfPresent([String: JSONValue].self, forKey: .args) ?? [:]
+        callId: try Self.requiredText(container, .callId),
+        name: try Self.requiredText(container, .name),
+        args: try container.decode([String: JSONValue].self, forKey: .args)
       )
     case "toolResult":
+      let durationMs = try container.decodeIfPresent(Int.self, forKey: .durationMs)
+      if let durationMs, durationMs < 0 {
+        throw DecodingError.dataCorruptedError(
+          forKey: .durationMs,
+          in: container,
+          debugDescription: "durationMs must not be negative"
+        )
+      }
       self = .toolResult(
-        callId: try container.decode(String.self, forKey: .callId),
-        name: try container.decode(String.self, forKey: .name),
+        callId: try Self.requiredText(container, .callId),
+        name: try Self.requiredText(container, .name),
         text: try container.decode(String.self, forKey: .text),
         isError: try container.decode(Bool.self, forKey: .isError),
-        durationMs: try container.decodeIfPresent(Int.self, forKey: .durationMs)
+        durationMs: durationMs
       )
     default:
       throw DecodingError.dataCorruptedError(
@@ -74,6 +82,23 @@ public enum ContentBlock: Codable, Sendable, Equatable {
         debugDescription: "unknown block type"
       )
     }
+  }
+
+  /// The daemon's codec refuses an empty required string; the client must agree on what
+  /// a legal frame is (PROTOCOL.md, "ContentBlock").
+  private static func requiredText(
+    _ container: KeyedDecodingContainer<CodingKeys>,
+    _ key: CodingKeys
+  ) throws -> String {
+    let text = try container.decode(String.self, forKey: key)
+    guard !text.isEmpty else {
+      throw DecodingError.dataCorruptedError(
+        forKey: key,
+        in: container,
+        debugDescription: "\(key.stringValue) must not be empty"
+      )
+    }
+    return text
   }
 
   public func encode(to encoder: Encoder) throws {

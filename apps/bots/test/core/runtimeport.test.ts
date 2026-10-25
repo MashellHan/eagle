@@ -674,15 +674,19 @@ test("a finalization keeps the window and history in one order", async () => {
   });
   const view = (await handle.subscribe(trace, () => {})).snapshot;
   const window = view.messages.map((m) => m.id);
-  assert.deepEqual(window, ["e_1", "e_3", "e_2"]);
+  assert.deepEqual(
+    window,
+    ["e_1", "e_2", "e_3"],
+    "a finalized entry lands at its commit position, after entries committed before it",
+  );
   assert.deepEqual(
     (await handle.history({ limit: 10 })).messages.map((m) => m.id),
     window,
     "history pages in the order the client already shows",
   );
   assert.deepEqual(
-    (await handle.history({ beforeEntryId: "e_2", limit: 10 })).messages.map((m) => m.id),
-    ["e_1", "e_3"],
+    (await handle.history({ beforeEntryId: "e_3", limit: 10 })).messages.map((m) => m.id),
+    ["e_1", "e_2"],
   );
 });
 

@@ -197,13 +197,23 @@ export const applyChanges = (message: Message, changes: readonly DeltaChange[]):
   return { ...current, blocks };
 };
 
-/** A toolcall path is rooted at the block: `["args","q"]` appends to `block.args.q`. */
+/**
+ * A toolcall path is rooted at the block: `["args","q"]` appends to `block.args.q`.
+ * pi streams arguments as JSON text, so an intermediate object or array may not exist yet;
+ * it is created from the next path component instead of dropping the delta.
+ */
 const appendAtPath = (root: object, path: readonly (string | number)[], append: string): void => {
   let node = root as Record<string | number, unknown>;
-  for (const key of path.slice(0, -1)) {
-    const next = node[key];
-    if (next === null || typeof next !== "object") return;
-    node = next as Record<string | number, unknown>;
+  for (let index = 0; index < path.length - 1; index += 1) {
+    const key = path[index];
+    if (key === undefined) return;
+    const next = path[index + 1];
+    let child = node[key];
+    if (child === null || typeof child !== "object") {
+      child = typeof next === "number" ? [] : {};
+      node[key] = child;
+    }
+    node = child as Record<string | number, unknown>;
   }
   const leaf = path[path.length - 1];
   if (leaf === undefined) return;
@@ -218,10 +228,13 @@ export const upsert = (
   replaces?: string,
 ): Message[] => {
   const next = [...messages];
+  // A finalized entry is appended at its commit position; the provisional it replaces is
+  // removed first. Anything committed while the attempt streamed (a tool result) therefore
+  // stays before it, exactly as a snapshot seeded from the same entries renders.
   const replaced = replaces === undefined ? -1 : next.findIndex((item) => item.id === replaces);
+  if (replaced >= 0) next.splice(replaced, 1);
   const existing = next.findIndex((item) => item.id === message.id);
-  const target = replaced >= 0 ? replaced : existing;
-  if (target >= 0) next[target] = message;
+  if (existing >= 0) next[existing] = message;
   else next.push(message);
   return next;
 };

@@ -136,11 +136,14 @@ public struct ToolCallRow: View {
     VStack(alignment: .leading, spacing: 7) {
       if !row.input.isEmpty {
         label("参数")
-        Text(row.input)
-          .font(.system(size: 11.5, design: .monospaced))
-          .foregroundStyle(Theme.Palette.textSecondary)
-          .textSelection(.enabled)
-          .fixedSize(horizontal: false, vertical: true)
+        ScrollView(.vertical) {
+          Text(row.input)
+            .font(.system(size: 11.5, design: .monospaced))
+            .foregroundStyle(Theme.Palette.textSecondary)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxHeight: 160)
       }
       if let output = row.output, !output.isEmpty {
         label(row.isError ? "错误" : "结果")

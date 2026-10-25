@@ -188,9 +188,10 @@ public enum Reducer {
     replaces: String? = nil
   ) -> [Message] {
     var next = messages
+    // The finalized entry is the newest commit: drop the provisional it replaces and let
+    // the entry land at the end, after anything committed while the attempt streamed.
     if let replaces, let index = next.firstIndex(where: { $0.id == replaces }) {
-      next[index] = message
-      return next
+      next.remove(at: index)
     }
     if let index = next.firstIndex(where: { $0.id == message.id }) {
       next[index] = message
@@ -260,7 +261,10 @@ public enum Reducer {
       return message
     }
     var next = message
-    if case .object(let grown) = appendValue(.object(args), path[...], append) {
+    // The wire's path is rooted at the block with an `args` head (PROTOCOL I13); the
+    // arguments themselves are what grows.
+    guard path.first == "args" else { return message }
+    if case .object(let grown) = appendValue(.object(args), path.dropFirst(), append) {
       next.blocks[index] = .toolCall(callId: callId, name: name, args: grown)
     } else {
       next.blocks[index] = .toolCall(callId: callId, name: name, args: args)
@@ -277,17 +281,49 @@ public enum Reducer {
       if case .string(let text) = value { return .string(text + append) }
       return .string(append)
     }
+    let rest = path.dropFirst()
+    if rest.isEmpty {
+      switch value {
+      case .object(var object):
+        let prior: String = {
+          if case .string(let text) = object[key] { return text }
+          return ""
+        }()
+        object[key] = .string(prior + append)
+        return .object(object)
+      case .array(var array):
+        guard let index = Int(key), index < array.count else { return value }
+        let prior: String = {
+          if case .string(let text) = array[index] { return text }
+          return ""
+        }()
+        array[index] = .string(prior + append)
+        return .array(array)
+      default:
+        return value
+      }
+    }
     switch value {
     case .object(var object):
-      object[key] = appendValue(object[key] ?? .string(""), path.dropFirst(), append)
+      // pi streams JSON text: an intermediate container may not exist yet, so create the
+      // one the next component implies instead of dropping the delta.
+      let child = object[key] ?? emptyContainer(for: rest.first)
+      object[key] = appendValue(child, rest, append)
       return .object(object)
     case .array(var array):
-      guard let index = Int(key), index >= 0, index < array.count else { return value }
-      array[index] = appendValue(array[index], path.dropFirst(), append)
+      guard let index = Int(key), index >= 0 else { return value }
+      if index == array.count { array.append(emptyContainer(for: rest.first)) }
+      guard index < array.count else { return value }
+      array[index] = appendValue(array[index], rest, append)
       return .array(array)
     default:
       return value
     }
+  }
+
+  private static func emptyContainer(for key: String?) -> JSONValue {
+    guard let key else { return .string("") }
+    return Int(key) == nil ? .object([:]) : .array([])
   }
 }
 

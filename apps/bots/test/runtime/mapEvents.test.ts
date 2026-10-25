@@ -785,6 +785,72 @@ test("a tool result is a transcript row and does not end the live attempt", () =
   );
 });
 
+test("a toolcall delta carries a block-rooted path and the fold agrees", () => {
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock });
+  const events: RuntimeEvent[] = [
+    ...mapper.map(
+      { type: "message_start", message: assistantMessage("", "pending") } as never,
+      trace,
+    ),
+  ];
+  events.push(
+    ...mapper.map(
+      {
+        type: "message_update",
+        usage: usage(),
+        changes: [
+          {
+            type: "toolcall_start",
+            contentIndex: 0,
+            block: { type: "toolCall", id: "c_1", name: "search", arguments: {} },
+          },
+        ],
+      } as never,
+      trace,
+    ),
+    ...mapper.map(
+      {
+        type: "message_update",
+        usage: usage(),
+        changes: [
+          { type: "toolcall_delta", contentIndex: 0, path: ["nested", "q"], delta: "a" },
+          { type: "toolcall_delta", contentIndex: 0, path: ["nested", "q"], delta: "Z" },
+        ],
+      } as never,
+      trace,
+    ),
+  );
+  const deltas = of(events, "delta").flatMap((event) => event.changes);
+  assert.deepEqual(
+    deltas.filter((change) => change.kind === "toolcall"),
+    [
+      { kind: "toolcall", index: 0, callId: "c_1", path: ["args", "nested", "q"], append: "a" },
+      { kind: "toolcall", index: 0, callId: "c_1", path: ["args", "nested", "q"], append: "Z" },
+    ],
+    "pi's arguments-relative path becomes the wire's block-rooted path",
+  );
+  let view = reduceView(
+    {
+      botId: "b_golden",
+      messages: [],
+      streaming: null,
+      pending: [],
+      inbox: [],
+      running: false,
+    },
+    events[0] as never,
+    new Map(),
+  );
+  for (const event of events.slice(1)) view = reduceView(view, event, new Map());
+  const block = view.messages[0]?.blocks[0];
+  assert.equal(block?.type, "toolCall");
+  assert.deepEqual(
+    block?.type === "toolCall" ? block.args : undefined,
+    { nested: { q: "aZ" } },
+    "the emitted events fold to the same arguments the mapper holds",
+  );
+});
+
 test("an oversized tool result is clamped to the message budget, not turned into a notice", () => {
   const mapper = new EventMapper({ botId: "b_golden", now: fixedClock, maxMessageBytes: 4_096 });
   const entry = {
@@ -809,6 +875,102 @@ test("an oversized tool result is clamped to the message budget, not turned into
   assert.equal(block?.type, "toolResult");
   assert.match(block?.type === "toolResult" ? block.text : "", /\[tool output truncated\]$/);
   assert.ok(message !== undefined && messageBytes(message) <= 4_096);
+});
+
+test("a tool result of quotes and newlines is clamped by its encoded size", () => {
+  // Every quote or newline costs two bytes on the wire; the fitting prefix must be found
+  // by measuring the encoded message, not by counting raw characters.
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock, maxMessageBytes: 4_096 });
+  for (const text of ['"'.repeat(8_000), "\n".repeat(8_000), "\\".repeat(8_000)]) {
+    const entry = {
+      id: 11,
+      conversationId: 1,
+      kind: "pi.tool-result",
+      model: [
+        {
+          role: "toolResult",
+          toolCallId: "call_1",
+          toolName: "run_command",
+          content: [{ type: "text", text }],
+          isError: false,
+          timestamp: 5,
+        },
+      ],
+    };
+    const message = of(mapper.map({ type: "message_end", entry } as never, trace), "append")[0]
+      ?.message;
+    assert.ok(message !== undefined && messageBytes(message) <= 4_096);
+    assert.match(
+      message?.blocks[0]?.type === "toolResult" ? message.blocks[0].text : "",
+      /\[tool output truncated\]$/,
+    );
+  }
+});
+
+test("a tool result that interleaves a commit keeps the snapshot's order", () => {
+  const toolEntry = {
+    id: 12,
+    conversationId: 1,
+    kind: "pi.tool-result",
+    model: [
+      {
+        role: "toolResult",
+        toolCallId: "c_1",
+        toolName: "list_files",
+        content: [{ type: "text", text: "a" }],
+        isError: false,
+        timestamp: 5,
+      },
+    ],
+  };
+  const finalEntry = assistantEntry(assistantMessage("done", "stop"), 13);
+  const snapshot = {
+    type: "snapshot",
+    entries: [toolEntry, finalEntry],
+    run: { inputs: [] },
+    tools: [],
+    nestedTools: [],
+    compactions: [],
+    inbox: [],
+    agent: {},
+    usage: { models: {}, tools: {} },
+  };
+
+  const live = new EventMapper({ botId: "b_golden", now: fixedClock });
+  live.map({ type: "message_start", message: assistantMessage("", "pending") } as never, trace);
+  live.map({ type: "message_end", entry: toolEntry } as never, trace);
+  const replaced = live.map({ type: "message_end", entry: finalEntry } as never, trace);
+  assert.equal(of(replaced, "append")[0]?.replaces, "p_a1");
+  assert.deepEqual(
+    live.view().messages.map((message) => message.id),
+    ["e_12", "e_13"],
+    "the finalized entry lands after the tool result committed during its attempt",
+  );
+
+  const seeded = new EventMapper({ botId: "b_golden", now: fixedClock });
+  seeded.seed(snapshot as never, trace);
+  assert.deepEqual(
+    seeded.view().messages.map((message) => message.id),
+    live.view().messages.map((message) => message.id),
+    "a late join sees the same order as the live stream",
+  );
+
+  // Window 1: the tool result trims the provisional away, so `streaming` must not name a
+  // message the view no longer holds.
+  const narrow = new EventMapper({ botId: "b_golden", now: fixedClock, windowMessages: 1 });
+  narrow.map({ type: "message_start", message: assistantMessage("", "pending") } as never, trace);
+  narrow.map({ type: "message_end", entry: toolEntry } as never, trace);
+  assert.deepEqual(
+    narrow.view().messages.map((message) => message.id),
+    ["e_12"],
+  );
+  assert.equal(narrow.view().streaming, null);
+  const final = narrow.map({ type: "message_end", entry: finalEntry } as never, trace);
+  assert.equal(of(final, "append")[0]?.replaces, undefined);
+  assert.deepEqual(
+    narrow.view().messages.map((message) => message.id),
+    ["e_13"],
+  );
 });
 
 test("the mapper's view agrees with the service's fold of the same events", () => {

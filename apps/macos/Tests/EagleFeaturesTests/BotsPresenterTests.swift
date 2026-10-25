@@ -372,3 +372,98 @@ struct BotsToolRowTests {
     )
   }
 }
+
+@Suite("Bots tool row pairing")
+struct BotsToolPairingTests {
+  private let presenter = BotsPresenter()
+
+  private func message(_ id: String, role: MessageRole, blocks: [ContentBlock]) -> Message {
+    Message(
+      id: id,
+      role: role,
+      state: .complete,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      blocks: blocks
+    )
+  }
+
+  private func toolRows(_ entries: [TranscriptEntry]) -> [ToolRow] {
+    entries.compactMap {
+      if case .tool(_, let row) = $0 { return row }
+      return nil
+    }
+  }
+
+  private func toolIds(_ entries: [TranscriptEntry]) -> [String] {
+    entries.compactMap {
+      if case .tool(let id, _) = $0 { return id }
+      return nil
+    }
+  }
+
+  @Test("two rounds that reuse a call id keep their own results and unique row ids")
+  func duplicateCallIds() {
+    var state = ConversationState(botId: "b_1")
+    for round in 1...2 {
+      state = Reducer.apply(
+        .append(
+          message: message(
+            "e_\(round * 10)",
+            role: .assistant,
+            blocks: [
+              .toolCall(callId: "c_1", name: "read_file", args: ["path": .string("\(round)")])
+            ]
+          ),
+          replaces: nil
+        ),
+        to: state
+      )
+      state = Reducer.apply(
+        .append(
+          message: message(
+            "e_\(round * 10 + 1)",
+            role: .tool,
+            blocks: [
+              .toolResult(
+                callId: "c_1", name: "read_file", text: "round \(round)", isError: false,
+                durationMs: nil)
+            ]
+          ),
+          replaces: nil
+        ),
+        to: state
+      )
+    }
+    let entries = presenter.transcript(for: state)
+    let rows = toolRows(entries)
+    #expect(rows.map(\.output) == ["round 1", "round 2"])
+    #expect(Set(toolIds(entries)).count == 2, "ForEach ids are unique")
+  }
+
+  @Test("an old call without a result does not run again when a new run starts")
+  func staleCallDoesNotRevive() {
+    var state = ConversationState(botId: "b_1", running: true)
+    state = Reducer.apply(
+      .append(
+        message: message(
+          "e_10",
+          role: .assistant,
+          blocks: [
+            .toolCall(callId: "c_1", name: "run_command", args: ["command": .string("make")])
+          ]
+        ),
+        replaces: nil
+      ),
+      to: state
+    )
+    #expect(toolRows(presenter.transcript(for: state)).first?.isRunning == true)
+
+    state = Reducer.apply(
+      .append(message: message("e_12", role: .user, blocks: [.text("再试一次")]), replaces: nil),
+      to: state
+    )
+    let entries = presenter.transcript(for: state)
+    #expect(toolRows(entries).first?.isRunning == false, "the finished run's call stays settled")
+    #expect(entries.contains { if case .typing = $0 { true } else { false } })
+  }
+}

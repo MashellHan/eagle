@@ -322,6 +322,31 @@ final class DomainCoverageMoreTests: XCTestCase {
     XCTAssertEqual(message.blocks.count, 1)
   }
 
+  func testToolBlocksRefuseWhatTheDaemonRefuses() throws {
+    let decoder = JSONDecoder()
+    for json in [
+      #"{"type":"toolCall","callId":"c","name":"n"}"#,
+      #"{"type":"toolCall","callId":"","name":"n","args":{}}"#,
+      #"{"type":"toolCall","callId":"c","name":"","args":{}}"#,
+      #"{"type":"toolResult","callId":"c","name":"n","text":"t","isError":false,"durationMs":-1}"#,
+      #"{"type":"toolResult","callId":"c","name":"","text":"t","isError":false}"#,
+    ] {
+      XCTAssertThrowsError(
+        try decoder.decode(ContentBlock.self, from: Data(json.utf8)),
+        json
+      )
+    }
+    // Unknown extra fields are still tolerated: additive evolution is the protocol's rule.
+    let extra = try decoder.decode(
+      ContentBlock.self,
+      from: Data(
+        #"{"type":"toolResult","callId":"c","name":"n","text":"t","isError":false,"future":1}"#
+          .utf8
+      )
+    )
+    XCTAssertEqual(extra, .toolResult(callId: "c", name: "n", text: "t", isError: false, durationMs: nil))
+  }
+
   func testJSONValuesRenderCompactlyAndPretty() throws {
     let value = JSONValue.object([
       "path": .string("a\"b"),

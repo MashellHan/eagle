@@ -83,3 +83,57 @@ test("a tool round is live in the transcript and in a later snapshot", async () 
     await stack.close();
   }
 });
+
+test("a hostile tool output is clamped by its encoded size and the socket stays open", async () => {
+  const stack = await startStack({ real: true });
+  try {
+    const faux = stack.faux;
+    assert.ok(faux !== undefined);
+    faux.setResponses([
+      assistant(
+        [toolCall("run_command", { command: "head -c 65536 /dev/zero | LC_ALL=C tr '\\0' '\"'" })],
+        { stopReason: "toolUse" },
+      ),
+      text("输出已经被裁剪。"),
+    ]);
+    const botId = await stack.createBot("大输出");
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    await send(socket, { type: "subscribe", botId, trace: tr("sub1") });
+    await frames.next();
+    await send(socket, {
+      type: "send",
+      requestId: "r_tools_0002",
+      text: "输出很多引号",
+      whenBusy: "followUp",
+      trace: tr("send2"),
+    });
+
+    let toolText: string | undefined;
+    let answered = false;
+    for (;;) {
+      const frame = await frames.next(20_000);
+      if (frame.type === "append") {
+        const message = frame.message as Message;
+        if (message.role === "tool") {
+          const block = message.blocks[0];
+          if (block?.type === "toolResult") toolText = block.text;
+        }
+        if (message.role === "assistant" && message.blocks.some((block) => block.type === "text")) {
+          answered = true;
+        }
+      }
+      if (frame.type === "submission" && frame.requestId === "r_tools_0002") {
+        if (frame.status === "done" || frame.status === "unanswered") break;
+      }
+    }
+    assert.equal(answered, true, "the answer still arrives; the socket was not closed");
+    assert.ok(toolText?.endsWith("[tool output truncated]"), "the tool row is clamped");
+    assert.ok(Buffer.byteLength(toolText ?? "", "utf8") < 64 * 1024);
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});

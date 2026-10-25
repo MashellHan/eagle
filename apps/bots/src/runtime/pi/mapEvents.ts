@@ -324,7 +324,9 @@ export class EventMapper {
             kind: "toolcall",
             index: change.contentIndex,
             callId: block !== undefined && block.type === "toolCall" ? block.callId : "",
-            path: change.path,
+            // pi's path is relative to the call's arguments; the wire's is relative to
+            // the block (PROTOCOL I13), so `["q"]` becomes `["args","q"]`.
+            path: ["args", ...change.path],
             append: change.delta,
           });
           break;
@@ -470,23 +472,27 @@ export class EventMapper {
     return message;
   }
 
-  /** Clamps a tool row's text to the message budget, keeping the newest text. */
+  /**
+   * Clamps a tool row to the message budget. The budget is the encoded message, not the
+   * raw text: quotes, newlines and backslashes cost two bytes on the wire, so the fitting
+   * prefix is found by measuring, never by assuming one byte per character.
+   */
   #boundedTool(message: Message): Message {
     const block = message.blocks[0];
     if (block === undefined || block.type !== "toolResult") return message;
-    const overhead = messageBytes({ ...message, blocks: [{ ...block, text: "" }] });
-    const room = Math.max(this.#maxMessageBytes - overhead - 64, 0);
-    const bytes = Buffer.from(block.text);
-    let slice = bytes.subarray(0, room);
-    let text = slice.toString("utf8");
-    for (let guard = 0; guard < 4 && text.endsWith("\uFFFD"); guard += 1) {
-      slice = slice.subarray(0, slice.length - 1);
-      text = slice.toString("utf8");
-    }
-    return {
+    const marker = "\n[tool output truncated]";
+    const build = (size: number): Message => ({
       ...message,
-      blocks: [{ ...block, text: `${text}\n[tool output truncated]` }],
-    };
+      blocks: [{ ...block, text: `${block.text.slice(0, size)}${marker}` }],
+    });
+    let low = 0;
+    let high = block.text.length;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (messageBytes(build(middle)) <= this.#maxMessageBytes) low = middle;
+      else high = middle - 1;
+    }
+    return build(low);
   }
 
   /** The withheld answer's replacement: the entry's own id and timestamp, so a reconnect sees the same. */
@@ -508,9 +514,15 @@ export class EventMapper {
   }
 
   #upsert(message: Message, replaces?: string): void {
-    let index = replaces === undefined ? -1 : this.#messages.findIndex((m) => m.id === replaces);
-    if (index < 0) index = this.#messages.findIndex((item) => item.id === message.id);
-    if (index >= 0) this.#messages[index] = message;
+    // A finalized entry is the newest commit, so it lands after anything that arrived
+    // while the attempt streamed (a tool result). Replacing in place would invert the
+    // order against a snapshot built from the same entries.
+    if (replaces !== undefined) {
+      const replaced = this.#messages.findIndex((item) => item.id === replaces);
+      if (replaced >= 0) this.#messages.splice(replaced, 1);
+    }
+    const existing = this.#messages.findIndex((item) => item.id === message.id);
+    if (existing >= 0) this.#messages[existing] = message;
     else this.#messages.push(message);
     this.#trim();
   }
@@ -527,6 +539,15 @@ export class EventMapper {
     const first = dropped.find((message) => message.id.startsWith("e_"));
     if (first !== undefined) this.#truncatedBefore = first.id;
     this.#messages = this.#messages.slice(-this.#window);
+    // `streaming` must always name a message in the window: a trimmed-away provisional is
+    // dropped, and the entry that ends its attempt is appended without `replaces`.
+    if (
+      this.#provisional !== null &&
+      !this.#messages.some((item) => item.id === this.#provisional)
+    ) {
+      this.#provisional = null;
+      this.#withheld = false;
+    }
   }
 }
 

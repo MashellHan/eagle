@@ -219,6 +219,44 @@ final class ReducerTests: XCTestCase {
 }
 
 extension ReducerTests {
+  func testANestedToolCallDeltaGrowsTheArguments() {
+    var state = ConversationState(botId: "b_1")
+    state = Reducer.apply(
+      .append(
+        message: Message(
+          id: "p_a1",
+          role: .assistant,
+          state: .streaming,
+          createdAt: "x",
+          blocks: [
+            .toolCall(
+              callId: "c_1",
+              name: "search",
+              args: ["nested": .object(["q": .string("a")]), "items": .array([.string("a")])]
+            )
+          ]
+        ),
+        replaces: nil
+      ),
+      to: state
+    )
+    state = Reducer.apply(
+      .delta(
+        messageId: "p_a1",
+        changes: [
+          .toolCall(index: 0, callId: "c_1", path: ["args", "nested", "q"], append: "Z"),
+          .toolCall(index: 0, callId: "c_1", path: ["args", "items", "0"], append: "Z"),
+        ]
+      ),
+      to: state
+    )
+    guard case .toolCall(_, _, let args) = state.messages.first?.blocks[0] else {
+      return XCTFail("the tool call is still there")
+    }
+    XCTAssertEqual(args["nested"], .object(["q": .string("aZ")]))
+    XCTAssertEqual(args["items"], .array([.string("aZ")]))
+  }
+
   func testThinkingToolAndUnknownTargetsAreTolerated() {
     var state = ConversationState(botId: "b_1")
     state = Reducer.apply(
@@ -240,7 +278,7 @@ extension ReducerTests {
         changes: [
           .thinking(index: 0, append: "忽略：不是 thinking 块"),
           .thinking(index: 5, append: "越界"),
-          .toolCall(index: 1, callId: "c_1", path: ["q"], append: "x"),
+          .toolCall(index: 1, callId: "c_1", path: ["args", "q"], append: "x"),
           .toolCall(index: 0, callId: "c_9", path: [], append: "y"),
           .block(index: 9, block: .text("越界")),
           .text(index: 1, append: "忽略：不是文本块"),

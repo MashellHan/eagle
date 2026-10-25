@@ -162,6 +162,36 @@ test("event envelopes carry well-formed ids", () => {
   });
 });
 
+test("tool blocks require their name and a sane duration", () => {
+  const message = (block: Record<string, unknown>) => ({
+    type: "append",
+    rev: 1,
+    trace,
+    message: {
+      id: "e_11",
+      role: "tool",
+      state: "complete",
+      createdAt: "x",
+      blocks: [block],
+    },
+  });
+  const result = {
+    type: "toolResult",
+    callId: "c_1",
+    name: "list_files",
+    text: "a",
+    isError: false,
+  };
+  assert.equal(decodeServerEvent(message(result)).type, "append");
+  invalidEvent(message({ ...result, name: undefined }));
+  invalidEvent(message({ ...result, name: "" }));
+  invalidEvent(message({ ...result, durationMs: -1 }));
+  invalidEvent(message({ ...result, durationMs: 1.5 }));
+  const call = { type: "toolCall", callId: "c_1", name: "list_files", args: {} };
+  assert.equal(decodeServerEvent(message({ ...call, role: "assistant" })).type, "append");
+  invalidEvent(message({ ...call, name: "" }));
+});
+
 test("snapshot state relations are enforced", () => {
   const base = { type: "snapshot", rev: 1, trace };
   const complete = {

@@ -243,12 +243,20 @@ final class BotsWorkspaceViewModel: ObservableObject {
 /// (docs/bots/PLAN.md, stage 5 — view models own the mapping, views only render).
 struct BotsPresenter {
   func transcript(for state: ConversationState) -> [TranscriptEntry] {
-    let results = toolResults(in: state.messages)
-    let calls = toolCalls(in: state.messages)
+    let (paired, consumed) = pairTools(state.messages)
+    // A call can only be executing within the run that sent it: once a newer user message
+    // exists, an old call without a result belongs to a finished run and must not spin.
+    let lastUserIndex = state.messages.lastIndex { $0.role == .user }
     var rows: [TranscriptEntry] = []
-    for message in state.messages {
+    for (index, message) in state.messages.enumerated() {
       rows.append(
-        contentsOf: entries(for: message, results: results, calls: calls, running: state.running))
+        contentsOf: entries(
+          for: message,
+          paired: paired,
+          consumed: consumed,
+          running: state.running,
+          current: index > (lastUserIndex ?? -1)
+        ))
     }
     // A running tool already shows its own row; the typing row is for a silent model.
     let toolRunning = rows.contains { entry in
@@ -267,62 +275,76 @@ struct BotsPresenter {
   }
 
   private struct ToolResult {
+    let messageId: String
     let text: String
     let isError: Bool
     let durationMs: Int?
   }
 
-  /// Results are paired by call id across the page, so a row knows its result even when
-  /// the two arrive a whole message apart (docs/bots/PROTOCOL.md, "Tool rows").
-  private func toolResults(in messages: [Message]) -> [String: ToolResult] {
-    var results: [String: ToolResult] = [:]
+  private struct ToolCallKey: Hashable {
+    let messageId: String
+    let callId: String
+  }
+
+  /// Pairs the i-th call with the i-th result of the same `callId`, in message order. A
+  /// repeated `callId` therefore keeps each round's own result, and a result whose call is
+  /// no longer in the page stays unconsumed, so it is rendered as a row of its own.
+  private func pairTools(_ messages: [Message]) -> ([ToolCallKey: ToolResult], Set<String>) {
+    var queues: [String: [ToolResult]] = [:]
     for message in messages where message.role == .tool {
       for block in message.blocks {
         if case .toolResult(let callId, _, let text, let isError, let durationMs) = block {
-          results[callId] = ToolResult(text: text, isError: isError, durationMs: durationMs)
+          queues[callId, default: []].append(
+            ToolResult(messageId: message.id, text: text, isError: isError, durationMs: durationMs)
+          )
         }
       }
     }
-    return results
-  }
-
-  private func toolCalls(in messages: [Message]) -> Set<String> {
-    var calls: Set<String> = []
-    for message in messages {
+    var paired: [ToolCallKey: ToolResult] = [:]
+    var consumed: Set<String> = []
+    for message in messages where message.role == .assistant {
       for block in message.blocks {
-        if case .toolCall(let callId, _, _) = block { calls.insert(callId) }
+        guard case .toolCall(let callId, _, _) = block else { continue }
+        guard var queue = queues[callId], !queue.isEmpty else { continue }
+        let result = queue.removeFirst()
+        queues[callId] = queue
+        paired[ToolCallKey(messageId: message.id, callId: callId)] = result
+        consumed.insert(result.messageId)
       }
     }
-    return calls
+    return (paired, consumed)
   }
 
   func entries(for message: Message) -> [TranscriptEntry] {
-    entries(
+    let (paired, consumed) = pairTools([message])
+    return entries(
       for: message,
-      results: toolResults(in: [message]),
-      calls: toolCalls(in: [message]),
-      running: false
+      paired: paired,
+      consumed: consumed,
+      running: false,
+      current: true
     )
   }
 
   private func entries(
     for message: Message,
-    results: [String: ToolResult],
-    calls: Set<String>,
-    running: Bool
+    paired: [ToolCallKey: ToolResult],
+    consumed: Set<String>,
+    running: Bool,
+    current: Bool
   ) -> [TranscriptEntry] {
     switch message.role {
     case .user:
       return [.user(id: message.id, text: message.text)]
     case .tool:
-      // A result whose call is on the page was consumed by that call's row. A page that
-      // no longer holds the call still shows the result, so nothing is hidden.
+      // A result whose call is on the page was consumed by that call's row; one whose call
+      // was trimmed away (or never seen) is still shown, so nothing disappears.
+      if consumed.contains(message.id) { return [] }
       for block in message.blocks {
         if case .toolResult(let callId, let name, let text, let isError, let durationMs) = block {
-          if calls.contains(callId) { return [] }
           return [
             .tool(
-              id: "result-\(callId)",
+              id: "result-\(message.id)-\(callId)",
               row: ToolRow(
                 name: name,
                 subtitle: "",
@@ -360,17 +382,17 @@ struct BotsPresenter {
         case .toolCall(let callId, let name, let args):
           hasTool = true
           flush()
-          let result = results[callId]
+          let result = paired[ToolCallKey(messageId: message.id, callId: callId)]
           rows.append(
             .tool(
-              id: "call-\(callId)",
+              id: "call-\(message.id)-\(callId)",
               row: ToolRow(
                 name: name,
                 subtitle: summary(of: args),
                 input: args.isEmpty ? "" : JSONValue.object(args).pretty,
                 output: result?.text,
                 isError: result?.isError ?? false,
-                isRunning: result == nil && running,
+                isRunning: result == nil && running && current,
                 duration: duration(result?.durationMs)
               )
             )
