@@ -57,11 +57,11 @@ after a full review round; a row can be implemented and reviewed but not yet sig
 | 20 | 2 | `unanswered` keeps its reason and never invents a settlement | **signed off** |
 | 21 | 2 | history pages older messages, newest window untouched | **signed off** |
 | 22 | 2 | resync returns a snapshot at the last published revision | **signed off** |
-| 23-36 | 3 | pi-durable adapter: mapping, idempotency, failures, recovery | implemented, **awaiting review** |
+| 23-36 | 3 | pi-durable adapter: mapping, idempotency, failures, recovery | **signed off** |
 | 37-54 | 4 | server, lifecycle, end-to-end, crash and perf suites | **not started** |
 | 55-69 | 5 | macOS client: decoding, reducer, transport, view models, app | **not started** |
 
-Current tree: 231 tests, coverage 94.2% lines / 89.7% branches / 94.7% functions,
+Current tree: 249 tests, coverage 94.9% lines / 90.5% branches / 94.2% functions,
 `typecheck`, `lint`, `fixtures:check` green. The core is complete (catalog, hub,
 service, fake runtime) and the pi-durable adapter now runs real Harness instances over
 real sqlite, so a script can open a bot, talk to a model and read the transcript.
@@ -95,16 +95,14 @@ What is missing, and why the product still cannot run:
 | log sink | the adapter builds and validates records, but no daemon writes them to disk |
 | `apps/bots-macos/` | no client |
 
-Stage 3 (rows 23-36, the pi adapter) is implemented and waiting for its review round;
-the server is next, then the client.
+Stage 3 (rows 23-36, the pi adapter) is signed off; the server is next, then the client.
 
 ## Next work, in order
 
-1. Review stage 3 (rows 23-36) and sign it off; fix what the round finds.
-2. Stage 4: `src/server/`, `src/main.ts`, registry lifecycle, crash and perf suites.
-3. Stage 5: `apps/bots-macos/` (separate package, `EagleDesign` product only).
+1. Stage 4: `src/server/`, `src/main.ts`, registry lifecycle, crash and perf suites.
+2. Stage 5: `apps/bots-macos/` (separate package, `EagleDesign` product only).
 
-### What the adapter can do today (rows 23-36, awaiting review)
+### What the adapter can do today (rows 23-36, signed off)
 
 - `mapEvents.ts` replays recorded pi runs: append, delta, submission and status
   events, an attempt-scoped provisional, an aborted entry that replaces it, a
@@ -125,9 +123,16 @@ broadcasts the only reply it produces, at a revision that names its content.
 
 ## Open review queue
 
-Stage 3 (rows 23-36) is implemented and not yet reviewed: the mapper, the adapter,
-the classifier and nine recorded golden sequences. Stage 2 (rows 9-22) is signed
-off. Its review rounds closed, in order:
+Empty. Stage 3 (rows 23-36) is signed off. Its review rounds closed, in order: a
+fail log record built from another layer's identity, a reattach that dropped its
+recovery snapshot, a listener escalation counted per notification, a park found
+during `open` that no subscriber could see, `pending` rebuilt from the ledger
+instead of the snapshot, `task_failed` bypassing the event dedupe, failure ids
+colliding across harnesses, `hasMore` counted from raw entries, a settled record
+unreadable by request id, progress wearing the watching connection's trace, an
+attempt id reused after a deferred poll, an oversized re-announcement, an unstable
+notice timestamp, and a baseline that could arrive after newer content.
+Stage 2 (rows 9-22) closed these rounds, in order:
 revisions consumed before a delta was folded, unfaithful delta merging, a silently
 dead degraded subscriber, reentrant fanout, a missing byte trigger, non-wire byte
 counting, a detached subscriber still pumped, a fake-runtime toolcall path read from
