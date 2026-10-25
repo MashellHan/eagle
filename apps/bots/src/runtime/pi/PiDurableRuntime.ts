@@ -535,6 +535,9 @@ class PiRuntimeHandle implements RuntimeHandle {
       readonly deferDelivery?: boolean;
     } = {},
   ): Promise<ConversationSnapshot> {
+    // Read before the acquisition: a record set that is slightly older can only describe
+    // work the snapshot still names, while one read afterwards can already have lost it.
+    const active = await this.#activeRecords();
     const stream = await watchEvents(this.#harness, this.#rootId, BACKGROUND_CONTEXT);
     let ready = false;
     const buffered: (readonly AgentEvent[])[] = [];
@@ -545,7 +548,6 @@ class PiRuntimeHandle implements RuntimeHandle {
       }
       await this.#consumeGuarded(state, batch, trace);
     });
-    const active = await this.#activeRecords();
     for (const record of active) this.#rememberId(record);
     const baseline = this.#mapper.seed(stream.snapshot, trace, active)[0];
     const snapshot =
@@ -611,6 +613,9 @@ class PiRuntimeHandle implements RuntimeHandle {
 
   /** Classifies one listener episode, then either escalates or reattaches. */
   #listenerFault(state: Subscription, trace: string): void {
+    // The failing stream is isolated first: it must not deliver into a subscriber that
+    // is about to receive a fresh baseline, or the same answer would arrive twice.
+    void state.stream?.stop();
     const minted = this.#classifier.listenerError(state.episode);
     this.#options.log.emit("warn", "runtime", Events.watchEndOk, {
       trace,
@@ -766,7 +771,9 @@ class PiRuntimeHandle implements RuntimeHandle {
   #rememberId(record: Submission | undefined): void {
     if (record === undefined) return;
     this.#submissionIds.set(record.id, record.id);
-    if (record.requestId.length > 0) this.#submissionIds.set(record.requestId, record.id);
+    if (record.requestId.length === 0) return;
+    this.#submissionIds.set(record.requestId, record.id);
+    this.#requestIds.set(record.id, record.requestId);
   }
 
   #broadcast(event: RuntimeEvent): void {
