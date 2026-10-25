@@ -243,11 +243,19 @@ final class BotsWorkspaceViewModel: ObservableObject {
 /// (docs/bots/PLAN.md, stage 5 — view models own the mapping, views only render).
 struct BotsPresenter {
   func transcript(for state: ConversationState) -> [TranscriptEntry] {
+    let results = toolResults(in: state.messages)
+    let calls = toolCalls(in: state.messages)
     var rows: [TranscriptEntry] = []
     for message in state.messages {
-      rows.append(contentsOf: entries(for: message))
+      rows.append(
+        contentsOf: entries(for: message, results: results, calls: calls, running: state.running))
     }
-    if let typing = typingEntry(for: state) {
+    // A running tool already shows its own row; the typing row is for a silent model.
+    let toolRunning = rows.contains { entry in
+      if case .tool(_, let row) = entry { return row.isRunning }
+      return false
+    }
+    if !toolRunning, let typing = typingEntry(for: state) {
       rows.append(typing)
     }
     if let unavailable = state.unavailable {
@@ -258,29 +266,182 @@ struct BotsPresenter {
     return rows
   }
 
+  private struct ToolResult {
+    let text: String
+    let isError: Bool
+    let durationMs: Int?
+  }
+
+  /// Results are paired by call id across the page, so a row knows its result even when
+  /// the two arrive a whole message apart (docs/bots/PROTOCOL.md, "Tool rows").
+  private func toolResults(in messages: [Message]) -> [String: ToolResult] {
+    var results: [String: ToolResult] = [:]
+    for message in messages where message.role == .tool {
+      for block in message.blocks {
+        if case .toolResult(let callId, _, let text, let isError, let durationMs) = block {
+          results[callId] = ToolResult(text: text, isError: isError, durationMs: durationMs)
+        }
+      }
+    }
+    return results
+  }
+
+  private func toolCalls(in messages: [Message]) -> Set<String> {
+    var calls: Set<String> = []
+    for message in messages {
+      for block in message.blocks {
+        if case .toolCall(let callId, _, _) = block { calls.insert(callId) }
+      }
+    }
+    return calls
+  }
+
   func entries(for message: Message) -> [TranscriptEntry] {
+    entries(
+      for: message,
+      results: toolResults(in: [message]),
+      calls: toolCalls(in: [message]),
+      running: false
+    )
+  }
+
+  private func entries(
+    for message: Message,
+    results: [String: ToolResult],
+    calls: Set<String>,
+    running: Bool
+  ) -> [TranscriptEntry] {
     switch message.role {
     case .user:
       return [.user(id: message.id, text: message.text)]
+    case .tool:
+      // A result whose call is on the page was consumed by that call's row. A page that
+      // no longer holds the call still shows the result, so nothing is hidden.
+      for block in message.blocks {
+        if case .toolResult(let callId, let name, let text, let isError, let durationMs) = block {
+          if calls.contains(callId) { return [] }
+          return [
+            .tool(
+              id: "result-\(callId)",
+              row: ToolRow(
+                name: name,
+                subtitle: "",
+                output: text,
+                isError: isError,
+                duration: duration(durationMs)
+              )
+            )
+          ]
+        }
+      }
+      return []
     case .assistant:
-      // An attempt with no text yet is represented by the single typing row `transcript`
-      // adds; only visible text becomes a bubble.
-      let answer = message.visibleText
-      if answer.isEmpty, message.state == .streaming {
-        return []
+      var rows: [TranscriptEntry] = []
+      var text = ""
+      var runs = 0
+      var hasTool = false
+      func flush() {
+        guard !text.isEmpty else { return }
+        rows.append(
+          .assistant(
+            id: runs == 0 ? message.id : "\(message.id)-t\(runs)",
+            blocks: [.paragraph(text)]
+          )
+        )
+        text = ""
+        runs += 1
       }
-      var blocks: [AssistantTurn.Block] = answer.isEmpty ? [] : [.paragraph(answer)]
-      if message.state == .aborted {
-        blocks.append(.note("回答已中止"))
-      } else if message.state == .error {
-        blocks.append(.note("回答失败，可以重新发送。"))
-      } else if message.stopReason == .length {
-        blocks.append(.note("回答因为长度上限被截断。"))
+      for block in message.blocks {
+        switch block {
+        case .text(let value):
+          text += value
+        case .thinking:
+          continue
+        case .toolCall(let callId, let name, let args):
+          hasTool = true
+          flush()
+          let result = results[callId]
+          rows.append(
+            .tool(
+              id: "call-\(callId)",
+              row: ToolRow(
+                name: name,
+                subtitle: summary(of: args),
+                input: args.isEmpty ? "" : JSONValue.object(args).pretty,
+                output: result?.text,
+                isError: result?.isError ?? false,
+                isRunning: result == nil && running,
+                duration: duration(result?.durationMs)
+              )
+            )
+          )
+        case .toolResult:
+          continue
+        }
       }
-      return [.assistant(id: message.id, blocks: blocks)]
-    case .notice:
+      flush()
+      if rows.isEmpty, message.state == .streaming { return [] }
+      let notes = noteBlocks(for: message)
+      if notes.isEmpty { return rows }
+      if !hasTool, let last = rows.popLast() {
+        // A plain answer keeps its single row: the notes belong to the same bubble.
+        if case .assistant(let id, let blocks) = last {
+          return rows + [.assistant(id: id, blocks: blocks + notes)]
+        }
+        return rows + [last] + [.assistant(id: "\(message.id)-note", blocks: notes)]
+      }
+      return rows + [.assistant(id: "\(message.id)-note", blocks: notes)]
+    case .notice, .system:
       return [.assistant(id: message.id, blocks: [.note(message.text)])]
     }
+  }
+
+  private func noteBlocks(for message: Message) -> [AssistantTurn.Block] {
+    if message.state == .aborted { return [.note("回答已中止")] }
+    if message.state == .error { return [.note("回答失败，可以重新发送。")] }
+    if message.stopReason == .length { return [.note("回答因为长度上限被截断。")] }
+    return []
+  }
+
+  /// One line for the row: the arguments a person would ask for first.
+  private func summary(of args: [String: JSONValue]) -> String {
+    let preferred = ["command", "path", "target", "text", "kind", "name"]
+    var parts: [String] = []
+    var used: Set<String> = []
+    for key in preferred {
+      guard let value = args[key] else { continue }
+      parts.append("\(key)=\(scalar(value))")
+      used.insert(key)
+      if parts.count == 2 { break }
+    }
+    if parts.count < 2 {
+      for key in args.keys.sorted() where !used.contains(key) {
+        guard let value = args[key] else { continue }
+        parts.append("\(key)=\(scalar(value))")
+        if parts.count == 2 { break }
+      }
+    }
+    let joined = parts.joined(separator: " · ")
+    return joined.count > 96 ? String(joined.prefix(95)) + "…" : joined
+  }
+
+  private func scalar(_ value: JSONValue) -> String {
+    switch value {
+    case .string(let text):
+      return text.count > 48 ? String(text.prefix(47)) + "…" : text
+    case .null:
+      return "null"
+    case .bool, .number:
+      return value.compact
+    case .array, .object:
+      return value.compact.count > 48 ? String(value.compact.prefix(47)) + "…" : value.compact
+    }
+  }
+
+  private func duration(_ milliseconds: Int?) -> String? {
+    guard let milliseconds else { return nil }
+    if milliseconds < 1_000 { return "\(milliseconds) ms" }
+    return String(format: "%.1f s", Double(milliseconds) / 1_000)
   }
 
   /// While a run works and there is no growing text yet, the transcript shows the typing

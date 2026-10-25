@@ -25,7 +25,7 @@ for bundle in $(find .build -name '*.xctest' -type d); do
 done
 
 awk -v minimum="$MINIMUM" '
-  /Reducer\.swift|RevisionGap\.swift|Domain\.swift|Ports\.swift|Wire\.swift|CatalogHTTPClient\.swift|TokenStore\.swift|AppViewModel\.swift|ConversationViewModel\.swift|OutboxStore\.swift/ {
+  /Reducer\.swift|RevisionGap\.swift|Domain\.swift|JSONValue\.swift|Ports\.swift|Wire\.swift|CatalogHTTPClient\.swift|TokenStore\.swift|AppViewModel\.swift|ConversationViewModel\.swift|OutboxStore\.swift/ {
     # The same file appears once per test bundle; keep its best covered percentage.
     percent = $10 + 0
     if (!(($1) in best) || percent > best[$1]) {

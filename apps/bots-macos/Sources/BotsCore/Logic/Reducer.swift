@@ -247,8 +247,8 @@ public enum Reducer {
     return next
   }
 
-  /// A toolcall delta walks the block's path; phase 1 never renders tool content, so the
-  /// text is kept on the call for completeness only.
+  /// A toolcall delta walks the block's own args, like the daemon's fold does, so the
+  /// row grows with the arguments the model is still writing.
   private static func appendToolCall(
     _ message: Message,
     index: Int,
@@ -256,10 +256,38 @@ public enum Reducer {
     append: String
   ) -> Message {
     guard index < message.blocks.count else { return message }
-    guard case .toolCall(let callId, let name) = message.blocks[index] else { return message }
+    guard case .toolCall(let callId, let name, let args) = message.blocks[index] else {
+      return message
+    }
     var next = message
-    next.blocks[index] = .toolCall(callId: callId, name: name + (path.isEmpty ? append : ""))
+    if case .object(let grown) = appendValue(.object(args), path[...], append) {
+      next.blocks[index] = .toolCall(callId: callId, name: name, args: grown)
+    } else {
+      next.blocks[index] = .toolCall(callId: callId, name: name, args: args)
+    }
     return next
+  }
+
+  private static func appendValue(
+    _ value: JSONValue,
+    _ path: ArraySlice<String>,
+    _ append: String
+  ) -> JSONValue {
+    guard let key = path.first else {
+      if case .string(let text) = value { return .string(text + append) }
+      return .string(append)
+    }
+    switch value {
+    case .object(var object):
+      object[key] = appendValue(object[key] ?? .string(""), path.dropFirst(), append)
+      return .object(object)
+    case .array(var array):
+      guard let index = Int(key), index >= 0, index < array.count else { return value }
+      array[index] = appendValue(array[index], path.dropFirst(), append)
+      return .array(array)
+    default:
+      return value
+    }
   }
 }
 

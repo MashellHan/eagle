@@ -127,20 +127,31 @@ struct BotsPresenterTests {
       blocks: [
         .thinking("内心独白"),
         .text("可见"),
-        .toolCall(callId: "c_1", name: "search"),
-        .toolResult(callId: "c_1", text: "工具结果", isError: false),
+        .toolCall(callId: "c_1", name: "search", args: ["q": .string("paris")]),
+        .toolResult(
+          callId: "c_1", name: "search", text: "工具结果", isError: false, durationMs: nil),
       ],
       stopReason: .length
     )
     state = Reducer.apply(.append(message: message, replaces: nil), to: state)
     let entries = presenter.transcript(for: state)
+    // The answer is its own bubble: no thinking, no call, no result text inside it.
     #expect(
       {
         if case .assistant(_, let blocks) = entries.first {
-          return blocks == [.paragraph("可见"), .note("回答因为长度上限被截断。")]
+          return blocks == [.paragraph("可见")]
         }
         return false
       }())
+    // The call is a row of its own, and the length note follows as a separate row.
+    #expect(
+      entries.contains {
+        if case .tool(_, let row) = $0 { row.name == "search" } else { false }
+      })
+    #expect(
+      entries.contains {
+        if case .assistant(_, [.note("回答因为长度上限被截断。")]) = $0 { true } else { false }
+      })
   }
 
   @Test("an aborted answer says it was aborted")
@@ -198,5 +209,166 @@ struct BotFaceTests {
     let item = presenter.sidebarItem(for: bot)
     #expect(item.face?.shape == .blob)
     #expect(item.face?.tint == .green)
+  }
+}
+
+@Suite("Bots tool rows")
+struct BotsToolRowTests {
+  private let presenter = BotsPresenter()
+
+  private func message(
+    _ id: String,
+    role: MessageRole,
+    state: MessageState = .complete,
+    blocks: [ContentBlock]
+  ) -> Message {
+    Message(id: id, role: role, state: state, createdAt: "2026-01-01T00:00:00.000Z", blocks: blocks)
+  }
+
+  private func call(_ callId: String = "c_1") -> Message {
+    message(
+      "e_10",
+      role: .assistant,
+      blocks: [
+        .text("我先看一下。"),
+        .toolCall(
+          callId: callId,
+          name: "read_file",
+          args: ["path": .string("notes.txt"), "limit": .number(50)]
+        ),
+      ]
+    )
+  }
+
+  private func result(
+    _ callId: String = "c_1",
+    isError: Bool = false,
+    durationMs: Int? = 21
+  ) -> Message {
+    message(
+      "e_11",
+      role: .tool,
+      blocks: [
+        .toolResult(
+          callId: callId,
+          name: "read_file",
+          text: "工作区里的内容",
+          isError: isError,
+          durationMs: durationMs
+        )
+      ]
+    )
+  }
+
+  private func toolRows(_ entries: [TranscriptEntry]) -> [ToolRow] {
+    entries.compactMap {
+      if case .tool(_, let row) = $0 { return row }
+      return nil
+    }
+  }
+
+  @Test("a call without its result is a running row while the run works")
+  func runningRow() {
+    var state = ConversationState(botId: "b_1", running: true)
+    state = Reducer.apply(.append(message: call(), replaces: nil), to: state)
+    let entries = presenter.transcript(for: state)
+    let rows = toolRows(entries)
+    #expect(rows.count == 1)
+    #expect(rows.first?.name == "read_file")
+    #expect(rows.first?.subtitle == "path=notes.txt · limit=50")
+    #expect(rows.first?.isRunning == true)
+    #expect(rows.first?.output == nil)
+    #expect(rows.first?.input.contains("\"path\": \"notes.txt\"") == true)
+    // The tool row replaces the typing row: the model is not silent, it is running a tool.
+    #expect(!entries.contains { if case .typing = $0 { true } else { false } })
+  }
+
+  @Test("the result pairs with its call by id, live and after a snapshot")
+  func pairedResult() {
+    var state = ConversationState(botId: "b_1", running: false)
+    state = Reducer.apply(.append(message: call(), replaces: nil), to: state)
+    state = Reducer.apply(.append(message: result(), replaces: nil), to: state)
+    let entries = presenter.transcript(for: state)
+    let rows = toolRows(entries)
+    #expect(rows.count == 1, "the result message is consumed by the call row")
+    #expect(rows.first?.isRunning == false)
+    #expect(rows.first?.output == "工作区里的内容")
+    #expect(rows.first?.duration == "21 ms")
+    #expect(rows.first?.isError == false)
+    // The answer text on the same message keeps its own bubble, in order.
+    #expect(
+      entries.contains {
+        if case .assistant(_, [.paragraph("我先看一下。")]) = $0 { true } else { false }
+      })
+  }
+
+  @Test("a failed tool colors the row and shows its error text")
+  func failedRow() {
+    var state = ConversationState(botId: "b_1")
+    state = Reducer.apply(.append(message: call(), replaces: nil), to: state)
+    state = Reducer.apply(
+      .append(message: result(isError: true, durationMs: nil), replaces: nil),
+      to: state
+    )
+    let rows = toolRows(presenter.transcript(for: state))
+    #expect(rows.first?.isError == true)
+    #expect(rows.first?.output == "工作区里的内容")
+    #expect(rows.first?.duration == nil)
+  }
+
+  @Test("a result whose call left the page is still shown")
+  func standaloneResult() {
+    var state = ConversationState(botId: "b_1")
+    state = Reducer.apply(.append(message: result("c_9"), replaces: nil), to: state)
+    let entries = presenter.transcript(for: state)
+    let rows = toolRows(entries)
+    #expect(rows.count == 1)
+    #expect(rows.first?.name == "read_file")
+    #expect(rows.first?.output == "工作区里的内容")
+    #expect(rows.first?.isRunning == false)
+  }
+
+  @Test("a plain answer is still one bubble with the message id")
+  func plainAnswerUnchanged() {
+    var state = ConversationState(botId: "b_1")
+    state = Reducer.apply(
+      .append(
+        message: message("e_13", role: .assistant, blocks: [.text("回答")]),
+        replaces: nil
+      ),
+      to: state
+    )
+    let entries = presenter.transcript(for: state)
+    #expect(entries.count == 1)
+    if case .assistant(let id, let blocks) = entries[0] {
+      #expect(id == "e_13")
+      #expect(blocks == [.paragraph("回答")])
+    } else {
+      Issue.record("a plain answer must stay an assistant bubble")
+    }
+  }
+
+  @Test("a run with only an aborted tool call still says the answer was aborted")
+  func abortedToolRun() {
+    var state = ConversationState(botId: "b_1")
+    state = Reducer.apply(
+      .append(
+        message: message(
+          "p_a1",
+          role: .assistant,
+          state: .aborted,
+          blocks: [
+            .toolCall(callId: "c_1", name: "run_command", args: ["command": .string("make")])
+          ]
+        ),
+        replaces: nil
+      ),
+      to: state
+    )
+    let entries = presenter.transcript(for: state)
+    #expect(toolRows(entries).count == 1)
+    #expect(
+      entries.contains { if case .assistant(_, [.note("回答已中止")]) = $0 { true } else { false } }
+    )
   }
 }

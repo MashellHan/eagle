@@ -6,11 +6,13 @@ public enum TranscriptEntry: Identifiable, Hashable, Sendable {
   case assistant(id: String, blocks: [AssistantTurn.Block])
   case user(id: String, text: String)
   case note(id: String, text: String, tintIndices: [Int])
+  case tool(id: String, row: ToolRow)
   case typing(id: String)
 
   public var id: String {
     switch self {
-    case .assistant(let id, _), .user(let id, _), .note(let id, _, _), .typing(let id):
+    case .assistant(let id, _), .user(let id, _), .note(let id, _, _), .tool(let id, _),
+      .typing(let id):
       return id
     }
   }
@@ -136,6 +138,9 @@ public struct ConversationColumn: View {
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     case .note(_, let text, let tintIndices):
       DeliveryNote(text, avatars: tintIndices.map(Theme.Palette.avatarTint))
+    case .tool(_, let row):
+      ToolCallRow(row)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
     case .typing:
       TypingIndicator()
     }

@@ -228,7 +228,7 @@ extension ReducerTests {
           role: .assistant,
           state: .streaming,
           createdAt: "x",
-          blocks: [.text("巴黎"), .toolCall(callId: "c_1", name: "search")]
+          blocks: [.text("巴黎"), .toolCall(callId: "c_1", name: "search", args: [:])]
         ),
         replaces: nil
       ),
@@ -249,6 +249,13 @@ extension ReducerTests {
       to: state
     )
     XCTAssertEqual(state.messages.first?.text, "巴黎")
+    if case .toolCall(_, _, let args) = try? XCTUnwrap(state.messages.first?.blocks[1]),
+      case .string(let value) = args["q"]
+    {
+      XCTAssertEqual(value, "x", "a toolcall delta grows the call's own arguments")
+    } else {
+      XCTFail("the toolcall delta did not reach the block")
+    }
 
     // A delta for a message that is not in the window is ignored, not appended.
     state = Reducer.apply(

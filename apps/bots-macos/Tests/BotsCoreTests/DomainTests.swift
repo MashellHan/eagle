@@ -12,8 +12,9 @@ final class DomainTests: XCTestCase {
     let blocks: [ContentBlock] = [
       .text("巴黎"),
       .thinking("想一想"),
-      .toolCall(callId: "c_1", name: "search"),
-      .toolResult(callId: "c_1", text: "结果", isError: false),
+      .toolCall(callId: "c_1", name: "search", args: ["q": .string("paris"), "limit": .number(3)]),
+      .toolResult(
+        callId: "c_1", name: "search", text: "结果", isError: false, durationMs: 12),
     ]
     for block in blocks {
       let data = try JSONEncoder().encode(block)
@@ -23,8 +24,10 @@ final class DomainTests: XCTestCase {
     XCTAssertEqual(ContentBlock.text("巴黎").displayText, "巴黎")
     XCTAssertEqual(ContentBlock.thinking("想一想").displayText, "想一想")
     XCTAssertEqual(
-      ContentBlock.toolResult(callId: "c", text: "结果", isError: true).displayText, "结果")
-    XCTAssertEqual(ContentBlock.toolCall(callId: "c", name: "n").displayText, "")
+      ContentBlock.toolResult(callId: "c", name: "n", text: "结果", isError: true, durationMs: nil)
+        .displayText, "结果")
+    XCTAssertEqual(
+      ContentBlock.toolCall(callId: "c", name: "n", args: [:]).displayText, "")
   }
 
   func testEveryDeltaKindRoundTrips() throws {
@@ -86,20 +89,22 @@ final class DomainTests: XCTestCase {
   }
 
   func testAMessageTextJoinsItsBlocksAndKnowsAProvisional() throws {
-    let message = try decode(
+    let message = try JSONDecoder().decode(
       Message.self,
-      """
-      {
-        "id": "p_a1",
-        "role": "assistant",
-        "state": "streaming",
-        "createdAt": "2026-01-01T00:00:00.000Z",
-        "blocks": [
-          { "type": "text", "text": "巴黎" },
-          { "type": "thinking", "text": "想" }
-        ]
-      }
-      """
+      from: Data(
+        """
+        {
+          "id": "p_a1",
+          "role": "assistant",
+          "state": "streaming",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "blocks": [
+            { "type": "text", "text": "巴黎" },
+            { "type": "thinking", "text": "想" }
+          ]
+        }
+        """.utf8
+      )
     )
     XCTAssertEqual(message.text, "巴黎想")
     XCTAssertTrue(message.isProvisional)
@@ -284,6 +289,67 @@ final class DomainCoverageMoreTests: XCTestCase {
     XCTAssertEqual(decoded, change)
   }
 
+  func testToolRowsDecodeWithTheirArgumentsAndDuration() throws {
+    let call = try JSONDecoder().decode(
+      ContentBlock.self,
+      from: Data(
+        #"{"type":"toolCall","callId":"c_1","name":"list_files","args":{"path":".","limit":50}}"#
+          .utf8
+      )
+    )
+    XCTAssertEqual(
+      call, .toolCall(callId: "c_1", name: "list_files", args: ["path": .string("."), "limit": .number(50)])
+    )
+    let result = try JSONDecoder().decode(
+      ContentBlock.self,
+      from: Data(
+        #"{"type":"toolResult","callId":"c_1","name":"list_files","text":"a\nb","isError":true,"durationMs":21}"#
+          .utf8
+      )
+    )
+    XCTAssertEqual(
+      result,
+      .toolResult(callId: "c_1", name: "list_files", text: "a\nb", isError: true, durationMs: 21)
+    )
+    let message = try JSONDecoder().decode(
+      Message.self,
+      from: Data(
+        #"{"id":"e_11","role":"tool","state":"complete","createdAt":"2026-01-01T00:00:00.000Z","blocks":[{"type":"toolResult","callId":"c_1","name":"list_files","text":"a","isError":false}]}"#
+          .utf8
+      )
+    )
+    XCTAssertEqual(message.role, .tool)
+    XCTAssertEqual(message.blocks.count, 1)
+  }
+
+  func testJSONValuesRenderCompactlyAndPretty() throws {
+    let value = JSONValue.object([
+      "path": .string("a\"b"),
+      "limit": .number(50),
+      "nested": .array([.bool(true), .null, .number(1.5)]),
+    ])
+    XCTAssertEqual(
+      value.compact,
+      #"{"limit":50,"nested":[true,null,1.5],"path":"a\"b"}"#
+    )
+    XCTAssertEqual(
+      value.pretty,
+      #"""
+      {
+        "limit": 50,
+        "nested": [
+          true,
+          null,
+          1.5
+        ],
+        "path": "a\"b"
+      }
+      """#
+    )
+    let data = try JSONEncoder().encode(value)
+    XCTAssertEqual(try JSONDecoder().decode(JSONValue.self, from: data), value)
+  }
+
   func testVisibleTextIgnoresThinkingAndTools() {
     let message = Message(
       id: "e_10",
@@ -293,7 +359,7 @@ final class DomainCoverageMoreTests: XCTestCase {
       blocks: [
         .thinking("想"),
         .text("答"),
-        .toolResult(callId: "c", text: "果", isError: false),
+        .toolResult(callId: "c", name: "n", text: "果", isError: false, durationMs: nil),
       ]
     )
     XCTAssertEqual(message.visibleText, "答")

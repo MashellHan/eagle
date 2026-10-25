@@ -25,7 +25,7 @@ public enum ErrorDisposition: String, Codable, Sendable {
 }
 
 public enum MessageRole: String, Codable, Sendable {
-  case user, assistant, notice
+  case user, assistant, notice, tool, system
 }
 
 public enum MessageState: String, Codable, Sendable {
@@ -39,11 +39,11 @@ public enum StopReason: String, Codable, Sendable {
 public enum ContentBlock: Codable, Sendable, Equatable {
   case text(String)
   case thinking(String)
-  case toolCall(callId: String, name: String)
-  case toolResult(callId: String, text: String, isError: Bool)
+  case toolCall(callId: String, name: String, args: [String: JSONValue])
+  case toolResult(callId: String, name: String, text: String, isError: Bool, durationMs: Int?)
 
   private enum CodingKeys: String, CodingKey {
-    case type, text, callId, name, args, isError
+    case type, text, callId, name, args, isError, durationMs
   }
 
   public init(from decoder: Decoder) throws {
@@ -56,13 +56,16 @@ public enum ContentBlock: Codable, Sendable, Equatable {
     case "toolCall":
       self = .toolCall(
         callId: try container.decode(String.self, forKey: .callId),
-        name: try container.decode(String.self, forKey: .name)
+        name: try container.decode(String.self, forKey: .name),
+        args: try container.decodeIfPresent([String: JSONValue].self, forKey: .args) ?? [:]
       )
     case "toolResult":
       self = .toolResult(
         callId: try container.decode(String.self, forKey: .callId),
+        name: try container.decode(String.self, forKey: .name),
         text: try container.decode(String.self, forKey: .text),
-        isError: try container.decode(Bool.self, forKey: .isError)
+        isError: try container.decode(Bool.self, forKey: .isError),
+        durationMs: try container.decodeIfPresent(Int.self, forKey: .durationMs)
       )
     default:
       throw DecodingError.dataCorruptedError(
@@ -82,24 +85,27 @@ public enum ContentBlock: Codable, Sendable, Equatable {
     case .thinking(let text):
       try container.encode("thinking", forKey: .type)
       try container.encode(text, forKey: .text)
-    case .toolCall(let callId, let name):
+    case .toolCall(let callId, let name, let args):
       try container.encode("toolCall", forKey: .type)
       try container.encode(callId, forKey: .callId)
       try container.encode(name, forKey: .name)
-      try container.encode([String: String](), forKey: .args)
-    case .toolResult(let callId, let text, let isError):
+      try container.encode(args, forKey: .args)
+    case .toolResult(let callId, let name, let text, let isError, let durationMs):
       try container.encode("toolResult", forKey: .type)
       try container.encode(callId, forKey: .callId)
+      try container.encode(name, forKey: .name)
       try container.encode(text, forKey: .text)
       try container.encode(isError, forKey: .isError)
+      try container.encodeIfPresent(durationMs, forKey: .durationMs)
     }
   }
 
-  /// The text a transcript shows for this block. Tool blocks are not rendered in phase 1.
+  /// The text a transcript shows for this block: thinking and tool blocks are rows of
+  /// their own (docs/bots/PRODUCT.md, "Delegation"), never part of the answer.
   public var displayText: String {
     switch self {
     case .text(let text), .thinking(let text): return text
-    case .toolResult(_, let text, _): return text
+    case .toolResult(_, _, let text, _, _): return text
     case .toolCall: return ""
     }
   }
@@ -134,8 +140,8 @@ public struct Message: Codable, Sendable, Equatable, Identifiable {
 
   public var text: String { blocks.map(\.displayText).joined() }
 
-  /// What a transcript shows for the answer: text blocks only. Thinking and tool results
-  /// stay behind the capability flags (docs/bots/PRODUCT.md, phase 1).
+  /// What a transcript shows for the answer: text blocks only. Thinking stays hidden and
+  /// tool calls and results are their own rows.
   public var visibleText: String {
     blocks.compactMap { block in
       if case .text(let text) = block { return text }

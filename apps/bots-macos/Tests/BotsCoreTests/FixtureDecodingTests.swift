@@ -23,6 +23,9 @@ final class FixtureDecodingTests: XCTestCase {
     "append.server.json",
     "append.streaming.server.json",
     "append.finalize.server.json",
+    "append.tool.server.json",
+    "append.tool-result.server.json",
+    "snapshot.tools.server.json",
     "delta.server.json",
     "history.server.json",
     "status.server.json",
@@ -57,6 +60,35 @@ final class FixtureDecodingTests: XCTestCase {
     XCTAssertEqual(snapshot.messages.last?.text, "巴黎。")
     XCTAssertEqual(snapshot.running, false)
     XCTAssertEqual(decoded.rev, 42)
+  }
+
+  func testTheToolSnapshotCarriesCallsAndTheirResults() throws {
+    let data = try Data(
+      contentsOf: Self.fixtures.appendingPathComponent("snapshot.tools.server.json")
+    )
+    let decoded = try Wire.decode(data)
+    guard case .snapshot(let snapshot) = decoded.event else {
+      return XCTFail("expected a snapshot")
+    }
+    XCTAssertEqual(snapshot.messages.map(\.role), [.user, .assistant, .tool, .assistant])
+    let call = snapshot.messages[1].blocks[1]
+    guard case .toolCall(let callId, let name, let args) = call else {
+      return XCTFail("the assistant carries its tool call")
+    }
+    XCTAssertEqual(name, "list_files")
+    XCTAssertEqual(args["path"], .string("."))
+    XCTAssertEqual(args["limit"], .number(50))
+    let result = snapshot.messages[2].blocks[0]
+    guard case .toolResult(let resultCallId, let resultName, let text, let isError, let durationMs) =
+      result
+    else {
+      return XCTFail("the tool row carries its result")
+    }
+    XCTAssertEqual(resultCallId, callId)
+    XCTAssertEqual(resultName, name)
+    XCTAssertEqual(text, "README.md\nsrc/\nsrc/index.ts")
+    XCTAssertFalse(isError)
+    XCTAssertEqual(durationMs, 21)
   }
 
   func testTheStreamingSnapshotNamesItsAttempt() throws {
