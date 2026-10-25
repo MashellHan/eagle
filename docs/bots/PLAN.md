@@ -217,7 +217,7 @@ record, a failed `directory.remove` can leave a closed handle that `open` reuses
 catalog-full refusal has no origin record; and long or hostile markdown has parser tests
 but no measured layout pass.
 
-## Phase 2: tools (slice 1 done)
+## Phase 2: tools (slice 1 signed off)
 
 `apps/bots/src/tools/` installs the `bots-tools` extension in every Harness: `read_file`,
 `write_file`, `list_files` and `run_command`, bound to `<bot dir>/workspace`, executed
@@ -249,7 +249,9 @@ now states; the same review's two page-limit defects (an unterminated last line 
 `limit`, and a page-budget refusal reported as "no such line") are fixed. A fourth review
 confirmed the page fixes and found the output budget still counted pre-decode bytes at the
 cut: a lossy decode now clips on a UTF-8 boundary and the decoders' tail is budgeted too,
-and the stderr test now writes stderr (with the redirect removed). Slice 2 (herdr: open a space,
+and the stderr test now writes stderr (with the redirect removed). A fifth review re-ran
+every probe and returned SIGN OFF: the four tools are ready as slice 1 with their
+documented limits. Slice 2 (herdr: open a space,
 schedule the controller, monitor, fetch, bidirectional messages) is next, as a second
 extension with the same layering.
 

@@ -1492,5 +1492,7 @@ A checkpoint is what a person can actually see, so this records the absence too.
   six escape paths — plus two faux-model rounds proving the SDK keeps a 3 000-line command's
   exit line and a 2 500-line read page's note. A lossy-decode probe confirms the decoded
   body never passes the 64 KiB budget, and the stderr tests exercise stderr.
+- **Signoff:** the fifth Codex review (reasoning max) re-ran every probe and returned
+  SIGN OFF for slice 1; slice 2 (herdr tools) may start.
 - **Next broken hop:** rendering tool rows in the client (still off the wire), then the
   herdr tools of slice 2.
