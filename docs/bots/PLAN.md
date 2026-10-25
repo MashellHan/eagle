@@ -217,7 +217,18 @@ record, a failed `directory.remove` can leave a closed handle that `open` reuses
 catalog-full refusal has no origin record; and long or hostile markdown has parser tests
 but no measured layout pass.
 
-## Phase 2: tools and herdr (both slices signed off)
+## Phase 2: tools and herdr (both slices signed off, tool rows rendered)
+
+A follow-on slice puts tool invocations on screen. `pi.tool-result` entries are mapped to
+`role:"tool"` messages with a `toolResult` block (`callId`, `name`, text, `isError`,
+`durationMs`); the assistant entry keeps its `toolCall` blocks and `toolcall` deltas grow
+their arguments. The daemon clamps a result above the message budget with a
+`[tool output truncated]` tail instead of the answer's oversized notice. The client pairs
+a call with its result by `callId` and renders one compact row per call: name, an argument
+summary, a running spinner or duration, and on click the pretty arguments and the output,
+colored when the tool failed. A result whose call was trimmed out of the page is still a
+row, so nothing disappears. Fixtures, the mapper, an end-to-end socket test and the
+presenter all cover it; PROTOCOL.md "Tool rows" is the contract.
 
 `apps/bots/src/tools/` installs the `bots-tools` extension in every Harness: `read_file`,
 `write_file`, `list_files` and `run_command`, bound to `<bot dir>/workspace`, executed

@@ -89,10 +89,11 @@ provisional: { id, attempt } | null   // id = "p_a<attempt>"
 | `message_end` with `entry.kind === "pi.assistant"` | Convert the entry's message to a domain `Message`; final state from `stopReason` (F13); clear the provisional | `append{message, replaces: p_a<n>}` |
 | `message_end` with `entry.kind === "pi.assistant"` whose `stopReason === "aborted"` (F22) | Convert with `state:"aborted"`; carry `replaces` **whenever a provisional for that attempt is open** — after a late attach the snapshot already holds the partial, and an unreplaced aborted entry would duplicate it | `append` |
 | `message_end` with `entry.kind === "pi.user"` | Map the user entry, including its `requestId` when known | `append` |
+| `message_end` with `entry.kind === "pi.tool-result"` | Map the durable result to `role:"tool"` with one `toolResult` block (`callId`, `name`, joined text, `isError`, `durationMs`); it never ends or replaces the streaming attempt | `append` |
 | `submission` | Map the record: status, `entryId`, `answerEntryId`, `reason` | `submission` |
 | `inbox_update` | Map queue items | `status` |
 | `run_start` / `run_end` | `status{running, streaming: provisionalId \| null}`; `run_end` closes any open provisional | `status` |
-| `tool_execution_*` | Reserved (phase 2) | `delta{kind:"toolcall"}` / reserved blocks |
+| `tool_execution_*` | The call itself rides in the assistant attempt (`toolcall` deltas); the result arrives as the `pi.tool-result` entry above. Execution telemetry is not projected | `delta{kind:"toolcall"}` / `append{role:"tool"}` |
 | `auto_retry_start` / `auto_retry_end` | Log only; the provisional stays open because the failed entry arrives after `auto_retry_start` | — |
 | `deferred_poll` | Upstream dropped the partial: emit a `snapshot` with `streaming:null`, `running:true`, then `status` | `snapshot`, `status` |
 | `task_failed` | Classify as `task_faulted` (a park only ever arrives through `onReport`) | `error{kind:"task_faulted", taskId}` |
@@ -127,7 +128,7 @@ blocks where deltas must land on the right index.
 | --- | --- | --- |
 | `stop` | `complete` | Normal answer |
 | `length` | `complete` | Token limit reached. `Message.stopReason` says `length`, so the client renders its own notice instead of guessing from text |
-| `toolUse` | `complete` | A tool round follows; phase 1 has no tools, so the request gets an error result and the run continues (see "No tools") |
+| `toolUse` | `complete` | A tool round follows; the assistant entry keeps its `toolCall` blocks and the run continues with a `tool` message (see "Tools") |
 | `aborted` | `aborted` | User abort or shutdown |
 | `error` | `error` | Upstream failure; reason text becomes a `notice`, never model context |
 | `deferred` | — (no message) | F23: the run sleeps in a polling checkpoint; the adapter only emits `status{running:true}`, never a fake streaming message |
@@ -155,10 +156,11 @@ Message identity, as built:
   it. The ledger itself is in memory, so after a restart a message recorded before
   the crash has no id until its `requestId` is re-sent; reconciliation does not
   depend on it (PROTOCOL.md, client duties).
-- Phase 1 maps `pi.user`, `pi.assistant` and nothing else into the transcript. A
-  `pi.tool-result` entry is durable in pi and stays out of the wire in both paths,
-  because `capabilities.tools` is false: a reconnecting client must not see an
-  entry the live client never saw.
+- The mapper projects `pi.user`, `pi.assistant` and (since tool rows) `pi.tool-result`
+  into the transcript. A tool result is an `append` like any other message and is part of
+  every `snapshot`, `history` page and `resync`, so a reconnecting client sees exactly the
+  rows the live client saw. A tool result never clears the provisional of an assistant
+  attempt that is still streaming.
 
 ### Attempt lifecycle
 
@@ -358,9 +360,12 @@ Rules:
   returned to the model as text; a run never crashes because a tool failed.
 - **Replay.** `read_file` and `list_files` are `replay: "safe"`; `write_file` and
   `run_command` stay unsafe, so an interrupted call is not rerun after a restart.
-- **What the client sees.** `toolcall` deltas and `toolCall` blocks are produced and
-  already fit the wire; `pi.tool-result` entries stay off the wire until a later slice
-  renders them, so a transcript shows the answer but not its tool rows in phase 2 slice 1.
+- **What the client sees.** A tool run is transcript content: the assistant entry carries
+  `toolCall` blocks (grown by `toolcall` deltas) and the durable result is its own
+  `role:"tool"` message with one `toolResult` block. Both are in the live frames, the
+  snapshot and history, and the client pairs them by `callId` into one row (PROTOCOL.md,
+  "Tool rows"). A result above the message budget is clamped with a
+  `[tool output truncated]` tail instead of the answer's oversized notice.
 
 ## Herdr tools (phase 2, slice 2)
 

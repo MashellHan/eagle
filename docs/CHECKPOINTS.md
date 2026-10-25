@@ -1514,3 +1514,19 @@ A checkpoint is what a person can actually see, so this records the absence too.
 - **Next broken hop:** the client still does not render tool calls or results
   (`pi.tool-result` stays off the wire), and the herdr tools have no faux-model round
   inside a conversation yet; both are recorded as deferred, not fixed.
+
+## 2026-10-26 — Bots tool rows in the conversation
+
+- **What a person can observe:** a bot that runs a tool now shows a compact row in the
+  conversation: the tool's name and a one-line argument hint, a spinner while it runs, then
+  its duration (or 失败 in red), with the full arguments and the result text on click. The
+  row appears live while the run streams and is still there after reopening the bot or
+  reconnecting, because it is part of the snapshot like any message.
+- **Evidence (before the live check):** `cd apps/bots && npm run check` — see the run
+  recorded with the next checkpoint; the new end-to-end test sends a real socket turn whose
+  faux model calls `list_files` and asserts the live `append` and the late-join snapshot
+  carry the same rows. `apps/bots-macos`: `swift test` and coverage (90% logic) include the
+  new fixtures and decoder; `apps/macos`: presenter tests cover running, paired, failed and
+  trimmed-page rows.
+- **Next broken hop:** tool output is shown when a row is expanded; there is no filtering
+  or copy affordance yet, and the client still does not render raw `entries` or tasks.

@@ -140,6 +140,7 @@ Scripts/coverage.sh           logic coverage gate (90% lines)
 apps/macos/Sources/EagleFeatures/
   BotsWorkspace.swift         BotsWorkspaceViewModel (observes the logic view models,
                               republishes as SidebarSection/TranscriptEntry), BotsPresenter
+                              (pairs tool calls and results by callId into ToolRow entries)
   WorkspaceShellView.swift    merges the Bots group into the sidebar and routes the
                               conversation column to it when a bot is selected
 ```

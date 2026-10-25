@@ -114,7 +114,7 @@ client: a model picker needs the `agent` capability.
 // Message
 {
   "id": "e_10",                          // entry id, or a provisional "p_a2" while streaming
-  "role": "assistant",                   // user|assistant|notice  (tool|system reserved)
+  "role": "assistant",                   // user|assistant|notice|tool  (system reserved)
   "state": "complete",                   // streaming|complete|aborted|error
   "stopReason": "stop",                  // optional: stop|length|toolUse|aborted|error|deferred
   "createdAt": "2026-10-25T02:11:04.001Z",
@@ -153,12 +153,13 @@ client: a model picker needs the `agent` capability.
 // `streaming:null` and a transcript without that attempt — never an oversized
 // partial and never stale content.
 
-// ContentBlock — a toolCall block now also occurs inside an assistant message; a
-// toolResult entry stays out of the wire until tool rendering ships.
+// ContentBlock — a toolCall rides in an assistant message; a toolResult rides alone in a
+// `tool` message (see "Tool rows").
 { "type": "text",     "text": "…" }
-{ "type": "thinking", "text": "…" }                                   // reserved, not rendered
-{ "type": "toolCall", "callId": "…", "name": "…", "args": {} }         // reserved
-{ "type": "toolResult", "callId": "…", "text": "…", "isError": false } // reserved
+{ "type": "thinking", "text": "…" }                                   // not rendered
+{ "type": "toolCall", "callId": "…", "name": "…", "args": {} }
+{ "type": "toolResult", "callId": "…", "name": "…", "text": "…", "isError": false,
+  "durationMs": 21 }                                                  // durationMs optional
 
 // InboxItem
 { "id": "s_3", "mode": "followUp" }     // followUp|steer|queue; text is never echoed before placement
@@ -173,7 +174,7 @@ unavailable"). It is never sent to the model.
 client → { "type": "hello", "protocolVersion": 1, "client": "BotsApp/0.1.0" }
 server → { "type": "welcome", "protocolVersion": 1,
            "server": { "version": "0.1.0", "instance": "i_7f3", "pid": 4711 },
-           "capabilities": { "agent": false, "tools": false, "tasks": false,
+           "capabilities": { "agent": false, "tools": true, "tasks": false,
                              "entries": false, "usage": false, "peers": false },
            "bots": [ BotSummary, … ] }
 ```
@@ -416,6 +417,37 @@ display; it is not the recovery mechanism.
 | I12 | Older windows are fetched with `history`; the newest window is never re-fetched by paging |
 | I16 | One underlying failure produces one `error` frame and one daemon `error` record, even when the runtime reports it on several channels; the identity is scoped to a failure episode, not to the bot |
 | I13 | Every **block-scoped** delta change (`text`, `thinking`, `toolcall`, `block`) names its `index`; `block` carries the whole block, so no content depends on a preceding append. `message` replaces everything and is the only change without an index |
+
+### Tool rows
+
+A run that calls a tool commits two kinds of entry, and both are transcript content:
+
+1. The assistant entry that asked for the call carries a `toolCall` block
+   (`callId`, `name`, `args`). While the attempt streams, `toolcall` deltas grow
+   `args` at an indexed path (I13), so the client's row fills in as the model writes it.
+2. pi commits a `pi.tool-result` entry; the daemon maps it to a message with
+   `role:"tool"`, `state:"complete"` and one `toolResult` block
+   (`callId`, `name`, `text`, `isError`, optional `durationMs`). It is a message like any
+   other: it appears as a live `append`, in a `snapshot`, in `history` and after
+   `resync`, so a late join sees exactly the rows the live client saw.
+
+Rules:
+
+- **Pairing is the client's job, by `callId`.** A result whose call is no longer in the
+  page (history trimming) is still rendered as a row of its own; the block carries `name`
+  for that case. Nothing is silently dropped.
+- **Text is bounded by the tool, not split.** Workspace and herdr tools cap their output
+  at 64 KiB, below the 96 KiB message budget. A tool that returns more is clamped by the
+  daemon with a `[tool output truncated]` tail; it is never turned into the
+  "回答超出传输上限" notice, which belongs to assistant answers only.
+- **Deltas stay block-scoped.** A `toolcall` delta names the assistant message's block
+  index and a path rooted at that block; it never names a tool result.
+- **Pages count tool rows.** A tool message consumes a page slot and its encoded bytes like
+  any other message; `truncatedBefore` may therefore point at a tool entry, and paging back
+  from it restores the call/result pair in order.
+- **Capability.** `capabilities.tools: true` means the client renders these rows; a client
+  that ignores tool blocks still sees a correct answer, because the answer never contains
+  them.
 | I14 | A submission record is applied only when its rank does not decrease (`queued < placed < done = unanswered`), so a late connection-scoped reply cannot undo a settlement |
 | I15 | Messages are never split or clipped on the wire. A message above 96 KiB encoded is withheld, replaced by a `notice`, and the submission still settles; deltas for an attempt stop being forwarded once its projection would exceed the cap |
 
@@ -457,13 +489,13 @@ sides.
 | `subscribe.client.json` | subscription |
 | `snapshot.server.json`, `snapshot.streaming.server.json`, `snapshot.unavailable.server.json` | attach states |
 | `append.server.json`, `append.streaming.server.json`, `append.finalize.server.json`, `delta.server.json` | transcript |
+| `append.tool.server.json`, `append.tool-result.server.json`, `snapshot.tools.server.json` | a tool call and its result, live and in a snapshot |
 | `history.client.json`, `history.server.json` | message paging |
-
 | `status.server.json`, `submission.server.json`, `submission.connection.server.json` | run state and the connection-scoped duplicate reply |
 | `bots.server.json`, `error.server.json`, `error-rejected.server.json`, `version-mismatch.server.json` | catalog, runtime failure, definite rejection, exempt handshake failure |
 | `send.client.json`, `abort.client.json`, `recover.client.json`, `resync.client.json` | commands |
 | `ping.client.json`, `pong.server.json` | liveness |
-| `entities.json` | `BotSummary`, `Message`, `InboxItem` samples |
+| `entities.json` | `BotSummary`, `Message` (user, assistant with a tool call, tool), `InboxItem` samples |
 
 Rules enforced by `test/protocol/fixtures.test.ts`:
 
