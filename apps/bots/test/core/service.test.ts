@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { CommandError, ConversationService } from "../../src/core/ConversationService.ts";
-import type { ConversationSnapshot, Submission } from "../../src/core/domain.ts";
+import type { ConversationSnapshot, Message, Submission } from "../../src/core/domain.ts";
 import { ClassifiedFailure } from "../../src/core/domain.ts";
 import type { HubEvent } from "../../src/core/EventHub.ts";
 import type { RuntimeEvent, RuntimeHandle, SubmitInput } from "../../src/core/RuntimePort.ts";
@@ -1177,4 +1177,172 @@ test("send is refused when the pending or inbox budget is full", async () => {
   await subscribe(service, []);
   const stored = await service.send("c_1", { ...input, requestId: queued[0]?.requestId ?? "" });
   assert.equal(stored.id, "s_1");
+});
+
+const gatedHandle = (options: {
+  snapshot: ConversationSnapshot;
+  onOpen?: () => void;
+  openGate?: Promise<void>;
+}) => {
+  let sink: ((event: RuntimeEvent) => void) | undefined;
+  const handle: RuntimeHandle = {
+    subscribe: async (_trace, next) => {
+      sink = next;
+      return {
+        snapshot: options.snapshot,
+        detach: () => {
+          sink = undefined;
+        },
+      };
+    },
+    submission: async (key) =>
+      "requestId" in key
+        ? [...records.values()].find((record) => record.requestId === key.requestId)
+        : undefined,
+    submit: async (input) => {
+      await options.openGate;
+      const record = {
+        id: `s_${records.size + 1}`,
+        requestId: input.requestId,
+        status: "queued" as const,
+      };
+      records.set(input.requestId, record);
+      return record;
+    },
+    history: async () => ({ messages: [], hasMore: false }),
+    abort: async () => undefined,
+    recover: async () => undefined,
+    busy: async () => ({ run: false, tasks: false }),
+    close: async () => "closed",
+  };
+  const records = new Map<string, Submission>();
+  return { handle, emit: (event: RuntimeEvent) => sink?.(event) };
+};
+
+test("concurrent sends cannot pass the admission budget", async () => {
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    pending: [],
+    inbox: [],
+    running: false,
+    streaming: null,
+  };
+  const scripted = gatedHandle({ snapshot, openGate: gate });
+  const opened: (() => void)[] = [];
+  const service = new ConversationService({
+    open: async () => {
+      opened.push(() => undefined);
+      return scripted.handle;
+    },
+    measure: utf8,
+  });
+  await subscribe(service, []);
+  const attempts = Array.from({ length: 33 }, (_, index) =>
+    service
+      .send("c_1", {
+        requestId: `r_race_${String(index).padStart(4, "0")}`,
+        text: "并发",
+        whenBusy: "followUp",
+        trace,
+      })
+      .then(
+        () => "admitted" as const,
+        (error: unknown) =>
+          error instanceof CommandError && error.disposition === "not_admitted"
+            ? ("refused" as const)
+            : ("other" as const),
+      ),
+  );
+  release();
+  const outcomes = await Promise.all(attempts);
+  assert.equal(outcomes.filter((outcome) => outcome === "admitted").length, 32);
+  assert.equal(outcomes.filter((outcome) => outcome === "refused").length, 1);
+});
+
+test("a session failure makes the bot unavailable and recover opens it again", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    pending: [],
+    inbox: [],
+    running: false,
+    streaming: null,
+  };
+  const scripted = gatedHandle({ snapshot });
+  let opens = 0;
+  const handle = scripted.handle;
+  const service = new ConversationService({
+    open: async () => {
+      opens += 1;
+      return opens === 1
+        ? handle
+        : {
+            ...handle,
+            subscribe: async () => ({ snapshot, detach: () => undefined }),
+          };
+    },
+    measure: utf8,
+  });
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  scripted.emit({
+    type: "error",
+    trace,
+    failure: { id: "f_session_1", kind: "storage_failed", layer: "runtime" },
+    message: "the session closed",
+  });
+  await service.resync("c_1", trace);
+  const degraded = received.filter((event) => event.type === "snapshot").at(-1);
+  assert.ok(degraded?.type === "snapshot", "a snapshot rendered the failure");
+  assert.equal(
+    degraded.value.unavailable?.reason,
+    "storage_failed",
+    "the view renders the reason instead of pretending the bot is idle",
+  );
+  await service.recover("c_1", trace);
+  assert.equal(opens, 2, "recover re-opens the dead harness instead of reusing it");
+  const recovered = received.filter((event) => event.type === "snapshot").at(-1);
+  assert.ok(recovered?.type === "snapshot", "recover published a snapshot");
+  assert.equal(recovered.value.unavailable, undefined);
+});
+
+test("a snapshot page is bounded by encoded bytes, not only by count", async () => {
+  const big = (id: string): Message => ({
+    id,
+    role: "assistant",
+    state: "complete",
+    createdAt: "x",
+    blocks: [{ type: "text", text: "x".repeat(70_000) }],
+  });
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [big("e_1"), big("e_2"), big("e_3")],
+    pending: [],
+    inbox: [],
+    running: false,
+    streaming: null,
+  };
+  const runtime = new FakeRuntime({ snapshot: () => snapshot });
+  const service = serviceFor(runtime);
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  const baseline = received[0];
+  assert.equal(baseline?.type, "snapshot");
+  const page = (baseline as { value: ConversationSnapshot }).value;
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(page)) < 192 * 1024,
+    "the page the client is told about fits the documented budget",
+  );
+  assert.equal(page.messages.length, 2, "the newest messages are the ones kept");
+  assert.equal(page.truncatedBefore, "e_1", "and the dropped entry is the page cursor");
+
+  const history = await service.history("c_1", { beforeEntryId: "e_2", limit: 10 }, trace);
+  assert.equal(history.messages.length, 1, "the older message is still reachable");
+  assert.equal(history.messages[0]?.id, "e_1");
+  assert.equal(history.hasMore, false);
 });

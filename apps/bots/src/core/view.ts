@@ -127,13 +127,31 @@ const attachRequestId = (messages: readonly Message[], record: Submission): read
  * documented page and `truncatedBefore` still points at the oldest dropped entry
  * (PROTOCOL.md, "snapshot.messages page").
  */
-export const trimWindow = (view: ConversationSnapshot, window: number): ConversationSnapshot => {
-  if (view.messages.length <= window) return view;
-  const dropped = view.messages.slice(0, view.messages.length - window);
+export const trimWindow = (
+  view: ConversationSnapshot,
+  window: number,
+  measure: (message: ConversationSnapshot["messages"][number]) => number,
+  maxBytes = Number.POSITIVE_INFINITY,
+): ConversationSnapshot => {
+  if (view.messages.length === 0) return view;
+  // The count is a budget and so are the encoded bytes: a page of legal 70 KiB messages
+  // must still fit the frame the client is promised.
+  let keep = 0;
+  let bytes = 0;
+  for (let index = view.messages.length - 1; index >= 0; index -= 1) {
+    const message = view.messages[index];
+    if (message === undefined) break;
+    const size = measure(message);
+    if (keep + 1 > window || bytes + size > maxBytes) break;
+    bytes += size;
+    keep += 1;
+  }
+  if (keep === view.messages.length) return view;
+  const dropped = view.messages.slice(0, view.messages.length - keep);
   const first = dropped.find((message) => message.id.startsWith("e_"));
   return {
     ...view,
-    messages: view.messages.slice(-window),
+    messages: view.messages.slice(view.messages.length - keep),
     ...(view.truncatedBefore !== undefined || first === undefined
       ? {}
       : { truncatedBefore: first.id }),

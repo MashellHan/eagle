@@ -219,3 +219,30 @@ Verified (all run just now in `apps/bots`):
 
 Next broken hop: there is no client. `apps/bots-macos/` does not exist, so a person
 cannot open a bot, type at it or see a transcript — that is stage 5 (rows 55-69).
+
+## 2026-10-26 — stage 4 second review round closed
+
+Observed: an independent review (Codex, `group/auto-gpt-6-astra`, high) returned
+`BLOCKING 9` against the first round, with 19 further findings. Every defect is
+fixed: the daemon no longer opens a second Harness while one is closing, a delete
+waits for a warm-up open, a run-time storage failure turns into `unavailable` and
+`recover` re-opens the bot, a snapshot page is bounded by bytes as well as count, a
+client that stops reading is downgraded instead of buffered, admission and creation
+are serialized against their budgets, the catalog event waits for the handshake,
+shutdown spends one shared deadline, every refusal has one originating record, and
+the catalog follows the run.
+
+Verified (all run just now in `apps/bots`):
+
+- `npm run check` exited 0: `fixtures:check` (26 files), 329 tests, `tsc --noEmit`,
+  Biome, coverage 93.22 % lines / 89.54 % branches / 90.02 % functions.
+- `npm run test:crash` exited 0: 5/5, including a second kill before any assistant
+  provisional and two daemons starting at once.
+- `npm run perf` exited 0: open 3 ms, reopen 400 entries 1 ms, one turn 3 ms, 20 bots
+  10 ms; the reopen bound now matches the document (100 ms) and every sample is
+  printed.
+- The review's own probes reproduced each P1 before the fixes; the new tests assert
+  them after.
+
+Next broken hop: stage 4 is awaiting the reviewer's acceptance of this round; the
+client (`apps/bots-macos/`, rows 55-69) still does not exist.

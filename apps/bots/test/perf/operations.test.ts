@@ -19,21 +19,30 @@ const median = (values: number[]): number => {
   return sorted[middle] ?? 0;
 };
 
-const bench = async (run: () => Promise<void>): Promise<number> => {
-  const samples: number[] = [];
+const bench = async (run: () => Promise<void>): Promise<{ median: number; values: number[] }> => {
+  const values: number[] = [];
   for (let index = 0; index < SAMPLES; index += 1) {
     const started = performance.now();
     await run();
-    samples.push(performance.now() - started);
+    values.push(Math.round((performance.now() - started) * 100) / 100);
   }
-  return Math.round(median(samples));
+  return { median: Math.round(median(values)), values };
 };
 
-const report = (name: string, ms: number, bound: number): void => {
+const report = (
+  name: string,
+  result: { median: number; values: number[] },
+  bound: number,
+): void => {
   process.stdout.write(
-    `${JSON.stringify({ measure: name, medianMs: ms, boundMs: bound, samples: SAMPLES })}\n`,
+    `${JSON.stringify({
+      measure: name,
+      medianMs: result.median,
+      samplesMs: result.values,
+      boundMs: bound,
+    })}\n`,
   );
-  assert.ok(ms < bound, `${name} took ${ms} ms, over the ${bound} ms bound`);
+  assert.ok(result.median < bound, `${name} took ${result.median} ms, over the ${bound} ms bound`);
 };
 
 test("the documented operations stay inside their bounds", async () => {
@@ -48,6 +57,7 @@ test("the documented operations stay inside their bounds", async () => {
       platform: process.platform,
       node: process.version,
       cpus: (await import("node:os")).availableParallelism(),
+      filesystem: (await import("node:os")).tmpdir(),
     })}\n`,
   );
   try {
@@ -102,7 +112,7 @@ test("the documented operations stay inside their bounds", async () => {
       await again.root(BACKGROUND_CONTEXT, { agent: { model } });
       await again.close(BACKGROUND_CONTEXT);
     });
-    report("reopen a bot with 400 entries", reopen, 150);
+    report("reopen a bot with 400 entries", reopen, 100);
 
     const turn = await bench(async () => {
       const one = await Harness.open(

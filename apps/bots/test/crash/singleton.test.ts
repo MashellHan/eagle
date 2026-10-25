@@ -76,3 +76,29 @@ test("a SIGKILLed daemon is taken over on the next start", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("two daemons starting at once leave exactly one owner", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-crash-race-"));
+  const children = [start(root), start(root)];
+  try {
+    const settled = await Promise.all(
+      children.map(
+        (child) =>
+          new Promise<"started" | "refused">((resolve) => {
+            let output = "";
+            child.stdout?.setEncoding("utf8");
+            child.stdout?.on("data", (chunk: string) => {
+              output += chunk;
+              if (output.includes('"daemon.start"')) resolve("started");
+            });
+            child.once("exit", (code) => resolve(code === 0 ? "started" : "refused"));
+          }),
+      ),
+    );
+    assert.equal(settled.filter((state) => state === "started").length, 1, "one owner");
+    assert.equal(settled.filter((state) => state === "refused").length, 1, "one refusal");
+  } finally {
+    for (const child of children) child.kill("SIGKILL");
+    await rm(root, { recursive: true, force: true });
+  }
+});

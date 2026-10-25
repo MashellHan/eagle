@@ -122,11 +122,18 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
       return typeof value === "function" ? value.bind(target) : value;
     },
   });
+  let broadcast: (() => void) | undefined;
   const service = new ConversationService({
     open: (botId, trace) => registry.open(botId, trace),
     handleOf: (botId) => registry.handleOf(botId),
     measure: measureEvent,
     log,
+    onRunning: (botId, running) => {
+      if (registry.markRunning(botId, running)) broadcast?.();
+    },
+    onSessionFailed: (botId, reason, message) => {
+      if (registry.markUnavailable(botId, reason, message)) broadcast?.();
+    },
     ...(options.windowMessages === undefined ? {} : { windowMessages: options.windowMessages }),
   });
   const daemon = await startServer({
@@ -146,6 +153,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     },
     port: 0,
   });
+  broadcast = daemon.broadcastCatalog;
   return {
     port: daemon.port,
     token,
@@ -161,7 +169,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     createBot: async (title) => (await registry.create(title, "tr_create_probe")).id,
     quarantine: (botId) => quarantined.add(botId),
     connect: (connectOptions = {}) =>
-      new WebSocket(`ws://127.0.0.1:${daemon.port}`, {
+      new WebSocket(`ws://127.0.0.1:${daemon.port}/v1/socket`, {
         headers: {
           authorization: `Bearer ${connectOptions.token ?? token}`,
           ...connectOptions.headers,

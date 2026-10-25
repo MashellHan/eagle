@@ -20,13 +20,11 @@ export type Outcome = (typeof OUTCOMES)[number];
 /** Declared names, one per emit site. `stage 4` asserts this equals the doc table. */
 export const EVENTS = {
   "transport.conn.open.ok": true,
-  "transport.conn.open.fail": true,
   "transport.conn.open.reject": true,
   "transport.conn.close.ok": true,
   "transport.conn.close.end": true,
   "transport.auth.fail": true,
   "transport.frame.recv.ok": true,
-  "transport.frame.recv.fail": true,
   "transport.frame.send.ok": true,
   "transport.frame.send.drop": true,
   "protocol.decode.fail": true,

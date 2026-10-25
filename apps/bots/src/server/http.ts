@@ -40,6 +40,9 @@ export type Daemon = {
   close(): Promise<void>;
 };
 
+/** The only path that upgrades (PROTOCOL.md, "Transport"). */
+export const SOCKET_PATH = "/v1/socket";
+
 /** How long a shutdown waits for clients to acknowledge the close frame. */
 const SHUTDOWN_GRACE_MS = 500;
 
@@ -196,6 +199,12 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
   server.on("upgrade", (request, socket, head) => {
     if (closing) {
       refuseUpgrade(socket, 503, "Service Unavailable");
+      return;
+    }
+    if ((request.url ?? "").split("?")[0] !== SOCKET_PATH) {
+      // One socket endpoint, one protocol (PROTOCOL.md, "Transport"): anything else is a
+      // client pointed at the wrong path, not a second protocol.
+      refuseUpgrade(socket, 404, "Not Found");
       return;
     }
     if (!tokenMatches(token, parseBearer(request.headers.authorization))) {

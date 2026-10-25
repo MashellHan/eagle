@@ -29,6 +29,22 @@ const usedEvents = async (): Promise<Set<string>> => {
   return used;
 };
 
+/** A declaration is not an emit site: the constant has to be used somewhere too. */
+const unmounted = async (): Promise<string[]> => {
+  const missing: string[] = [];
+  for (const file of await sourceFiles("src")) {
+    const body = await readFile(file, "utf8");
+    for (const match of body.matchAll(/(\w+): declareEvent\("([^"]+)"\)/g)) {
+      const constant = match[1];
+      const name = match[2];
+      if (constant === undefined || name === undefined) continue;
+      // Every file keeps its constants in one object, so a dot-prefixed use is an emit.
+      if (!new RegExp(`\\.${constant}\\b`).test(body)) missing.push(`${file}: ${name}`);
+    }
+  }
+  return missing;
+};
+
 const documentedEvents = async (): Promise<Set<string>> => {
   const body = await readFile("../../docs/bots/OBSERVABILITY.md", "utf8");
   const documented = new Set<string>();
@@ -52,6 +68,7 @@ test("the declared catalogue is exactly what the source uses", async () => {
   const used = await usedEvents();
   const declared = new Set(Object.keys(EVENTS));
   assert.deepEqual(sorted(declared), sorted(used), "an unused or undeclared event is a gap");
+  assert.deepEqual(await unmounted(), [], "a declared event with no emit site is a gap");
 });
 
 test("the declared catalogue is exactly the contract table", async () => {

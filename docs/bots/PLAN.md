@@ -70,9 +70,9 @@ after a full review round; a row can be implemented and reviewed but not yet sig
 | 53-54 | 4 | crash and perf suites | implemented (`test:crash`, `perf`) |
 | 55-69 | 5 | macOS client: decoding, reducer, transport, view models, app | **not started** |
 
-Current tree: 310 deterministic tests plus three crash suites and one perf suite,
-coverage 93.0% lines / 89.5% branches / 90.9% functions, `typecheck`, `lint`,
-`fixtures:check`, `test:crash` and `perf` green. The daemon runs: it binds a
+Current tree: 329 deterministic tests plus five crash cases and four perf
+measurements, coverage 93.2% lines / 89.5% branches / 90.0% functions, `typecheck`,
+`lint`, `fixtures:check`, `test:crash` and `perf` green. The daemon runs: it binds a
 loopback port, checks a bearer token, serves the catalog, streams a bot over a
 socket, records every crossing in the declared log catalogue, survives a `SIGKILL`
 mid-answer and takes its root over again.
@@ -109,7 +109,7 @@ review round closed eight P1 and eleven P2 findings, and rows 42-54 are written.
 
 ## Next work, in order
 
-1. Review the whole of stage 4 and sign it off.
+1. Sign stage 4 off: the second review round is running against the fixes below.
 2. Stage 5: `apps/bots-macos/` (separate package, `EagleDesign` product only).
 
 ### What the adapter can do today (rows 23-36, signed off)
@@ -133,9 +133,9 @@ broadcasts the only reply it produces, at a revision that names its content.
 
 ## Open review queue
 
-Stage 4's second review round is next: everything below is implemented and green,
-and the stage is not signed off until that round accepts it. The first round's eight
-P1 findings are closed, in order: the
+Stage 4's second review round found nine P1 and nineteen P2 findings; every one that
+was a defect is closed and the rest are recorded below. The first round's eight P1
+findings were closed, in order: the
 lock port derived from a non-canonical root, a delete that ran on after a timed-out
 close, a handle that a new subscription could still take while closing, a baseline
 the socket sent twice so an older snapshot could paint over a newer append, a
@@ -150,10 +150,31 @@ failure (which its own guard then refused to log), a close timeout logged as suc
 and a day boundary that left a sixth log file. Rows 44 and 49 stopped proving their
 properties over the fake runtime.
 
-This round also closed the rest of the observability contract: every declared event
-now has its emit site, the catalogue is asserted equal to the document, a run's first
-`status` is attributed to the send that caused it, and an over-long conversation is
-trimmed to the page budget with `truncatedBefore` kept.
+The first round also closed the rest of the observability contract: every declared
+event now has its emit site, the catalogue is asserted equal to the document, a run's
+first `status` is attributed to the send that caused it, and an over-long
+conversation is trimmed to the page budget with `truncatedBefore` kept.
+
+The second round's findings, closed in area order: an open during a close creating a
+second Harness (and the close then dropping it), a delete that ran past an in-flight
+warm-up open, a run-time storage failure that never made the bot `unavailable` so
+`recover` reused the dead handle, a snapshot page bounded by count but not by bytes,
+transport backpressure that the hub could not see, a check-then-submit admission race
+past the 32-entry budget, a create race past the 200-bot cap, a catalog event that
+could arrive before `welcome`, a per-bot shutdown deadline instead of one shared
+budget, refusals with no originating record, a `history` failure split across two
+identities, an invalid trace written to the log, an upgrade accepted on any path, a
+failed unrelated command clearing the subscribe guard, catalog states that never
+followed the run, a token file two first starts could overwrite, and a perf bound that
+was looser than the document. Its test-fidelity findings are closed too: the catalogue
+test now proves an emit site rather than a declaration, the real-Harness test holds the
+warm-up open to prove in-flight sharing, the overflow journey joins during the
+withdrawal window, the delete crash test runs the production `remove`, the outbox
+journey covers an admitted input whose record read failed, quarantine retry recovery,
+a second crash without any provisional, two daemons starting at once, a junk sqlite
+beside a healthy bot, and the catalog following a run. Two findings are deferred by
+design: I14's ranking is a client reducer duty (stage 5), and the transport's
+unsent-byte threshold shares the hub's proven mechanism without its own slow-TCP test.
 
 Stage 3 (rows 23-36) is signed off. Its review rounds closed, in order: a
 fail log record built from another layer's identity, a reattach that dropped its

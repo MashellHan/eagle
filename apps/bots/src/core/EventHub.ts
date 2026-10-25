@@ -21,6 +21,14 @@ export type HubSubscriber = (event: HubEvent) => void;
 
 export type HubSubscription = { readonly id: string; detach(): void };
 
+/** Thrown by a transport sink that cannot accept more frames right now. */
+export class SubscriberTooSlow extends Error {
+  constructor() {
+    super("the subscriber is not reading");
+    this.name = "SubscriberTooSlow";
+  }
+}
+
 /** A subscriber that falls this far behind is downgraded to snapshot-only. */
 export const SUBSCRIBER_QUEUE_LIMIT = 256;
 export const SUBSCRIBER_BYTE_LIMIT = 1024 * 1024;
@@ -295,10 +303,12 @@ export class EventHub {
   #offer(slot: Slot, event: HubEvent, bytes: number): void {
     if (slot.degraded) {
       // Snapshot-only: increments are dropped. The newest snapshot becomes the anchor,
-      // but it can only be used while nothing after it was lost.
+      // but it can only be used while nothing after it was lost. A live subscriber takes
+      // it immediately, otherwise a downgraded client would wait for a snapshot forever.
       if (event.type === "snapshot") {
         slot.anchor = { event, bytes };
         slot.stale = false;
+        if (!slot.manual) this.#drain(slot);
       } else if (slot.anchor !== undefined) {
         slot.stale = true;
       }
@@ -311,22 +321,7 @@ export class EventHub {
       // Falling behind downgrades the subscriber instead of stalling the hub. A snapshot
       // is itself the recovery, so the event that triggers the overflow becomes the
       // anchor instead of being thrown away.
-      this.#log?.emit("warn", "core", Events.degrade, {
-        trace: event.trace,
-        botId: this.#botId,
-        failure: newFailure("internal", "core"),
-        detail: { reason: "queue_overflow", count: slot.queue.length + 1 },
-      });
-      slot.degraded = true;
-      slot.queue = [];
-      slot.bytes = 0;
-      if (event.type === "snapshot") {
-        slot.anchor = { event, bytes };
-        slot.stale = false;
-      } else {
-        slot.anchor = undefined;
-        slot.stale = true;
-      }
+      this.#degrade(slot, event, bytes, slot.queue.length + 1);
       return;
     }
     slot.queue.push({ event, bytes });
@@ -342,11 +337,32 @@ export class EventHub {
       if (next === undefined) return;
       try {
         slot.send(next);
-      } catch {
+      } catch (error) {
+        if (error instanceof SubscriberTooSlow) {
+          // The transport still has frames queued for a client that is not reading: the
+          // bound is the same as the queue bound (PROTOCOL.md, "Pending events").
+          this.#degrade(slot, next, 0, 1);
+          return;
+        }
         this.#slots.delete(slot.id);
         return;
       }
     }
+  }
+
+  /** Snapshot-only until a current snapshot arrives; the anchor is never served stale. */
+  #degrade(slot: Slot, event: HubEvent, bytes: number, count: number): void {
+    this.#log?.emit("warn", "core", Events.degrade, {
+      trace: event.trace,
+      botId: this.#botId,
+      failure: newFailure("internal", "core"),
+      detail: { reason: "queue_overflow", count },
+    });
+    slot.degraded = true;
+    slot.queue = [];
+    slot.bytes = 0;
+    slot.anchor = event.type === "snapshot" ? { event, bytes } : undefined;
+    slot.stale = event.type !== "snapshot";
   }
 
   /** Takes the next deliverable event, or re-anchors a degraded subscriber. */

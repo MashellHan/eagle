@@ -1,7 +1,7 @@
 // Ladder row 37: the bearer token gates HTTP and the upgrade, and a refusal never reaches
 // core or the runtime.
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -71,6 +71,18 @@ test("an existing token file is tightened to 0600 and reused", async () => {
     assert.equal(token, issued, "an existing token is never replaced");
     const stats = await stat(path);
     assert.equal(stats.mode & 0o777, 0o600, "the token file is readable by its owner only");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("two first starts converge on one token without overwriting each other", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-token-race-"));
+  try {
+    const [first, second] = await Promise.all([loadToken(root), loadToken(root)]);
+    assert.equal(first, second, "the loser reads the winner's token");
+    assert.equal((await readFile(join(root, "token"), "utf8")).trim(), first);
+    assert.equal((await stat(join(root, "token"))).mode & 0o777, 0o600);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

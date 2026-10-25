@@ -187,7 +187,7 @@ is never started before its preconditions are green.
 
 | `send` before admission rejects | `error{disposition:"not_admitted"}`, **no** `submission` frame; the client restores the draft |
 | Admission succeeded, reading its record failed | `error{disposition:"unknown"}`, outbox entry kept, reconciled by re-sending |
-| Rename to a title over the encoded budget | Refused; the catalog frame stays inside 200 × 1 200 B |
+| Create or rename whose `BotSummary` would exceed 1 200 encoded bytes (a long title or a long model id) | Refused before the write; the catalog frame stays inside 200 × 1 200 B |
 | Session failure on all three channels | One failure identity; a reopen then a new failure gets a new one |
 | Reply to `send` lost | Re-send the same `requestId` returns the record; no duplicate entry |
 | Provider error | `unanswered{reason:"model_error"}`; provider text absent from logs |
@@ -202,13 +202,21 @@ is never started before its preconditions are green.
 | `retired` watch end | Re-acquire, no counter, no error |
 | `session.sqlite` replaced with junk | That bot `unavailable`; other bots unaffected; daemon alive |
 | `close` never resolves | Quarantine; open and delete refused; retry every 30 s |
-| Subscriber stops reading | Queue overflow → snapshot-only; daemon keeps serving others |
+| Subscriber stops reading | Queue overflow, or more than 1 MiB unsent on its socket → snapshot-only; daemon keeps serving others. The queue path is asserted in `test/core/hub.test.ts`; the transport threshold is the same mechanism and is not covered by a deterministic slow-TCP test |
 | Second daemon on the same root | Exits non-zero; first unaffected |
 | Two daemons racing the same stale lock | Exactly one wins; the loser exits non-zero |
 | Provider returns `deferred` then answers | `running:true` throughout, no fake streaming message, one final answer |
 | Provider stops at `length` | `Message.stopReason:"length"`; client renders its own notice |
 | `SIGKILL` mid-answer | Restart resumes; no message lost or duplicated |
 | Delete killed after rename | Restart reconciliation finishes the delete |
+| Open during an idle close | The open waits for the close and owns the handle it creates |
+| Delete during a warm-up open | The delete waits for the open to settle, then closes the handle it created |
+| Two concurrent creates for the last catalog slot | One succeeds, one is refused; the catalog is never 201 |
+| Two concurrent sends at the pending limit | Exactly the allowed number is admitted |
+| Session storage failure mid-run | The bot becomes `unavailable`; `recover` re-opens it and the next turn works |
+| One bot's `session.sqlite` is junk | That bot is `unavailable`; another bot completes a turn |
+| Shutdown with several stalled handles | One shared deadline, not one per bot; each is recorded as a degraded close |
+| Catalog change between upgrade and `hello` | The change reaches the client in `welcome`, never as a frame before it |
 
 ## Crash test
 

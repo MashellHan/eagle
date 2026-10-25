@@ -85,6 +85,88 @@ test("a send persisted before a restart is reconciled by re-sending its requestI
   }
 });
 
+test("an admitted input whose record read failed is reconciled by the same requestId", async () => {
+  const admitted = new Map<string, { id: string; requestId: string; status: "queued" }>();
+  let failOnce = true;
+  const runtime = {
+    async open(): Promise<RuntimeHandle> {
+      return {
+        subscribe: async () => ({
+          snapshot: {
+            botId: "b_52f",
+            messages: [],
+            pending: [],
+            inbox: [],
+            running: false,
+            streaming: null,
+          },
+          detach: () => undefined,
+        }),
+        submission: async (key) => ("requestId" in key ? admitted.get(key.requestId) : undefined),
+        submit: async (input) => {
+          // Admission succeeded; reading its record did not. The daemon cannot know
+          // whether it was placed, so the client keeps the entry (PROTOCOL.md 52f).
+          admitted.set(input.requestId, {
+            id: `s_${input.requestId}`,
+            requestId: input.requestId,
+            status: "queued",
+          });
+          if (failOnce) {
+            failOnce = false;
+            throw new Error("the record read failed");
+          }
+          return admitted.get(input.requestId) as {
+            id: string;
+            requestId: string;
+            status: "queued";
+          };
+        },
+        history: async () => ({ messages: [], hasMore: false }),
+        abort: async () => undefined,
+        recover: async () => undefined,
+        busy: async () => ({ run: false, tasks: false }),
+        close: async () => "closed" as const,
+      };
+    },
+  };
+  const stack = await startStack({ runtime });
+  try {
+    const botId = await stack.createBot("未确认");
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    await send(socket, { type: "subscribe", botId, trace: tr("unconf1") });
+    await frames.next();
+    await send(socket, {
+      type: "send",
+      requestId: "r_unconf_0001",
+      text: "无确认的问题",
+      whenBusy: "followUp",
+      trace: tr("unconf2"),
+    });
+    const lost = await frames.next();
+    assert.equal(lost.type, "error");
+    assert.equal(lost.disposition, "unknown", "the outbox entry survives");
+    assert.equal(lost.requestId, "r_unconf_0001");
+
+    await send(socket, {
+      type: "send",
+      requestId: "r_unconf_0001",
+      text: "无确认的问题",
+      whenBusy: "followUp",
+      trace: tr("unconf3"),
+    });
+    const reconciled = await frames.next();
+    assert.equal(reconciled.type, "submission", "the retry reads the stored record");
+    assert.equal(reconciled.requestId, "r_unconf_0001");
+    assert.equal(admitted.size, 1, "no second admission for the same requestId");
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});
+
 test("a not_admitted rejection restores the draft and an unknown result keeps the requestId", async () => {
   let rejectOnce = true;
   const runtime = {

@@ -7,6 +7,7 @@ import {
   type HubEvent,
   type HubOptions,
   type HubSubscription,
+  SubscriberTooSlow,
 } from "../../src/core/EventHub.ts";
 import type { RuntimeEvent } from "../../src/core/RuntimePort.ts";
 
@@ -508,4 +509,46 @@ test("adjacent appends for different block indexes are not merged", () => {
     { kind: "text", index: 0, append: "A" },
     { kind: "text", index: 1, append: "B" },
   ]);
+});
+
+test("a sink that cannot accept more is downgraded to snapshot-only", async () => {
+  const { log, records } = (await import("../../src/log/log.ts")).captureLog();
+  const slow = hub({ log });
+  let delivered = 0;
+  let refusing = true;
+  const received: HubEvent[] = [];
+  const id = slow.subscribe((event) => {
+    if (refusing && delivered >= 2) throw new SubscriberTooSlow();
+    delivered += 1;
+    received.push(event);
+  }).id;
+  slow.publish(status(true));
+  slow.publish(delta("a"));
+  slow.drain();
+  // The next delivery is refused by the transport, which is the same bound as a full queue.
+  slow.publish(status(false));
+  slow.drain();
+  assert.equal(slow.degraded(id), true, "the subscriber is snapshot-only");
+  assert.equal(
+    records.filter((record) => record.evt === "core.hub.degrade").length,
+    1,
+    "the downgrade is recorded once",
+  );
+  refusing = false;
+  received.length = 0;
+  slow.publishSnapshot(
+    {
+      botId: "b_1",
+      messages: [],
+      streaming: null,
+      pending: [],
+      inbox: [],
+      running: false,
+    },
+    trace,
+  );
+  slow.drain();
+  assert.equal(slow.degraded(id), false, "a current snapshot is the recovery");
+  assert.equal(received.length, 1);
+  assert.equal(received[0]?.type, "snapshot");
 });

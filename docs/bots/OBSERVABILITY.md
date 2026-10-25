@@ -68,8 +68,8 @@ asserts bidirectional equality between constants and uses; before that it assert
 
 | layer | events |
 | --- | --- |
-| transport | `transport.conn.open.ok`, `transport.conn.open.fail`, `transport.conn.open.reject`, `transport.conn.close.ok`, `transport.conn.close.end`, `transport.auth.fail`, `transport.frame.recv.ok`, `transport.frame.recv.fail`, `transport.frame.send.ok`, `transport.frame.send.drop` |
-| protocol | `protocol.decode.fail`, `protocol.encode.fail`, `protocol.limit.fail`, `protocol.version.fail`, `protocol.command.start`, `protocol.command.ok`, `protocol.command.fail` — `ok` means decoded, validated and dispatched; `fail` means it never reached core. A command that core then fails logs `ok` here and `*.fail` below |
+| transport | `transport.conn.open.ok`, `transport.conn.open.reject`, `transport.conn.close.ok`, `transport.conn.close.end`, `transport.auth.fail`, `transport.frame.recv.ok`, `transport.frame.send.ok`, `transport.frame.send.drop` — a frame that cannot be decoded is `protocol.*`, not a second transport record |
+| protocol | `protocol.decode.fail`, `protocol.encode.fail`, `protocol.limit.fail`, `protocol.version.fail`, `protocol.command.start`, `protocol.command.ok`, `protocol.command.fail` — `ok` means decoded, validated and dispatched (not "succeeded"); `fail` is a propagated refusal after dispatch, or the origin record when no layer below classified the failure |
 | core | `core.catalog.load.ok`, `core.catalog.load.fail`, `core.catalog.write.ok`, `core.catalog.write.fail`, `core.bot.resolve.fail`, `core.bot.open.start`, `core.bot.open.ok`, `core.bot.open.fail`, `core.bot.close.ok`, `core.bot.close.fail`, `core.bot.close.degrade` (quarantine), `core.subscribe.start`, `core.subscribe.ok`, `core.subscribe.fail`, `core.submit.start`, `core.submit.ok`, `core.submit.fail`, `core.history.start`, `core.history.ok`, `core.history.fail`, `core.hub.publish.ok`, `core.hub.coalesce.ok`, `core.hub.snapshot.ok`, `core.hub.degrade`, `core.singleton.start`, `core.singleton.ok`, `core.singleton.fail`, `core.recovery.start`, `core.recovery.bot.ok`, `core.recovery.bot.fail`, `core.recovery.ok`, `core.delete.start`, `core.delete.ok`, `core.delete.fail`, `core.reconcile.ok` |
 | runtime | `runtime.open.start`, `runtime.open.ok`, `runtime.open.fail`, `runtime.subscribe.start`, `runtime.subscribe.ok`, `runtime.subscribe.fail`, `runtime.submit.start`, `runtime.submit.ok`, `runtime.submit.fail`, `runtime.abort.start`, `runtime.abort.ok`, `runtime.abort.fail`, `runtime.recover.start`, `runtime.recover.ok`, `runtime.recover.fail`, `runtime.close.start`, `runtime.close.ok`, `runtime.close.fail`, `runtime.watch.end.ok`, `runtime.failure.classify` |
 | pi | `pi.report`, `pi.session.closed` |
@@ -115,11 +115,19 @@ runtime.submit.fail   level=error  err={kind:"storage_failed", failure:"f_7", or
 core.submit.fail      level=warn   err={kind:"storage_failed", failure:"f_7"}  detail.propagated=true
 ```
 
-`protocol.*` appears here only as `protocol.command.ok` from before dispatch: the
-command outcome ends at dispatch, so a failure after it is never reported as a
-`protocol.command.fail`. Layers that handed the call on record propagation; the layer
-that dispatched does not.
+`protocol.command.ok` means decoded, validated and dispatched — not "succeeded". A
+failure *after* dispatch is reported by the layer that owns it at `error`, and the
+wire layer above it records `protocol.command.fail` at `warn` with
+`detail.propagated=true`, the same failure id and the close code it chose. A failure
+no layer classified (a daemon defect) is attributed to the protocol layer, which is
+where it crossed the wire, and is the only case where `protocol.command.fail` is the
+originating record.
 
+- Page frames are bounded by count *and* encoded bytes before they are written, so a
+  page of legal 70 KiB messages never becomes a frame the transport has to drop.
+- A subscriber whose transport has more than 1 MiB unsent is treated exactly like one
+  that fell behind: it is downgraded to snapshot-only, and the newest snapshot is its
+  recovery.
 - The failure identity `err.failure` is minted exactly once, by the classifier of a
   **failure episode** ([RUNTIME.md](RUNTIME.md#failure-channels)). It is the dedupe
   unit: **exactly one `level=error` record per `failure` id**, on the layer where it
@@ -128,6 +136,8 @@ that dispatched does not.
   `detail.propagated=true`, never the message text and never `error`.
 - A trace is long-lived (a connection serves many commands); a failure is not, so
   deduping on `failure` rather than on `trace` is what makes "one error" exact.
+- A trace that is not a legal `trace` value is user text: the record names the
+  connection instead, so an invalid trace can never reach the log.
 - Retryable trouble that the layer handles internally (one watch reattach) logs
   `runtime.watch.end.ok` at `warn` and mints no failure id. Three within 60 s mint
   one `internal` failure.

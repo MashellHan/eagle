@@ -45,6 +45,10 @@ const bench = async (
     busy?: readonly string[];
     closeOutcome?: "closed" | "timeout";
     bots?: readonly string[];
+    /** Held open, so a close or a warm-up open can be observed in flight. */
+    closeGate?: Promise<void>;
+    openGate?: Promise<void>;
+    waitDeadline?: boolean;
   } = {},
 ) => {
   const root = await mkdtemp(join(tmpdir(), "bots-registry-"));
@@ -66,12 +70,18 @@ const bench = async (
     directory,
     openRuntime: async (spec) => {
       opens += 1;
+      if (options.openGate !== undefined) await options.openGate;
       const handle = await runtime.open(spec);
       const busy = (options.busy ?? []).includes(spec.id);
       return {
         ...handle,
         busy: async () => (busy ? { run: true, tasks: false } : handle.busy()),
-        close: async () => {
+        close: async (_trace: string, deadlineMs: number) => {
+          if (options.waitDeadline === true) {
+            await new Promise((resolve) => setTimeout(resolve, deadlineMs));
+            return "timeout" as const;
+          }
+          if (options.closeGate !== undefined) await options.closeGate;
           await handle.close("tr_close_probe", 100);
           return options.closeOutcome ?? "closed";
         },
@@ -81,7 +91,7 @@ const bench = async (
     log,
     idleCloseMs: 1_000,
     quarantineRetryMs: 5_000,
-    closeDeadlineMs: 100,
+    closeDeadlineMs: 40,
     setTimer: timers.setTimer,
     bootTrace: () => "tr_boot_probe",
   });
@@ -91,6 +101,9 @@ const bench = async (
     records,
     timers,
     opens: () => opens,
+    setCloseOutcome: (outcome: "closed" | "timeout") => {
+      options.closeOutcome = outcome;
+    },
     cleanup: () => rm(root, { recursive: true, force: true }),
   };
 };
@@ -315,6 +328,12 @@ test("an upstream open failure is propagated, not re-originated at core", async 
 
 test("two subscribers share one real Harness, so one sqlite file has one owner", async () => {
   const bench = await createBench();
+  let release: () => void = () => undefined;
+  const gate = {
+    promise: new Promise<void>((resolve) => {
+      release = resolve;
+    }),
+  };
   const root = await mkdtemp(join(tmpdir(), "bots-registry-"));
   const directory = new BotDirectory(root, await nodeDirectoryFs());
   const { log } = captureLog();
@@ -323,6 +342,7 @@ test("two subscribers share one real Harness, so one sqlite file has one owner",
     directory,
     openRuntime: async (spec) => {
       opens += 1;
+      await gate.promise;
       return bench.runtime.open(spec);
     },
     model: { provider: "faux", modelId: "faux-1" },
@@ -333,24 +353,141 @@ test("two subscribers share one real Harness, so one sqlite file has one owner",
     bootTrace: () => "tr_boot_probe",
   });
   try {
-    await directory.create({
-      id: "b_real",
-      title: "real",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-      model: { provider: "faux", modelId: "faux-1" },
-    });
     await registry.start();
-    const [first, second] = await Promise.all([
-      registry.open("b_real", "tr_a_00000001"),
-      registry.open("b_real", "tr_b_00000002"),
-    ]);
-    assert.equal(first, second, "one handle for the bot");
+    // The bot is catalogued, and its warm-up open is held: both opens below must join it.
+    const summary = await registry.create("real", "tr_create_real");
+    const [first, second] = [
+      registry.open(summary.id, "tr_a_00000001"),
+      registry.open(summary.id, "tr_b_00000002"),
+    ];
+    release();
+    const [a, b] = await Promise.all([first, second]);
+    assert.equal(a, b, "one handle for the bot");
     assert.equal(opens, 1, "one Harness opened over the one sqlite file");
-    assert.deepEqual(await first.busy(), { run: false, tasks: false });
+    assert.deepEqual(await a.busy(), { run: false, tasks: false });
   } finally {
     await registry.shutdown();
     await bench.cleanup();
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a quarantined bot leaves quarantine when its retry closes", async () => {
+  const setup = await bench({ closeOutcome: "timeout" });
+  try {
+    await setup.registry.start();
+    const summary = await setup.registry.create("重试", "tr_create_retry");
+    await setup.registry.open(summary.id, "tr_open_retry");
+    setup.registry.touch(summary.id);
+    setup.registry.release(summary.id);
+    await setup.timers.advance(1_000);
+    assert.equal(setup.registry.state(summary.id), "quarantined");
+    // The retry succeeds: the handle is released and the bot is catalogued again.
+    setup.setCloseOutcome("closed");
+    await setup.timers.advance(5_000);
+    assert.equal(setup.registry.state(summary.id), "catalogued", "the retry cleared quarantine");
+    const closed = setup.records.filter((record) => record.evt === "core.bot.close.ok");
+    assert.equal(closed.length, 1, "the retry's close is recorded once");
+    assert.equal(closed[0]?.detail?.quarantined, true, "as the retry of a quarantine");
+  } finally {
+    await setup.cleanup();
+  }
+});
+
+test("an open during a close waits for it and keeps the handle it creates", async () => {
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const setup = await bench({ closeGate: gate });
+  try {
+    await setup.registry.start();
+    const summary = await setup.registry.create("重开", "tr_create_0010");
+    const first = await setup.registry.open(summary.id, "tr_open_0010");
+    setup.registry.touch(summary.id);
+    setup.registry.release(summary.id);
+    // The idle close is now in flight and holds the handle.
+    await setup.timers.advance(1_000);
+    assert.equal(setup.registry.state(summary.id), "idle", "the close has not finished");
+    const reopening = setup.registry.open(summary.id, "tr_open_0011");
+    release();
+    const second = await reopening;
+    assert.notEqual(second, first, "the reopen waits for the close and opens once");
+    assert.equal(setup.opens(), 2, "one open for the first handle, one for the reopen");
+    assert.equal(setup.registry.handleOf(summary.id), second, "the close never cleared it");
+    assert.equal(setup.registry.state(summary.id), "idle");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
+test("a delete waits for a warm-up open instead of leaking its handle", async () => {
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const setup = await bench({ openGate: gate });
+  try {
+    await setup.registry.start();
+    const summary = await setup.registry.create("预热删除", "tr_create_0011");
+    // create() warms asynchronously and the opener is held: the handle does not exist yet.
+    let done = false;
+    const removing = setup.registry.remove(summary.id, "tr_delete_0010").then(() => {
+      done = true;
+    });
+    await settle();
+    assert.equal(done, false, "the delete waits for the warm-up open to settle");
+    release();
+    await removing;
+    assert.deepEqual(setup.registry.summaries(), []);
+    assert.equal(setup.registry.handleOf(summary.id), undefined, "no handle outlives the bot");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
+test("two concurrent creates cannot take the last catalog slot twice", async () => {
+  const setup = await bench({ bots: Array.from({ length: 199 }, (_, index) => `b${index}`) });
+  try {
+    await setup.registry.start();
+    const outcomes = await Promise.allSettled([
+      setup.registry.create("一", "tr_create_0020"),
+      setup.registry.create("二", "tr_create_0021"),
+    ]);
+    assert.equal(
+      outcomes.filter((outcome) => outcome.status === "fulfilled").length,
+      1,
+      "one create wins the last slot",
+    );
+    const rejected = outcomes.find((outcome) => outcome.status === "rejected");
+    assert.match(
+      String((rejected as PromiseRejectedResult).reason),
+      /limit_exceeded|catalog is full/,
+    );
+    assert.equal(setup.registry.summaries().length, 200, "the catalog never exceeds its cap");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
+test("shutdown spends one shared deadline, not one per bot", async () => {
+  const setup = await bench({ bots: ["a", "b", "c"], waitDeadline: true });
+  try {
+    await setup.registry.start();
+    const started = Date.now();
+    await setup.registry.shutdown();
+    const elapsed = Date.now() - started;
+    assert.ok(elapsed < 90, `three 40 ms deadlines shared one budget, took ${elapsed} ms`);
+    const degraded = setup.records.filter((record) => record.evt === "core.bot.close.degrade");
+    assert.equal(degraded.length, 3, "every timed-out close is a degradation, never success");
+    assert.ok(
+      setup.records.every((record) => record.evt !== "core.bot.close.ok"),
+      "no timeout is logged as closed",
+    );
+  } finally {
+    await setup.cleanup();
   }
 });

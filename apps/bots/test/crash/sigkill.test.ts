@@ -56,7 +56,8 @@ const startDaemon = async (root: string, env: Record<string, string>): Promise<D
     child,
     kill: async () => {
       child.kill("SIGKILL");
-      await new Promise((resolve) => child.once("exit", resolve));
+      // A child that already exited fires no `exit` event, and waiting for one would hang.
+      if (child.exitCode === null) await new Promise((resolve) => child.once("exit", resolve));
     },
   };
 };
@@ -78,6 +79,85 @@ const api = async <T>(daemon: Daemon, path: string, method: string, body?: unkno
   assert.ok(response.status < 400, `${method} ${path} answered ${response.status}`);
   return (await response.json()) as T;
 };
+
+test("killing the daemon right after admission loses no message and duplicates none", async () => {
+  // No streamed chunk: the kill lands after the input is admitted and before any
+  // assistant provisional exists, so recovery must not require an aborted entry.
+  const root = await mkdtemp(join(tmpdir(), "bots-sigkill-early-"));
+  const sentinel = join(root, "blocked");
+  const provider = await startProvider(sentinel, { chunk: false });
+  const env = {
+    BOTS_BASE_URL: provider.baseUrl,
+    BOTS_API_KEY: "test-key-0123456789",
+    BOTS_MODEL: "auto/stub",
+    BOTS_MODEL_PROVIDER: "stub",
+  };
+  let running: Daemon | undefined;
+  try {
+    running = await startDaemon(root, env);
+    const created = await api<{ bot: { id: string } }>(running, "/v1/bots", "POST", {
+      title: "早杀",
+    });
+    const botId = created.bot.id;
+    const socket = connect(running);
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    await send(socket, { type: "subscribe", botId, trace: "tr_crash_sub_0" });
+    await frames.next();
+    await send(socket, {
+      type: "send",
+      requestId: "r_crash_00000",
+      text: "刚被接收就被杀的问题",
+      whenBusy: "followUp",
+      trace: "tr_crash_send_0",
+    });
+    // The barrier: the user entry is committed and the provider is blocked with no chunk.
+    for (;;) {
+      const frame = await frames.next(20_000);
+      if (frame.type === "append" && (frame.message as Message).role === "user") break;
+    }
+    await provider.blocked;
+    socket.close();
+    await running.kill();
+    running = undefined;
+
+    running = await startDaemon(root, env);
+    const after = connect(running);
+    const renewed = frameQueue(after);
+    await send(after, hello);
+    await renewed.next();
+    await send(after, { type: "subscribe", botId, trace: "tr_crash_sub_1" });
+    let messages: Message[] = [];
+    for (;;) {
+      const frame = await renewed.next(20_000);
+      if (frame.type !== "snapshot") continue;
+      messages = (frame.value as { messages: Message[] }).messages;
+      break;
+    }
+    assert.equal(
+      messages.filter((message) => message.role === "user").length,
+      1,
+      "the submission was admitted exactly once",
+    );
+    assert.equal(
+      messages.filter((message) => message.role === "assistant" && message.state === "complete")
+        .length,
+      1,
+      "the resumed run answered once",
+    );
+    assert.equal(
+      messages.some((message) => message.state === "aborted"),
+      false,
+      "nothing was streamed, so nothing is presented as aborted",
+    );
+    after.close();
+  } finally {
+    await running?.kill();
+    await provider.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("killing the daemon mid-answer loses no message and duplicates none", async () => {
   const root = await mkdtemp(join(tmpdir(), "bots-sigkill-"));

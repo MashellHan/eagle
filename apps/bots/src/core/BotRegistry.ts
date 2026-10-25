@@ -48,6 +48,8 @@ type Entry = {
   unavailable: { readonly reason: ErrorKind; readonly message: string } | undefined;
   cancelIdle: (() => void) | undefined;
   cancelRetry: (() => void) | undefined;
+  /** Resolves when an in-flight close or delete settles; an open waits on it. */
+  settling: Promise<void> | undefined;
 };
 
 export type RegistryOptions = {
@@ -71,6 +73,8 @@ export type RegistryOptions = {
 };
 
 export const MAX_SUMMARY_BYTES = 1_200;
+/** PROTOCOL.md, "Limits": the catalog holds at most this many bots. */
+export const MAX_CATALOG_BOTS = 200;
 
 const jsonBytes = (summary: BotSummary): number =>
   Buffer.byteLength(JSON.stringify(summary), "utf8");
@@ -94,6 +98,8 @@ export class BotRegistry {
   readonly #entries = new Map<string, Entry>();
   readonly #boot: () => string;
   #sequence = 0;
+  /** Creations in flight, so two concurrent creates cannot both take the last slot. */
+  #creating = 0;
 
   constructor(options: RegistryOptions) {
     this.#options = options;
@@ -142,6 +148,7 @@ export class BotRegistry {
         unavailable: undefined,
         cancelIdle: undefined,
         cancelRetry: undefined,
+        settling: undefined,
       });
     }
     await this.#recover(trace);
@@ -162,7 +169,19 @@ export class BotRegistry {
   }
 
   async create(title: string, trace: string): Promise<BotSummary> {
-    if (this.#entries.size >= 200) {
+    if (this.#entries.size + this.#creating >= MAX_CATALOG_BOTS) {
+      throw new ClassifiedFailure(newFailure("limit_exceeded"), "not_admitted", "catalog is full");
+    }
+    this.#creating += 1;
+    try {
+      return await this.#create(title, trace);
+    } finally {
+      this.#creating -= 1;
+    }
+  }
+
+  async #create(title: string, trace: string): Promise<BotSummary> {
+    if (this.#entries.size >= MAX_CATALOG_BOTS) {
       throw new ClassifiedFailure(newFailure("limit_exceeded"), "not_admitted", "catalog is full");
     }
     const at = (this.#options.now?.() ?? new Date()).toISOString();
@@ -186,6 +205,7 @@ export class BotRegistry {
       unavailable: undefined,
       cancelIdle: undefined,
       cancelRetry: undefined,
+      settling: undefined,
     };
     this.#entries.set(config.id, entry);
     // Creation never waits for a Harness: reply first, warm afterwards.
@@ -218,8 +238,17 @@ export class BotRegistry {
     this.#options.log.emit("info", "core", Events.deleteStart, { trace, botId });
     entry.closing = true;
     this.#cancelTimers(entry);
+    // A warm-up open that is still in flight must settle first, or the handle it creates
+    // would own an sqlite file the delete already moved to `trash/`.
+    if (entry.opening !== undefined) await entry.opening.catch(() => undefined);
     if (entry.handle !== undefined) {
-      const outcome = await entry.handle.close(trace, this.#options.closeDeadlineMs);
+      const closing = entry.handle.close(trace, this.#options.closeDeadlineMs);
+      entry.settling = closing.then(
+        () => undefined,
+        () => undefined,
+      );
+      const outcome = await closing;
+      entry.settling = undefined;
       if (outcome === "timeout") {
         // A close that did not finish owns the handle: nothing may move or rewrite the
         // directory until the retry reports `closed` (ARCHITECTURE.md, quarantine).
@@ -258,6 +287,15 @@ export class BotRegistry {
    */
   async open(botId: string, trace: string): Promise<RuntimeHandle> {
     const entry = this.#entry(botId, trace);
+    // A close (idle, delete or shutdown) owns the handle until it settles. Opening during
+    // that window would create a second Harness over one sqlite file, and the close would
+    // then clear the handle it never owned (ARCHITECTURE.md, "Bot lifecycle").
+    if (entry.settling !== undefined) {
+      await entry.settling.catch(() => undefined);
+      if (this.#entries.get(botId) !== entry) {
+        throw this.#unresolved(botId, trace);
+      }
+    }
     if (entry.state === "quarantined") {
       throw new ClassifiedFailure(
         newFailure("unknown_bot"),
@@ -266,6 +304,7 @@ export class BotRegistry {
       );
     }
     if (entry.handle !== undefined && !entry.closing) return entry.handle;
+    // A warm-up open already in flight is the one an explicit open joins.
     entry.opening ??= this.#openOnce(entry, trace);
     return entry.opening;
   }
@@ -287,6 +326,31 @@ export class BotRegistry {
     await entry.handle.recover(trace);
   }
 
+  /**
+   * The runtime reported its session dead: the Harness closed itself, so the handle is
+   * gone and the bot is unavailable until `recover` opens it again.
+   */
+  markUnavailable(botId: string, reason: ErrorKind, message: string): boolean {
+    const entry = this.#entries.get(botId);
+    if (entry === undefined) return false;
+    entry.handle = undefined;
+    entry.state = "unavailable";
+    entry.unavailable = unavailable(reason, message);
+    entry.closing = false;
+    return true;
+  }
+
+  /** The run state the service observed; returns true when the catalog changed. */
+  markRunning(botId: string, running: boolean): boolean {
+    const entry = this.#entries.get(botId);
+    if (entry === undefined) return false;
+    if (entry.state !== "idle" && entry.state !== "running") return false;
+    const next: BotState = running ? "running" : "idle";
+    if (entry.state === next) return false;
+    entry.state = next;
+    return true;
+  }
+
   /** A subscription started: the bot must stay open while it lasts. */
   touch(botId: string): void {
     const entry = this.#entries.get(botId);
@@ -304,36 +368,51 @@ export class BotRegistry {
 
   async shutdown(): Promise<void> {
     const trace = this.#boot();
-    for (const entry of this.#entries.values()) {
-      this.#cancelTimers(entry);
-      if (entry.handle === undefined) continue;
-      const handle = entry.handle;
-      entry.handle = undefined;
-      entry.closing = true;
-      const outcome = await handle
-        .close(trace, this.#options.closeDeadlineMs)
-        .catch(() => "timeout" as const);
-      if (outcome === "timeout") this.#quarantine(entry, trace);
-      else {
+    // One shared deadline for the whole shutdown: a stalled handle must not multiply the
+    // budget by the number of bots (ARCHITECTURE.md, "Bot lifecycle", rule 6).
+    const deadline = Date.now() + this.#options.closeDeadlineMs;
+    await Promise.all(
+      [...this.#entries.values()].map(async (entry) => {
+        this.#cancelTimers(entry);
+        if (entry.handle === undefined) return;
+        const handle = entry.handle;
+        entry.closing = true;
+        const remaining = Math.max(1, deadline - Date.now());
+        const closing = handle.close(trace, remaining).catch(() => "timeout" as const);
+        entry.settling = closing.then(
+          () => undefined,
+          () => undefined,
+        );
+        const outcome = await closing;
+        entry.settling = undefined;
+        if (outcome === "timeout") {
+          // The handle stays owned: quarantining without it would leave nothing to retry.
+          entry.handle = handle;
+          this.#quarantine(entry, trace);
+          return;
+        }
+        entry.handle = undefined;
         entry.state = "catalogued";
         entry.closing = false;
-      }
-    }
+      }),
+    );
+  }
+
+  /** The id never resolved, so nothing below core is reached: this is the origin. */
+  #unresolved(botId: string, trace: string): ClassifiedFailure {
+    const failure = newFailure("unknown_bot", "core");
+    this.#options.log.emit("error", "core", Events.resolveFail, {
+      trace,
+      botId,
+      failure,
+      origin: true,
+    });
+    return new ClassifiedFailure(failure, "not_admitted", "unknown bot");
   }
 
   #entry(botId: string, trace: string): Entry {
     const entry = this.#entries.get(botId);
-    if (entry === undefined) {
-      // The id never resolved, so nothing below core is reached: this is the origin.
-      const failure = newFailure("unknown_bot", "core");
-      this.#options.log.emit("error", "core", Events.resolveFail, {
-        trace,
-        botId,
-        failure,
-        origin: true,
-      });
-      throw new ClassifiedFailure(failure, "not_admitted", "unknown bot");
-    }
+    if (entry === undefined) throw this.#unresolved(botId, trace);
     return entry;
   }
 
@@ -410,7 +489,21 @@ export class BotRegistry {
     }
     const handle = entry.handle;
     entry.closing = true;
-    const outcome = await handle.close(trace, this.#options.closeDeadlineMs);
+    const closing = handle.close(trace, this.#options.closeDeadlineMs);
+    entry.settling = closing.then(
+      () => undefined,
+      () => undefined,
+    );
+    const outcome = await closing.catch(() => {
+      this.#options.log.emit("error", "core", Events.closeFail, {
+        trace,
+        botId: entry.config.id,
+        failure: newFailure("internal", "core"),
+        origin: true,
+      });
+      return "timeout" as const;
+    });
+    entry.settling = undefined;
     if (outcome === "timeout") {
       this.#quarantine(entry, trace);
       return;

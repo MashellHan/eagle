@@ -105,11 +105,19 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     closeDeadlineMs: canonical.closeDeadlineMs,
   });
   await registry.start();
+  // The daemon exists after the service that has to broadcast through it.
+  let broadcast: (() => void) | undefined;
   const service = new ConversationService({
     open: (botId, trace) => registry.open(botId, trace),
     handleOf: (botId) => registry.handleOf(botId),
     measure: measureEvent,
     log,
+    onRunning: (botId, running) => {
+      if (registry.markRunning(botId, running)) broadcast?.();
+    },
+    onSessionFailed: (botId, reason, message) => {
+      if (registry.markUnavailable(botId, reason, message)) broadcast?.();
+    },
   });
   const capabilities = {
     agent: false,
@@ -129,6 +137,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     capabilities,
     port: canonical.port,
   });
+  broadcast = daemon.broadcastCatalog;
   const close = async (): Promise<void> => {
     await daemon.close();
     await registry.shutdown();

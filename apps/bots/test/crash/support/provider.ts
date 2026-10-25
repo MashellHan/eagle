@@ -54,13 +54,16 @@ const finish = (id: string, text: string): string => {
   );
 };
 
-export const startProvider = async (sentinel: string): Promise<Provider> => {
+export const startProvider = async (
+  sentinel: string,
+  options: { readonly chunk?: boolean } = {},
+): Promise<Provider> => {
   let requests = 0;
   let release: (() => void) | undefined;
   const blocked = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const hanging: ((close: () => void) => void)[] = [];
+  const hanging: (() => void)[] = [];
   const server: Server = createServer((request, response) => {
     requests += 1;
     const current = requests;
@@ -87,7 +90,7 @@ export const startProvider = async (sentinel: string): Promise<Provider> => {
       connection: "keep-alive",
     });
     response.write(opening(`resp_${current}`));
-    response.write(delta(`resp_${current}`, "会被杀死的第一段"));
+    if (options.chunk !== false) response.write(delta(`resp_${current}`, "会被杀死的第一段"));
     hanging.push(() => {
       response.destroy();
     });

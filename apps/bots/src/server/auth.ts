@@ -10,23 +10,36 @@ export const TOKEN_BYTES = 32;
 
 export const generateToken = (): string => randomBytes(TOKEN_BYTES).toString("base64url");
 
-/** Reads the token, creating it with mode 0600 when the file does not exist yet. */
+const readToken = async (path: string): Promise<string> => (await readFile(path, "utf8")).trim();
+
+/**
+ * Reads the token, creating it with mode 0600 when the file does not exist yet. Creation
+ * is exclusive, because two first starts can race: the loser must read the winner's token
+ * instead of overwriting it, or the daemon that owns the root would refuse its own file.
+ */
 export const loadToken = async (root: string): Promise<string> => {
   const path = join(root, "token");
-  try {
-    const existing = (await readFile(path, "utf8")).trim();
-    if (existing.length >= 32) {
-      // 0600 is the contract (PROTOCOL.md, "Transport"), so a file someone loosened is
-      // tightened again instead of being trusted by name alone.
-      await chmod(path, 0o600);
-      return existing;
-    }
-  } catch {
-    // fall through to creation
+  const existing = await readToken(path).catch(() => "");
+  if (existing.length >= 32) {
+    // 0600 is the contract (PROTOCOL.md, "Transport"), so a file someone loosened is
+    // tightened again instead of being trusted by name alone.
+    await chmod(path, 0o600);
+    return existing;
   }
   await mkdir(root, { recursive: true, mode: 0o700 });
   const token = generateToken();
-  await writeFile(path, `${token}\n`, { mode: 0o600 });
+  try {
+    await writeFile(path, `${token}\n`, { flag: "wx", mode: 0o600 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    const winner = await readToken(path).catch(() => "");
+    if (winner.length >= 32) {
+      await chmod(path, 0o600);
+      return winner;
+    }
+    // The file exists but is unusable (truncated by hand): replace it in place.
+    await writeFile(path, `${token}\n`, { mode: 0o600 });
+  }
   await chmod(path, 0o600);
   return token;
 };

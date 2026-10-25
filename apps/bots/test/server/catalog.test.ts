@@ -146,3 +146,79 @@ test("every catalog broadcast is a measured frame", async () => {
     await stack.close();
   }
 });
+
+test("a catalog change before hello waits for the handshake", async () => {
+  const stack = await startStack();
+  try {
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    // No hello yet: the daemon-side change must not produce a frame.
+    await new Promise<void>((resolve) => socket.once("open", () => resolve()));
+    await api(stack).create("先建后握手");
+    await send(socket, hello);
+    const first = await frames.next();
+    assert.equal(first.type, "welcome", "nothing precedes the welcome");
+    assert.deepEqual(
+      (first.bots as { title: string }[]).map((bot) => bot.title),
+      ["先建后握手"],
+      "and the welcome already carries the change",
+    );
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});
+
+test("the catalog follows the run state and pushes it to clients", async () => {
+  const stack = await startStack();
+  try {
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    const created = await api(stack).create("跟随");
+    const botId = ((await created.json()) as { bot: { id: string } }).bot.id;
+    await frames.next();
+    await send(socket, { type: "subscribe", botId, trace: "tr_follow_0001" });
+    await frames.next();
+    const handle = stack.fake?.handle(botId);
+    assert.ok(handle !== undefined);
+    handle.emit({
+      type: "status",
+      trace: "tr_follow_0002",
+      running: true,
+      streaming: null,
+      inbox: [],
+    });
+    const running = await (async () => {
+      for (;;) {
+        const frame = await frames.next();
+        if (frame.type === "bots") return frame;
+      }
+    })();
+    assert.equal(running.type, "bots");
+    assert.equal(
+      (running.bots as { state: string }[])[0]?.state,
+      "running",
+      "a run makes the bot running in the catalog",
+    );
+    handle.emit({
+      type: "status",
+      trace: "tr_follow_0003",
+      running: false,
+      streaming: null,
+      inbox: [],
+    });
+    const idle = await (async () => {
+      for (;;) {
+        const frame = await frames.next();
+        if (frame.type === "bots") return frame;
+      }
+    })();
+    assert.equal(idle.type, "bots");
+    assert.equal((idle.bots as { state: string }[])[0]?.state, "idle");
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});

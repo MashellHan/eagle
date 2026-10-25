@@ -6,7 +6,7 @@ import type { BotRegistry } from "../core/BotRegistry.ts";
 import type { ConversationService } from "../core/ConversationService.ts";
 import type { ErrorDisposition } from "../core/domain.ts";
 import { ClassifiedFailure } from "../core/domain.ts";
-import type { HubEvent } from "../core/EventHub.ts";
+import { type HubEvent, SubscriberTooSlow } from "../core/EventHub.ts";
 import { declareEvent } from "../log/events.ts";
 import type { Log } from "../log/log.ts";
 import { encodeServerEvent, serializeFrame } from "../protocol/encode.ts";
@@ -17,18 +17,16 @@ import {
   parseJson,
   type ServerEvent,
 } from "../protocol/frames.ts";
+import { TRACE_ID } from "../protocol/limits.ts";
 import { assertFrameBudget, assertInboundBytes, validateCommand } from "../protocol/validate.ts";
 import { PROTOCOL_VERSION } from "../protocol/version.ts";
 import { serverFailure } from "./failures.ts";
 
 const Events = {
   openOk: declareEvent("transport.conn.open.ok"),
-  openFail: declareEvent("transport.conn.open.fail"),
-  openReject: declareEvent("transport.conn.open.reject"),
   closeOk: declareEvent("transport.conn.close.ok"),
   closeEnd: declareEvent("transport.conn.close.end"),
   frameRecvOk: declareEvent("transport.frame.recv.ok"),
-  frameRecvFail: declareEvent("transport.frame.recv.fail"),
   frameSendOk: declareEvent("transport.frame.send.ok"),
   frameSendDrop: declareEvent("transport.frame.send.drop"),
   decodeFail: declareEvent("protocol.decode.fail"),
@@ -54,6 +52,8 @@ export const CLOSE = {
 
 /** A connection that sends no frame for this long is closed with 4000. */
 export const IDLE_FRAME_MS = 60_000;
+/** Unsent bytes on one socket before its subscriber is downgraded (PROTOCOL.md, limits). */
+export const MAX_BUFFERED_BYTES = 1024 * 1024;
 export const MAX_CONNECTIONS = 16;
 
 export type ConnectionDeps = {
@@ -66,6 +66,8 @@ export type ConnectionDeps = {
   readonly register: (socket: WebSocket) => void;
   readonly unregister: (socket: WebSocket) => void;
   readonly idleMs?: number;
+  /** How many bytes may sit unsent before the subscriber is treated as not reading. */
+  readonly maxBufferedBytes?: number;
 };
 
 /** Maps a runtime event the hub numbered onto its wire event. */
@@ -129,6 +131,7 @@ export const attachConnection = (
   // "Trace ownership": `tr_conn_<n>`).
   const connTrace = `tr_conn_${connId.replace(/^c_/, "")}`;
   const idleMs = deps.idleMs ?? IDLE_FRAME_MS;
+  const maxBufferedBytes = deps.maxBufferedBytes ?? MAX_BUFFERED_BYTES;
   let helloSent = false;
   let subscribed = false;
   /** Set synchronously when a `subscribe` is dispatched, cleared when it settles. */
@@ -265,7 +268,12 @@ export const attachConnection = (
   });
 
   const dispatch = async (command: ClientCommand, text: string): Promise<void> => {
-    const trace = "trace" in command && command.trace !== undefined ? command.trace : connTrace;
+    // A client-supplied trace is used only once it is a legal trace: an invalid one is
+    // user text and must never reach a log record (OBSERVABILITY.md, "Redaction").
+    const trace =
+      "trace" in command && typeof command.trace === "string" && TRACE_ID.test(command.trace)
+        ? command.trace
+        : connTrace;
     if (!helloSent) {
       if (command.type !== "hello") {
         close(CLOSE.protocol, "hello must be the first frame");
@@ -353,7 +361,9 @@ export const attachConnection = (
         detail: { kind: command.type },
       });
     } catch (error) {
-      subscribing = false;
+      // Only the subscribe that failed clears the guard: an unrelated command's failure
+      // must not let a second subscribe through while the first is still rendering.
+      if (command.type === "subscribe") subscribing = false;
       await refuse(error, command, trace);
     }
     void text;
@@ -375,9 +385,12 @@ export const attachConnection = (
         close(CLOSE.quarantined, "quarantined");
         return;
       }
-      const { rev, snapshot } = await service.subscribe(connId, command.botId, trace, (event) =>
-        emit(toServerEvent(event)),
-      );
+      const { rev, snapshot } = await service.subscribe(connId, command.botId, trace, (event) => {
+        // A client that stopped reading must not make the daemon buffer without a bound:
+        // the hub downgrades this subscriber to snapshot-only instead (PROTOCOL.md).
+        if (socket.bufferedAmount > maxBufferedBytes) throw new SubscriberTooSlow();
+        emit(toServerEvent(event));
+      });
       subscribed = true;
       connectionBot = command.botId;
       registry.touch(command.botId);
@@ -419,11 +432,14 @@ export const attachConnection = (
   };
 
   const refuse = async (error: unknown, command: ClientCommand, trace: string): Promise<void> => {
+    // A failure no layer classified is this daemon's own defect: it is recorded here, at
+    // error, with an identity of its own, so the client's frame names it too.
+    const unclassified = !(error instanceof ClassifiedFailure);
     const classified =
       error instanceof ClassifiedFailure
         ? error
         : new ClassifiedFailure(
-            { id: `f_${connId}`, kind: "internal", layer: "core" },
+            serverFailure("internal", "protocol"),
             "runtime",
             "the command failed",
             { cause: error },
@@ -431,13 +447,16 @@ export const attachConnection = (
     const kind = classified.failure.kind;
     const disposition: ErrorDisposition = classified.disposition;
     const requestId = command.type === "send" ? command.requestId : undefined;
-    // Core classified it; this layer only records that it handed the failure on.
-    log.emit("warn", "protocol", Events.commandFail, {
+    // A classified failure was recorded below: this layer records only that it handed it
+    // on. An unclassified one has no other record, so this is its origin.
+    log.emit(unclassified ? "error" : "warn", "protocol", Events.commandFail, {
       trace,
       connId,
       ...(requestId === undefined ? {} : { reqId: requestId }),
       failure: classified.failure,
-      detail: { kind: command.type, reason: "upstream", propagated: true },
+      ...(unclassified
+        ? { origin: true as const }
+        : { detail: { kind: command.type, reason: "upstream", propagated: true } }),
     });
     if (kind === "unknown_bot" && disposition === "not_admitted") {
       close(CLOSE.unknownBot, "unknown bot");
@@ -457,7 +476,13 @@ export const attachConnection = (
   armIdle();
   deps.register(socket);
   log.emit("info", "transport", Events.openOk, { trace: connTrace, connId });
-  return emit;
+  // The daemon-wide catalog event waits for the handshake: `welcome` already carries the
+  // catalog as it is at hello time, so a change before it needs no separate frame
+  // (PROTOCOL.md, "Handshake" — nothing precedes welcome).
+  return (event: ServerEvent): void => {
+    if (!helloSent) return;
+    emit(event);
+  };
 };
 
 /** A rejection message is bounded and never carries model or provider content. */

@@ -53,6 +53,30 @@ test("an over-limit answer is withheld, announced after commit and stable on rec
     assert.equal(withdrawn, true, "the attempt was withdrawn before its entry existed");
     assert.equal(typeof settled?.answerEntryId, "string", "the submission still settles");
 
+    // A late join sees the same rule: the withdrawn attempt is not in its snapshot.
+    const during = stack.connect();
+    const joinedEarly = frameQueue(during);
+    await send(during, hello);
+    await joinedEarly.next();
+    await send(during, { type: "subscribe", botId, trace: tr("over5") });
+    const early = await joinedEarly.next();
+    const earlyValue = early.value as {
+      messages: Message[];
+      streaming: unknown;
+      running: boolean;
+    };
+    assert.equal(Array.isArray(earlyValue.messages), true);
+    assert.equal(
+      earlyValue.messages.some((message) => JSON.stringify(message).includes(long)),
+      false,
+      "no oversized partial reaches a client that joins mid-attempt",
+    );
+    assert.ok(
+      earlyValue.streaming === null || typeof earlyValue.streaming === "object",
+      "the snapshot is one of the two documented states",
+    );
+    during.close();
+
     await send(socket, { type: "resync", trace: tr("over3") });
     let transcript: Message[] = [];
     for (;;) {

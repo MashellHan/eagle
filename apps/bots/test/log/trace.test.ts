@@ -75,6 +75,8 @@ test("the command trace is echoed on everything the command causes", async () =>
     const caused = seen.slice(seen.findIndex((frame) => frame.type === "submission"));
     assert.ok(caused.length >= 2, "the reply and its events arrived");
     for (const frame of caused) {
+      // The catalog event is daemon-wide and carries no trace (PROTOCOL I7).
+      if (frame.type === "bots") continue;
       assert.equal(frame.trace, sendTrace, `${String(frame.type)} inherits the submit trace`);
     }
     assert.ok(

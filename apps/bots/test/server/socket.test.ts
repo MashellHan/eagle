@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import net from "node:net";
 import test from "node:test";
+import { WebSocket } from "ws";
 import { closeCode, frameQueue, hello, nextFrame, send, startStack } from "../support/server.ts";
 
 const tr = (name: string) => `tr_${name}_0123456`;
@@ -497,6 +498,120 @@ test("shutting down closes 4010 so the client reconnects with backoff", async ()
     const closing = closeCode(socket);
     await stack.daemon.close();
     assert.equal(await closing, 4010, "the close code names a shutdown, not a crash");
+  } finally {
+    await stack.close();
+  }
+});
+
+test("only the documented socket path upgrades", async () => {
+  const stack = await startStack();
+  try {
+    for (const path of ["/", "/v2/socket", "/v1/socket/"]) {
+      const refused = await new Promise<number>((resolve) => {
+        const socket = new WebSocket(`ws://127.0.0.1:${stack.port}${path}`, {
+          headers: { authorization: `Bearer ${stack.token}` },
+        });
+        socket.once("unexpected-response", (_request, response) =>
+          resolve(response.statusCode ?? 0),
+        );
+        socket.once("error", () => resolve(-1));
+        socket.once("open", () => resolve(0));
+      });
+      assert.equal(refused, 404, `${path} is not the socket endpoint`);
+    }
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    assert.equal((await frames.next()).type, "welcome", "/v1/socket upgrades");
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});
+
+test("an invalid trace never reaches a log record", async () => {
+  const stack = await startStack();
+  try {
+    const botId = await stack.createBot("轨迹");
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    await send(socket, { type: "subscribe", botId, trace: tr("tracesafe") });
+    await frames.next();
+    const sentinel = "PROMPT SENTINEL do not log this";
+    const before = stack.records.length;
+    await send(socket, {
+      type: "send",
+      requestId: "r_trace_00001",
+      text: "hi",
+      whenBusy: "followUp",
+      trace: sentinel,
+    });
+    const refused = await frames.next();
+    assert.equal(refused.type, "error");
+    assert.equal(refused.kind, "invalid_command");
+    assert.equal(
+      JSON.stringify(stack.records.slice(before)).includes(sentinel),
+      false,
+      "an invalid trace is user text, not an id",
+    );
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});
+
+test("a failed send between two subscribes still closes 1008", async () => {
+  const stack = await startStack();
+  try {
+    const botId = await stack.createBot("两次");
+    const socket = stack.connect();
+    await send(socket, hello);
+    await nextFrame(socket);
+    await send(socket, { type: "subscribe", botId, trace: tr("guard1") });
+    await send(socket, {
+      type: "send",
+      requestId: "r_guard_00001",
+      text: "还没订阅",
+      whenBusy: "followUp",
+      trace: tr("guard2"),
+    });
+    await send(socket, { type: "subscribe", botId, trace: tr("guard3") });
+    assert.equal(await closeCode(socket), 1008);
+  } finally {
+    await stack.close();
+  }
+});
+
+test("a send before the subscription has one origin error and one identity", async () => {
+  const stack = await startStack();
+  try {
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    const before = stack.records.length;
+    await send(socket, {
+      type: "send",
+      requestId: "r_early_00001",
+      text: "太早了",
+      whenBusy: "followUp",
+      trace: tr("early2"),
+    });
+    const refused = await frames.next();
+    assert.equal(refused.type, "error");
+    assert.equal(refused.disposition, "not_admitted");
+    const records = stack.records.slice(before);
+    const failed = records.filter((record) => record.level === "error");
+    assert.equal(failed.length, 1, "one error record for the refusal");
+    assert.equal(failed[0]?.evt, "core.submit.fail");
+    assert.equal(failed[0]?.err?.origin, true);
+    assert.equal(refused.failure, failed[0]?.err?.failure, "frame and log share the identity");
+    for (const record of records.filter((record) => record.err !== undefined)) {
+      assert.equal(record.err?.failure, refused.failure, "no second identity for one refusal");
+    }
+    socket.close();
   } finally {
     await stack.close();
   }

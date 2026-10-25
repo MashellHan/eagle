@@ -30,7 +30,7 @@ test("a delete killed after its rename reconciles on the next start", async () =
     }
     assert.match(output, /renamed/, "the child reached the interrupted state");
     child.kill("SIGKILL");
-    await new Promise((resolve) => child.once("exit", resolve));
+    if (child.exitCode === null) await new Promise((resolve) => child.once("exit", resolve));
 
     // The state a killed delete leaves: trash/<id> present, the catalog still naming it.
     const before = JSON.parse(await readFile(join(root, "catalog.json"), "utf8")) as {

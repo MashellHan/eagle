@@ -9,6 +9,7 @@ import type {
   ErrorDisposition,
   ErrorKind,
   Failure,
+  Message,
   Submission,
 } from "./domain.ts";
 import { ClassifiedFailure } from "./domain.ts";
@@ -36,6 +37,8 @@ export const MAX_PENDING = 32;
 export const MAX_INBOX = 32;
 /** The newest page a snapshot carries; older messages are reachable through `history`. */
 export const MAX_WINDOW_MESSAGES = 200;
+/** PROTOCOL.md, "Limits": a page frame is at most this many encoded bytes. */
+export const MAX_PAGE_BYTES = 192 * 1024;
 
 /** Opens (or recovers) one bot. The registry owns catalog policy; the service owns routing. */
 export type OpenBot = (botId: string, trace: string) => Promise<RuntimeHandle>;
@@ -51,6 +54,10 @@ export type ConversationServiceOptions = {
   readonly log?: Log;
   /** Newest messages kept in a rendered snapshot (PROTOCOL.md, "snapshot.messages page"). */
   readonly windowMessages?: number;
+  /** The bot started or stopped working, so the catalog state can follow the run. */
+  readonly onRunning?: (botId: string, running: boolean) => void;
+  /** The runtime's session died: the handle is dead and the bot must be re-opened. */
+  readonly onSessionFailed?: (botId: string, reason: ErrorKind, message: string) => void;
 };
 
 /** Only `not_admitted` lets a client drop its outbox entry (docs/bots/PROTOCOL.md). */
@@ -79,6 +86,8 @@ type Bot = {
   readonly hub: EventHub;
   snapshot: ConversationSnapshot;
   readonly ranks: SubmissionRanks;
+  /** Admissions in flight, counted until their own submission event arrives. */
+  readonly reserved: Set<string>;
   /** Publishes what the runtime delivered while the first subscription was rendering. */
   readonly release: () => void;
 };
@@ -102,6 +111,12 @@ export class ConversationService {
   };
   readonly #log: Log | undefined;
   readonly #window: number;
+  readonly #onRunning: ((botId: string, running: boolean) => void) | undefined;
+  readonly #onSessionFailed:
+    | ((botId: string, reason: ErrorKind, message: string) => void)
+    | undefined;
+  /** Per-bot admission serialization: check-then-submit is one serial section. */
+  readonly #admissions = new Map<string, Promise<unknown>>();
   /** Failure ids this service minted: only those may be recorded as an origin here. */
   readonly #minted = new Set<string>();
   readonly #bots = new Map<string, Promise<Bot>>();
@@ -112,6 +127,8 @@ export class ConversationService {
     this.#handleOf = options.handleOf;
     this.#log = options.log;
     this.#window = options.windowMessages ?? MAX_WINDOW_MESSAGES;
+    this.#onRunning = options.onRunning;
+    this.#onSessionFailed = options.onSessionFailed;
     this.#hubOptions = {
       measure: options.measure,
       ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
@@ -217,10 +234,10 @@ export class ConversationService {
    * revision, and settlements reach everyone through the hub instead.
    */
   async send(connectionId: string, input: SubmitInput): Promise<Submission> {
-    const owner = this.#subscribed(connectionId, input.requestId);
+    const owner = this.#connectionBot(connectionId);
     this.#log?.emit("info", "core", Events.submitStart, {
       trace: input.trace,
-      botId: owner,
+      ...(owner === undefined ? {} : { botId: owner }),
       connId: connectionId,
       reqId: input.requestId,
     });
@@ -228,7 +245,7 @@ export class ConversationService {
       const record = await this.#admit(connectionId, input);
       this.#log?.emit("info", "core", Events.submitOk, {
         trace: input.trace,
-        botId: owner,
+        ...(owner === undefined ? {} : { botId: owner }),
         connId: connectionId,
         reqId: input.requestId,
         detail: { queued: record.status === "queued", count: 1 },
@@ -289,16 +306,38 @@ export class ConversationService {
     });
     try {
       const page = await this.#handle(connectionId).history(input);
+      // A page is bounded by count and encoded bytes, and a shorter page says there is
+      // more: a dropped oversized frame would leave the client waiting forever.
+      const messages: Message[] = [];
+      let bytes = 0;
+      for (const message of page.messages) {
+        const size = this.#measureMessage(message);
+        if (messages.length >= MAX_WINDOW_MESSAGES || bytes + size > MAX_PAGE_BYTES) break;
+        messages.push(message);
+        bytes += size;
+      }
+      const bounded = {
+        messages,
+        hasMore: page.hasMore || messages.length < page.messages.length,
+      };
       this.#log?.emit("info", "core", Events.historyOk, {
         trace,
         botId,
         connId: connectionId,
-        detail: { count: page.messages.length },
+        detail: { count: bounded.messages.length },
       });
-      return page;
+      return bounded;
     } catch (error) {
-      this.#record(Events.historyFail, trace, botId, connectionId, error);
-      throw error;
+      if (error instanceof ClassifiedFailure) {
+        this.#record(Events.historyFail, trace, botId, connectionId, error);
+        throw error;
+      }
+      const failure = this.#mint("storage_failed");
+      const classified = new ClassifiedFailure(failure, "runtime", "the page could not be read", {
+        cause: error,
+      });
+      this.#record(Events.historyFail, trace, botId, connectionId, classified);
+      throw classified;
     }
   }
 
@@ -314,54 +353,88 @@ export class ConversationService {
     bot.hub.publishSnapshot(bot.snapshot, trace);
   }
 
-  /** Read-then-submit: a stored record answers a retry without admitting anything new. */
+  /**
+   * Read-then-submit as one serial section per bot: a stored record answers a retry
+   * without admitting anything new, and the budget check cannot interleave with another
+   * admission. A reservation is held until that submission's own event arrives, because
+   * the view only learns about the work after the runtime commits it.
+   */
   async #admit(connectionId: string, input: SubmitInput): Promise<Submission> {
-    const handle = this.#handle(connectionId, input.requestId);
-    let stored: Submission | undefined;
-    try {
-      stored = await handle.submission({ requestId: input.requestId });
-    } catch (cause) {
-      if (cause instanceof ClassifiedFailure) throw cause;
-      throw new CommandError(
-        this.#mint("internal"),
-        "unknown",
-        "the submission record could not be read",
-        input.requestId,
-        { cause },
-      );
-    }
-    if (stored !== undefined) return stored;
     const bot = this.#botOf(connectionId, input.requestId);
-    if (bot.snapshot.pending.length >= MAX_PENDING || bot.snapshot.inbox.length >= MAX_INBOX) {
-      throw new CommandError(
-        this.#mint("limit_exceeded"),
-        "not_admitted",
-        "the bot has no room for another admission",
-        input.requestId,
-      );
-    }
-    try {
-      return await handle.submit(input);
-    } catch (cause) {
-      // A failure the runtime already classified keeps its identity and disposition; only
-      // an unclassified one becomes "admission unconfirmed", where the client keeps its
-      // outbox entry and retries with the same requestId.
-      if (cause instanceof ClassifiedFailure) throw cause;
-      throw new CommandError(
-        this.#mint("internal"),
-        "unknown",
-        "admission could not be confirmed",
-        input.requestId,
-        { cause },
-      );
-    }
+    return this.#serialize(bot.snapshot.botId, async () => {
+      const handle = this.#handle(connectionId, input.requestId);
+      let stored: Submission | undefined;
+      try {
+        stored = await handle.submission({ requestId: input.requestId });
+      } catch (cause) {
+        if (cause instanceof ClassifiedFailure) throw cause;
+        throw new CommandError(
+          this.#mint("internal"),
+          "unknown",
+          "the submission record could not be read",
+          input.requestId,
+          { cause },
+        );
+      }
+      if (stored !== undefined) return stored;
+      if (
+        bot.snapshot.pending.length + bot.reserved.size >= MAX_PENDING ||
+        bot.snapshot.inbox.length >= MAX_INBOX
+      ) {
+        throw new CommandError(
+          this.#mint("limit_exceeded"),
+          "not_admitted",
+          "the bot has no room for another admission",
+          input.requestId,
+        );
+      }
+      bot.reserved.add(input.requestId);
+      try {
+        const record = await handle.submit(input);
+        if (record.status === "done" || record.status === "unanswered") {
+          bot.reserved.delete(input.requestId);
+        }
+        return record;
+      } catch (cause) {
+        bot.reserved.delete(input.requestId);
+        // A failure the runtime already classified keeps its identity and disposition;
+        // only an unclassified one becomes "admission unconfirmed", where the client
+        // keeps its outbox entry and retries with the same requestId.
+        if (cause instanceof ClassifiedFailure) throw cause;
+        throw new CommandError(
+          this.#mint("internal"),
+          "unknown",
+          "admission could not be confirmed",
+          input.requestId,
+          { cause },
+        );
+      }
+    });
   }
+
+  /** One bot's admissions never interleave, so a budget check is atomic with its submit. */
+  #serialize<T>(botId: string, run: () => Promise<T>): Promise<T> {
+    const previous = this.#admissions.get(botId) ?? Promise.resolve();
+    const next = previous.then(run, run);
+    this.#admissions.set(
+      botId,
+      next.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return next;
+  }
+
+  /** Encoded bytes of one message in the frame a client would receive it in. */
+  #measureMessage = (message: ConversationSnapshot["messages"][number]): number =>
+    this.#hubOptions.measure({ type: "append", trace: "tr_measure", message });
 
   /** One failure episode, one error record: only a failure minted here is an origin. */
   #record(
     evt: FailEvent,
     trace: string,
-    botId: string,
+    botId: string | undefined,
     connectionId: string,
     error: unknown,
     requestId?: string,
@@ -371,7 +444,7 @@ export class ConversationService {
     const own = this.#minted.has(failure.id);
     this.#log?.emit(own ? "error" : "warn", "core", evt, {
       trace,
-      botId,
+      ...(botId === undefined ? {} : { botId }),
       connId: connectionId,
       ...(requestId === undefined ? {} : { reqId: requestId }),
       failure,
@@ -455,6 +528,10 @@ export class ConversationService {
     return this.#botOf(connectionId, requestId).snapshot.botId;
   }
 
+  #connectionBot(connectionId: string): string | undefined {
+    return this.#connections.get(connectionId)?.botId;
+  }
+
   #botOf(connectionId: string, requestId?: string): Bot {
     const connection = this.#connections.get(connectionId);
     if (connection === undefined || connection.state !== "live" || connection.bot === undefined) {
@@ -514,6 +591,7 @@ export class ConversationService {
           unavailable: { reason, message },
         },
         ranks: new Map(),
+        reserved: new Set<string>(),
         release: () => undefined,
       };
     }
@@ -524,8 +602,27 @@ export class ConversationService {
     let ready = false;
     let bot: Bot;
     const apply = (event: RuntimeEvent): void => {
-      const next = trimWindow(reduceView(bot.snapshot, event, bot.ranks), this.#window);
+      const wasRunning = bot.snapshot.running;
+      if (event.type === "submission") bot.reserved.delete(event.record.requestId);
+      let next = reduceView(bot.snapshot, event, bot.ranks);
+      if (event.type === "error" && event.failure.kind === "storage_failed") {
+        // The harness closed itself: the handle is dead, so the bot is unavailable until
+        // `recover` opens it again (ARCHITECTURE.md, "Failure containment").
+        next = {
+          ...next,
+          running: false,
+          streaming: null,
+          pending: [],
+          inbox: [],
+          unavailable: { reason: event.failure.kind, message: event.message },
+        };
+        bot.handle = undefined;
+        bot.degraded = { reason: event.failure.kind, message: event.message };
+        this.#onSessionFailed?.(next.botId, event.failure.kind, event.message);
+      }
+      next = trimWindow(next, this.#window, this.#measureMessage, MAX_PAGE_BYTES);
       bot.snapshot = next;
+      if (next.running !== wasRunning) this.#onRunning?.(next.botId, next.running);
       // A snapshot from the runtime may carry a stale pending list; broadcast the one the
       // bot actually holds so a client never adopts a downgraded submission.
       hub.publish(
@@ -546,8 +643,15 @@ export class ConversationService {
       handle,
       degraded: undefined,
       hub,
-      snapshot: subscription.snapshot,
+      // The runtime's own baseline is a page too: it is trimmed before any client sees it.
+      snapshot: trimWindow(
+        subscription.snapshot,
+        this.#window,
+        this.#measureMessage,
+        MAX_PAGE_BYTES,
+      ),
       ranks,
+      reserved: new Set<string>(),
       release: () => {
         // Stay buffering while draining: an event produced by a sink mid-release must
         // queue behind the earlier ones instead of overtaking them.
