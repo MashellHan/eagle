@@ -17,8 +17,9 @@ import {
   parseJson,
   type ServerEvent,
 } from "../protocol/frames.ts";
-import { assertFrameBudget, assertInboundBytes } from "../protocol/validate.ts";
+import { assertFrameBudget, assertInboundBytes, validateCommand } from "../protocol/validate.ts";
 import { PROTOCOL_VERSION } from "../protocol/version.ts";
+import { serverFailure } from "./failures.ts";
 
 const Events = {
   openOk: declareEvent("transport.conn.open.ok"),
@@ -163,6 +164,7 @@ export const attachConnection = (socket: WebSocket, deps: ConnectionDeps): void 
   socket.on("close", () => {
     closed = true;
     if (idleTimer !== undefined) clearTimeout(idleTimer);
+    service.unsubscribe(deps.connId);
     if (subscribed) registry.release(connectionBot);
     deps.unregister(socket);
     log.emit("info", "transport", Events.closeEnd, { trace: `tr_${connId}`, connId });
@@ -269,6 +271,41 @@ export const attachConnection = (socket: WebSocket, deps: ConnectionDeps): void 
       emit({ type: "pong" });
       return;
     }
+    let checked: ClientCommand;
+    try {
+      // Wire limits live here, after the handshake: a version mismatch must still reach
+      // its own final frame and close code.
+      checked = validateCommand(command);
+    } catch (error) {
+      const reason = error instanceof FrameError ? error.reason : "invalid_command";
+      log.emit(
+        "warn",
+        "protocol",
+        reason === "limit_exceeded" ? Events.limitFail : Events.decodeFail,
+        {
+          trace,
+          connId,
+          failure: serverFailure(
+            reason === "limit_exceeded" ? "limit_exceeded" : "invalid_command",
+            "protocol",
+          ),
+          origin: true,
+          detail: { reason: "invalid" },
+        },
+      );
+      emit({
+        type: "error",
+        trace,
+        kind: reason === "limit_exceeded" ? "limit_exceeded" : "invalid_command",
+        disposition: "not_admitted",
+        failure: serverFailure("invalid_command", "protocol").id,
+        message: "the command was refused",
+        ...(command.type === "send" ? { requestId: command.requestId } : {}),
+      });
+      return;
+    }
+    command = checked;
+    if (command.type === "hello" || command.type === "ping") return;
     log.emit("debug", "protocol", Events.commandStart, {
       trace,
       connId,
@@ -306,7 +343,10 @@ export const attachConnection = (socket: WebSocket, deps: ConnectionDeps): void 
       subscribed = true;
       connectionBot = command.botId;
       registry.touch(command.botId);
-      emit({ type: "snapshot", rev, trace, value: snapshot });
+      // The hub already published this baseline to the sink, numbered: sending it again
+      // would paint an older snapshot over anything that arrived since (PROTOCOL I1/I3).
+      void rev;
+      void snapshot;
       return;
     }
     if (command.type === "send") {

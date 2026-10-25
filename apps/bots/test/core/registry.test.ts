@@ -235,3 +235,25 @@ test("recover re-opens a bot whose open failed", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("a delete whose close times out leaves the bot in quarantine", async () => {
+  const setup = await bench({ closeOutcome: "timeout" });
+  try {
+    await setup.registry.start();
+    const summary = await setup.registry.create("stuck2", "tr_create_0005");
+    await setup.registry.open(summary.id, "tr_open_000008");
+    await assert.rejects(
+      () => setup.registry.remove(summary.id, "tr_delete_0003"),
+      /quarantined/,
+      "a close that did not finish refuses the delete",
+    );
+    assert.equal(setup.registry.state(summary.id), "quarantined");
+    assert.deepEqual(
+      setup.registry.summaries().map((bot) => bot.id),
+      [summary.id],
+      "the catalog entry is still there",
+    );
+  } finally {
+    await setup.cleanup();
+  }
+});

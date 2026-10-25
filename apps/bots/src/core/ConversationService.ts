@@ -20,6 +20,8 @@ export type OpenBot = (botId: string, trace: string) => Promise<RuntimeHandle>;
 
 export type ConversationServiceOptions = {
   readonly open: OpenBot;
+  /** The handle the registry owns right now; a cached bot whose handle was closed is stale. */
+  readonly handleOf?: (botId: string) => RuntimeHandle | undefined;
   /** Encoded bytes of one event, measured by the transport (see EventHub). */
   readonly measure: (event: RuntimeEvent) => number;
   readonly schedule?: (run: () => void) => void;
@@ -71,6 +73,7 @@ type Connection = {
 
 export class ConversationService {
   readonly #open: OpenBot;
+  readonly #handleOf: ((botId: string) => RuntimeHandle | undefined) | undefined;
   readonly #hubOptions: {
     readonly measure: (event: RuntimeEvent) => number;
     readonly schedule?: (run: () => void) => void;
@@ -80,6 +83,7 @@ export class ConversationService {
 
   constructor(options: ConversationServiceOptions) {
     this.#open = options.open;
+    this.#handleOf = options.handleOf;
     this.#hubOptions =
       options.schedule === undefined
         ? { measure: options.measure }
@@ -217,12 +221,10 @@ export class ConversationService {
   /** Re-opens an unavailable bot and adopts the new handle in place, so the hub survives. */
   async #reopen(bot: Bot, botId: string, trace: string): Promise<ConversationSnapshot> {
     const handle = await this.#open(botId, trace);
-    const rebuilt = await this.#attach(handle, bot.hub, trace);
-    bot.handle = rebuilt.handle;
-    bot.degraded = undefined;
-    bot.snapshot = rebuilt.snapshot;
-    Object.assign(bot, { ranks: rebuilt.ranks });
-    rebuilt.release();
+    // Attached onto the same object: the event closure, the connection and the cache all
+    // keep pointing at one view, and the hub keeps its subscribers.
+    const attached = await this.#attach(handle, bot.hub, trace, bot);
+    attached.release();
     return bot.snapshot;
   }
 
@@ -272,7 +274,19 @@ export class ConversationService {
     return connection.bot;
   }
 
-  #bot(botId: string, trace: string): Promise<Bot> {
+  async #bot(botId: string, trace: string): Promise<Bot> {
+    const cached = this.#bots.get(botId);
+    if (cached !== undefined) {
+      const bot = await cached.catch(() => undefined);
+      // A handle the registry closed is not a handle this service may keep using.
+      const live = this.#handleOf?.(botId);
+      if (bot !== undefined && (this.#handleOf === undefined || bot.handle === live)) return bot;
+      this.#bots.delete(botId);
+    }
+    return this.#openBotCached(botId, trace);
+  }
+
+  #openBotCached(botId: string, trace: string): Promise<Bot> {
     const existing = this.#bots.get(botId);
     if (existing !== undefined) return existing;
     const created = this.#openBot(botId, trace);
@@ -316,7 +330,7 @@ export class ConversationService {
     }
   }
 
-  async #attach(handle: RuntimeHandle, hub: EventHub, trace: string): Promise<Bot> {
+  async #attach(handle: RuntimeHandle, hub: EventHub, trace: string, target?: Bot): Promise<Bot> {
     const buffered: RuntimeEvent[] = [];
     let ready = false;
     let bot: Bot;
@@ -338,7 +352,8 @@ export class ConversationService {
       apply(event);
     });
     seedRanks(ranks, subscription.snapshot.pending);
-    bot = {
+    bot = target ?? ({} as Bot);
+    Object.assign(bot, {
       handle,
       degraded: undefined,
       hub,
@@ -356,7 +371,7 @@ export class ConversationService {
           apply(event);
         }
       },
-    };
+    });
     return bot;
   }
 }

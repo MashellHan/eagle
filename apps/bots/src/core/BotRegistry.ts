@@ -144,6 +144,11 @@ export class BotRegistry {
     return this.#entries.get(botId)?.state;
   }
 
+  /** The handle the registry currently owns; absent after an idle close or a delete. */
+  handleOf(botId: string): RuntimeHandle | undefined {
+    return this.#entries.get(botId)?.handle;
+  }
+
   async create(title: string, trace: string): Promise<BotSummary> {
     if (this.#entries.size >= 200) {
       throw new ClassifiedFailure(newFailure("limit_exceeded"), "not_admitted", "catalog is full");
@@ -198,7 +203,16 @@ export class BotRegistry {
     this.#cancelTimers(entry);
     if (entry.handle !== undefined) {
       const outcome = await entry.handle.close(trace, this.#options.closeDeadlineMs);
-      if (outcome === "timeout") this.#quarantine(entry, trace);
+      if (outcome === "timeout") {
+        // A close that did not finish owns the handle: nothing may move or rewrite the
+        // directory until the retry reports `closed` (ARCHITECTURE.md, quarantine).
+        this.#quarantine(entry, trace);
+        throw new ClassifiedFailure(
+          newFailure("internal"),
+          "not_admitted",
+          "the bot's close timed out; it is quarantined",
+        );
+      }
     }
     try {
       await this.#options.directory.remove(botId);
@@ -234,10 +248,7 @@ export class BotRegistry {
         "the bot is quarantined",
       );
     }
-    if (entry.handle !== undefined) {
-      this.#touch(entry);
-      return entry.handle;
-    }
+    if (entry.handle !== undefined && !entry.closing) return entry.handle;
     entry.opening ??= this.#openOnce(entry, trace);
     return entry.opening;
   }
@@ -365,6 +376,8 @@ export class BotRegistry {
     if (entry.state === "quarantined" || entry.closing) return;
     const trace = this.#boot();
     const busy = await entry.handle.busy().catch(() => ({ run: false, tasks: false }));
+    // A subscription or a delete can arrive while `busy()` was in flight.
+    if (entry.subscribers > 0 || entry.closing || entry.handle === undefined) return;
     if (busy.run || busy.tasks) {
       // A background task keeps the bot warm; the close condition reads the port.
       this.#scheduleIdle(entry);
@@ -449,7 +462,6 @@ export class BotRegistry {
         continue;
       }
       // Quiet: keep it open briefly in case a client attaches, then let idle close take it.
-      entry.subscribers = Math.max(0, entry.subscribers - 1);
       if (entry.subscribers === 0) this.#scheduleIdle(entry);
     }
     this.#options.log.emit("info", "core", Events.recoveryOk, {

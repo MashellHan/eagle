@@ -70,6 +70,7 @@ export const startStack = async (
   });
   const service = new ConversationService({
     open: (botId, trace) => registry.open(botId, trace),
+    handleOf: (botId) => registry.handleOf(botId),
     measure: measureEvent,
   });
   const daemon = await startServer({

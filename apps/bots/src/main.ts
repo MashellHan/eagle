@@ -2,7 +2,7 @@
 // one token, one log, one registry and one server. Everything here is composition; the
 // behaviour lives in the modules it wires.
 import { readFileSync } from "node:fs";
-import { realpath } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { type DaemonConfig, readConfig } from "./config.ts";
 import { BotDirectory, nodeDirectoryFs } from "./core/BotDirectory.ts";
@@ -43,7 +43,14 @@ export const measureEvent = (event: RuntimeEvent): number =>
   Buffer.byteLength(JSON.stringify(encodeServerEvent(toServerEvent({ ...event, rev: 0 }))));
 
 export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> => {
-  const root = await realpath(config.root).catch(() => config.root);
+  // The lock port is derived from the canonical root, so the root has to exist before the
+  // hash is computed: a path that resolves differently on the next start would give the
+  // same directory a second lock port (ARCHITECTURE.md, "Singleton lock").
+  await mkdir(config.root, { recursive: true, mode: 0o700 }).catch(() => undefined);
+  const root = await realpath(config.root).catch((error: unknown) => {
+    process.stderr.write(`bots: cannot resolve the root ${config.root}: ${String(error)}\n`);
+    process.exit(1);
+  });
   const canonical: DaemonConfig = { ...config, root };
   let lock: Awaited<ReturnType<typeof acquireLock>>;
   try {
@@ -51,7 +58,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   } catch (error) {
     if (error instanceof LockError) {
       process.stderr.write(`bots: ${error.message}\n`);
-      process.exit(error.reason === "running" ? 0 : 1);
+      process.exit(1);
     }
     throw error;
   }
@@ -80,6 +87,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   await registry.start();
   const service = new ConversationService({
     open: (botId, trace) => registry.open(botId, trace),
+    handleOf: (botId) => registry.handleOf(botId),
     measure: measureEvent,
   });
   const capabilities = {

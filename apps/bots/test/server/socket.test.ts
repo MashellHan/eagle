@@ -218,3 +218,131 @@ test("a command before the subscription is refused with a keep-alive error", asy
     await stack.close();
   }
 });
+
+test("the first frame is the only baseline and revisions never go back", async () => {
+  const stack = await startStack({
+    script: {
+      onSubmit: (input) => [
+        {
+          type: "append",
+          trace: input.trace,
+          message: {
+            id: "e_1",
+            role: "user",
+            state: "complete",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            blocks: [{ type: "text", text: input.text }],
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const botId = await stack.createBot("基线");
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    await send(socket, { type: "subscribe", botId, trace: tr("base") });
+    const seen: Record<string, unknown>[] = [await frames.next()];
+    await send(socket, {
+      type: "send",
+      requestId: "r_baseline_01",
+      text: "问题",
+      whenBusy: "followUp",
+      trace: tr("base2"),
+    });
+    for (let index = 0; index < 40; index += 1) {
+      const frame = await frames.next(200).catch(() => undefined);
+      if (frame === undefined) break;
+      seen.push(frame);
+    }
+    assert.equal(seen.filter((frame) => frame.type === "snapshot").length, 1, "one baseline only");
+    const revs = seen
+      .map((frame) => frame.rev)
+      .filter((rev): rev is number => typeof rev === "number");
+    assert.deepEqual(
+      revs,
+      [...revs].sort((a, b) => a - b),
+      "a later frame never carries an older revision",
+    );
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});
+
+test("closing the socket releases the bot so it can go idle", async () => {
+  const stack = await startStack({ idleCloseMs: 30 });
+  try {
+    const botId = await stack.createBot("释放");
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    await send(socket, { type: "subscribe", botId, trace: tr("release") });
+    await frames.next();
+    assert.notEqual(stack.registry.handleOf(botId), undefined);
+    socket.close();
+    for (let index = 0; index < 200 && stack.registry.handleOf(botId) !== undefined; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(
+      stack.registry.handleOf(botId),
+      undefined,
+      "with no subscriber the idle close takes the handle",
+    );
+    const again = stack.connect();
+    const renewed = frameQueue(again);
+    await send(again, hello);
+    await renewed.next();
+    await send(again, { type: "subscribe", botId, trace: tr("reopen") });
+    assert.equal((await renewed.next()).type, "snapshot", "a later subscribe reopens the bot");
+    assert.notEqual(stack.registry.handleOf(botId), undefined, "and owns a live handle again");
+    again.close();
+  } finally {
+    await stack.close();
+  }
+});
+
+test("the wire limits refuse a bad requestId and an over-long text", async () => {
+  const stack = await startStack();
+  try {
+    const botId = await stack.createBot("限额");
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    await send(socket, { type: "subscribe", botId, trace: tr("limits") });
+    await frames.next();
+    await send(socket, {
+      type: "send",
+      requestId: "x",
+      text: "hi",
+      whenBusy: "followUp",
+      trace: tr("l1"),
+    });
+    const short = await frames.next();
+    assert.equal(short.type, "error");
+    assert.equal(short.kind, "invalid_command");
+    assert.equal(short.disposition, "not_admitted");
+    await send(socket, {
+      type: "send",
+      requestId: "r_long_000001",
+      text: "x".repeat(8_001),
+      whenBusy: "followUp",
+      trace: tr("l2"),
+    });
+    const long = await frames.next();
+    assert.equal(long.type, "error");
+    assert.equal(
+      long.kind,
+      "invalid_command",
+      "PROTOCOL.md maps an over-long text to invalid_command",
+    );
+    assert.equal(long.requestId, "r_long_000001", "the client can clear that outbox entry");
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});
