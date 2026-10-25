@@ -3,12 +3,14 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createModels, type FauxProviderHandle, fauxProvider } from "@earendil-works/pi-ai";
 import { WebSocket } from "ws";
 import { BotDirectory, nodeDirectoryFs } from "../../src/core/BotDirectory.ts";
-import { BotRegistry } from "../../src/core/BotRegistry.ts";
+import { BotRegistry, type RegistryOptions } from "../../src/core/BotRegistry.ts";
 import { ConversationService } from "../../src/core/ConversationService.ts";
 import { captureLog, type LogRecord } from "../../src/log/log.ts";
 import { measureEvent } from "../../src/main.ts";
+import { PiDurableRuntime } from "../../src/runtime/pi/PiDurableRuntime.ts";
 import { startServer } from "../../src/server/http.ts";
 import { FakeRuntime, type FakeScript } from "../../src/testing/FakeRuntime.ts";
 
@@ -22,7 +24,10 @@ export type Stack = {
   readonly token: string;
   readonly root: string;
   readonly records: LogRecord[];
-  readonly runtime: FakeRuntime;
+  /** Present only for a fake stack; a real stack drives the adapter instead. */
+  readonly fake: FakeRuntime | undefined;
+  /** Present only for a real stack, so a test can script the model. */
+  readonly faux: FauxProviderHandle | undefined;
   readonly directory: BotDirectory;
   readonly registry: BotRegistry;
   readonly service: ConversationService;
@@ -37,25 +42,44 @@ export type Stack = {
 
 const token = "test-token-0123456789-abcdefghijklmnop";
 
-export const startStack = async (
-  options: {
-    idleCloseMs?: number;
-    script?: FakeScript;
-    model?: { provider: string; modelId: string };
-  } = {},
-): Promise<Stack> => {
+export type StackOptions = {
+  readonly idleCloseMs?: number;
+  readonly script?: FakeScript;
+  readonly model?: { provider: string; modelId: string };
+  /** Run the real pi-durable adapter over real sqlite; only the model network is faked. */
+  readonly real?: boolean;
+};
+
+export const startStack = async (options: StackOptions = {}): Promise<Stack> => {
   const root = await mkdtemp(join(tmpdir(), "bots-server-"));
   const { log, records } = captureLog();
-  const runtime = new FakeRuntime(options.script === undefined ? {} : { script: options.script });
+  const fake =
+    options.real === true
+      ? undefined
+      : new FakeRuntime(options.script === undefined ? {} : { script: options.script });
+  let faux: FauxProviderHandle | undefined;
+  let model = options.model ?? { provider: "faux", modelId: "faux-1" };
+  let openRuntime: RegistryOptions["openRuntime"];
+  if (options.real === true) {
+    faux = fauxProvider({});
+    const models = createModels();
+    models.setProvider(faux.provider);
+    model = { provider: faux.getModel().provider, modelId: faux.getModel().id };
+    const adapter = new PiDurableRuntime({ models, log });
+    openRuntime = (spec) => adapter.open(spec);
+  } else {
+    const runtime = fake as FakeRuntime;
+    openRuntime = (spec) => runtime.open(spec);
+  }
   const directory = new BotDirectory(root, await nodeDirectoryFs());
   let opens = 0;
   const registry = new BotRegistry({
     directory,
     openRuntime: async (spec) => {
       opens += 1;
-      return runtime.open(spec);
+      return openRuntime(spec);
     },
-    model: options.model ?? { provider: "faux", modelId: "faux-1" },
+    model,
     log,
     idleCloseMs: options.idleCloseMs ?? 10 * 60 * 1000,
     quarantineRetryMs: 30_000,
@@ -100,7 +124,8 @@ export const startStack = async (
     token,
     root,
     records,
-    runtime,
+    fake,
+    faux,
     directory,
     registry,
     service,

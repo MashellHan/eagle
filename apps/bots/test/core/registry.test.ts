@@ -9,6 +9,7 @@ import { BotRegistry } from "../../src/core/BotRegistry.ts";
 import { ClassifiedFailure } from "../../src/core/domain.ts";
 import { captureLog } from "../../src/log/log.ts";
 import { FakeRuntime } from "../../src/testing/FakeRuntime.ts";
+import { createBench } from "../support/pi.ts";
 
 const fakeTimers = () => {
   let now = 0;
@@ -308,6 +309,48 @@ test("an upstream open failure is propagated, not re-originated at core", async 
     );
   } finally {
     await registry.shutdown();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("two subscribers share one real Harness, so one sqlite file has one owner", async () => {
+  const bench = await createBench();
+  const root = await mkdtemp(join(tmpdir(), "bots-registry-"));
+  const directory = new BotDirectory(root, await nodeDirectoryFs());
+  const { log } = captureLog();
+  let opens = 0;
+  const registry = new BotRegistry({
+    directory,
+    openRuntime: async (spec) => {
+      opens += 1;
+      return bench.runtime.open(spec);
+    },
+    model: { provider: "faux", modelId: "faux-1" },
+    log,
+    idleCloseMs: 60_000,
+    quarantineRetryMs: 60_000,
+    closeDeadlineMs: 1_000,
+    bootTrace: () => "tr_boot_probe",
+  });
+  try {
+    await directory.create({
+      id: "b_real",
+      title: "real",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      model: { provider: "faux", modelId: "faux-1" },
+    });
+    await registry.start();
+    const [first, second] = await Promise.all([
+      registry.open("b_real", "tr_a_00000001"),
+      registry.open("b_real", "tr_b_00000002"),
+    ]);
+    assert.equal(first, second, "one handle for the bot");
+    assert.equal(opens, 1, "one Harness opened over the one sqlite file");
+    assert.deepEqual(await first.busy(), { run: false, tasks: false });
+  } finally {
+    await registry.shutdown();
+    await bench.cleanup();
     await rm(root, { recursive: true, force: true });
   }
 });
