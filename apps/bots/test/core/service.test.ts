@@ -886,18 +886,23 @@ test("history pages older messages without touching the newest window", async ()
   );
 });
 
-test("resync publishes a snapshot at its own revision", async () => {
+test("resync broadcasts the snapshot with the command trace", async () => {
   const runtime = new FakeRuntime();
   const service = serviceFor(runtime);
   const received: HubEvent[] = [];
   await subscribe(service, received);
   runtime.handle("b_1").emit({ type: "status", trace, running: true, streaming: null, inbox: [] });
-  const resync = await service.resync("c_1");
+  const commandTrace = "tr_0190a1b5-6172-7d83-9e4f-506172839405";
+  const answer = service.resync("c_1", commandTrace);
   const last = received.at(-1);
+  assert.equal(answer, undefined, "the broadcast is the only reply");
   assert.equal(last?.type, "snapshot");
-  assert.equal(resync.rev, last?.rev, "the answer names the revision it publishes");
-  assert.deepEqual(last?.type === "snapshot" ? last.value : undefined, resync.snapshot);
-  assert.equal(resync.snapshot.running, true);
+  assert.equal(last?.trace, commandTrace);
+  assert.equal(
+    last?.type === "snapshot" ? last.value.running : undefined,
+    true,
+    "the snapshot names the state it carries",
+  );
 });
 
 test("resync folds a pending delta before it names the revision", async () => {
@@ -912,14 +917,14 @@ test("resync folds a pending delta before it names the revision", async () => {
     messageId: "e_1",
     changes: [{ kind: "text", index: 0, append: "!" }],
   });
-  const resync = await service.resync("c_1");
+  service.resync("c_1", trace);
   assert.deepEqual(
     received.map((event) => event.type),
     ["snapshot", "append", "delta", "snapshot"],
     "the delta is broadcast, not skipped",
   );
-  assert.equal(resync.rev, received.at(-1)?.rev);
-  const block = resync.snapshot.messages[0]?.blocks[0];
+  const snapshot = received.at(-1);
+  const block = snapshot?.type === "snapshot" ? snapshot.value.messages[0]?.blocks[0] : undefined;
   assert.equal(block?.type === "text" ? block.text : "", "e_1!", "the snapshot covers that delta");
 });
 
@@ -931,7 +936,7 @@ test("resync answers a snapshot that is complete for its window", async () => {
     createdAt: "x",
     blocks: [{ type: "text" as const, text: "half" }],
   };
-  const snapshot: ConversationSnapshot = {
+  const complete: ConversationSnapshot = {
     botId: "b_1",
     messages: [message("e_0"), message("e_1"), streaming],
     truncatedBefore: "e_0",
@@ -940,11 +945,56 @@ test("resync answers a snapshot that is complete for its window", async () => {
     inbox: [{ id: "i_1", mode: "followUp" }],
     running: true,
   };
-  const scripted = scriptedHandle({ snapshot });
+  const scripted = scriptedHandle({ snapshot: complete });
   const service = new ConversationService({ open: async () => scripted.handle, measure: utf8 });
-  await subscribe(service, []);
-  const resync = await service.resync("c_1");
-  assert.deepEqual(resync.snapshot, snapshot, "provisional, pending and paging survive");
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  service.resync("c_1", trace);
+  const snapshot = received.at(-1);
+  assert.deepEqual(
+    snapshot?.type === "snapshot" ? snapshot.value : undefined,
+    complete,
+    "the client receives provisional, pending, inbox and paging intact",
+  );
+});
+
+test("a reentrant delta during resync is numbered after the snapshot and applies once", async () => {
+  const runtime = new FakeRuntime();
+  const service = serviceFor(runtime);
+  const received: HubEvent[] = [];
+  let reentered = false;
+  await service.subscribe("c_1", "b_1", trace, (event) => {
+    received.push(event);
+    if (event.type === "delta" && !reentered) {
+      reentered = true;
+      runtime.handle("b_1").emit({
+        type: "delta",
+        trace,
+        messageId: "e_1",
+        changes: [{ kind: "text", index: 0, append: "B" }],
+      });
+    }
+  });
+  runtime.handle("b_1").emit({ type: "append", trace, message: message("e_1") });
+  runtime.handle("b_1").emit({
+    type: "delta",
+    trace,
+    messageId: "e_1",
+    changes: [{ kind: "text", index: 0, append: "A" }],
+  });
+  service.resync("c_1", trace);
+  const snapshots = received.filter((event) => event.type === "snapshot");
+  const resync = snapshots.at(-1);
+  const block = resync?.type === "snapshot" ? resync.value.messages[0]?.blocks[0] : undefined;
+  assert.equal(
+    block?.type === "text" ? block.text : "",
+    "e_1A",
+    "the snapshot covers only what was numbered before it",
+  );
+  service.resync("c_1", trace);
+  const after = received.filter((event) => event.type === "snapshot").at(-1);
+  const final = after?.type === "snapshot" ? after.value.messages[0]?.blocks[0] : undefined;
+  assert.equal(final?.type === "text" ? final.text : "", "e_1AB", "the delta applied exactly once");
 });
 
 test("abort and recover reach the runtime and need a subscription", async () => {

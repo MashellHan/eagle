@@ -206,15 +206,15 @@ export class ConversationService {
   }
 
   /**
-   * Answers a snapshot of the current view. It is published like any other bot-scoped
-   * event, so its revision names exactly the content it carries and no later increment
-   * can be replayed on top of it; pending deltas are folded in first.
+   * Answers by broadcasting a snapshot of the current view on this connection. The
+   * broadcast is the only reply: the caller must not write a second frame for it, or a
+   * later increment could be followed by this older snapshot. The event carries the
+   * command's trace and a revision that names exactly its content, because pending
+   * deltas are folded in first.
    */
-  resync(connectionId: string): { readonly rev: number; readonly snapshot: ConversationSnapshot } {
+  resync(connectionId: string, trace: string): void {
     const bot = this.#subscribed(connectionId);
-    const snapshot = bot.snapshot;
-    const event = bot.hub.publishSnapshot(snapshot);
-    return { rev: event.rev, snapshot };
+    bot.hub.publishSnapshot(bot.snapshot, trace);
   }
 
   #refuse(message: string, requestId?: string): CommandError {
