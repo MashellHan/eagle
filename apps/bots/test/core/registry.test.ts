@@ -7,6 +7,7 @@ import test from "node:test";
 import { BotDirectory, nodeDirectoryFs } from "../../src/core/BotDirectory.ts";
 import { BotRegistry } from "../../src/core/BotRegistry.ts";
 import { ClassifiedFailure } from "../../src/core/domain.ts";
+import type { RuntimeBotSpec } from "../../src/core/RuntimePort.ts";
 import { captureLog } from "../../src/log/log.ts";
 import { FakeRuntime } from "../../src/testing/FakeRuntime.ts";
 import { createBench } from "../support/pi.ts";
@@ -77,10 +78,12 @@ const bench = async (
   const runtime = new FakeRuntime();
   const timers = fakeTimers();
   let opens = 0;
+  const specs: RuntimeBotSpec[] = [];
   const registry = new BotRegistry({
     directory,
     openRuntime: async (spec) => {
       opens += 1;
+      specs.push(spec);
       if (options.openGate !== undefined) await options.openGate;
       const handle = await runtime.open(spec);
       const busy = (options.busy ?? []).includes(spec.id);
@@ -111,6 +114,8 @@ const bench = async (
     registry,
     records,
     timers,
+    directory,
+    specs,
     opens: () => opens,
     setCloseOutcome: (outcome: "closed" | "timeout") => {
       options.closeOutcome = outcome;
@@ -118,6 +123,26 @@ const bench = async (
     cleanup: () => rm(root, { recursive: true, force: true }),
   };
 };
+
+test("a bot's stored thinking level reaches the runtime spec", async () => {
+  const setup = await bench();
+  try {
+    await setup.directory.create({
+      id: "b_think",
+      title: "think",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      model: { provider: "faux", modelId: "faux-1" },
+      thinkingLevel: "medium",
+    });
+    await setup.registry.start();
+    await setup.registry.open("b_think", "tr_think_0001");
+    assert.equal(setup.specs.at(-1)?.thinkingLevel, "medium");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
 
 test("open is idempotent and shared by concurrent subscribers", async () => {
   const setup = await bench({ bots: ["shared"] });

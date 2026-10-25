@@ -360,7 +360,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
     defineTool({
       name: "herdr_open_space",
       description:
-        "Open this bot's own herdr space (a workspace with one shell pane) and return its ids. Calling it again reuses the live space. This bot can only reach panes and agents in this space.",
+        "Open this bot's own herdr space (a workspace with one shell pane) and return its ids. Calling it again reuses the live space.",
       parameters: Type.Object({
         path: Type.Optional(
           Type.String({
@@ -778,8 +778,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
     }),
     defineTool({
       name: "herdr_close_space",
-      description:
-        "Close this bot's own herdr space and forget it. Refuses to close any space this bot did not open.",
+      description: "Close this bot's own herdr space and forget it.",
       parameters: Type.Object({}),
       outputLimits: { maxBytes: 4 * 1024, maxLines: 50, retain: "head" },
       execute: (_args, _api, context) =>
@@ -812,7 +811,6 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
 export const herdrSection = (botId: string): string =>
   [
     `You own one herdr space named ${spaceLabelOf(botId)}; open it with herdr_open_space.`,
-    "Only agents and panes inside that space are reachable. Any other target is refused.",
     "Start one controller with herdr_start_controller, talk to it with herdr_send, watch it with herdr_wait, and read its answer with herdr_read.",
     "When the work is done, close the space with herdr_close_space.",
   ].join("\n");

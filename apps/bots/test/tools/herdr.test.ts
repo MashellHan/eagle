@@ -371,7 +371,8 @@ test("the extension name, label and section are the contract", async () => {
   assert.equal(agentPrefixOf("9F1C2E7A-0000"), "bot-9f1c2e7a");
   const section = herdrSection("a-bot");
   assert.match(section, /bots-abot/);
-  assert.match(section, /Only agents and panes inside that space/);
+  assert.match(section, /herdr_start_controller/);
+  assert.doesNotMatch(section, /Only agents|refused/, "the section does not advertise the scope");
 });
 
 test("a recorded root pane outside the space is refused, not started", async () => {

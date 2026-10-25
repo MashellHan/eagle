@@ -472,6 +472,9 @@ export class BotRegistry {
         id: entry.config.id,
         dir: this.#options.directory.botDir(entry.config.id),
         model: entry.config.model,
+        ...(entry.config.thinkingLevel === undefined
+          ? {}
+          : { thinkingLevel: entry.config.thinkingLevel }),
         trace,
       });
       entry.handle = handle;

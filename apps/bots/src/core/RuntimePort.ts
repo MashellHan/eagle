@@ -40,6 +40,8 @@ export type RuntimeBotSpec = {
   readonly id: string;
   readonly dir: string;
   readonly model: { readonly provider: string; readonly modelId: string };
+  /** A bot's stored reasoning level, when it has one; the runtime applies it per bot. */
+  readonly thinkingLevel?: string;
   readonly trace: string;
 };
 

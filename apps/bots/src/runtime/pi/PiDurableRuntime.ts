@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { Models } from "@earendil-works/pi-ai";
+import type { Models, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import {
   type AgentEvent,
   type AgentEventStream,
@@ -151,6 +151,9 @@ export class PiDurableRuntime implements RuntimePort {
         agent: {
           model: { provider: spec.model.provider, modelId: spec.model.modelId },
           cwd: workspace.root,
+          ...(spec.thinkingLevel === undefined
+            ? {}
+            : { thinkingLevel: spec.thinkingLevel as ModelThinkingLevel }),
         },
       });
       handle = new PiRuntimeHandle({

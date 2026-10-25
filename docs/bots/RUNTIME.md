@@ -291,6 +291,7 @@ Projection, which is also part of the mapping contract:
 | `progress.outputIntervalMs` | 100 | Reserved (tool output) |
 | `afterFailedRun` | `"continue"` | A failed run must not strand queued follow-ups |
 | `restartLimit` | 5 (default) | Parked tasks surface as `task_parked` and are cleared by `recover` |
+| `thinkingLevel` (per bot) | from `bot.json`, absent = the model's default | Applied when the Harness opens; a stored level is the bot's own reasoning effort. The daemon registers exactly one model (`BOTS_MODEL`), so a bot whose config names another id settles `no_model` until the model endpoint changes |
 | `contextRetentionMs`, `documentRetentionMs` | 600 000 (default) | Idle close frees memory; defaults keep reopen cheap |
 
 Each bot owns its settings object so one bot's policy cannot affect another
@@ -386,6 +387,10 @@ target is resolved inside it.
 
 Rules:
 
+- **The prompt does not advertise the scope.** The `bots-herdr` section names the space and
+  how to use the tools; the scope is enforced by the tools (and their refusals), not stated
+  as a prohibition in the prompt, because the shell a bot may also use can reach the
+  machine. A model that asks the tools for another space still gets a refusal.
 - **One space, and only its contents.** The space id, its full label (prefix plus a
   per-instance nonce) and its root pane live in `<bot dir>/herdr.json` (0600, outside the
   model's workspace). Every call re-reads the space from herdr and requires **both** the
