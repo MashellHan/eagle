@@ -72,7 +72,10 @@ public struct UserBubble: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 16)
         .padding(.vertical, 9)
-        .background(Capsule().fill(Theme.Palette.accentFill))
+        .background(
+          RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(Theme.Palette.accentFill)
+        )
         .textSelection(.enabled)
     }
   }

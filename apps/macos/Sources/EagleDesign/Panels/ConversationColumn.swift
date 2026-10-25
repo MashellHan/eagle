@@ -114,7 +114,8 @@ public struct ConversationColumn: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.Metric.conversationInset)
-        .padding(.top, 6)
+        // Clear of the top edge fade: the first row must not start under it.
+        .padding(.top, Theme.Metric.edgeFadeHeight + 10)
         .padding(.bottom, 12)
         .animation(.easeOut(duration: 0.2), value: entries.count)
       }
