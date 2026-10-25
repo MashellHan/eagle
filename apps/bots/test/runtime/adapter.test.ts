@@ -181,7 +181,10 @@ test("a provider error settles unanswered with reason model_error", async () => 
       ["unanswered", "model_error"],
       "F9: the provider error settles the input, it does not throw",
     );
-    assert.equal(record.status, "placed");
+    assert.ok(
+      record.status === "placed" || record.status === "unanswered",
+      "F24: the admission read may already be settled by the time it is read",
+    );
     const logged = JSON.stringify(bench.records);
     assert.ok(!logged.includes("upstream 500"), "provider text never reaches a log");
     assert.ok(!logged.includes(echoed), "a provider error that echoes the prompt stays out too");

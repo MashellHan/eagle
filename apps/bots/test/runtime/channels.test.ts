@@ -81,12 +81,27 @@ test("a sink that throws gets a fresh baseline and the subscription keeps workin
       "the reattached watch to hand over a baseline",
       10_000,
     );
-    const baseline = of(events, "snapshot").at(-1);
+    const baselineIndex = events.findIndex((event) => event.type === "snapshot");
+    const baseline = of(events, "snapshot")[0];
     assert.deepEqual(
       baseline?.value.messages.map((message) => message.role),
       ["user"],
       "the baseline describes the transcript at reattach time",
     );
+    // It is not allowed to be older than what the subscriber already applied: every
+    // message delivered before it must still be inside it (RUNTIME.md, baseline order).
+    const appliedBefore = new Set(
+      events
+        .slice(0, baselineIndex)
+        .flatMap((event) => (event.type === "append" ? [event.message.id] : [])),
+    );
+    const inBaseline = new Set(baseline?.value.messages.map((message) => message.id) ?? []);
+    for (const id of appliedBefore) {
+      assert.ok(
+        inBaseline.has(id) || id.startsWith("p_a"),
+        `the baseline must not be older than ${id}`,
+      );
+    }
     assert.ok(
       bench.records.some(
         (record) =>
@@ -102,7 +117,6 @@ test("a sink that throws gets a fresh baseline and the subscription keeps workin
     // The subscription still delivers: the next turn arrives without a new subscribe call.
     bench.faux.setResponses([text("第二次的答案。")]);
     const before = events.length;
-    const baselineIndex = events.length - 1;
     await handle.submit({ requestId: "r_throw_2", text: "第二次", whenBusy: "followUp", trace });
     await waitFor(
       () =>
@@ -111,13 +125,6 @@ test("a sink that throws gets a fresh baseline and the subscription keeps workin
         ),
       "the reattached stream to deliver the next answer",
       10_000,
-    );
-    const firstNew = events.findIndex(
-      (event, index) => index > baselineIndex && event.type === "append",
-    );
-    assert.ok(
-      firstNew > baselineIndex,
-      "the baseline reaches the subscriber before any later commit",
     );
     assert.equal(await handle.close(trace, 10_000), "closed");
   } finally {

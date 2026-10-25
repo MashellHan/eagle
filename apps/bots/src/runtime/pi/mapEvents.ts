@@ -125,6 +125,14 @@ export class EventMapper {
     for (const id of [...this.#records.keys()]) {
       if (!live.has(id)) this.#records.delete(id);
     }
+    // The snapshot is the newer truth about status: an input the run names has been
+    // placed, whatever the ledger last saw (PROTOCOL.md ranks statuses this way).
+    for (const input of event.run?.inputs ?? []) {
+      const record = this.#records.get(String(input));
+      if (record !== undefined && record.status === "queued") {
+        this.#records.set(record.id, { ...record, status: "placed" });
+      }
+    }
     this.#running = event.run !== undefined;
     this.#inbox = event.inbox.map((item) => ({ id: String(item.id), mode: inboxMode(item.mode) }));
     this.#usage = convertUsage(event.usage);

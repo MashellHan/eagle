@@ -5,6 +5,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { ClassifiedFailure } from "../../src/core/domain.ts";
 import type { RuntimeEvent } from "../../src/core/RuntimePort.ts";
 import {
   armedFailureStorage,
@@ -124,7 +125,10 @@ test("a storage failure closes the harness and classifies storage_failed", async
         () => "admitted",
         (cause: unknown) => cause,
       );
-    assert.ok(refused instanceof Error || refused === "admitted");
+    assert.ok(
+      refused === "admitted" || refused instanceof ClassifiedFailure,
+      "a rejection is classified for the caller, never a bare error",
+    );
     await waitFor(
       () => bench.records.some((record) => record.err?.kind === "storage_failed"),
       "the storage failure to classify",
@@ -135,10 +139,14 @@ test("a storage failure closes the harness and classifies storage_failed", async
     assert.equal(identities.size, 1, "one session episode gets one identity");
     const errors = classified.filter((record) => record.level === "error");
     assert.equal(errors.length, 1, "exactly one error record, whichever channel reported first");
+    assert.ok(
+      errors[0]?.evt === "pi.report" || errors[0]?.evt === "runtime.submit.fail",
+      "the error record belongs to whichever channel reported the episode first",
+    );
     assert.equal(
-      errors[0]?.evt,
-      "pi.report",
-      "the error record belongs to the pi layer, whichever channel reported first",
+      errors[0]?.layer,
+      errors[0]?.evt === "pi.report" ? "pi" : "runtime",
+      "and to that channel's layer",
     );
     assert.equal(errors[0]?.err?.origin, true);
     assert.ok(
@@ -148,7 +156,8 @@ test("a storage failure closes the harness and classifies storage_failed", async
     const broadcast = of(events, "error").filter(
       (event) => event.failure.kind === "storage_failed",
     );
-    assert.ok(broadcast.length <= 1, "the subscriber is told once");
+    assert.equal(broadcast.length, 1, "the subscriber is told exactly once");
+    assert.equal(broadcast[0]?.failure.id, [...identities][0], "with the logged identity");
     assert.equal(storage.state.failed > 0, true);
   } finally {
     await bench.cleanup();

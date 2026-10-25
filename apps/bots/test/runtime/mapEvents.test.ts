@@ -651,6 +651,35 @@ test("a snapshot from the stream rebuilds pending from the work it names", () =>
   assert.deepEqual(mapper.view().pending, [], "a settled input leaves pending");
 });
 
+test("a snapshot upgrades a queued record the run has placed", () => {
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock });
+  const queued = { id: "10", requestId: "r_0000006", status: "queued" as const };
+  mapper.map({ type: "submission", record: submissionRecord(queued) } as never, trace);
+  assert.deepEqual(
+    mapper.view().pending.map((item) => item.status),
+    ["queued"],
+  );
+  mapper.seed(
+    {
+      type: "snapshot",
+      entries: [userEntry()],
+      run: { inputs: ["10"] },
+      tools: [],
+      nestedTools: [],
+      compactions: [],
+      inbox: [],
+      agent: {},
+      usage: { models: {}, tools: {} },
+    } as never,
+    trace,
+  );
+  assert.deepEqual(
+    mapper.view().pending.map((item) => [item.id, item.status]),
+    [["10", "placed"]],
+    "the run naming the input is newer than the ledger's queued record",
+  );
+});
+
 test("a deferred poll closes the attempt, so the next one gets a new id", () => {
   const mapper = new EventMapper({ botId: "b_golden", now: fixedClock });
   mapper.map({ type: "run_start", inputs: ["8"] } as never, trace);
@@ -759,6 +788,20 @@ const assistantEntry = (message: unknown, id = 10) => ({
 });
 
 const hugeAssistantEntry = (text: string) => assistantEntry(assistantMessage(text, "stop"));
+
+const submissionRecord = (record: {
+  id: string;
+  requestId: string;
+  status: string;
+  entryId?: string;
+}) => ({
+  id: record.id,
+  conversationId: 1,
+  type: "input",
+  requestId: record.requestId,
+  status: record.status,
+  ...(record.entryId === undefined ? {} : { entry: record.entryId.replace(/^e_/, "") }),
+});
 
 const userEntry = () => ({
   id: 7,

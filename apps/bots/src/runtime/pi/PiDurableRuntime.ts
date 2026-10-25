@@ -205,6 +205,8 @@ class PiRuntimeHandle implements RuntimeHandle {
   readonly #submissionIds = new Map<string, string>();
   readonly #traces = new Map<string, string>();
   #runTrace: string | undefined;
+  /** The submission id of a run whose send is not yet known, when one is waiting. */
+  #unresolvedRun: string | undefined;
   /** Episode key of the current stream, shared by that fault's two notifications. */
   #currentEpisode = "listener:0";
   #watchSequence = 0;
@@ -249,7 +251,7 @@ class PiRuntimeHandle implements RuntimeHandle {
     this.#currentEpisode = state.episode;
     this.#subscriptions.set(sink, state);
     try {
-      const snapshot = await this.#acquire(state, trace);
+      const snapshot = await this.#acquire(state, trace, () => undefined);
       this.#flushUndelivered(state);
       log.emit("info", "runtime", Events.subscribeOk, {
         trace,
@@ -308,9 +310,12 @@ class PiRuntimeHandle implements RuntimeHandle {
       this.#submissionIds.set(String(record.id), String(record.id));
       this.#traces.set(input.requestId, input.trace);
       this.#traces.set(String(record.id), input.trace);
-      // A run that started before the admission record existed has no trace yet; the
-      // input that owns it supplies one. A queued follow-up finds it already set.
-      this.#runTrace ??= input.trace;
+      // A run that started before its admission record existed is waiting for this id;
+      // a settled duplicate belongs to no run and must not adopt one.
+      if (this.#unresolvedRun === String(record.id)) {
+        this.#runTrace = input.trace;
+        this.#unresolvedRun = undefined;
+      }
       const converted = convertSubmission(record);
       if (converted === undefined) {
         throw new ClassifiedFailure(
@@ -514,11 +519,14 @@ class PiRuntimeHandle implements RuntimeHandle {
 
   /**
    * Acquires a watch, hands over its baseline and only then delivers live commits. The
-   * baseline is computed from the acquisition snapshot, and events that arrive while it
-   * is being computed are buffered, so a subscriber can never see a newer answer and
-   * then have an older snapshot replace it.
+   * baseline is computed from the acquisition snapshot and delivered through
+   * `deliverBaseline`, so nothing older can ever be applied after something newer.
    */
-  async #acquire(state: Subscription, trace: string): Promise<ConversationSnapshot> {
+  async #acquire(
+    state: Subscription,
+    trace: string,
+    deliverBaseline: (snapshot: ConversationSnapshot) => void,
+  ): Promise<ConversationSnapshot> {
     const stream = await watchEvents(this.#harness, this.#rootId, BACKGROUND_CONTEXT);
     let ready = false;
     const buffered: (readonly AgentEvent[])[] = [];
@@ -540,8 +548,20 @@ class PiRuntimeHandle implements RuntimeHandle {
     if (state.stream !== undefined) void state.stream.stop();
     state.stream = stream;
     stream.closed.then((end) => this.#watchEnd(end, trace, state));
+    deliverBaseline(snapshot);
     ready = true;
-    for (const batch of buffered.splice(0)) this.#consume(state, batch, trace);
+    for (const batch of buffered.splice(0)) {
+      // A sink that throws while draining is a lost listener, exactly like one that
+      // throws on a live batch: it reports, escalates, and reattaches.
+      try {
+        this.#consume(state, batch, trace);
+      } catch {
+        // The upstream watch ends with `listener_error`, and that channel classifies the
+        // fault and reattaches; only a stream it has not replaced yet needs this.
+        if (state.stream === stream) this.#reattach(state, trace);
+        return snapshot;
+      }
+    }
     return snapshot;
   }
 
@@ -608,15 +628,11 @@ class PiRuntimeHandle implements RuntimeHandle {
     if (state.detached) return;
     state.episode = `listener:${++this.#watchSequence}`;
     this.#currentEpisode = state.episode;
-    void this.#acquire(state, trace).then(
-      (snapshot) => {
-        if (state.detached) return;
-        // Delivered before any later commit: `#acquire` drains what it buffered after
-        // this point, and the sink has already replaced its state here.
-        this.#deliver(state, { type: "snapshot", trace, value: snapshot });
-      },
-      () => undefined,
-    );
+    void this.#acquire(state, trace, (snapshot) => {
+      // Handed over before any buffered commit, so a subscriber that missed frames can
+      // never have an older snapshot replace a newer one.
+      this.#deliver(state, { type: "snapshot", trace, value: snapshot });
+    }).catch(() => undefined);
   }
 
   /**
@@ -633,8 +649,12 @@ class PiRuntimeHandle implements RuntimeHandle {
       const own = first === undefined ? undefined : this.#traces.get(String(first));
       if (own !== undefined) {
         this.#runTrace = own;
+        this.#unresolvedRun = undefined;
         return own;
       }
+      // Its admission record has not been written yet: the submit that owns this run
+      // supplies the trace as soon as the id exists.
+      this.#unresolvedRun = first === undefined ? undefined : String(first);
     }
     if (event.type === "message_end") {
       const own = byEntry.get(entryMessageId(event.entry.id));
