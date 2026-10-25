@@ -276,6 +276,19 @@ documented limits. Slice 2 (herdr: open a space,
 schedule the controller, monitor, fetch, bidirectional messages) is next, as a second
 extension with the same layering.
 
+### Model gateway and setup
+
+The model endpoint moved into the app: Settings has a `Bots 模型` tab (URL, key, model,
+`测试连接`, `保存`) backed by `GET/PUT /v1/settings` and `POST /v1/settings/test`. The store
+is `<root>/gateway.json` (0600, dotenv fallback), the key is write-only, and saving swaps
+the process-wide `Models` (read through a getter by every Harness), moves live
+conversations with `conversation.configure({model})` and rebroadcasts the catalog. The
+daemon had previously been configured only by its dotenv and registered exactly one model,
+which is why a bot naming another id settled `no_model`. Guidance is progressive: a bot
+stays readable until a send is attempted without a gateway, then the conversation offers a
+short "去设置" banner; the gate is tested (`BotsWindowTests`), the fresh-install window is
+not.
+
 ## Next work, in order
 
 1. Finish the client surface: history paging, bot settings behind the `agent`

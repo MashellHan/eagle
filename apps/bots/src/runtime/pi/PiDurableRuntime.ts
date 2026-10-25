@@ -519,6 +519,15 @@ class PiRuntimeHandle implements RuntimeHandle {
     }
   }
 
+  /** Settings changed the gateway: move this conversation to the new model in place. */
+  async configureModel(
+    model: { provider: string; modelId: string },
+    _trace: string,
+  ): Promise<void> {
+    const root = await this.#harness.root(BACKGROUND_CONTEXT);
+    await root.configure({ model }, BACKGROUND_CONTEXT);
+  }
+
   async busy(): Promise<{ run: boolean; tasks: boolean }> {
     const inspection = await this.#harness.inspect(BACKGROUND_CONTEXT);
     return { run: inspection.submissions.length > 0, tasks: inspection.tasks.length > 0 };

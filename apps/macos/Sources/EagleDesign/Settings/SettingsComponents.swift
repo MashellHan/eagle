@@ -223,3 +223,107 @@ public struct DeviceRow: View {
     .frame(height: Theme.Metric.settingsDeviceRowHeight)
   }
 }
+
+/// A settings input with the app's own surface: rounded, fixed height, no native chrome.
+/// The focus ring is a hairline in the accent, matching the shell's controls.
+public struct SettingsTextField: View {
+  private let placeholder: String
+  @Binding private var text: String
+  private let secure: Bool
+  @FocusState private var focused: Bool
+
+  public init(_ placeholder: String, text: Binding<String>, secure: Bool = false) {
+    self.placeholder = placeholder
+    self._text = text
+    self.secure = secure
+  }
+
+  public var body: some View {
+    HStack(spacing: 6) {
+      Group {
+        if secure {
+          SecureField("", text: $text)
+        } else {
+          TextField("", text: $text)
+        }
+      }
+      .textFieldStyle(.plain)
+      .font(.system(size: 13.5))
+      .foregroundStyle(Theme.Palette.textPrimary)
+      .focused($focused)
+      if !secure, !text.isEmpty {
+        Button {
+          text = ""
+        } label: {
+          Image(systemName: "xmark.circle.fill")
+            .font(.system(size: 12))
+            .foregroundStyle(Theme.Palette.textMuted)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("清除")
+      }
+    }
+    .padding(.horizontal, 11)
+    .frame(height: 34)
+    .background(
+      RoundedRectangle(cornerRadius: 9, style: .continuous)
+        .fill(Theme.Palette.canvas)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 9, style: .continuous)
+        .strokeBorder(
+          focused ? Theme.Palette.accent.opacity(0.65) : Theme.Palette.line,
+          lineWidth: Theme.Metric.hairline
+        )
+    )
+    .overlay(alignment: .leading) {
+      if text.isEmpty {
+        Text(placeholder)
+          .font(.system(size: 13.5))
+          .foregroundStyle(Theme.Palette.textMuted)
+          .padding(.leading, 12)
+          .allowsHitTesting(false)
+      }
+    }
+    .contentShape(Rectangle())
+    .onTapGesture { focused = true }
+  }
+}
+
+/// A compact settings button: a soft surface by default, the accent when primary.
+public struct SettingsActionButton: View {
+  private let title: String
+  private let action: () -> Void
+  private let prominent: Bool
+  @State private var hovering = false
+
+  public init(_ title: String, prominent: Bool = false, action: @escaping () -> Void) {
+    self.title = title
+    self.action = action
+    self.prominent = prominent
+  }
+
+  public var body: some View {
+    Button(action: action) {
+      Text(title)
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(prominent ? Color.white : Theme.Palette.textPrimary)
+        .padding(.horizontal, 14)
+        .frame(height: 30)
+        .background(
+          RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(
+              prominent
+                ? Theme.Palette.accentStrong
+                : (hovering ? Theme.Palette.line : Theme.Palette.canvas)
+            )
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .strokeBorder(prominent ? .clear : Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+        )
+    }
+    .buttonStyle(.plain)
+    .onHover { hovering = $0 }
+  }
+}

@@ -144,6 +144,23 @@ test("a bot's stored thinking level reaches the runtime spec", async () => {
   }
 });
 
+test("a gateway model change reaches existing bots and new ones", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    await setup.registry.open("b_bot0", "tr_model_0001");
+    await setup.registry.applyModel({ provider: "faux", modelId: "faux-2" }, "tr_model_0002");
+    assert.equal(setup.registry.summaries()[0]?.model.modelId, "faux-2");
+    const stored = await setup.directory.load();
+    assert.equal(stored[0]?.model.modelId, "faux-2", "the catalog is the source of truth");
+    const created = await setup.registry.create("new", "tr_model_0003");
+    assert.equal(created.model.modelId, "faux-2", "a new bot records the new model");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
 test("open is idempotent and shared by concurrent subscribers", async () => {
   const setup = await bench({ bots: ["shared"] });
   try {

@@ -12,7 +12,9 @@ import Testing
 @MainActor
 @Suite("Bots window")
 struct BotsWindowTests {
-  private func window() async throws -> (
+  private func window(
+    gateway: Bool? = true
+  ) async throws -> (
     BotsWorkspaceViewModel, AppViewModel, StubConversation, OutboxStore
   ) {
     let directory = FileManager.default.temporaryDirectory
@@ -38,7 +40,8 @@ struct BotsWindowTests {
     let app = AppViewModel(catalog: catalog, conversation: conversation, outbox: outbox)
     let bots = BotsWorkspaceViewModel(
       settings: BotsSettings(environment: [:]),
-      makeApp: { _ in app }
+      makeApp: { _ in app },
+      gatewayProbe: { gateway }
     )
     await bots.start()
     bots.select("b_1")
@@ -72,6 +75,18 @@ struct BotsWindowTests {
     )
     try await Task.sleep(nanoseconds: 60_000_000)
     #expect(bots.draft == "hello from Eagle", "the restored draft is what the user sees")
+  }
+
+  @Test("a send without a gateway is refused into the setup hint, not the daemon")
+  func missingGatewayHaltsSend() async throws {
+    let (bots, _, conversationPort, _) = try await window(gateway: false)
+    bots.setDraft("hello")
+    bots.send()
+    try await Task.sleep(nanoseconds: 40_000_000)
+    #expect(bots.needsModelSetup, "the user is told to configure the gateway")
+    #expect(conversationPort.sent.isEmpty, "nothing was sent")
+    bots.dismissModelSetup()
+    #expect(!bots.needsModelSetup)
   }
 
   @Test("a parked task offers recover and the action reaches the daemon")

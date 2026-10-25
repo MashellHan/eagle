@@ -10,8 +10,10 @@ export type ModelsConfig = {
   readonly modelId: string;
 };
 
-export const createDaemonModels = (config: ModelsConfig): Models => {
+/** No gateway means an empty registry: a run settles `no_model` until settings exist. */
+export const createDaemonModels = (config: ModelsConfig | undefined): Models => {
   const models = createModels();
+  if (config === undefined) return models;
   models.setProvider(
     createProvider({
       id: config.provider,

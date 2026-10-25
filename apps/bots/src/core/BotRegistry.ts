@@ -98,12 +98,15 @@ const unavailable = (reason: ErrorKind, message: string) => ({ reason, message }
 export class BotRegistry {
   readonly #options: RegistryOptions;
   readonly #entries = new Map<string, Entry>();
+  /** The model a newly created bot records; settings can change it at runtime. */
+  #defaultModel: { readonly provider: string; readonly modelId: string };
   readonly #boot: () => string;
   #sequence = 0;
   /** Creations in flight, so two concurrent creates cannot both take the last slot. */
   #creating = 0;
 
   constructor(options: RegistryOptions) {
+    this.#defaultModel = options.model;
     this.#options = options;
     this.#boot =
       options.bootTrace ??
@@ -176,6 +179,43 @@ export class BotRegistry {
     return this.#entries.get(botId)?.handle;
   }
 
+  /** Settings changed the gateway: new bots use the new model, existing ones on reopen. */
+  setDefaultModel(model: { readonly provider: string; readonly modelId: string }): void {
+    this.#defaultModel = model;
+  }
+
+  /**
+   * Applies a gateway model to every bot: the catalog records it, a live conversation is
+   * moved in place (its session keeps its history), and a closed one opens with it later.
+   */
+  async applyModel(
+    model: { readonly provider: string; readonly modelId: string },
+    trace: string,
+  ): Promise<void> {
+    this.#defaultModel = model;
+    for (const entry of this.#entries.values()) {
+      if (
+        entry.config.model.provider === model.provider &&
+        entry.config.model.modelId === model.modelId
+      ) {
+        continue;
+      }
+      const at = (this.#options.now?.() ?? new Date()).toISOString();
+      try {
+        const config = await this.#write(trace, entry.config.id, () =>
+          this.#options.directory.setModel(entry.config.id, model, at),
+        );
+        entry.config = config;
+        if (entry.handle?.configureModel !== undefined) {
+          await entry.handle.configureModel(model, trace);
+        }
+      } catch {
+        // One bot that cannot be written must not stop the others; the failed entry keeps
+        // its old model and the next save retries it.
+      }
+    }
+  }
+
   async create(
     title: string,
     trace: string,
@@ -208,7 +248,7 @@ export class BotRegistry {
       appearance: extras.appearance ?? DEFAULT_APPEARANCE,
       createdAt: at,
       updatedAt: at,
-      model: this.#options.model,
+      model: this.#defaultModel,
     };
     // Checked before the write: a summary the `bots` event cannot carry must not exist.
     this.#assertSummary({ ...config, state: "catalogued" }, trace);

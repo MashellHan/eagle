@@ -17,6 +17,8 @@ public struct SettingsView: View {
       switch model.selection {
       case .general:
         general
+      case .bots:
+        bots
       case .machines:
         machines
       case .realtime:
@@ -52,6 +54,79 @@ public struct SettingsView: View {
           }
         }
       }
+    }
+  }
+
+  /// Model gateway: the one place a person configures the bot's endpoint, key and model.
+  private var bots: some View {
+    VStack(alignment: .leading, spacing: 18) {
+      SettingsCaption("Bot 使用这台机器上的模型网关。保存后新 Bot 立即生效，已有的 Bot 会原地切换到新模型。")
+      SettingsCard {
+        VStack(alignment: .leading, spacing: 14) {
+          gatewayField(
+            "网关地址",
+            detail: "OpenAI 兼容地址，例如 http://127.0.0.1:3425/v1"
+          ) {
+            SettingsTextField("https://…/v1", text: $model.gatewayBaseURL)
+          }
+          gatewayField(
+            "API Key",
+            detail: model.gateway?.hasApiKey == true ? "已保存；留空则保持不变" : "与网关匹配的密钥"
+          ) {
+            SettingsTextField(
+              model.gateway?.hasApiKey == true ? "已保存" : "sk-…",
+              text: $model.gatewayAPIKey,
+              secure: true
+            )
+          }
+          gatewayField("模型", detail: "Bot 使用的模型 id，例如 auto/gpt-6-astra") {
+            SettingsTextField("模型 id", text: $model.gatewayModel)
+          }
+          HStack(spacing: 10) {
+            SettingsActionButton("测试连接") {
+              Task { @MainActor in await model.testGateway() }
+            }
+            .disabled(model.gatewayBusy)
+            SettingsActionButton("保存", prominent: true) {
+              Task { @MainActor in await model.saveGateway() }
+            }
+            .disabled(model.gatewayBusy)
+            if model.gatewayBusy { SpinnerArc(size: 12) }
+            Spacer(minLength: 0)
+            if let probe = model.gatewayProbe {
+              Label(
+                "\(probe.message) · \(probe.latencyMs) ms",
+                systemImage: probe.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+              )
+              .font(Theme.TypeScale.note)
+              .foregroundStyle(probe.ok ? Theme.Palette.accentStrong : Theme.Palette.destructive)
+            } else if let message = model.gatewayMessage {
+              Text(message)
+                .font(Theme.TypeScale.note)
+                .foregroundStyle(Theme.Palette.textSecondary)
+            }
+          }
+        }
+        .padding(.vertical, 16)
+      }
+    }
+    .task { @MainActor in await model.loadGatewayIfNeeded() }
+  }
+
+  private func gatewayField<Content: View>(
+    _ title: String,
+    detail: String,
+    @ViewBuilder content: () -> Content
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 5) {
+      Text(title)
+        .font(.system(size: 13.5, weight: .medium))
+        .foregroundStyle(Theme.Palette.textPrimary)
+      content()
+        .frame(maxWidth: 460)
+      Text(detail)
+        .font(.system(size: 11.5))
+        .foregroundStyle(Theme.Palette.textMuted)
     }
   }
 

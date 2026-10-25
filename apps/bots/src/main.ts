@@ -16,6 +16,16 @@ import { encodeServerEvent } from "./protocol/encode.ts";
 import { createDaemonModels } from "./runtime/pi/models.ts";
 import { PiDurableRuntime } from "./runtime/pi/PiDurableRuntime.ts";
 import { loadToken } from "./server/auth.ts";
+import {
+  type GatewayApi,
+  type GatewayConfig,
+  gatewayFromEnv,
+  normalizeBaseUrl,
+  publicGateway,
+  readGateway,
+  testGateway,
+  writeGateway,
+} from "./server/gateway.ts";
 import { type Daemon, startServer } from "./server/http.ts";
 import { acquireLock, LockError } from "./server/singleton.ts";
 import { toServerEvent } from "./server/socket.ts";
@@ -87,17 +97,28 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   }
   log.emit("info", "core", StartupEvents.singletonOk, { trace: startup });
   const directory = new BotDirectory(root, await nodeDirectoryFs());
-  const models = createDaemonModels({
-    baseUrl: process.env.BOTS_BASE_URL?.trim() ?? "",
-    apiKeyEnv: "BOTS_API_KEY",
-    provider: canonical.model.provider,
-    modelId: canonical.model.modelId,
-  });
-  const runtime = new PiDurableRuntime({ models, log });
+  // The stored gateway wins over the dotenv; without either, the registry is empty and a
+  // run settles `no_model` until a person configures it in the app.
+  let gateway: GatewayConfig | undefined = (await readGateway(root)) ?? gatewayFromEnv(process.env);
+  let models = createDaemonModels(
+    gateway === undefined
+      ? undefined
+      : {
+          baseUrl: gateway.baseUrl,
+          apiKeyEnv: "BOTS_API_KEY",
+          provider: gateway.provider,
+          modelId: gateway.model,
+        },
+  );
+  const runtime = new PiDurableRuntime({ models: () => models, log });
+  const defaultModel =
+    gateway === undefined
+      ? canonical.model
+      : { provider: gateway.provider, modelId: gateway.model };
   const registry = new BotRegistry({
     directory,
     openRuntime: (spec) => runtime.open(spec),
-    model: canonical.model,
+    model: defaultModel,
     log,
     idleCloseMs: canonical.idleCloseMs,
     quarantineRetryMs: canonical.quarantineRetryMs,
@@ -133,11 +154,69 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     usage: false,
     peers: false,
   };
+  const settings: GatewayApi = {
+    public: () => publicGateway(gateway),
+    save: async (input) => {
+      const baseUrl =
+        input.baseUrl === undefined
+          ? (gateway?.baseUrl ?? "")
+          : (normalizeBaseUrl(input.baseUrl) ?? "");
+      const model = (input.model ?? gateway?.model ?? "").trim();
+      const apiKey =
+        input.apiKey !== undefined && input.apiKey.trim().length > 0
+          ? input.apiKey.trim()
+          : (gateway?.apiKey ?? "");
+      const provider = (input.provider ?? gateway?.provider ?? "magpie").trim() || "magpie";
+      if (baseUrl.length === 0) {
+        return { settings: publicGateway(gateway), error: "网关地址必须是 http(s) URL" };
+      }
+      if (model.length === 0) {
+        return { settings: publicGateway(gateway), error: "模型不能为空" };
+      }
+      if (apiKey.length === 0) {
+        return { settings: publicGateway(gateway), error: "API Key 不能为空" };
+      }
+      const next: GatewayConfig = { provider, baseUrl, model, apiKey };
+      await writeGateway(root, next);
+      gateway = next;
+      // The provider reads the key through the environment on each request, so an
+      // existing bot picks it up without being reopened.
+      process.env.BOTS_API_KEY = apiKey;
+      models = createDaemonModels({
+        baseUrl,
+        apiKeyEnv: "BOTS_API_KEY",
+        provider,
+        modelId: model,
+      });
+      await registry.applyModel({ provider, modelId: model }, "tr_http_settings");
+      return { settings: publicGateway(next) };
+    },
+    test: async (input) => {
+      const baseUrl =
+        input.baseUrl === undefined
+          ? (gateway?.baseUrl ?? "")
+          : (normalizeBaseUrl(input.baseUrl) ?? "");
+      const apiKey =
+        input.apiKey !== undefined && input.apiKey.trim().length > 0
+          ? input.apiKey.trim()
+          : (gateway?.apiKey ?? "");
+      if (baseUrl.length === 0 || apiKey.length === 0) {
+        return { ok: false, message: "请填写有效的网关地址和 API Key", latencyMs: 0 };
+      }
+      return testGateway({
+        provider: input.provider ?? gateway?.provider ?? "magpie",
+        baseUrl,
+        model: (input.model ?? gateway?.model ?? "").trim(),
+        apiKey,
+      });
+    },
+  };
   const daemon = await startServer({
     token,
     log,
     registry,
     service,
+    settings,
     version: packageVersion(),
     instance: `i_${process.pid}`,
     capabilities,

@@ -36,6 +36,22 @@ final class StubProtocol: URLProtocol {
   override func stopLoading() {}
 }
 
+/// URLProtocol hands a request's body as a stream; a test that inspects it reads it.
+private func bodyData(_ request: URLRequest) -> Data? {
+  if let body = request.httpBody { return body }
+  guard let stream = request.httpBodyStream else { return nil }
+  stream.open()
+  defer { stream.close() }
+  var data = Data()
+  var buffer = [UInt8](repeating: 0, count: 1024)
+  while stream.hasBytesAvailable {
+    let read = stream.read(&buffer, maxLength: buffer.count)
+    if read <= 0 { break }
+    data.append(buffer, count: read)
+  }
+  return data
+}
+
 final class CatalogHTTPClientTests: XCTestCase {
   private var client: CatalogHTTPClient!
 
@@ -83,6 +99,59 @@ final class CatalogHTTPClientTests: XCTestCase {
     XCTAssertEqual(renamed.title, "改")
     try await client.delete(id: "b_1")
     XCTAssertEqual(StubProtocol.lastAuthorization, "Bearer test-token-0123456789")
+  }
+
+  func testGatewaySettingsDecodeTestAndSave() async throws {
+    var savedBody: [String: Any] = [:]
+    var savedProviderBody: [String: Any] = [:]
+    StubProtocol.handler = { request in
+      switch (request.httpMethod, request.url?.path) {
+      case ("GET", "/v1/settings"):
+        return (
+          200,
+          Data(
+            #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://x/v1","model":"m","hasApiKey":true}}"#
+              .utf8)
+        )
+      case ("PUT", "/v1/settings"):
+        if let body = bodyData(request),
+          let parsed = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        {
+          savedBody = parsed
+        }
+        return (
+          200,
+          Data(
+            #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://x/v1","model":"m2","hasApiKey":true}}"#
+              .utf8)
+        )
+      case ("POST", "/v1/settings/test"):
+        if let body = bodyData(request),
+          let parsed = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        {
+          savedProviderBody = parsed
+        }
+        return (
+          200,
+          Data(
+            #"{"result":{"ok":true,"status":200,"message":"连接成功","latencyMs":3,"models":2}}"#.utf8)
+        )
+      default:
+        return (404, Data())
+      }
+    }
+    let loaded = try await client.loadGateway()
+    XCTAssertEqual(loaded.model, "m")
+    XCTAssertTrue(loaded.hasApiKey)
+    // An omitted key must not be sent, so the daemon keeps the stored one.
+    let saved = try await client.saveGateway(baseURL: "http://x/v1", model: "m2", apiKey: nil)
+    XCTAssertEqual(saved.model, "m2")
+    XCTAssertNil(savedBody["apiKey"])
+    XCTAssertEqual(savedBody["model"] as? String, "m2")
+    let probe = try await client.testGateway(baseURL: "http://x/v1", model: "m", apiKey: "k")
+    XCTAssertTrue(probe.ok)
+    XCTAssertEqual(probe.models, 2)
+    XCTAssertEqual(savedProviderBody["apiKey"] as? String, "k")
   }
 
   func testARejectedTokenIsASetupError() async {

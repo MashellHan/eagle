@@ -121,6 +121,12 @@ public struct WorkspaceShellView: View {
         )
       } conversation: {
         VStack(spacing: 0) {
+          if selectedIsBot && bots.needsModelSetup {
+            BotsModelSetupBanner(
+              onOpen: { bots.onOpenSettings?() },
+              onDismiss: { bots.dismissModelSetup() }
+            )
+          }
           if selectedIsBot {
             BotStatusStrip(
               subtitle: bots.subtitle,
@@ -164,6 +170,10 @@ public struct WorkspaceShellView: View {
       }
       .task {
         bots.onSelect = { id in list.selection = id }
+        bots.onOpenSettings = {
+          settings.selection = .bots
+          showsSettings = true
+        }
         await bots.start()
       }
       .onDisappear {
@@ -201,6 +211,9 @@ public struct WorkspaceShellView: View {
       }
     }
     .animation(.snappy(duration: 0.18), value: showsAccountMenu)
+    // A small blur under the settings card: the window stays recognisable, only softened.
+    .blur(radius: showsSettings ? 5 : 0)
+    .animation(.easeOut(duration: 0.18), value: showsSettings)
     .overlay {
       if showsSettings {
         settingsOverlay
@@ -215,9 +228,8 @@ public struct WorkspaceShellView: View {
   /// traffic lights are hidden while it is open so the card owns the chrome.
   private var settingsOverlay: some View {
     ZStack {
-      Rectangle()
-        .fill(.ultraThinMaterial)
-        .overlay(Color.black.opacity(0.12))
+      // The blur lives on the window itself (a few points); this layer only dims.
+      Color.black.opacity(0.32)
         .ignoresSafeArea()
         .onTapGesture { showsSettings = false }
 

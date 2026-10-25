@@ -79,6 +79,14 @@ activity: they stay on the left at the answer card's width, show what is running
 runs, collapse into one line when the run's calls settle, and open a detail dialog with
 each call's arguments and output.
 
+## Setup and guidance
+
+The model gateway (URL, API key, model) is configured in the app's Settings under
+`Bots 模型`; the same tab tests the endpoint and reports latency and model count. Setup is
+progressive: a bot stays readable and usable until a send is attempted without a configured
+gateway, and only then the conversation offers a short "去设置" hint. Nothing asks for
+credentials at launch.
+
 ## Speed targets
 
 Measured on this machine with Node 26.12.0 and `pi-durable@1.4.0`, using the faux

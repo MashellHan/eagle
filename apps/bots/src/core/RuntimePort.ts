@@ -80,6 +80,11 @@ export interface RuntimeHandle {
   /** Retries parked work; never aborts a running answer. */
   recover(trace: string): Promise<void>;
   busy(): Promise<{ run: boolean; tasks: boolean }>;
+  /** Gateway settings changed: move a live conversation to the new model in place. */
+  configureModel?(
+    model: { readonly provider: string; readonly modelId: string },
+    trace: string,
+  ): Promise<void>;
   close(trace: string, deadlineMs: number): Promise<"closed" | "timeout">;
 }
 

@@ -18,6 +18,7 @@ import { MAX_LABEL_CHARS, MAX_TITLE_CHARS } from "../protocol/limits.ts";
 import { PROTOCOL_VERSION } from "../protocol/version.ts";
 import { parseBearer, tokenMatches } from "./auth.ts";
 import { serverFailure } from "./failures.ts";
+import type { GatewayApi, GatewayInput } from "./gateway.ts";
 import { attachConnection, CLOSE, MAX_CONNECTIONS, refuseUpgrade } from "./socket.ts";
 
 const Events = {
@@ -33,6 +34,8 @@ export type ServerOptions = {
   readonly version: string;
   readonly instance: string;
   readonly capabilities: Readonly<Record<string, boolean>>;
+  /** Model gateway settings, when the daemon was configured with a store. */
+  readonly settings?: GatewayApi;
   readonly pid?: number;
   /** 0 asks the kernel for a free port, which is what tests do. */
   readonly port: number;
@@ -82,6 +85,21 @@ const readBody = async (request: IncomingMessage): Promise<unknown> => {
   }
   if (bytes === 0) return undefined;
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+};
+
+/** Only the documented string fields cross; anything else is a malformed request. */
+const gatewayInput = (body: unknown): GatewayInput | undefined => {
+  if (body === undefined) return {};
+  if (typeof body !== "object" || body === null) return undefined;
+  const raw = body as Record<string, unknown>;
+  const input: { baseUrl?: string; apiKey?: string; model?: string; provider?: string } = {};
+  for (const key of ["baseUrl", "apiKey", "model", "provider"] as const) {
+    const value = raw[key];
+    if (value === undefined) continue;
+    if (typeof value !== "string") return undefined;
+    input[key] = value;
+  }
+  return input;
 };
 
 const title = (body: unknown): string | undefined => {
@@ -174,6 +192,56 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       return;
     }
     try {
+      if (path === "/v1/settings" && request.method === "GET") {
+        json(response, 200, {
+          settings: options.settings?.public() ?? {
+            configured: false,
+            provider: "magpie",
+            baseUrl: "",
+            model: "",
+            hasApiKey: false,
+          },
+        });
+        return;
+      }
+      if (path === "/v1/settings" && request.method === "PUT") {
+        if (options.settings === undefined) {
+          json(response, 404, { error: { kind: "unknown_bot", message: "no such endpoint" } });
+          return;
+        }
+        const input = gatewayInput(await readBody(request));
+        if (input === undefined) {
+          json(response, 400, {
+            error: { kind: "invalid_command", message: "settings must be strings" },
+          });
+          return;
+        }
+        const saved = await options.settings.save(input);
+        if (saved.error !== undefined) {
+          json(response, 400, {
+            error: { kind: "invalid_command", message: saved.error },
+          });
+          return;
+        }
+        broadcastCatalog();
+        json(response, 200, { settings: saved.settings });
+        return;
+      }
+      if (path === "/v1/settings/test" && request.method === "POST") {
+        if (options.settings === undefined) {
+          json(response, 404, { error: { kind: "unknown_bot", message: "no such endpoint" } });
+          return;
+        }
+        const input = gatewayInput(await readBody(request));
+        if (input === undefined) {
+          json(response, 400, {
+            error: { kind: "invalid_command", message: "settings must be strings" },
+          });
+          return;
+        }
+        json(response, 200, { result: await options.settings.test(input) });
+        return;
+      }
       if (path === "/v1/bots" && request.method === "GET") {
         json(response, 200, { bots: registry.summaries() });
         return;

@@ -4,22 +4,23 @@ import BotsTransport
 import Combine
 import EagleDesign
 import Foundation
+import SwiftUI
 
 /// Where the shell finds the daemon. The token always comes from `<root>/token`; the port
 /// is the daemon's default 43117. A development shell can point elsewhere with the
 /// `BOTS_ROOT` / `BOTS_PORT` environment variables.
-struct BotsSettings {
-  let rootPath: String
-  let port: String
+public struct BotsSettings {
+  public let rootPath: String
+  public let port: String
 
-  init(environment: [String: String] = ProcessInfo.processInfo.environment) {
+  public init(environment: [String: String] = ProcessInfo.processInfo.environment) {
     rootPath = environment["BOTS_ROOT"] ?? TokenStore.defaultRoot.path
     port = environment["BOTS_PORT"] ?? "43117"
   }
 
-  var rootURL: URL { URL(fileURLWithPath: rootPath, isDirectory: true) }
+  public var rootURL: URL { URL(fileURLWithPath: rootPath, isDirectory: true) }
 
-  var baseURL: URL {
+  public var baseURL: URL {
     URL(string: "http://127.0.0.1:\(Int(port) ?? 43117)") ?? URL(string: "http://127.0.0.1:43117")!
   }
 }
@@ -40,6 +41,10 @@ final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var canRecover = false
   @Published private(set) var running = false
   @Published private(set) var connection: ConnectionState = .connecting
+  /// Set only after a send was refused for a missing gateway: progressive, never a nag.
+  @Published private(set) var needsModelSetup = false
+  var onOpenSettings: (() -> Void)?
+  private var gatewayConfigured: Bool?
 
   /// The shell owns the sidebar's selection; the view model reports the bot it selected.
   var onSelect: ((String) -> Void)?
@@ -50,16 +55,29 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   private let settings: BotsSettings
   private let makeApp: AppFactory
+  /// Reports the daemon's gateway state; a test injects it so start() never touches HTTP.
+  private let gatewayProbe: @MainActor () async -> Bool?
   private let presenter = BotsPresenter()
   private var app: AppViewModel?
   private var cancellables = Set<AnyCancellable>()
 
   init(
     settings: BotsSettings = BotsSettings(),
-    makeApp: @escaping AppFactory = BotsWorkspaceViewModel.liveApp
+    makeApp: @escaping AppFactory = BotsWorkspaceViewModel.liveApp,
+    gatewayProbe: (@MainActor () async -> Bool?)? = nil
   ) {
     self.settings = settings
     self.makeApp = makeApp
+    self.gatewayProbe =
+      gatewayProbe ?? {
+        do {
+          let token = try TokenStore(root: settings.rootURL).read()
+          let client = CatalogHTTPClient(baseURL: settings.baseURL, token: token)
+          return try await client.loadGateway().configured
+        } catch {
+          return nil
+        }
+      }
   }
 
   /// The production factory: token from the root, the HTTP catalog and one socket per bot.
@@ -104,6 +122,12 @@ final class BotsWorkspaceViewModel: ObservableObject {
       if ProcessInfo.processInfo.environment["BOTS_OPEN"] == "1", let first = app?.bots.first {
         select(first.id)
       }
+      NotificationCenter.default.publisher(for: .botsGatewayChanged)
+        .sink { [weak self] _ in
+          Task { @MainActor [weak self] in await self?.refreshGateway() }
+        }
+        .store(in: &cancellables)
+      await refreshGateway()
     } catch {
       subtitle = (error as? ClientError)?.message ?? error.localizedDescription
       self.error = subtitle
@@ -162,8 +186,24 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   func send() {
     guard let app else { return }
+    // Only a known-missing gateway blocks; an unreachable settings endpoint must not turn
+    // a working bot into a dead composer.
+    if gatewayConfigured == false {
+      needsModelSetup = true
+      return
+    }
     app.conversation.send()
     publish()
+  }
+
+  func dismissModelSetup() {
+    needsModelSetup = false
+  }
+
+  /// Reads the daemon's gateway state silently; it is shown only when a send is refused.
+  private func refreshGateway() async {
+    gatewayConfigured = await gatewayProbe()
+    if gatewayConfigured == true { needsModelSetup = false }
   }
 
   func recover() {
@@ -562,5 +602,37 @@ struct BotsPresenter {
     case .unavailable: return bot.unavailable?.message ?? "不可用"
     case .quarantined: return "隔离中"
     }
+  }
+}
+
+/// Shown only after a send was refused because no model gateway is configured. It is a
+/// hint, not a startup nag: the conversation stays usable for reading until then.
+struct BotsModelSetupBanner: View {
+  let onOpen: () -> Void
+  let onDismiss: () -> Void
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "sparkles")
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(Theme.Palette.info)
+      VStack(alignment: .leading, spacing: 2) {
+        Text("还没有配置模型网关")
+          .font(.system(size: 13.5, weight: .semibold))
+          .foregroundStyle(Theme.Palette.textPrimary)
+        Text("在设置里填入网关地址、API Key 和模型后，这个 Bot 就能回答。")
+          .font(Theme.TypeScale.note)
+          .foregroundStyle(Theme.Palette.textSecondary)
+      }
+      Spacer(minLength: 8)
+      Button("去设置", action: onOpen)
+        .buttonStyle(.plain)
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(Theme.Palette.info)
+      IconButton(systemName: "xmark", label: "关闭提示", size: 20, style: .plain, action: onDismiss)
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 9)
+    .background(Theme.Palette.infoFill)
   }
 }

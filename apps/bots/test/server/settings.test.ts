@@ -1,0 +1,110 @@
+// HTTP surface for the model gateway settings (docs/bots/PROTOCOL.md, "Gateway settings"):
+// reading is redacted, writing validates, testing is separate, and none of it is reachable
+// without the bearer token.
+import assert from "node:assert/strict";
+import test from "node:test";
+import type { GatewayApi, GatewayInput, PublicGateway } from "../../src/server/gateway.ts";
+import { startStack } from "../support/server.ts";
+
+test("the settings endpoints read, validate, save and test behind the bearer", async () => {
+  let stored: PublicGateway = {
+    configured: false,
+    provider: "magpie",
+    baseUrl: "",
+    model: "",
+    hasApiKey: false,
+  };
+  const saves: GatewayInput[] = [];
+  const tests: GatewayInput[] = [];
+  const settings: GatewayApi = {
+    public: () => stored,
+    save: async (input) => {
+      saves.push(input);
+      if (input.baseUrl === "http://bad") {
+        return { settings: stored, error: "网关地址必须是 http(s) URL" };
+      }
+      if (input.baseUrl === undefined || input.model === undefined) {
+        return { settings: stored, error: "网关地址和模型不能为空" };
+      }
+      stored = {
+        configured: true,
+        provider: input.provider ?? "magpie",
+        baseUrl: input.baseUrl ?? "",
+        model: input.model ?? "",
+        hasApiKey: true,
+      };
+      return { settings: stored };
+    },
+    test: async (input) => {
+      tests.push(input);
+      return { ok: true, message: "连接成功", latencyMs: 3 };
+    },
+  };
+  const stack = await startStack({ settings });
+  const request = (path: string, init: RequestInit = {}) =>
+    fetch(`http://127.0.0.1:${stack.port}${path}`, {
+      ...init,
+      headers: {
+        authorization: `Bearer ${stack.token}`,
+        "content-type": "application/json",
+        ...(init.headers ?? {}),
+      },
+    });
+  try {
+    const initial = await request("/v1/settings");
+    assert.equal(initial.status, 200);
+    assert.deepEqual(((await initial.json()) as { settings: PublicGateway }).settings, stored);
+
+    assert.equal((await request("/v1/settings", { method: "PUT", body: "{}" })).status, 400);
+    assert.equal(
+      (
+        await request("/v1/settings", {
+          method: "PUT",
+          body: JSON.stringify({ baseUrl: 5 }),
+        })
+      ).status,
+      400,
+    );
+    const badUrl = await request("/v1/settings", {
+      method: "PUT",
+      body: JSON.stringify({ baseUrl: "http://bad", model: "m" }),
+    });
+    assert.equal(badUrl.status, 400);
+    assert.match(JSON.stringify(await badUrl.json()), /http\(s\)/);
+
+    const saved = await request("/v1/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        baseUrl: "http://127.0.0.1:3425/v1",
+        model: "auto/gpt-6-astra",
+        apiKey: "sk-new",
+      }),
+    });
+    assert.equal(saved.status, 200);
+    const savedBody = (await saved.json()) as { settings: PublicGateway };
+    assert.equal(savedBody.settings.configured, true);
+    assert.equal(JSON.stringify(savedBody).includes("sk-new"), false);
+    assert.deepEqual(saves.at(-1), {
+      baseUrl: "http://127.0.0.1:3425/v1",
+      model: "auto/gpt-6-astra",
+      apiKey: "sk-new",
+    });
+
+    const probed = await request("/v1/settings/test", {
+      method: "POST",
+      body: JSON.stringify({ apiKey: "sk-other" }),
+    });
+    assert.equal(probed.status, 200);
+    assert.deepEqual(((await probed.json()) as { result: unknown }).result, {
+      ok: true,
+      message: "连接成功",
+      latencyMs: 3,
+    });
+    assert.deepEqual(tests.at(-1), { apiKey: "sk-other" });
+
+    const unauthorized = await fetch(`http://127.0.0.1:${stack.port}/v1/settings`);
+    assert.equal(unauthorized.status, 401);
+  } finally {
+    await stack.close();
+  }
+});

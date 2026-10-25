@@ -291,7 +291,8 @@ Projection, which is also part of the mapping contract:
 | `progress.outputIntervalMs` | 100 | Reserved (tool output) |
 | `afterFailedRun` | `"continue"` | A failed run must not strand queued follow-ups |
 | `restartLimit` | 5 (default) | Parked tasks surface as `task_parked` and are cleared by `recover` |
-| `thinkingLevel` (per bot) | from `bot.json`, absent = the model's default | Applied when the Harness opens; a stored level is the bot's own reasoning effort. The daemon registers exactly one model (`BOTS_MODEL`), so a bot whose config names another id settles `no_model` until the model endpoint changes |
+| `thinkingLevel` (per bot) | from `bot.json`, absent = the model's default | Applied when the Harness opens; a stored level is the bot's own reasoning effort |
+| Model gateway | `<root>/gateway.json` (0600), dotenv fallback | The daemon registers one provider from the stored `{provider, baseUrl, model, apiKey}`. `PUT /v1/settings` rewrites the file, swaps the process-wide `Models` (the Harness reads it through a getter), sets the key in the environment the auth resolver reads per request, and moves every bot to the new model in place with `conversation.configure({model})`; a closed bot opens with the catalog's new model. A bot naming another id before that settles `no_model` |
 | `contextRetentionMs`, `documentRetentionMs` | 600 000 (default) | Idle close frees memory; defaults keep reopen cheap |
 
 Each bot owns its settings object so one bot's policy cannot affect another

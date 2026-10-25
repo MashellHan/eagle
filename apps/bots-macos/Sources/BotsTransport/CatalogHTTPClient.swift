@@ -1,9 +1,28 @@
 import BotsCore
 import Foundation
 
+/// The model gateway settings the daemon stores (docs/bots/PROTOCOL.md, "Gateway
+/// settings"). The key never comes back: a client only learns whether one is set.
+public struct GatewaySettings: Decodable, Sendable, Equatable {
+  public var configured: Bool
+  public var provider: String
+  public var baseUrl: String
+  public var model: String
+  public var hasApiKey: Bool
+}
+
+/// The daemon's probe of a gateway: reachability, auth and how long it took.
+public struct GatewayProbe: Decodable, Sendable, Equatable {
+  public var ok: Bool
+  public var status: Int?
+  public var message: String
+  public var latencyMs: Int
+  public var models: Int?
+}
+
 /// The catalog over HTTP (docs/bots/PROTOCOL.md, "HTTP endpoints"). Every call carries the
 /// bearer token; a 401 is an authentication failure, never a retry.
-public final class CatalogHTTPClient: CatalogPort {
+public final class CatalogHTTPClient: CatalogPort, Sendable {
   private let baseURL: URL
   private let token: String
   private let session: URLSession
@@ -45,6 +64,39 @@ public final class CatalogHTTPClient: CatalogPort {
 
   public func delete(id: String) async throws {
     _ = try await raw(path: "/v1/bots/\(id)", method: "DELETE", body: nil)
+  }
+
+  public func loadGateway() async throws -> GatewaySettings {
+    struct Payload: Decodable { let settings: GatewaySettings }
+    return try await request(path: "/v1/settings", method: "GET", body: nil, as: Payload.self)
+      .settings
+  }
+
+  /// Saving applies the gateway to new bots and moves live conversations to the model.
+  public func saveGateway(
+    baseURL: String,
+    model: String,
+    apiKey: String?
+  ) async throws -> GatewaySettings {
+    struct Payload: Decodable { let settings: GatewaySettings }
+    var body: [String: Any] = ["baseUrl": baseURL, "model": model]
+    if let apiKey, !apiKey.isEmpty { body["apiKey"] = apiKey }
+    return try await request(path: "/v1/settings", method: "PUT", body: body, as: Payload.self)
+      .settings
+  }
+
+  /// Probes the values typed in the form; an omitted key tests the stored one.
+  public func testGateway(
+    baseURL: String,
+    model: String,
+    apiKey: String?
+  ) async throws -> GatewayProbe {
+    struct Payload: Decodable { let result: GatewayProbe }
+    var body: [String: Any] = ["baseUrl": baseURL, "model": model]
+    if let apiKey, !apiKey.isEmpty { body["apiKey"] = apiKey }
+    return try await request(
+      path: "/v1/settings/test", method: "POST", body: body, as: Payload.self
+    ).result
   }
 
   /// The daemon pushes catalog changes on the conversation socket; HTTP has no push.

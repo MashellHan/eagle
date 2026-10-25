@@ -1549,3 +1549,24 @@ A checkpoint is what a person can actually see, so this records the absence too.
 - **Next broken hop:** the P1 above (status must not restore a pointer the page dropped),
   the prototype-path guard, then the expanded body's copy/filter affordances and the raw
   `entries`/tasks surfaces.
+
+## 2026-10-26 — Bots model gateway in Settings
+
+- **What a person can observe:** Settings opens on `Bots 模型`, with the gateway URL, API
+  key (shown only as "已保存") and model; `测试连接` returns the gateway's model count and
+  latency, `保存` applies it. The window behind the settings card is now a dark, translucent
+  blur instead of a milky frost. A bot stays readable without a gateway; the first send
+  without one shows a short "去设置" hint rather than a startup nag.
+- **Evidence:** the daemon's `POST /v1/settings/test` against the live magpie gateway
+  returned `{"ok":true,"status":200,"message":"连接成功，网关报告 17 个模型","latencyMs":53}`;
+  the tab renders with the saved values and `已配置`. The backdrop is a five-point blur of
+  the window under a 32% black dim (the reference's look with a slight blur), and the inputs
+  are custom surfaces with a focus hairline rather than native fields. Gates:
+  `cd apps/bots && npm run check` — 442/442 tests, coverage 94.84/88.23/90.48;
+  `apps/bots-macos && swift test` — 88 tests (44 + 30 + 14), coverage 92.9%;
+  `apps/macos && swift test` — 70 (56 + 14), including `a send without a gateway is refused
+  into the setup hint, not the daemon`. The hint was not clicked through in a fresh-install
+  window; its gate is exercised at the view-model level.
+- **Next broken hop:** a fresh-install window (empty root, no dotenv) end to end, and the
+  settings save on a daemon whose bot session predates the gateway (the model is moved in
+  place by `conversation.configure`).

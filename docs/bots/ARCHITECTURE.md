@@ -106,7 +106,8 @@ src/
     mapEvents.ts              pi AgentEvent / reports / watch end → RuntimeEvent
     PiDurableRuntime.ts       Harness ownership, submission ledger, close, recover
   server/
-    http.ts ws.ts auth.ts     catalog endpoints, socket, bearer
+    http.ts ws.ts auth.ts     catalog and gateway endpoints, socket, bearer
+    gateway.ts                model gateway store, public shape and connection probe
   log/                        see OBSERVABILITY.md
   testing/                    FakeRuntime, fixture server
 test/

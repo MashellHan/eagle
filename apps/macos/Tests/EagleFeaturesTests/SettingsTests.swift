@@ -4,6 +4,7 @@ import Testing
 @testable import EagleFeatures
 
 @Suite("Settings")
+@MainActor
 struct SettingsTests {
   @Test("permissions cycle through every option")
   func permissionCycle() {

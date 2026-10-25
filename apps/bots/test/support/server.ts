@@ -12,6 +12,7 @@ import type { RuntimePort } from "../../src/core/RuntimePort.ts";
 import { captureLog, type LogRecord } from "../../src/log/log.ts";
 import { measureEvent } from "../../src/main.ts";
 import { PiDurableRuntime } from "../../src/runtime/pi/PiDurableRuntime.ts";
+import type { GatewayApi } from "../../src/server/gateway.ts";
 import { startServer } from "../../src/server/http.ts";
 import { FakeRuntime, type FakeScript } from "../../src/testing/FakeRuntime.ts";
 
@@ -63,6 +64,8 @@ export type StackOptions = {
   /** A runtime whose close never resolves, so the registry times out and quarantines. */
   readonly closeHangs?: boolean;
   readonly closeDeadlineMs?: number;
+  /** Gateway settings routes; a test supplies a fake service. */
+  readonly settings?: GatewayApi;
 };
 
 export const startStack = async (options: StackOptions = {}): Promise<Stack> => {
@@ -176,6 +179,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     log,
     registry: registryView,
     service,
+    ...(options.settings === undefined ? {} : { settings: options.settings }),
     version: "0.0.0-test",
     instance: "i_test",
     capabilities: {

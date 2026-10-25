@@ -83,14 +83,44 @@ version, the instance id, the pid and a bot count, never bot content.
 | `POST` | `/v1/bots` | `{ "title", "label"?, "appearance"? }` — `appearance` is `{ "shape", "tint" }` | `201 { "bot": BotSummary }` |
 | `PATCH` | `/v1/bots/:id` | `{ "title" }` | `{ "bot": BotSummary }` |
 | `DELETE` | `/v1/bots/:id` | — | `204` |
+| `GET` | `/v1/settings` | — | `{ "settings": GatewaySettings }` |
+| `PUT` | `/v1/settings` | `{ "baseUrl", "model", "apiKey"?, "provider"? }` | `{ "settings": GatewaySettings }` |
+| `POST` | `/v1/settings/test` | `{ "baseUrl"?, "model"?, "apiKey"?, "provider"? }` | `{ "result": GatewayProbe }` |
+
+```json
+// GatewaySettings: the key is never returned, only whether one is stored.
+{ "configured": true, "provider": "magpie", "baseUrl": "http://127.0.0.1:3425/v1",
+  "model": "auto/gpt-6-astra", "hasApiKey": true }
+
+// GatewayProbe: the test asks the gateway for its model list.
+{ "ok": true, "status": 200, "message": "连接成功，网关报告 17 个模型",
+  "latencyMs": 53, "models": 17 }
+```
+
+Gateway rules:
+
+- **One stored gateway.** The daemon keeps `{ provider, baseUrl, model, apiKey }` in
+  `<root>/gateway.json` (0600, beside the token); the dotenv is only the fallback when that
+  file is absent. `configured` means all three of `baseUrl`, `model` and `apiKey` are set.
+- **The key is write-only.** `PUT` with an omitted or empty `apiKey` keeps the stored one,
+  so the form does not have to re-enter a secret it cannot read.
+- **Saving applies it.** New bots record the model, a live conversation is moved to it in
+  place (its session keeps its history), and the catalog is rebroadcast because every
+  summary's `model` changes. A malformed URL, an empty model or an empty key is a `400`
+  and nothing is written.
+- **Testing is separate.** `POST /v1/settings/test` probes `GET {baseUrl}/models` with the
+  key; a `401` is reported as a refused key, a timeout as an unreachable gateway. It does
+  not save and does not spend a generation.
+- **The model is still the daemon's single registered model.** A bot whose config names a
+  different id settles `no_model`; saving the gateway is what aligns it.
 
 `instance` is a random id chosen at daemon start; a client that sees it change
 knows the daemon restarted and reconnects. Errors use
 `{ "error": { "kind": ErrorKind, "message": string } }` with `400`, `401`, `404`,
 `409` (bot quarantined or being deleted), `503` (shutting down).
 
-The model is chosen by the daemon's configuration at creation time, not by the
-client: a model picker needs the `agent` capability.
+The model is the daemon's configured gateway model; saving settings aligns every bot with
+it. A per-bot model picker still needs the `agent` capability.
 
 ## Entities
 

@@ -202,6 +202,23 @@ export class BotDirectory {
     });
   }
 
+  /** Gateway settings changed the model of every bot; the catalog is the source of truth. */
+  async setModel(
+    id: string,
+    model: { readonly provider: string; readonly modelId: string },
+    at: string,
+  ): Promise<BotConfig> {
+    return this.#serial(async () => {
+      const bots = await this.load();
+      const index = bots.findIndex((bot) => bot.id === id);
+      if (index === -1) throw new DirectoryError("unknown_bot", `bot ${id} does not exist`);
+      const current = bots[index] as BotConfig;
+      const updated: BotConfig = { ...current, model, updatedAt: at };
+      await this.#writeAll(bots.map((bot, position) => (position === index ? updated : bot)));
+      return updated;
+    });
+  }
+
   async rename(id: string, title: string, at: string): Promise<BotConfig> {
     return this.#serial(async () => {
       const bots = await this.load();
