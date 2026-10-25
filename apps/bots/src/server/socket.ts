@@ -142,8 +142,9 @@ export const attachConnection = (
   let closed = false;
   let idleTimer: NodeJS.Timeout | undefined;
 
-  const emit = (event: ServerEvent): void => {
-    if (closed) return;
+  type WriteOutcome = "sent" | "backlog" | "closed";
+  const emit = (event: ServerEvent): WriteOutcome => {
+    if (closed) return "closed";
     const trace = "trace" in event && event.trace !== undefined ? event.trace : connTrace;
     let wire: Record<string, unknown>;
     let text: string;
@@ -161,7 +162,7 @@ export const attachConnection = (
         detail: { reason: "invalid" },
       });
       close(CLOSE.internal, "encode failed");
-      return;
+      return "closed";
     }
     try {
       assertFrameBudget(wire);
@@ -174,7 +175,7 @@ export const attachConnection = (
       // A single frame over the transport cap is a protocol violation even when this
       // daemon produced it: the client cannot decode it (PROTOCOL.md, "Close codes").
       close(CLOSE.protocol, "frame exceeds the transport cap");
-      return;
+      return "closed";
     }
     if (socket.bufferedAmount > maxBufferedBytes) {
       // Every path is bounded, not only the hub's: a client that is not reading cannot
@@ -184,7 +185,7 @@ export const attachConnection = (
         connId,
         detail: { evt: event.type, bytes: text.length },
       });
-      return;
+      return "backlog";
     }
     socket.send(text);
     log.emit("trace", "transport", Events.frameSendOk, {
@@ -192,6 +193,7 @@ export const attachConnection = (
       connId,
       detail: { evt: event.type, bytes: Buffer.byteLength(text) },
     });
+    return "sent";
   };
 
   const close = (code: number, reason: string): void => {
@@ -425,9 +427,9 @@ export const attachConnection = (
       }
       const { rev, snapshot } = await service.subscribe(connId, command.botId, trace, (event) => {
         // A client that stopped reading must not make the daemon buffer without a bound:
-        // the hub downgrades this subscriber to snapshot-only instead (PROTOCOL.md).
-        if (socket.bufferedAmount > maxBufferedBytes) throw new SubscriberTooSlow();
-        emit(toServerEvent(event));
+        // the hub downgrades this subscriber to snapshot-only instead (PROTOCOL.md). An
+        // oversized frame is not backlog: the writer already closed 1008 for it.
+        if (emit(toServerEvent(event)) === "backlog") throw new SubscriberTooSlow();
       });
       subscribed = true;
       connectionBot = command.botId;

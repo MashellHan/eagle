@@ -168,6 +168,21 @@ final class SettingsTests: XCTestCase {
     XCTAssertEqual(try store.read(), issued)
   }
 
+  func testTwoStoresMergeTheirEntriesInsteadOfOverwritingEachOther() throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bots-outbox-merge-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let first = OutboxStore(directory: directory)
+    let second = OutboxStore(directory: directory)
+    try first.add(OutboxEntry(botId: "b_1", requestId: "r_first", text: "一"))
+    // The second window never saw the first entry: its write must merge, not replace.
+    try second.add(OutboxEntry(botId: "b_1", requestId: "r_second", text: "二"))
+    XCTAssertEqual(
+      Set(OutboxStore(directory: directory).all().map(\.requestId)),
+      ["r_first", "r_second"]
+    )
+  }
+
   func testOutboxSurvivesARestartAndKeepsItsMode() throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("bots-outbox-\(UUID().uuidString)", isDirectory: true)

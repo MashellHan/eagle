@@ -47,12 +47,23 @@ const bench = async (
     bots?: readonly string[];
     /** Held open, so a close or a warm-up open can be observed in flight. */
     closeGate?: Promise<void>;
+    /** Held open so a delete can be observed between its two steps. */
+    renameGate?: Promise<void>;
     openGate?: Promise<void>;
     waitDeadline?: boolean;
   } = {},
 ) => {
   const root = await mkdtemp(join(tmpdir(), "bots-registry-"));
-  const directory = new BotDirectory(root, await nodeDirectoryFs());
+  const fs = await nodeDirectoryFs();
+  const directory = new BotDirectory(root, {
+    ...fs,
+    rename: async (from, to) => {
+      if (options.renameGate !== undefined && from.includes("/bots/")) {
+        await options.renameGate;
+      }
+      return fs.rename(from, to);
+    },
+  });
   for (const [index, title] of (options.bots ?? []).entries()) {
     await directory.create({
       id: `b_bot${index}`,
@@ -487,6 +498,50 @@ test("shutdown spends one shared deadline, not one per bot", async () => {
       setup.records.every((record) => record.evt !== "core.bot.close.ok"),
       "no timeout is logged as closed",
     );
+  } finally {
+    await setup.cleanup();
+  }
+});
+
+test("an idle close finishing during a delete does not open a second handle", async () => {
+  let releaseClose: () => void = () => undefined;
+  const closeGate = new Promise<void>((resolve) => {
+    releaseClose = resolve;
+  });
+  let releaseRename: () => void = () => undefined;
+  const renameGate = new Promise<void>((resolve) => {
+    releaseRename = resolve;
+  });
+  const setup = await bench({ closeGate, renameGate });
+  try {
+    await setup.registry.start();
+    const summary = await setup.registry.create("删除中", "tr_create_0030");
+    await setup.registry.open(summary.id, "tr_open_0030");
+    setup.registry.touch(summary.id);
+    setup.registry.release(summary.id);
+    await setup.timers.advance(1_000);
+    // The idle close is in flight; the delete takes over the lifecycle from here.
+    const removing = setup.registry.remove(summary.id, "tr_delete_0030");
+    await settle();
+    releaseClose();
+    await settle();
+    // The directory move is blocked: an open must wait for the delete window, not open.
+    let outcome = "pending";
+    const opening = setup.registry.open(summary.id, "tr_open_0031").then(
+      () => {
+        outcome = "opened";
+      },
+      () => {
+        outcome = "rejected";
+      },
+    );
+    await settle();
+    assert.equal(outcome, "pending", "the delete still owns the bot");
+    releaseRename();
+    await removing;
+    await opening;
+    assert.equal(outcome, "rejected", "the deleted bot never opens");
+    assert.equal(setup.opens(), 1, "no second harness was created during the delete");
   } finally {
     await setup.cleanup();
   }

@@ -214,3 +214,89 @@ final class DomainCoverageTests: XCTestCase {
     XCTAssertEqual(busy.streamingMessage?.id, "p_a1")
   }
 }
+
+final class DomainCoverageMoreTests: XCTestCase {
+  func testTheSnapshotRoundTripsThroughTheCodec() throws {
+    let snapshot = ConversationSnapshot(
+      botId: "b_1",
+      messages: [
+        Message(
+          id: "e_7",
+          role: .user,
+          state: .complete,
+          createdAt: "x",
+          blocks: [.text("问")],
+          requestId: "r_1"
+        )
+      ],
+      truncatedBefore: "e_3",
+      streaming: nil,
+      pending: [Submission(id: "s_1", requestId: "r_2", status: .queued)],
+      inbox: [InboxItem(id: "s_2", mode: "steer")],
+      running: true,
+      unavailable: nil
+    )
+    let data = try JSONEncoder().encode(snapshot)
+    let decoded = try JSONDecoder().decode(ConversationSnapshot.self, from: data)
+    XCTAssertEqual(decoded, snapshot)
+    XCTAssertEqual(decoded.messages.first?.visibleText, "问")
+  }
+
+  func testASparseSnapshotUsesTheDocumentedDefaults() throws {
+    let decoded = try JSONDecoder().decode(
+      ConversationSnapshot.self,
+      from: Data(#"{"botId":"b_1"}"#.utf8)
+    )
+    XCTAssertEqual(decoded.messages, [])
+    XCTAssertEqual(decoded.pending, [])
+    XCTAssertEqual(decoded.inbox, [])
+    XCTAssertFalse(decoded.running)
+    XCTAssertNil(decoded.streaming)
+  }
+
+  func testASummaryRoundTripsWithItsLabelAndFace() throws {
+    let summary = BotSummary(
+      id: "b_1",
+      title: "研究员",
+      label: "研究",
+      appearance: BotAppearance(shape: .flower, tint: .pink),
+      createdAt: "x",
+      updatedAt: "x",
+      model: ModelRef(provider: "p", modelId: "m"),
+      state: .unavailable,
+      unavailable: BotUnavailable(reason: .storageFailed, message: "closed")
+    )
+    let data = try JSONEncoder().encode(summary)
+    let decoded = try JSONDecoder().decode(BotSummary.self, from: data)
+    XCTAssertEqual(decoded, summary)
+    XCTAssertEqual(decoded.face.shape, .flower)
+  }
+
+  func testAToolCallDeltaCarriesAnIndexedPath() throws {
+    let change = DeltaChange.toolCall(
+      index: 2,
+      callId: "c_1",
+      path: ["args", "0"],
+      append: "x"
+    )
+    let data = try JSONEncoder().encode(change)
+    let decoded = try JSONDecoder().decode(DeltaChange.self, from: data)
+    XCTAssertEqual(decoded, change)
+  }
+
+  func testVisibleTextIgnoresThinkingAndTools() {
+    let message = Message(
+      id: "e_10",
+      role: .assistant,
+      state: .complete,
+      createdAt: "x",
+      blocks: [
+        .thinking("想"),
+        .text("答"),
+        .toolResult(callId: "c", text: "果", isError: false),
+      ]
+    )
+    XCTAssertEqual(message.visibleText, "答")
+    XCTAssertEqual(message.text, "想答果")
+  }
+}

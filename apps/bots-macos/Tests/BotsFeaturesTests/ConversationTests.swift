@@ -90,6 +90,7 @@ final class ConversationTests: XCTestCase {
     )
     try await waitUntil { model.state.messages.isEmpty }
     XCTAssertEqual(outbox.entries(for: "b_1").count, 0, "a refusal clears the entry")
+    XCTAssertEqual(model.draft, "太长", "and the text comes back so it can be fixed")
     XCTAssertNotNil(model.errorBanner)
   }
 
@@ -142,7 +143,7 @@ final class ConversationTests: XCTestCase {
     try await waitUntil { fake.recovered == 1 }
   }
 
-  func testAReadyConnectionReplaysTheStoredOutbox() async throws {
+  func testTheStoredOutboxIsReplayedAfterTheFirstSnapshot() async throws {
     let outbox = OutboxStore(directory: outboxDirectory)
     let stored = OutboxEntry(botId: "b_1", requestId: "r_stored_1", text: "断网时写的")
     try outbox.add(stored)
@@ -150,6 +151,10 @@ final class ConversationTests: XCTestCase {
     let model = ConversationViewModel(botId: "b_1", conversation: fake, outbox: outbox)
     ready(model)
     fake.emit(.connection(.ready))
+    try await Task.sleep(nanoseconds: 40_000_000)
+    XCTAssertTrue(fake.sent.isEmpty, "a send before the subscription would be refused")
+
+    fake.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
     try await waitUntil { fake.sent.contains { $0.requestId == "r_stored_1" } }
     XCTAssertEqual(
       fake.sent.last?.text,
@@ -178,6 +183,7 @@ final class FakeConversation: ConversationPort {
   }
 
   var sent: [Sent] = []
+  var lastBotId: String?
   var recovered = 0
   var aborted = 0
   var historyRequests: [String] = []
@@ -193,8 +199,14 @@ final class FakeConversation: ConversationPort {
     continuation?.yield(event)
   }
 
-  func send(_ text: String, whenBusy: BusyMode, context: CommandContext) async throws {
+  func send(
+    _ text: String,
+    whenBusy: BusyMode,
+    context: CommandContext,
+    botId: String
+  ) async throws {
     sent.append(Sent(text: text, requestId: context.requestId ?? ""))
+    lastBotId = botId
   }
 
   func abort(context: CommandContext) async throws {
@@ -236,6 +248,7 @@ final class ConversationLifecycleTests: XCTestCase {
     model.draft = "还没连接"
     model.send()
     XCTAssertTrue(fake.sent.isEmpty, "a draft before the handshake is not sent")
+    XCTAssertEqual(model.draft, "还没连接", "and the text stays in the composer")
 
     model.select(botId: "b_1")
     fake.emit(.connection(.ready))

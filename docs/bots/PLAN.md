@@ -132,6 +132,42 @@ Deliberately not built in this pass: bot settings (model, instructions), usage,
 inspector content for a bot (the inspector is emptied rather than showing another
 bot's), and history paging from the transcript.
 
+## Stages 4-5 review round: what was fixed and what is deferred
+
+An independent review of stages 4 and 5 returned `BLOCKING 15`: three confirmed daemon
+races already on this list, and twelve client/integration defects. Fixed:
+
+- daemon: an idle close no longer clears a delete's settling window (it owns only the
+  window it created); a reservation is released by a 60 s TTL instead of by a snapshot
+  that may predate the admission; availability is re-checked after the record lookup
+- client: `heart`/`flower` are in `BotAppearance.Shape` (a missing shape made the whole
+  catalog undecodable); a send is not written when the outbox write fails and the draft
+  comes back on `not_admitted`; the outbox is replayed after the first snapshot, never
+  after the handshake; a send names its bot and is refused if the connection moved; a
+  write failure releases the writer instead of wedging reconnects; a rejected revision
+  no longer advances the gap baseline and a resync timeout retries once; a snapshot
+  merges the submission ranks instead of resetting them; the outbox store merges on
+  write so two windows cannot overwrite each other; hiding the open bot selects the next
+  one; the catalog changing the selection moves the conversation with it; the shell shows
+  a status strip with 恢复/停止/error, and a send that cannot run keeps its draft
+- presentation: assistant answers are markdown dialog bubbles (headings, lists, quotes,
+  fences with a language label, inline styles), the parser keeps paragraph/list order,
+  handles longer fences, numbered lists and `#include`; thinking and tool results stay
+  out of the answer; one attempt has one typing row; a `length` stop reason says so
+- daemon: an oversized frame closes `1008` even when the socket is behind
+- tests: real-socket reconnect, block-delta and ordering cases, outbox replay after the
+  snapshot, draft restoration, store-level outbox merge, single typing row, the
+  appearance set, and the daemon races above
+
+Still deferred, with reasons: the client logging contract (`os.Logger` crossings in
+OBSERVABILITY.md) is not implemented; the transport's gap/unknown/close-code/reconnect
+fault-injection matrix is only unit-tested at the gap rule and exercised by the happy
+path integration tests; the outbox's multi-window guarantee is tested at the store, not
+through two windows; an `abort` refused on an unavailable bot still lacks an originating
+record, a failed `directory.remove` can leave a closed handle that `open` reuses, and a
+catalog-full refusal has no origin record; and long or hostile markdown has parser tests
+but no measured layout pass.
+
 ## Next work, in order
 
 1. Close the sixth round's three remaining races (delete-during-close, a stale

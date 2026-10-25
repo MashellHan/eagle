@@ -183,10 +183,7 @@ public final class ConversationSocket: NSObject {
       var accept = false
       var gapped = false
       lock.lock()
-      if decoded.event == nil, decoded.catalog == nil {
-        // An unknown event consumes its revision; it must not look like a gap (I8).
-        _ = self.gap.accept(rev)
-      } else if case .snapshot? = decoded.event {
+      if case .snapshot? = decoded.event {
         self.gap.reset(to: rev)
         resyncPending = false
         resyncAttempts = 0
@@ -201,6 +198,7 @@ public final class ConversationSocket: NSObject {
         gapped = true
         accept = false
       }
+      _ = decoded.event
       lock.unlock()
       if gapped {
         requestResync()
@@ -227,7 +225,22 @@ public final class ConversationSocket: NSObject {
       resyncAttempts += 1
       let exhausted = resyncAttempts >= 2
       lock.unlock()
-      if exhausted { disconnect(reason: "the stream kept losing revisions", code: 1011) }
+      if exhausted {
+        disconnect(reason: "the stream kept losing revisions", code: 1011)
+        return
+      }
+      // A second resync is sent and the deadline re-armed, so a stream that stays silent
+      // still ends this wait instead of hanging on a timeout that never fires again.
+      enqueue(try? Wire.resync(trace: Identifiers.trace("resync")))
+      resyncDeadline?.cancel()
+      resyncDeadline = Task { [weak self] in
+        try? await Task.sleep(nanoseconds: 10_000_000_000)
+        guard let self, !Task.isCancelled else { return }
+        self.lock.lock()
+        let waiting = self.resyncPending && !self.closed
+        self.lock.unlock()
+        if waiting { self.requestResync() }
+      }
       return
     }
     resyncPending = true
@@ -361,6 +374,11 @@ public final class ConversationSocket: NSObject {
       do {
         try await task.send(.string(String(decoding: next, as: UTF8.self)))
       } catch {
+        // Release the writer before reconnecting, or the hello of the next attempt would
+        // queue behind a drain that never resumes.
+        lock.lock()
+        writing = false
+        lock.unlock()
         disconnect(reason: "the write failed", code: 1006)
         return
       }
@@ -409,9 +427,19 @@ public final class BotsConnection: ConversationPort {
     return created.events
   }
 
-  public func send(_ text: String, whenBusy: BusyMode, context: CommandContext) async throws {
+  public func send(
+    _ text: String,
+    whenBusy: BusyMode,
+    context: CommandContext,
+    botId: String
+  ) async throws {
     guard let socket, let requestId = context.requestId else {
       throw ClientError("there is no connection to send on")
+    }
+    guard socket.botId == botId else {
+      // The user switched bots while the send was being prepared: this text belongs to
+      // the other connection, so it is refused rather than written to the wrong bot.
+      throw ClientError("the connection now belongs to another bot")
     }
     try socket.send(
       text: text,

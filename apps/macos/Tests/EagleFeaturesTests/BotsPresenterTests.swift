@@ -116,6 +116,33 @@ struct BotsPresenterTests {
     return nil
   }
 
+  @Test("thinking and tool results stay out of the answer bubble")
+  func hiddenBlocks() {
+    var state = ConversationState(botId: "b_1")
+    let message = Message(
+      id: "e_10",
+      role: .assistant,
+      state: .complete,
+      createdAt: "x",
+      blocks: [
+        .thinking("内心独白"),
+        .text("可见"),
+        .toolCall(callId: "c_1", name: "search"),
+        .toolResult(callId: "c_1", text: "工具结果", isError: false),
+      ],
+      stopReason: .length
+    )
+    state = Reducer.apply(.append(message: message, replaces: nil), to: state)
+    let entries = presenter.transcript(for: state)
+    #expect(
+      {
+        if case .assistant(_, let blocks) = entries.first {
+          return blocks == [.paragraph("可见"), .note("回答因为长度上限被截断。")]
+        }
+        return false
+      }())
+  }
+
   @Test("an aborted answer says it was aborted")
   func aborted() {
     var state = ConversationState(botId: "b_1")

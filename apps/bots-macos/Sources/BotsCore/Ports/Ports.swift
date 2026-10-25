@@ -74,7 +74,14 @@ public protocol CatalogPort: AnyObject {
 
 public protocol ConversationPort: AnyObject {
   func open(botId: String) -> AsyncStream<ConversationEvent>
-  func send(_ text: String, whenBusy: BusyMode, context: CommandContext) async throws
+  /// `botId` is the connection the caller believes it is writing to; the transport
+  /// refuses when the socket now belongs to another bot.
+  func send(
+    _ text: String,
+    whenBusy: BusyMode,
+    context: CommandContext,
+    botId: String
+  ) async throws
   func abort(context: CommandContext) async throws
   func recover(context: CommandContext) async throws
   func resync(context: CommandContext) async throws

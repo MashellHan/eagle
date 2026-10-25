@@ -29,6 +29,10 @@ public struct OutboxEntry: Codable, Sendable, Equatable, Identifiable {
 }
 
 public final class OutboxStore {
+  /// Every window has its own view model, so writes re-read the file under one lock
+  /// before merging: two windows must not overwrite each other's entries.
+  private static let lock = NSLock()
+
   private let directory: URL
   private let fileURL: URL
   private var cache: [OutboxEntry]
@@ -51,13 +55,32 @@ public final class OutboxStore {
   public func all() -> [OutboxEntry] { cache }
 
   public func add(_ entry: OutboxEntry) throws {
-    cache.removeAll { $0.requestId == entry.requestId }
-    cache.append(entry)
-    try persist()
+    try mutate { entries in
+      var next = entries
+      next.removeAll { $0.requestId == entry.requestId }
+      next.append(entry)
+      return next
+    }
   }
 
   public func remove(requestId: String) throws {
-    cache.removeAll { $0.requestId == requestId }
+    try mutate { entries in
+      var next = entries
+      next.removeAll { $0.requestId == requestId }
+      return next
+    }
+  }
+
+  /// Read-modify-write under the process lock, so a stale in-memory cache from another
+  /// window cannot drop an entry this instance never saw.
+  private func mutate(_ change: ([OutboxEntry]) -> [OutboxEntry]) throws {
+    Self.lock.lock()
+    defer { Self.lock.unlock() }
+    var entries =
+      (try? Data(contentsOf: fileURL))
+      .flatMap { try? JSONDecoder().decode([OutboxEntry].self, from: $0) } ?? []
+    entries = change(entries)
+    cache = entries
     try persist()
   }
 

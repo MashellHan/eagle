@@ -537,10 +537,11 @@ export class BotRegistry {
     const handle = entry.handle;
     entry.closing = true;
     const closing = handle.close(trace, this.#options.closeDeadlineMs);
-    entry.settling = closing.then(
+    const window = closing.then(
       () => undefined,
       () => undefined,
     );
+    entry.settling = window;
     const outcome = await closing.catch(() => {
       this.#options.log.emit("error", "core", Events.closeFail, {
         trace,
@@ -550,14 +551,18 @@ export class BotRegistry {
       });
       return "timeout" as const;
     });
-    entry.settling = undefined;
+    // A delete may have taken the window over while this close was in flight: only the
+    // owner of the window may clear it, or an open could slip in during the move.
+    if (entry.settling === window) {
+      entry.settling = undefined;
+      entry.closing = false;
+    }
     if (outcome === "timeout") {
       this.#quarantine(entry, trace);
       return;
     }
     entry.handle = undefined;
     entry.state = "catalogued";
-    entry.closing = false;
     this.#options.log.emit("info", "core", Events.closeOk, {
       trace,
       botId: entry.config.id,

@@ -34,6 +34,8 @@ const Events = {
 export const MAX_SUBSCRIBERS_PER_BOT = 8;
 /** Admitted-but-unsettled entries, and the runtime inbox, are both bounded (same table). */
 export const MAX_PENDING = 32;
+/** A reservation whose events never arrive is released after this window. */
+export const RESERVATION_TTL_MS = 60_000;
 export const MAX_INBOX = 32;
 /** The newest page a snapshot carries; older messages are reachable through `history`. */
 export const MAX_WINDOW_MESSAGES = 200;
@@ -49,6 +51,8 @@ export type ConversationServiceOptions = {
   readonly handleOf?: (botId: string) => RuntimeHandle | undefined;
   /** True while a close or delete owns the bot, so a cached view may be about to die. */
   readonly settlingOf?: (botId: string) => boolean;
+  /** Wall clock for the reservation TTL. */
+  readonly now?: () => number;
   /** Encoded bytes of one event, measured by the transport (see EventHub). */
   readonly measure: (event: RuntimeEvent) => number;
   readonly schedule?: (run: () => void) => void;
@@ -95,10 +99,8 @@ type Bot = {
   readonly hub: EventHub;
   snapshot: ConversationSnapshot;
   readonly ranks: SubmissionRanks;
-  /** Admissions in flight, counted until their own submission event arrives. */
-  readonly reserved: Set<string>;
-  /** The reservations whose `submit` already returned: only those a snapshot may judge. */
-  readonly settledSubmits: Set<string>;
+  /** Admissions in flight, keyed by request id, with the time the reservation was made. */
+  readonly reserved: Map<string, number>;
   /** Detaches the runtime subscription this bot holds, when it has one. */
   detach: (() => void) | undefined;
   /** Publishes what the runtime delivered while the first subscription was rendering. */
@@ -118,6 +120,7 @@ export class ConversationService {
   readonly #open: OpenBot;
   readonly #handleOf: ((botId: string) => RuntimeHandle | undefined) | undefined;
   readonly #settlingOf: ((botId: string) => boolean) | undefined;
+  readonly #now: () => number;
   readonly #hubOptions: {
     readonly measure: (event: RuntimeEvent) => number;
     readonly schedule?: (run: () => void) => void;
@@ -143,6 +146,7 @@ export class ConversationService {
     this.#open = options.open;
     this.#handleOf = options.handleOf;
     this.#settlingOf = options.settlingOf;
+    this.#now = options.now ?? Date.now;
     this.#log = options.log;
     this.#window = options.windowMessages ?? MAX_WINDOW_MESSAGES;
     this.#onRunning = options.onRunning;
@@ -304,7 +308,10 @@ export class ConversationService {
         // frame that carries its content (PROTOCOL I1/I3).
         bot.hub.publishSnapshot(rebuilt, trace);
         bot.hub.drain();
-        this.#onRecovered?.(bot.snapshot.botId, rebuilt.running);
+        // A second failure during the recovery must leave the catalog unavailable.
+        if (bot.degraded === undefined) {
+          this.#onRecovered?.(bot.snapshot.botId, rebuilt.running);
+        }
         return;
       }
       // A degraded-but-owned bot still has its handle: recover must ask that owner.
@@ -316,7 +323,9 @@ export class ConversationService {
         bot.detach?.();
         const attached = await this.#attach(handle, bot.hub, trace, bot);
         attached.release();
-        this.#onRecovered?.(bot.snapshot.botId, bot.snapshot.running);
+        if (bot.degraded === undefined) {
+          this.#onRecovered?.(bot.snapshot.botId, bot.snapshot.running);
+        }
       }
       bot.hub.publishSnapshot(bot.snapshot, trace);
     });
@@ -427,12 +436,17 @@ export class ConversationService {
         // only the view's pending list may count it.
         if (stored.status === "done" || stored.status === "unanswered") {
           bot.reserved.delete(input.requestId);
-          bot.settledSubmits.delete(input.requestId);
         }
         return stored;
       }
       // A reservation already visible as pending is the same admission, not a second one.
-      const unlisted = [...bot.reserved].filter(
+      // One whose events never arrived is released by time, never by a snapshot: a
+      // snapshot may have been captured before this admission existed.
+      const now = this.#now();
+      for (const [requestId, at] of bot.reserved) {
+        if (now - at > RESERVATION_TTL_MS) bot.reserved.delete(requestId);
+      }
+      const unlisted = [...bot.reserved.keys()].filter(
         (requestId) => !bot.snapshot.pending.some((record) => record.requestId === requestId),
       ).length;
       if (
@@ -446,10 +460,21 @@ export class ConversationService {
           input.requestId,
         );
       }
-      bot.reserved.add(input.requestId);
+      bot.reserved.set(input.requestId, this.#now());
       try {
+        // The bot can become unavailable while the record lookup awaited: the handle this
+        // section captured may be dead by now, so availability is re-checked here.
+        const live = this.#botOf(connectionId, input.requestId);
+        if (live.degraded !== undefined || live.handle !== handle) {
+          bot.reserved.delete(input.requestId);
+          throw new CommandError(
+            this.#mint(live.degraded?.reason ?? "storage_failed"),
+            "runtime",
+            "the bot is unavailable; recover it first",
+            input.requestId,
+          );
+        }
         const record = await handle.submit(input);
-        bot.settledSubmits.add(input.requestId);
         if (record.status === "done" || record.status === "unanswered") {
           bot.reserved.delete(input.requestId);
         }
@@ -461,10 +486,7 @@ export class ConversationService {
         const known =
           cause instanceof ClassifiedFailure &&
           (cause.disposition === "not_admitted" || cause.disposition === "runtime");
-        if (known) {
-          bot.reserved.delete(input.requestId);
-          bot.settledSubmits.delete(input.requestId);
-        }
+        if (known) bot.reserved.delete(input.requestId);
         // A failure the runtime already classified keeps its identity and disposition;
         // only an unclassified one becomes "admission unconfirmed", where the client
         // keeps its outbox entry and retries with the same requestId.
@@ -701,8 +723,7 @@ export class ConversationService {
           unavailable: { reason, message },
         },
         ranks: new Map(),
-        reserved: new Set<string>(),
-        settledSubmits: new Set<string>(),
+        reserved: new Map<string, number>(),
         detach: undefined,
         release: () => undefined,
       };
@@ -715,24 +736,7 @@ export class ConversationService {
     let bot: Bot;
     const apply = (event: RuntimeEvent): void => {
       const wasRunning = bot.snapshot.running;
-      if (event.type === "submission") {
-        bot.reserved.delete(event.record.requestId);
-        bot.settledSubmits.delete(event.record.requestId);
-      }
-      if (event.type === "snapshot") {
-        // A lost settlement event cannot hold a slot forever: a snapshot that no longer
-        // lists an admitted submission is the daemon's own reconciliation. A submit that
-        // has not returned yet may commit *after* this snapshot, so it is not judged.
-        for (const requestId of [...bot.reserved]) {
-          if (!bot.settledSubmits.has(requestId)) continue;
-          const listed =
-            event.value.pending.some((record) => record.requestId === requestId) ||
-            event.value.messages.some(
-              (message) => message.requestId === requestId && message.state !== "complete",
-            );
-          if (!listed) bot.reserved.delete(requestId);
-        }
-      }
+      if (event.type === "submission") bot.reserved.delete(event.record.requestId);
       let next = reduceView(bot.snapshot, event, bot.ranks);
       if (
         event.type === "error" &&
@@ -786,8 +790,7 @@ export class ConversationService {
       // The runtime's own baseline is a page too: it is trimmed before any client sees it.
       snapshot: this.#fitPage(subscription.snapshot),
       ranks,
-      reserved: new Set<string>(),
-      settledSubmits: new Set<string>(),
+      reserved: new Map<string, number>(),
       release: () => {
         // Stay buffering while draining: an event produced by a sink mid-release must
         // queue behind the earlier ones instead of overtaking them.

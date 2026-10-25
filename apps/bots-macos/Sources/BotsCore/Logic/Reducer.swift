@@ -51,10 +51,19 @@ public struct ConversationState: Sendable, Equatable {
 }
 
 public enum Reducer {
-  /// A snapshot replaces state and seeds the submission ranks from its pending list.
-  public static func snapshot(_ value: ConversationSnapshot, rev: Int?) -> ConversationState {
-    var ranks: [String: Submission] = [:]
-    for record in value.pending { ranks[record.id] = record }
+  /// A snapshot replaces state and merges its pending list into the ranks already seen, so
+  /// a settlement a snapshot no longer lists is not forgotten. Records the snapshot lists
+  /// are part of `pending`; a terminal record never comes back.
+  public static func snapshot(
+    _ value: ConversationSnapshot,
+    rev: Int?,
+    keeping previous: [String: Submission] = [:]
+  ) -> ConversationState {
+    var ranks = previous
+    for record in value.pending {
+      if let known = ranks[record.id], known.status.rank > record.status.rank { continue }
+      ranks[record.id] = record
+    }
     return ConversationState(
       botId: value.botId,
       messages: value.messages,
@@ -193,6 +202,9 @@ public enum Reducer {
       case .block(let index, let block):
         if index < current.blocks.count {
           current.blocks[index] = block
+        } else if index == current.blocks.count {
+          // A block delta can open a new block, exactly like the daemon's own fold.
+          current.blocks.append(block)
         }
       case .message(let replacement):
         current = replacement

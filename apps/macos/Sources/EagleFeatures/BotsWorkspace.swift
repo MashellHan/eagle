@@ -38,6 +38,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var selectedId: String?
   @Published private(set) var error: String?
   @Published private(set) var canRecover = false
+  @Published private(set) var running = false
+  @Published private(set) var connection: ConnectionState = .connecting
   @Published var draft = ""
 
   /// The shell owns the sidebar's selection; the view model reports the bot it selected.
@@ -138,6 +140,14 @@ final class BotsWorkspaceViewModel: ObservableObject {
     guard let app else { return }
     let text = draft
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    // Not ready yet: keep the text instead of clearing a draft that cannot be sent.
+    guard app.conversation.canSend else {
+      subtitle = presenter.subtitle(
+        for: app.conversation.state,
+        connection: app.conversation.connection
+      )
+      return
+    }
     app.conversation.draft = text
     draft = ""
     app.conversation.send()
@@ -146,6 +156,18 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   func recover() {
     app?.conversation.recover()
+    publish()
+  }
+
+  func abort() {
+    app?.conversation.abort()
+    publish()
+  }
+
+  func dismissError() {
+    app?.conversation.dismissError()
+    app?.dismissError()
+    publish()
   }
 
   func refresh() async {
@@ -161,6 +183,10 @@ final class BotsWorkspaceViewModel: ObservableObject {
       return
     }
     items = app.bots.map(presenter.sidebarItem)
+    if app.selection != selectedId, let next = app.selection {
+      selectedId = next
+      onSelect?(next)
+    }
     guard let selected = app.bots.first(where: { $0.id == app.selection }) else {
       title = "Bots"
       subtitle = app.bots.isEmpty ? "还没有 Bot，点 + 新建一个" : "选择一个 Bot"
@@ -173,8 +199,10 @@ final class BotsWorkspaceViewModel: ObservableObject {
     let conversation = app.conversation
     subtitle = presenter.subtitle(for: conversation.state, connection: conversation.connection)
     entries = presenter.transcript(for: conversation.state)
+    running = conversation.state.running
+    connection = conversation.connection
     canRecover = conversation.state.unavailable != nil
-    error = conversation.errorBanner
+    error = conversation.errorBanner ?? app.error
   }
 
   /// The conversation view model publishes many times per answer (one delta each), so the
@@ -214,14 +242,19 @@ struct BotsPresenter {
     case .user:
       return [.user(id: message.id, text: message.text)]
     case .assistant:
-      if message.text.isEmpty, message.state == .streaming {
-        return [.typing(id: "typing-\(message.id)")]
+      // An attempt with no text yet is represented by the single typing row `transcript`
+      // adds; only visible text becomes a bubble.
+      let answer = message.visibleText
+      if answer.isEmpty, message.state == .streaming {
+        return []
       }
-      var blocks: [AssistantTurn.Block] = message.text.isEmpty ? [] : [.paragraph(message.text)]
+      var blocks: [AssistantTurn.Block] = answer.isEmpty ? [] : [.paragraph(answer)]
       if message.state == .aborted {
         blocks.append(.note("回答已中止"))
       } else if message.state == .error {
         blocks.append(.note("回答失败，可以重新发送。"))
+      } else if message.stopReason == .length {
+        blocks.append(.note("回答因为长度上限被截断。"))
       }
       return [.assistant(id: message.id, blocks: blocks)]
     case .notice:

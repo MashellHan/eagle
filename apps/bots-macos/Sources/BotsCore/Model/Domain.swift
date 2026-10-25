@@ -134,6 +134,15 @@ public struct Message: Codable, Sendable, Equatable, Identifiable {
 
   public var text: String { blocks.map(\.displayText).joined() }
 
+  /// What a transcript shows for the answer: text blocks only. Thinking and tool results
+  /// stay behind the capability flags (docs/bots/PRODUCT.md, phase 1).
+  public var visibleText: String {
+    blocks.compactMap { block in
+      if case .text(let text) = block { return text }
+      return nil
+    }.joined()
+  }
+
   /// `p_a1` is a provisional streamed message; `e_7` is a committed entry.
   public var isProvisional: Bool { id.hasPrefix("p_") }
 }
@@ -166,7 +175,7 @@ public struct BotUnavailable: Codable, Sendable, Equatable {
 /// stores both; the client only renders them.
 public struct BotAppearance: Codable, Sendable, Equatable, Hashable {
   public enum Shape: String, Codable, Sendable, CaseIterable {
-    case blob, pebble, squircle, star, cloud, shield, drop, hex
+    case blob, pebble, squircle, star, cloud, shield, drop, hex, heart, flower
   }
 
   public enum Tint: String, Codable, Sendable, CaseIterable {

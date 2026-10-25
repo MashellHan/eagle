@@ -139,6 +139,26 @@ final class FixtureDecodingTests: XCTestCase {
     XCTAssertEqual(runtimeDisposition, .runtime)
   }
 
+  func testTheAppearanceSetsMatchTheContract() {
+    // The picker and the daemon share closed sets; a shape the client cannot decode makes
+    // the whole catalog unreadable, so the counts and ids are asserted together.
+    XCTAssertEqual(BotAppearance.Shape.allCases.count, 10)
+    XCTAssertEqual(
+      Set(BotAppearance.Shape.allCases.map(\.rawValue)),
+      ["blob", "pebble", "squircle", "star", "cloud", "shield", "drop", "hex", "heart", "flower"]
+    )
+    XCTAssertEqual(BotAppearance.Tint.allCases.count, 12)
+    for shape in BotAppearance.Shape.allCases {
+      let json = """
+        {"id":"b_1","title":"一","createdAt":"x","updatedAt":"x",
+         "model":{"provider":"p","modelId":"m"},"state":"idle",
+         "appearance":{"shape":"\(shape.rawValue)","tint":"green"}}
+        """
+      let bot = try? JSONDecoder().decode(BotSummary.self, from: Data(json.utf8))
+      XCTAssertEqual(bot?.face.shape, shape, "\(shape.rawValue) must decode")
+    }
+  }
+
   func testACommandCarriesItsTraceAndIdentity() throws {
     let hello = try Wire.decodeEnvelopeForTests(Wire.hello())
     XCTAssertEqual(hello["type"] as? String, "hello")

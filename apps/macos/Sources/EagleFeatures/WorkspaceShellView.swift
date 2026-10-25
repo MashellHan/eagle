@@ -40,8 +40,17 @@ public struct WorkspaceShellView: View {
 
   private func selectAfterHide(_ id: String) {
     guard list.selection == id else { return }
-    let visible = sidebarSections.flatMap(\.items)
-    list.selection = visible.first?.id
+    guard let next = sidebarSections.flatMap(\.items).first?.id else {
+      list.selection = nil
+      return
+    }
+    // Hiding the open bot must move the conversation too, not only the sidebar's
+    // highlight.
+    if bots.owns(next) {
+      bots.select(next)
+    } else {
+      list.selection = next
+    }
   }
 
   private var selectedIsBot: Bool { bots.owns(list.selection) }
@@ -111,18 +120,31 @@ public struct WorkspaceShellView: View {
           onCreateGroup: { list.addGroup() }
         )
       } conversation: {
-        ConversationColumn(
-          title: selectedIsBot ? bots.title : (item?.title ?? "依赖修复专家"),
-          subtitle: selectedIsBot ? bots.subtitle : (item?.tag ?? "GitHub"),
-          tintIndex: selectedIsBot ? bots.tintIndex : (item?.tintIndex ?? 2),
-          entries: selectedIsBot ? bots.entries : chat.entries,
-          draft: selectedIsBot ? $bots.draft : $chat.draft,
-          onSend: { selectedIsBot ? bots.send() : chat.send() },
-          showsSidebar: layout.showsSidebar,
-          showsInspector: layout.showsInspector,
-          onShowSidebar: { layout.toggleSidebar() },
-          onToggleInspector: { layout.toggleInspector() }
-        )
+        VStack(spacing: 0) {
+          if selectedIsBot {
+            BotStatusStrip(
+              subtitle: bots.subtitle,
+              error: bots.error,
+              canRecover: bots.canRecover,
+              running: bots.running,
+              onRecover: { bots.recover() },
+              onAbort: { bots.abort() },
+              onDismissError: { bots.dismissError() }
+            )
+          }
+          ConversationColumn(
+            title: selectedIsBot ? bots.title : (item?.title ?? "依赖修复专家"),
+            subtitle: selectedIsBot ? bots.subtitle : (item?.tag ?? "GitHub"),
+            tintIndex: selectedIsBot ? bots.tintIndex : (item?.tintIndex ?? 2),
+            entries: selectedIsBot ? bots.entries : chat.entries,
+            draft: selectedIsBot ? $bots.draft : $chat.draft,
+            onSend: { selectedIsBot ? bots.send() : chat.send() },
+            showsSidebar: layout.showsSidebar,
+            showsInspector: layout.showsInspector,
+            onShowSidebar: { layout.toggleSidebar() },
+            onToggleInspector: { layout.toggleInspector() }
+          )
+        }
       } inspector: {
         InspectorColumn(
           name: selectedIsBot ? bots.title : (item?.title ?? "依赖修复专家"),

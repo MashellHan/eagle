@@ -20,6 +20,9 @@ public final class ConversationViewModel: ObservableObject {
   private let now: () -> Date
   private var eventsTask: Task<Void, Never>?
   private var selectedBotId: String?
+  /// The outbox is reconciled after the first snapshot of the selected bot, never after
+  /// the handshake: a send before the subscription exists is refused as `not_admitted`.
+  private var reconciled = false
   /// Sends the user asked for that have not been confirmed yet.
   private var inFlight: [String: String] = [:]
   /// The absolute catalog a `bots` frame carries, for the window's sidebar.
@@ -50,6 +53,7 @@ public final class ConversationViewModel: ObservableObject {
     if selectedBotId == botId, eventsTask != nil { return }
     eventsTask?.cancel()
     selectedBotId = botId
+    reconciled = false
     state = ConversationState(botId: botId)
     connection = .connecting
     errorBanner = nil
@@ -125,6 +129,15 @@ public final class ConversationViewModel: ObservableObject {
   // MARK: - Sending
 
   private func send(text: String, requestId: String, botId: String, optimistic: Bool) {
+    // The entry is stored before the frame is written; if it cannot be stored, nothing is
+    // sent and the draft comes back (PROTOCOL.md, client duties 1).
+    do {
+      try outbox.add(OutboxEntry(botId: botId, requestId: requestId, text: text))
+    } catch {
+      draft = text
+      errorBanner = "无法保存待发送的消息，消息没有发出。"
+      return
+    }
     isSending = true
     if optimistic {
       state = Reducer.apply(
@@ -133,18 +146,35 @@ public final class ConversationViewModel: ObservableObject {
       )
     }
     inFlight[requestId] = text
-    // Persisted before the frame is written (PROTOCOL.md, client duties 1).
-    try? outbox.add(OutboxEntry(botId: botId, requestId: requestId, text: text))
     let context = CommandContext.send(requestId)
     Task { [weak self] in
       guard let self else { return }
       do {
-        try await self.conversation.send(text, whenBusy: .followUp, context: context)
+        try await self.conversation.send(
+          text,
+          whenBusy: .followUp,
+          context: context,
+          botId: botId
+        )
         self.isSending = false
       } catch {
         self.isSending = false
         self.errorBanner = Self.describe(error)
       }
+    }
+  }
+
+  /// Replays every stored entry with its own requestId; pi answers with the stored record
+  /// (PROTOCOL.md, client duties 2).
+  private func reconcileOutbox() {
+    guard let botId = selectedBotId else { return }
+    for entry in outbox.entries(for: botId) {
+      send(
+        text: entry.text,
+        requestId: entry.requestId,
+        botId: entry.botId,
+        optimistic: !state.messages.contains { $0.requestId == entry.requestId }
+      )
     }
   }
 
@@ -154,26 +184,12 @@ public final class ConversationViewModel: ObservableObject {
     switch event {
     case .connection(let next):
       connection = next
-      if case .ready = next {
-        // Reconciliation: every stored entry is re-sent with its own requestId, and pi
-        // answers with the stored record (PROTOCOL.md, client duties 2).
-        for entry in outbox.entries(for: selectedBotId ?? "") {
-          send(
-            text: entry.text,
-            requestId: entry.requestId,
-            botId: entry.botId,
-            optimistic: !state.messages.contains { $0.requestId == entry.requestId }
-          )
-        }
-      }
+
     case .snapshot(let value):
-      state = Reducer.snapshot(value, rev: state.lastRev.map { $0 + 1 })
-      // The snapshot is authoritative for placements: an entry it lists is not lost.
-      for message in value.messages {
-        if let requestId = message.requestId {
-          inFlight.removeValue(forKey: requestId)
-          try? outbox.remove(requestId: requestId)
-        }
+      state = Reducer.snapshot(value, rev: state.lastRev.map { $0 + 1 }, keeping: state.ranks)
+      if !reconciled {
+        reconciled = true
+        reconcileOutbox()
       }
     case .append(let message, let replaces):
       state = Reducer.apply(.append(message: message, replaces: replaces), to: state)
@@ -188,6 +204,8 @@ public final class ConversationViewModel: ObservableObject {
       state = Reducer.apply(.submission(record), to: state)
       if record.status.isTerminal {
         inFlight.removeValue(forKey: record.requestId)
+        // A terminal record is the only thing that removes the entry (PROTOCOL.md,
+        // client duties 2); a placement in a snapshot is not a settlement.
         try? outbox.remove(requestId: record.requestId)
       }
     case .history(let page):
@@ -200,11 +218,13 @@ public final class ConversationViewModel: ObservableObject {
       state = applyUnavailable(kind: kind)
       switch disposition {
       case .notAdmitted:
-        // The daemon refused before admission: drop the bubble and the outbox entry.
+        // The daemon refused before admission: drop the bubble and the entry, and put the
+        // text back so the user can fix or retry it (PROTOCOL.md, client duties 3).
         if let requestId {
-          inFlight.removeValue(forKey: requestId)
+          let text = inFlight.removeValue(forKey: requestId)
           try? outbox.remove(requestId: requestId)
           state.messages.removeAll { $0.id == "local_\(requestId)" }
+          if let text, draft.isEmpty { draft = text }
         }
       case .unknown:
         // Admission could not be confirmed: keep the bubble and the entry for a retry.

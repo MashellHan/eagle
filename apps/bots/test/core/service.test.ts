@@ -2,7 +2,11 @@
 // requestId while its reply stays connection-scoped.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CommandError, ConversationService } from "../../src/core/ConversationService.ts";
+import {
+  CommandError,
+  ConversationService,
+  RESERVATION_TTL_MS,
+} from "../../src/core/ConversationService.ts";
 import type { ConversationSnapshot, Message, Submission } from "../../src/core/domain.ts";
 import { ClassifiedFailure } from "../../src/core/domain.ts";
 import type { HubEvent } from "../../src/core/EventHub.ts";
@@ -1425,7 +1429,7 @@ test("a reservation the view already lists is not counted twice", async () => {
   assert.equal(admitted, true, "the budget counts distinct admissions");
 });
 
-test("a lost settlement event cannot hold a slot forever", async () => {
+test("a lost settlement event expires, but a stale snapshot does not release it", async () => {
   const snapshot: ConversationSnapshot = {
     botId: "b_1",
     messages: [],
@@ -1435,27 +1439,94 @@ test("a lost settlement event cannot hold a slot forever", async () => {
     streaming: null,
   };
   const scripted = gatedHandle({ snapshot });
-  const service = new ConversationService({ open: async () => scripted.handle, measure: utf8 });
+  let now = 1_000;
+  const service = new ConversationService({
+    open: async () => scripted.handle,
+    measure: utf8,
+    now: () => now,
+  });
   await subscribe(service, []);
-  // Fill the budget with admissions whose events never arrive.
-  const sent = Array.from({ length: 32 }, (_, index) =>
-    service.send("c_1", {
-      requestId: `r_lost_${String(index).padStart(4, "0")}`,
-      text: "丢了",
-      whenBusy: "followUp",
-      trace,
-    }),
-  );
-  await Promise.all(sent);
-  // A snapshot reconciles them away: the daemon's own view is the authority.
-  scripted.emit({ type: "snapshot", trace, value: { ...snapshot } });
-  const admitted = await service
-    .send("c_1", { requestId: "r_lost_9999", text: "又来了", whenBusy: "followUp", trace })
-    .then(
-      () => true,
-      () => false,
+  const fill = () =>
+    Promise.all(
+      Array.from({ length: 32 }, (_, index) =>
+        service.send("c_1", {
+          requestId: `r_lost_${String(index).padStart(4, "0")}_${now}`,
+          text: "丢了",
+          whenBusy: "followUp",
+          trace,
+        }),
+      ),
     );
-  assert.equal(admitted, true, "a snapshot released reservations no longer in flight");
+  const attempt = () =>
+    service
+      .send("c_1", { requestId: `r_next_${now}`, text: "又来了", whenBusy: "followUp", trace })
+      .then(
+        () => true,
+        () => false,
+      );
+
+  await fill();
+  // A snapshot captured before these admissions must not free their slots.
+  scripted.emit({ type: "snapshot", trace, value: { ...snapshot } });
+  assert.equal(await attempt(), false, "a stale snapshot never releases a reservation");
+
+  // The reservation expires by time, which bounds the leak without a snapshot.
+  now += RESERVATION_TTL_MS + 1;
+  assert.equal(await attempt(), true, "an expired reservation frees its slot");
+});
+
+test("a bot that becomes unavailable during the lookup refuses the admission", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    pending: [],
+    inbox: [],
+    running: false,
+    streaming: null,
+  };
+  let release: () => void = () => undefined;
+  const lookupGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let submitCalls = 0;
+  let sink: ((event: RuntimeEvent) => void) | undefined;
+  const handle: RuntimeHandle = {
+    subscribe: async (_trace, next) => {
+      sink = next;
+      return { snapshot, detach: () => undefined };
+    },
+    submission: async () => {
+      await lookupGate;
+      return undefined;
+    },
+    submit: async (input) => {
+      submitCalls += 1;
+      return { id: "s_1", requestId: input.requestId, status: "queued" };
+    },
+    history: async () => ({ messages: [], hasMore: false }),
+    abort: async () => undefined,
+    recover: async () => undefined,
+    busy: async () => ({ run: false, tasks: false }),
+    close: async () => "closed",
+  };
+  const service = new ConversationService({ open: async () => handle, measure: utf8 });
+  await subscribe(service, []);
+  const sending = service.send("c_1", {
+    requestId: "r_slow_0001",
+    text: "慢查询",
+    whenBusy: "followUp",
+    trace,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  sink?.({
+    type: "error",
+    trace,
+    failure: { id: "f_escalate_1", kind: "internal", layer: "runtime" },
+    message: "the watch escalated",
+  });
+  release();
+  await assert.rejects(sending, (error: unknown) => error instanceof CommandError);
+  assert.equal(submitCalls, 0, "the dead handle never receives the input");
 });
 
 test("two subscriptions after an eviction share one view and one runtime watch", async () => {

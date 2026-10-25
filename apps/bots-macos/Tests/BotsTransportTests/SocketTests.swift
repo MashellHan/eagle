@@ -134,3 +134,60 @@ final class SocketTests: XCTestCase {
     XCTAssertEqual(remaining.map(\.id), [first.id])
   }
 }
+
+extension SocketTests {
+  func testASocketReconnectsAndRebuildsTheTranscript() async throws {
+    let catalog = CatalogHTTPClient(baseURL: fixture.baseURL, token: fixture.token)
+    let bot = try await catalog.create(title: "重连", label: nil, appearance: .standard)
+    let first = ConversationSocket(
+      baseURL: fixture.baseURL,
+      token: fixture.token,
+      botId: bot.id
+    )
+    let collector = EventCollector()
+    let consumer = Task {
+      for await event in first.events { await collector.append(event) }
+    }
+    first.start()
+    _ = try await collector.waitFor { event in
+      if case .connection(.ready) = event { return true }
+      return false
+    }
+    try first.send(
+      text: "第一轮",
+      requestId: Identifiers.request(),
+      whenBusy: .followUp,
+      trace: Identifiers.trace("send")
+    )
+    _ = try await collector.waitFor { event in
+      if case .submission(let record) = event { return record.status == .done }
+      return false
+    }
+    first.close()
+    consumer.cancel()
+
+    // A second socket starts from a snapshot, not from the frames the first one saw.
+    let again = ConversationSocket(
+      baseURL: fixture.baseURL,
+      token: fixture.token,
+      botId: bot.id
+    )
+    let renewed = EventCollector()
+    let secondConsumer = Task {
+      for await event in again.events { await renewed.append(event) }
+    }
+    defer {
+      again.close()
+      secondConsumer.cancel()
+    }
+    again.start()
+    let snapshotEvent = try await renewed.waitFor { event in
+      if case .snapshot(let value) = event { return value.messages.count == 2 }
+      return false
+    }
+    guard case .snapshot(let snapshot) = snapshotEvent else {
+      return XCTFail("expected a snapshot")
+    }
+    XCTAssertEqual(snapshot.messages.map(\.role), [.user, .assistant])
+  }
+}

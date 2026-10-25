@@ -67,12 +67,19 @@ final class ReducerTests: XCTestCase {
       .append(message: message("p_a2", state: .streaming, text: "巴黎"), replaces: nil),
       to: state
     )
+    // The block change is asserted on its own: the whole-message change that follows
+    // would hide a dropped block otherwise.
+    state = Reducer.apply(
+      .delta(messageId: "p_a2", changes: [.block(index: 0, block: .text("巴黎是法国的首都"))]),
+      to: state
+    )
+    XCTAssertEqual(state.messages.first?.text, "巴黎是法国的首都")
+
     state = Reducer.apply(
       .delta(
         messageId: "p_a2",
         changes: [
-          .text(index: 0, append: "是法国的首都"),
-          .block(index: 0, block: .text("巴黎是法国的首都")),
+          .block(index: 1, block: .text("新块")),
           .message(message("p_a2", state: .streaming, text: "巴黎是法国的首都。")),
           .text(index: 0, append: "真的"),
         ]

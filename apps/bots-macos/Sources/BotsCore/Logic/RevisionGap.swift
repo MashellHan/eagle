@@ -9,11 +9,17 @@ public struct RevisionGap: Sendable {
     self.lastRev = lastRev
   }
 
-  /// True when `rev` is exactly the next revision.
+  /// True when `rev` is exactly the next revision. A rejected revision does not move the
+  /// baseline: the next one would otherwise look sequential and be applied before the
+  /// snapshot that repairs the gap.
   public mutating func accept(_ rev: Int) -> Bool {
-    defer { lastRev = rev }
-    guard let last = lastRev else { return true }
-    return rev == last + 1
+    guard let last = lastRev else {
+      lastRev = rev
+      return true
+    }
+    guard rev == last + 1 else { return false }
+    lastRev = rev
+    return true
   }
 
   /// A snapshot resets the baseline; its revision is the new last one.

@@ -114,12 +114,29 @@ enum MarkdownBlock: Equatable {
   case code(language: String?, body: String)
   case quote(String)
 
+  /// `1. text` / `2) text` becomes a list item; the number is not rendered separately.
+  private static func orderedItem(_ line: String) -> String? {
+    var digits = 0
+    for character in line {
+      if character.isNumber {
+        digits += 1
+        continue
+      }
+      break
+    }
+    guard digits > 0, digits <= 3 else { return nil }
+    let rest = line.dropFirst(digits)
+    guard rest.hasPrefix(". ") || rest.hasPrefix(") ") else { return nil }
+    return String(rest.dropFirst(2))
+  }
+
   static func parse(_ text: String) -> [MarkdownBlock] {
     var blocks: [MarkdownBlock] = []
     var paragraph: [String] = []
     var bullets: [String] = []
     var codeLines: [String] = []
     var codeLanguage: String?
+    var codeFence = 0
     var inCode = false
 
     func flushParagraph() {
@@ -138,18 +155,27 @@ enum MarkdownBlock: Equatable {
     for rawLine in text.components(separatedBy: .newlines) {
       let line = rawLine
       let trimmed = line.trimmingCharacters(in: .whitespaces)
-      if trimmed.hasPrefix("```") {
-        if inCode {
+      let fence = trimmed.prefix { $0 == "`" }.count
+      if inCode {
+        // Only a fence at least as long as the opening one closes the block, so a three
+        // backtick example inside four backticks stays code.
+        if fence >= codeFence, trimmed.allSatisfy({ $0 == "`" }) {
           blocks.append(.code(language: codeLanguage, body: codeLines.joined(separator: "\n")))
           codeLines.removeAll()
           codeLanguage = nil
+          codeFence = 0
           inCode = false
         } else {
-          flushParagraph()
-          flushBullets()
-          codeLanguage = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-          inCode = true
+          codeLines.append(line)
         }
+        continue
+      }
+      if fence >= 3 {
+        flushParagraph()
+        flushBullets()
+        codeFence = fence
+        codeLanguage = String(trimmed.dropFirst(fence)).trimmingCharacters(in: .whitespaces)
+        inCode = true
         continue
       }
       if inCode {
@@ -162,16 +188,24 @@ enum MarkdownBlock: Equatable {
         continue
       }
       if trimmed.hasPrefix("#") {
-        flushParagraph()
-        flushBullets()
         let hashes = trimmed.prefix { $0 == "#" }.count
-        let heading = trimmed.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
-        blocks.append(.heading(level: hashes, text: heading))
-        continue
+        let rest = trimmed.dropFirst(hashes)
+        // `#include` is code, not a heading: a heading needs 1-6 hashes and a space.
+        if hashes <= 6, rest.hasPrefix(" ") {
+          flushParagraph()
+          flushBullets()
+          blocks.append(.heading(level: hashes, text: rest.trimmingCharacters(in: .whitespaces)))
+          continue
+        }
       }
       if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.hasPrefix("+ ") {
         flushParagraph()
         bullets.append(String(trimmed.dropFirst(2)))
+        continue
+      }
+      if let ordered = orderedItem(trimmed) {
+        flushParagraph()
+        bullets.append(ordered)
         continue
       }
       if trimmed.hasPrefix("> ") {
@@ -180,9 +214,8 @@ enum MarkdownBlock: Equatable {
         blocks.append(.quote(String(trimmed.dropFirst(2))))
         continue
       }
-      if bullets.isEmpty {
-        flushBullets()
-      }
+      // A plain line after a list starts a new paragraph; the list is finished.
+      flushBullets()
       paragraph.append(trimmed)
     }
     if inCode {

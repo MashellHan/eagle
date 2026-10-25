@@ -130,10 +130,11 @@ test("a subscriber sink refuses to accept more when the socket is behind", async
   );
 });
 
-test("a frame over the transport cap closes 1008 and is never written", async () => {
-  const { socket, written, records } = connect();
+test("a frame over the transport cap closes 1008 even when the socket is behind", async () => {
+  const { socket, written, records } = connect({ maxBufferedBytes: 1 });
   socket.emit("message", Buffer.from(hello), false);
   await new Promise((resolve) => setImmediate(resolve));
+  socket.bufferedAmount = 1_024;
   const before = socket.sent.length;
   written({
     type: "append",

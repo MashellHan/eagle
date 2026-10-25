@@ -392,3 +392,23 @@ against the real model rendered as a markdown bubble (heading, bullets, `bash` b
 
 Next broken hop: the independent review of stages 4 and 5 (this round), then the
 daemon's three deferred races and the client items listed in PLAN.md.
+
+## 2026-10-26 — stages 4-5 review round closed (except what is recorded as deferred)
+
+Observed: the reviewer's fifteen P1s are closed: three confirmed daemon races and twelve
+client/integration defects — a missing shape that could make the whole catalog
+undecodable, an outbox that sent without a durable record, placements treated as
+settlements, replay before the subscription, a send that could land on another bot, a
+wedged writer after one failed write, a gap rule that advanced past the gap, a snapshot
+that forgot settlements, two windows overwriting each other's outbox, a hide that left
+the conversation on the hidden bot, a catalog push that desynced the selection, and a
+shell without recover/stop/error. Markdown is now parsed in order (fences, headings,
+lists) and rendered in dialog bubbles.
+
+Verified just now: `apps/bots` `npm run check` 348 tests, coverage 94.99/89.82/90.68,
+`npm run test:crash` 5/5; `apps/bots-macos` `swift test` and `./Scripts/coverage.sh`
+93.7%; `apps/macos` `swift test` 44 tests and `Scripts/build-app.sh`.
+
+Next broken hop: the deferred list in PLAN.md — client `os.Logger` contract, the
+transport fault-injection matrix, the outbox across two windows, three daemon origin/
+handle gaps, and a measured long-markdown layout.
