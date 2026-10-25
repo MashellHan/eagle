@@ -313,8 +313,12 @@ export class EventHub {
         slot.anchor = { event, bytes };
         slot.stale = false;
         if (!slot.manual) this.#drain(slot);
-      } else if (slot.anchor !== undefined) {
-        slot.stale = true;
+      } else {
+        if (slot.anchor !== undefined) slot.stale = true;
+        // The client may be reading again: ask for one fresh view per event, so a
+        // subscriber that was blocked is not stuck until something else happens. The
+        // service guards against a snapshot that is itself refused.
+        this.#onDegrade?.();
       }
       return;
     }
@@ -368,8 +372,9 @@ export class EventHub {
     slot.anchor = event.type === "snapshot" ? { event, bytes } : undefined;
     slot.stale = event.type !== "snapshot";
     // Without a fresh snapshot the client would wait forever: a degraded slot has no other
-    // way to learn the state it missed.
-    this.#onDegrade?.();
+    // way to learn the state it missed. A snapshot that just failed to deliver is not
+    // retried with another snapshot — the next event asks again instead.
+    if (event.type !== "snapshot") this.#onDegrade?.();
   }
 
   /** Takes the next deliverable event, or re-anchors a degraded subscriber. */

@@ -620,3 +620,31 @@ test("a send before the subscription has one origin error and one identity", asy
     await stack.close();
   }
 });
+
+test("a bot that became quarantined while subscribing closes 4090, not 4004", async () => {
+  const stack = await startStack({ idleCloseMs: 20, closeHangs: true, closeDeadlineMs: 120 });
+  try {
+    const botId = await stack.createBot("隔离竞态");
+    const first = stack.connect();
+    const frames = frameQueue(first);
+    await send(first, hello);
+    await frames.next();
+    await send(first, { type: "subscribe", botId, trace: tr("race1") });
+    await frames.next();
+    // Leaving releases the subscription; the idle close starts and never finishes.
+    first.close();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    const second = stack.connect();
+    const secondFrames = frameQueue(second);
+    await send(second, hello);
+    await secondFrames.next();
+    await send(second, { type: "subscribe", botId, trace: tr("race2") });
+    // The subscription waits for the close; when it times out the bot is quarantined, so
+    // the client must retry (4090) rather than treat it as deleted (4004).
+    assert.equal(await closeCode(second), 4090);
+    assert.equal(stack.registry.state(botId), "quarantined");
+  } finally {
+    await stack.close();
+  }
+});

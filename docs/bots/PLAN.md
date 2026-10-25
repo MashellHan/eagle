@@ -105,7 +105,7 @@ What is missing, and why the product still cannot ship:
 
 | Gap | Consequence |
 | --- | --- |
-| stage-4 signoff | the whole stage has had one review round; this round's fixes are implemented and green but not yet reviewed |
+| stage-4/5 signoff | five review passes are closed; the closeout pass is running |
 | `apps/bots-macos/` | no client, so there is no product to use, only a daemon and its tests |
 
 Stage 3 (rows 23-36) is signed off. Stage 4 is implemented end to end: its first
@@ -175,6 +175,17 @@ the next connection starts with `hello`; a gap is repaired by one resync and a
 ten-second deadline (gapped frames neither advance the baseline nor exhaust the retries);
 `abort`/`recover`/`history` name their bot like `send` does; and a refusal appends the
 rejected text to a newer draft instead of dropping it.
+
+A fifth pass found four contract defects, all closed with tests: recovery no longer drops
+an admission that was in flight when the watch escalated; a subscriber the transport
+backpressured is refreshed with a snapshot (bounded to one attempt per episode, so a
+client that never reads cannot spin the daemon); a bot that becomes quarantined while a
+subscription waits closes `4090` and retries instead of `4004`; and clicking recover while
+reconnecting no longer drops the parked affordance. Its P2s are closed too: the heartbeat
+follows a connection generation (a welcome no longer stops it), a refusal is a durable
+tombstone written as soon as the outbox is writable, a restored settlement ranks by its
+submission id, a half-spoken lock owner cannot hang the probe, the initial snapshot sets
+the history flag, and the window test asserts the published transcript.
 
 The third pass's four follow-ups now have regression tests: `BotsWindowTests` (the
 window's one draft, the published transcript/status/actions and a refusal's restored

@@ -1738,3 +1738,35 @@ test("a degraded subscriber receives a fresh snapshot instead of waiting forever
     "a downgraded subscriber is handed the current view",
   );
 });
+
+test("a subscriber that never reads does not spin the daemon", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    pending: [],
+    inbox: [],
+    running: false,
+    streaming: null,
+  };
+  const runtime = new FakeRuntime({ snapshot: () => snapshot });
+  const service = serviceFor(runtime);
+  let calls = 0;
+  const refusing = () => {
+    calls += 1;
+    throw new SubscriberTooSlow();
+  };
+  await service.subscribe("c_1", "b_1", trace, refusing).catch(() => undefined);
+  calls = 0;
+  runtime.handle("b_1").emit({
+    type: "status",
+    trace,
+    running: true,
+    streaming: null,
+    inbox: [],
+  });
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.ok(
+    calls <= 4,
+    `a client that never reads gets one refresh attempt per episode, saw ${calls}`,
+  );
+});

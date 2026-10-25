@@ -455,4 +455,15 @@ Verified just now: daemon `npm run check` 351 tests, coverage 94.99/90.01/90.55,
 `npm run test:crash` 5/5; client `swift test` and `./Scripts/coverage.sh` 93.1%; Eagle
 `swift test` 48 tests.
 
-Next broken hop: the recorded deferrals in PLAN.md and the reviewer's fifth pass.
+A fifth pass (max reasoning) found four more contract defects, all closed with tests: a
+recovering bot keeps the admissions in flight; a backpressured subscriber is refreshed
+with a snapshot, bounded to one attempt per episode so a client that never reads cannot
+spin the daemon; a bot that becomes quarantined while a subscription waits closes 4090 and
+retries; and a recover clicked while reconnecting keeps the parked affordance. P2s: the
+heartbeat follows the connection generation, a refusal is a durable tombstone, the settled
+rank key is the submission id, and the lock probe resolves on a partial answer.
+
+Verified just now: daemon 353 tests, coverage 95.07/90.01/91.06, crash 5/5; client
+coverage 93.4%; Eagle 48 tests.
+
+Next broken hop: the recorded deferrals in PLAN.md and the reviewer's sixth pass (closeout).

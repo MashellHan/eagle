@@ -60,6 +60,9 @@ export type StackOptions = {
   readonly windowMessages?: number;
   /** Model streaming pace, for a test that has to attach mid-answer. */
   readonly tokensPerSecond?: number;
+  /** A runtime whose close never resolves, so the registry times out and quarantines. */
+  readonly closeHangs?: boolean;
+  readonly closeDeadlineMs?: number;
 };
 
 export const startStack = async (options: StackOptions = {}): Promise<Stack> => {
@@ -98,6 +101,28 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     const runtime = fake as FakeRuntime;
     openRuntime = (spec) => runtime.open(spec);
   }
+  if (options.closeHangs === true) {
+    const base = openRuntime;
+    openRuntime = async (spec) => {
+      const handle = await base(spec);
+      // A delegating wrapper: spreading a class instance would lose its methods.
+      return {
+        subscribe: (trace, sink) => handle.subscribe(trace, sink),
+        submit: (input) => handle.submit(input),
+        submission: (key) => handle.submission(key),
+        history: (input) => handle.history(input),
+        abort: (trace) => handle.abort(trace),
+        recover: (trace) => handle.recover(trace),
+        busy: () => handle.busy(),
+        // The deadline is the handle's own timeout: resolve it as a timeout after the
+        // deadline instead of hanging the test forever.
+        close: async (_trace: string, deadlineMs: number) => {
+          await new Promise<void>((resolve) => setTimeout(resolve, deadlineMs));
+          return "timeout" as const;
+        },
+      };
+    };
+  }
   const directory = new BotDirectory(root, await nodeDirectoryFs());
   await options.prepare?.({ root, directory });
   let opens = 0;
@@ -111,7 +136,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     log,
     idleCloseMs: options.idleCloseMs ?? 10 * 60 * 1000,
     quarantineRetryMs: 30_000,
-    closeDeadlineMs: 500,
+    closeDeadlineMs: options.closeDeadlineMs ?? 500,
     bootTrace: () => "tr_boot_probe",
   });
   await registry.start();

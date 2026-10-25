@@ -64,6 +64,8 @@ public final class ConversationSocket: NSObject {
   private var closed = false
   private var handshakeDone = false
   private var attempt = 0
+  /// One per connection; the heartbeat task ends when its connection does.
+  private var generation = 0
   private var gap = RevisionGap()
   private var resync = ResyncState()
   private var resyncDeadline: Task<Void, Never>?
@@ -150,6 +152,7 @@ public final class ConversationSocket: NSObject {
     let task = session.webSocketTask(with: request)
     lock.lock()
     self.task = task
+    generation += 1
     handshakeDone = false
     self.gap = RevisionGap()
     lock.unlock()
@@ -162,14 +165,16 @@ public final class ConversationSocket: NSObject {
   private func startPing(in session: URLSession) {
     lock.lock()
     pingTask?.cancel()
-    let generation = attempt
+    let generation = self.generation
     lock.unlock()
     pingTask = Task { [weak self] in
       while !Task.isCancelled {
         try? await Task.sleep(nanoseconds: 15_000_000_000)
         guard let self else { return }
         self.lock.lock()
-        let stillCurrent = !self.closed && self.attempt == generation
+        // The welcome resets `attempt`, but not the connection: the heartbeat follows the
+        // generation it was started for.
+        let stillCurrent = !self.closed && self.generation == generation
         let ready = self.handshakeDone
         self.lock.unlock()
         if !stillCurrent { return }

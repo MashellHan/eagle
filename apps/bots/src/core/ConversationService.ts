@@ -137,6 +137,10 @@ export class ConversationService {
   readonly #admissions = new Map<string, Promise<unknown>>();
   /** Per-bot view serialization: subscribe and recover never rebuild one view twice. */
   readonly #views = new Map<string, Promise<unknown>>();
+  /** A bot whose recovery snapshot is being published: a second degrade waits for it. */
+  readonly #refreshing = new Set<string>();
+  /** The view currently attached per bot, so a degraded subscriber can be refreshed. */
+  readonly #live = new Map<string, Bot>();
   /** Failure ids this service minted: only those may be recorded as an origin here. */
   readonly #minted = new Set<string>();
   readonly #bots = new Map<string, Promise<Bot>>();
@@ -714,12 +718,18 @@ export class ConversationService {
   async #openBot(botId: string, trace: string): Promise<Bot> {
     const hub = new EventHub(botId, trace, {
       ...this.#hubOptions,
-      // A subscriber the transport downgraded gets the current view as its anchor.
+      // A subscriber the transport downgraded gets the current view as its anchor. A
+      // snapshot that is itself refused would degrade again, so one attempt runs at a
+      // time: a client that never reads cannot spin the daemon.
       onDegrade: () => {
-        void this.#bots
-          .get(botId)
-          ?.then((bot) => bot.hub.publishSnapshot(bot.snapshot, trace))
-          .catch(() => undefined);
+        const bot = this.#live.get(botId);
+        if (bot === undefined || this.#refreshing.has(botId)) return;
+        this.#refreshing.add(botId);
+        try {
+          bot.hub.publishSnapshot(bot.snapshot, trace);
+        } finally {
+          this.#refreshing.delete(botId);
+        }
       },
     });
     try {
@@ -806,6 +816,7 @@ export class ConversationService {
     });
     seedRanks(ranks, subscription.snapshot.pending);
     bot = target ?? ({} as Bot);
+    this.#live.set(hub.botId, bot);
     Object.assign(bot, {
       handle,
       degraded: undefined,

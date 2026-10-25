@@ -185,6 +185,7 @@ final class FakeConversation: ConversationPort {
   var sent: [Sent] = []
   var lastBotId: String?
   var recovered = 0
+  var failRecover = false
   var aborted = 0
   var historyRequests: [String] = []
   private var continuation: AsyncStream<ConversationEvent>.Continuation?
@@ -215,6 +216,7 @@ final class FakeConversation: ConversationPort {
   }
 
   func recover(context: CommandContext, botId: String) async throws {
+    if failRecover { throw ClientError("there is no connection") }
     recovered += 1
     lastBotId = botId
   }
@@ -472,6 +474,44 @@ final class ConversationLifecycleTests: XCTestCase {
     fake.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
     try await Task.sleep(nanoseconds: 80_000_000)
     XCTAssertEqual(fake.sent.count, sendsBefore, "a refused request is never replayed")
+
+    // Once the store is writable again the refusal becomes durable, so a new client that
+    // starts from the same file does not replay it either.
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+    fake.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await Task.sleep(nanoseconds: 80_000_000)
+    XCTAssertTrue(try outbox.refusedRequests().contains(requestId), "the refusal is durable")
+
+    let restarted = FakeConversation()
+    let reopened = OutboxStore(directory: directory)
+    let next = ConversationViewModel(botId: "b_1", conversation: restarted, outbox: reopened)
+    next.select(botId: "b_1")
+    restarted.emit(.connection(.ready))
+    restarted.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await Task.sleep(nanoseconds: 80_000_000)
+    XCTAssertEqual(restarted.sent.count, 0, "a restarted client never replays a refused request")
+  }
+
+  func testAFailedRecoverKeepsTheParkedAffordance() async throws {
+    let (model, fake) = make()
+    model.select(botId: "b_1")
+    fake.emit(.connection(.ready))
+    fake.emit(
+      .error(
+        kind: .taskParked,
+        disposition: .runtime,
+        message: "a task was parked",
+        failure: "f_parked",
+        requestId: nil
+      )
+    )
+    try await Task.sleep(nanoseconds: 40_000_000)
+    XCTAssertTrue(model.parked)
+    fake.failRecover = true
+    model.recover()
+    try await Task.sleep(nanoseconds: 40_000_000)
+    XCTAssertTrue(model.parked, "a recover that never reached the daemon leaves the entry")
+    XCTAssertNotNil(model.errorBanner)
   }
 
   func testRetryReusesTheStoredRequestId() async throws {

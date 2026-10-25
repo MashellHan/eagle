@@ -499,6 +499,12 @@ export const attachConnection = (
         : { detail: { kind: command.type, reason: "upstream", propagated: true } }),
     });
     if (kind === "unknown_bot" && disposition === "not_admitted") {
+      // A bot that became quarantined while the subscription waited for its close is not
+      // gone: the client must retry (PROTOCOL.md, close codes 4090 vs 4004).
+      if (command.type === "subscribe" && registry.state(command.botId) === "quarantined") {
+        close(CLOSE.quarantined, "quarantined");
+        return;
+      }
       close(CLOSE.unknownBot, "unknown bot");
       return;
     }

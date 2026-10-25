@@ -63,6 +63,24 @@ public struct OutboxEntry: Codable, Sendable, Equatable, Identifiable {
 private struct OutboxDocument: Codable {
   var entries: [OutboxEntry]
   var settled: [SettledRequest]
+  /// Requests the daemon refused: they are never replayed, even if their entry could not
+  /// be removed in the same write.
+  var refused: [String]
+
+  init(entries: [OutboxEntry] = [], settled: [SettledRequest] = [], refused: [String] = []) {
+    self.entries = entries
+    self.settled = settled
+    self.refused = refused
+  }
+
+  private enum CodingKeys: String, CodingKey { case entries, settled, refused }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    entries = try container.decode([OutboxEntry].self, forKey: .entries)
+    settled = try container.decodeIfPresent([SettledRequest].self, forKey: .settled) ?? []
+    refused = try container.decodeIfPresent([String].self, forKey: .refused) ?? []
+  }
 }
 
 public final class OutboxStore {
@@ -76,6 +94,7 @@ public final class OutboxStore {
   private let fileURL: URL
   private var cache: [OutboxEntry] = []
   private var settled: [SettledRequest] = []
+  private var refused: [String] = []
 
   public init(directory: URL = AppPaths.supportDirectory) {
     self.directory = directory
@@ -87,37 +106,56 @@ public final class OutboxStore {
   }
 
   /// Reads always come from the file: another window may have written since this one
-  /// started, and an unreadable outbox is never reported as empty.
+  /// started, and an unreadable outbox is never reported as empty. Entries the daemon
+  /// refused are never returned for replay.
   public func entries(for botId: String) throws -> [OutboxEntry] {
-    try reload().entries.filter { $0.botId == botId }
+    let document = try reload()
+    let refused = Set(document.refused)
+    return document.entries.filter { $0.botId == botId && !refused.contains($0.requestId) }
   }
 
   public func all() throws -> [OutboxEntry] { try reload().entries }
 
   public func settledRequests() throws -> [SettledRequest] { try reload().settled }
 
+  public func refusedRequests() throws -> [String] { try reload().refused }
+
   public func add(_ entry: OutboxEntry) throws {
-    try mutate { entries, settled in
+    try mutate { entries, settled, refused in
       var next = entries
       next.removeAll { $0.requestId == entry.requestId }
       next.append(entry)
-      return (next, settled)
+      return (next, settled, refused)
+    }
+  }
+
+  /// The durable tombstone of a refused command: the entry is removed and the request id is
+  /// remembered in one atomic write, so a later reconciliation (even in a new process)
+  /// cannot replay it.
+  public func refuse(requestId: String) throws {
+    try mutate { entries, settled, refused in
+      var next = entries
+      next.removeAll { $0.requestId == requestId }
+      var ids = refused.filter { $0 != requestId }
+      ids.append(requestId)
+      if ids.count > Self.settledLimit { ids.removeFirst(ids.count - Self.settledLimit) }
+      return (next, settled, ids)
     }
   }
 
   /// A refused command is not a settlement: its entry goes away and the text becomes a
   /// draft, so nothing is recorded for it.
   public func remove(requestId: String) throws {
-    try mutate { entries, settled in
+    try mutate { entries, settled, refused in
       var next = entries
       next.removeAll { $0.requestId == requestId }
-      return (next, settled)
+      return (next, settled, refused)
     }
   }
 
   /// Removes the entry only after its terminal record is in the same atomic write.
   public func settle(_ record: Submission, botId: String) throws {
-    try mutate { entries, settled in
+    try mutate { entries, settled, refused in
       var next = entries
       next.removeAll { $0.requestId == record.requestId }
       var records = settled.filter { $0.requestId != record.requestId }
@@ -125,7 +163,7 @@ public final class OutboxStore {
       if records.count > Self.settledLimit {
         records.removeFirst(records.count - Self.settledLimit)
       }
-      return (next, records)
+      return (next, records, refused)
     }
   }
 
@@ -135,20 +173,28 @@ public final class OutboxStore {
     let document = try Self.read(fileURL)
     cache = document.entries
     settled = document.settled
+    refused = document.refused
     return document
   }
 
   /// Read-modify-write under the process lock. A read or decode failure fails the
   /// mutation and leaves the file untouched.
   private func mutate(
-    _ change: ([OutboxEntry], [SettledRequest]) -> ([OutboxEntry], [SettledRequest])
+    _ change: ([OutboxEntry], [SettledRequest], [String]) -> (
+      [OutboxEntry], [SettledRequest], [String]
+    )
   ) throws {
     Self.lock.lock()
     defer { Self.lock.unlock() }
     let document = try Self.read(fileURL)
-    let (entries, settled) = change(document.entries, document.settled)
+    let (entries, settled, refused) = change(
+      document.entries,
+      document.settled,
+      document.refused
+    )
     self.cache = entries
     self.settled = settled
+    self.refused = refused
     try persist()
   }
 
@@ -177,7 +223,9 @@ public final class OutboxStore {
       withIntermediateDirectories: true,
       attributes: [.posixPermissions: 0o700]
     )
-    let data = try JSONEncoder().encode(OutboxDocument(entries: cache, settled: settled))
+    let data = try JSONEncoder().encode(
+      OutboxDocument(entries: cache, settled: settled, refused: refused)
+    )
     try data.write(to: fileURL, options: [.atomic])
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
   }

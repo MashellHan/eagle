@@ -61,6 +61,9 @@ public final class ConversationViewModel: ObservableObject {
     reconciled = false
     state = ConversationState(botId: botId)
     applySettledRecords(for: botId)
+    if let durable = try? outbox.refusedRequests() {
+      refused.formUnion(durable)
+    }
     connection = .connecting
     errorBanner = nil
     let stream = conversation.open(botId: botId)
@@ -109,13 +112,16 @@ public final class ConversationViewModel: ObservableObject {
 
   public func recover() {
     guard let botId = selectedBotId else { return }
-    parked = false
     let context = CommandContext.command("recover")
     Task { [weak self] in
+      guard let self else { return }
       do {
-        try await self?.conversation.recover(context: context, botId: botId)
+        try await self.conversation.recover(context: context, botId: botId)
+        // Only a command that reached the daemon clears the parked state: a recover
+        // dropped while reconnecting must leave the affordance in place.
+        self.parked = false
       } catch {
-        self?.errorBanner = Self.describe(error)
+        self.errorBanner = Self.describe(error)
       }
     }
   }
@@ -180,6 +186,15 @@ public final class ConversationViewModel: ObservableObject {
   /// (PROTOCOL.md, client duties 2).
   private func reconcileOutbox() {
     guard let botId = selectedBotId else { return }
+    persistPendingRefusals()
+    let durableRefusals: Set<String>
+    do {
+      durableRefusals = Set(try outbox.refusedRequests())
+    } catch {
+      errorBanner = "本地待发消息暂时读不出来，稍后重试。"
+      reconciled = false
+      return
+    }
     let entries: [OutboxEntry]
     do {
       entries = try outbox.entries(for: botId)
@@ -190,7 +205,10 @@ public final class ConversationViewModel: ObservableObject {
       reconciled = false
       return
     }
-    for entry in entries where !refused.contains(entry.requestId) {
+    for entry in entries
+    where !refused.contains(entry.requestId)
+      && !durableRefusals.contains(entry.requestId)
+    {
       send(
         text: entry.text,
         requestId: entry.requestId,
@@ -198,6 +216,22 @@ public final class ConversationViewModel: ObservableObject {
         optimistic: !state.messages.contains { $0.requestId == entry.requestId }
       )
     }
+  }
+
+  /// Refusals whose durable write failed are retried on the next successful read.
+  private func persistPendingRefusals() {
+    guard !refused.isEmpty else { return }
+    var written: [String] = []
+    for requestId in refused {
+      do {
+        try outbox.refuse(requestId: requestId)
+        written.append(requestId)
+      } catch {
+        return
+      }
+    }
+    // They are durable now; the in-memory set is only a cache of them.
+    _ = written
   }
 
   /// A terminal record stored before the app closed is applied again, so a settlement is
@@ -240,6 +274,9 @@ public final class ConversationViewModel: ObservableObject {
     case .snapshot(let value):
       state = Reducer.snapshot(value, rev: state.lastRev.map { $0 + 1 }, keeping: state.ranks)
       hasOlder = value.truncatedBefore != nil
+      // Every snapshot is a chance to make a refusal durable, even when no reconciliation
+      // is due.
+      persistPendingRefusals()
       if !reconciled {
         reconciled = true
         reconcileOutbox()
@@ -278,11 +315,12 @@ public final class ConversationViewModel: ObservableObject {
           let text = inFlight.removeValue(forKey: requestId)
           refused.insert(requestId)
           do {
-            try outbox.remove(requestId: requestId)
+            try outbox.refuse(requestId: requestId)
           } catch {
-            // The entry could not be removed: it must not be replayed behind the user's
-            // back, and the failure is shown rather than swallowed.
-            errorBanner = "消息被拒绝，但本地待发记录没有删掉。"
+            // The store is not writable right now: the refusal stays in memory and is
+            // written as soon as a read succeeds again, so the entry is never replayed in
+            // the meantime. The failure is shown rather than swallowed.
+            errorBanner = "消息被拒绝，本地待发记录暂时没有删掉。"
           }
           state.messages.removeAll { $0.id == "local_\(requestId)" }
           if let text {
