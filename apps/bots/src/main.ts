@@ -3,8 +3,7 @@
 // behaviour lives in the modules it wires.
 import { readFileSync } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
-import { join } from "node:path";
-import { type DaemonConfig, readConfig } from "./config.ts";
+import type { DaemonConfig } from "./config.ts";
 import { BotDirectory, nodeDirectoryFs } from "./core/BotDirectory.ts";
 import { BotRegistry } from "./core/BotRegistry.ts";
 import { ConversationService } from "./core/ConversationService.ts";
@@ -110,6 +109,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   const service = new ConversationService({
     open: (botId, trace) => registry.open(botId, trace),
     handleOf: (botId) => registry.handleOf(botId),
+    settlingOf: (botId) => registry.settling(botId),
     measure: measureEvent,
     log,
     onRunning: (botId, running) => {
@@ -146,23 +146,3 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   };
   return { config: canonical, port: daemon.port, token, daemon, registry, close };
 };
-
-const isEntry = process.argv[1]?.endsWith("main.ts") === true;
-if (isEntry) {
-  const config = readConfig();
-  const handle = await startDaemon(config);
-  process.stdout.write(
-    `${JSON.stringify({
-      event: "daemon.start",
-      root: handle.config.root,
-      port: handle.port,
-      tokenFile: join(handle.config.root, "token"),
-    })}\n`,
-  );
-  const shutdown = async (): Promise<void> => {
-    await handle.close();
-    process.exit(0);
-  };
-  process.on("SIGINT", () => void shutdown());
-  process.on("SIGTERM", () => void shutdown());
-}

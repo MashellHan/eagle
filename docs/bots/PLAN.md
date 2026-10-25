@@ -19,6 +19,7 @@ apps/bots/                 the daemon: own package, own lockfile, own gates
   src/server/              http, websocket transport, auth, singleton lock
   src/testing/             fake runtime and test helpers
   src/main.ts, config.ts   composition root; the only place env vars are read
+  scripts/serve.ts         the process entry: start line, SIGINT/SIGTERM, no logic
   test/{protocol,core,log,runtime,server,e2e}.test.ts and architecture.test.ts
   test/crash/              real daemon processes: SIGKILL mid-answer, delete, lock
   test/perf/               the documented measurements with generous bounds
@@ -70,8 +71,8 @@ after a full review round; a row can be implemented and reviewed but not yet sig
 | 53-54 | 4 | crash and perf suites | implemented (`test:crash`, `perf`) |
 | 55-69 | 5 | macOS client: decoding, reducer, transport, view models, app | **not started** |
 
-Current tree: 329 deterministic tests plus five crash cases and four perf
-measurements, coverage 93.2% lines / 89.5% branches / 90.0% functions, `typecheck`,
+Current tree: 338 deterministic tests plus five crash cases and four perf
+measurements, coverage 95.1% lines / 90.2% branches / 90.4% functions, `typecheck`,
 `lint`, `fixtures:check`, `test:crash` and `perf` green. The daemon runs: it binds a
 loopback port, checks a bearer token, serves the catalog, streams a bot over a
 socket, records every crossing in the declared log catalogue, survives a `SIGKILL`
@@ -109,7 +110,7 @@ review round closed eight P1 and eleven P2 findings, and rows 42-54 are written.
 
 ## Next work, in order
 
-1. Sign stage 4 off: the second review round is running against the fixes below.
+1. Sign stage 4 off: the third review round is running against the fixes below.
 2. Stage 5: `apps/bots-macos/` (separate package, `EagleDesign` product only).
 
 ### What the adapter can do today (rows 23-36, signed off)
@@ -133,9 +134,10 @@ broadcasts the only reply it produces, at a revision that names its content.
 
 ## Open review queue
 
-Stage 4's second review round found nine P1 and nineteen P2 findings; every one that
-was a defect is closed and the rest are recorded below. The first round's eight P1
-findings were closed, in order: the
+Stage 4 has had three review rounds. The third found eight P1 and ten P2 findings;
+they are closed or recorded below. The second round found nine P1 and nineteen P2;
+every defect among them is closed. The first round's eight P1 findings were closed,
+in order: the
 lock port derived from a non-canonical root, a delete that ran on after a timed-out
 close, a handle that a new subscription could still take while closing, a baseline
 the socket sent twice so an older snapshot could paint over a newer append, a

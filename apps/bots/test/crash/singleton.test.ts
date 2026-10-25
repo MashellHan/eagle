@@ -14,7 +14,7 @@ const start = (root: string): Child =>
     process.execPath,
     [
       "--experimental-strip-types",
-      join(process.cwd(), "src/main.ts"),
+      join(process.cwd(), "scripts/serve.ts"),
       "--root",
       root,
       "--port",

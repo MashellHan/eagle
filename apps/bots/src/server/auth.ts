@@ -1,8 +1,8 @@
 // Loopback bearer authentication (docs/bots/PROTOCOL.md "Transport"). The token lives in
 // `<root>/token`, mode 0600, generated on first start; a comparison is constant time and a
 // missing token never authenticates.
-import { randomBytes, timingSafeEqual } from "node:crypto";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { chmod, link, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 /** 32 random bytes, base64url: long enough that a bearer guess is hopeless. */
@@ -28,8 +28,12 @@ export const loadToken = async (root: string): Promise<string> => {
   }
   await mkdir(root, { recursive: true, mode: 0o700 });
   const token = generateToken();
+  // Written beside the token and published with `link`, which is atomic: the loser of a
+  // first-start race can only ever see a complete file, never a half-written one.
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  await writeFile(temporary, `${token}\n`, { mode: 0o600 });
   try {
-    await writeFile(path, `${token}\n`, { flag: "wx", mode: 0o600 });
+    await link(temporary, path);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     const winner = await readToken(path).catch(() => "");
@@ -39,6 +43,10 @@ export const loadToken = async (root: string): Promise<string> => {
     }
     // The file exists but is unusable (truncated by hand): replace it in place.
     await writeFile(path, `${token}\n`, { mode: 0o600 });
+    await chmod(path, 0o600);
+    return token;
+  } finally {
+    await unlink(temporary).catch(() => undefined);
   }
   await chmod(path, 0o600);
   return token;

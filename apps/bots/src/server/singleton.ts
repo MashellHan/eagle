@@ -48,7 +48,10 @@ export const acquireLock = async (options: LockOptions): Promise<LockOwner> => {
   const root = options.root;
   const port = lockPort(root);
   const pid = options.pid ?? process.pid;
+  const sockets = new Set<Socket>();
   const server = createServer((socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
     // The challenger speaks first; the owner answers with its identity.
     socket.once("data", () => {
       socket.end(`${root}\t${pid}\n`);
@@ -77,7 +80,15 @@ export const acquireLock = async (options: LockOptions): Promise<LockOwner> => {
       `lock port ${port} is shared: ${root} and ${owner.root} hash to the same port; use a different root`,
     );
   }
-  return { root, port, close: () => closeServer(server) };
+  return {
+    root,
+    port,
+    close: async () => {
+      // A client that connected and never wrote would otherwise hold `close()` forever.
+      for (const socket of sockets) socket.destroy();
+      await closeServer(server);
+    },
+  };
 };
 
 const closeServer = (server: Server): Promise<void> =>

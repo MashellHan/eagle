@@ -605,7 +605,11 @@ test("a send before the subscription has one origin error and one identity", asy
     const records = stack.records.slice(before);
     const failed = records.filter((record) => record.level === "error");
     assert.equal(failed.length, 1, "one error record for the refusal");
-    assert.equal(failed[0]?.evt, "core.submit.fail");
+    assert.equal(
+      failed[0]?.evt,
+      "protocol.command.fail",
+      "a command that cannot reach a bot is refused at the wire boundary",
+    );
     assert.equal(failed[0]?.err?.origin, true);
     assert.equal(refused.failure, failed[0]?.err?.failure, "frame and log share the identity");
     for (const record of records.filter((record) => record.err !== undefined)) {

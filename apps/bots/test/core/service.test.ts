@@ -1346,3 +1346,41 @@ test("a snapshot page is bounded by encoded bytes, not only by count", async () 
   assert.equal(history.messages[0]?.id, "e_1");
   assert.equal(history.hasMore, false);
 });
+
+test("an escalated watch makes the bot unavailable and recover opens it again", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    pending: [],
+    inbox: [],
+    running: false,
+    streaming: null,
+  };
+  const scripted = gatedHandle({ snapshot });
+  const handle = scripted.handle;
+  let opens = 0;
+  const service = new ConversationService({
+    open: async () => {
+      opens += 1;
+      return handle;
+    },
+    measure: utf8,
+  });
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  // The adapter escalates three listener faults in a minute to one `internal` error and
+  // stops reattaching: the bot has no live watch, so it is unavailable.
+  scripted.emit({
+    type: "error",
+    trace,
+    failure: { id: "f_listener_3", kind: "internal", layer: "runtime" },
+    message: "the event stream kept failing",
+  });
+  await service.resync("c_1", trace);
+  const degraded = received.filter((event) => event.type === "snapshot").at(-1);
+  assert.ok(degraded?.type === "snapshot");
+  assert.equal(degraded.value.unavailable?.reason, "internal");
+  assert.deepEqual(degraded.value.messages, [], "an unavailable snapshot carries no collections");
+  await service.recover("c_1", trace);
+  assert.equal(opens, 2, "recover re-opens instead of retrying a dead watch");
+});

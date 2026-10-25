@@ -61,3 +61,36 @@ test("two roots that hash to one lock port fail as a collision", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("two different roots that hash to one lock port are refused with both names", async () => {
+  // The port is derived from the root alone, so a collision is a real possibility.
+  const ports = new Map<number, string>();
+  let first: string | undefined;
+  let second: string | undefined;
+  for (let index = 0; index < 5_000; index += 1) {
+    const root = `/tmp/bots-collision-${index}`;
+    const port = lockPort(root);
+    const known = ports.get(port);
+    if (known !== undefined) {
+      first = known;
+      second = root;
+      break;
+    }
+    ports.set(port, root);
+  }
+  assert.ok(first !== undefined && second !== undefined, "a collision was found to test");
+  const owner = await acquireLock({ root: first });
+  try {
+    const refused = await acquireLock({ root: second as string }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    assert.ok(refused instanceof LockError);
+    assert.equal(refused.reason, "collision");
+    assert.match(refused.message, /shared/);
+    assert.ok(refused.message.includes(second), "the message names the loser's root");
+    assert.ok(refused.message.includes(first), "and the owner's root");
+  } finally {
+    await owner.close();
+  }
+});

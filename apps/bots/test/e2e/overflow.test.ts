@@ -12,9 +12,10 @@ const tr = (name: string) => `tr_${name}_0123456`;
 const MAX_FRAME_BYTES = 256 * 1024;
 
 test("an over-limit answer is withheld, announced after commit and stable on reconnect", async () => {
-  const stack = await startStack({ real: true, maxMessageBytes: 400, tokensPerSecond: 50 });
+  const stack = await startStack({ real: true, maxMessageBytes: 400, tokensPerSecond: 20 });
   try {
-    const long = "很长的回答。".repeat(120);
+    // Spaces matter: the faux provider streams per token, so the withdrawal window lasts.
+    const long = "很长的回答 ".repeat(60);
     stack.faux?.setResponses([text(long)]);
     const botId = await stack.createBot("超限");
     const socket = stack.connect();
@@ -33,17 +34,29 @@ test("an over-limit answer is withheld, announced after commit and stable on rec
 
     let withdrawn = false;
     let settled: Record<string, unknown> | undefined;
-    const seen: Record<string, unknown>[] = [];
+    let early: Record<string, unknown> | undefined;
     for (;;) {
       const frame = await frames.next(15_000);
-      seen.push(frame);
       assert.ok(
         Buffer.byteLength(JSON.stringify(frame)) < MAX_FRAME_BYTES,
         "no frame goes over the transport cap",
       );
       const value = frame.value as { running?: boolean; streaming?: unknown } | undefined;
       if (frame.type === "snapshot" && value?.running === true && value.streaming === null) {
+        // The withdrawal window: the attempt is still running and already withdrawn.
         withdrawn = true;
+        const during = stack.connect();
+        const joinedEarly = frameQueue(during);
+        await send(during, hello);
+        await joinedEarly.next();
+        await send(during, { type: "subscribe", botId, trace: tr("over5") });
+        for (;;) {
+          const joined = await joinedEarly.next(10_000);
+          if (joined.type !== "snapshot") continue;
+          early = joined;
+          break;
+        }
+        during.close();
       }
       if (frame.type === "submission" && frame.status === "done") {
         settled = frame;
@@ -53,29 +66,26 @@ test("an over-limit answer is withheld, announced after commit and stable on rec
     assert.equal(withdrawn, true, "the attempt was withdrawn before its entry existed");
     assert.equal(typeof settled?.answerEntryId, "string", "the submission still settles");
 
-    // A late join sees the same rule: the withdrawn attempt is not in its snapshot.
-    const during = stack.connect();
-    const joinedEarly = frameQueue(during);
-    await send(during, hello);
-    await joinedEarly.next();
-    await send(during, { type: "subscribe", botId, trace: tr("over5") });
-    const early = await joinedEarly.next();
-    const earlyValue = early.value as {
+    // The client that joined inside the window saw the withdrawn state, not a partial.
+    const earlyValue = early?.value as {
       messages: Message[];
       streaming: unknown;
       running: boolean;
     };
-    assert.equal(Array.isArray(earlyValue.messages), true);
+    assert.equal(early?.type, "snapshot");
+    assert.equal(earlyValue.streaming, null, "nothing is streaming for a late join");
+    // The join is in the withdrawal window or already past it; either way the answer is
+    // never a partial and never the oversized content.
+    assert.ok(
+      earlyValue.running === true ||
+        earlyValue.messages.some((message) => message.role === "notice"),
+      "a late join sees the withdrawn attempt or its notice",
+    );
     assert.equal(
       earlyValue.messages.some((message) => JSON.stringify(message).includes(long)),
       false,
       "no oversized partial reaches a client that joins mid-attempt",
     );
-    assert.ok(
-      earlyValue.streaming === null || typeof earlyValue.streaming === "object",
-      "the snapshot is one of the two documented states",
-    );
-    during.close();
 
     await send(socket, { type: "resync", trace: tr("over3") });
     let transcript: Message[] = [];

@@ -70,6 +70,7 @@ const DETAIL_SCHEMA: Readonly<Record<string, readonly string[]>> = {
   "transport.frame.send.ok": ["bytes", "evt"],
   "transport.frame.send.drop": ["evt", "bytes"],
   "protocol.decode.fail": ["reason"],
+  "protocol.encode.fail": ["reason"],
   "protocol.limit.fail": ["reason", "len"],
   "protocol.version.fail": ["reason"],
   "protocol.command.start": ["kind"],

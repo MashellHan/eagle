@@ -385,6 +385,24 @@ class PiRuntimeHandle implements RuntimeHandle {
 
   /** Older messages, oldest first; the newest window is not re-fetched. */
   async history(input: { beforeEntryId?: string; limit: number }): Promise<RuntimeHistory> {
+    try {
+      return await this.#history(input);
+    } catch (cause) {
+      if (cause instanceof ClassifiedFailure) throw cause;
+      const minted = this.#classifier.classify("history", "storage_failed", "runtime");
+      this.#logFailure(minted, this.#spec.trace, Events.classify, "runtime");
+      throw new ClassifiedFailure(
+        minted.classification.failure,
+        "runtime",
+        minted.classification.message,
+        {
+          cause,
+        },
+      );
+    }
+  }
+
+  async #history(input: { beforeEntryId?: string; limit: number }): Promise<RuntimeHistory> {
     const root = await this.#harness.root(BACKGROUND_CONTEXT);
     const before = input.beforeEntryId;
     const collected: Message[] = [];

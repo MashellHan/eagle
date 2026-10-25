@@ -78,7 +78,7 @@ decoding lives only in `BotsTransport`.
 
 ```
 src/
-  main.ts                     paths, singleton socket, servers, shutdown
+  main.ts                     paths, singleton lock, servers, closing (composition only)
   config.ts                   defaults; the only place env vars are read
   core/
     domain.ts                 Message, ContentBlock, ConversationSnapshot, Submission,
@@ -374,6 +374,17 @@ Rules:
    Handles that time out are logged as quarantined; process exit releases the
    socket lock and the OS closes their files. A timeout is never logged as
    success.
+
+### Lifecycle windows
+
+Close, delete and shutdown each own the bot for their whole duration: an `open` that
+arrives during one waits for it (the registry's per-bot `settling` promise), then
+decides again — a reopened bot gets the handle the close created and released, and a
+deleted bot resolves to `unknown_bot`. The service never assumes a cached handle is
+alive: it asks the registry, and only reuses a view whose handle the registry still
+owns. A path that cannot wait (a warm-up open that a delete meets) is what the windows
+are for: the delete waits for the open, closes the handle it created, and only then
+moves the directory.
 
 ### Concurrency
 

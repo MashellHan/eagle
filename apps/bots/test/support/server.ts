@@ -126,6 +126,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
   const service = new ConversationService({
     open: (botId, trace) => registry.open(botId, trace),
     handleOf: (botId) => registry.handleOf(botId),
+    settlingOf: (botId) => registry.settling(botId),
     measure: measureEvent,
     log,
     onRunning: (botId, running) => {

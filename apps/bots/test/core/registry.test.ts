@@ -177,10 +177,10 @@ test("recovery scan resumes active bots and leaves the rest closed", async () =>
   const setup = await bench({ bots: ["busy", "quiet"], busy: ["b_bot0"] });
   try {
     await setup.registry.start();
-    assert.equal(setup.registry.state("b_bot0"), "idle", "the busy bot keeps its handle");
+    assert.equal(setup.registry.state("b_bot0"), "running", "the busy bot keeps its handle");
     assert.equal(setup.registry.state("b_bot1"), "idle", "the quiet bot is open but idle");
     await setup.timers.advance(1_000);
-    assert.equal(setup.registry.state("b_bot0"), "idle", "a busy bot is never idle-closed");
+    assert.equal(setup.registry.state("b_bot0"), "running", "a busy bot is never idle-closed");
     assert.equal(setup.registry.state("b_bot1"), "catalogued", "the quiet bot closed");
   } finally {
     await setup.registry.shutdown();

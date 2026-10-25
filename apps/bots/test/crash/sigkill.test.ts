@@ -24,7 +24,7 @@ const startDaemon = async (root: string, env: Record<string, string>): Promise<D
     process.execPath,
     [
       "--experimental-strip-types",
-      join(process.cwd(), "src/main.ts"),
+      join(process.cwd(), "scripts/serve.ts"),
       "--root",
       root,
       "--port",

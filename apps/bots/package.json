@@ -8,7 +8,7 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "start": "node --env-file-if-exists=.env src/main.ts",
+    "start": "node --experimental-strip-types --env-file-if-exists=.env scripts/serve.ts",
     "test": "sh scripts/run-tests.sh",
     "test:runtime": "sh scripts/run-suite.sh test/runtime",
     "test:protocol": "sh scripts/run-suite.sh test/protocol",

@@ -163,6 +163,12 @@ export class BotRegistry {
     return this.#entries.get(botId)?.state;
   }
 
+  /** True while a close, delete or shutdown owns this bot's lifecycle. */
+  settling(botId: string): boolean {
+    const entry = this.#entries.get(botId);
+    return entry !== undefined && (entry.settling !== undefined || entry.closing);
+  }
+
   /** The handle the registry currently owns; absent after an idle close or a delete. */
   handleOf(botId: string): RuntimeHandle | undefined {
     return this.#entries.get(botId)?.handle;
@@ -238,6 +244,21 @@ export class BotRegistry {
     this.#options.log.emit("info", "core", Events.deleteStart, { trace, botId });
     entry.closing = true;
     this.#cancelTimers(entry);
+    let finish: () => void = () => undefined;
+    // The whole delete is one settling window: an open that arrives while the directory
+    // is being moved would create a handle for a bot the catalog no longer has.
+    entry.settling = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    try {
+      await this.#delete(entry, botId, trace);
+    } finally {
+      entry.settling = undefined;
+      finish();
+    }
+  }
+
+  async #delete(entry: Entry, botId: string, trace: string): Promise<void> {
     // A warm-up open that is still in flight must settle first, or the handle it creates
     // would own an sqlite file the delete already moved to `trash/`.
     if (entry.opening !== undefined) await entry.opening.catch(() => undefined);
@@ -344,8 +365,14 @@ export class BotRegistry {
   markRunning(botId: string, running: boolean): boolean {
     const entry = this.#entries.get(botId);
     if (entry === undefined) return false;
-    if (entry.state !== "idle" && entry.state !== "running") return false;
     const next: BotState = running ? "running" : "idle";
+    // A bot that was unavailable and now has a live harness is a catalog change too.
+    if (entry.state === "unavailable") {
+      entry.state = next;
+      entry.unavailable = undefined;
+      return true;
+    }
+    if (entry.state !== "idle" && entry.state !== "running") return false;
     if (entry.state === next) return false;
     entry.state = next;
     return true;
@@ -582,6 +609,8 @@ export class BotRegistry {
         detail: { finished: busy.run ? "running" : "idle" },
       });
       if (busy.run || busy.tasks) {
+        // The catalog has to say what the scan found: a resumed run is not an idle bot.
+        this.markRunning(entry.config.id, true);
         resumed += 1;
         continue;
       }

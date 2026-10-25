@@ -9,6 +9,7 @@ import {
   DEFAULT_QUARANTINE_RETRY_MS,
   readConfig,
 } from "../src/config.ts";
+import { createDaemonModels } from "../src/runtime/pi/models.ts";
 
 test("defaults, arguments and environment agree", () => {
   const defaults = readConfig({ argv: [], env: {}, home: "/home/tester" });
@@ -42,4 +43,20 @@ test("defaults, arguments and environment agree", () => {
     DEFAULT_PORT,
     "a malformed port falls back to the default",
   );
+});
+
+test("the configured model endpoint becomes the daemon's one provider", () => {
+  const models = createDaemonModels({
+    baseUrl: "http://127.0.0.1:9/v1",
+    apiKeyEnv: "BOTS_API_KEY",
+    provider: "stub",
+    modelId: "auto/stub",
+  });
+  const model = models.getModel("stub", "auto/stub");
+  assert.ok(model !== undefined, "the configured model exists");
+  assert.equal(model.provider, "stub");
+  assert.equal(model.id, "auto/stub");
+  assert.equal(model.api, "openai-responses");
+  assert.equal(model.baseUrl, "http://127.0.0.1:9/v1");
+  assert.equal(models.getModel("stub", "missing"), undefined, "only the configured model exists");
 });

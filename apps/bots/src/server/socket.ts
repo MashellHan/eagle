@@ -50,6 +50,9 @@ export const CLOSE = {
   shutdown: 4010,
 } as const;
 
+/** Commands that only make sense on a connection that already subscribed. */
+const NEEDS_SUBSCRIPTION = new Set(["send", "abort", "recover", "resync", "history"]);
+
 /** A connection that sends no frame for this long is closed with 4000. */
 export const IDLE_FRAME_MS = 60_000;
 /** Unsent bytes on one socket before its subscriber is downgraded (PROTOCOL.md, limits). */
@@ -160,6 +163,16 @@ export const attachConnection = (
       close(CLOSE.internal, "encode failed");
       return;
     }
+    if (socket.bufferedAmount > maxBufferedBytes) {
+      // Every path is bounded, not only the hub's: a client that is not reading cannot
+      // make the daemon buffer command replies or catalog events without a limit.
+      log.emit("warn", "transport", Events.frameSendDrop, {
+        trace,
+        connId,
+        detail: { evt: event.type, bytes: text.length },
+      });
+      return;
+    }
     try {
       assertFrameBudget(wire);
     } catch {
@@ -236,7 +249,7 @@ export const attachConnection = (
       // One refusal, one identity: the record and the frame a client matches on it share
       // this failure (PROTOCOL.md, "Client commands").
       const refusal = serverFailure(kind, "protocol");
-      log.emit("warn", "protocol", evt, {
+      log.emit("error", "protocol", evt, {
         trace: frameTrace(text, connId),
         connId,
         failure: refusal,
@@ -353,13 +366,35 @@ export const attachConnection = (
       connId,
       detail: { kind: command.type },
     });
-    try {
-      await run(command, trace);
-      log.emit("debug", "protocol", Events.commandOk, {
+    // `ok` means decoded, validated and dispatched — not "succeeded" (OBSERVABILITY.md).
+    log.emit("debug", "protocol", Events.commandOk, {
+      trace,
+      connId,
+      detail: { kind: command.type },
+    });
+    if (!subscribed && NEEDS_SUBSCRIPTION.has(command.type)) {
+      // A command that cannot reach any bot is refused here, with its own identity.
+      const refusal = serverFailure("invalid_command", "protocol");
+      log.emit("error", "protocol", Events.commandFail, {
         trace,
         connId,
-        detail: { kind: command.type },
+        failure: refusal,
+        origin: true,
+        detail: { kind: command.type, reason: "invalid" },
       });
+      emit({
+        type: "error",
+        trace,
+        kind: "invalid_command",
+        disposition: "not_admitted",
+        failure: refusal.id,
+        message: "the connection has no subscription",
+        ...(command.type === "send" ? { requestId: command.requestId } : {}),
+      });
+      return;
+    }
+    try {
+      await run(command, trace);
     } catch (error) {
       // Only the subscribe that failed clears the guard: an unrelated command's failure
       // must not let a second subscribe through while the first is still rendering.

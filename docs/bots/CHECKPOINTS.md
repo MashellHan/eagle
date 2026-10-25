@@ -246,3 +246,25 @@ Verified (all run just now in `apps/bots`):
 
 Next broken hop: stage 4 is awaiting the reviewer's acceptance of this round; the
 client (`apps/bots-macos/`, rows 55-69) still does not exist.
+
+## 2026-10-26 — stage 4 third review round closed
+
+Observed: the reviewer's third pass found eight P1s in the neighbourhood of the
+round-two fixes — a handle that a subscribe could still hold across a closing or
+deleting bot, history byte-paging that skipped messages, a snapshot budget that
+ignored the rest of the frame, an unavailable snapshot the production decoder would
+reject, reservations that could leak or free too early, replies and catalog events
+that bypassed the backpressure bound, a lock server a silent client could hold open,
+and concurrent `recover` attaching a second watch. Each is fixed with a test that
+fails without the fix.
+
+Verified (all run just now in `apps/bots`):
+
+- `npm run check` exited 0: `fixtures:check` (26 files), 338 tests, `tsc --noEmit`,
+  Biome, coverage 95.07 % lines / 90.24 % branches / 90.39 % functions.
+- `npm run test:crash` exited 0: 5/5.
+- `npm run perf` exited 0 and now asserts the documented load (400 messages) instead
+  of only reporting a number.
+
+Next broken hop: waiting on the reviewer's round-four verdict; the client still does
+not exist.

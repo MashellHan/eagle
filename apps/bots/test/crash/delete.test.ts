@@ -50,7 +50,7 @@ test("a delete killed after its rename reconciles on the next start", async () =
     process.execPath,
     [
       "--experimental-strip-types",
-      join(process.cwd(), "src/main.ts"),
+      join(process.cwd(), "scripts/serve.ts"),
       "--root",
       root,
       "--port",

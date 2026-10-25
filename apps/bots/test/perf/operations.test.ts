@@ -2,7 +2,7 @@
 // milliseconds are not deterministic; the bounds are generous so a real regression fails
 // and noise does not (docs/bots/TESTING.md, "Performance measurement").
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -10,6 +10,8 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels, fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
 import { createRegistry, Harness } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { captureLog } from "../../src/log/log.ts";
+import { PiDurableRuntime } from "../../src/runtime/pi/PiDurableRuntime.ts";
 
 const SAMPLES = 5;
 
@@ -77,7 +79,8 @@ test("the documented operations stay inside their bounds", async () => {
     report("Harness.open + root() on an empty bot", openEmpty, 250);
 
     // A reopen with 400 entries: one real conversation, then measure open again.
-    const path = join(dir, "busy.sqlite");
+    const path = join(dir, "busy-bot", "session.sqlite");
+    await mkdir(join(dir, "busy-bot"), { recursive: true });
     const harness = await Harness.open(
       await openNodeSqliteStorage(path),
       { models, registry: createRegistry(), settings: { compaction: { enabled: false } } as never },
@@ -96,7 +99,8 @@ test("the documented operations stay inside their bounds", async () => {
         },
         BACKGROUND_CONTEXT,
       );
-      await submission.status(BACKGROUND_CONTEXT);
+      // `wait` resolves at settlement; reading `status` only samples it.
+      await submission.wait(BACKGROUND_CONTEXT);
     }
     await harness.close(BACKGROUND_CONTEXT);
     const reopen = await bench(async () => {
@@ -112,6 +116,20 @@ test("the documented operations stay inside their bounds", async () => {
       await again.root(BACKGROUND_CONTEXT, { agent: { model } });
       await again.close(BACKGROUND_CONTEXT);
     });
+    // The load is the one the bound names: 400 entries, read back through the adapter.
+    const load = await (async () => {
+      const runtime = new PiDurableRuntime({ models, log: captureLog().log });
+      const handle = await runtime.open({
+        id: "b_perf",
+        dir: join(dir, "busy-bot"),
+        model,
+        trace: "tr_perf_1",
+      });
+      const page = await handle.history({ limit: 1_000 });
+      await handle.close("tr_perf_2", 5_000);
+      return page.messages.length;
+    })();
+    assert.ok(load >= 400, `the reopen measured a bot with ${load} messages, not 400 entries`);
     report("reopen a bot with 400 entries", reopen, 100);
 
     const turn = await bench(async () => {

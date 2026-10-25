@@ -47,6 +47,8 @@ export type ConversationServiceOptions = {
   readonly open: OpenBot;
   /** The handle the registry owns right now; a cached bot whose handle was closed is stale. */
   readonly handleOf?: (botId: string) => RuntimeHandle | undefined;
+  /** True while a close or delete owns the bot, so a cached view may be about to die. */
+  readonly settlingOf?: (botId: string) => boolean;
   /** Encoded bytes of one event, measured by the transport (see EventHub). */
   readonly measure: (event: RuntimeEvent) => number;
   readonly schedule?: (run: () => void) => void;
@@ -88,6 +90,8 @@ type Bot = {
   readonly ranks: SubmissionRanks;
   /** Admissions in flight, counted until their own submission event arrives. */
   readonly reserved: Set<string>;
+  /** Detaches the runtime subscription this bot holds, when it has one. */
+  detach: (() => void) | undefined;
   /** Publishes what the runtime delivered while the first subscription was rendering. */
   readonly release: () => void;
 };
@@ -104,6 +108,7 @@ type FailEvent = typeof Events.subscribeFail | typeof Events.submitFail | typeof
 export class ConversationService {
   readonly #open: OpenBot;
   readonly #handleOf: ((botId: string) => RuntimeHandle | undefined) | undefined;
+  readonly #settlingOf: ((botId: string) => boolean) | undefined;
   readonly #hubOptions: {
     readonly measure: (event: RuntimeEvent) => number;
     readonly schedule?: (run: () => void) => void;
@@ -125,6 +130,7 @@ export class ConversationService {
   constructor(options: ConversationServiceOptions) {
     this.#open = options.open;
     this.#handleOf = options.handleOf;
+    this.#settlingOf = options.settlingOf;
     this.#log = options.log;
     this.#window = options.windowMessages ?? MAX_WINDOW_MESSAGES;
     this.#onRunning = options.onRunning;
@@ -205,6 +211,9 @@ export class ConversationService {
     connection.bot = bot;
     connection.state = "live";
     bot.hub.publishSnapshot(snapshot, trace);
+    // A bot whose baseline is already running is running, not idle. The catalog event
+    // follows the baseline, so the first frame a client sees is still the snapshot.
+    this.#onRunning?.(snapshot.botId, snapshot.running);
     bot.release();
     if (baseline === undefined) {
       throw this.#cancelled(Events.subscribeFail, trace, botId, connectionId);
@@ -273,22 +282,29 @@ export class ConversationService {
       throw this.#refuse("the connection has no subscription");
     }
     const bot = connection.bot;
-    if (bot.degraded !== undefined) {
-      const rebuilt = await this.#reopen(bot, connection.botId, trace);
-      bot.hub.publishSnapshot(rebuilt, trace);
-      return;
-    }
-    await this.#handle(connectionId).recover(trace);
-    bot.hub.publishSnapshot(bot.snapshot, trace);
+    // Concurrent recovers must not attach a second watch to one handle: one serial
+    // section per bot re-checks the state it saw before it acts.
+    await this.#serialize(bot.snapshot.botId, async () => {
+      if (bot.degraded !== undefined) {
+        const rebuilt = await this.#reopen(bot, connection.botId, trace);
+        bot.hub.publishSnapshot(rebuilt, trace);
+        return;
+      }
+      await this.#handle(connectionId).recover(trace);
+      bot.hub.publishSnapshot(bot.snapshot, trace);
+    });
   }
 
   /** Re-opens an unavailable bot and adopts the new handle in place, so the hub survives. */
   async #reopen(bot: Bot, botId: string, trace: string): Promise<ConversationSnapshot> {
+    // The dead handle's watch is gone with it; keep the view, replace the runtime behind it.
+    bot.detach?.();
     const handle = await this.#open(botId, trace);
     // Attached onto the same object: the event closure, the connection and the cache all
     // keep pointing at one view, and the hub keeps its subscribers.
     const attached = await this.#attach(handle, bot.hub, trace, bot);
     attached.release();
+    this.#onRunning?.(bot.snapshot.botId, bot.snapshot.running);
     return bot.snapshot;
   }
 
@@ -306,16 +322,19 @@ export class ConversationService {
     });
     try {
       const page = await this.#handle(connectionId).history(input);
-      // A page is bounded by count and encoded bytes, and a shorter page says there is
-      // more: a dropped oversized frame would leave the client waiting forever.
-      const messages: Message[] = [];
+      // A page is bounded by count and encoded bytes. The page must stay contiguous with
+      // the cursor, so the *newest* messages are kept and the older ones come next time.
+      const kept: Message[] = [];
       let bytes = 0;
-      for (const message of page.messages) {
+      for (let index = page.messages.length - 1; index >= 0; index -= 1) {
+        const message = page.messages[index];
+        if (message === undefined) break;
         const size = this.#measureMessage(message);
-        if (messages.length >= MAX_WINDOW_MESSAGES || bytes + size > MAX_PAGE_BYTES) break;
-        messages.push(message);
+        if (kept.length >= MAX_WINDOW_MESSAGES || bytes + size > MAX_PAGE_BYTES) break;
+        kept.push(message);
         bytes += size;
       }
+      const messages = kept.reverse();
       const bounded = {
         messages,
         hasMore: page.hasMore || messages.length < page.messages.length,
@@ -376,7 +395,11 @@ export class ConversationService {
           { cause },
         );
       }
-      if (stored !== undefined) return stored;
+      if (stored !== undefined) {
+        // The retry found the record: whatever admission it was waiting for has settled.
+        bot.reserved.delete(input.requestId);
+        return stored;
+      }
       if (
         bot.snapshot.pending.length + bot.reserved.size >= MAX_PENDING ||
         bot.snapshot.inbox.length >= MAX_INBOX
@@ -396,7 +419,13 @@ export class ConversationService {
         }
         return record;
       } catch (cause) {
-        bot.reserved.delete(input.requestId);
+        // A refusal is known not to be admitted, so its slot is free again. An "unknown"
+        // disposition may still have been admitted: the slot stays reserved until the
+        // retry of the same requestId resolves it.
+        const known =
+          cause instanceof ClassifiedFailure &&
+          (cause.disposition === "not_admitted" || cause.disposition === "runtime");
+        if (known) bot.reserved.delete(input.requestId);
         // A failure the runtime already classified keeps its identity and disposition;
         // only an unclassified one becomes "admission unconfirmed", where the client
         // keeps its outbox entry and retries with the same requestId.
@@ -424,6 +453,21 @@ export class ConversationService {
       ),
     );
     return next;
+  }
+
+  /** Trims a page against the whole snapshot frame, envelope and state included. */
+  #fitPage(view: ConversationSnapshot): ConversationSnapshot {
+    const overhead = this.#hubOptions.measure({
+      type: "snapshot",
+      trace: "tr_measure",
+      value: { ...view, messages: [] },
+    });
+    return trimWindow(
+      view,
+      this.#window,
+      this.#measureMessage,
+      Math.max(0, MAX_PAGE_BYTES - overhead),
+    );
   }
 
   /** Encoded bytes of one message in the frame a client would receive it in. */
@@ -544,9 +588,22 @@ export class ConversationService {
     const cached = this.#bots.get(botId);
     if (cached !== undefined) {
       const bot = await cached.catch(() => undefined);
-      // A handle the registry closed is not a handle this service may keep using.
-      const live = this.#handleOf?.(botId);
-      if (bot !== undefined && (this.#handleOf === undefined || bot.handle === live)) return bot;
+      if (bot !== undefined) {
+        const live = this.#handleOf?.(botId);
+        const settling = this.#settlingOf?.(botId) === true;
+        // A live handle that the registry still owns is this view's handle: no extra open.
+        if (!settling && (this.#handleOf === undefined || bot.handle === live)) return bot;
+        // A close or delete in flight owns the handle: ask the registry, which waits for
+        // it, so a subscribe can never hold a handle the registry is about to drop.
+        const opened = await this.#open(botId, trace).catch((error: unknown) => {
+          if (error instanceof ClassifiedFailure && error.failure.kind === "unknown_bot") {
+            throw error;
+          }
+          return undefined;
+        });
+        if (opened !== undefined && bot.handle === opened) return bot;
+        if (opened === undefined && bot.handle === undefined) return bot;
+      }
       this.#bots.delete(botId);
     }
     return this.#openBotCached(botId, trace);
@@ -592,6 +649,7 @@ export class ConversationService {
         },
         ranks: new Map(),
         reserved: new Set<string>(),
+        detach: undefined,
         release: () => undefined,
       };
     }
@@ -604,12 +662,31 @@ export class ConversationService {
     const apply = (event: RuntimeEvent): void => {
       const wasRunning = bot.snapshot.running;
       if (event.type === "submission") bot.reserved.delete(event.record.requestId);
+      if (event.type === "snapshot") {
+        // A lost settlement event cannot hold a slot forever: a snapshot that no longer
+        // lists the submission is the daemon's own reconciliation.
+        for (const requestId of [...bot.reserved]) {
+          const listed =
+            event.value.pending.some((record) => record.requestId === requestId) ||
+            event.value.messages.some(
+              (message) => message.requestId === requestId && message.state !== "complete",
+            );
+          if (!listed) bot.reserved.delete(requestId);
+        }
+      }
       let next = reduceView(bot.snapshot, event, bot.ranks);
-      if (event.type === "error" && event.failure.kind === "storage_failed") {
-        // The harness closed itself: the handle is dead, so the bot is unavailable until
-        // `recover` opens it again (ARCHITECTURE.md, "Failure containment").
+      if (
+        event.type === "error" &&
+        (event.failure.kind === "storage_failed" || event.failure.kind === "internal")
+      ) {
+        // The harness closed itself or the watch escalated: the handle is dead, so the bot
+        // is unavailable until `recover` opens it again (ARCHITECTURE.md, "Failure
+        // containment"). An unavailable snapshot's collections are unknown, so they are
+        // empty — the production decoder refuses anything else (PROTOCOL.md).
+        const { truncatedBefore: _dropped, ...rest } = next;
         next = {
-          ...next,
+          ...rest,
+          messages: [],
           running: false,
           streaming: null,
           pending: [],
@@ -620,7 +697,7 @@ export class ConversationService {
         bot.degraded = { reason: event.failure.kind, message: event.message };
         this.#onSessionFailed?.(next.botId, event.failure.kind, event.message);
       }
-      next = trimWindow(next, this.#window, this.#measureMessage, MAX_PAGE_BYTES);
+      next = this.#fitPage(next);
       bot.snapshot = next;
       if (next.running !== wasRunning) this.#onRunning?.(next.botId, next.running);
       // A snapshot from the runtime may carry a stale pending list; broadcast the one the
@@ -643,13 +720,9 @@ export class ConversationService {
       handle,
       degraded: undefined,
       hub,
+      detach: () => subscription.detach(),
       // The runtime's own baseline is a page too: it is trimmed before any client sees it.
-      snapshot: trimWindow(
-        subscription.snapshot,
-        this.#window,
-        this.#measureMessage,
-        MAX_PAGE_BYTES,
-      ),
+      snapshot: this.#fitPage(subscription.snapshot),
       ranks,
       reserved: new Set<string>(),
       release: () => {
