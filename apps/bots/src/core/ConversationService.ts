@@ -712,7 +712,16 @@ export class ConversationService {
   }
 
   async #openBot(botId: string, trace: string): Promise<Bot> {
-    const hub = new EventHub(botId, trace, this.#hubOptions);
+    const hub = new EventHub(botId, trace, {
+      ...this.#hubOptions,
+      // A subscriber the transport downgraded gets the current view as its anchor.
+      onDegrade: () => {
+        void this.#bots
+          .get(botId)
+          ?.then((bot) => bot.hub.publishSnapshot(bot.snapshot, trace))
+          .catch(() => undefined);
+      },
+    });
     try {
       const handle = await this.#open(botId, trace);
       return await this.#attach(handle, hub, trace);
@@ -805,7 +814,9 @@ export class ConversationService {
       // The runtime's own baseline is a page too: it is trimmed before any client sees it.
       snapshot: this.#fitPage(subscription.snapshot),
       ranks,
-      reserved: new Map<string, number>(),
+      // Re-attaching onto the same view keeps the admissions already in flight: they were
+      // neither settled nor in a snapshot yet.
+      reserved: target === undefined ? new Map<string, number>() : target.reserved,
       release: () => {
         // Stay buffering while draining: an event produced by a sink mid-release must
         // queue behind the earlier ones instead of overtaking them.

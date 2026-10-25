@@ -2,6 +2,7 @@
 // root is refused and a killed one releases the port.
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -92,5 +93,51 @@ test("two different roots that hash to one lock port are refused with both names
     assert.ok(refused.message.includes(first), "and the owner's root");
   } finally {
     await owner.close();
+  }
+});
+
+test("a half-spoken lock owner does not hang the probe", async () => {
+  // Bind a fake owner on a port the lock derivation can produce, then answer with a
+  // partial line and close: the probe must resolve, not wait for a newline that never
+  // comes.
+  let root: string | undefined;
+  const owner = createServer((socket) => {
+    socket.once("data", () => {
+      socket.write(root ?? "");
+      socket.end();
+    });
+  });
+  for (let index = 0; index < 40_000 && root === undefined; index += 1) {
+    const candidate = `/tmp/bots-partial-${index}`;
+    const port = lockPort(candidate);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const onError = (error: Error) => reject(error);
+        owner.once("error", onError);
+        owner.listen(port, "127.0.0.1", () => {
+          owner.off("error", onError);
+          resolve();
+        });
+      });
+      root = candidate;
+    } catch {
+      // that port is taken; try the next candidate root
+    }
+  }
+  assert.ok(root !== undefined, "a free port in the lock range was found");
+  const started = Date.now();
+  try {
+    const outcome = await acquireLock({ root, probeTimeoutMs: 30 }).then(
+      (acquired) => {
+        void acquired.close();
+        return "acquired";
+      },
+      (error: unknown) => error,
+    );
+    assert.ok(outcome instanceof LockError, "the probe fails instead of hanging");
+    assert.equal((outcome as LockError).reason, "unavailable");
+    assert.ok(Date.now() - started < 1_000, "and it does not wait for the deadline");
+  } finally {
+    await new Promise<void>((resolve) => owner.close(() => resolve()));
   }
 });

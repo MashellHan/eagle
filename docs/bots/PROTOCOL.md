@@ -405,7 +405,7 @@ display; it is not the recovery mechanism.
 | I6 | A command that was never admitted produces `error`, never a `submission`. "Admitted but reply lost" is recovered by re-sending the same `requestId` or by reading `snapshot.pending` |
 | I7 | `bots` events are absolute and idempotent; they carry no `rev` |
 | I8 | Unknown server event types are consumed (`rev` included) and ignored; unknown client commands are rejected without closing |
-| I9 | Wire content appears only inside these carriers: `send.text`; any `Message` (`blocks`, and the message inside a `delta` `message` change); `delta.changes[].append`; `delta.changes[].block`; `history.messages`; `BotSummary.title`; `agent.instructions`. No other field carries user or model text |
+| I9 | Wire content appears only inside these carriers: `send.text`; any `Message` (`blocks`, and the message inside a `delta` `message` change); `delta.changes[].append`; `delta.changes[].block`; `history.messages`; `BotSummary.title`; `BotSummary.label`; `agent.instructions`. No other field carries user or model text |
 | I10 | `append` upserts by id; a provisional `p_a<n>` is finalized by an entry carrying `replaces` |
 | I11 | `rev` is absent on connection-scoped replies and `bots`/`pong`; absence is not a gap |
 | I12 | Older windows are fetched with `history`; the newest window is never re-fetched by paging |

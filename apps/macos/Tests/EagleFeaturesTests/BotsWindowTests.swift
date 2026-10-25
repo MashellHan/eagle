@@ -74,6 +74,67 @@ struct BotsWindowTests {
     #expect(bots.draft == "hello from Eagle", "the restored draft is what the user sees")
   }
 
+  @Test("a parked task offers recover and the action reaches the daemon")
+  func parkedIsRecoverable() async throws {
+    let (bots, _, conversationPort, _) = try await window()
+    conversationPort.emit(
+      .error(
+        kind: .taskParked,
+        disposition: .runtime,
+        message: "a task was parked",
+        failure: "f_parked",
+        requestId: nil
+      )
+    )
+    try await Task.sleep(nanoseconds: 60_000_000)
+    #expect(bots.canRecover, "a parked task is a recoverable state")
+    bots.recover()
+    try await Task.sleep(nanoseconds: 60_000_000)
+    #expect(conversationPort.recovered == 1, "recover reaches the daemon")
+    #expect(conversationPort.lastBotId == "b_1")
+  }
+
+  @Test("the transcript is published from append and delta events")
+  func transcriptPublished() async throws {
+    let (bots, _, conversationPort, _) = try await window()
+    conversationPort.emit(
+      .append(
+        message: Message(
+          id: "e_7",
+          role: .user,
+          state: .complete,
+          createdAt: "x",
+          blocks: [.text("问题")],
+          requestId: "r_1"
+        ),
+        replaces: nil
+      )
+    )
+    conversationPort.emit(
+      .append(
+        message: Message(
+          id: "p_a1",
+          role: .assistant,
+          state: .streaming,
+          createdAt: "x",
+          blocks: [.text("回")]
+        ),
+        replaces: nil
+      )
+    )
+    conversationPort.emit(.delta(messageId: "p_a1", changes: [.text(index: 0, append: "答")]))
+    try await Task.sleep(nanoseconds: 80_000_000)
+    let rows = bots.entries
+    #expect(rows.count >= 2, "the transcript grows with the stream")
+    #expect(
+      {
+        if case .assistant(_, let blocks) = rows.last, case .paragraph("回答") = blocks.first {
+          return true
+        }
+        return false
+      }(), "the streamed answer is what the window renders")
+  }
+
   @Test("the window publishes the transcript, the status and the actions")
   func publishedState() async throws {
     let (bots, app, conversationPort, _) = try await window()
@@ -153,7 +214,10 @@ final class StubConversation: ConversationPort {
     lastBotId = botId
   }
 
+  var recovered = 0
+
   func recover(context: CommandContext, botId: String) async throws {
+    recovered += 1
     lastBotId = botId
   }
 

@@ -99,7 +99,7 @@ test("a bot title reaches the wire and stays out of every log record", async () 
         authorization: `Bearer ${stack.token}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ title: titleSentinel }),
+      body: JSON.stringify({ title: titleSentinel, label: `${titleSentinel} 标签` }),
     });
     assert.equal(created.status, 201);
     const body = (await created.json()) as { bot: { id: string; title: string } };

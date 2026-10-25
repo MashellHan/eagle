@@ -43,6 +43,8 @@ export type HubOptions = {
   readonly schedule?: (run: () => void) => void;
   /** Fanout is a crossing, so it is recorded; the hub owns no logging policy itself. */
   readonly log?: Log;
+  /** Called after a subscription was downgraded, so a fresh snapshot can be published. */
+  readonly onDegrade?: () => void;
 };
 
 type Queued = { readonly event: HubEvent; readonly bytes: number };
@@ -74,6 +76,7 @@ export class EventHub {
   readonly #schedule: (run: () => void) => void;
   readonly #measure: (event: RuntimeEvent) => number;
   readonly #log: Log | undefined;
+  readonly #onDegrade: (() => void) | undefined;
   #rev = 0;
   #nextId = 1;
   /** Deltas still inside the coalescing window; they do not consume a revision yet. */
@@ -91,6 +94,7 @@ export class EventHub {
     this.#defaultTrace = trace;
     this.#measure = options.measure;
     this.#log = options.log;
+    this.#onDegrade = options.onDegrade;
     this.#schedule =
       options.schedule ??
       ((run) => {
@@ -363,6 +367,9 @@ export class EventHub {
     slot.bytes = 0;
     slot.anchor = event.type === "snapshot" ? { event, bytes } : undefined;
     slot.stale = event.type !== "snapshot";
+    // Without a fresh snapshot the client would wait forever: a degraded slot has no other
+    // way to learn the state it missed.
+    this.#onDegrade?.();
   }
 
   /** Takes the next deliverable event, or re-anchors a degraded subscriber. */

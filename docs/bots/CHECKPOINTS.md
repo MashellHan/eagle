@@ -438,3 +438,21 @@ reconnects, asserts no replay and asserts the failure is reported.
 Next broken hop: the deferred list in PLAN.md (client `os.Logger`, the socket
 fault-injection matrix beyond the resync state machine, two real windows, three daemon
 origin/handle gaps, long-markdown layout) and the reviewer's fourth pass.
+
+## 2026-10-26 — stages 4-5 review, fourth pass
+
+Observed: the reviewer (Codex, reasoning max) found four contract defects at ff231ce and
+they are closed: a recovery no longer drops the admissions that were in flight when the
+watch escalated; a subscriber the transport downgraded is handed a fresh snapshot instead
+of waiting silently forever; close `4090` retries the connection (a quarantined bot can
+only be recovered over a live socket); and a parked task now offers `recover` and the
+action reaches the daemon. The P2s are closed too: a restored settlement is ranked by its
+submission id, a half-spoken lock owner no longer hangs the probe, the initial snapshot
+sets the history flag, the window test now asserts the published transcript, and the I9
+carrier list and redaction test include a bot's label.
+
+Verified just now: daemon `npm run check` 351 tests, coverage 94.99/90.01/90.55,
+`npm run test:crash` 5/5; client `swift test` and `./Scripts/coverage.sh` 93.1%; Eagle
+`swift test` 48 tests.
+
+Next broken hop: the recorded deferrals in PLAN.md and the reviewer's fifth pass.

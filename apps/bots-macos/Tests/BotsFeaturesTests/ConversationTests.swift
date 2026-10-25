@@ -423,8 +423,8 @@ final class ConversationLifecycleTests: XCTestCase {
     let model = ConversationViewModel(botId: "", conversation: fake, outbox: outbox)
     model.select(botId: "b_1")
     try await Task.sleep(nanoseconds: 30_000_000)
-    XCTAssertEqual(model.state.ranks["r_settled"]?.status, .unanswered)
-    XCTAssertEqual(model.state.ranks["r_settled"]?.reason, "aborted")
+    XCTAssertEqual(model.state.ranks["s_1"]?.status, .unanswered)
+    XCTAssertEqual(model.state.ranks["s_1"]?.reason, "aborted")
     XCTAssertTrue(model.state.pending.isEmpty)
   }
 
@@ -487,5 +487,36 @@ final class ConversationLifecycleTests: XCTestCase {
     try await Task.sleep(nanoseconds: 40_000_000)
     XCTAssertEqual(fake.sent.last?.requestId, "r_retry_1")
     XCTAssertEqual(fake.sent.last?.text, "再发一次")
+  }
+}
+
+@MainActor
+final class SettledRankTests: XCTestCase {
+  func testARestoredSettlementKeepsItsSubmissionId() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bots-settled-key-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let outbox = OutboxStore(directory: directory)
+    try outbox.add(OutboxEntry(botId: "b_1", requestId: "r_saved", text: "问"))
+    try outbox.settle(
+      Submission(
+        id: "s_saved",
+        requestId: "r_saved",
+        status: .done,
+        entryId: "e_7",
+        answerEntryId: "e_10"
+      ),
+      botId: "b_1"
+    )
+    let fake = FakeConversation()
+    let model = ConversationViewModel(botId: "", conversation: fake, outbox: outbox)
+    model.select(botId: "b_1")
+    try await Task.sleep(nanoseconds: 40_000_000)
+    XCTAssertEqual(
+      model.state.ranks["s_saved"]?.status,
+      .done,
+      "the rank is keyed by the submission id, not the request id"
+    )
+    XCTAssertNil(model.state.ranks["r_saved"], "a request id is not a rank key")
   }
 }

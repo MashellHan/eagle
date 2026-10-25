@@ -10,6 +10,7 @@ import {
 import type { ConversationSnapshot, Message, Submission } from "../../src/core/domain.ts";
 import { ClassifiedFailure } from "../../src/core/domain.ts";
 import type { HubEvent } from "../../src/core/EventHub.ts";
+import { SubscriberTooSlow } from "../../src/core/EventHub.ts";
 import type { RuntimeEvent, RuntimeHandle, SubmitInput } from "../../src/core/RuntimePort.ts";
 import { FakeRuntime } from "../../src/testing/FakeRuntime.ts";
 
@@ -1619,4 +1620,121 @@ test("two subscriptions after an eviction share one view and one runtime watch",
   assert.equal(baselines[0].snapshot.botId, "b_1");
   assert.equal(baselines[1].snapshot.botId, "b_1");
   void first;
+});
+
+test("recover keeps the admissions that were already in flight", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    pending: [],
+    inbox: [],
+    running: false,
+    streaming: null,
+  };
+  let release: () => void = () => undefined;
+  const submitGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let sink: ((event: RuntimeEvent) => void) | undefined;
+  let submits = 0;
+  const handle: RuntimeHandle = {
+    subscribe: async (_trace, next) => {
+      sink = next;
+      return { snapshot, detach: () => undefined };
+    },
+    submission: async () => undefined,
+    submit: async (input) => {
+      submits += 1;
+      if (submits === 1) await submitGate;
+      return { id: `s_${submits}`, requestId: input.requestId, status: "queued" };
+    },
+    history: async () => ({ messages: [], hasMore: false }),
+    abort: async () => undefined,
+    recover: async () => undefined,
+    busy: async () => ({ run: false, tasks: false }),
+    close: async () => "closed",
+  };
+  const service = new ConversationService({ open: async () => handle, measure: utf8 });
+  await subscribe(service, []);
+
+  const first = service.send("c_1", {
+    requestId: "r_inflight_0001",
+    text: "在途",
+    whenBusy: "followUp",
+    trace,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  // The watch escalates while the admission is in flight; recover re-attaches the harness.
+  sink?.({
+    type: "error",
+    trace,
+    failure: { id: "f_escalate_2", kind: "internal", layer: "runtime" },
+    message: "the watch escalated",
+  });
+  await service.resync("c_1", trace);
+  await service.recover("c_1", trace);
+  release();
+  await first;
+
+  // Fill the rest of the budget: the recovered view must still count that admission.
+  const rest = Array.from({ length: 31 }, (_, index) =>
+    service.send("c_1", {
+      requestId: `r_rest_${String(index).padStart(4, "0")}`,
+      text: "更多",
+      whenBusy: "followUp",
+      trace,
+    }),
+  );
+  await Promise.all(rest);
+  await assert.rejects(
+    () =>
+      service.send("c_1", {
+        requestId: "r_over_0001",
+        text: "超出",
+        whenBusy: "followUp",
+        trace,
+      }),
+    (error: unknown) => error instanceof CommandError && error.kind === "limit_exceeded",
+    "an in-flight admission survives a recovery",
+  );
+});
+
+test("a degraded subscriber receives a fresh snapshot instead of waiting forever", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    pending: [],
+    inbox: [],
+    running: false,
+    streaming: null,
+  };
+  const runtime = new FakeRuntime({ snapshot: () => snapshot });
+  const service = serviceFor(runtime);
+  const received: HubEvent[] = [];
+  let backpressured = true;
+  await service.subscribe("c_1", "b_1", trace, (event) => {
+    if (backpressured) throw new SubscriberTooSlow();
+    received.push(event);
+  });
+  backpressured = false;
+  runtime.handle("b_1").emit({
+    type: "status",
+    trace,
+    running: true,
+    streaming: null,
+    inbox: [],
+  });
+  // The hub downgraded the subscriber and asked for a fresh view; the next event it sees
+  // is that snapshot, not a silent stream.
+  for (
+    let index = 0;
+    index < 100 && !received.some((event) => event.type === "snapshot");
+    index += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.ok(
+    received.some((event) => event.type === "snapshot"),
+    "a downgraded subscriber is handed the current view",
+  );
 });

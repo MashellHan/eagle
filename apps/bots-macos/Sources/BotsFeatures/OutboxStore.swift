@@ -6,6 +6,8 @@ import Foundation
 /// lost when the app closes before the client has stored it (PROTOCOL.md, client duties 2).
 public struct SettledRequest: Codable, Sendable, Equatable, Identifiable {
   public var botId: String
+  /// The submission the record belongs to: ranking is keyed on it (`I14`).
+  public var submissionId: String
   public var requestId: String
   public var status: SubmissionStatus
   public var reason: String?
@@ -21,6 +23,7 @@ public struct SettledRequest: Codable, Sendable, Equatable, Identifiable {
     at: String = ISO8601DateFormatter().string(from: Date())
   ) {
     self.botId = botId
+    submissionId = record.id
     requestId = record.requestId
     status = record.status
     reason = record.reason

@@ -141,7 +141,9 @@ const ask = async (options: {
     });
     socket.on("close", () => {
       clearTimeout(timer);
-      if (body.length === 0) done(undefined);
+      // A partial line without its newline is not an answer: resolve the probe so a
+      // half-speaking owner cannot hang the start.
+      if (!body.includes("\n")) done(undefined);
     });
   });
   if (answer === undefined) return undefined;

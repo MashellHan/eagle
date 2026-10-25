@@ -13,6 +13,8 @@ public final class ConversationViewModel: ObservableObject {
   @Published public private(set) var errorBanner: String?
   @Published public private(set) var isSending = false
   @Published public private(set) var hasOlder = false
+  /// A parked task is recoverable: `recover` retries it.
+  @Published public private(set) var parked = false
   @Published public var draft = ""
 
   private let conversation: ConversationPort
@@ -107,6 +109,7 @@ public final class ConversationViewModel: ObservableObject {
 
   public func recover() {
     guard let botId = selectedBotId else { return }
+    parked = false
     let context = CommandContext.command("recover")
     Task { [weak self] in
       do {
@@ -210,7 +213,7 @@ public final class ConversationViewModel: ObservableObject {
     for record in stored where record.botId == botId {
       state = Reducer.applySubmission(
         Submission(
-          id: record.requestId,
+          id: record.submissionId,
           requestId: record.requestId,
           status: record.status,
           entryId: record.entryId,
@@ -236,6 +239,7 @@ public final class ConversationViewModel: ObservableObject {
 
     case .snapshot(let value):
       state = Reducer.snapshot(value, rev: state.lastRev.map { $0 + 1 }, keeping: state.ranks)
+      hasOlder = value.truncatedBefore != nil
       if !reconciled {
         reconciled = true
         reconcileOutbox()
@@ -264,6 +268,7 @@ public final class ConversationViewModel: ObservableObject {
       onCatalog?(bots)
     case .error(let kind, let disposition, let message, _, let requestId):
       errorBanner = message
+      if kind == .taskParked { parked = true }
       state = applyUnavailable(kind: kind)
       switch disposition {
       case .notAdmitted:

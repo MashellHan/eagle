@@ -155,6 +155,7 @@ One carrier list, used by both the protocol and the redaction test:
 | `delta.changes[].append`, `delta.changes[].block` | Allowed | Forbidden |
 | `history.messages` | Allowed | Forbidden |
 | `BotSummary.title` (user-authored) | Allowed | Forbidden |
+| `BotSummary.label` (user-authored) | Allowed | Forbidden |
 | `agent.instructions` (capability `agent` only) | Allowed | Forbidden |
 | `notice` text | Allowed | Forbidden |
 | Anything else | Forbidden | Forbidden |

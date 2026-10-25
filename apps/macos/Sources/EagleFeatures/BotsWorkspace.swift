@@ -213,7 +213,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
     entries = presenter.transcript(for: conversation.state)
     running = conversation.state.running
     connection = conversation.connection
-    canRecover = conversation.state.unavailable != nil
+    canRecover = conversation.state.unavailable != nil || conversation.parked
     error = conversation.errorBanner ?? app.error
   }
 

@@ -321,22 +321,28 @@ public final class ConversationSocket: NSObject {
     }
   }
 
-  private enum CloseBehaviour {
+  /// Close codes are the contract's reconnection policy (PROTOCOL.md, "Close codes").
+  public enum CloseBehaviour: Equatable, Sendable {
     case stop(String)
     case retry
   }
 
-  /// Close codes are the contract's reconnection policy (PROTOCOL.md, "Close codes").
-  private func closeBehaviour(_ code: Int) -> CloseBehaviour {
+  public static func closeBehaviour(_ code: Int) -> CloseBehaviour {
     switch code {
     case 1008: return .stop("the daemon refused the protocol exchange")
     case 4001: return .stop("the daemon rejected the token")
     case 4004: return .stop("this bot no longer exists")
     case 4009: return .stop("the daemon speaks another protocol version")
-    case 4090: return .stop("the bot is quarantined; use recover once it closes")
+    // A quarantined bot is retried: it leaves quarantine when its close finishes, and
+    // `recover` can only travel over a live socket.
+    case 4090: return .retry
     case 1000: return .stop("the connection was closed")
     default: return .retry
     }
+  }
+
+  private func closeBehaviour(_ code: Int) -> CloseBehaviour {
+    ConversationSocket.closeBehaviour(code)
   }
 
   private func scheduleReconnect() {
