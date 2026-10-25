@@ -5,6 +5,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import type { HerdrClient } from "../../src/tools/herdr/client.ts";
+import { HERDR_TOOLS_EXTENSION } from "../../src/tools/herdr/tools.ts";
 import { BOTS_TOOLS_EXTENSION, createToolRegistry } from "../../src/tools/registry.ts";
 import { openWorkspace } from "../../src/tools/workspace.ts";
 
@@ -36,5 +38,39 @@ test("the bots-tools extension installs the four tools and a workspace section",
   }
   const command = snapshot.tools().find(({ tool }) => tool.name === "run_command");
   assert.equal(command?.tool.outputLimits?.retain, "tail");
+  await rm(daemonRoot, { recursive: true, force: true });
+});
+
+test("the herdr extension is installed only when a client is given", async () => {
+  const daemonRoot = await mkdtemp(join(tmpdir(), "bots-registry-"));
+  const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"), daemonRoot);
+  const without = createToolRegistry(workspace).snapshot();
+  assert.equal(without.extension(HERDR_TOOLS_EXTENSION), undefined);
+
+  // The tools are registered even though the fake client is never called here: this is
+  // the wiring contract the runtime depends on.
+  const client = {} as HerdrClient;
+  const withHerdr = createToolRegistry(workspace, {
+    client,
+    stateDir: join(daemonRoot, "bots", "a"),
+    botId: "a",
+  }).snapshot();
+  const names = withHerdr
+    .tools()
+    .filter(({ extension }) => extension.name === HERDR_TOOLS_EXTENSION)
+    .map(({ tool }) => tool.name)
+    .sort();
+  assert.deepEqual(names, [
+    "herdr_close_space",
+    "herdr_keys",
+    "herdr_list",
+    "herdr_open_space",
+    "herdr_read",
+    "herdr_send",
+    "herdr_start_controller",
+    "herdr_wait",
+  ]);
+  assert.equal(withHerdr.extension(HERDR_TOOLS_EXTENSION)?.hooks, undefined);
+  assert.ok(withHerdr.sections().some(({ section }) => section.key === "bots-herdr"));
   await rm(daemonRoot, { recursive: true, force: true });
 });

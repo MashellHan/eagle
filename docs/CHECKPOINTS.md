@@ -1509,5 +1509,8 @@ A checkpoint is what a person can actually see, so this records the absence too.
   binary, six scenarios (argv shape, JSON mapping, stderr JSON errors, deadline, abort,
   non-JSON exit). A real-session smoke with the real client created a space, read its pane,
   and closed it.
-- **Next broken hop:** the client still does not render tool calls or results; and the
-  herdr tools are not yet exercised by a full faux-model round inside a conversation.
+- **Signoff:** the sixth Codex review (reasoning max) re-ran the isolation, recovery and
+  cap probes and returned SIGN OFF for slice 2.
+- **Next broken hop:** the client still does not render tool calls or results
+  (`pi.tool-result` stays off the wire), and the herdr tools have no faux-model round
+  inside a conversation yet; both are recorded as deferred, not fixed.
