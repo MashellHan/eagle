@@ -2,6 +2,7 @@
 // tools"): one argv, no shell, a deadline and a bounded answer. Everything the tools know
 // about spaces, panes and agents comes from these JSON responses, never from guessing.
 import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 
 const MAX_STDOUT_BYTES = 4 * 1024 * 1024;
 const MAX_STDERR_BYTES = 64 * 1024;
@@ -135,17 +136,39 @@ export const createHerdrClient = (options: HerdrCliOptions = {}): HerdrClient =>
     runOptions: RunOptions,
   ): Promise<{ readonly text: string; readonly json: unknown }> =>
     new Promise((resolve, reject) => {
+      if (runOptions.signal?.aborted === true) {
+        reject(new HerdrCommandError("aborted", "the herdr command was aborted"));
+        return;
+      }
       const timeoutMs = runOptions.timeoutMs ?? DEFAULT_TIMEOUT_MS;
       const child = spawn(binary, [...args], {
         stdio: ["ignore", "pipe", "pipe"],
         env: { ...process.env, ...options.env },
         detached: true,
       });
+      // Both streams keep the newest bytes: a screen read is only useful at its end.
       let stdout = "";
       let stderr = "";
-      let stdoutBytes = 0;
-      let stderrBytes = 0;
-      let failed: HerdrCommandError | undefined;
+      const decoders = {
+        stdout: new StringDecoder("utf8"),
+        stderr: new StringDecoder("utf8"),
+      };
+      let settled = false;
+      const settle = (
+        outcome:
+          | { ok: true; text: string; json: unknown }
+          | { ok: false; error: HerdrCommandError },
+      ) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        runOptions.signal?.removeEventListener("abort", onAbort);
+        child.stdout.destroy();
+        child.stderr.destroy();
+        child.unref();
+        if (outcome.ok) resolve({ text: outcome.text, json: outcome.json });
+        else reject(outcome.error);
+      };
       const stop = () => {
         try {
           if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
@@ -154,44 +177,51 @@ export const createHerdrClient = (options: HerdrCliOptions = {}): HerdrClient =>
         }
       };
       const timer = setTimeout(() => {
-        failed = new HerdrCommandError(
-          "timeout",
-          `herdr ${args[0]} timed out after ${timeoutMs} ms`,
-        );
         stop();
+        settle({
+          ok: false,
+          error: new HerdrCommandError(
+            "timeout",
+            `herdr ${args[0]} timed out after ${timeoutMs} ms`,
+          ),
+        });
       }, timeoutMs);
       timer.unref?.();
       const onAbort = () => {
-        failed = new HerdrCommandError("aborted", "the herdr command was aborted");
         stop();
+        settle({
+          ok: false,
+          error: new HerdrCommandError("aborted", "the herdr command was aborted"),
+        });
       };
       runOptions.signal?.addEventListener("abort", onAbort, { once: true });
-      const finish = () => {
-        clearTimeout(timer);
-        runOptions.signal?.removeEventListener("abort", onAbort);
+      const keepTail = (current: string, piece: string, limit: number): string => {
+        const next = current + piece;
+        if (Buffer.byteLength(next) <= limit) return next;
+        const bytes = Buffer.from(next);
+        let slice = bytes.subarray(bytes.length - limit);
+        let text = slice.toString("utf8");
+        for (let guard = 0; guard < 4 && text.startsWith("\uFFFD"); guard += 1) {
+          slice = slice.subarray(1);
+          text = slice.toString("utf8");
+        }
+        return text;
       };
       child.stdout.on("data", (chunk: Buffer) => {
-        if (stdoutBytes >= MAX_STDOUT_BYTES) return;
-        const piece = chunk.subarray(0, MAX_STDOUT_BYTES - stdoutBytes);
-        stdoutBytes += piece.length;
-        stdout += piece.toString("utf8");
+        stdout = keepTail(stdout, decoders.stdout.write(chunk), MAX_STDOUT_BYTES);
       });
       child.stderr.on("data", (chunk: Buffer) => {
-        if (stderrBytes >= MAX_STDERR_BYTES) return;
-        const piece = chunk.subarray(0, MAX_STDERR_BYTES - stderrBytes);
-        stderrBytes += piece.length;
-        stderr += piece.toString("utf8");
+        stderr = keepTail(stderr, decoders.stderr.write(chunk), MAX_STDERR_BYTES);
       });
       child.once("error", () => {
-        finish();
-        reject(new HerdrCommandError("spawn_failed", `herdr could not start: ${binary}`));
+        settle({
+          ok: false,
+          error: new HerdrCommandError("spawn_failed", `herdr could not start: ${binary}`),
+        });
       });
       child.once("close", (code) => {
-        finish();
-        if (failed !== undefined) {
-          reject(failed);
-          return;
-        }
+        stdout = keepTail(stdout, decoders.stdout.end(), MAX_STDOUT_BYTES);
+        stderr = keepTail(stderr, decoders.stderr.end(), MAX_STDERR_BYTES);
         const trimmed = stdout.trim();
         let json: unknown;
         if (trimmed.startsWith("{")) {
@@ -202,34 +232,29 @@ export const createHerdrClient = (options: HerdrCliOptions = {}): HerdrClient =>
           }
         }
         if (code === 0) {
-          resolve({ text: trimmed, json });
+          settle({ ok: true, text: trimmed, json });
           return;
         }
-        const parsed = asRecord(json);
-        if (parsed?.error !== undefined) {
-          const { code: errorCode, message } = messageOf(parsed);
-          reject(new HerdrCommandError(errorCode, message));
-          return;
-        }
-        // A CLI server error is JSON on stderr; read its code and message before the text.
-        const errorBody = stderr.trim();
-        if (errorBody.startsWith("{")) {
+        // A CLI server error is JSON on stderr (or stdout); read its code and message.
+        for (const body of [stderr.trim(), trimmed]) {
+          if (!body.startsWith("{")) continue;
           try {
-            const parsedError = JSON.parse(errorBody) as unknown;
+            const parsedError = JSON.parse(body) as unknown;
             const { code: errorCode, message } = messageOf(parsedError);
-            reject(new HerdrCommandError(errorCode, message));
+            settle({ ok: false, error: new HerdrCommandError(errorCode, message) });
             return;
           } catch {
             // Fall through to the textual report.
           }
         }
-        const detail = errorBody || trimmed;
-        reject(
-          new HerdrCommandError(
+        const detail = stderr.trim() || trimmed;
+        settle({
+          ok: false,
+          error: new HerdrCommandError(
             "herdr_failed",
             `herdr ${args.slice(0, 2).join(" ")} failed (exit ${code ?? "none"}): ${detail.slice(0, 2_000) || "no detail"}`,
           ),
-        );
+        });
       });
     });
 

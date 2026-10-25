@@ -29,7 +29,21 @@ if (first === "workspace" && second === "create") {
 } else if (first === "pane" && second === "list") {
   out({ result: { panes: [{ pane_id: "w7:p1", workspace_id: "w7" }] } });
 } else if (first === "agent" && second === "read") {
-  writeFileSync(1, "screen\\ntext\\n");
+  const mode = process.env.FAKE_HERDR_MODE;
+  if (mode === "big") {
+    const chunk = Buffer.alloc(1024 * 1024, 0x61);
+    for (let index = 0; index < 5; index += 1) writeFileSync(1, chunk);
+    writeFileSync(1, "ACTUAL_SCREEN_END");
+  } else if (mode === "split") {
+    writeFileSync(1, Buffer.from([0xe4]));
+    setTimeout(() => writeFileSync(1, Buffer.from([0xbd, 0xa0])), 60);
+  } else if (mode === "hang") {
+    const { spawn } = require("node:child_process");
+    spawn(process.execPath, ["-e", "setTimeout(() => {}, 5000)"], { detached: true, stdio: ["ignore", 1, 2] }).unref();
+    setTimeout(() => {}, 5000);
+  } else {
+    writeFileSync(1, "screen\\ntext\\n");
+  }
 } else if (first === "agent" && second === "prompt") {
   if (process.env.FAKE_HERDR_ERROR === "1") {
     out({ error: { code: "agent_blocked", message: "waiting at a dialog" } });
@@ -64,9 +78,17 @@ const bench = async () => {
     binary,
     env: { FAKE_HERDR_LOG: log, FAKE_HERDR_ERROR: "1" },
   });
+  const withMode = (mode: string) =>
+    createHerdrClient({ binary, env: { FAKE_HERDR_LOG: log, FAKE_HERDR_MODE: mode } });
   const calls = async (): Promise<string[]> =>
     (await readFile(log, "utf8").catch(() => "")).trim().split("\n").filter(Boolean);
-  return { client, failing, calls, cleanup: () => rm(dir, { recursive: true, force: true }) };
+  return {
+    client,
+    failing,
+    withMode,
+    calls,
+    cleanup: () => rm(dir, { recursive: true, force: true }),
+  };
 };
 
 test("workspace and agent responses are parsed, not guessed", async () => {
@@ -195,6 +217,55 @@ test("a non-JSON failure reports the exit and the detail", async () => {
         /exit 3/.test(error.message) &&
         /no such key/.test(error.message),
     );
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("a large screen keeps its end, not its beginning", async () => {
+  const bench_ = await bench();
+  try {
+    const text = await bench_.withMode("big").read({ target: "bot-x" });
+    assert.ok(text.endsWith("ACTUAL_SCREEN_END"), "the newest text is what remains");
+    assert.ok(Buffer.byteLength(text) <= 4 * 1024 * 1024);
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("a UTF-8 character split across chunks is decoded", async () => {
+  const bench_ = await bench();
+  try {
+    assert.equal(await bench_.withMode("split").read({ target: "bot-x" }), "你");
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("a deadline settles even when an inherited pipe stays open", async () => {
+  const bench_ = await bench();
+  try {
+    const started = Date.now();
+    await assert.rejects(
+      () => bench_.withMode("hang").read({ target: "bot-x" }, { timeoutMs: 250 }),
+      (error: unknown) => error instanceof HerdrCommandError && error.code === "timeout",
+    );
+    assert.ok(Date.now() - started < 600, "the deadline does not wait for the pipe");
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("a call with an already-aborted signal never starts the CLI", async () => {
+  const bench_ = await bench();
+  try {
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(
+      () => bench_.client.read({ target: "bot-x" }, { signal: controller.signal }),
+      (error: unknown) => error instanceof HerdrCommandError && error.code === "aborted",
+    );
+    assert.deepEqual(await bench_.calls(), []);
   } finally {
     await bench_.cleanup();
   }

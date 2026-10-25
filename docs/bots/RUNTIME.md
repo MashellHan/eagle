@@ -370,7 +370,7 @@ target is resolved inside it.
 
 | Tool | Behaviour |
 | --- | --- |
-| `herdr_open_space` | Opens this bot's space (a workspace labelled `bots-<bot id prefix>` with one shell pane) and returns its ids; calling it again reuses the live space |
+| `herdr_open_space` | Opens this bot's space (a workspace labelled `bots-<bot id prefix>-<nonce>` with one shell pane) and returns its ids; calling it again reuses the live space |
 | `herdr_start_controller` | Starts one controller agent in that space's root pane with a herdr kind (`pi`, `codex`, `grok`, ...) and native arguments after `--`; idempotent while the controller lives |
 | `herdr_list` | Lists the panes and agents of that space only |
 | `herdr_send` | Submits a prompt to an agent in the space (default the controller) and by default waits for a settled state |
@@ -381,17 +381,26 @@ target is resolved inside it.
 
 Rules:
 
-- **One space, and only its contents.** The space id and its root pane live in
-  `<bot dir>/herdr.json` (0600, outside the model's workspace). Every call re-reads the
-  space from herdr and refuses when its label is not this bot's, so a recorded id that
-  points elsewhere is never touched; a space that disappeared says to open a new one.
+- **One space, and only its contents.** The space id, its full label (prefix plus a
+  per-instance nonce) and its root pane live in `<bot dir>/herdr.json` (0600, outside the
+  model's workspace). Every call re-reads the space from herdr and requires **both** the
+  recorded label and the recorded root pane in that space, so neither a different space
+  nor a same-id replacement is ever touched; a space that disappeared is replaced by a
+  fresh instance. With no usable state (missing or corrupt file), exactly one space with
+  this bot's prefix is adopted, and several are refused rather than guessed; a recorded
+  space that fails verification is dropped and never adopted. A space that could not be
+  recorded is closed again instead of leaking.
   `herdr_list`, `herdr_send`, `herdr_wait`, `herdr_read` and `herdr_keys` resolve their
-  target against the agents herdr reports **in that space**; an agent, pane or workspace
-  outside it is refused.
+  target against the agents herdr reports **in that space**, and then address it by its
+  workspace-qualified pane id — never by a name that can be reassigned or moved.
 - **argv, not a shell.** Each call is one `herdr` argv with a deadline (30 s default,
-  120 s for talk, at most 600 s) and a bounded answer; the run's abort signal kills the
-  CLI process group. A herdr JSON error becomes the tool result with its own code and
-  message; a non-zero exit without JSON keeps the exit and the detail.
+  120 s for talk, at most 600 s) and a bounded answer. The run's abort signal kills the
+  CLI process group, a call that is already queued behind another is cancelled before it
+  starts, and a deadline settles at once instead of waiting for an inherited pipe to
+  close. The CLI's own output keeps its newest 4 MiB (a screen is only useful at its end)
+  and is decoded across chunk boundaries. A herdr JSON error becomes the tool result with
+  its own code and message (`agent_blocked: ...`); a non-zero exit without JSON keeps the
+  exit and the detail.
 - **The bot's own sandbox does not apply to the CLI.** `herdr` is a host tool (it needs the
   session socket), so it is not run through the workspace sandbox; what it may touch is
   bounded by the space rule above, not by the file system profile.

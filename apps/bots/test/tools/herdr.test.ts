@@ -2,7 +2,7 @@
 // it starts there, and nothing else in the session reachable. The client is faked here;
 // the real CLI's response shapes are checked by the client's own contract test.
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -34,6 +34,10 @@ class FakeHerdr implements HerdrClient {
   readonly panesBySpace = new Map<string, HerdrPaneInfo[]>();
   answer = "the answer";
   failWith: HerdrCommandError | undefined;
+  getError: HerdrCommandError | undefined;
+  startError: HerdrCommandError | undefined;
+  keepAgentOnStartError = false;
+  readDelayMs = 0;
   nextId = 1;
 
   #record(method: string, input: unknown): void {
@@ -65,6 +69,7 @@ class FakeHerdr implements HerdrClient {
 
   async getWorkspace(id: string): Promise<HerdrWorkspaceInfo | undefined> {
     this.#record("getWorkspace", id);
+    if (this.getError !== undefined) throw this.getError;
     return this.workspaces.find((space) => space.id === id);
   }
 
@@ -85,6 +90,7 @@ class FakeHerdr implements HerdrClient {
     args?: readonly string[];
   }): Promise<void> {
     this.#record("startAgent", input);
+    if (this.startError !== undefined && !this.keepAgentOnStartError) throw this.startError;
     const space = [...this.panesBySpace.entries()].find(([, panes]) =>
       panes.some((pane) => pane.paneId === input.paneId),
     );
@@ -95,6 +101,7 @@ class FakeHerdr implements HerdrClient {
       paneId: input.paneId,
       workspaceId: space?.[0] ?? "",
     });
+    if (this.startError !== undefined) throw this.startError;
   }
 
   async prompt(input: { target: string; text: string; wait?: boolean }): Promise<string> {
@@ -109,6 +116,7 @@ class FakeHerdr implements HerdrClient {
 
   async read(input: { target: string; lines?: number; source?: HerdrReadSource }): Promise<string> {
     this.#record("read", input);
+    if (this.readDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, this.readDelayMs));
     return this.answer;
   }
 
@@ -152,7 +160,7 @@ test("open_space creates one labelled space and reuses it", async () => {
   try {
     const first = await bench_.call("herdr_open_space", {});
     assert.equal(first.isError, false);
-    assert.match(first.text, new RegExp(`space w1 \\(${spaceLabelOf("a-bot")}\\)`));
+    assert.match(first.text, new RegExp(`space w1 \\(${spaceLabelOf("a-bot")}-[a-z0-9]{4}\\)`));
     assert.match(first.text, /root pane w1:p1/);
     assert.equal(bench_.client.calls.filter((call) => call.method === "createWorkspace").length, 1);
     assert.equal((await stat(bench_.statePath)).mode & 0o777, 0o600);
@@ -235,10 +243,10 @@ test("send defaults to the controller and refuses a foreign target", async () =>
     await bench_.call("herdr_start_controller", { kind: "pi" });
     const sent = await bench_.call("herdr_send", { text: "do the work" });
     assert.equal(sent.isError, false);
-    assert.match(sent.text, new RegExp(`sent to ${agentPrefixOf("a-bot")}-pi: idle`));
+    assert.match(sent.text, /sent to w1:p1: idle/);
     const prompt = bench_.client.calls.find((call) => call.method === "prompt");
     assert.deepEqual(prompt?.input, {
-      target: `${agentPrefixOf("a-bot")}-pi`,
+      target: "w1:p1",
       text: "do the work",
       wait: true,
     });
@@ -267,7 +275,7 @@ test("read keeps the newest text and caps it", async () => {
     assert.equal(short.text, "the answer");
     const read = bench_.client.calls.find((call) => call.method === "read");
     assert.deepEqual(read?.input, {
-      target: `${agentPrefixOf("a-bot")}-pi`,
+      target: "w1:p1",
       lines: 200,
       source: "recent-unwrapped",
     });
@@ -346,7 +354,7 @@ test("a herdr failure is a result the model can read", async () => {
     );
     const sent = await bench_.call("herdr_send", { text: "hi" });
     assert.equal(sent.isError, true);
-    assert.match(sent.text, /waiting at a dialog/);
+    assert.match(sent.text, /agent_blocked: the agent is waiting at a dialog/);
   } finally {
     await bench_.cleanup();
   }
@@ -360,4 +368,150 @@ test("the extension name, label and section are the contract", async () => {
   const section = herdrSection("a-bot");
   assert.match(section, /bots-abot/);
   assert.match(section, /Only agents and panes inside that space/);
+});
+
+test("a recorded root pane outside the space is refused, not started", async () => {
+  const bench_ = await bench();
+  try {
+    await bench_.call("herdr_open_space", {});
+    const state = JSON.parse(await readFile(bench_.statePath, "utf8")) as Record<string, unknown>;
+    // A tampered state file points the root pane at a user's pane.
+    bench_.client.panesBySpace.set("w9", [{ paneId: "w9:p1", workspaceId: "w9" }]);
+    await writeFile(bench_.statePath, JSON.stringify({ ...state, rootPaneId: "w9:p1" }));
+    const started = await bench_.call("herdr_start_controller", { kind: "pi" });
+    assert.equal(started.isError, true);
+    assert.match(started.text, /not this bot's own space/);
+    assert.equal(
+      bench_.client.calls.some((call) => call.method === "startAgent"),
+      false,
+    );
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("a replacement with the same id and label is refused, and open starts over", async () => {
+  const bench_ = await bench();
+  try {
+    await bench_.call("herdr_open_space", {});
+    const state = JSON.parse(await readFile(bench_.statePath, "utf8")) as { spaceLabel: string };
+    // A user workspace takes the id and the label but has a different pane.
+    bench_.client.panesBySpace.set("w1", [{ paneId: "w1:p9", workspaceId: "w1" }]);
+    const read = await bench_.call("herdr_read", {});
+    assert.equal(read.isError, true);
+    assert.match(read.text, /not this bot's own space/);
+    const close = await bench_.call("herdr_close_space", {});
+    assert.equal(close.isError, true);
+    assert.equal(
+      bench_.client.calls.some((call) => call.method === "closeWorkspace"),
+      false,
+    );
+
+    const opened = await bench_.call("herdr_open_space", {});
+    assert.match(opened.text, /opened space w2/);
+    const saved = JSON.parse(await readFile(bench_.statePath, "utf8")) as {
+      spaceId: string;
+      spaceLabel: string;
+    };
+    assert.equal(saved.spaceId, "w2");
+    assert.notEqual(saved.spaceLabel, state.spaceLabel);
+    assert.equal(bench_.client.calls.filter((call) => call.method === "createWorkspace").length, 2);
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("a queued call cancelled by the run's abort has no side effect", async () => {
+  const bench_ = await bench();
+  try {
+    await bench_.call("herdr_open_space", {});
+    await bench_.call("herdr_start_controller", { kind: "pi" });
+    bench_.client.readDelayMs = 80;
+    const controller = new AbortController();
+    const context = { abortSignal: controller.signal } as never;
+    const readTool = bench_.tools.find((tool) => tool.name === "herdr_read");
+    const sendTool = bench_.tools.find((tool) => tool.name === "herdr_send");
+    assert.ok(readTool !== undefined && sendTool !== undefined);
+    const invoke = (tool: ToolRegistration, args: unknown) =>
+      tool.execute?.(args as never, {} as never, context);
+    assert.ok(invoke !== undefined);
+    const reading = invoke(readTool, {});
+    const sending = invoke(sendTool, { text: "should not run" });
+    setTimeout(() => controller.abort(), 10);
+    await reading;
+    const sent = (await sending) as { output: { text: string }[]; isError?: boolean };
+    assert.equal(sent.isError, true);
+    assert.match(sent.output.map((part) => part.text).join(""), /aborted/);
+    assert.equal(
+      bench_.client.calls.some((call) => call.method === "prompt"),
+      false,
+    );
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("a stale space id is replaced by a fresh space", async () => {
+  const bench_ = await bench();
+  try {
+    await bench_.call("herdr_open_space", {});
+    bench_.client.workspaces.length = 0;
+    bench_.client.getError = new HerdrCommandError("workspace_not_found", "no such workspace");
+    const reopened = await bench_.call("herdr_open_space", {});
+    assert.equal(reopened.isError, false);
+    assert.match(reopened.text, /opened space w2/);
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("a corrupt state adopts the one matching space instead of leaking a second", async () => {
+  const bench_ = await bench();
+  try {
+    await bench_.call("herdr_open_space", {});
+    await writeFile(bench_.statePath, "{ half");
+    const reopened = await bench_.call("herdr_open_space", {});
+    assert.match(reopened.text, /reopened space w1/);
+    assert.equal(bench_.client.calls.filter((call) => call.method === "createWorkspace").length, 1);
+    const saved = JSON.parse(await readFile(bench_.statePath, "utf8")) as { spaceId: string };
+    assert.equal(saved.spaceId, "w1");
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("a space whose state cannot be saved is closed again", async () => {
+  const bench_ = await bench();
+  try {
+    const stateDir = bench_.statePath.replace(/\/herdr\.json$/, "");
+    await chmod(stateDir, 0o500);
+    const opened = await bench_.call("herdr_open_space", {});
+    assert.equal(opened.isError, true);
+    assert.match(opened.text, /state could not be saved/);
+    assert.equal(
+      bench_.client.calls.some((call) => call.method === "closeWorkspace"),
+      true,
+    );
+  } finally {
+    await chmod(bench_.statePath.replace(/\/herdr\.json$/, ""), 0o700).catch(() => undefined);
+    await bench_.cleanup();
+  }
+});
+
+test("a not-ready start still records the controller for the next call", async () => {
+  const bench_ = await bench();
+  try {
+    await bench_.call("herdr_open_space", {});
+    bench_.client.startError = new HerdrCommandError("agent_not_ready", "the agent is starting");
+    bench_.client.keepAgentOnStartError = true;
+    const started = await bench_.call("herdr_start_controller", { kind: "pi" });
+    assert.match(started.text, /agent_not_ready: the agent is starting \(recorded/);
+    bench_.client.startError = undefined;
+    const again = await bench_.call("herdr_start_controller", { kind: "pi" });
+    assert.match(again.text, /already running/);
+    const sent = await bench_.call("herdr_send", { text: "hello" });
+    assert.equal(sent.isError, false);
+  } finally {
+    await bench_.cleanup();
+  }
 });

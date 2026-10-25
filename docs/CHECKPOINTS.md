@@ -1503,8 +1503,8 @@ A checkpoint is what a person can actually see, so this records the absence too.
   agent there, send it a message, wait, read its screen, send logical keys and close the
   space. Watching the herdr session, the space appears with the label `bots-<id prefix>` and
   stays out of focus; the bot cannot touch any other space, pane or agent.
-- **Evidence:** `cd apps/bots && npm run check` — see the run recorded with the next
-  checkpoint. Tool layer: fake client, nine scenarios (reuse, kind/name validation,
+- **Evidence:** `cd apps/bots && npm run check` — 409/409 tests, coverage
+  94.90/88.35/91.28; `test:crash` 5/5; `perf` 1/1. Tool layer: fake client, nine scenarios (reuse, kind/name validation,
   space-scoped targets, read cap, close refusal, herdr error results). CLI client: fake
   binary, six scenarios (argv shape, JSON mapping, stderr JSON errors, deadline, abort,
   non-JSON exit). A real-session smoke with the real client created a space, read its pane,

@@ -54,6 +54,7 @@ const MAX_SPACE_LABEL = 40;
 
 type HerdrState = {
   readonly spaceId: string;
+  readonly spaceLabel: string;
   readonly rootPaneId: string;
   readonly controller?: {
     readonly name: string;
@@ -75,8 +76,14 @@ const shortId = (botId: string): string => {
   return normalized.length === 0 ? "bot" : normalized.slice(0, 8);
 };
 
+/** The label prefix every space of this bot shares; the full label adds a nonce. */
 export const spaceLabelOf = (botId: string): string =>
-  `bots-${shortId(botId)}`.slice(0, MAX_SPACE_LABEL);
+  `bots-${shortId(botId)}`.slice(0, MAX_SPACE_LABEL - 5);
+
+const freshLabel = (botId: string): string => {
+  const nonce = Math.random().toString(36).slice(2, 6).padEnd(4, "0");
+  return `${spaceLabelOf(botId)}-${nonce}`;
+};
 
 export const agentPrefixOf = (botId: string): string => `bot-${shortId(botId)}`;
 
@@ -87,17 +94,34 @@ const timeoutOf = (value: number | undefined, fallback: number): number =>
 
 const describeError = (error: unknown): string => {
   if (error instanceof ToolError) return error.message;
-  if (error instanceof HerdrCommandError) return error.message;
+  if (error instanceof HerdrCommandError) {
+    // The herdr code is part of the result: agent_blocked and agent_prompt_stalled
+    // call for different next steps than a plain failure.
+    const generic = new Set(["herdr_failed", "timeout", "aborted", "spawn_failed"]);
+    return generic.has(error.code) ? error.message : `${error.code}: ${error.message}`;
+  }
   return "the herdr command failed";
 };
+
+const spaceGone = (error: unknown): boolean =>
+  error instanceof HerdrCommandError &&
+  (error.code === "workspace_not_found" || error.code === "not_found");
 
 const readState = async (path: string): Promise<HerdrState | undefined> => {
   const text = await readFile(path, "utf8").catch(() => undefined);
   if (text === undefined) return undefined;
   try {
     const parsed = JSON.parse(text) as Partial<HerdrState>;
-    if (typeof parsed.spaceId !== "string" || typeof parsed.rootPaneId !== "string")
+    const spaceId = parsed.spaceId;
+    const spaceLabel = parsed.spaceLabel;
+    const rootPaneId = parsed.rootPaneId;
+    if (
+      typeof spaceId !== "string" ||
+      typeof spaceLabel !== "string" ||
+      typeof rootPaneId !== "string"
+    ) {
       return undefined;
+    }
     const controller =
       parsed.controller !== undefined &&
       typeof parsed.controller.name === "string" &&
@@ -110,8 +134,9 @@ const readState = async (path: string): Promise<HerdrState | undefined> => {
           }
         : undefined;
     return {
-      spaceId: parsed.spaceId,
-      rootPaneId: parsed.rootPaneId,
+      spaceId,
+      spaceLabel,
+      rootPaneId,
       ...(controller === undefined ? {} : { controller }),
     };
   } catch {
@@ -146,7 +171,7 @@ const clipTail = (text: string): string => {
 export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegistration[] => {
   const { client, workspace, botId } = options;
   const statePath = statePathOf(options.stateDir);
-  const label = spaceLabelOf(botId);
+  const labelPrefix = spaceLabelOf(botId);
   const prefix = agentPrefixOf(botId);
   // The tools share one state file; a call at a time keeps open/start/close ordered.
   let queue: Promise<unknown> = Promise.resolve();
@@ -171,8 +196,18 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
     if (space === undefined) {
       throw new ToolError("the herdr space is gone; call herdr_open_space again");
     }
-    if (space.label !== label) {
+    if (space.label !== state.spaceLabel) {
       // The recorded id is not this bot's space: never touch it, and start over.
+      throw new ToolError("the recorded herdr space is not this bot's own space");
+    }
+    // The label alone cannot prove the instance: the pane created with the space can.
+    const panes = await client.listPanes(state.spaceId, {
+      signal,
+      timeoutMs: 30_000,
+    });
+    if (
+      !panes.some((pane) => pane.paneId === state.rootPaneId && pane.workspaceId === state.spaceId)
+    ) {
       throw new ToolError("the recorded herdr space is not this bot's own space");
     }
   };
@@ -196,7 +231,9 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
     if (found === undefined) {
       throw new ToolError(`no agent ${wanted} in this bot's space`);
     }
-    return found.name ?? found.paneId;
+    // The pane id is workspace-qualified and does not move with a rename: after the
+    // check, address the agent by it rather than by a name that can be reassigned.
+    return found.paneId;
   };
 
   const resolveWorkspacePath = (path: string | undefined): Promise<string> =>
@@ -206,7 +243,12 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
     output: [{ type: "text" as const, text: outcome.output }],
     ...(outcome.isError === true ? { isError: true } : {}),
   });
-  const run = (work: () => Promise<ToolOutcome>) => serial(work).then(result);
+  const run = (signal: AbortSignal | undefined, work: () => Promise<ToolOutcome>) =>
+    serial(async () => {
+      // A call queued behind another one is still cancelled by the run's abort.
+      if (signal?.aborted === true) return failed("the herdr command was aborted");
+      return work();
+    }).then(result);
 
   const tools: ToolRegistration[] = [
     defineTool({
@@ -223,20 +265,18 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       replay: "safe",
       outputLimits: { maxBytes: 8 * 1024, maxLines: 100, retain: "head" },
       execute: (args, _api, context) =>
-        run(async (): Promise<ToolOutcome> => {
+        run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
             const cwd = await resolveWorkspacePath(args.path);
             const existing = await readState(statePath);
+            let untrusted = false;
             if (existing !== undefined) {
-              const space = await client.getWorkspace(existing.spaceId, {
-                signal: context.abortSignal,
-                timeoutMs: 30_000,
-              });
-              if (space !== undefined && space.label === label) {
+              try {
+                await verifySpace(existing, context.abortSignal);
                 const agents = await agentsInSpace(existing, context.abortSignal);
                 return {
                   output: [
-                    `space ${space.id} (${space.label}) is open`,
+                    `space ${existing.spaceId} (${existing.spaceLabel}) is open`,
                     `root pane ${existing.rootPaneId}`,
                     agents.length === 0
                       ? "no agents yet"
@@ -248,20 +288,70 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
                           .join("\n"),
                   ].join("\n"),
                 };
+              } catch (error) {
+                // A space that is gone, or one this bot did not create, is never adopted:
+                // the state is dropped and a fresh instance is opened.
+                if (!spaceGone(error) && !(error instanceof ToolError)) throw error;
+                untrusted = true;
+                await clearState(statePath);
               }
             }
-            const created = await client.createWorkspace(
-              { label, cwd },
-              { signal: context.abortSignal, timeoutMs: 60_000 },
-            );
-            await writeState(statePath, {
-              spaceId: created.workspaceId,
-              rootPaneId: created.rootPaneId,
+            // Without a record, adopt the one space that carries this bot's label prefix
+            // (a lost state file must not leak a second space); never guess between many.
+            const spaces = await client.listWorkspaces({
+              signal: context.abortSignal,
+              timeoutMs: 30_000,
             });
+            const matching = untrusted
+              ? []
+              : spaces.filter((space) => space.label.startsWith(`${labelPrefix}-`));
+            if (matching.length > 1) {
+              return failed(
+                `several herdr spaces claim ${labelPrefix}; close the stale ones before opening again`,
+              );
+            }
+            let spaceId: string;
+            let spaceLabel: string;
+            let rootPaneId: string;
+            let created = false;
+            if (matching.length === 1) {
+              const adopted = matching[0] as { id: string; label: string };
+              const panes = await client.listPanes(adopted.id, {
+                signal: context.abortSignal,
+                timeoutMs: 30_000,
+              });
+              const pane = panes[0];
+              if (pane === undefined) return failed(`the existing space ${adopted.id} has no pane`);
+              spaceId = adopted.id;
+              spaceLabel = adopted.label;
+              rootPaneId = pane.paneId;
+            } else {
+              spaceLabel = freshLabel(botId);
+              const opened = await client.createWorkspace(
+                { label: spaceLabel, cwd },
+                { signal: context.abortSignal, timeoutMs: 60_000 },
+              );
+              spaceId = opened.workspaceId;
+              rootPaneId = opened.rootPaneId;
+              created = true;
+            }
+            try {
+              await writeState(statePath, { spaceId, spaceLabel, rootPaneId });
+            } catch {
+              // A space nobody recorded would be abandoned: close it instead of leaking.
+              if (created) {
+                await client
+                  .closeWorkspace(spaceId, { signal: context.abortSignal, timeoutMs: 30_000 })
+                  .catch(() => undefined);
+              }
+              return failed("the herdr space was opened but its state could not be saved");
+            }
             return {
               output: [
-                `opened space ${created.workspaceId} (${label}) at ${cwd}`,
-                `root pane ${created.rootPaneId}`,
+                created
+                  ? `opened space ${spaceId} (${spaceLabel}) at ${cwd}`
+                  : `reopened space ${spaceId} (${spaceLabel})`,
+                `root pane ${rootPaneId}`,
                 "start an agent there with herdr_start_controller",
               ].join("\n"),
             };
@@ -285,7 +375,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       }),
       outputLimits: { maxBytes: 8 * 1024, maxLines: 100, retain: "head" },
       execute: (args, _api, context) =>
-        run(async (): Promise<ToolOutcome> => {
+        run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
             if (!KINDS.has(args.kind)) return failed(`unsupported agent kind: ${args.kind}`);
             const name = args.name ?? `${prefix}-${args.kind}`.slice(0, 32);
@@ -314,12 +404,32 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
             if (nativeArgs.some((arg) => arg.includes("\0") || arg.includes("\n"))) {
               return failed("an argument may not contain a newline or a null byte");
             }
-            await client.startAgent(
-              { name, kind: args.kind, paneId: state.rootPaneId, args: nativeArgs },
-              { signal: context.abortSignal, timeoutMs: 60_000 },
-            );
+            try {
+              await client.startAgent(
+                { name, kind: args.kind, paneId: state.rootPaneId, args: nativeArgs },
+                { signal: context.abortSignal, timeoutMs: 60_000 },
+              );
+            } catch (error) {
+              // herdr may have started the agent and kept its name while reporting that it
+              // is not ready yet: record it so send/read and a retry stay coherent.
+              const live = await agentsInSpace(state, context.abortSignal).catch(() => []);
+              const found = live.find(
+                (agent) => agent.name === name && agent.paneId === state.rootPaneId,
+              );
+              if (found === undefined) throw error;
+              await writeState(statePath, {
+                spaceId: state.spaceId,
+                spaceLabel: state.spaceLabel,
+                rootPaneId: state.rootPaneId,
+                controller: { name, kind: args.kind, paneId: found.paneId },
+              });
+              return failed(
+                `${describeError(error)} (recorded ${name} in ${found.paneId}; wait for it to settle)`,
+              );
+            }
             await writeState(statePath, {
               spaceId: state.spaceId,
+              spaceLabel: state.spaceLabel,
               rootPaneId: state.rootPaneId,
               controller: { name, kind: args.kind, paneId: state.rootPaneId },
             });
@@ -338,7 +448,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       replay: "safe",
       outputLimits: { maxBytes: 16 * 1024, maxLines: 300, retain: "head" },
       execute: (_args, _api, context) =>
-        run(async (): Promise<ToolOutcome> => {
+        run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
             const state = await requireState();
             await verifySpace(state, context.abortSignal);
@@ -347,7 +457,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
               signal: context.abortSignal,
               timeoutMs: 30_000,
             });
-            const lines = [`space ${state.spaceId} (${label})`];
+            const lines = [`space ${state.spaceId} (${state.spaceLabel})`];
             for (const pane of panes) {
               const agent = agents.find((candidate) => candidate.paneId === pane.paneId);
               const controller = state.controller?.paneId === pane.paneId ? " controller" : "";
@@ -379,7 +489,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       }),
       outputLimits: { maxBytes: 8 * 1024, maxLines: 100, retain: "head" },
       execute: (args, _api, context) =>
-        run(async (): Promise<ToolOutcome> => {
+        run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
             const text = args.text;
             if (text.trim().length === 0) return failed("a message is required");
@@ -419,7 +529,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       replay: "safe",
       outputLimits: { maxBytes: 8 * 1024, maxLines: 100, retain: "head" },
       execute: (args, _api, context) =>
-        run(async (): Promise<ToolOutcome> => {
+        run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
             for (const until of args.until ?? []) {
               if (!STATES.has(until)) return failed(`unknown state: ${until}`);
@@ -458,7 +568,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       replay: "safe",
       outputLimits: { maxBytes: 128 * 1024, maxLines: 4_000, retain: "tail" },
       execute: (args, _api, context) =>
-        run(async (): Promise<ToolOutcome> => {
+        run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
             const source = args.source ?? "recent-unwrapped";
             if (!SOURCES.has(source as HerdrReadSource)) {
@@ -496,7 +606,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       }),
       outputLimits: { maxBytes: 4 * 1024, maxLines: 50, retain: "head" },
       execute: (args, _api, context) =>
-        run(async (): Promise<ToolOutcome> => {
+        run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
             if (args.keys.length === 0 || args.keys.length > 8) {
               return failed("send between 1 and 8 keys");
@@ -524,7 +634,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       parameters: Type.Object({}),
       outputLimits: { maxBytes: 4 * 1024, maxLines: 50, retain: "head" },
       execute: (_args, _api, context) =>
-        run(async (): Promise<ToolOutcome> => {
+        run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
             const state = await readState(statePath);
             if (state === undefined) return { output: "no herdr space is open" };
@@ -534,7 +644,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
               timeoutMs: 30_000,
             });
             await clearState(statePath);
-            return { output: `closed space ${state.spaceId} (${label})` };
+            return { output: `closed space ${state.spaceId} (${state.spaceLabel})` };
           } catch (error) {
             return failed(describeError(error));
           }
