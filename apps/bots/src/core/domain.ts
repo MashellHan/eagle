@@ -161,6 +161,8 @@ export type ConversationSnapshot = {
   readonly truncatedBefore?: EntryId;
   /** `null` when no attempt is in flight, including a withdrawn over-limit attempt. */
   readonly streaming: string | null;
+  /** A task is parked and `recover` retries it; a new client needs this from the snapshot. */
+  readonly parked?: boolean;
   readonly pending: readonly Submission[];
   readonly inbox: readonly InboxItem[];
   readonly running: boolean;

@@ -158,6 +158,29 @@ final class ReducerTests: XCTestCase {
     XCTAssertEqual(state.ranks["s_1"]?.status, .done)
   }
 
+  func testASnapshotCannotResurrectASettledSubmissionAsPending() {
+    var state = ConversationState(botId: botId)
+    state = Reducer.apply(
+      .submission(Submission(id: "s_1", requestId: "r_1", status: .done, answerEntryId: "e_10")),
+      to: state
+    )
+    let snapshot = ConversationSnapshot(
+      botId: botId,
+      pending: [Submission(id: "s_1", requestId: "r_1", status: .queued)]
+    )
+    let next = Reducer.snapshot(snapshot, rev: 9, keeping: state.ranks)
+    XCTAssertTrue(next.pending.isEmpty, "a settled submission is never pending again")
+    XCTAssertEqual(next.ranks["s_1"]?.status, .done, "and its rank stays settled")
+  }
+
+  func testAParkedSnapshotCarriesTheRecoveryState() {
+    let state = Reducer.snapshot(
+      ConversationSnapshot(botId: botId, running: true, parked: true),
+      rev: 3
+    )
+    XCTAssertTrue(state.parked)
+  }
+
   func testAnOlderHistoryPageIsPrependedWithoutDuplicates() {
     var state = ConversationState(botId: botId)
     state = Reducer.apply(

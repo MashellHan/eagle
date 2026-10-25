@@ -191,3 +191,32 @@ extension SocketTests {
     XCTAssertEqual(snapshot.messages.map(\.role), [.user, .assistant])
   }
 }
+
+extension SocketTests {
+  func testClosingASocketReleasesTheBotSubscriber() async throws {
+    let catalog = CatalogHTTPClient(baseURL: fixture.baseURL, token: fixture.token)
+    let bot = try await catalog.create(title: "释放", label: nil, appearance: .standard)
+    // More cycles than the eight-subscriber cap: every closed socket must give its slot
+    // back, or the ninth subscription would be refused.
+    for index in 0..<9 {
+      let socket = ConversationSocket(
+        baseURL: fixture.baseURL,
+        token: fixture.token,
+        botId: bot.id
+      )
+      let collector = EventCollector()
+      let consumer = Task {
+        for await event in socket.events { await collector.append(event) }
+      }
+      socket.start()
+      let snapshot = try await collector.waitFor { event in
+        if case .snapshot = event { return true }
+        return false
+      }
+      XCTAssertNotNil(snapshot, "subscription \(index + 1) is accepted")
+      socket.close()
+      consumer.cancel()
+      try await Task.sleep(nanoseconds: 80_000_000)
+    }
+  }
+}

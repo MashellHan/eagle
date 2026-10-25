@@ -273,6 +273,7 @@ public final class ConversationViewModel: ObservableObject {
 
     case .snapshot(let value):
       state = Reducer.snapshot(value, rev: state.lastRev.map { $0 + 1 }, keeping: state.ranks)
+      parked = state.parked
       hasOlder = value.truncatedBefore != nil
       // Every snapshot is a chance to make a refusal durable, even when no reconciliation
       // is due.

@@ -24,7 +24,7 @@ apps/bots/                 the daemon: own package, own lockfile, own gates
   test/crash/              real daemon processes: SIGKILL mid-answer, delete, lock
   test/perf/               the documented measurements with generous bounds
   test/runtime/golden/     recorded pi sequences and their frozen mapping
-apps/bots-macos/           the client: separate SPM package   (not started)
+apps/bots-macos/           the client logic: SPM package, imported by the Eagle app
 ```
 
 Gates, all run in `apps/bots`: `npm run check`
@@ -195,6 +195,11 @@ P2/P3 are closed too: the TTL test only fails the reserved lookups, a snapshot c
 resurrect a settled submission as pending, and the plan no longer claims there is no
 client.
 
+A seventh pass found two more, closed with tests: `snapshot.parked` (additive) tells a new
+client that a task needs `recover`, and closing a window releases its socket so the
+per-bot subscriber cap is not consumed by closed chats. Its P2/P3 are closed too: the
+Swift fold keeps settlement ranks across a snapshot and the plan's stale rows are gone.
+
 The third pass's four follow-ups now have regression tests: `BotsWindowTests` (the
 window's one draft, the published transcript/status/actions and a refusal's restored
 text), the reservation test's failing status read keeping its slot, `ResyncStateTests`
@@ -214,10 +219,7 @@ but no measured layout pass.
 
 ## Next work, in order
 
-1. Close the sixth round's three remaining races (delete-during-close, a stale
-   snapshot reconciling a reservation, and an unavailable bot admitted during a
-   lookup) and its P2s, then sign stage 4 off.
-2. Finish the client surface: history paging, bot settings behind the `agent`
+1. Finish the client surface: history paging, bot settings behind the `agent`
    capability, and an inspector that renders a bot's own state.
 
 ### What the adapter can do today (rows 23-36, signed off)

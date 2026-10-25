@@ -166,6 +166,11 @@ public struct WorkspaceShellView: View {
         bots.onSelect = { id in list.selection = id }
         await bots.start()
       }
+      .onDisappear {
+        // Closing the window must release the bot's connection, or its subscriber slot
+        // stays taken for as long as the process lives.
+        bots.disconnect()
+      }
       .sheet(isPresented: $showsBotCreate) {
         BotCreateSheet(
           onCreate: { title, label, appearance in

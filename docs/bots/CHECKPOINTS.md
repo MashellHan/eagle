@@ -479,5 +479,16 @@ plan's stale "no client" row is gone.
 Verified just now: daemon 354 tests, coverage 95.05/89.92/91.11, crash 5/5, perf 4/4;
 client coverage 93.1%; Eagle 48 tests.
 
-Next broken hop: the recorded deferrals in PLAN.md and the reviewer's seventh pass
+A seventh pass found two more, closed with tests: the snapshot now carries whether a task
+is parked, so a client that reopens the bot still offers `recover` (and a recovery
+snapshot clears it); and closing a window releases its socket (the receive task is
+cancelled, the session invalidated, the shell disconnects on disappear), so the
+eight-subscriber cap is not consumed by closed chats — verified with nine sequential
+subscribe/close cycles. P2/P3: the Swift fold keeps settlement ranks across a snapshot and
+the plan's stale "not started"/"next race" lines are gone.
+
+Verified just now: daemon 355 tests, coverage 95.07/89.95/91.11, crash 5/5; client
+coverage 93.2%; Eagle 48 tests.
+
+Next broken hop: the recorded deferrals in PLAN.md and the reviewer's eighth pass
 (closeout).

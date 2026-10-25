@@ -80,6 +80,9 @@ export const reduceView = (
       ),
     };
   }
+  if (event.type === "error" && event.failure.kind === "task_parked") {
+    return { ...view, parked: true };
+  }
   if (event.type === "status") {
     return { ...view, running: event.running, streaming: event.streaming, inbox: event.inbox };
   }

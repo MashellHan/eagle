@@ -176,6 +176,15 @@ final class BotsWorkspaceViewModel: ObservableObject {
     publish()
   }
 
+  /// The window is gone: its socket must go too, or the daemon keeps a subscriber.
+  func disconnect() {
+    // `disconnect` cancels the event task and closes the transport; the daemon then
+    // releases the subscriber slot.
+    app?.conversation.disconnect()
+    selectedId = nil
+    publish()
+  }
+
   func dismissError() {
     app?.conversation.dismissError()
     app?.dismissError()

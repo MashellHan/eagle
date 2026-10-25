@@ -12,6 +12,7 @@ import { ClassifiedFailure } from "../../src/core/domain.ts";
 import type { HubEvent } from "../../src/core/EventHub.ts";
 import { SubscriberTooSlow } from "../../src/core/EventHub.ts";
 import type { RuntimeEvent, RuntimeHandle, SubmitInput } from "../../src/core/RuntimePort.ts";
+import { encodeServerEvent } from "../../src/protocol/encode.ts";
 import { FakeRuntime } from "../../src/testing/FakeRuntime.ts";
 
 const trace = "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172";
@@ -1821,4 +1822,43 @@ test("the final events of a run are recoverable after the backpressure clears", 
     received.some((event) => event.type === "snapshot"),
     "the degraded subscriber is refreshed without a new bot event",
   );
+});
+
+test("a parked task is visible in the snapshot, so a new client can recover it", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    pending: [],
+    inbox: [],
+    running: true,
+    streaming: null,
+  };
+  const runtime = new FakeRuntime({ snapshot: () => snapshot });
+  const service = serviceFor(runtime);
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  runtime.handle("b_1").emit({
+    type: "error",
+    trace,
+    failure: { id: "f_parked_1", kind: "task_parked", layer: "runtime" },
+    message: "a task was parked",
+  });
+  await service.resync("c_1", trace);
+  const parked = received.filter((event) => event.type === "snapshot").at(-1);
+  assert.ok(parked?.type === "snapshot");
+  assert.equal(parked.value.parked, true, "a fresh snapshot names the parked task");
+
+  await service.recover("c_1", trace);
+  const recovered = received.filter((event) => event.type === "snapshot").at(-1);
+  assert.ok(recovered?.type === "snapshot");
+  assert.notEqual(recovered.value.parked, true, "a recovery snapshot no longer asks for it");
+
+  // The wire codec carries the flag; a fixture without it stays valid.
+  const wire = encodeServerEvent({
+    type: "snapshot",
+    rev: 1,
+    trace,
+    value: parked.value,
+  });
+  assert.equal((wire.value as { parked?: boolean }).parked, true);
 });

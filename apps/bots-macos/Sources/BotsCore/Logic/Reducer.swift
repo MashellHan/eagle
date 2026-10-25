@@ -12,6 +12,8 @@ public struct ConversationState: Sendable, Equatable {
   public var inbox: [InboxItem]
   public var pending: [Submission]
   public var unavailable: BotUnavailable?
+  /// A parked task needs `recover`; the daemon says so in the snapshot.
+  public var parked: Bool
   /// The newest revision applied; a snapshot resets the baseline (PROTOCOL I1/I3).
   public var lastRev: Int?
   /// Highest-ranked record per submission id, so a late reply never downgrades one (I14).
@@ -26,6 +28,7 @@ public struct ConversationState: Sendable, Equatable {
     inbox: [InboxItem] = [],
     pending: [Submission] = [],
     unavailable: BotUnavailable? = nil,
+    parked: Bool = false,
     lastRev: Int? = nil,
     ranks: [String: Submission] = [:]
   ) {
@@ -37,6 +40,7 @@ public struct ConversationState: Sendable, Equatable {
     self.inbox = inbox
     self.pending = pending
     self.unavailable = unavailable
+    self.parked = parked
     self.lastRev = lastRev
     self.ranks = ranks
   }
@@ -64,6 +68,12 @@ public enum Reducer {
       if let known = ranks[record.id], known.status.rank > record.status.rank { continue }
       ranks[record.id] = record
     }
+    // A settlement that the snapshot no longer lists still stands (I14), so a queued
+    // record cannot come back as pending.
+    let pending = value.pending.filter { record in
+      guard let known = ranks[record.id] else { return true }
+      return !known.status.isTerminal
+    }
     return ConversationState(
       botId: value.botId,
       messages: value.messages,
@@ -71,8 +81,9 @@ public enum Reducer {
       streaming: value.streaming,
       running: value.running,
       inbox: value.inbox,
-      pending: value.pending,
+      pending: pending,
       unavailable: value.unavailable,
+      parked: value.parked ?? false,
       lastRev: rev,
       ranks: ranks
     )
@@ -118,8 +129,10 @@ public enum Reducer {
       let older = page.messages.filter { !known.contains($0.id) }
       next.messages = older + next.messages
       next.truncatedBefore = page.hasMore ? (next.truncatedBefore ?? older.first?.id) : nil
-    case .connection, .error, .catalog:
+    case .connection, .catalog:
       break
+    case .error(let kind, _, _, _, _):
+      if kind == .taskParked { next.parked = true }
     }
     if let rev, rev > (next.lastRev ?? rev - 1) {
       next.lastRev = rev

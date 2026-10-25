@@ -120,6 +120,8 @@ public final class ConversationSocket: NSObject {
     resyncDeadline = nil
     pingTask?.cancel()
     pingTask = nil
+    receiveTask?.cancel()
+    receiveTask = nil
     let task = self.task
     self.task = nil
     lock.unlock()
@@ -390,6 +392,8 @@ public final class ConversationSocket: NSObject {
     resyncDeadline?.cancel()
     pingTask?.cancel()
     pingTask = nil
+    receiveTask?.cancel()
+    receiveTask = nil
     let task = self.task
     self.task = nil
     lock.unlock()

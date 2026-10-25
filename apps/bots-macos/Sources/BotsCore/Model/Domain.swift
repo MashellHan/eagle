@@ -319,6 +319,8 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
   public var inbox: [InboxItem]
   public var running: Bool
   public var unavailable: BotUnavailable?
+  /// A parked task keeps `recover` meaningful across clients; absent means healthy.
+  public var parked: Bool?
 
   public init(
     botId: String,
@@ -328,7 +330,8 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     pending: [Submission] = [],
     inbox: [InboxItem] = [],
     running: Bool = false,
-    unavailable: BotUnavailable? = nil
+    unavailable: BotUnavailable? = nil,
+    parked: Bool? = nil
   ) {
     self.botId = botId
     self.messages = messages
@@ -338,10 +341,11 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     self.inbox = inbox
     self.running = running
     self.unavailable = unavailable
+    self.parked = parked
   }
 
   private enum CodingKeys: String, CodingKey {
-    case botId, messages, truncatedBefore, streaming, pending, inbox, running, unavailable
+    case botId, messages, truncatedBefore, streaming, pending, inbox, running, unavailable, parked
     case agent, usage
   }
 
@@ -356,6 +360,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     inbox = try container.decodeIfPresent([InboxItem].self, forKey: .inbox) ?? []
     running = try container.decodeIfPresent(Bool.self, forKey: .running) ?? false
     unavailable = try container.decodeIfPresent(BotUnavailable.self, forKey: .unavailable)
+    parked = try container.decodeIfPresent(Bool.self, forKey: .parked)
     if let pointer = try container.decodeIfPresent(StreamingPointer.self, forKey: .streaming) {
       streaming = pointer.messageId
     } else {
@@ -372,6 +377,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     try container.encode(inbox, forKey: .inbox)
     try container.encode(running, forKey: .running)
     try container.encodeIfPresent(unavailable, forKey: .unavailable)
+    try container.encodeIfPresent(parked, forKey: .parked)
     if let streaming {
       try container.encode(StreamingPointer(messageId: streaming), forKey: .streaming)
     } else {

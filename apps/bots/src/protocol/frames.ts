@@ -458,6 +458,7 @@ const decodeSnapshot = (ctx: Ctx, raw: unknown): ConversationSnapshot => {
       }
     : undefined;
 
+  const parked = present(raw, "parked") ? bool(ctx, raw.parked, "parked") : undefined;
   const pending = arr(ctx, required(ctx, raw, "pending"), "pending").map((p) =>
     decodeSubmission(ctx, p),
   );
@@ -488,6 +489,7 @@ const decodeSnapshot = (ctx: Ctx, raw: unknown): ConversationSnapshot => {
     inbox,
     running,
     ...(truncatedBefore === undefined ? {} : { truncatedBefore }),
+    ...(parked === undefined ? {} : { parked }),
     ...(raw.usage === undefined ? {} : { usage: decodeUsage(ctx, raw.usage) }),
     ...(agent === undefined ? {} : { agent }),
     ...(unavailable === undefined ? {} : { unavailable }),

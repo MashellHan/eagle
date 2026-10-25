@@ -67,6 +67,7 @@ export const encodeSnapshot = (s: ConversationSnapshot): Wire => {
   value.messages = s.messages.map(encodeMessage);
   if (s.truncatedBefore !== undefined) value.truncatedBefore = s.truncatedBefore;
   value.streaming = s.streaming === null ? null : { messageId: s.streaming };
+  if (s.parked === true) value.parked = true;
   value.pending = s.pending.map((p) => {
     const wire: Wire = { requestId: p.requestId, submissionId: p.id, status: p.status };
     if (p.entryId !== undefined) wire.entryId = p.entryId;

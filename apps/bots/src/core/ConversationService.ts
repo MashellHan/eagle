@@ -331,6 +331,9 @@ export class ConversationService {
           this.#onRecovered?.(bot.snapshot.botId, bot.snapshot.running);
         }
       }
+      // The retry ran: the snapshot no longer asks for one.
+      const { parked: _parked, ...rest } = bot.snapshot;
+      bot.snapshot = rest;
       bot.hub.publishSnapshot(bot.snapshot, trace);
     });
   }
