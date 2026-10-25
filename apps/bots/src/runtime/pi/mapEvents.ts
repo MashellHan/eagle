@@ -193,20 +193,35 @@ export class EventMapper {
     return this.#submission(record, trace);
   }
 
+  /** Teaches the ledger a record without publishing an event: `submit` replies per connection. */
+  observe(record: SubmissionRecord): void {
+    this.#remember(record);
+  }
+
+  /** One committed entry as a domain message, for `history`. */
+  entryMessage(entry: EntryRecord): Message | undefined {
+    return this.#convertEntry(entry);
+  }
+
   /** Committed entry ids of the messages the client can page back to. */
   historyCursor(): string | undefined {
     return this.#truncatedBefore;
   }
 
   #submission(record: SubmissionRecord, trace: string): RuntimeEvent[] {
+    const converted = this.#remember(record);
+    return converted === undefined ? [] : [{ type: "submission", trace, record: converted }];
+  }
+
+  #remember(record: SubmissionRecord): Submission | undefined {
     const converted = convertSubmission(record);
-    if (converted === undefined) return [];
+    if (converted === undefined) return undefined;
     if (converted.entryId !== undefined && converted.requestId.length > 0) {
       this.#requestByEntry.set(converted.entryId, converted.requestId);
       this.#attachRequestId(converted.entryId, converted.requestId);
     }
     this.#records.set(converted.id, converted);
-    return [{ type: "submission", trace, record: converted }];
+    return converted;
   }
 
   /**
