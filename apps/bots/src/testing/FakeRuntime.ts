@@ -1,12 +1,7 @@
 // A scripted runtime for core tests. Each bot id gets its own handle and state, opening
 // the same id twice returns the same handle, and every emitted event is applied to that
 // state, so `submission()`, `history()` and `subscribe()` answer from what was delivered.
-import type {
-  ConversationSnapshot,
-  Message,
-  Submission,
-  SubmissionStatus,
-} from "../core/domain.ts";
+import type { ConversationSnapshot, Message, Submission } from "../core/domain.ts";
 import type {
   RuntimeBotSpec,
   RuntimeEvent,
@@ -16,7 +11,14 @@ import type {
   RuntimeSubscription,
   SubmitInput,
 } from "../core/RuntimePort.ts";
-import { applyChanges, mergeOrdered, reduceView, seedRanks, statusRank } from "../core/view.ts";
+import {
+  applyChanges,
+  mergeOrdered,
+  reduceView,
+  type SubmissionRanks,
+  seedRanks,
+  statusRank,
+} from "../core/view.ts";
 
 export type FakeScript = {
   /** Events emitted after a submit is admitted. */
@@ -33,7 +35,7 @@ export class FakeHandle implements RuntimeHandle {
   #committed: Message[] = [];
   #sink: ((event: RuntimeEvent) => void) | undefined;
   #submissions = new Map<string, Submission>();
-  #ranks = new Map<string, SubmissionStatus>();
+  #ranks: SubmissionRanks = new Map();
 
   closed = false;
 

@@ -679,3 +679,39 @@ test("the rank of the initial snapshot is seeded, so a duplicate cannot downgrad
   const joined = await service.subscribe("c_2", "b_1", trace, () => {});
   assert.deepEqual(joined.snapshot.pending, snapshot.pending);
 });
+
+test("a runtime snapshot seeds ranks for records a connection never saw", async () => {
+  const base: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    streaming: null,
+    pending: [],
+    inbox: [],
+    running: false,
+  };
+  const scripted = scriptedHandle({ snapshot: base });
+  const service = new ConversationService({ open: async () => scripted.handle, measure: utf8 });
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  scripted.emit({
+    type: "snapshot",
+    trace,
+    value: {
+      ...base,
+      pending: [{ id: "s_4", requestId, status: "placed", entryId: "e_7" }],
+    },
+  });
+  scripted.emit({
+    type: "submission",
+    trace,
+    record: { id: "s_4", requestId, status: "queued" },
+  });
+  const expected = [{ id: "s_4", requestId, status: "placed", entryId: "e_7" }];
+  const joined = await service.subscribe("c_2", "b_1", trace, () => {});
+  assert.deepEqual(joined.snapshot.pending, expected);
+  const broadcast = received.filter((event) => event.type === "snapshot").at(-1);
+  assert.deepEqual(
+    broadcast?.type === "snapshot" ? broadcast.value.pending : ["unchecked"],
+    expected,
+  );
+});
