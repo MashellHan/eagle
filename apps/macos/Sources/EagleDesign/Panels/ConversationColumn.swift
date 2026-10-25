@@ -4,15 +4,19 @@ import SwiftUI
 /// delivery meta lines carry color.
 public enum TranscriptEntry: Identifiable, Hashable, Sendable {
   case assistant(id: String, blocks: [AssistantTurn.Block])
+  /// The assistant turn still receiving deltas: the bubble shows a caret.
+  case streamingAssistant(id: String, blocks: [AssistantTurn.Block])
   case user(id: String, text: String)
   case note(id: String, text: String, tintIndices: [Int])
   case tool(id: String, row: ToolRow)
+  /// Several calls from one turn, collapsed into a single line with a detail sheet.
+  case toolRun(id: String, rows: [ToolRow])
   case typing(id: String)
 
   public var id: String {
     switch self {
-    case .assistant(let id, _), .user(let id, _), .note(let id, _, _), .tool(let id, _),
-      .typing(let id):
+    case .assistant(let id, _), .streamingAssistant(let id, _), .user(let id, _),
+      .note(let id, _, _), .tool(let id, _), .toolRun(let id, _), .typing(let id):
       return id
     }
   }
@@ -117,7 +121,7 @@ public struct ConversationColumn: View {
         // Clear of the top edge fade: the first row must not start under it.
         .padding(.top, Theme.Metric.edgeFadeHeight + 10)
         .padding(.bottom, 12)
-        .animation(.easeOut(duration: 0.2), value: entries.count)
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: entries.count)
       }
       .scrollEdgeFades(
         Theme.Palette.surface, top: Theme.Metric.edgeFadeHeight, bottom: Theme.Metric.edgeFadeHeight
@@ -133,15 +137,31 @@ public struct ConversationColumn: View {
     switch entry {
     case .assistant(_, let blocks):
       AssistantBubble(text: blocks.markdown)
-        .transition(.opacity.combined(with: .move(edge: .bottom)))
+        .transition(
+          .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .bottomLeading)),
+            removal: .opacity
+          )
+        )
+    case .streamingAssistant(_, let blocks):
+      AssistantBubble(text: blocks.markdown, streaming: true)
+        .transition(.opacity)
     case .user(_, let text):
       UserBubble(text)
-        .transition(.opacity.combined(with: .move(edge: .bottom)))
+        .transition(
+          .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .bottomTrailing)),
+            removal: .opacity
+          )
+        )
     case .note(_, let text, let tintIndices):
       DeliveryNote(text, avatars: tintIndices.map(Theme.Palette.avatarTint))
     case .tool(_, let row):
       ToolCallRow(row)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
+    case .toolRun(_, let rows):
+      ToolRunRow(rows)
+        .transition(.opacity)
     case .typing:
       TypingIndicator()
     }

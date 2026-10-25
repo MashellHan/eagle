@@ -30,6 +30,22 @@ struct MarkdownTests {
     #expect(MarkdownBlock.parse("####### 七个井号") == [.paragraph("####### 七个井号")])
   }
 
+  @Test("a pipe table needs a divider and becomes a grid")
+  func tables() {
+    let table = MarkdownBlock.parse(
+      "| pane | state |\n|---|:---:|\n| p1 | working |\n| p2 | done |")
+    #expect(
+      table == [
+        .table(
+          headers: ["pane", "state"],
+          rows: [["p1", "working"], ["p2", "done"]]
+        )
+      ])
+    // Without a divider it is an ordinary paragraph, never a half-built table.
+    let plain = MarkdownBlock.parse("| a | b |\n| not a divider |")
+    #expect(plain == [.paragraph("| a | b |\n| not a divider |")])
+  }
+
   @Test("a heading needs a space and quotes render")
   func quotesAndEdges() {
     #expect(MarkdownBlock.parse("#标题") == [.paragraph("#标题")])

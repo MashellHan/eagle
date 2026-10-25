@@ -74,8 +74,10 @@ Anything not in this list is phase 2.
 
 A bot runs code and shell commands in its own workspace without asking (slice 1), and can
 open a herdr space of its own, start a controller agent there, exchange messages with it,
-wait for it, read its screen and close the space (slice 2). Everything else in the user's
-herdr session stays out of reach.
+wait for it, read its screen and close the space (slice 2). Tool calls are bot-side
+activity: they stay on the left at the answer card's width, show what is running while it
+runs, collapse into one line when the run's calls settle, and open a detail dialog with
+each call's arguments and output.
 
 ## Speed targets
 

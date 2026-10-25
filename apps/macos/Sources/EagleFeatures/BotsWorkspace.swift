@@ -248,20 +248,40 @@ struct BotsPresenter {
     // exists, an old call without a result belongs to a finished run and must not spin.
     let lastUserIndex = state.messages.lastIndex { $0.role == .user }
     var rows: [TranscriptEntry] = []
-    for (index, message) in state.messages.enumerated() {
-      rows.append(
-        contentsOf: entries(
-          for: message,
-          paired: paired,
-          consumed: consumed,
-          running: state.running,
-          current: index > (lastUserIndex ?? -1)
-        ))
+    var pendingTools: [ToolRow] = []
+    func flushTools() {
+      guard !pendingTools.isEmpty else { return }
+      if pendingTools.count == 1, let only = pendingTools.first {
+        rows.append(.tool(id: only.id, row: only))
+      } else {
+        rows.append(.toolRun(id: "run-\(pendingTools[0].id)", rows: pendingTools))
+      }
+      pendingTools.removeAll()
     }
+    for (index, message) in state.messages.enumerated() {
+      for row in entries(
+        for: message,
+        paired: paired,
+        consumed: consumed,
+        running: state.running,
+        current: index > (lastUserIndex ?? -1)
+      ) {
+        if case .tool(_, let tool) = row {
+          pendingTools.append(tool)
+        } else {
+          flushTools()
+          rows.append(row)
+        }
+      }
+    }
+    flushTools()
     // A running tool already shows its own row; the typing row is for a silent model.
     let toolRunning = rows.contains { entry in
-      if case .tool(_, let row) = entry { return row.isRunning }
-      return false
+      switch entry {
+      case .tool(_, let row): return row.isRunning
+      case .toolRun(_, let rows): return rows.contains { $0.isRunning }
+      default: return false
+      }
     }
     if !toolRunning, let typing = typingEntry(for: state) {
       rows.append(typing)
@@ -368,11 +388,12 @@ struct BotsPresenter {
             .tool(
               id: "result-\(message.id)-\(callId)",
               row: ToolRow(
+                id: "result-\(message.id)-\(callId)",
                 name: name,
                 subtitle: "",
                 output: text,
                 isError: isError,
-                duration: duration(durationMs)
+                durationMs: durationMs
               )
             )
           ]
@@ -409,13 +430,14 @@ struct BotsPresenter {
             .tool(
               id: "call-\(message.id)-\(blockIndex)",
               row: ToolRow(
+                id: "call-\(message.id)-\(blockIndex)",
                 name: name,
                 subtitle: summary(of: args),
                 input: args.isEmpty ? "" : JSONValue.object(args).pretty,
                 output: result?.text,
                 isError: result?.isError ?? false,
                 isRunning: result == nil && running && current,
-                duration: duration(result?.durationMs)
+                durationMs: result?.durationMs
               )
             )
           )
@@ -425,6 +447,11 @@ struct BotsPresenter {
       }
       flush()
       if rows.isEmpty, message.state == .streaming { return [] }
+      if message.state == .streaming, let last = rows.last,
+        case .assistant(let id, let blocks) = last
+      {
+        rows[rows.count - 1] = .streamingAssistant(id: id, blocks: blocks)
+      }
       let notes = noteBlocks(for: message)
       if notes.isEmpty { return rows }
       if !hasTool, let last = rows.popLast() {
@@ -480,12 +507,6 @@ struct BotsPresenter {
     case .array, .object:
       return value.compact.count > 48 ? String(value.compact.prefix(47)) + "…" : value.compact
     }
-  }
-
-  private func duration(_ milliseconds: Int?) -> String? {
-    guard let milliseconds else { return nil }
-    if milliseconds < 1_000 { return "\(milliseconds) ms" }
-    return String(format: "%.1f s", Double(milliseconds) / 1_000)
   }
 
   /// While a run works and there is no growing text yet, the transcript shows the typing

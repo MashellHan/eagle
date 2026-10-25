@@ -80,7 +80,9 @@ struct BotsPresenterTests {
     )
     let entries = presenter.transcript(for: state)
     #expect(
-      entries.contains { if case .assistant(_, [.paragraph("巴黎")]) = $0 { true } else { false } })
+      entries.contains {
+        if case .streamingAssistant(_, [.paragraph("巴黎")]) = $0 { true } else { false }
+      })
     #expect(!entries.contains { if case .typing = $0 { true } else { false } })
   }
 
@@ -261,9 +263,12 @@ struct BotsToolRowTests {
   }
 
   private func toolRows(_ entries: [TranscriptEntry]) -> [ToolRow] {
-    entries.compactMap {
-      if case .tool(_, let row) = $0 { return row }
-      return nil
+    entries.flatMap { entry -> [ToolRow] in
+      switch entry {
+      case .tool(_, let row): return [row]
+      case .toolRun(_, let rows): return rows
+      default: return []
+      }
     }
   }
 
@@ -293,7 +298,7 @@ struct BotsToolRowTests {
     #expect(rows.count == 1, "the result message is consumed by the call row")
     #expect(rows.first?.isRunning == false)
     #expect(rows.first?.output == "工作区里的内容")
-    #expect(rows.first?.duration == "21 ms")
+    #expect(rows.first?.durationLabel == "21 ms")
     #expect(rows.first?.isError == false)
     // The answer text on the same message keeps its own bubble, in order.
     #expect(
@@ -313,7 +318,7 @@ struct BotsToolRowTests {
     let rows = toolRows(presenter.transcript(for: state))
     #expect(rows.first?.isError == true)
     #expect(rows.first?.output == "工作区里的内容")
-    #expect(rows.first?.duration == nil)
+    #expect(rows.first?.durationLabel == nil)
   }
 
   @Test("a result whose call left the page is still shown")
@@ -326,6 +331,32 @@ struct BotsToolRowTests {
     #expect(rows.first?.name == "read_file")
     #expect(rows.first?.output == "工作区里的内容")
     #expect(rows.first?.isRunning == false)
+  }
+
+  @Test("consecutive calls collapse into one run line")
+  func groupedRun() {
+    var state = ConversationState(botId: "b_1")
+    state = Reducer.apply(
+      .append(
+        message: message(
+          "e_10",
+          role: .assistant,
+          blocks: [
+            .toolCall(callId: "c_1", name: "read_file", args: ["path": .string("a")]),
+            .toolCall(callId: "c_2", name: "run_command", args: ["command": .string("make")]),
+          ]
+        ),
+        replaces: nil
+      ),
+      to: state
+    )
+    let entries = presenter.transcript(for: state)
+    #expect(entries.count == 1, "the two rows become one collapsed run")
+    guard case .toolRun(_, let rows) = entries.first else {
+      return #expect(Bool(false), "expected a tool run")
+    }
+    #expect(rows.map(\.name) == ["read_file", "run_command"])
+    #expect(rows.allSatisfy { $0.isRunning == false })
   }
 
   @Test("a plain answer is still one bubble with the message id")
@@ -388,17 +419,17 @@ struct BotsToolPairingTests {
   }
 
   private func toolRows(_ entries: [TranscriptEntry]) -> [ToolRow] {
-    entries.compactMap {
-      if case .tool(_, let row) = $0 { return row }
-      return nil
+    entries.flatMap { entry -> [ToolRow] in
+      switch entry {
+      case .tool(_, let row): return [row]
+      case .toolRun(_, let rows): return rows
+      default: return []
+      }
     }
   }
 
   private func toolIds(_ entries: [TranscriptEntry]) -> [String] {
-    entries.compactMap {
-      if case .tool(let id, _) = $0 { return id }
-      return nil
-    }
+    toolRows(entries).map(\.id)
   }
 
   @Test("two rounds that reuse a call id keep their own results and unique row ids")
@@ -513,9 +544,12 @@ struct BotsTrimmedToolPageTests {
       ]
     )
     let entries = presenter.transcript(for: state)
-    let rows = entries.compactMap {
-      if case .tool(_, let row) = $0 { return row }
-      return nil
+    let rows = entries.flatMap { entry -> [ToolRow] in
+      switch entry {
+      case .tool(_, let row): return [row]
+      case .toolRun(_, let rows): return rows
+      default: return []
+      }
     }
     // The visible round keeps its own result; the first round's result is still shown.
     #expect(rows.map(\.output) == ["FIRST", "SECOND"])

@@ -128,7 +128,9 @@ struct BotsWindowTests {
     #expect(rows.count >= 2, "the transcript grows with the stream")
     #expect(
       {
-        if case .assistant(_, let blocks) = rows.last, case .paragraph("回答") = blocks.first {
+        if case .streamingAssistant(_, let blocks) = rows.last,
+          case .paragraph("回答") = blocks.first
+        {
           return true
         }
         return false
