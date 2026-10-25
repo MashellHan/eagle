@@ -1,0 +1,27 @@
+{
+  "type": "append",
+  "rev": 44,
+  "trace": "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172",
+  "message": {
+    "id": "e_10",
+    "role": "assistant",
+    "state": "complete",
+    "createdAt": "2026-10-25T02:11:05.120Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "我先看一下。"
+      },
+      {
+        "type": "toolCall",
+        "callId": "tool:1792910108401:list1",
+        "name": "list_files",
+        "args": {
+          "path": ".",
+          "limit": 50
+        }
+      }
+    ],
+    "stopReason": "toolUse"
+  }
+}

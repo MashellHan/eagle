@@ -238,13 +238,14 @@ test("a model asking for a tool gets an error result and the run continues", asy
       .filter((event) => !event.message.id.startsWith("p_a"))
       .flatMap((event) => event.message.blocks)
       .filter((block) => block.type === "toolCall" || block.type === "toolResult");
-    assert.equal(toolBlocks.length, 1, "the attempted call stays in the transcript");
+    assert.equal(toolBlocks.length, 2, "the call and its result stay in the transcript");
     assert.equal(toolBlocks[0]?.type, "toolCall");
+    assert.equal(toolBlocks[1]?.type, "toolResult");
     const history = await handle.history({ limit: 10 });
     assert.deepEqual(
       history.messages.map((message) => message.role),
-      ["user", "assistant", "assistant"],
-      "the tool result entry is not rendered: phase 1 has no tools capability",
+      ["user", "assistant", "tool", "assistant"],
+      "the durable tool result is a transcript row of its own",
     );
     const asked = JSON.stringify(secondRequest);
     assert.match(asked, /toolResult/, "RUNTIME.md: the model gets a result for the call it made");

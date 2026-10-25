@@ -19,7 +19,7 @@ for (const name of files) {
     const entities = JSON.parse(readFileSync(join(dir, name), "utf8")) as Record<string, unknown>;
     try {
       decodeServerEvent({ type: "bots", bots: [entities.bot] });
-      for (const key of ["message", "userMessage"]) {
+      for (const key of ["message", "userMessage", "toolCall", "toolMessage"]) {
         decodeServerEvent({ type: "append", rev: 1, trace, message: entities[key] });
       }
       decodeServerEvent({

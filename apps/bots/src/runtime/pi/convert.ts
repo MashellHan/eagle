@@ -44,6 +44,21 @@ export const stopReasonOf = (stopReason: AssistantMessage["stopReason"]): StopRe
 
 type AssistantBlock = AssistantMessage["content"][number];
 
+type ToolResultLike = {
+  readonly role: "toolResult";
+  readonly toolCallId: string;
+  readonly toolName: string;
+  readonly content: readonly { readonly type: string; readonly text?: string }[];
+  readonly isError: boolean;
+  readonly timestamp: number;
+  readonly durationMs?: number;
+};
+
+const toolText = (content: ToolResultLike["content"]): string =>
+  content
+    .flatMap((part) => (part.type === "text" && typeof part.text === "string" ? [part.text] : []))
+    .join("\n");
+
 const isTextBlock = (block: AssistantBlock | TextBlockLike): block is TextBlockLike =>
   block.type === "text";
 
@@ -134,8 +149,25 @@ export const convertMessage = (
       blocks: userBlocks(message.content),
     };
   }
-  // A tool result has no phase-1 rendering: `capabilities.tools` is false, so the client
-  // renders no tool UI and the transcript shows only user and assistant turns.
+  if (message.role === "toolResult") {
+    const result = message as ToolResultLike;
+    return {
+      id: options.id,
+      role: "tool",
+      state: "complete",
+      createdAt,
+      blocks: [
+        {
+          type: "toolResult",
+          callId: result.toolCallId,
+          name: result.toolName,
+          text: toolText(result.content),
+          isError: result.isError === true,
+          ...(typeof result.durationMs === "number" ? { durationMs: result.durationMs } : {}),
+        },
+      ],
+    };
+  }
   return undefined;
 };
 

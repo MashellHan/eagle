@@ -38,5 +38,43 @@
   "inboxItem": {
     "id": "s_4",
     "mode": "followUp"
+  },
+  "toolCall": {
+    "id": "e_10",
+    "role": "assistant",
+    "state": "complete",
+    "createdAt": "2026-10-25T02:11:05.120Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "我先看一下。"
+      },
+      {
+        "type": "toolCall",
+        "callId": "tool:1792910108401:list1",
+        "name": "list_files",
+        "args": {
+          "path": ".",
+          "limit": 50
+        }
+      }
+    ],
+    "stopReason": "toolUse"
+  },
+  "toolMessage": {
+    "id": "e_11",
+    "role": "tool",
+    "state": "complete",
+    "createdAt": "2026-10-25T02:11:05.141Z",
+    "blocks": [
+      {
+        "type": "toolResult",
+        "callId": "tool:1792910108401:list1",
+        "name": "list_files",
+        "text": "README.md\nsrc/\nsrc/index.ts",
+        "isError": false,
+        "durationMs": 21
+      }
+    ]
   }
 }

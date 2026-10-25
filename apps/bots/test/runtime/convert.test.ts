@@ -123,11 +123,21 @@ test("a converted message carries the pi timestamp and no invented state", () =>
     } as never,
     { id: "e_6", now },
   );
-  assert.equal(
-    toolResult,
-    undefined,
-    "capabilities.tools is false, so nothing renders a tool result",
-  );
+  assert.deepEqual(toolResult, {
+    id: "e_6",
+    role: "tool",
+    state: "complete",
+    createdAt: new Date(0).toISOString(),
+    blocks: [
+      {
+        type: "toolResult",
+        callId: "call_1",
+        name: "search",
+        text: "result",
+        isError: false,
+      },
+    ],
+  });
   const clockless = convertMessage(
     { ...(assistant([{ type: "text", text: "x" }]) as object), timestamp: undefined } as never,
     { id: "e_7", now: () => new Date(5) },

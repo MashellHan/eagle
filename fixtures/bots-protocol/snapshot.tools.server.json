@@ -1,0 +1,78 @@
+{
+  "type": "snapshot",
+  "rev": 46,
+  "trace": "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172",
+  "value": {
+    "botId": "b_0190a1b0-1c2d-7e3f-8a9b-0c1d2e3f4a5b",
+    "messages": [
+      {
+        "id": "e_7",
+        "role": "user",
+        "state": "complete",
+        "createdAt": "2026-10-25T02:11:04.001Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "列出工作区里的文件"
+          }
+        ],
+        "requestId": "r_0190a1b4-5061-7c72-8d3e-4f5061728394"
+      },
+      {
+        "id": "e_10",
+        "role": "assistant",
+        "state": "complete",
+        "createdAt": "2026-10-25T02:11:05.120Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "我先看一下。"
+          },
+          {
+            "type": "toolCall",
+            "callId": "tool:1792910108401:list1",
+            "name": "list_files",
+            "args": {
+              "path": ".",
+              "limit": 50
+            }
+          }
+        ],
+        "stopReason": "toolUse"
+      },
+      {
+        "id": "e_11",
+        "role": "tool",
+        "state": "complete",
+        "createdAt": "2026-10-25T02:11:05.141Z",
+        "blocks": [
+          {
+            "type": "toolResult",
+            "callId": "tool:1792910108401:list1",
+            "name": "list_files",
+            "text": "README.md\nsrc/\nsrc/index.ts",
+            "isError": false,
+            "durationMs": 21
+          }
+        ]
+      },
+      {
+        "id": "e_13",
+        "role": "assistant",
+        "state": "complete",
+        "createdAt": "2026-10-25T02:11:07.004Z",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "工作区里有 README.md 和 src/。"
+          }
+        ],
+        "stopReason": "stop"
+      }
+    ],
+    "streaming": null,
+    "pending": [],
+    "inbox": [],
+    "running": false
+  }
+}

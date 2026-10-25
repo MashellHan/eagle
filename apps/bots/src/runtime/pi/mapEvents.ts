@@ -351,11 +351,22 @@ export class EventMapper {
   }
 
   #messageEnd(entry: EntryRecord, trace: string): RuntimeEvent[] {
-    if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") return [];
-    const replaces = this.#provisional ?? undefined;
+    if (
+      entry.kind !== "pi.user" &&
+      entry.kind !== "pi.assistant" &&
+      entry.kind !== "pi.tool-result"
+    ) {
+      return [];
+    }
+    const toolResult = entry.kind === "pi.tool-result";
+    const replaces = entry.kind === "pi.assistant" ? (this.#provisional ?? undefined) : undefined;
     const message = this.#convertEntry(entry);
-    this.#provisional = null;
-    this.#withheld = false;
+    // A tool result is a transcript row of its own; it neither ends nor replaces the
+    // attempt the assistant is still streaming into.
+    if (!toolResult) {
+      this.#provisional = null;
+      this.#withheld = false;
+    }
     if (entry.kind === "pi.assistant") this.#attemptOpen = false;
     if (message === undefined) return [];
     this.#upsert(message, replaces);
@@ -435,7 +446,13 @@ export class EventMapper {
   #convertEntry(entry: EntryRecord): Message | undefined {
     const model = entry.model?.[0];
     if (model === undefined) return undefined;
-    if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") return undefined;
+    if (
+      entry.kind !== "pi.user" &&
+      entry.kind !== "pi.assistant" &&
+      entry.kind !== "pi.tool-result"
+    ) {
+      return undefined;
+    }
     const id = entryMessageId(entry.id);
     const requestId = this.#requestByEntry.get(id);
     const message = convertMessage(model, {
@@ -444,8 +461,32 @@ export class EventMapper {
       ...(requestId === undefined ? {} : { requestId }),
     });
     if (message === undefined) return undefined;
-    if (messageBytes(message) > this.#maxMessageBytes) return this.#notice(id, message.createdAt);
+    if (messageBytes(message) > this.#maxMessageBytes) {
+      // A tool result is bounded by its own tool, but a hostile or future tool must not
+      // turn into an "answer too large" notice: clamp the row instead.
+      if (message.role === "tool") return this.#boundedTool(message);
+      return this.#notice(id, message.createdAt);
+    }
     return message;
+  }
+
+  /** Clamps a tool row's text to the message budget, keeping the newest text. */
+  #boundedTool(message: Message): Message {
+    const block = message.blocks[0];
+    if (block === undefined || block.type !== "toolResult") return message;
+    const overhead = messageBytes({ ...message, blocks: [{ ...block, text: "" }] });
+    const room = Math.max(this.#maxMessageBytes - overhead - 64, 0);
+    const bytes = Buffer.from(block.text);
+    let slice = bytes.subarray(0, room);
+    let text = slice.toString("utf8");
+    for (let guard = 0; guard < 4 && text.endsWith("\uFFFD"); guard += 1) {
+      slice = slice.subarray(0, slice.length - 1);
+      text = slice.toString("utf8");
+    }
+    return {
+      ...message,
+      blocks: [{ ...block, text: `${text}\n[tool output truncated]` }],
+    };
   }
 
   /** The withheld answer's replacement: the entry's own id and timestamp, so a reconnect sees the same. */

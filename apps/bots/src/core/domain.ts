@@ -48,8 +48,12 @@ export type ToolCallBlock = {
 export type ToolResultBlock = {
   readonly type: "toolResult";
   readonly callId: string;
+  /** The tool the call named, so a row survives a page whose call was trimmed away. */
+  readonly name: string;
   readonly text: string;
   readonly isError: boolean;
+  /** How long the tool took, when pi recorded it. */
+  readonly durationMs?: number;
 };
 
 export type ContentBlock = TextBlock | ThinkingBlock | ToolCallBlock | ToolResultBlock;

@@ -39,6 +39,14 @@ test("every entity sample decodes and re-encodes", () => {
     frame({ type: "append", rev: 1, trace, message: entities.userMessage }).message,
     entities.userMessage,
   );
+  assert.deepEqual(
+    frame({ type: "append", rev: 1, trace, message: entities.toolCall }).message,
+    entities.toolCall,
+  );
+  assert.deepEqual(
+    frame({ type: "append", rev: 1, trace, message: entities.toolMessage }).message,
+    entities.toolMessage,
+  );
   const snapshot = frame({
     type: "snapshot",
     rev: 1,

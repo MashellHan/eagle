@@ -449,6 +449,25 @@
       "type": "append",
       "trace": "tr_golden",
       "message": {
+        "id": "e_11",
+        "role": "tool",
+        "state": "complete",
+        "createdAt": "2026-10-25T06:35:08.405Z",
+        "blocks": [
+          {
+            "type": "toolResult",
+            "callId": "tool:1792910108401:spl42t1wge7",
+            "name": "search",
+            "text": "<harness>\n[error] Tool search is not available\n</harness>",
+            "isError": true
+          }
+        ]
+      }
+    },
+    {
+      "type": "append",
+      "trace": "tr_golden",
+      "message": {
         "id": "p_a2",
         "role": "assistant",
         "state": "streaming",

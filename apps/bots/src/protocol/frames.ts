@@ -305,11 +305,18 @@ const decodeBlock = (ctx: Ctx, raw: unknown): ContentBlock => {
     };
   }
   if (type === "toolResult") {
+    const durationMs =
+      raw.durationMs === undefined ? undefined : int(ctx, raw.durationMs, "block.durationMs");
+    if (durationMs !== undefined && durationMs < 0) {
+      fail(ctx, "block.durationMs must not be negative");
+    }
     return {
       type: "toolResult",
       callId: str(ctx, raw.callId, "block.callId"),
+      name: str(ctx, raw.name, "block.name"),
       text: anyStr(ctx, raw.text, "block.text"),
       isError: bool(ctx, raw.isError, "block.isError"),
+      ...(durationMs === undefined ? {} : { durationMs }),
     };
   }
   return fail(ctx, `unknown block type ${type}`);

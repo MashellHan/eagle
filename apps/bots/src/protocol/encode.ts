@@ -21,7 +21,14 @@ const block = (b: ContentBlock): Wire => {
     case "toolCall":
       return { type: "toolCall", callId: b.callId, name: b.name, args: b.args };
     case "toolResult":
-      return { type: "toolResult", callId: b.callId, text: b.text, isError: b.isError };
+      return {
+        type: "toolResult",
+        callId: b.callId,
+        name: b.name,
+        text: b.text,
+        isError: b.isError,
+        ...(b.durationMs === undefined ? {} : { durationMs: b.durationMs }),
+      };
   }
 };
 

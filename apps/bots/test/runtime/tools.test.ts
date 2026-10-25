@@ -158,3 +158,39 @@ test("a full read page keeps its total note through the SDK", async () => {
     await bench.cleanup();
   }
 });
+
+test("a tool call and its result are live transcript rows and survive a late join", async () => {
+  const bench = await createBench();
+  try {
+    const handle = await bench.runtime.open(bench.spec());
+    const workspace = workspaceOf(bench);
+    await mkdir(workspace, { recursive: true });
+    await writeFile(join(workspace, "notes.txt"), "工作区里的内容\n", { mode: 0o600 });
+    const { events } = await settle(handle, bench, [
+      assistant([toolCall("read_file", { path: "notes.txt" })], { stopReason: "toolUse" }),
+      text("看完了"),
+    ]);
+    const appends = events.filter((event) => event.type === "append");
+    const call = appends.find((event) =>
+      event.message.blocks.some((block) => block.type === "toolCall"),
+    );
+    assert.equal(call?.message.role, "assistant", "the call rides in the assistant entry");
+    const tool = appends.find((event) => event.message.role === "tool");
+    assert.ok(tool !== undefined, "the durable tool result is an append of its own");
+    const block = tool.message.blocks[0];
+    assert.equal(block?.type, "toolResult");
+    assert.equal(block?.type === "toolResult" ? block.name : "", "read_file");
+    assert.match(block?.type === "toolResult" ? block.text : "", /工作区里的内容/);
+    assert.equal(block?.type === "toolResult" ? block.isError : true, false);
+
+    // A late join sees the same rows from the subscription's baseline, in order.
+    const { snapshot } = await handle.subscribe(trace, () => undefined);
+    assert.deepEqual(
+      snapshot.messages.map((message) => message.role),
+      ["user", "assistant", "tool", "assistant"],
+    );
+    assert.equal(snapshot.messages[2]?.blocks[0]?.type, "toolResult");
+  } finally {
+    await bench.cleanup();
+  }
+});

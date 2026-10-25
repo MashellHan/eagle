@@ -9,7 +9,11 @@ import test from "node:test";
 import type { DeltaChange, Message, StopReason } from "../../src/core/domain.ts";
 import type { RuntimeEvent } from "../../src/core/RuntimePort.ts";
 import { reduceView } from "../../src/core/view.ts";
-import { messageStateOf, provisionalMessageId } from "../../src/runtime/pi/convert.ts";
+import {
+  messageBytes,
+  messageStateOf,
+  provisionalMessageId,
+} from "../../src/runtime/pi/convert.ts";
 import { OVERSIZED_NOTICE } from "../../src/runtime/pi/limits.ts";
 import { EventMapper } from "../../src/runtime/pi/mapEvents.ts";
 
@@ -733,6 +737,78 @@ test("a block replacement carries real content, not only the empty start", () =>
     "a resolved replacement is still the attempt in flight, so it is normalized",
   );
   assert.deepEqual(mapper.view().messages[0]?.blocks, [{ type: "text", text: "done" }]);
+});
+
+test("a tool result is a transcript row and does not end the live attempt", () => {
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock });
+  mapper.map({ type: "message_start", message: assistantMessage("", "pending") } as never, trace);
+  const entry = {
+    id: 11,
+    conversationId: 1,
+    kind: "pi.tool-result",
+    model: [
+      {
+        role: "toolResult",
+        toolCallId: "call_1",
+        toolName: "list_files",
+        content: [
+          { type: "text", text: "a" },
+          { type: "text", text: "b" },
+        ],
+        isError: true,
+        timestamp: 5,
+        durationMs: 12,
+      },
+    ],
+  };
+  const events = mapper.map({ type: "message_end", entry } as never, trace);
+  assert.deepEqual(of(events, "append")[0]?.message, {
+    id: "e_11",
+    role: "tool",
+    state: "complete",
+    createdAt: new Date(5).toISOString(),
+    blocks: [
+      {
+        type: "toolResult",
+        callId: "call_1",
+        name: "list_files",
+        text: "a\nb",
+        isError: true,
+        durationMs: 12,
+      },
+    ],
+  });
+  assert.equal(
+    mapper.view().streaming,
+    "p_a1",
+    "the assistant still streaming keeps its provisional while a tool result commits",
+  );
+});
+
+test("an oversized tool result is clamped to the message budget, not turned into a notice", () => {
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock, maxMessageBytes: 4_096 });
+  const entry = {
+    id: 11,
+    conversationId: 1,
+    kind: "pi.tool-result",
+    model: [
+      {
+        role: "toolResult",
+        toolCallId: "call_1",
+        toolName: "run_command",
+        content: [{ type: "text", text: "x".repeat(8_000) }],
+        isError: false,
+        timestamp: 5,
+      },
+    ],
+  };
+  const events = mapper.map({ type: "message_end", entry } as never, trace);
+  const message = of(events, "append")[0]?.message;
+  assert.equal(message?.role, "tool");
+  const block = message?.blocks[0];
+  assert.equal(block?.type, "toolResult");
+  assert.match(block?.type === "toolResult" ? block.text : "", /\[tool output truncated\]$/);
+  assert.ok(message !== undefined && messageBytes(message) <= 4_096);
 });
 
 test("the mapper's view agrees with the service's fold of the same events", () => {

@@ -1,0 +1,21 @@
+{
+  "type": "append",
+  "rev": 45,
+  "trace": "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172",
+  "message": {
+    "id": "e_11",
+    "role": "tool",
+    "state": "complete",
+    "createdAt": "2026-10-25T02:11:05.141Z",
+    "blocks": [
+      {
+        "type": "toolResult",
+        "callId": "tool:1792910108401:list1",
+        "name": "list_files",
+        "text": "README.md\nsrc/\nsrc/index.ts",
+        "isError": false,
+        "durationMs": 21
+      }
+    ]
+  }
+}
