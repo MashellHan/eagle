@@ -26,6 +26,11 @@ test("defaults, arguments and environment agree", () => {
   });
   assert.equal(explicit.root, "/tmp/root");
   assert.equal(explicit.port, 43118);
+  assert.equal(
+    readConfig({ argv: ["--port", "0"], env: {} }).port,
+    0,
+    "zero asks the kernel for a free port",
+  );
   assert.equal(explicit.logLevel, "warn");
   assert.equal(explicit.model.modelId, "auto/gpt-6-1-sol");
   assert.equal(explicit.idleCloseMs, 2_500);

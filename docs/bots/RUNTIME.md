@@ -150,8 +150,11 @@ Message identity, as built:
   event. Everything the client turns into a message, and every settlement, is exact.
 - A user message carries `requestId` when the adapter knows it. The entry and its
   submission record land in the same commit, and `message_end` is published first,
-  so the live `append` may lack the id: the adapter attaches it as soon as the
-  record arrives, and the snapshot then carries it.
+  so the live `append` may lack the id: the daemon's view attaches it when the
+  submission names its `entryId`, and every later snapshot, resync and page carries
+  it. The ledger itself is in memory, so after a restart a message recorded before
+  the crash has no id until its `requestId` is re-sent; reconciliation does not
+  depend on it (PROTOCOL.md, client duties).
 - Phase 1 maps `pi.user`, `pi.assistant` and nothing else into the transcript. A
   `pi.tool-result` entry is durable in pi and stays out of the wire in both paths,
   because `capabilities.tools` is false: a reconnecting client must not see an

@@ -195,3 +195,27 @@ Verified (all run just now in `apps/bots`):
 Next broken hop: nothing turns a runtime event into a frame and nothing listens on a
 socket. `src/runtime/pi/` (stage 3) has no adapter, so there is no real Harness, no
 `mapEvents`, and the daemon cannot start; stage 4's server and `main.ts` are next.
+
+## 2026-10-26 — stage 4 closed out: transport, budgets, observability, journeys, crash
+
+Observed: the daemon is a usable local service, not a half-wired server. It binds a
+loopback port, refuses a wrong token before the upgrade, caps connections and
+subscribers, serves the catalog as measured frames, streams a bot over a socket,
+records every crossing in the declared log catalogue with one identity per failure,
+and survives a `SIGKILL` mid-answer: the restart keeps the interrupted attempt as
+`aborted`, answers once and duplicates nothing.
+
+Verified (all run just now in `apps/bots`):
+
+- `npm run check`: `fixtures:check` (26 files), 310 tests, `tsc --noEmit`, Biome and
+  coverage 93.00 % lines, 89.47 % branches, 90.87 % functions.
+- `npm run test:crash`: 3/3 — the mid-answer `SIGKILL` (a stub provider that streams
+  one chunk, writes a sentinel and never returns), the delete killed after its
+  rename, and the lock taken over after a `SIGKILL`.
+- `npm run perf`: open 3 ms (bound 250), reopen 400 entries 1 ms (150), one answered
+  turn 3 ms (200), 20 bots open 10 ms (1000), on arm64 / Node 26.12.0.
+- The review round it is heading into is recorded in [PLAN.md](PLAN.md); no stage-4
+  row is signed off yet.
+
+Next broken hop: there is no client. `apps/bots-macos/` does not exist, so a person
+cannot open a bot, type at it or see a transcript — that is stage 5 (rows 55-69).

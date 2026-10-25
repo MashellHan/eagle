@@ -396,7 +396,9 @@ silently rendering an outdated state.
 
 `ConversationService` folds those events into the bot's current view, so a new
 connection starts from what the bot is now, not from what it was when the bot
-opened. It reserves the connection before opening, flushes the coalescing window
+opened. The fold keeps the newest page only and remembers `truncatedBefore`, so a
+rendered snapshot stays inside the documented page budget however long the
+conversation runs; everything older stays reachable through `history`. It reserves the connection before opening, flushes the coalescing window
 and captures the baseline's own revision inside the same serial section, and only
 then goes live, so a first frame is always the snapshot whose `rev` the reply names.
 

@@ -1,0 +1,156 @@
+// Ladder row 54: the performance measurement. Separate from `npm test` because absolute
+// milliseconds are not deterministic; the bounds are generous so a real regression fails
+// and noise does not (docs/bots/TESTING.md, "Performance measurement").
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { createModels, fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
+import { createRegistry, Harness } from "@earendil-works/pi-durable";
+import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+
+const SAMPLES = 5;
+
+const median = (values: number[]): number => {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted[middle] ?? 0;
+};
+
+const bench = async (run: () => Promise<void>): Promise<number> => {
+  const samples: number[] = [];
+  for (let index = 0; index < SAMPLES; index += 1) {
+    const started = performance.now();
+    await run();
+    samples.push(performance.now() - started);
+  }
+  return Math.round(median(samples));
+};
+
+const report = (name: string, ms: number, bound: number): void => {
+  process.stdout.write(
+    `${JSON.stringify({ measure: name, medianMs: ms, boundMs: bound, samples: SAMPLES })}\n`,
+  );
+  assert.ok(ms < bound, `${name} took ${ms} ms, over the ${bound} ms bound`);
+};
+
+test("the documented operations stay inside their bounds", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bots-perf-"));
+  const faux = fauxProvider({});
+  const models = createModels();
+  models.setProvider(faux.provider);
+  const model = { provider: faux.getModel().provider, modelId: faux.getModel().id };
+  process.stdout.write(
+    `${JSON.stringify({
+      machine: process.arch,
+      platform: process.platform,
+      node: process.version,
+      cpus: (await import("node:os")).availableParallelism(),
+    })}\n`,
+  );
+  try {
+    const openEmpty = await bench(async () => {
+      const harness = await Harness.open(
+        await openNodeSqliteStorage(join(dir, `empty-${Math.random()}.sqlite`)),
+        {
+          models,
+          registry: createRegistry(),
+          settings: { compaction: { enabled: false } } as never,
+        },
+        BACKGROUND_CONTEXT,
+      );
+      await harness.root(BACKGROUND_CONTEXT, { agent: { model } });
+      await harness.close(BACKGROUND_CONTEXT);
+    });
+    report("Harness.open + root() on an empty bot", openEmpty, 250);
+
+    // A reopen with 400 entries: one real conversation, then measure open again.
+    const path = join(dir, "busy.sqlite");
+    const harness = await Harness.open(
+      await openNodeSqliteStorage(path),
+      { models, registry: createRegistry(), settings: { compaction: { enabled: false } } as never },
+      BACKGROUND_CONTEXT,
+    );
+    const root = await harness.root(BACKGROUND_CONTEXT, { agent: { model } });
+    harness.resume();
+    for (let index = 0; index < 200; index += 1) {
+      faux.setResponses([fauxAssistantMessage(`答 ${index}`)]);
+      const submission = await root.submit(
+        {
+          type: "input",
+          content: `问 ${index}`,
+          requestId: `r_perf_${String(index).padStart(4, "0")}`,
+          whenBusy: "followUp",
+        },
+        BACKGROUND_CONTEXT,
+      );
+      await submission.status(BACKGROUND_CONTEXT);
+    }
+    await harness.close(BACKGROUND_CONTEXT);
+    const reopen = await bench(async () => {
+      const again = await Harness.open(
+        await openNodeSqliteStorage(path),
+        {
+          models,
+          registry: createRegistry(),
+          settings: { compaction: { enabled: false } } as never,
+        },
+        BACKGROUND_CONTEXT,
+      );
+      await again.root(BACKGROUND_CONTEXT, { agent: { model } });
+      await again.close(BACKGROUND_CONTEXT);
+    });
+    report("reopen a bot with 400 entries", reopen, 150);
+
+    const turn = await bench(async () => {
+      const one = await Harness.open(
+        await openNodeSqliteStorage(join(dir, `turn-${Math.random()}.sqlite`)),
+        {
+          models,
+          registry: createRegistry(),
+          settings: { compaction: { enabled: false } } as never,
+        },
+        BACKGROUND_CONTEXT,
+      );
+      const oneRoot = await one.root(BACKGROUND_CONTEXT, { agent: { model } });
+      one.resume();
+      faux.setResponses([fauxAssistantMessage("好的")]);
+      const submission = await oneRoot.submit(
+        {
+          type: "input",
+          content: "问",
+          requestId: `r_turn_${Math.random()}`,
+          whenBusy: "followUp",
+        },
+        BACKGROUND_CONTEXT,
+      );
+      await submission.status(BACKGROUND_CONTEXT);
+      await one.close(BACKGROUND_CONTEXT);
+    });
+    report("one answered turn (faux provider)", turn, 200);
+
+    const many = await bench(async () => {
+      const harnesses = await Promise.all(
+        Array.from({ length: 20 }, async (_, index) => {
+          const handle = await Harness.open(
+            await openNodeSqliteStorage(join(dir, `many-${index}.sqlite`)),
+            {
+              models,
+              registry: createRegistry(),
+              settings: { compaction: { enabled: false } } as never,
+            },
+            BACKGROUND_CONTEXT,
+          );
+          await handle.root(BACKGROUND_CONTEXT, { agent: { model } });
+          return handle;
+        }),
+      );
+      await Promise.all(harnesses.map((handle) => handle.close(BACKGROUND_CONTEXT)));
+    });
+    report("20 bots open in one process", many, 1_000);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

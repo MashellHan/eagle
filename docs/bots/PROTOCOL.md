@@ -70,7 +70,9 @@ marshalling it with generation counters.
 
 ## HTTP endpoints
 
-All require the bearer token.
+All require the bearer token, except `/v1/health`, which answers liveness so a
+supervisor can check the process before any client has a token. It exposes the
+version, the instance id, the pid and a bot count, never bot content.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |

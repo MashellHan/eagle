@@ -38,6 +38,12 @@ const integer = (value: string | undefined, fallback: number): number => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+/** `--port 0` asks the kernel for a free port, which is how a supervised test runs. */
+const portNumber = (value: string | undefined, fallback: number): number => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
 export const defaultRoot = (): string => join(homedir(), ".local", "share", "eagle-bots");
 
 export type ConfigInput = {
@@ -63,7 +69,7 @@ export const readConfig = (input: ConfigInput = {}): DaemonConfig => {
     if (argument === "--port") {
       const value = argv[index + 1];
       if (value === undefined) throw new Error("--port needs a number");
-      port = integer(value, DEFAULT_PORT);
+      port = portNumber(value, DEFAULT_PORT);
     }
   }
   return {

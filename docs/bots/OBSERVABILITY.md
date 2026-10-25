@@ -38,6 +38,7 @@ Client-side layers use the same vocabulary: `client.ui`, `client.vm`,
 | Client command (`send`, `abort`, `recover`, `resync`, `history`, `ping`) | created by the client: `tr_<uuidv7>` | `tr_0190a1…` |
 | Connection episode | created by the daemon on accept: `tr_conn_<n>` | `tr_conn_7` |
 | Startup recovery and idle close | created by the daemon: `tr_boot_<n>` | `tr_boot_3` |
+| HTTP catalog request | created by the daemon: `tr_http_<n>`, since HTTP carries no trace field | `tr_http_4` |
 | Run progress caused by an admitted input | the trace **stored with that submission** at `send` time | the original `send` trace |
 
 Rules:
@@ -182,24 +183,37 @@ presence *and* absence. The tests use a fake clock and a drain barrier
 (`await hub.drain()` / `await log.flush()`) rather than sleeps, so a missing
 event is a fact, not a race.
 
-**R1 — a bot cannot be opened.**
-Inject: `catalog.json` is unreadable (a core-owned file). Core owns that read, so the
-origin is core; the runtime is never reached.
+**R1 — a bot cannot be opened.** Two variants, one per owning layer.
+
+Runtime variant: inject an unopenable session store (the bot's `session.sqlite` is a
+directory) before the daemon starts. The runtime owns the open, so it is the origin:
 
 ```
-transport.frame.recv.ok    trace=tr_A evt=subscribe
-protocol.command.ok        trace=tr_A               # dispatched to core, not "succeeded"
-core.catalog.load.fail     trace=tr_A err={kind:"storage_failed", failure:"f_7", origin:true}
-core.subscribe.fail        trace=tr_A err={kind:"storage_failed", failure:"f_7"} propagated
+runtime.open.start         trace=tr_boot_1
+runtime.open.fail          trace=tr_boot_1 err={kind:"storage_failed", failure:"f_7", origin:true}
+core.bot.open.fail         trace=tr_boot_1 err={kind:"storage_failed", failure:"f_7"} detail.propagated
+core.recovery.bot.fail     trace=tr_boot_1 err={kind:"storage_failed", failure:"f_7"} detail.propagated
 ```
-Asserted: `protocol.command.fail` is absent (the frame was valid), exactly one
-`level=error`, on `core`, with `failure:"f_7"`.
-Asserted: no `runtime.*` for `tr_A`, exactly one `level=error`, on `core`, with
-`failure:"f_7"`.
+Asserted: exactly one `level=error` for that bot, on `runtime`, with `origin:true`;
+every other record carries the same `f_7` and `propagated`, never `origin`; the
+client still gets a `snapshot` whose `unavailable.reason` is `storage_failed`.
+
+Core variant: subscribe to an unknown bot id, which never reaches the runtime:
+
+```
+protocol.command.ok        trace=tr_A               # dispatched to core
+core.bot.resolve.fail      trace=tr_A err={kind:"unknown_bot", failure:"f_8", origin:true}
+protocol.command.fail      trace=tr_A err={kind:"unknown_bot", failure:"f_8"} propagated
+```
+Asserted: exactly one `level=error`, on `core`; no `runtime.*` record at all; the
+socket closes `4004`.
 
 **R2 — the event stream dies mid-answer.**
 Inject: the adapter's own sink callback throws once (a defect inside the runtime
-layer), then reattach succeeds.
+layer), then reattach succeeds. The sink fault is only reachable at the adapter, so
+this recipe's runtime half is asserted by `test/runtime/channels.test.ts`; the core
+and transport records it names are covered by the hub and frame records R1 and R3
+exercise.
 
 ```
 core.hub.publish.ok        trace=tr_B rev=42 detail.kind=append
