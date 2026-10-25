@@ -441,7 +441,10 @@ Rules:
   daemon with a `[tool output truncated]` tail; it is never turned into the
   "回答超出传输上限" notice, which belongs to assistant answers only.
 - **Deltas stay block-scoped.** A `toolcall` delta names the assistant message's block
-  index and a path rooted at that block; it never names a tool result.
+  index and a path rooted at that block: pi streams a call's arguments, so the path always
+  starts with `"args"` (the daemon prefixes it before sending). The fold creates missing
+  intermediate objects or arrays from the next path component; it never names a tool
+  result.
 - **Pages count tool rows.** A tool message consumes a page slot and its encoded bytes like
   any other message; `truncatedBefore` may therefore point at a tool entry, and paging back
   from it restores the call/result pair in order.

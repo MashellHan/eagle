@@ -112,7 +112,7 @@ provisional: { id, attempt } | null   // id = "p_a<attempt>"
 | `thinking_start` | `{kind:"block", index, block: {type:"thinking", text: block.thinking}}` |
 | `thinking_delta` | `{kind:"thinking", index, append}` |
 | `toolcall_start` | `{kind:"block", index, block: {type:"toolCall", callId, name, args}}` |
-| `toolcall_delta` | `{kind:"toolcall", index, callId, path, append}` |
+| `toolcall_delta` | `{kind:"toolcall", index, callId, path, append}` — pi's path is relative to the call's arguments, so the mapper prefixes `"args"` to make the wire path block-rooted |
 | `block` | `{kind:"block", index, block}` — the whole converted block |
 | `message` | `{kind:"message", message: convertMessage(message)}` |
 
