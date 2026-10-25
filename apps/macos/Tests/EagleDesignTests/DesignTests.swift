@@ -115,7 +115,14 @@ private func expectColor(
   _ hex: UInt32,
   sourceLocation: SourceLocation = #_sourceLocation
 ) {
-  guard let actual = NSColor(color).usingColorSpace(.sRGB) else {
+  // The tokens carry a light and a dark value; resolve in a fixed light appearance so the
+  // assertion does not depend on the machine's current mode.
+  let appearance = NSAppearance(named: .aqua) ?? NSAppearance.currentDrawing()
+  var resolved: NSColor?
+  appearance.performAsCurrentDrawingAppearance {
+    resolved = NSColor(color).usingColorSpace(.sRGB)
+  }
+  guard let actual = resolved else {
     Issue.record("colour is not convertible to sRGB", sourceLocation: sourceLocation)
     return
   }
