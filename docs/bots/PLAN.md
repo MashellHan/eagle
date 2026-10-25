@@ -110,7 +110,9 @@ review round closed eight P1 and eleven P2 findings, and rows 42-54 are written.
 
 ## Next work, in order
 
-1. Sign stage 4 off: the fifth review round is running against the fixes below.
+1. Close the sixth round's three remaining races (delete-during-close, a stale
+   snapshot reconciling a reservation, and an unavailable bot admitted during a
+   lookup) and its P2s, then sign stage 4 off.
 2. Stage 5: `apps/bots-macos/` (separate package, `EagleDesign` product only).
 
 ### What the adapter can do today (rows 23-36, signed off)
@@ -186,7 +188,8 @@ views and so bypassing the eight-subscriber cap, and a summary only budgeted in 
 healthy form). A fifth round found three more (the delete window being replaced by
 its close, a snapshot reconciling a reservation whose submit had not returned, and an
 unavailable bot bypassing the admission budget through its still-live handle). All are
-closed with tests that fail without the fix.
+closed, most of them with a test that fails without the fix; the sixth round's
+remaining races are listed below rather than claimed as fixed.
 
 Four test-fidelity findings remain deferred with their reasons: the outbox's
 admitted-then-unreadable case is asserted at the service and adapter boundaries
