@@ -20,6 +20,14 @@ public struct SidebarPanel: View {
   private let unreadCount: Int
   private let onUnread: () -> Void
   private let userName: String
+  private let onPinItem: (String) -> Void
+  private let onMoveItem: (String, String) -> Void
+  private let onMarkUnread: (String) -> Void
+  private let onCopyId: (String) -> Void
+  private let onHideItem: (String) -> Void
+  private let moveGroups: [SidebarItemGroup]
+  private let groupOf: (String) -> String?
+  private let onCreateGroup: () -> Void
   private let width: CGFloat
 
   @State private var editingSection: String?
@@ -44,7 +52,15 @@ public struct SidebarPanel: View {
     onAccount: @escaping () -> Void = {},
     unreadCount: Int = 0,
     onUnread: @escaping () -> Void = {},
-    userName: String = "Zheng Li"
+    userName: String = "Zheng Li",
+    onPinItem: @escaping (String) -> Void = { _ in },
+    onMoveItem: @escaping (String, String) -> Void = { _, _ in },
+    onMarkUnread: @escaping (String) -> Void = { _ in },
+    onCopyId: @escaping (String) -> Void = { _ in },
+    onHideItem: @escaping (String) -> Void = { _ in },
+    moveGroups: [SidebarItemGroup] = [],
+    groupOf: @escaping (String) -> String? = { _ in nil },
+    onCreateGroup: @escaping () -> Void = {}
   ) {
     self.sections = sections
     self.selection = selection
@@ -63,6 +79,14 @@ public struct SidebarPanel: View {
     self.unreadCount = unreadCount
     self.onUnread = onUnread
     self.userName = userName
+    self.onPinItem = onPinItem
+    self.onMoveItem = onMoveItem
+    self.onMarkUnread = onMarkUnread
+    self.onCopyId = onCopyId
+    self.onHideItem = onHideItem
+    self.moveGroups = moveGroups
+    self.groupOf = groupOf
+    self.onCreateGroup = onCreateGroup
   }
 
   private static var version: String {
@@ -186,9 +210,62 @@ public struct SidebarPanel: View {
     .buttonStyle(.plain)
     .id(item.id)
     .contextMenu {
-      Button("重命名 Bot") { beginItemRename(item) }
+      Button {
+        onPinItem(item.id)
+      } label: {
+        Label("置顶", systemImage: "pin")
+      }
+      if !moveGroups.isEmpty {
+        Menu {
+          ForEach(moveGroups) { group in
+            Button {
+              onMoveItem(item.id, group.id)
+            } label: {
+              if groupOf(item.id) == group.id {
+                Label(group.title, systemImage: "checkmark")
+              } else {
+                Label(group.title, systemImage: "folder")
+              }
+            }
+          }
+          Divider()
+          Button {
+            onCreateGroup()
+          } label: {
+            Label("创建分组", systemImage: "folder.badge.plus")
+          }
+        } label: {
+          Label("移至", systemImage: "folder")
+        }
+      }
+      Button {
+        onMarkUnread(item.id)
+      } label: {
+        Label("标为未读", systemImage: "bell.slash")
+      }
       Divider()
-      Button("删除 Bot", role: .destructive) { onDeleteItem(item.id) }
+      Button {
+        beginItemRename(item)
+      } label: {
+        Label("重命名 Bot", systemImage: "pencil")
+      }
+      Divider()
+      Button {
+        onCopyId(item.id)
+      } label: {
+        Label("复制对话 ID", systemImage: "doc.on.doc")
+      }
+      Divider()
+      Button {
+        onHideItem(item.id)
+      } label: {
+        Label("从侧边栏隐藏", systemImage: "eye.slash")
+      }
+      Button(role: .destructive) {
+        onDeleteItem(item.id)
+      } label: {
+        Label("删除", systemImage: "trash")
+      }
     }
   }
 

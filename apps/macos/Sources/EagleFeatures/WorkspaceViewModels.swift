@@ -271,6 +271,54 @@ public final class WorkspaceListViewModel: ObservableObject {
     }
   }
 
+  /// Moves an item to another group, keeping its order stable at the end of the target.
+  public func moveItem(_ id: String, to groupId: String) {
+    guard let source = groups.firstIndex(where: { $0.items.contains { $0.id == id } }) else {
+      return
+    }
+    guard let target = groups.firstIndex(where: { $0.id == groupId }), source != target else {
+      return
+    }
+    move(id, from: source, to: target)
+  }
+
+  /// The group a row belongs to, for the move submenu's checkmark.
+  public func groupID(of id: String) -> String? {
+    groups.first { $0.items.contains { $0.id == id } }?.id
+  }
+
+  /// Adds a group and returns its id, for "创建分组" in the context menu.
+  @discardableResult
+  public func addGroup() -> String {
+    var index = 1
+    var id = "group-\(index)"
+    while groups.contains(where: { $0.id == id }) {
+      index += 1
+      id = "group-\(index)"
+    }
+    groups.append(WorkspaceGroup(id: id, title: "新分组 \(index)", items: []))
+    expanded.insert(id)
+    return id
+  }
+
+  private func move(_ id: String, from source: Int, to target: Int) {
+    guard let itemIndex = groups[source].items.firstIndex(where: { $0.id == id }) else { return }
+    var items = groups[source].items
+    let item = items.remove(at: itemIndex)
+    groups[source] = WorkspaceGroup(
+      id: groups[source].id,
+      title: groups[source].title,
+      count: groups[source].count,
+      items: items
+    )
+    groups[target] = WorkspaceGroup(
+      id: groups[target].id,
+      title: groups[target].title,
+      count: groups[target].count,
+      items: groups[target].items + [item]
+    )
+  }
+
   public func deleteItem(_ id: String) {
     for groupIndex in groups.indices {
       guard let itemIndex = groups[groupIndex].items.firstIndex(where: { $0.id == id }) else {

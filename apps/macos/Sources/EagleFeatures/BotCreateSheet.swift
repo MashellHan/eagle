@@ -23,9 +23,9 @@ struct BotCreateSheet: View {
       header
       Divider().overlay(Theme.Palette.line)
       ScrollView {
-        VStack(spacing: 18) {
+        VStack(spacing: 16) {
           BotFace(style: BotFace.Style(shape: shape, tint: tint), size: 132)
-            .padding(.top, 18)
+            .padding(.top, 20)
           fields
           shapes
           tints
@@ -36,7 +36,10 @@ struct BotCreateSheet: View {
       Divider().overlay(Theme.Palette.line)
       footer
     }
-    .frame(width: 560, height: 640)
+    // Proportions measured from the reference dialog: 879 × 1 116 at 560 wide keeps its
+    // header, preview, two field rows, the shape grid, the swatches and the footer in the
+    // same rhythm.
+    .frame(width: 560, height: 712)
     .background(Theme.Palette.surface)
     .onAppear { nameFocused = true }
   }
@@ -49,7 +52,7 @@ struct BotCreateSheet: View {
       IconButton(systemName: "xmark", label: "关闭", size: 28, action: onCancel)
     }
     .padding(.horizontal, Theme.Metric.settingsCardInset)
-    .padding(.vertical, 14)
+    .frame(height: 62)
   }
 
   private var fields: some View {
@@ -63,7 +66,7 @@ struct BotCreateSheet: View {
       .font(Theme.TypeScale.body)
       .focused($nameFocused)
       .padding(.horizontal, 14)
-      .frame(height: 44)
+      .frame(height: 43)
       .background(fieldBackground)
       .onSubmit { create() }
 
@@ -86,14 +89,14 @@ struct BotCreateSheet: View {
         .font(Theme.TypeScale.sectionLabel)
         .foregroundStyle(Theme.Palette.textSecondary)
       LazyVGrid(
-        columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 8),
-        spacing: 10
+        columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5),
+        spacing: 8
       ) {
         ForEach(BotFace.Shape.allCases, id: \.self) { candidate in
           Button {
             shape = candidate
           } label: {
-            BotFace(style: BotFace.Style(shape: candidate, tint: tint), size: 40)
+            BotFace(style: BotFace.Style(shape: candidate, tint: tint), size: 52)
               .padding(4)
               .background(
                 RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
@@ -125,7 +128,7 @@ struct BotCreateSheet: View {
           } label: {
             Circle()
               .fill(Theme.Palette.botTint(candidate))
-              .frame(width: 28, height: 28)
+              .frame(width: 32, height: 32)
               .padding(4)
               .overlay(
                 Circle()
@@ -155,7 +158,7 @@ struct BotCreateSheet: View {
         .keyboardShortcut(.defaultAction)
     }
     .padding(.horizontal, Theme.Metric.settingsCardInset)
-    .padding(.vertical, 12)
+    .frame(height: 46)
   }
 
   private var fieldBackground: some View {

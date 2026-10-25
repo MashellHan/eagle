@@ -361,9 +361,17 @@ existed renders the default face. Sidebar wording is bot vocabulary (`重命名 
 the demo workspace is the same shape: every item is a bot.
 
 Verified: `cd apps/bots && npm run check` (346 tests), `cd apps/bots-macos && swift test`
-+ `./Scripts/coverage.sh` (90.2%), `cd apps/macos && swift test` (37 tests) and
++ `./Scripts/coverage.sh` (90.2%), `cd apps/macos && swift test` (39 tests) and
 `Scripts/build-app.sh`; a screenshot of the sheet shows the preview, the shape grid and
 the swatches, and the sidebar renders the green blob face.
+
+The sheet follows the reference dialog's measured proportions (879 × 1 116 scaled to 560
+wide: a 62 pt header, a 132 pt preview, a 43 pt name row, five shapes per row and six
+swatches per row, a 46 pt footer). Assistant answers render in a dialog bubble with
+markdown: headings, bullets, quotes, fenced code and inline styles. The row context menu
+follows the reference: 置顶, 移至 ▸ (groups and 创建分组), 标为未读, 重命名 Bot, 复制对话
+ID, 从侧边栏隐藏, 删除 — with pinned rows sorting first, a pin glyph, an unread dot and
+hidden rows dropping out of the list.
 
 Next broken hop: history paging from the transcript, bot settings and per-bot inspector
 content; stage 4's three deferred daemon races are still open.

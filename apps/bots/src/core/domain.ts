@@ -109,6 +109,8 @@ export const BOT_SHAPES = [
   "shield",
   "drop",
   "hex",
+  "heart",
+  "flower",
 ] as const;
 export type BotShape = (typeof BOT_SHAPES)[number];
 

@@ -5,7 +5,7 @@ import SwiftUI
 /// what they get.
 public struct BotFace: View {
   public enum Shape: String, CaseIterable, Hashable, Sendable {
-    case blob, pebble, squircle, star, cloud, shield, drop, hex
+    case blob, pebble, squircle, star, cloud, shield, drop, hex, heart, flower
   }
 
   public struct Style: Hashable, Sendable {
@@ -173,6 +173,44 @@ private struct ShapePath: Shape {
         control1: point(0.04, 0.38),
         control2: point(0.30, 0.18)
       )
+    case .heart:
+      path.move(to: point(0.50, 0.92))
+      path.addCurve(
+        to: point(0.04, 0.34),
+        control1: point(0.20, 0.80),
+        control2: point(0.02, 0.56)
+      )
+      path.addCurve(
+        to: point(0.50, 0.18),
+        control1: point(0.06, 0.10),
+        control2: point(0.34, 0.06)
+      )
+      path.addCurve(
+        to: point(0.96, 0.34),
+        control1: point(0.66, 0.06),
+        control2: point(0.94, 0.10)
+      )
+      path.addCurve(
+        to: point(0.50, 0.92),
+        control1: point(0.98, 0.56),
+        control2: point(0.80, 0.80)
+      )
+    case .flower:
+      let center = point(0.5, 0.5)
+      for index in 0..<5 {
+        let angle = Double(index) * 2 * Double.pi / 5 - Double.pi / 2
+        let petal = CGPoint(
+          x: center.x + CGFloat(cos(angle)) * 0.26 * width,
+          y: center.y + CGFloat(sin(angle)) * 0.26 * height
+        )
+        path.addEllipse(
+          in: CGRect(
+            x: petal.x - 0.24 * width,
+            y: petal.y - 0.24 * height,
+            width: 0.48 * width,
+            height: 0.48 * height
+          ))
+      }
     case .hex:
       let corners = [
         point(0.50, 0.02), point(0.93, 0.26), point(0.93, 0.74),

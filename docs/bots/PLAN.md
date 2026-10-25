@@ -121,8 +121,8 @@ conversation, `+` creates one, and rename/delete are the sidebar's own affordanc
 
 What works end to end against the real daemon: connect (token from the root), absolute
 catalog, create/rename/delete (the create sheet asks for a required name, an optional
-label, and a face — one of eight silhouettes and one of twelve tints, stored by the
-daemon so the sidebar renders what was picked), subscribe, real streaming answers (each delta folded and
+label, and a face — one of ten silhouettes and one of twelve tints, stored by the daemon
+so the sidebar renders what was picked), subscribe, real streaming answers (each delta folded and
 re-rendered), typing while an attempt has no text, the ranked submission rule, an
 optimistic bubble replaced by the committed entry, the persisted outbox replayed on
 connect, unavailable/recover, gap detection with one resync, and close-code driven

@@ -101,7 +101,7 @@ client: a model picker needs the `agent` capability.
   "title": "研究员",
   "label": "研究",                       // optional; at most 24 characters
   "appearance": {                        // optional; the client's closed sets
-    "shape": "blob",                     // blob|pebble|squircle|star|cloud|shield|drop|hex
+    "shape": "blob",                     // blob|pebble|squircle|star|cloud|shield|drop|hex|heart|flower
     "tint": "green"                      // paper|clay|red|orange|yellow|green|teal|sky|blue|violet|pink|graphite
   },
   "createdAt": "2026-10-25T02:11:03.412Z",

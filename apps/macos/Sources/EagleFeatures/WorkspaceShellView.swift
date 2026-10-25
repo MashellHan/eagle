@@ -11,6 +11,7 @@ public struct WorkspaceShellView: View {
   @StateObject private var account = AccountMenuViewModel()
   @StateObject private var settings = SettingsViewModel()
   @StateObject private var bots = BotsWorkspaceViewModel()
+  @StateObject private var chrome = SidebarChromeViewModel()
   @State private var showsAccountMenu = false
   @State private var showsBotCreate = false
   @State private var showsSettings = false
@@ -29,8 +30,18 @@ public struct WorkspaceShellView: View {
   }
 
   private var sidebarSections: [SidebarSection] {
-    guard let section = bots.section else { return list.sections }
-    return [section] + list.sections
+    let base = bots.section.map { [$0] + list.sections } ?? list.sections
+    return base.map(chrome.decorate)
+  }
+
+  private var moveGroups: [SidebarItemGroup] {
+    list.groups.map { SidebarItemGroup(id: $0.id, title: $0.title) }
+  }
+
+  private func selectAfterHide(_ id: String) {
+    guard list.selection == id else { return }
+    let visible = sidebarSections.flatMap(\.items)
+    list.selection = visible.first?.id
   }
 
   private var selectedIsBot: Bool { bots.owns(list.selection) }
@@ -51,6 +62,7 @@ public struct WorkspaceShellView: View {
           selection: list.selection,
           width: layout.sidebarWidth,
           onSelect: { id in
+            chrome.markRead(id)
             if bots.owns(id) {
               bots.select(id)
               list.selection = id
@@ -85,7 +97,18 @@ public struct WorkspaceShellView: View {
           },
           onCollapse: { layout.toggleSidebar() },
           onAccount: { showsAccountMenu = true },
-          unreadCount: 2
+          unreadCount: 2,
+          onPinItem: { id in chrome.togglePin(id) },
+          onMoveItem: { id, groupId in list.moveItem(id, to: groupId) },
+          onMarkUnread: { id in chrome.markUnread(id) },
+          onCopyId: { id in chrome.copyId(id) },
+          onHideItem: { id in
+            chrome.hide(id)
+            selectAfterHide(id)
+          },
+          moveGroups: moveGroups,
+          groupOf: { id in list.groupID(of: id) },
+          onCreateGroup: { list.addGroup() }
         )
       } conversation: {
         ConversationColumn(

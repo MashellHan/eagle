@@ -32,6 +32,11 @@ public struct ConversationRow: View {
           if let tag = item.tag {
             Tag(tag)
           }
+          if item.pinned {
+            Image(systemName: "pin.fill")
+              .font(.system(size: 9.5, weight: .semibold))
+              .foregroundStyle(Theme.Palette.textMuted)
+          }
         }
         Text(item.subtitle)
           .font(Theme.TypeScale.rowSubtitle)
@@ -40,6 +45,11 @@ public struct ConversationRow: View {
           .truncationMode(.tail)
       }
       Spacer(minLength: 0)
+      if item.unread {
+        Circle()
+          .fill(Theme.Palette.accent)
+          .frame(width: 7, height: 7)
+      }
     }
     .padding(.leading, Theme.Metric.rowContentInset)
     .padding(.trailing, Theme.Metric.rowContentInset)

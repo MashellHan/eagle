@@ -10,6 +10,10 @@ public struct SidebarItem: Identifiable, Hashable, Sendable {
   public let tintIndex: Int
   /// A bot draws its own face instead of the circled initial.
   public let face: BotFace.Style?
+  /// Pinned rows sort first and show a pin next to the title.
+  public let pinned: Bool
+  /// Unread rows carry the accent dot at the trailing edge.
+  public let unread: Bool
 
   public init(
     id: String,
@@ -17,7 +21,9 @@ public struct SidebarItem: Identifiable, Hashable, Sendable {
     subtitle: String,
     tag: String? = nil,
     tintIndex: Int = 0,
-    face: BotFace.Style? = nil
+    face: BotFace.Style? = nil,
+    pinned: Bool = false,
+    unread: Bool = false
   ) {
     self.id = id
     self.title = title
@@ -25,6 +31,8 @@ public struct SidebarItem: Identifiable, Hashable, Sendable {
     self.tag = tag
     self.tintIndex = tintIndex
     self.face = face
+    self.pinned = pinned
+    self.unread = unread
   }
 }
 
@@ -43,5 +51,16 @@ public struct SidebarSection: Identifiable, Hashable, Sendable {
     self.count = count
     self.isExpanded = isExpanded
     self.items = items
+  }
+}
+
+/// One group a row can be moved to (the context menu's submenu).
+public struct SidebarItemGroup: Identifiable, Hashable, Sendable {
+  public let id: String
+  public let title: String
+
+  public init(id: String, title: String) {
+    self.id = id
+    self.title = title
   }
 }

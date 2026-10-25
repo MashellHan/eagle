@@ -129,7 +129,7 @@ public struct ConversationColumn: View {
   private func row(_ entry: TranscriptEntry) -> some View {
     switch entry {
     case .assistant(_, let blocks):
-      AssistantTurn(blocks)
+      AssistantBubble(text: blocks.markdown)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     case .user(_, let text):
       UserBubble(text)
