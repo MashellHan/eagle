@@ -122,7 +122,7 @@ test("a setsid descendant cannot outlive the deadline", async () => {
     const started = Date.now();
     const timedOut = await runCommandTool(workspace, {
       command:
-        "perl -e 'if (fork() == 0) { setsid(); sleep 0.4; open(F, q{>}, q{late.txt}); print F q{survived}; }' ; sleep 0.4",
+        "perl -MPOSIX -e 'if (fork() == 0) { POSIX::setsid(); select(undef, undef, undef, 0.4); open(F, q{>}, q{late.txt}); print F q{survived}; } else { select(undef, undef, undef, 2); }'",
       timeoutMs: 100,
     });
     assert.equal(timedOut.isError, true);
@@ -133,6 +133,25 @@ test("a setsid descendant cannot outlive the deadline", async () => {
       "absent",
       "a descendant that left the process group is killed too",
     );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a daemon whose parent already exited is documented, not promised", async () => {
+  const { workspace, cleanup } = await bench();
+  try {
+    const started = Date.now();
+    // The parent exits at once, so its child is reparented to pid 1 before the deadline:
+    // no ps walk can still attribute it. The deadline must return anyway; the survivor is
+    // the documented limit (RUNTIME.md, "Tools").
+    const timedOut = await runCommandTool(workspace, {
+      command:
+        "perl -MPOSIX -e 'if (fork() == 0) { POSIX::setsid(); select(undef, undef, undef, 0.6); open(F, q{>}, q{late.txt}); print F q{survived}; }' ; exit 0",
+      timeoutMs: 100,
+    });
+    assert.equal(timedOut.isError, true);
+    assert.ok(Date.now() - started < 280, "a reparented descendant does not stretch the deadline");
   } finally {
     await cleanup();
   }

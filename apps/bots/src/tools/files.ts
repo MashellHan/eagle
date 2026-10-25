@@ -73,6 +73,7 @@ export const readFileTool = async (
       let started = false;
       let more = false;
       let full = false;
+      let budgetFull = false;
       let binary = false;
       let firstChunk = true;
       for (;;) {
@@ -104,6 +105,7 @@ export const readFileTool = async (
           const next = pageLines === 0 ? line : `${page}\n${line}`;
           if (Buffer.byteLength(next) > MAX_READ_BYTES) {
             full = true;
+            budgetFull = true;
             continue;
           }
           page = next;
@@ -116,21 +118,35 @@ export const readFileTool = async (
         }
       }
       if (binary) return failed(`${args.path} is not a text file`);
-      // The trailing unterminated line is a line of its own.
+      // The trailing unterminated line is a line of its own, and it obeys the page
+      // limit exactly like every other line.
       if (!more && pending.length > 0) {
         lineNumber += 1;
-        if (!full && lineNumber >= offset) {
-          const next = pageLines === 0 ? pending : `${page}\n${pending}`;
-          if (Buffer.byteLength(next) <= MAX_READ_BYTES) {
-            page = next;
-            pageLines += 1;
-            started = true;
-          } else {
+        if (lineNumber >= offset) {
+          if (full) {
+            // counted, not shown
+          } else if (pageLines >= limit) {
             full = true;
+          } else {
+            const next = pageLines === 0 ? pending : `${page}\n${pending}`;
+            if (Buffer.byteLength(next) <= MAX_READ_BYTES) {
+              page = next;
+              pageLines += 1;
+              started = true;
+            } else {
+              full = true;
+              budgetFull = true;
+            }
           }
         }
       }
-      if (!started) return { output: `(no lines at offset ${offset})` };
+      if (!started) {
+        if (budgetFull) return failed(`line ${offset} exceeds the ${MAX_READ_BYTES} byte page`);
+        if (more) {
+          return failed(`the file is larger than the ${MAX_SCAN_BYTES} byte scan budget`);
+        }
+        return { output: `(no lines at offset ${offset})` };
+      }
       if (more) {
         return {
           output: `${page}\n[showing lines ${offset}-${offset + pageLines - 1}; the file continues]`,

@@ -173,18 +173,27 @@ export const runCommandTool = async (
     const append = (stream: Stream) => (chunk: Buffer) => {
       if (truncated) return;
       const marker = stream === "stderr" && !stderrStarted ? "[stderr]\n" : "";
-      const remaining = MAX_COMMAND_OUTPUT_BYTES - bytes - marker.length;
-      if (remaining <= 0) {
+      if (MAX_COMMAND_OUTPUT_BYTES - bytes - marker.length <= 0) {
         truncated = true;
         return;
       }
       if (marker.length > 0) stderrStarted = true;
-      const piece = chunk.subarray(0, remaining);
-      bytes += piece.length + marker.length;
       text += marker;
-      const decoded = decoders[stream].write(piece);
-      if (decoded.length > 0) text += decoded;
-      if (bytes >= MAX_COMMAND_OUTPUT_BYTES || piece.length < chunk.length) truncated = true;
+      bytes += marker.length;
+      const decoded = decoders[stream].write(chunk);
+      if (decoded.length === 0) return;
+      // The budget is the bytes the model reads, not the bytes read from the pipe: a
+      // lossy decode expands one input byte into three.
+      const encoded = Buffer.from(decoded);
+      const remaining = MAX_COMMAND_OUTPUT_BYTES - bytes;
+      if (encoded.length > remaining) {
+        text += encoded.subarray(0, remaining).toString("utf8");
+        bytes += remaining;
+        truncated = true;
+        return;
+      }
+      text += decoded;
+      bytes += encoded.length;
     };
     child.stdout.on("data", append("stdout"));
     child.stderr.on("data", append("stderr"));

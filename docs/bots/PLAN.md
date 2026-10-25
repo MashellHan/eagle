@@ -242,7 +242,11 @@ be re-bound after open, a `write_file` that blocked on a FIFO (abort could not f
 a `setsid` descendant that outlived the deadline. All three are fixed (open-time
 `dev`/`ino` identity, non-blocking regular-file writes, `ps`-tree kill), together with its
 P2s: no silent sandbox degradation, SDK budgets set as a backstop above the tool caps, one
-`[stderr]` marker, and a streamed page instead of a whole-file size limit. Slice 2 (herdr: open a space,
+`[stderr]` marker, a decoded-byte output budget, and a streamed page instead of a
+whole-file size limit. A third review confirmed those and left one limit: a daemon whose
+parent already exited is reparented and cannot be killed by a tree walk, which RUNTIME.md
+now states; the same review's two page-limit defects (an unterminated last line bypassing
+`limit`, and a page-budget refusal reported as "no such line") are fixed. Slice 2 (herdr: open a space,
 schedule the controller, monitor, fetch, bidirectional messages) is next, as a second
 extension with the same layering.
 

@@ -86,6 +86,21 @@ test("read_file refuses a binary file and a FIFO", async () => {
     const page = await readFileTool(workspace, { path: "many.txt", limit: 5 });
     assert.match(page.output, /\[lines 1-5 of 2010\]/);
 
+    // A page is bounded by lines even when the last line has no newline.
+    await writeFile(join(workspace.root, "unterminated.txt"), "one\ntwo");
+    const pageOne = await readFileTool(workspace, { path: "unterminated.txt", limit: 1 });
+    assert.equal(pageOne.output, "one\n[lines 1-1 of 2]");
+    const noTrailing = Array.from({ length: 2_001 }, (_, index) => `r${index}`).join("\n");
+    await writeFile(join(workspace.root, "no-trailing.txt"), noTrailing);
+    const capped = await readFileTool(workspace, { path: "no-trailing.txt" });
+    assert.match(capped.output, /\[lines 1-2000 of 2001\]/);
+
+    // A budget refusal says so instead of claiming the line does not exist.
+    await writeFile(join(workspace.root, "one-huge-line.txt"), "y".repeat(65_537));
+    const huge = await readFileTool(workspace, { path: "one-huge-line.txt", offset: 1 });
+    assert.equal(huge.isError, true);
+    assert.match(huge.output, /exceeds the \d+ byte page/);
+
     // A big file still answers a small page: the whole file is never read.
     const big = `${"first line\n"}${"x".repeat(530_000)}`;
     await writeFile(join(workspace.root, "big.txt"), big);

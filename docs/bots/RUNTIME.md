@@ -301,7 +301,7 @@ registry and bound to that bot's workspace:
 
 | Tool | Behaviour |
 | --- | --- |
-| `read_file` | A text page (`offset`, `limit`): at most 2 000 lines and 64 KiB, streamed from the file and with a note naming the lines it showed and the total |
+| `read_file` | A text page (`offset`, `limit`): at most 2 000 lines and 64 KiB, streamed from the file and with a note naming the lines it showed and the total; a line that alone exceeds the page budget, or a scan that passes 64 MiB, is a named refusal rather than a false "no such line" |
 | `write_file` | Writes one UTF-8 file (at most 512 KiB), creating parent directories, mode 0600 |
 | `list_files` | A bounded recursive walk (2 000 entries) that skips `.git`, `node_modules`, `.venv`, `dist` and `.build`; directories end with `/` |
 | `run_command` | `/bin/sh -c` in the workspace: stdout, stderr and the exit code, killed at the deadline (default 30 s, max 120 s) with the output capped at 64 KiB |
@@ -330,13 +330,17 @@ Rules:
 - **No daemon secrets.** A command's environment is an allowlist (`PATH`, `HOME`, `LANG`,
   `LC_ALL`, `TMPDIR`, `SHELL`, plus `TERM=dumb` and `PWD`). The child is `detached` in its
   own process group, and a timeout or an abort walks the `ps` tree before killing, so a
-  descendant that left the group with `setsid` dies too and cannot hold the pipes open.
-- **Bounded output.** Both streams share one 64 KiB budget, decoded as UTF-8 across chunk
-  boundaries; `[stderr]` marks the first stderr byte once (not every chunk), the exit code
-  is always the last line, and each tool's SDK `outputLimits` is set above the tool's own
-  cap so the SDK never cuts the result, its note or a command's exit status — a timed-out
-  command still carries the stderr and the reason, and a command killed at the deadline
-  returns then rather than waiting for its pipes to close.
+  descendant that left the group with `setsid` dies too while its parent is still alive.
+  A daemon whose parent has already exited is reparented to pid 1 and cannot be attributed
+  by any tree walk; the deadline still returns on time and the survivor stays confined by
+  the sandbox, but it is recorded as a known limit rather than promised otherwise.
+- **Bounded output.** Both streams share one 64 KiB budget counted in the bytes the model
+  reads (a lossy decode that expands one byte into three is still capped), decoded as UTF-8
+  across chunk boundaries; `[stderr]` marks the first stderr byte once (not every chunk),
+  the exit code is always the last line, and each tool's SDK `outputLimits` is set above
+  the tool's own cap so the SDK never cuts the result, its note or a command's exit status
+  — a timed-out command still carries the stderr and the reason, and a command killed at
+  the deadline returns then rather than waiting for its pipes to close.
 - **Cancellation.** `run_command` follows the run's abort signal: an aborted run kills the
   process group and the model sees an aborted result instead of a live command.
 - **Residual race.** A process that can already write inside the workspace could swap an
