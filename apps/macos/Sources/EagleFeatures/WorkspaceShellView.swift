@@ -137,7 +137,11 @@ public struct WorkspaceShellView: View {
             subtitle: selectedIsBot ? bots.subtitle : (item?.tag ?? "GitHub"),
             tintIndex: selectedIsBot ? bots.tintIndex : (item?.tintIndex ?? 2),
             entries: selectedIsBot ? bots.entries : chat.entries,
-            draft: selectedIsBot ? $bots.draft : $chat.draft,
+            // One draft: the conversation view model owns the composer, so a refusal's
+            // restored text and a queued send are the same value the user sees.
+            draft: selectedIsBot
+              ? Binding(get: { bots.draft }, set: { bots.setDraft($0) })
+              : $chat.draft,
             onSend: { selectedIsBot ? bots.send() : chat.send() },
             showsSidebar: layout.showsSidebar,
             showsInspector: layout.showsInspector,

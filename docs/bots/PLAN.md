@@ -160,8 +160,13 @@ races already on this list, and twelve client/integration defects. Fixed:
   appearance set, and the daemon races above
 
 A second pass found nine more P1s, mostly regressions inside those fixes; they are
-closed too: the shell and the conversation view model now share one draft (the new
-readiness guard had made the first message unsendable); a reservation expires only after
+closed too, with the third pass's four follow-ups: the shell binds the conversation's
+draft through one accessor (one draft, so a refusal's restored text is what the
+composer shows); a reservation whose status read fails keeps its slot instead of being
+released; a resync deadline that finds the barrier already opened by a snapshot neither
+counts it nor closes it again; and a refused request is remembered so a failed outbox
+removal cannot make a later reconciliation re-send it behind the user's back. The
+second-pass list: a reservation expires only after
 the runtime says the request is not outstanding (time alone was not evidence); the outbox
 fails closed on an unreadable file, always reads the file, and stores a terminal record
 in the same atomic write that removes its entry; reconciliation runs after every
@@ -170,6 +175,10 @@ the next connection starts with `hello`; a gap is repaired by one resync and a
 ten-second deadline (gapped frames neither advance the baseline nor exhaust the retries);
 `abort`/`recover`/`history` name their bot like `send` does; and a refusal appends the
 rejected text to a newer draft instead of dropping it.
+
+Not yet covered by a test: the socket's deadline/snapshot interleaving (the last fix
+above) and the refused-entry replay guard are verified by inspection, and the stored
+`SettledRequest` is applied to the ranks on selection but has no UI for its reason.
 
 Still deferred, with reasons: the client logging contract (`os.Logger` crossings in
 OBSERVABILITY.md) is not implemented; the transport's gap/unknown/close-code/reconnect

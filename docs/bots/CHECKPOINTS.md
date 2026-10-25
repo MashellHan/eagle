@@ -423,8 +423,14 @@ one-resync-per-gap with a ten-second deadline and a drop barrier, bot-bound
 abort/recover/history, refusal text preserved next to a newer draft, and the send path
 fixed by the single draft.
 
-Verified just now: daemon `npm run check` 348 tests, coverage 95.00/89.89/90.51;
+Verified just now: daemon `npm run check` 348 tests, coverage 94.97/89.72/90.68;
 client `swift test` and `./Scripts/coverage.sh` 93.1%; Eagle `swift test` 44 tests.
+
+The third pass found four follow-ups inside those fixes (the draft binding, a failed
+status read releasing a reservation, a resync deadline closing a barrier a snapshot had
+opened, and a refused entry replayed after a failed removal). All four are fixed; the
+last two are verified by inspection rather than by an injected-scheduling test, which
+PLAN.md records.
 
 Next broken hop: the deferred list in PLAN.md (client `os.Logger`, the socket
 fault-injection matrix, two real windows, three daemon origin/handle gaps, long-markdown

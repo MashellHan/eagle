@@ -23,6 +23,9 @@ public final class ConversationViewModel: ObservableObject {
   /// The outbox is reconciled after the first snapshot of the selected bot, never after
   /// the handshake: a send before the subscription exists is refused as `not_admitted`.
   private var reconciled = false
+  /// Requests the daemon refused. They are never replayed by a reconciliation, even if
+  /// their outbox entry could not be removed (the user decides whether to retry).
+  private var refused: Set<String> = []
   /// Sends the user asked for that have not been confirmed yet.
   private var inFlight: [String: String] = [:]
   /// The absolute catalog a `bots` frame carries, for the window's sidebar.
@@ -55,6 +58,7 @@ public final class ConversationViewModel: ObservableObject {
     selectedBotId = botId
     reconciled = false
     state = ConversationState(botId: botId)
+    applySettledRecords(for: botId)
     connection = .connecting
     errorBanner = nil
     let stream = conversation.open(botId: botId)
@@ -85,6 +89,7 @@ public final class ConversationViewModel: ObservableObject {
   /// Retrying keeps the original requestId, which is how it is recovered, including after a
   /// restart of the app (`OutboxStore`).
   public func retry(_ entry: OutboxEntry) {
+    refused.remove(entry.requestId)
     send(text: entry.text, requestId: entry.requestId, botId: entry.botId, optimistic: true)
   }
 
@@ -172,12 +177,47 @@ public final class ConversationViewModel: ObservableObject {
   /// (PROTOCOL.md, client duties 2).
   private func reconcileOutbox() {
     guard let botId = selectedBotId else { return }
-    for entry in outbox.entries(for: botId) {
+    let entries: [OutboxEntry]
+    do {
+      entries = try outbox.entries(for: botId)
+    } catch {
+      // An unreadable outbox is unknown, not empty: report it and try again on the next
+      // snapshot instead of pretending there is nothing to send.
+      errorBanner = "本地待发消息暂时读不出来，稍后重试。"
+      reconciled = false
+      return
+    }
+    for entry in entries where !refused.contains(entry.requestId) {
       send(
         text: entry.text,
         requestId: entry.requestId,
         botId: entry.botId,
         optimistic: !state.messages.contains { $0.requestId == entry.requestId }
+      )
+    }
+  }
+
+  /// A terminal record stored before the app closed is applied again, so a settlement is
+  /// not lost when the snapshot no longer carries it.
+  private func applySettledRecords(for botId: String) {
+    let stored: [SettledRequest]
+    do {
+      stored = try outbox.settledRequests()
+    } catch {
+      errorBanner = "本地结算记录暂时读不出来。"
+      return
+    }
+    for record in stored where record.botId == botId {
+      state = Reducer.applySubmission(
+        Submission(
+          id: record.requestId,
+          requestId: record.requestId,
+          status: record.status,
+          entryId: record.entryId,
+          answerEntryId: record.answerEntryId,
+          reason: record.reason
+        ),
+        to: state
       )
     }
   }
@@ -215,7 +255,7 @@ public final class ConversationViewModel: ObservableObject {
         inFlight.removeValue(forKey: record.requestId)
         // The terminal record is stored in the same atomic write that removes the entry
         // (PROTOCOL.md, client duties 2); a placement in a snapshot is not a settlement.
-        try? outbox.settle(record)
+        try? outbox.settle(record, botId: selectedBotId ?? "")
       }
     case .history(let page):
       state = Reducer.apply(.history(page: page), to: state)
@@ -231,7 +271,14 @@ public final class ConversationViewModel: ObservableObject {
         // text back so the user can fix or retry it (PROTOCOL.md, client duties 3).
         if let requestId {
           let text = inFlight.removeValue(forKey: requestId)
-          try? outbox.remove(requestId: requestId)
+          refused.insert(requestId)
+          do {
+            try outbox.remove(requestId: requestId)
+          } catch {
+            // The entry could not be removed: it must not be replayed behind the user's
+            // back, and the failure is shown rather than swallowed.
+            errorBanner = "消息被拒绝，但本地待发记录没有删掉。"
+          }
           state.messages.removeAll { $0.id == "local_\(requestId)" }
           if let text {
             // Neither the refused text nor a newer draft may be lost.

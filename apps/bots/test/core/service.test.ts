@@ -1485,8 +1485,17 @@ test("a lost settlement event expires, but a stale snapshot does not release it"
   now += RESERVATION_TTL_MS + 1;
   assert.equal(await attempt(), false, "an outstanding admission keeps its slot after the TTL");
 
-  // Once the runtime reports no such record, the next expiry check releases it.
+  // A status read that fails is not evidence that the admission ended.
   records.clear();
+  const originalSubmission = scripted.handle.submission;
+  scripted.handle.submission = async () => {
+    throw new Error("the ledger is unreadable");
+  };
+  now += RESERVATION_TTL_MS + 1;
+  assert.equal(await attempt(), false, "an unreadable status keeps the slot");
+  scripted.handle.submission = originalSubmission;
+
+  // Once the runtime reports no such record, the next expiry check releases it.
   now += RESERVATION_TTL_MS + 1;
   assert.equal(await attempt(), true, "a reservation the runtime no longer knows is released");
 });

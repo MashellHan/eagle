@@ -232,27 +232,32 @@ public final class ConversationSocket: NSObject {
   }
 
   /// After the deadline: one more resync, then a reconnect; never a third silent wait.
+  /// A snapshot that arrived in the meantime has already opened the barrier, so this task
+  /// neither counts it nor closes the barrier again.
   private func armResyncDeadline() {
     resyncDeadline?.cancel()
     resyncDeadline = Task { [weak self] in
       try? await Task.sleep(nanoseconds: 10_000_000_000)
       guard let self, !Task.isCancelled else { return }
       self.lock.lock()
-      let waiting = self.resyncPending && !self.closed
-      self.resyncPending = false
+      guard self.resyncPending, !self.closed else {
+        self.lock.unlock()
+        return
+      }
       self.resyncAttempts += 1
       let exhausted = self.resyncAttempts >= 2
       self.lock.unlock()
-      guard waiting else { return }
       if exhausted {
         self.disconnect(reason: "the stream kept losing revisions", code: 1011)
         return
       }
       self.enqueue(try? Wire.resync(trace: Identifiers.trace("resync")))
+      // Only keep waiting when the barrier is still the one this task owns: a snapshot
+      // that arrived meanwhile has already opened it.
       self.lock.lock()
-      self.resyncPending = true
+      let stillWaiting = self.resyncPending && !self.closed
       self.lock.unlock()
-      self.armResyncDeadline()
+      if stillWaiting { self.armResyncDeadline() }
     }
   }
 
@@ -461,7 +466,9 @@ public final class BotsConnection: ConversationPort {
     try require(botId).resync(trace: context.trace)
   }
 
-  public func loadHistory(before messageId: String, context: CommandContext, botId: String) async throws {
+  public func loadHistory(before messageId: String, context: CommandContext, botId: String)
+    async throws
+  {
     try require(botId).loadHistory(before: messageId, limit: 50, trace: context.trace)
   }
 

@@ -445,7 +445,15 @@ export class ConversationService {
       const now = this.#now();
       for (const [requestId, at] of [...bot.reserved]) {
         if (now - at <= RESERVATION_TTL_MS) continue;
-        const record = await handle.submission({ requestId }).catch(() => undefined);
+        let record: Submission | undefined;
+        try {
+          record = await handle.submission({ requestId });
+        } catch {
+          // An unreadable status is not evidence that the admission ended: keep the slot
+          // and check again later.
+          bot.reserved.set(requestId, now);
+          continue;
+        }
         if (record === undefined || record.status === "done" || record.status === "unanswered") {
           bot.reserved.delete(requestId);
         } else {

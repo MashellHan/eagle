@@ -40,7 +40,6 @@ final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var canRecover = false
   @Published private(set) var running = false
   @Published private(set) var connection: ConnectionState = .connecting
-  @Published var draft = ""
 
   /// The shell owns the sidebar's selection; the view model reports the bot it selected.
   var onSelect: ((String) -> Void)?
@@ -136,9 +135,14 @@ final class BotsWorkspaceViewModel: ObservableObject {
     publish()
   }
 
-  /// The composer's text lives in the conversation view model (the only draft); this
-  /// wrapper only publishes the result, so a refusal's restored draft is what the user
-  /// sees.
+  /// The conversation view model owns the only draft; the composer reads and writes it
+  /// through these two members, so there is no second copy to drift.
+  var draft: String { app?.conversation.draft ?? "" }
+
+  func setDraft(_ value: String) {
+    app?.conversation.draft = value
+  }
+
   func send() {
     guard let app else { return }
     app.conversation.send()

@@ -5,6 +5,7 @@ import Foundation
 /// A terminal record kept after its outbox entry is removed, so a settlement is never
 /// lost when the app closes before the client has stored it (PROTOCOL.md, client duties 2).
 public struct SettledRequest: Codable, Sendable, Equatable, Identifiable {
+  public var botId: String
   public var requestId: String
   public var status: SubmissionStatus
   public var reason: String?
@@ -14,7 +15,12 @@ public struct SettledRequest: Codable, Sendable, Equatable, Identifiable {
 
   public var id: String { requestId }
 
-  public init(record: Submission, at: String = ISO8601DateFormatter().string(from: Date())) {
+  public init(
+    botId: String,
+    record: Submission,
+    at: String = ISO8601DateFormatter().string(from: Date())
+  ) {
+    self.botId = botId
     requestId = record.requestId
     status = record.status
     reason = record.reason
@@ -79,13 +85,13 @@ public final class OutboxStore {
 
   /// Reads always come from the file: another window may have written since this one
   /// started, and an unreadable outbox is never reported as empty.
-  public func entries(for botId: String) -> [OutboxEntry] {
-    (reload()?.entries ?? []).filter { $0.botId == botId }
+  public func entries(for botId: String) throws -> [OutboxEntry] {
+    try reload().entries.filter { $0.botId == botId }
   }
 
-  public func all() -> [OutboxEntry] { reload()?.entries ?? [] }
+  public func all() throws -> [OutboxEntry] { try reload().entries }
 
-  public func settledRequests() -> [SettledRequest] { reload()?.settled ?? [] }
+  public func settledRequests() throws -> [SettledRequest] { try reload().settled }
 
   public func add(_ entry: OutboxEntry) throws {
     try mutate { entries, settled in
@@ -107,12 +113,12 @@ public final class OutboxStore {
   }
 
   /// Removes the entry only after its terminal record is in the same atomic write.
-  public func settle(_ record: Submission) throws {
+  public func settle(_ record: Submission, botId: String) throws {
     try mutate { entries, settled in
       var next = entries
       next.removeAll { $0.requestId == record.requestId }
       var records = settled.filter { $0.requestId != record.requestId }
-      records.append(SettledRequest(record: record))
+      records.append(SettledRequest(botId: botId, record: record))
       if records.count > Self.settledLimit {
         records.removeFirst(records.count - Self.settledLimit)
       }
@@ -120,10 +126,10 @@ public final class OutboxStore {
     }
   }
 
-  private func reload() -> OutboxDocument? {
+  private func reload() throws -> OutboxDocument {
     Self.lock.lock()
     defer { Self.lock.unlock() }
-    guard let document = try? Self.read(fileURL) else { return nil }
+    let document = try Self.read(fileURL)
     cache = document.entries
     settled = document.settled
     return document

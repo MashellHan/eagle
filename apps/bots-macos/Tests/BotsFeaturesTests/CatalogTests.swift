@@ -178,7 +178,7 @@ final class SettingsTests: XCTestCase {
     // The second window never saw the first entry: its write must merge, not replace.
     try second.add(OutboxEntry(botId: "b_1", requestId: "r_second", text: "二"))
     XCTAssertEqual(
-      Set(OutboxStore(directory: directory).all().map(\.requestId)),
+      Set(try OutboxStore(directory: directory).all().map(\.requestId)),
       ["r_first", "r_second"]
     )
   }
@@ -195,10 +195,11 @@ final class SettingsTests: XCTestCase {
         requestId: "r_1",
         status: .unanswered,
         reason: "aborted"
-      )
+      ),
+      botId: "b_1"
     )
-    XCTAssertEqual(store.all(), [], "the entry leaves")
-    let settled = store.settledRequests()
+    XCTAssertEqual(try store.all(), [], "the entry leaves")
+    let settled = try store.settledRequests()
     XCTAssertEqual(settled.map(\.requestId), ["r_1"], "the settlement is durable")
     XCTAssertEqual(settled.first?.status, .unanswered)
     XCTAssertEqual(settled.first?.reason, "aborted")
@@ -213,22 +214,25 @@ final class SettingsTests: XCTestCase {
       try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
       try? FileManager.default.removeItem(at: directory)
     }
-    try "{\"entries\":[{\"botId\":\"b_1\",\"requestId\":\"r_1\",\"text\":\"一\",\"whenBusy\":\"followUp\",\"createdAt\":\"x\"}],\"settled\":[]}".write(
-      to: file,
-      atomically: true,
-      encoding: .utf8
-    )
-    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
+    try
+      "{\"entries\":[{\"botId\":\"b_1\",\"requestId\":\"r_1\",\"text\":\"一\",\"whenBusy\":\"followUp\",\"createdAt\":\"x\"}],\"settled\":[]}"
+      .write(
+        to: file,
+        atomically: true,
+        encoding: .utf8
+      )
+    try "not json at all".write(to: file, atomically: true, encoding: .utf8)
     let store = OutboxStore(directory: directory)
+    XCTAssertThrowsError(try store.all(), "an unreadable outbox is unknown, not empty")
     XCTAssertThrowsError(
       try store.add(OutboxEntry(botId: "b_1", requestId: "r_2", text: "二")),
       "a read failure must fail the write, not overwrite the file"
     )
-    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    // A malformed file is not overwritten by a failed mutation either.
     XCTAssertEqual(
-      OutboxStore(directory: directory).all().map(\.requestId),
-      ["r_1"],
-      "the existing entry survived"
+      try String(contentsOf: file, encoding: .utf8),
+      "not json at all",
+      "the file was left untouched"
     )
   }
 
@@ -240,13 +244,13 @@ final class SettingsTests: XCTestCase {
     try OutboxStore(directory: directory).add(entry)
 
     let reopened = OutboxStore(directory: directory)
-    XCTAssertEqual(reopened.entries(for: "b_1"), [entry], "the outbox is durable")
+    XCTAssertEqual(try reopened.entries(for: "b_1"), [entry], "the outbox is durable")
     let attributes = try FileManager.default.attributesOfItem(
       atPath: directory.appendingPathComponent("outbox.json").path
     )
     XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
     try reopened.remove(requestId: "r_1")
-    XCTAssertEqual(OutboxStore(directory: directory).all(), [])
+    XCTAssertEqual(try OutboxStore(directory: directory).all(), [])
   }
 
   func testRenameUpdatesTheListAndErrorsAreReported() async throws {

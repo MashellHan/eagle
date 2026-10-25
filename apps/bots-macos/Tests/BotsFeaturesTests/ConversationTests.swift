@@ -41,8 +41,8 @@ final class ConversationTests: XCTestCase {
     XCTAssertEqual(model.draft, "", "the composer clears when the send leaves")
     XCTAssertEqual(model.state.messages.count, 1, "the bubble is shown before the daemon answers")
     XCTAssertTrue(model.state.messages[0].isOptimistic)
-    XCTAssertEqual(outbox.entries(for: "b_1").count, 1, "the outbox is stored before the frame")
-    let requestId = try XCTUnwrap(outbox.entries(for: "b_1").first?.requestId)
+    XCTAssertEqual(try outbox.entries(for: "b_1").count, 1, "the outbox is stored before the frame")
+    let requestId = try XCTUnwrap(try outbox.entries(for: "b_1").first?.requestId)
     try await waitUntil { fake.sent.count == 1 }
     XCTAssertEqual(fake.sent.last?.requestId, requestId)
 
@@ -67,7 +67,7 @@ final class ConversationTests: XCTestCase {
     )
     try await waitUntil { model.state.messages.count == 1 && !model.state.messages[0].isOptimistic }
     XCTAssertEqual(model.state.messages[0].id, "e_7")
-    XCTAssertEqual(outbox.entries(for: "b_1").count, 0, "a terminal record removes the entry")
+    XCTAssertEqual(try outbox.entries(for: "b_1").count, 0, "a terminal record removes the entry")
   }
 
   func testNotAdmittedRemovesTheBubbleAndTheOutboxEntry() async throws {
@@ -77,7 +77,7 @@ final class ConversationTests: XCTestCase {
     try await waitUntil { model.connection == .ready }
     model.draft = "太长"
     model.send()
-    let requestId = try XCTUnwrap(outbox.entries(for: "b_1").first?.requestId)
+    let requestId = try XCTUnwrap(try outbox.entries(for: "b_1").first?.requestId)
 
     fake.emit(
       .error(
@@ -89,7 +89,7 @@ final class ConversationTests: XCTestCase {
       )
     )
     try await waitUntil { model.state.messages.isEmpty }
-    XCTAssertEqual(outbox.entries(for: "b_1").count, 0, "a refusal clears the entry")
+    XCTAssertEqual(try outbox.entries(for: "b_1").count, 0, "a refusal clears the entry")
     XCTAssertEqual(model.draft, "太长", "and the text comes back so it can be fixed")
     XCTAssertNotNil(model.errorBanner)
   }
@@ -101,7 +101,7 @@ final class ConversationTests: XCTestCase {
     try await waitUntil { model.connection == .ready }
     model.draft = "重要的问题"
     model.send()
-    let requestId = try XCTUnwrap(outbox.entries(for: "b_1").first?.requestId)
+    let requestId = try XCTUnwrap(try outbox.entries(for: "b_1").first?.requestId)
 
     fake.emit(
       .error(
@@ -114,7 +114,7 @@ final class ConversationTests: XCTestCase {
     )
     try await Task.sleep(nanoseconds: 40_000_000)
     XCTAssertEqual(
-      outbox.entries(for: "b_1").count,
+      try outbox.entries(for: "b_1").count,
       1,
       "an unknown outcome keeps the entry for a retry with the same requestId"
     )
@@ -407,6 +407,67 @@ final class ConversationLifecycleTests: XCTestCase {
       fake.sent.first?.requestId,
       "reconciliation never invents a new request id"
     )
+  }
+
+  func testASettledRecordIsRestoredWhenTheBotIsSelected() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bots-settled-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let outbox = OutboxStore(directory: directory)
+    try outbox.add(OutboxEntry(botId: "b_1", requestId: "r_settled", text: "问"))
+    try outbox.settle(
+      Submission(id: "s_1", requestId: "r_settled", status: .unanswered, reason: "aborted"),
+      botId: "b_1"
+    )
+    let fake = FakeConversation()
+    let model = ConversationViewModel(botId: "", conversation: fake, outbox: outbox)
+    model.select(botId: "b_1")
+    try await Task.sleep(nanoseconds: 30_000_000)
+    XCTAssertEqual(model.state.ranks["r_settled"]?.status, .unanswered)
+    XCTAssertEqual(model.state.ranks["r_settled"]?.reason, "aborted")
+    XCTAssertTrue(model.state.pending.isEmpty)
+  }
+
+  func testARefusedRequestIsNotReplayedWhenItsEntryCannotBeRemoved() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bots-refused-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: directory.path)
+      try? FileManager.default.removeItem(at: directory)
+    }
+    let fake = FakeConversation()
+    let outbox = OutboxStore(directory: directory)
+    let model = ConversationViewModel(botId: "b_1", conversation: fake, outbox: outbox)
+    model.select(botId: "b_1")
+    fake.emit(.connection(.ready))
+    fake.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await Task.sleep(nanoseconds: 40_000_000)
+    model.draft = "A"
+    model.send()
+    try await Task.sleep(nanoseconds: 40_000_000)
+    let requestId = try XCTUnwrap(fake.sent.last?.requestId)
+    let sendsBefore = fake.sent.count
+
+    // The refusal cannot be removed because the directory refuses the atomic write.
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+    fake.emit(
+      .error(
+        kind: .invalidCommand,
+        disposition: .notAdmitted,
+        message: "refused",
+        failure: "f_1",
+        requestId: requestId
+      )
+    )
+    try await Task.sleep(nanoseconds: 60_000_000)
+    // A reconnect reconciles the outbox; the refused request must not be re-sent.
+    fake.emit(.connection(.reconnecting(attempt: 1)))
+    fake.emit(.connection(.ready))
+    fake.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await Task.sleep(nanoseconds: 80_000_000)
+    XCTAssertEqual(fake.sent.count, sendsBefore, "a refused request is never replayed")
   }
 
   func testRetryReusesTheStoredRequestId() async throws {

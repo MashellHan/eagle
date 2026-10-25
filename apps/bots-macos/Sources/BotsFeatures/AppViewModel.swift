@@ -122,7 +122,7 @@ public final class AppViewModel: ObservableObject {
   }
 
   public func pendingOutbox(for botId: String) -> [OutboxEntry] {
-    outbox.entries(for: botId)
+    (try? outbox.entries(for: botId)) ?? []
   }
 
   public func dismissError() {
