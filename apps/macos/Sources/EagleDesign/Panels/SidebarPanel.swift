@@ -88,7 +88,9 @@ public struct SidebarPanel: View {
   private var list: some View {
     ScrollViewReader { proxy in
       ScrollView {
-        VStack(alignment: .leading, spacing: 0) {
+        // A small gap keeps the selected row's card and a hovered neighbour from
+        // touching (they are separate boxes, not one stacked list).
+        VStack(alignment: .leading, spacing: 2) {
           ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
             sectionHeader(section, isFirst: index == 0)
             if section.isExpanded {

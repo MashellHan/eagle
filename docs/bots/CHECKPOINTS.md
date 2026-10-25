@@ -345,10 +345,10 @@ Verified (run just now):
   the Bots group; launched against the real daemon it listed the existing bots and
   rendered their conversation in the main window. `EagleDesignTests`' palette-sampling
   tests fail in this shell (they read dynamic NSColors; untouched by this change).
-- The reviewer's two observations from the first hands-on pass were fixed: the sidebar
-  group chevron is always visible instead of hover-only, and one send no longer paints
-  two user bubbles (the placement removes the optimistic bubble even when the daemon's
-  append carries no `requestId`).
+- The reviewer's hands-on observations were fixed: the sidebar group chevron is always
+  visible instead of hover-only, adjacent sidebar cards keep a small gap instead of
+  touching, and one send no longer paints two user bubbles (the placement removes the
+  optimistic bubble even when the daemon's append carries no `requestId`).
 
 Next broken hop: history paging from the transcript, bot settings and per-bot inspector
 content; stage 4's three deferred daemon races are still open.
