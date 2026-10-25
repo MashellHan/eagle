@@ -3,7 +3,7 @@
 // catalog, no transport and no revision.
 
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
 import {
@@ -130,7 +130,11 @@ export class PiDurableRuntime implements RuntimePort {
         storage,
         {
           models: this.#options.models,
-          registry: createToolRegistry(workspaceRoot),
+          registry: createToolRegistry({
+            workspaceRoot,
+            // The daemon's root: the token, the catalog and every other bot's files.
+            daemonRoot: resolve(spec.dir, "..", ".."),
+          }),
           settings: { ...DEFAULT_SETTINGS, ...this.#options.settings?.(spec) } as never,
           onReport: (_error, info) => {
             if (handle === undefined) pending.push(info);

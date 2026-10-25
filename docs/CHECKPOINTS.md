@@ -1476,3 +1476,17 @@ A checkpoint is what a person can actually see, so this records the absence too.
 - **Next broken hop:** no socket. The runtime answers in-process only, so the first
   user-visible milestone remains stage 4's `src/server/` plus `src/main.ts`, and the
   first clickable one remains stage 5's macOS client.
+
+## 2026-10-26 — Bots phase 2 slice 1 hardening
+
+- **What a person can observe:** nothing new in a window; this round makes the four
+  auto-executed tools actually safe. A command can no longer read the daemon's token or
+  another bot's files (Seatbelt denies the daemon root), a background process cannot
+  outlive its deadline, and a symlink inside the workspace cannot redirect a read or a
+  write outside it.
+- **Evidence:** `cd apps/bots && npm run check` — 376/376 tests, coverage 95.02/89.24/91.02;
+  `test:crash` 5/5; `perf` 1/1. The new tests run real commands and real temp trees:
+  daemon-root denial, process-group timeout, abort, UTF-8 split across chunks, FIFO
+  refusal, mode tightening, unreadable directory surfacing, and the six escape paths.
+- **Next broken hop:** rendering tool rows in the client (still off the wire), then the
+  herdr tools of slice 2.

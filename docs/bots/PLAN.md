@@ -221,16 +221,25 @@ but no measured layout pass.
 
 `apps/bots/src/tools/` installs the `bots-tools` extension in every Harness: `read_file`,
 `write_file`, `list_files` and `run_command`, bound to `<bot dir>/workspace`, executed
-without an approval gate. Paths are confined lexically and through symlinks, commands get
-a deadline and a 64 KiB output cap, the child environment is an allowlist (no daemon
-secrets), and a refusal or a non-zero exit is a tool result the model reads. The agent's
+without an approval gate. Paths are confined lexically and component by component (a
+symlink, including a dangling one, is refused; files open with `O_NOFOLLOW` and only
+regular files are read), commands run under a Seatbelt profile that denies the daemon root
+and every other bot, a deadline kills the whole process group, both output streams share
+one 64 KiB budget, and the child environment is an allowlist (no daemon secrets). A
+refusal or a non-zero exit is a tool result the model reads. The agent's
 `cwd` is the workspace, `capabilities.tools` is true, and a tool round works over the real
 adapter (tests drive a faux model that calls a tool, checks the result reached the model,
 and asserts the file/command effect). Tool calls already fit the wire; rendering tool
 rows in the client is the next slice, so `pi.tool-result` stays off the wire for now.
 
-Slice 2 (herdr: open a space, schedule the controller, monitor, fetch, bidirectional
-messages) is next, as a second extension with the same layering.
+The first Codex review of slice 1 (reasoning max) returned six P1s: a shell with no
+filesystem isolation, a dangling-link write-through, a check/use race in path resolution,
+a workspace root that trusted a symlink, a timeout that killed only the shell PID, and a
+tool that ignored cancellation. The hardening above closes the first five and adds abort
+handling; the remaining intermediate-directory race is recorded in RUNTIME.md as a known
+limit (it needs `openat`, which Node does not expose). Slice 2 (herdr: open a space,
+schedule the controller, monitor, fetch, bidirectional messages) is next, as a second
+extension with the same layering.
 
 ## Next work, in order
 

@@ -311,11 +311,32 @@ Rules:
 - **Auto-execute.** There is no approval gate and no hook that asks the user; execution
   is the product. Tools do not receive a separate switch per call.
 - **Workspace confinement.** The workspace is `<bot dir>/workspace`, created 0700 on open
-  and the agent's `cwd`. Every path resolves inside it lexically and through symlinks;
-  an escape is a tool result the model reads, never an exception.
+  and the agent's `cwd`; it is refused if it is itself a symlink. Every file tool path is
+  resolved inside the canonical root lexically **and** component by component; a symlink
+  anywhere at or below the root — including a dangling one — is refused rather than
+  followed. The final component is opened with `O_NOFOLLOW`, only a regular file is read
+  (a FIFO or device cannot stall or redirect a call), and an overwrite is tightened to
+  0600. An escape is a tool result the model reads, never an exception.
+- **The daemon root is out of reach.** A command runs under a macOS Seatbelt profile
+  (`/usr/bin/sandbox-exec`) that denies reading and writing everything under the daemon
+  root — the token, the catalog, every other bot — while allowing the bot's own
+  workspace. Outside that root the shell is the agent's own machine, by design: a coding
+  agent needs to run toolchains, and there is no approval gate. Where `sandbox-exec` does
+  not exist the command runs unsandboxed and this document is the contract that says so.
 - **No daemon secrets.** A command's environment is an allowlist (`PATH`, `HOME`, `LANG`,
-  `LC_ALL`, `TMPDIR`, `SHELL`, plus `TERM=dumb` and `PWD`), so a command cannot read
-  `BOTS_API_KEY`, the bearer token or the signing key.
+  `LC_ALL`, `TMPDIR`, `SHELL`, plus `TERM=dumb` and `PWD`), and the child is `detached` in
+  its own process group so a timeout or an abort kills its descendants too.
+- **Bounded output.** Both streams share one 64 KiB budget, decoded as UTF-8 across chunk
+  boundaries; `[stderr]` marks the switch, the exit code is always the last line, and each
+  tool's SDK `outputLimits` matches its own cap so the SDK never cuts the result — a
+  timed-out command still carries the stderr collected before the deadline.
+- **Cancellation.** `run_command` follows the run's abort signal: an aborted run kills the
+  process group and the model sees an aborted result instead of a live command.
+- **Residual race.** A process that can already write inside the workspace could swap an
+  intermediate directory for a link between the component check and the open. The final
+  component is protected by `O_NOFOLLOW` and commands are additionally confined by the
+  sandbox; closing the intermediate window fully would need `openat` chains the Node API
+  does not expose, and is recorded as a known limit rather than claimed fixed.
 - **Failures are results.** A refusal, a missing file, a timeout and a non-zero exit are
   returned to the model as text; a run never crashes because a tool failed.
 - **Replay.** `read_file` and `list_files` are `replay: "safe"`; `write_file` and

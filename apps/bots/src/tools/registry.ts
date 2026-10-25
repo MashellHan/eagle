@@ -34,6 +34,8 @@ export const createBotsTools = (workspace: BotWorkspace): readonly ToolRegistrat
     }),
     // A read has no side effect, so an interrupted call may rerun after a restart.
     replay: "safe",
+    // The page the tool returns is what the SDK keeps, so its own budget is the ceiling.
+    outputLimits: { maxBytes: 64 * 1024, maxLines: 2_000, retain: "head" },
     execute: async (args) => result(await readFileTool(workspace, args)),
   }),
   defineTool({
@@ -44,6 +46,7 @@ export const createBotsTools = (workspace: BotWorkspace): readonly ToolRegistrat
       path: Type.String({ description: "File path, relative to the workspace" }),
       content: Type.String({ description: "The complete file content" }),
     }),
+    outputLimits: { maxBytes: 64 * 1024, maxLines: 2_000, retain: "head" },
     execute: async (args) => result(await writeFileTool(workspace, args)),
   }),
   defineTool({
@@ -57,6 +60,7 @@ export const createBotsTools = (workspace: BotWorkspace): readonly ToolRegistrat
       limit: Type.Optional(Type.Number({ description: "Maximum entries (default 2000)" })),
     }),
     replay: "safe",
+    outputLimits: { maxBytes: 64 * 1024, maxLines: 2_000, retain: "head" },
     execute: async (args) => result(await listFilesTool(workspace, args)),
   }),
   defineTool({
@@ -70,7 +74,10 @@ export const createBotsTools = (workspace: BotWorkspace): readonly ToolRegistrat
       ),
       timeoutMs: Type.Optional(Type.Number({ description: "Deadline in milliseconds" })),
     }),
-    execute: async (args) => result(await runCommandTool(workspace, args)),
+    // The exit code is the last line, so the SDK keeps the tail of the output.
+    outputLimits: { maxBytes: 64 * 1024, retain: "tail" },
+    execute: async (args, _api, context) =>
+      result(await runCommandTool(workspace, args, context.abortSignal)),
   }),
 ];
 
@@ -78,8 +85,15 @@ export const createBotsTools = (workspace: BotWorkspace): readonly ToolRegistrat
  * A registry holding the bots-tools extension for one workspace. It is built per Harness:
  * the tools are bound to that bot's workspace, never to another bot's.
  */
-export const createToolRegistry = (workspaceRoot: string) => {
-  const workspace: BotWorkspace = { root: workspaceRoot };
+export const createToolRegistry = (options: {
+  readonly workspaceRoot: string;
+  readonly daemonRoot: string;
+}) => {
+  const workspace: BotWorkspace = {
+    root: options.workspaceRoot,
+    daemonRoot: options.daemonRoot,
+  };
+  const workspaceRoot = options.workspaceRoot;
   const registry = createRegistry();
   registry.install(
     defineExtension({

@@ -2,8 +2,10 @@
 // workspace and validated arguments and returns what the model should see. Failures are
 // results, not exceptions, so one bad path cannot fail the run.
 export type BotWorkspace = {
-  /** Absolute path of the bot's workspace; every tool path resolves inside it. */
+  /** Absolute, canonical path of the bot's workspace; every tool path resolves inside it. */
   readonly root: string;
+  /** The daemon's root (token, catalog, other bots), which a command may not touch. */
+  readonly daemonRoot: string;
 };
 
 export type ToolOutcome = {
