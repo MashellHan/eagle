@@ -207,6 +207,7 @@ server → { "type": "snapshot", "rev": 42, "trace": "tr_…", "value": Conversa
   "messages": [ Message, … ],            // newest page, oldest first
   "truncatedBefore": "e_3",              // present when older messages exist
   "streaming": { "messageId": "p_a2" },  // null when no run is active; always present
+  "parked": true,                        // optional; a task needs `recover` to be retried
   "pending": [                           // admitted, not yet settled
     { "requestId": "r_…", "submissionId": "s_3", "status": "queued" }
   ],
@@ -231,6 +232,9 @@ Snapshot semantics:
 - `streaming` is null while an over-limit attempt is withdrawn (see above): absence
   of a provisional never means the run has no work, which is why `running` is a
   separate field.
+- `parked` is present when a task is parked and `recover` retries it; the flag is in the
+  snapshot (not only in the one-shot `error`) so a client that connects later still
+  offers the recovery, and a snapshot after a successful `recover` omits it.
 - When `unavailable` is present, every collection is still present and empty and
   `streaming` is `null`, but they mean **unknown**, not empty: the client renders the
   reason and offers `recover`, and never treats the empty arrays as truth. `agent`
