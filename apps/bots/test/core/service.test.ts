@@ -206,13 +206,20 @@ test("a failed open does not poison the next attempt", async () => {
     },
     measure: utf8,
   });
-  await assert.rejects(() => subscribe(service, []));
+  // A bot that cannot open is unavailable, not a failed connection: the client sees the
+  // reason and can recover it (PROTOCOL.md, "Subscription").
+  const refused = await subscribe(service, []);
+  assert.equal(refused.snapshot.unavailable?.reason, "storage_failed");
+  assert.deepEqual(refused.snapshot.messages, []);
   const received: HubEvent[] = [];
-  await subscribe(service, received);
-  assert.equal(attempts, 2);
+  await subscribe(service, received, "c_recover");
+  const before = received.length;
+  await service.recover("c_recover", "tr_recover_1");
+  assert.equal(attempts, 2, "recover re-opens the harness");
   assert.deepEqual(
-    received.map((event) => event.type),
+    received.slice(before).map((event) => event.type),
     ["snapshot"],
+    "recover broadcasts the new view",
   );
 });
 

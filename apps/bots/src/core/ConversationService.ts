@@ -52,7 +52,9 @@ const failure = (kind: ErrorKind, layer: Failure["layer"] = "core"): Failure => 
 });
 
 type Bot = {
-  readonly handle: RuntimeHandle;
+  /** Absent while the bot is unavailable: the view still renders, the run cannot. */
+  handle: RuntimeHandle | undefined;
+  degraded: { readonly reason: ErrorKind; readonly message: string } | undefined;
   readonly hub: EventHub;
   snapshot: ConversationSnapshot;
   readonly ranks: SubmissionRanks;
@@ -155,10 +157,10 @@ export class ConversationService {
    * revision, and settlements reach everyone through the hub instead.
    */
   async send(connectionId: string, input: SubmitInput): Promise<Submission> {
-    const bot = this.#subscribed(connectionId, input.requestId);
+    const handle = this.#handle(connectionId, input.requestId);
     let stored: Submission | undefined;
     try {
-      stored = await bot.handle.submission({ requestId: input.requestId });
+      stored = await handle.submission({ requestId: input.requestId });
     } catch (cause) {
       if (cause instanceof ClassifiedFailure) throw cause;
       throw new CommandError(
@@ -171,7 +173,7 @@ export class ConversationService {
     }
     if (stored !== undefined) return stored;
     try {
-      return await bot.handle.submit(input);
+      return await handle.submit(input);
     } catch (cause) {
       // A failure the runtime already classified keeps its identity and disposition; only
       // an unclassified one becomes "admission unconfirmed", where the client keeps its
@@ -189,12 +191,39 @@ export class ConversationService {
 
   /** `abort` withdraws the running input and everything queued behind it. */
   async abort(connectionId: string, trace: string): Promise<void> {
-    await this.#subscribed(connectionId).handle.abort(trace);
+    await this.#handle(connectionId).abort(trace);
   }
 
-  /** `recover` retries parked work and never aborts a healthy answer. */
+  /**
+   * `recover` never aborts a healthy answer: an unavailable bot is opened again and the
+   * connection is handed the new view, a parked task is retried, a healthy bot answers
+   * with its snapshot.
+   */
   async recover(connectionId: string, trace: string): Promise<void> {
-    await this.#subscribed(connectionId).handle.recover(trace);
+    const connection = this.#connections.get(connectionId);
+    if (connection === undefined || connection.state !== "live" || connection.bot === undefined) {
+      throw this.#refuse("the connection has no subscription");
+    }
+    const bot = connection.bot;
+    if (bot.degraded !== undefined) {
+      const rebuilt = await this.#reopen(bot, connection.botId, trace);
+      bot.hub.publishSnapshot(rebuilt, trace);
+      return;
+    }
+    await this.#handle(connectionId).recover(trace);
+    bot.hub.publishSnapshot(bot.snapshot, trace);
+  }
+
+  /** Re-opens an unavailable bot and adopts the new handle in place, so the hub survives. */
+  async #reopen(bot: Bot, botId: string, trace: string): Promise<ConversationSnapshot> {
+    const handle = await this.#open(botId, trace);
+    const rebuilt = await this.#attach(handle, bot.hub, trace);
+    bot.handle = rebuilt.handle;
+    bot.degraded = undefined;
+    bot.snapshot = rebuilt.snapshot;
+    Object.assign(bot, { ranks: rebuilt.ranks });
+    rebuilt.release();
+    return bot.snapshot;
   }
 
   /** Older messages, oldest first. The newest window is not re-fetched. */
@@ -202,7 +231,7 @@ export class ConversationService {
     connectionId: string,
     input: { readonly beforeEntryId?: EntryId; readonly limit: number },
   ): Promise<RuntimeHistory> {
-    return this.#subscribed(connectionId).handle.history(input);
+    return this.#handle(connectionId).history(input);
   }
 
   /**
@@ -219,6 +248,20 @@ export class ConversationService {
 
   #refuse(message: string, requestId?: string): CommandError {
     return new CommandError(failure("invalid_command"), "not_admitted", message, requestId);
+  }
+
+  /** A live bot that can actually run; an unavailable one refuses the command. */
+  #handle(connectionId: string, requestId?: string): RuntimeHandle {
+    const bot = this.#subscribed(connectionId, requestId);
+    if (bot.handle === undefined) {
+      throw new CommandError(
+        failure(bot.degraded?.reason ?? "storage_failed"),
+        "runtime",
+        "the bot is unavailable; recover it first",
+        requestId,
+      );
+    }
+    return bot.handle;
   }
 
   #subscribed(connectionId: string, requestId?: string): Bot {
@@ -242,8 +285,38 @@ export class ConversationService {
   }
 
   async #openBot(botId: string, trace: string): Promise<Bot> {
-    const handle = await this.#open(botId, trace);
     const hub = new EventHub(botId, trace, this.#hubOptions);
+    try {
+      const handle = await this.#open(botId, trace);
+      return await this.#attach(handle, hub, trace);
+    } catch (error) {
+      // A bot that cannot open is `unavailable`, not a failed connection: the client
+      // renders the reason and can `recover` it.
+      if (error instanceof ClassifiedFailure && error.failure.kind === "unknown_bot") throw error;
+      if (error instanceof CommandError && error.disposition === "not_admitted") throw error;
+      const classified = error instanceof ClassifiedFailure ? error : undefined;
+      const reason = classified?.failure.kind ?? "storage_failed";
+      const message = classified?.message ?? "the bot could not be opened";
+      return {
+        handle: undefined,
+        degraded: { reason, message },
+        hub,
+        snapshot: {
+          botId,
+          messages: [],
+          pending: [],
+          inbox: [],
+          running: false,
+          streaming: null,
+          unavailable: { reason, message },
+        },
+        ranks: new Map(),
+        release: () => undefined,
+      };
+    }
+  }
+
+  async #attach(handle: RuntimeHandle, hub: EventHub, trace: string): Promise<Bot> {
     const buffered: RuntimeEvent[] = [];
     let ready = false;
     let bot: Bot;
@@ -267,6 +340,7 @@ export class ConversationService {
     seedRanks(ranks, subscription.snapshot.pending);
     bot = {
       handle,
+      degraded: undefined,
       hub,
       snapshot: subscription.snapshot,
       ranks,
