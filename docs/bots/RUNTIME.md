@@ -391,7 +391,11 @@ Rules:
   this bot's prefix is adopted, and several are refused rather than guessed; a recorded
   space that fails verification is revoked in place, and its id is also written to
   `herdr.revoked.json` beside the record, so replacing the space and closing the new one
-  cannot make a later open adopt it. A record whose owner is another bot, or whose label
+  cannot make a later open adopt it. If that tombstone cannot be written, the replacement
+  does not happen at all ("nothing was changed"); tombstones are pruned only for spaces
+  herdr no longer reports, never evicted while live, and a full list fails safely rather
+  than forgetting one. A tombstone file that exists but cannot be attributed to this bot is
+  not trusted as empty: adoption is disabled instead. A record whose owner is another bot, or whose label
   carries another bot's prefix, is foreign and is never obeyed. A space that could not be recorded
   is closed again; when even that close fails, the result names the leftover space so a
   person can close it.
@@ -411,9 +415,11 @@ Rules:
   bounded by the space rule above, not by the file system profile.
 - **A label is not an ownership credential.** The nonce makes a collision with a user
   workspace implausible, but a user who copies the exact label of a bot's space can be
-  adopted when that bot has lost its state file. That trade-off keeps a lost state from
-  leaking a second space; several candidates are refused instead of guessed, and a state
-  file that is present but fails verification is never adopted.
+  adopted when that bot has lost both its state file and its tombstone list. That trade-off
+  keeps a lost state from leaking a second space; several candidates are refused instead of
+  guessed, and a state file that is present but fails verification is never adopted. Both
+  files live in the bot's own directory, which the model cannot write; removing them is a
+  person's deliberate act, and adoption then resumes as described above.
 - **Reading is evidence, not proof.** `idle`/`done` mean herdr saw a settled agent, not
   that its work finished; `blocked` is a dialog the controller raised, and the bot may
   inspect it with `herdr_read` and answer it with `herdr_keys`.

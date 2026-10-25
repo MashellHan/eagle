@@ -604,3 +604,109 @@ test("a failed rollback reports the space it left behind", async () => {
     await bench_.cleanup();
   }
 });
+
+const tombstonePathOf = (statePath: string): string =>
+  statePath.replace(/herdr\.json$/, "herdr.revoked.json");
+
+test("a long tombstone list never evicts a still-live refused space", async () => {
+  const bench_ = await bench();
+  try {
+    const spaces = Array.from({ length: 25 }, (_, index) => ({
+      spaceId: `w${index + 1}`,
+      spaceLabel: `bots-abot-x${String(index).padStart(3, "0")}`,
+    }));
+    for (const space of spaces) {
+      bench_.client.workspaces.push({ id: space.spaceId, label: space.spaceLabel });
+      bench_.client.panesBySpace.set(space.spaceId, [
+        { paneId: `${space.spaceId}:p1`, workspaceId: space.spaceId },
+      ]);
+    }
+    bench_.client.nextId = 26;
+    await writeFile(tombstonePathOf(bench_.statePath), JSON.stringify({ owner: "a-bot", spaces }));
+    const opened = await bench_.call("herdr_open_space", {});
+    assert.match(opened.text, /opened space w26/);
+    const calledCreate = bench_.client.calls.filter((call) => call.method === "createWorkspace");
+    assert.equal(calledCreate.length, 1);
+    const record = JSON.parse(await readFile(tombstonePathOf(bench_.statePath), "utf8")) as {
+      spaces: { spaceId: string }[];
+    };
+    assert.equal(
+      record.spaces.some((space) => space.spaceId === "w1"),
+      true,
+    );
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("a failed tombstone write blocks the replacement instead of proceeding", async () => {
+  const bench_ = await bench();
+  try {
+    await bench_.call("herdr_open_space", {});
+    bench_.client.panesBySpace.set("w1", [{ paneId: "w1:p9", workspaceId: "w1" }]);
+    const { mkdir: makeDir } = await import("node:fs/promises");
+    await makeDir(`${tombstonePathOf(bench_.statePath)}.tmp`, { recursive: true });
+    const before = bench_.client.calls.filter((call) => call.method === "createWorkspace").length;
+    const refused = await bench_.call("herdr_open_space", {});
+    assert.equal(refused.isError, true);
+    assert.match(refused.text, /could not be recorded/);
+    assert.equal(
+      bench_.client.calls.filter((call) => call.method === "createWorkspace").length,
+      before,
+    );
+    assert.equal(
+      bench_.client.calls.some((call) => call.method === "closeWorkspace"),
+      false,
+    );
+  } finally {
+    const { rm: remove } = await import("node:fs/promises");
+    await remove(`${tombstonePathOf(bench_.statePath)}.tmp`, { recursive: true, force: true });
+    await bench_.cleanup();
+  }
+});
+
+test("a foreign tombstone is never trusted as an empty list", async () => {
+  const bench_ = await bench();
+  try {
+    await bench_.call("herdr_open_space", {});
+    bench_.client.panesBySpace.set("w1", [{ paneId: "w1:p9", workspaceId: "w1" }]);
+    await bench_.call("herdr_open_space", {});
+    await bench_.call("herdr_close_space", {});
+    const record = JSON.parse(await readFile(tombstonePathOf(bench_.statePath), "utf8")) as {
+      owner: string;
+      spaces: { spaceId: string }[];
+    };
+    // Another owner's tombstone file still names w1: adoption must not proceed.
+    await writeFile(
+      tombstonePathOf(bench_.statePath),
+      JSON.stringify({ owner: "b-bot", spaces: record.spaces }),
+    );
+    const reopened = await bench_.call("herdr_open_space", {});
+    assert.match(reopened.text, /opened space w3/);
+    assert.equal(
+      bench_.client.calls.some((call) => call.method === "closeWorkspace"),
+      true,
+    );
+    assert.equal(bench_.client.panesBySpace.get("w1")?.[0]?.paneId, "w1:p9");
+  } finally {
+    await bench_.cleanup();
+  }
+});
+
+test("with both records removed, adoption resumes as documented", async () => {
+  const bench_ = await bench();
+  try {
+    await bench_.call("herdr_open_space", {});
+    bench_.client.panesBySpace.set("w1", [{ paneId: "w1:p9", workspaceId: "w1" }]);
+    await bench_.call("herdr_open_space", {});
+    await bench_.call("herdr_close_space", {});
+    // Only a person can remove both files (the bot's own directory is not writable by the
+    // model): with no memory left, the single matching label is adopted again.
+    await rm(bench_.statePath, { force: true });
+    await rm(tombstonePathOf(bench_.statePath), { force: true });
+    const reopened = await bench_.call("herdr_open_space", {});
+    assert.match(reopened.text, /reopened space w1/);
+  } finally {
+    await bench_.cleanup();
+  }
+});

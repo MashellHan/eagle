@@ -101,18 +101,42 @@ type Tombstones = {
   readonly spaces: readonly { readonly spaceId: string; readonly spaceLabel: string }[];
 };
 
-const readTombstones = async (path: string, botId: string): Promise<readonly string[]> => {
+type TombstoneRead = {
+  readonly ids: readonly string[];
+  /** `false` when the file exists but cannot be attributed to this bot: never adopt then. */
+  readonly trusted: boolean;
+};
+
+const readTombstones = async (path: string, botId: string): Promise<TombstoneRead> => {
   const text = await readFile(path, "utf8").catch(() => undefined);
-  if (text === undefined) return [];
+  if (text === undefined) return { ids: [], trusted: true };
   try {
     const parsed = JSON.parse(text) as Partial<Tombstones>;
-    if (parsed.owner !== botId || !Array.isArray(parsed.spaces)) return [];
-    return parsed.spaces.flatMap((entry) =>
-      typeof entry?.spaceId === "string" ? [entry.spaceId] : [],
-    );
+    if (parsed.owner !== botId || !Array.isArray(parsed.spaces)) {
+      return { ids: [], trusted: false };
+    }
+    return {
+      ids: parsed.spaces.flatMap((entry) =>
+        typeof entry?.spaceId === "string" ? [entry.spaceId] : [],
+      ),
+      trusted: true,
+    };
   } catch {
-    return [];
+    return { ids: [], trusted: false };
   }
+};
+
+const writeTombstones = async (
+  path: string,
+  botId: string,
+  spaces: readonly { readonly spaceId: string; readonly spaceLabel: string }[],
+): Promise<void> => {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const temporary = `${path}.tmp`;
+  await writeFile(temporary, `${JSON.stringify({ owner: botId, spaces }, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  await rename(temporary, path);
 };
 
 const addTombstone = async (
@@ -122,7 +146,6 @@ const addTombstone = async (
 ): Promise<void> => {
   const text = await readFile(path, "utf8").catch(() => undefined);
   let existing: { spaceId: string; spaceLabel: string }[] = [];
-  let owner = botId;
   if (text !== undefined) {
     try {
       const parsed = JSON.parse(text) as Partial<Tombstones>;
@@ -136,20 +159,15 @@ const addTombstone = async (
     } catch {
       existing = [];
     }
-    owner = botId;
   }
   if (existing.some((entry) => entry.spaceId === space.spaceId)) return;
-  const spaces = [...existing, space].slice(-20);
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const temporary = `${path}.tmp`;
-  await writeFile(temporary, `${JSON.stringify({ owner, spaces }, null, 2)}\n`, {
-    mode: 0o600,
-  });
-  await rename(temporary, path);
+  // No silent eviction: a dropped entry could be adopted later. Pruning happens only
+  // against live spaces in open, and this hard ceiling fails safely instead of forgetting.
+  if (existing.length >= 4_096) {
+    throw new ToolError("the refused-space record is full; close stale spaces first");
+  }
+  await writeTombstones(path, botId, [...existing, space]);
 };
-
-const timeoutOf = (value: number | undefined, fallback: number): number =>
-  Math.min(Math.max(value ?? fallback, 1), MAX_TIMEOUT_MS);
 
 const describeError = (error: unknown): string => {
   if (error instanceof ToolError) return error.message;
@@ -218,6 +236,9 @@ const writeState = async (path: string, state: HerdrState): Promise<void> => {
   await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
   await rename(temporary, path);
 };
+
+const timeoutOf = (value: number | undefined, fallback: number): number =>
+  Math.min(Math.max(value ?? fallback, 1), MAX_TIMEOUT_MS);
 
 const clearState = async (path: string): Promise<void> => {
   await rm(path, { force: true });
@@ -350,6 +371,14 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
               untrusted = true;
             } else if (existing !== undefined && existing.revoked === true) {
               untrusted = true;
+              // A revoked record whose tombstone was lost must not be replaced unsafely.
+              try {
+                await addTombstone(tombstonesPath, botId, existing);
+              } catch (error) {
+                return failed(
+                  `the refused herdr space could not be recorded (${describeError(error)}); nothing was changed`,
+                );
+              }
             } else if (existing !== undefined) {
               try {
                 await verifySpace(existing, context.abortSignal);
@@ -374,7 +403,15 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
                 if (!spaceGone(error) && !(error instanceof ToolError)) throw error;
                 untrusted = true;
                 await writeState(statePath, { ...existing, revoked: true }).catch(() => undefined);
-                await addTombstone(tombstonesPath, botId, existing).catch(() => undefined);
+                try {
+                  await addTombstone(tombstonesPath, botId, existing);
+                } catch (error) {
+                  // Without the tombstone a later adoption could take the refused space:
+                  // stop here instead of replacing it.
+                  return failed(
+                    `the refused herdr space could not be recorded (${describeError(error)}); nothing was changed`,
+                  );
+                }
               }
             }
             // Without a record, adopt the one space that carries this bot's label prefix
@@ -384,12 +421,23 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
               timeoutMs: 30_000,
             });
             const tombstones = await readTombstones(tombstonesPath, botId);
-            const matching = untrusted
-              ? []
-              : spaces.filter(
-                  (space) =>
-                    space.label.startsWith(`${labelPrefix}-`) && !tombstones.includes(space.id),
-                );
+            // A tombstone only matters while its space exists; prune the rest so the list
+            // stays bounded without ever forgetting a live refused space.
+            const liveIds = new Set(spaces.map((space) => space.id));
+            const tombstoned = tombstones.ids.filter((id) => liveIds.has(id));
+            if (tombstoned.length !== tombstones.ids.length) {
+              const kept = spaces
+                .filter((space) => tombstoned.includes(space.id))
+                .map((space) => ({ spaceId: space.id, spaceLabel: space.label }));
+              await writeTombstones(tombstonesPath, botId, kept).catch(() => undefined);
+            }
+            const matching =
+              untrusted || !tombstones.trusted
+                ? []
+                : spaces.filter(
+                    (space) =>
+                      space.label.startsWith(`${labelPrefix}-`) && !tombstoned.includes(space.id),
+                  );
             if (matching.length > 1) {
               return failed(
                 `several herdr spaces claim ${labelPrefix}; close the stale ones before opening again`,
