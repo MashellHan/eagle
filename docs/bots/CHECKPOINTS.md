@@ -308,3 +308,18 @@ Verified (all run just now in `apps/bots`):
 - `npm run perf` exited 0 with the settlement waited for.
 
 Next broken hop: the reviewer's round-six verdict; then stage 5 (the client).
+
+## 2026-10-26 — stage 4 paused, stage 5 started
+
+Observed: stage 4 (rows 37-54) is implemented and green, but the independent review has
+not signed it off: six rounds closed 40+ findings, and the sixth left three reproducible
+daemon races (a delete/idle-close overlap, a stale snapshot releasing a reservation, and
+an availability check before an `await`). Those are recorded in [PLAN.md](PLAN.md) as
+deferred work; the mock runtime, the fixture set and the existing test stacks stay
+untouched as the demo and regression path.
+
+Decision: start stage 5 (the macOS client, rows 55-69) with the MVP scope — create a bot
+and chat — and wire the client to the real daemon for every new bot. Stage 5 is not
+reviewed with the same loop before the user sees it working.
+
+Next broken hop: `apps/bots-macos` does not exist yet.

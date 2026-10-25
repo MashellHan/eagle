@@ -134,6 +134,29 @@ record first so a retry is silent, `history` pages without touching the window,
 `abort`/`recover` pass through behind the same subscription guard, and `resync`
 broadcasts the only reply it produces, at a revision that names its content.
 
+## Deferred daemon races (recorded, not fixed)
+
+Stage 4 is implemented but **not signed off**. The sixth review round left three
+reproducible races in the daemon, recorded here so stage 5 can start without pretending
+they are closed:
+
+1. An idle close finishing while a delete is in flight clears the delete's settling
+   window, so a subscribe during the directory move can open a handle nothing owns.
+2. A snapshot captured before an admission but delivered after it releases that
+   admission's reservation, so 33 concurrent sends can cross the 32-entry budget.
+3. `#handle` checks availability before an `await`, so an escalation during the lookup
+   still admits work through the handle captured before it.
+
+Its P2s are recorded too: a second failure during `recover` still marks the catalog
+healthy; an oversized hub frame plus a backlog degrades instead of closing `1008`; a
+refused `abort` on an unavailable bot has no originating record; a failed
+`directory.remove` leaves a closed handle that `open` reuses; an `unknown` admission
+confirmed by a queued retry can hold its reservation forever; and two of the round's
+regression tests are insensitive to the bugs they name.
+
+Stage 5 (the client) is being built against the protocol as documented; these races are
+daemon-side and do not change the wire contract.
+
 ## Open review queue
 
 Stage 4 has had three review rounds. The third found eight P1 and ten P2 findings;
