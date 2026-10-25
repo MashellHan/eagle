@@ -25,7 +25,7 @@ const isInside = (root: string, candidate: string): boolean =>
   candidate === root || candidate.startsWith(`${root}${sep}`);
 
 /** Rejects a symlink at or below the workspace root, including a dangling one. */
-const assertNoLinks = async (root: string, path: string): Promise<void> => {
+export const assertNoLinks = async (root: string, path: string): Promise<void> => {
   const rest = relative(root, path);
   if (rest.length === 0) return;
   let current = root;

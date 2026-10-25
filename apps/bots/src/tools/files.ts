@@ -7,7 +7,7 @@ import { constants, lstat, mkdir, open, readdir } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { MAX_LIST_ENTRIES, MAX_READ_BYTES, MAX_READ_LINES, MAX_WRITE_BYTES } from "./limits.ts";
 import { type BotWorkspace, failed, ToolError, type ToolOutcome } from "./types.ts";
-import { canonicalWorkspace, relativeTo, resolveInside } from "./workspace.ts";
+import { assertNoLinks, canonicalWorkspace, relativeTo, resolveInside } from "./workspace.ts";
 
 const IGNORED_DIRECTORIES = new Set([".git", "node_modules", ".venv", "dist", ".build"]);
 
@@ -146,6 +146,9 @@ export const listFilesTool = async (
         truncated = true;
         return;
       }
+      // Re-check the chain before every listing: a directory swapped for a link between
+      // the walk and this call is refused rather than followed.
+      await assertNoLinks(root, directory);
       let entries: Dirent[];
       try {
         entries = await readdir(directory, { withFileTypes: true });

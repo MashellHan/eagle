@@ -334,9 +334,15 @@ Rules:
   process group and the model sees an aborted result instead of a live command.
 - **Residual race.** A process that can already write inside the workspace could swap an
   intermediate directory for a link between the component check and the open. The final
-  component is protected by `O_NOFOLLOW` and commands are additionally confined by the
-  sandbox; closing the intermediate window fully would need `openat` chains the Node API
-  does not expose, and is recorded as a known limit rather than claimed fixed.
+  component is protected by `O_NOFOLLOW`, every directory is re-checked before it is
+  listed, and commands are additionally confined by the sandbox; closing the intermediate
+  window fully would need `openat` chains the Node API does not expose, and is recorded
+  as a known limit rather than claimed fixed.
+- **Hard kill of the daemon.** A deadline or an abort kills the command's process group,
+  but `SIGKILL` of the daemon itself orphans whatever is already running: the restart marks
+  the run interrupted and cannot stop the orphan. A persisted process-group id would let a
+  restart kill it, at the price of killing an unrelated group once the id is reused, so the
+  limit stays documented instead of guessed.
 - **Failures are results.** A refusal, a missing file, a timeout and a non-zero exit are
   returned to the model as text; a run never crashes because a tool failed.
 - **Replay.** `read_file` and `list_files` are `replay: "safe"`; `write_file` and
