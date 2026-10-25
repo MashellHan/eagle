@@ -3,8 +3,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { CommandError, ConversationService } from "../../src/core/ConversationService.ts";
+import type { ConversationSnapshot, Submission } from "../../src/core/domain.ts";
+import { ClassifiedFailure } from "../../src/core/domain.ts";
 import type { HubEvent } from "../../src/core/EventHub.ts";
-import type { RuntimeEvent, RuntimeHandle } from "../../src/core/RuntimePort.ts";
+import type { RuntimeEvent, RuntimeHandle, SubmitInput } from "../../src/core/RuntimePort.ts";
 import { FakeRuntime } from "../../src/testing/FakeRuntime.ts";
 
 const trace = "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172";
@@ -38,6 +40,40 @@ const message = (id: string) => ({
   createdAt: "x",
   blocks: [{ type: "text" as const, text: id }],
 });
+
+/**
+ * A scripted runtime handle that forwards raw events, so a case observes the service's
+ * own fold instead of the fake runtime's copy of it.
+ */
+const scriptedHandle = (options: {
+  readonly snapshot: ConversationSnapshot;
+  readonly record?: (input: SubmitInput) => Submission;
+  readonly onSubmit?: (input: SubmitInput) => RuntimeEvent[];
+}): { handle: RuntimeHandle; emit: (event: RuntimeEvent) => void } => {
+  let sink: ((event: RuntimeEvent) => void) | undefined;
+  const handle: RuntimeHandle = {
+    subscribe: async (_trace, next) => {
+      sink = next;
+      return {
+        snapshot: options.snapshot,
+        detach: () => {
+          sink = undefined;
+        },
+      };
+    },
+    submission: async () => undefined,
+    submit: async (input) => {
+      for (const event of options.onSubmit?.(input) ?? []) sink?.(event);
+      return options.record?.(input) ?? { id: "s_1", requestId: input.requestId, status: "queued" };
+    },
+    history: async () => ({ messages: [], hasMore: false }),
+    abort: async () => {},
+    recover: async () => {},
+    busy: async () => ({ run: false, tasks: false }),
+    close: async () => "closed",
+  };
+  return { handle, emit: (event) => sink?.(event) };
+};
 
 /** A delegating handle: spreading a class instance would lose its private fields. */
 const proxyHandle = (
@@ -433,50 +469,213 @@ test("a submit that fails after the read is unconfirmed admission, not a refusal
   );
 });
 
-test("unanswered keeps its reason and a late queued record cannot resurrect it", async () => {
-  const runtime = new FakeRuntime({
-    script: {
-      onSubmit: (input) => [
-        {
-          type: "submission",
-          trace: input.trace,
-          record: { id: "s_1", requestId: input.requestId, status: "queued" },
-        },
-        {
-          type: "submission",
-          trace: input.trace,
-          record: {
-            id: "s_1",
-            requestId: input.requestId,
-            status: "unanswered",
-            reason: "model_error",
-          },
-        },
-      ],
-    },
-  });
+test("a delta flushed for an older connection cannot precede a new baseline", async () => {
+  const runtime = new FakeRuntime();
   const service = serviceFor(runtime);
+  let reentered = false;
+  await service.subscribe("c_1", "b_1", trace, (event) => {
+    if (event.type !== "delta" || reentered) return;
+    reentered = true;
+    runtime.handle("b_1").emit({
+      type: "delta",
+      trace,
+      messageId: "p_a1",
+      changes: [{ kind: "text", index: 0, append: "B" }],
+    });
+  });
+  runtime.handle("b_1").emit({
+    type: "delta",
+    trace,
+    messageId: "p_a1",
+    changes: [{ kind: "text", index: 0, append: "A" }],
+  });
+  const second: HubEvent[] = [];
+  const joined = await service.subscribe("c_2", "b_1", trace, (event) => second.push(event));
+  assert.deepEqual(
+    second.map((event) => event.type),
+    ["snapshot"],
+    "the flush and its reentrant sibling stay out of the new connection",
+  );
+  assert.equal(joined.rev, second[0]?.rev);
+});
+
+test("a connection cancelled by a flush is not attached", async () => {
+  const runtime = new FakeRuntime();
+  const service = serviceFor(runtime);
+  await service.subscribe("c_1", "b_1", trace, (event) => {
+    if (event.type === "delta") service.unsubscribe("c_2");
+  });
+  runtime.handle("b_1").emit({
+    type: "delta",
+    trace,
+    messageId: "p_a1",
+    changes: [{ kind: "text", index: 0, append: "A" }],
+  });
+  const received: HubEvent[] = [];
+  await assert.rejects(
+    () => service.subscribe("c_2", "b_1", trace, (event) => received.push(event)),
+    (error: unknown) => error instanceof CommandError && error.kind === "internal",
+  );
+  assert.deepEqual(received, [], "a cancelled connection never receives a frame");
+});
+
+test("a classified failure keeps its identity and disposition", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    streaming: null,
+    pending: [],
+    inbox: [],
+    running: false,
+  };
+  const storage = new ClassifiedFailure(
+    { id: "f_episode", kind: "storage_failed", layer: "runtime" },
+    "runtime",
+    "disk is full",
+  );
+  const busy = new ClassifiedFailure(
+    { id: "f_busy", kind: "invalid_command", layer: "core" },
+    "not_admitted",
+    "busy with reject",
+  );
+  const reading = scriptedHandle({ snapshot });
+  const service = new ConversationService({
+    open: async () => ({
+      ...reading.handle,
+      subscribe: async (subscribeTrace, sink) => {
+        const subscription = await reading.handle.subscribe(subscribeTrace, sink);
+        return subscription;
+      },
+      submission: async () => {
+        throw storage;
+      },
+      submit: async () => {
+        throw busy;
+      },
+    }),
+    measure: utf8,
+  });
+  await subscribe(service, []);
+  await assert.rejects(
+    () => service.send("c_1", { requestId, text: "hi", whenBusy: "followUp", trace }),
+    (error: unknown) => error === storage,
+    "a runtime-classified read failure is not rewritten",
+  );
+  const writing = scriptedHandle({ snapshot });
+  const second = new ConversationService({
+    open: async () => ({
+      ...writing.handle,
+      submission: async () => undefined,
+      submit: async () => {
+        throw busy;
+      },
+    }),
+    measure: utf8,
+  });
+  await subscribe(second, []);
+  await assert.rejects(
+    () => second.send("c_1", { requestId, text: "hi", whenBusy: "followUp", trace }),
+    (error: unknown) => error === busy,
+    "an explicit refusal keeps not_admitted so the outbox entry can be restored",
+  );
+});
+
+test("a stale snapshot cannot downgrade a settlement for the connection or a new one", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    streaming: null,
+    pending: [],
+    inbox: [],
+    running: false,
+  };
+  const settled = (input: SubmitInput): Submission => ({
+    id: "s_1",
+    requestId: input.requestId,
+    status: "done",
+    entryId: "e_1",
+    answerEntryId: "e_2",
+  });
+  const scripted = scriptedHandle({
+    snapshot,
+    record: settled,
+    onSubmit: (input) => [{ type: "submission", trace: input.trace, record: settled(input) }],
+  });
+  const service = new ConversationService({ open: async () => scripted.handle, measure: utf8 });
   const received: HubEvent[] = [];
   await subscribe(service, received);
-  const reply = await service.send("c_1", { requestId, text: "hi", whenBusy: "followUp", trace });
-  assert.equal(reply.status, "unanswered");
-  assert.equal(reply.reason, "model_error");
-  assert.equal(reply.answerEntryId, undefined, "no settlement is invented");
-  const statuses = received.flatMap((event) =>
-    event.type === "submission" ? [event.record.status] : [],
+  await service.send("c_1", { requestId, text: "hi", whenBusy: "followUp", trace });
+  scripted.emit({
+    type: "snapshot",
+    trace,
+    value: { ...snapshot, pending: [{ id: "s_1", requestId, status: "queued" }] },
+  });
+  const broadcast = received.filter((event) => event.type === "snapshot").at(-1);
+  assert.deepEqual(
+    broadcast?.type === "snapshot" ? broadcast.value.pending : ["unchecked"],
+    [],
+    "the existing connection is broadcast a normalized snapshot",
   );
-  assert.deepEqual(statuses, ["queued", "unanswered"]);
-  assert.equal(statuses.includes("done"), false);
+  const joined = await service.subscribe("c_2", "b_1", trace, () => {});
+  assert.deepEqual(joined.snapshot.pending, [], "a new connection's baseline stays settled");
+});
 
-  runtime.handle("b_1").emit({
+test("a stale snapshot keeps the placed record with its entry id", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    streaming: null,
+    pending: [],
+    inbox: [],
+    running: false,
+  };
+  const placed = (input: SubmitInput): Submission => ({
+    id: "s_1",
+    requestId: input.requestId,
+    status: "placed",
+    entryId: "e_1",
+  });
+  const scripted = scriptedHandle({
+    snapshot,
+    record: placed,
+    onSubmit: (input) => [{ type: "submission", trace: input.trace, record: placed(input) }],
+  });
+  const service = new ConversationService({ open: async () => scripted.handle, measure: utf8 });
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  await service.send("c_1", { requestId, text: "hi", whenBusy: "followUp", trace });
+  scripted.emit({
+    type: "snapshot",
+    trace,
+    value: { ...snapshot, pending: [{ id: "s_1", requestId, status: "queued" }] },
+  });
+  const expected = [{ id: "s_1", requestId, status: "placed", entryId: "e_1" }];
+  const broadcast = received.filter((event) => event.type === "snapshot").at(-1);
+  assert.deepEqual(
+    broadcast?.type === "snapshot" ? broadcast.value.pending : ["unchecked"],
+    expected,
+  );
+  const joined = await service.subscribe("c_2", "b_1", trace, () => {});
+  assert.deepEqual(joined.snapshot.pending, expected);
+});
+
+test("the rank of the initial snapshot is seeded, so a duplicate cannot downgrade it", async () => {
+  const snapshot: ConversationSnapshot = {
+    botId: "b_1",
+    messages: [],
+    streaming: null,
+    pending: [{ id: "s_9", requestId, status: "placed", entryId: "e_1" }],
+    inbox: [],
+    running: false,
+  };
+  const scripted = scriptedHandle({ snapshot });
+  const service = new ConversationService({ open: async () => scripted.handle, measure: utf8 });
+  await subscribe(service, []);
+  scripted.emit({
     type: "submission",
     trace,
-    record: { id: "s_1", requestId, status: "queued" },
+    record: { id: "s_9", requestId, status: "queued" },
   });
   const joined = await service.subscribe("c_2", "b_1", trace, () => {});
-  assert.deepEqual(
-    joined.snapshot.pending,
-    [],
-    "a ranked-lower duplicate never becomes pending again",
-  );
+  assert.deepEqual(joined.snapshot.pending, snapshot.pending);
 });
