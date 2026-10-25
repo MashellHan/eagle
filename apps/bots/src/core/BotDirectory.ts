@@ -3,7 +3,7 @@
 // (docs/bots/ARCHITECTURE.md "Bot lifecycle"). Everything that mutates the catalog runs
 // on one internal queue, so concurrent callers cannot overwrite each other.
 import { randomUUID } from "node:crypto";
-import type { BotRecord } from "./domain.ts";
+import type { BotAppearance, BotRecord } from "./domain.ts";
 import { BOT_ID_PATTERN } from "./domain.ts";
 
 export type DirEntry = { readonly name: string; isDirectory(): boolean };
@@ -199,6 +199,40 @@ export class BotDirectory {
         });
       }
       await this.#writeAll([...bots, config]);
+    });
+  }
+
+  /** Name, label or face changed; `label: null` clears it, `undefined` leaves it alone. */
+  async update(
+    id: string,
+    changes: {
+      readonly title?: string;
+      readonly label?: string | null;
+      readonly appearance?: BotAppearance;
+    },
+    at: string,
+  ): Promise<BotConfig> {
+    return this.#serial(async () => {
+      const bots = await this.load();
+      const index = bots.findIndex((bot) => bot.id === id);
+      if (index === -1) throw new DirectoryError("unknown_bot", `bot ${id} does not exist`);
+      const current = bots[index] as BotConfig;
+      const { label, ...rest } = current;
+      const updated: BotConfig = {
+        ...rest,
+        ...(changes.title === undefined ? {} : { title: changes.title }),
+        ...(changes.appearance === undefined ? {} : { appearance: changes.appearance }),
+        ...(changes.label === undefined
+          ? label === undefined
+            ? {}
+            : { label }
+          : changes.label === null
+            ? {}
+            : { label: changes.label }),
+        updatedAt: at,
+      };
+      await this.#writeAll(bots.map((bot, position) => (position === index ? updated : bot)));
+      return updated;
     });
   }
 

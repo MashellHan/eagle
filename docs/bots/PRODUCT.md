@@ -79,6 +79,13 @@ activity: they stay on the left at the answer card's width, show what is running
 runs, collapse into one line when the run's calls settle, and open a detail dialog with
 each call's arguments and output.
 
+## Profile editing
+
+A bot's name, optional label and face are editable from its profile in the right panel:
+hovering the face dims it and offers a pencil (the face editor reuses the create grid),
+and clicking the name or the label edits it in place. A change is written over
+`PATCH /v1/bots/:id` and the catalog push repaints the sidebar and inspector.
+
 ## Setup and guidance
 
 The model gateway (URL, API key, model) is configured in the app's Settings under

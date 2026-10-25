@@ -179,6 +179,25 @@ export class BotRegistry {
     return this.#entries.get(botId)?.handle;
   }
 
+  /** Name, label or face changed; the catalog keeps the truth and the summary follows. */
+  async update(
+    botId: string,
+    changes: {
+      readonly title?: string;
+      readonly label?: string | null;
+      readonly appearance?: BotAppearance;
+    },
+    trace: string,
+  ): Promise<BotSummary> {
+    const entry = this.#entry(botId, trace);
+    const at = (this.#options.now?.() ?? new Date()).toISOString();
+    const config = await this.#write(trace, botId, () =>
+      this.#options.directory.update(botId, changes, at),
+    );
+    entry.config = config;
+    return this.#summary(entry);
+  }
+
   /** Settings changed the gateway: new bots use the new model, existing ones on reopen. */
   setDefaultModel(model: { readonly provider: string; readonly modelId: string }): void {
     this.#defaultModel = model;

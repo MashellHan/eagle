@@ -144,6 +144,31 @@ final class BotsWorkspaceViewModel: ObservableObject {
     publish()
   }
 
+  /// The selected bot as the catalog describes it, for the inspector's profile.
+  var selectedBot: BotSummary? {
+    guard let app, let selectedId else { return nil }
+    return app.bots.first { $0.id == selectedId }
+  }
+
+  var selectedFace: BotFace.Style? {
+    selectedBot.map { presenter.faceStyle(for: $0) }
+  }
+
+  var selectedLabel: String? {
+    selectedBot?.label
+  }
+
+  /// Name, label (empty clears it) or face edit for the selected bot.
+  func updateSelected(
+    title: String? = nil,
+    label: String? = nil,
+    appearance: BotAppearance? = nil
+  ) async {
+    guard let app, let bot = selectedBot else { return }
+    await app.update(bot, title: title, label: label, appearance: appearance)
+    publish()
+  }
+
   func createBot() async {
     await createBot(title: "", label: nil, appearance: .standard)
   }

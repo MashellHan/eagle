@@ -27,8 +27,7 @@ struct BotCreateSheet: View {
           BotFace(style: BotFace.Style(shape: shape, tint: tint), size: 132)
             .padding(.top, 20)
           fields
-          shapes
-          tints
+          BotFacePicker(shape: $shape, tint: $tint)
         }
         .padding(.horizontal, Theme.Metric.settingsCardInset)
         .padding(.bottom, 18)
@@ -80,68 +79,6 @@ struct BotCreateSheet: View {
       .padding(.horizontal, 14)
       .frame(height: 36)
       .background(fieldBackground)
-    }
-  }
-
-  private var shapes: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("形状")
-        .font(Theme.TypeScale.sectionLabel)
-        .foregroundStyle(Theme.Palette.textSecondary)
-      LazyVGrid(
-        columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5),
-        spacing: 8
-      ) {
-        ForEach(BotFace.Shape.allCases, id: \.self) { candidate in
-          Button {
-            shape = candidate
-          } label: {
-            BotFace(style: BotFace.Style(shape: candidate, tint: tint), size: 52)
-              .padding(4)
-              .background(
-                RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
-                  .strokeBorder(
-                    candidate == shape ? Theme.Palette.accent : .clear,
-                    lineWidth: 2
-                  )
-              )
-          }
-          .buttonStyle(.plain)
-          .help(candidate.rawValue)
-        }
-      }
-    }
-  }
-
-  private var tints: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("颜色")
-        .font(Theme.TypeScale.sectionLabel)
-        .foregroundStyle(Theme.Palette.textSecondary)
-      LazyVGrid(
-        columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6),
-        spacing: 10
-      ) {
-        ForEach(Theme.Palette.BotTint.allCases, id: \.self) { candidate in
-          Button {
-            tint = candidate
-          } label: {
-            Circle()
-              .fill(Theme.Palette.botTint(candidate))
-              .frame(width: 32, height: 32)
-              .padding(4)
-              .overlay(
-                Circle()
-                  .strokeBorder(
-                    candidate == tint ? Theme.Palette.textPrimary.opacity(0.6) : .clear,
-                    lineWidth: 2
-                  )
-              )
-          }
-          .buttonStyle(.plain)
-          .help(candidate.rawValue)
-        }
-      }
     }
   }
 

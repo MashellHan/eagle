@@ -14,6 +14,7 @@ public struct WorkspaceShellView: View {
   @StateObject private var chrome = SidebarChromeViewModel()
   @State private var showsAccountMenu = false
   @State private var showsBotCreate = false
+  @State private var showsBotFaceEditor = false
   @State private var showsSettings = false
   @AppStorage("eagle.appearance") private var appearance = "system"
 
@@ -180,8 +181,27 @@ public struct WorkspaceShellView: View {
           jobs: selectedIsBot ? [] : inspector.jobs,
           tab: $inspector.tab,
           onToggleJob: { inspector.setJob($0, isOn: $1) },
-          onCollapse: { layout.toggleInspector() }
+          onCollapse: { layout.toggleInspector() },
+          face: selectedIsBot ? bots.selectedFace : nil,
+          label: selectedIsBot ? bots.selectedLabel : nil,
+          onEditFace: selectedIsBot ? { showsBotFaceEditor = true } : nil,
+          onCommitName: selectedIsBot
+            ? { title in Task { await bots.updateSelected(title: title) } } : nil,
+          onCommitLabel: selectedIsBot
+            ? { label in Task { await bots.updateSelected(label: label) } } : nil
         )
+        .sheet(isPresented: $showsBotFaceEditor) {
+          if let face = bots.selectedFace {
+            BotFaceEditorSheet(
+              initial: face,
+              onSave: { appearance in
+                showsBotFaceEditor = false
+                Task { await bots.updateSelected(appearance: appearance) }
+              },
+              onCancel: { showsBotFaceEditor = false }
+            )
+          }
+        }
       }
       .task {
         bots.onSelect = { id in list.selection = id }

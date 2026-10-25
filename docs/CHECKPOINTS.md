@@ -1570,3 +1570,18 @@ A checkpoint is what a person can actually see, so this records the absence too.
 - **Next broken hop:** a fresh-install window (empty root, no dotenv) end to end, and the
   settings save on a daemon whose bot session predates the gateway (the model is moved in
   place by `conversation.configure`).
+
+## 2026-10-26 — Bot profile editing
+
+- **What a person can observe:** the right panel shows the bot's own face (the same shape
+  and tint as the sidebar). Hovering the face dims it with a black wash and a pencil;
+  clicking opens the face editor (shapes, tints, preview). Clicking the name or the label
+  edits it in place; an empty label clears it.
+- **Evidence:** `PATCH /v1/bots/:id` now accepts `title`, `label` and `appearance`
+  (validated; `""` clears the label) — covered by `test/server/update.test.ts`, and the
+  client's `AppViewModel.update` by `CatalogTests.testUpdateChangesNameLabelAndFace…`.
+  Live: a label `研究` and a star/pink face were written over PATCH and the running app
+  repainted both the sidebar tag and the inspector face. Hover/click were not driven by
+  automation; the editor sheet and inline fields are compiled and reachable, not
+  screenshot-tested.
+- **Next broken hop:** the face editor and inline rename have no UI-automation pass yet.

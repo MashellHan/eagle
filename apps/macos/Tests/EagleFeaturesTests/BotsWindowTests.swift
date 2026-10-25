@@ -190,6 +190,23 @@ final class StubCatalog: CatalogPort {
     bots.append(bot)
     return bot
   }
+  var updated: [(String?, String?, BotAppearance?)] = []
+
+  func update(
+    id: String,
+    title: String?,
+    label: String?,
+    appearance: BotAppearance?
+  ) async throws -> BotSummary {
+    guard let index = bots.firstIndex(where: { $0.id == id }) else { return bots[0] }
+    var bot = bots[index]
+    if let title { bot.title = title }
+    if let label { bot.label = label.isEmpty ? nil : label }
+    if let appearance { bot.appearance = appearance }
+    bots[index] = bot
+    updated.append((title, label, appearance))
+    return bot
+  }
   func rename(id: String, title: String) async throws -> BotSummary { bots[0] }
   func delete(id: String) async throws { bots.removeAll { $0.id == id } }
   func catalogEvents() -> AsyncStream<[BotSummary]> { AsyncStream { $0.finish() } }

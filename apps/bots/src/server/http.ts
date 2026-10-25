@@ -108,6 +108,62 @@ const title = (body: unknown): string | undefined => {
   return typeof value === "string" ? value.trim() : undefined;
 };
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+/** Name, label and face are all editable; a label of `""` clears it. */
+const updateChanges = (
+  body: unknown,
+):
+  | {
+      readonly title?: string;
+      readonly label?: string | null;
+      readonly appearance?: { shape: BotShape; tint: BotTint };
+    }
+  | undefined => {
+  if (!isObject(body)) return undefined;
+  const allowed = new Set(["title", "label", "appearance"]);
+  if (Object.keys(body).some((key) => !allowed.has(key))) return undefined;
+  const changes: {
+    title?: string;
+    label?: string | null;
+    appearance?: { shape: BotShape; tint: BotTint };
+  } = {};
+  let any = false;
+  if (body.title !== undefined) {
+    if (typeof body.title !== "string") return undefined;
+    const title = body.title.trim();
+    if (title.length === 0 || title.length > MAX_TITLE_CHARS) return undefined;
+    changes.title = title;
+    any = true;
+  }
+  if (body.label !== undefined) {
+    if (typeof body.label !== "string") return undefined;
+    const label = body.label.trim();
+    if (label.length > MAX_LABEL_CHARS) return undefined;
+    changes.label = label.length === 0 ? null : label;
+    any = true;
+  }
+  if (body.appearance !== undefined) {
+    const appearance = body.appearance;
+    if (!isObject(appearance)) return undefined;
+    if (
+      typeof appearance.shape !== "string" ||
+      !(BOT_SHAPES as readonly string[]).includes(appearance.shape) ||
+      typeof appearance.tint !== "string" ||
+      !(BOT_TINTS as readonly string[]).includes(appearance.tint)
+    ) {
+      return undefined;
+    }
+    changes.appearance = {
+      shape: appearance.shape as BotShape,
+      tint: appearance.tint as BotTint,
+    };
+    any = true;
+  }
+  return any ? changes : undefined;
+};
+
 /** The optional label and face a create request may carry. */
 const extras = (
   body: unknown,
@@ -274,14 +330,18 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       if (match !== null) {
         const id = match[1] as string;
         if (request.method === "PATCH") {
-          const name = title(await readBody(request));
-          if (name === undefined || name.length === 0 || name.length > MAX_TITLE_CHARS) {
+          const changes = updateChanges(await readBody(request));
+          if (changes === undefined) {
             json(response, 400, {
-              error: { kind: "invalid_command", message: "a title is required" },
+              error: {
+                kind: "invalid_command",
+                message:
+                  "send a title, a label (max 24 characters) or a face (one of the documented shapes and tints)",
+              },
             });
             return;
           }
-          const bot = await registry.rename(id, name, `tr_http_${++sequence}`);
+          const bot = await registry.update(id, changes, `tr_http_${++sequence}`);
           broadcastCatalog();
           json(response, 200, { bot });
           return;

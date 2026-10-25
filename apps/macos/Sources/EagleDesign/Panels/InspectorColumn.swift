@@ -43,6 +43,11 @@ public struct InspectorColumn: View {
   private let onExpand: () -> Void
   private let onCollapse: () -> Void
   private let onShare: () -> Void
+  private let face: BotFace.Style?
+  private let label: String?
+  private let onEditFace: (() -> Void)?
+  private let onCommitName: ((String) -> Void)?
+  private let onCommitLabel: ((String) -> Void)?
 
   public init(
     name: String,
@@ -55,7 +60,12 @@ public struct InspectorColumn: View {
     onToggleJob: @escaping (String, Bool) -> Void = { _, _ in },
     onExpand: @escaping () -> Void = {},
     onCollapse: @escaping () -> Void = {},
-    onShare: @escaping () -> Void = {}
+    onShare: @escaping () -> Void = {},
+    face: BotFace.Style? = nil,
+    label: String? = nil,
+    onEditFace: (() -> Void)? = nil,
+    onCommitName: ((String) -> Void)? = nil,
+    onCommitLabel: ((String) -> Void)? = nil
   ) {
     self.name = name
     self.subtitle = subtitle
@@ -68,6 +78,11 @@ public struct InspectorColumn: View {
     self.onExpand = onExpand
     self.onCollapse = onCollapse
     self.onShare = onShare
+    self.face = face
+    self.label = label
+    self.onEditFace = onEditFace
+    self.onCommitName = onCommitName
+    self.onCommitLabel = onCommitLabel
   }
 
   public var body: some View {
@@ -88,7 +103,16 @@ public struct InspectorColumn: View {
         .padding(.trailing, Theme.Metric.panelInset)
       }
 
-      Identity(name: name, subtitle: subtitle, tintIndex: tintIndex)
+      Identity(
+        name: name,
+        subtitle: subtitle,
+        tintIndex: tintIndex,
+        face: face,
+        label: label,
+        onEditFace: onEditFace,
+        onCommitName: onCommitName,
+        onCommitLabel: onCommitLabel
+      )
 
       SegmentedTabs(values: Tab.allCases, selection: $tab) { $0.rawValue }
         .padding(.horizontal, Theme.Metric.panelInset)
@@ -156,26 +180,161 @@ private struct Identity: View {
   let name: String
   let subtitle: String
   let tintIndex: Int
+  let face: BotFace.Style?
+  let label: String?
+  let onEditFace: (() -> Void)?
+  let onCommitName: ((String) -> Void)?
+  let onCommitLabel: ((String) -> Void)?
+
+  @State private var hoveringAvatar = false
+  @State private var editingName = false
+  @State private var editingLabel = false
+  @State private var nameDraft = ""
+  @State private var labelDraft = ""
+  @FocusState private var nameFocused: Bool
+  @FocusState private var labelFocused: Bool
 
   var body: some View {
     VStack(spacing: 8) {
+      avatar
+      VStack(spacing: 3) {
+        nameView
+        HStack(spacing: 5) {
+          if onCommitLabel != nil {
+            labelView
+            Text("·")
+              .font(Theme.TypeScale.rowSubtitle)
+              .foregroundStyle(Theme.Palette.textMuted)
+          }
+          Text(subtitle)
+            .font(Theme.TypeScale.rowSubtitle)
+            .foregroundStyle(Theme.Palette.textSecondary)
+        }
+      }
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.top, 16)
+    .padding(.bottom, 18)
+  }
+
+  @ViewBuilder
+  private var avatar: some View {
+    if let face {
+      BotFace(style: face, size: Theme.Metric.avatarInspector)
+        .overlay {
+          if hoveringAvatar, onEditFace != nil {
+            ZStack {
+              Circle()
+                .fill(Color.black.opacity(0.36))
+              Image(systemName: "pencil")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.white)
+            }
+          }
+        }
+        .contentShape(Circle())
+        .onHover { hoveringAvatar = $0 }
+        .onTapGesture { onEditFace?() }
+        .help(onEditFace == nil ? "" : "点击编辑头像")
+        .accessibilityLabel("编辑 \(name) 的头像")
+    } else {
       Avatar(
         initial: String(name.prefix(1)),
         tint: Theme.Palette.avatarTint(tintIndex),
         size: Theme.Metric.avatarInspector,
         shape: .blob
       )
-      VStack(spacing: 3) {
-        Text(name)
-          .font(Theme.TypeScale.inspectorTitle)
-          .foregroundStyle(Theme.Palette.textPrimary)
-        Text(subtitle)
-          .font(Theme.TypeScale.rowSubtitle)
-          .foregroundStyle(Theme.Palette.textSecondary)
-      }
     }
-    .frame(maxWidth: .infinity)
-    .padding(.top, 16)
-    .padding(.bottom, 18)
+  }
+
+  @ViewBuilder
+  private var nameView: some View {
+    if editingName {
+      TextField("", text: $nameDraft)
+        .textFieldStyle(.plain)
+        .font(Theme.TypeScale.inspectorTitle)
+        .multilineTextAlignment(.center)
+        .focused($nameFocused)
+        .onSubmit(commitName)
+        .onExitCommand { editingName = false }
+        .onChange(of: nameFocused) { if !nameFocused { commitName() } }
+        .padding(.horizontal, 8)
+        .frame(height: 30)
+        .background(
+          RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .fill(Theme.Palette.canvas)
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .strokeBorder(Theme.Palette.accent.opacity(0.55), lineWidth: Theme.Metric.hairline)
+        )
+        .frame(maxWidth: 220)
+    } else {
+      Text(name)
+        .font(Theme.TypeScale.inspectorTitle)
+        .foregroundStyle(Theme.Palette.textPrimary)
+        .lineLimit(1)
+        .contentShape(Rectangle())
+        .onTapGesture {
+          guard onCommitName != nil else { return }
+          nameDraft = name
+          editingName = true
+          nameFocused = true
+        }
+        .help(onCommitName == nil ? "" : "点击编辑名字")
+    }
+  }
+
+  @ViewBuilder
+  private var labelView: some View {
+    if editingLabel {
+      TextField("", text: $labelDraft)
+        .textFieldStyle(.plain)
+        .font(Theme.TypeScale.rowSubtitle)
+        .multilineTextAlignment(.center)
+        .focused($labelFocused)
+        .onSubmit(commitLabel)
+        .onExitCommand { editingLabel = false }
+        .onChange(of: labelFocused) { if !labelFocused { commitLabel() } }
+        .padding(.horizontal, 7)
+        .frame(height: 24)
+        .background(
+          RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(Theme.Palette.canvas)
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .strokeBorder(Theme.Palette.accent.opacity(0.55), lineWidth: Theme.Metric.hairline)
+        )
+        .frame(maxWidth: 150)
+    } else {
+      Button {
+        labelDraft = label ?? ""
+        editingLabel = true
+        labelFocused = true
+      } label: {
+        Text(label?.isEmpty == false ? (label ?? "") : "添加标签")
+          .font(Theme.TypeScale.rowSubtitle)
+          .foregroundStyle(label == nil ? Theme.Palette.textMuted : Theme.Palette.textSecondary)
+      }
+      .buttonStyle(.plain)
+      .help("点击编辑标签")
+    }
+  }
+
+  private func commitName() {
+    guard editingName else { return }
+    editingName = false
+    let trimmed = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty, trimmed != name else { return }
+    onCommitName?(trimmed)
+  }
+
+  private func commitLabel() {
+    guard editingLabel else { return }
+    editingLabel = false
+    let trimmed = labelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed != (label ?? "") else { return }
+    onCommitLabel?(trimmed)
   }
 }

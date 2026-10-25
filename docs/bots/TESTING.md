@@ -157,6 +157,8 @@ is never started before its preconditions are green.
 | 74 | `test/server/gateway.test.ts` | `settings round-trip, stay 0600 and never expose the key`; `the probe reports reachability, auth and model count` | — |
 | 75 | `test/server/settings.test.ts` | `the settings endpoints read, validate, save and test behind the bearer` | 74 |
 | 76 | `test/core/registry.test.ts` | `a gateway model change reaches existing bots and new ones` | 75 |
+| 77 | `test/server/update.test.ts` | `name, label and face are editable over PATCH` | 75 |
+| 78 | `BotsFeaturesTests/CatalogTests.swift` | `testUpdateChangesNameLabelAndFaceAndReloadsTheCatalog` | 77 |
 
 ## Golden fixtures
 

@@ -44,6 +44,39 @@ final class CatalogTests: XCTestCase {
     XCTAssertEqual(model.newBotTitle, "", "the field clears")
   }
 
+  func testUpdateChangesNameLabelAndFaceAndReloadsTheCatalog() async throws {
+    let (model, catalog, _) = makeModel()
+    catalog.bots = [
+      BotSummary(
+        id: "b_1", title: "旧名", createdAt: "x", updatedAt: "x",
+        model: ModelRef(provider: "p", modelId: "m"), state: .idle
+      )
+    ]
+    await model.refresh()
+    let bot = try XCTUnwrap(model.bots.first)
+
+    await model.update(
+      bot,
+      title: "新名",
+      label: "研究",
+      appearance: BotAppearance(shape: .star, tint: .pink)
+    )
+    XCTAssertEqual(catalog.updated.count, 1)
+    XCTAssertEqual(catalog.updated.first?.0, "新名")
+    XCTAssertEqual(catalog.updated.first?.1, "研究")
+    XCTAssertEqual(catalog.updated.first?.2, .some(BotAppearance(shape: .star, tint: .pink)))
+    XCTAssertEqual(model.bots.first?.title, "新名")
+    XCTAssertEqual(model.bots.first?.label, "研究")
+
+    // An empty label clears the stored one; a blank title is refused before the daemon.
+    await model.update(bot, label: "")
+    XCTAssertEqual(catalog.updated.last?.1, "")
+    XCTAssertEqual(model.bots.first?.label, nil)
+    let before = catalog.updated.count
+    await model.update(bot, title: "   ")
+    XCTAssertEqual(catalog.updated.count, before)
+  }
+
   func testDeleteRemovesTheBotAndSelectsTheNextOne() async throws {
     let (model, catalog, _) = makeModel()
     catalog.bots = [
@@ -127,6 +160,26 @@ final class FakeCatalog: CatalogPort {
     )
     bots.append(bot)
     return bot
+  }
+
+  var updated: [(String?, String?, BotAppearance?)] = []
+
+  func update(
+    id: String,
+    title: String?,
+    label: String?,
+    appearance: BotAppearance?
+  ) async throws -> BotSummary {
+    guard let bot = bots.first(where: { $0.id == id }) else {
+      throw ClientError("unknown bot")
+    }
+    var changed = bot
+    if let title { changed.title = title }
+    if let label { changed.label = label.isEmpty ? nil : label }
+    if let appearance { changed.appearance = appearance }
+    bots = bots.map { $0.id == id ? changed : $0 }
+    updated.append((title, label, appearance))
+    return changed
   }
 
   func rename(id: String, title: String) async throws -> BotSummary {

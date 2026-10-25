@@ -67,6 +67,13 @@ public protocol CatalogPort: AnyObject {
     label: String?,
     appearance: BotAppearance
   ) async throws -> BotSummary
+  /// Edits a bot: a nil field is left alone; an empty label clears the stored one.
+  func update(
+    id: String,
+    title: String?,
+    label: String?,
+    appearance: BotAppearance?
+  ) async throws -> BotSummary
   func rename(id: String, title: String) async throws -> BotSummary
   func delete(id: String) async throws
   func catalogEvents() -> AsyncStream<[BotSummary]>

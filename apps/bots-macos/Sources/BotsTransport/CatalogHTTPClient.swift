@@ -52,6 +52,26 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
     return try await request(path: "/v1/bots", method: "POST", body: body, as: Payload.self).bot
   }
 
+  public func update(
+    id: String,
+    title: String?,
+    label: String?,
+    appearance: BotAppearance?
+  ) async throws -> BotSummary {
+    struct Payload: Decodable { let bot: BotSummary }
+    var body: [String: Any] = [:]
+    if let title { body["title"] = title }
+    if let label { body["label"] = label }
+    if let appearance {
+      body["appearance"] = [
+        "shape": appearance.shape.rawValue, "tint": appearance.tint.rawValue,
+      ]
+    }
+    return try await request(
+      path: "/v1/bots/\(id)", method: "PATCH", body: body, as: Payload.self
+    ).bot
+  }
+
   public func rename(id: String, title: String) async throws -> BotSummary {
     struct Payload: Decodable { let bot: BotSummary }
     return try await request(

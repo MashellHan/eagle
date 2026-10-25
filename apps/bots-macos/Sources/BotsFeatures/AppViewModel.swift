@@ -90,10 +90,27 @@ public final class AppViewModel: ObservableObject {
   }
 
   public func rename(_ bot: BotSummary, to title: String) async {
-    let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return }
+    await update(bot, title: title)
+  }
+
+  /// Edits the name, the label (an empty string clears it) or the face; nil leaves a field
+  /// alone. The catalog reload is what the sidebar and inspector rebuild from.
+  public func update(
+    _ bot: BotSummary,
+    title: String? = nil,
+    label: String? = nil,
+    appearance: BotAppearance? = nil
+  ) async {
+    let trimmedTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let title, trimmedTitle?.isEmpty != false { return }
+    let trimmedLabel = label?.trimmingCharacters(in: .whitespacesAndNewlines)
     do {
-      _ = try await catalog.rename(id: bot.id, title: trimmed)
+      _ = try await catalog.update(
+        id: bot.id,
+        title: trimmedTitle,
+        label: trimmedLabel,
+        appearance: appearance
+      )
       bots = try await catalog.load()
       error = nil
     } catch {

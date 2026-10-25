@@ -81,7 +81,7 @@ version, the instance id, the pid and a bot count, never bot content.
 | `GET` | `/v1/health` | — | `{ "version", "protocolVersion", "instance", "pid", "bots" }` |
 | `GET` | `/v1/bots` | — | `{ "bots": [BotSummary] }` |
 | `POST` | `/v1/bots` | `{ "title", "label"?, "appearance"? }` — `appearance` is `{ "shape", "tint" }` | `201 { "bot": BotSummary }` |
-| `PATCH` | `/v1/bots/:id` | `{ "title" }` | `{ "bot": BotSummary }` |
+| `PATCH` | `/v1/bots/:id` | `{ "title"?, "label"?, "appearance"? }` — a label of `""` clears it | `{ "bot": BotSummary }` |
 | `DELETE` | `/v1/bots/:id` | — | `204` |
 | `GET` | `/v1/settings` | — | `{ "settings": GatewaySettings }` |
 | `PUT` | `/v1/settings` | `{ "baseUrl", "model", "apiKey"?, "provider"? }` | `{ "settings": GatewaySettings }` |
