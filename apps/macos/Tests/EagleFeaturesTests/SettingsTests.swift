@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import EagleDesign
@@ -82,6 +83,208 @@ struct SettingsTests {
     model.beginRename(id)
     model.cancelRename()
     #expect(model.renameTarget == nil)
+  }
+}
+
+@Suite("Settings gateway", .serialized)
+@MainActor
+struct SettingsGatewayTests {
+  @Test("loadGateway fills the form and reports configuration state")
+  func loadGatewayConfigured() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { request in
+      #expect(request.url?.path == "/v1/settings")
+      return (
+        200,
+        Data(
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true}}"#
+            .utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    await model.loadGateway()
+    #expect(model.gateway?.configured == true)
+    #expect(model.gatewayBaseURL == "http://gw/v1")
+    #expect(model.gatewayModel == "m1")
+    #expect(model.gatewayMessage == "已配置")
+    #expect(model.gatewayBusy == false)
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("loadGateway reports when the daemon has no gateway yet")
+  func loadGatewayUnconfigured() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { _ in
+      (
+        200,
+        Data(
+          #"{"settings":{"configured":false,"provider":"","baseUrl":"","model":"","hasApiKey":false}}"#
+            .utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    await model.loadGateway()
+    #expect(model.gateway?.configured == false)
+    #expect(model.gatewayMessage == "尚未配置")
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("loadGateway surfaces read failures")
+  func loadGatewayFailure() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { _ in (401, Data()) }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    await model.loadGateway()
+    #expect(model.gatewayMessage?.contains("无法读取 Bots 设置") == true)
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("loadGateway does not overwrite fields the user already typed")
+  func loadGatewayPreservesDraft() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { _ in
+      (
+        200,
+        Data(
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true}}"#
+            .utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.gatewayBaseURL = "http://typed/v1"
+    model.gatewayModel = "typed-model"
+    await model.loadGateway()
+    #expect(model.gatewayBaseURL == "http://typed/v1")
+    #expect(model.gatewayModel == "typed-model")
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("loadGatewayIfNeeded fetches only once")
+  func loadGatewayIfNeededOnce() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    var loads = 0
+    GatewayHTTPStub.handler = { _ in
+      loads += 1
+      return (
+        200,
+        Data(
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true}}"#
+            .utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    await model.loadGatewayIfNeeded()
+    await model.loadGatewayIfNeeded()
+    #expect(loads == 1)
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("testGateway probes trimmed values and records the result")
+  func testGatewaySuccess() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { request in
+      #expect(request.httpMethod == "POST")
+      #expect(request.url?.path == "/v1/settings/test")
+      let body = gatewayHTTPBody(request)
+      let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
+      #expect(parsed?["baseUrl"] as? String == "http://gw/v1")
+      #expect(parsed?["model"] as? String == "m1")
+      #expect(parsed?["apiKey"] as? String == "secret")
+      return (
+        200,
+        Data(
+          #"{"result":{"ok":true,"status":200,"message":"连接成功","latencyMs":4,"models":3}}"#.utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.gatewayBaseURL = "  http://gw/v1  "
+    model.gatewayModel = " m1 "
+    model.gatewayAPIKey = "secret"
+    await model.testGateway()
+    #expect(model.gatewayProbe?.ok == true)
+    #expect(model.gatewayProbe?.models == 3)
+    #expect(model.gatewayBusy == false)
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("testGateway reports probe failures")
+  func testGatewayFailure() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { _ in throw URLError(.cannotConnectToHost) }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.gatewayBaseURL = "http://gw/v1"
+    model.gatewayModel = "m1"
+    await model.testGateway()
+    #expect(model.gatewayProbe == nil)
+    #expect(model.gatewayMessage != nil)
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("saveGateway persists, clears the key field and notifies listeners")
+  func saveGatewaySuccess() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    final class NotifyFlag: @unchecked Sendable {
+      var value = false
+    }
+    let notified = NotifyFlag()
+    let token = NotificationCenter.default.addObserver(
+      forName: .botsGatewayChanged,
+      object: nil,
+      queue: .main
+    ) { _ in notified.value = true }
+    defer { NotificationCenter.default.removeObserver(token) }
+    GatewayHTTPStub.handler = { request in
+      switch (request.httpMethod, request.url?.path) {
+      case ("POST", "/v1/settings/test"):
+        return (
+          200,
+          Data(
+            #"{"result":{"ok":true,"status":200,"message":"连接成功","latencyMs":1,"models":1}}"#
+              .utf8)
+        )
+      case ("PUT", "/v1/settings"):
+        let body = gatewayHTTPBody(request)
+        let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
+        #expect(parsed?["baseUrl"] as? String == "http://gw/v1")
+        #expect(parsed?["model"] as? String == "m2")
+        #expect(parsed?["apiKey"] as? String == "fresh-key")
+        return (
+          200,
+          Data(
+            #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m2","hasApiKey":true}}"#
+              .utf8)
+        )
+      default:
+        return (404, Data())
+      }
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.gatewayBaseURL = " http://gw/v1 "
+    model.gatewayModel = " m2 "
+    model.gatewayAPIKey = "fresh-key"
+    await model.testGateway()
+    #expect(model.gatewayProbe?.ok == true)
+    await model.saveGateway()
+    #expect(model.gateway?.model == "m2")
+    #expect(model.gatewayAPIKey.isEmpty)
+    #expect(model.gatewayProbe == nil)
+    #expect(model.gatewayMessage == "已保存，Bot 会使用这个网关")
+    #expect(notified.value)
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("saveGateway surfaces daemon errors")
+  func saveGatewayFailure() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { _ in
+      (409, Data("{\"error\":{\"kind\":\"internal\",\"message\":\"bad gateway\"}}".utf8))
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.gatewayBaseURL = "http://gw/v1"
+    model.gatewayModel = "m1"
+    await model.saveGateway()
+    #expect(model.gatewayMessage == "bad gateway")
+    GatewayHTTPStub.handler = nil
   }
 }
 
