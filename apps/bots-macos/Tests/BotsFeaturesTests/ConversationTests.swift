@@ -29,6 +29,34 @@ final class ConversationTests: XCTestCase {
     model.select(botId: "b_1")
   }
 
+  func testSnapshotReadinessResetsAcrossReconnectSelectionAndDisconnect() async throws {
+    let (model, fake, _) = makeModel()
+    ready(model)
+    XCTAssertFalse(model.hasSnapshot)
+    fake.emit(.connection(.ready))
+    try await waitUntil { model.connection == .ready }
+    XCTAssertFalse(model.hasSnapshot)
+    fake.emit(.snapshot(ConversationSnapshot(botId: "b_1", running: true)))
+    try await waitUntil { model.hasSnapshot }
+
+    fake.emit(.connection(.reconnecting(attempt: 1)))
+    try await waitUntil { model.connection == .reconnecting(attempt: 1) }
+    XCTAssertFalse(model.hasSnapshot)
+    fake.emit(.connection(.ready))
+    try await waitUntil { model.connection == .ready }
+    XCTAssertFalse(model.hasSnapshot)
+    fake.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await waitUntil { model.hasSnapshot }
+
+    model.select(botId: "b_2")
+    XCTAssertFalse(model.hasSnapshot)
+    fake.emit(.connection(.ready))
+    fake.emit(.snapshot(ConversationSnapshot(botId: "b_2")))
+    try await waitUntil { model.hasSnapshot }
+    model.disconnect()
+    XCTAssertFalse(model.hasSnapshot)
+  }
+
   func testComposerSendsOptimisticallyAndTheEntryReplacesTheBubble() async throws {
     let (model, fake, outbox) = makeModel()
     ready(model)

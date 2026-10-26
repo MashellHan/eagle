@@ -34,6 +34,10 @@ public struct ConversationColumn: View {
   private let onToggleInspector: () -> Void
   private let showsSidebar: Bool
   private let showsInspector: Bool
+  private let participantStatus: ParticipantStatus?
+  private let onStop: () -> Void
+  private let onRecover: () -> Void
+  private let onDismissError: () -> Void
 
   public init(
     title: String,
@@ -44,6 +48,10 @@ public struct ConversationColumn: View {
     onSend: @escaping () -> Void,
     showsSidebar: Bool = true,
     showsInspector: Bool = true,
+    participantStatus: ParticipantStatus? = nil,
+    onStop: @escaping () -> Void = {},
+    onRecover: @escaping () -> Void = {},
+    onDismissError: @escaping () -> Void = {},
     onShowSidebar: @escaping () -> Void = {},
     onToggleInspector: @escaping () -> Void = {}
   ) {
@@ -55,6 +63,10 @@ public struct ConversationColumn: View {
     self.onSend = onSend
     self.showsSidebar = showsSidebar
     self.showsInspector = showsInspector
+    self.participantStatus = participantStatus
+    self.onStop = onStop
+    self.onRecover = onRecover
+    self.onDismissError = onDismissError
     self.onShowSidebar = onShowSidebar
     self.onToggleInspector = onToggleInspector
   }
@@ -85,7 +97,16 @@ public struct ConversationColumn: View {
         ParticipantBubble(
           name: title,
           tintIndex: tintIndex,
+          status: participantStatus,
+          onStop: onStop,
+          onRecover: onRecover,
+          onDismissError: onDismissError,
           action: onToggleInspector
+        )
+        .padding(
+          .horizontal,
+          (showsSidebar ? Theme.Metric.conversationInset : Theme.Metric.trafficLightsEnd)
+            + Theme.Metric.headerControlHeight + 8
         )
 
         HStack(spacing: 8) {

@@ -61,6 +61,10 @@ public enum Theme {
     /// The brand header starts after the traffic lights.
     public static let headerLeadingInset: CGFloat = 20
     public static let headerControlHeight: CGFloat = 34
+    public static let participantHeight: CGFloat = 46
+    public static let participantInset: CGFloat = 12
+    public static let participantGap: CGFloat = 12
+    public static let participantAvatar: CGFloat = 26
 
     public static let contentInset: CGFloat = 20
     /// Rows sit on cards inset from the panel edges; avatars keep the 20 pt line.
@@ -131,6 +135,7 @@ public enum Theme {
     public static let cardTitle = Font.system(size: 14, weight: .medium)
     public static let mono = Font.system(size: 13, design: .monospaced)
     public static let pill = Font.system(size: 11.5, weight: .medium)
+    public static let activity = Font.system(size: 12, weight: .medium)
   }
 }
 

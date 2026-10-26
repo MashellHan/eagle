@@ -24,6 +24,21 @@ struct SnapshotRenderer {
     let app = NSApplication.shared
     app.setActivationPolicy(.prohibited)
 
+    for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
+      capture(
+        ConversationColumn(
+          title: "一个需要保持停止按钮可见的很长的研究员名字", subtitle: "Bots", tintIndex: 2,
+          entries: [.streamingAssistant(id: "preview", blocks: [.paragraph("正在整理已经观察到的信息。")])],
+          draft: .constant("第一行：输入框向上展开。\n第二行：按钮留在底部。\n第三行：高度到此为止。\n第四行：在内部滚动。"),
+          onSend: {},
+          participantStatus: ParticipantStatus(label: "回答中", phase: .working, canStop: true)
+        )
+        .preferredColorScheme(scheme),
+        size: CGSize(width: 480, height: 520), named: "chat-experience-\(name)", in: directory,
+        appearance: scheme == .dark ? .darkAqua : .aqua
+      )
+    }
+
     capture(
       WorkspaceShellView().preferredColorScheme(.light),
       size: CGSize(width: 1728, height: 1082),
@@ -96,7 +111,8 @@ struct SnapshotRenderer {
 
   @MainActor
   private static func capture<V: View>(
-    _ view: V, size: CGSize, named name: String, in directory: URL
+    _ view: V, size: CGSize, named name: String, in directory: URL,
+    appearance: NSAppearance.Name = .aqua
   ) {
     let window = NSWindow(
       contentRect: NSRect(origin: .zero, size: size),
@@ -105,7 +121,7 @@ struct SnapshotRenderer {
       defer: false
     )
     window.isReleasedWhenClosed = false
-    window.appearance = NSAppearance(named: .aqua)
+    window.appearance = NSAppearance(named: appearance)
     let host = NSHostingView(rootView: view)
     host.frame = NSRect(origin: .zero, size: size)
     window.contentView = host

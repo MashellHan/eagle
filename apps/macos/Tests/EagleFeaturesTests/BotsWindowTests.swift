@@ -103,10 +103,77 @@ struct BotsWindowTests {
     )
     try await Task.sleep(nanoseconds: 60_000_000)
     #expect(bots.canRecover, "a parked task is a recoverable state")
+    #expect(bots.participantStatus.phase == .attention)
+    #expect(bots.participantStatus.canRecover)
+    #expect(bots.participantStatus.error == "a task was parked")
     bots.recover()
     try await Task.sleep(nanoseconds: 60_000_000)
     #expect(conversationPort.recovered == 1, "recover reaches the daemon")
     #expect(conversationPort.lastBotId == "b_1")
+  }
+
+  @Test("the name capsule follows runtime state and stops only a connected running bot")
+  func participantControls() async throws {
+    let (bots, _, port, _) = try await window()
+    #expect(bots.participantStatus.phase == .idle)
+    #expect(!bots.participantStatus.canStop)
+    bots.abort()
+    try await Task.sleep(nanoseconds: 40_000_000)
+    #expect(port.aborted == 0)
+
+    port.emit(.snapshot(ConversationSnapshot(botId: "b_1", running: true)))
+    try await Task.sleep(nanoseconds: 60_000_000)
+    #expect(bots.participantStatus.phase == .working)
+    #expect(bots.participantStatus.isActive)
+    #expect(bots.participantStatus.label == "处理中")
+    #expect(bots.participantStatus.canStop)
+    bots.abort()
+    try await Task.sleep(nanoseconds: 40_000_000)
+    #expect(port.aborted == 1)
+    #expect(port.lastBotId == "b_1")
+    #expect(bots.participantStatus.canStop, "a sent abort is not a settled run")
+
+    port.emit(.connection(.reconnecting(attempt: 1)))
+    try await Task.sleep(nanoseconds: 60_000_000)
+    #expect(bots.participantStatus.phase == .connecting)
+    #expect(bots.participantStatus.label == "正在重连（第 1 次）")
+    #expect(!bots.participantStatus.canStop)
+    bots.abort()
+    try await Task.sleep(nanoseconds: 40_000_000)
+    #expect(port.aborted == 1)
+
+    port.emit(.connection(.stopped))
+    try await Task.sleep(nanoseconds: 60_000_000)
+    #expect(bots.participantStatus.phase == .offline)
+    #expect(!bots.participantStatus.isActive)
+    port.emit(.connection(.ready))
+    try await Task.sleep(nanoseconds: 60_000_000)
+    #expect(bots.participantStatus.phase == .connecting)
+    #expect(bots.participantStatus.label == "正在同步…")
+    #expect(!bots.participantStatus.canStop, "welcome is not a fresh conversation snapshot")
+    port.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await Task.sleep(nanoseconds: 60_000_000)
+    #expect(bots.participantStatus.phase == .idle)
+    #expect(!bots.participantStatus.isActive)
+    #expect(!bots.participantStatus.canStop)
+  }
+
+  @Test("a capsule error stays readable and dismissible without losing stop")
+  func participantError() async throws {
+    let (bots, _, port, _) = try await window()
+    port.emit(.snapshot(ConversationSnapshot(botId: "b_1", running: true)))
+    port.emit(
+      .error(
+        kind: .invalidCommand, disposition: .notAdmitted,
+        message: "refused", failure: "f_header", requestId: nil))
+    try await Task.sleep(nanoseconds: 60_000_000)
+    #expect(bots.participantStatus.phase == .working)
+    #expect(bots.participantStatus.isActive, "an old error does not hide a live answer")
+    #expect(bots.participantStatus.error == "refused")
+    #expect(bots.participantStatus.canStop)
+    bots.dismissError()
+    #expect(bots.participantStatus.error == nil)
+    #expect(bots.participantStatus.phase == .working)
   }
 
   @Test("the transcript is published from append and delta events")

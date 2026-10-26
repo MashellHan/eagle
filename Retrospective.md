@@ -389,3 +389,18 @@ made one sink publish a delta on every delta it received, so the serial fanout l
 never terminated and a `node --test` process ran for hours until the user killed it.
 Any reentrancy test must bound its trigger to a single occurrence, and a test run needs
 a timeout.
+
+## 2026-10-26 — Verify pane identity and read-only environment values
+
+During the native chat UX change, the shell's inherited `HERDR_PANE_ID` identified
+an unrelated workflow Space. A reviewer pane was briefly created there before the
+live agent inventory exposed the mismatch. Only the newly created pane was closed;
+the reviewer was restarted beside Eagle's verified controller. Before splitting,
+match the explicit pane ID, live agent cwd and task, rather than trusting inherited
+environment variables or the focused Space.
+
+A snapshot fixture also tried to write `accessibilityReduceMotion` through SwiftUI's
+environment modifier. The installed SDK exposes that value as read-only, so the
+build rejected it. Remove the unsupported override; the component reads the actual
+system preference. Do not claim a reduced-motion UI test from that failed fixture
+or change the user's system preference just to produce a snapshot.

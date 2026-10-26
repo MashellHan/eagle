@@ -8,6 +8,8 @@ public struct TemplateGallery: View {
   @State private var toggleTwo = true
   @State private var draft = ""
   @State private var draftFilled = "把 sleepy 那个 PR 一起并掉"
+  @State private var previewRunning = true
+  @State private var previewInspector = false
 
   public init() {}
 
@@ -15,6 +17,7 @@ public struct TemplateGallery: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 28) {
         header
+        activitySection
         paletteSection
         typographySection
         primitivesSection
@@ -53,6 +56,41 @@ public struct TemplateGallery: View {
         swatch("accentFill", Theme.Palette.accentFill, "55A471")
         swatch("accentStrong", Theme.Palette.accentStrong, "5DB57B")
         swatch("hover", Theme.Palette.hover, "000000/4.5%")
+      }
+    }
+  }
+
+  private var activitySection: some View {
+    GalleryCard(title: "会话状态 · 交互预览") {
+      VStack(alignment: .leading, spacing: 16) {
+        HStack(spacing: 24) {
+          ParticipantBubble(
+            name: "研究员", tintIndex: 2,
+            status: ParticipantStatus(
+              label: previewRunning ? "回答中" : "已连接",
+              phase: previewRunning ? .working : .idle, canStop: previewRunning
+            ),
+            onStop: { previewRunning = false },
+            action: { previewInspector.toggle() }
+          )
+          ParticipantBubble(
+            name: "工作秘书", tintIndex: 1,
+            status: ParticipantStatus(label: "正在重连（第 2 次）", phase: .connecting), action: {}
+          )
+          ParticipantBubble(
+            name: "调研助手", tintIndex: 3,
+            status: ParticipantStatus(
+              label: "等待恢复", phase: .attention, canRecover: true,
+              error: "组件预览：连接中断后，任务需要恢复。"
+            ), action: {}
+          )
+          Spacer(minLength: 0)
+          Button("预览回答") { previewRunning = true }
+        }
+        Text(previewInspector ? "预览检查器已打开" : "独立组件预览，不连接 Bot 或模型。")
+          .font(Theme.TypeScale.note)
+          .foregroundStyle(Theme.Palette.textSecondary)
+        Composer(placeholder: "测试换行与内部滚动", text: $draft) { draft = "" }
       }
     }
   }

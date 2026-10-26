@@ -10,6 +10,7 @@ import SwiftUI
 public final class ConversationViewModel: ObservableObject {
   @Published public private(set) var state: ConversationState
   @Published public private(set) var connection: ConnectionState = .connecting
+  @Published public private(set) var hasSnapshot = false
   @Published public private(set) var errorBanner: String?
   @Published public private(set) var isSending = false
   @Published public private(set) var hasOlder = false
@@ -59,6 +60,7 @@ public final class ConversationViewModel: ObservableObject {
     eventsTask?.cancel()
     selectedBotId = botId
     reconciled = false
+    hasSnapshot = false
     state = ConversationState(botId: botId)
     applySettledRecords(for: botId)
     if let durable = try? outbox.refusedRequests() {
@@ -81,6 +83,7 @@ public final class ConversationViewModel: ObservableObject {
     selectedBotId = nil
     conversation.close()
     connection = .stopped
+    hasSnapshot = false
   }
 
   public func send() {
@@ -268,11 +271,13 @@ public final class ConversationViewModel: ObservableObject {
         // the first snapshot after any connection reconciles
       } else {
         reconciled = false
+        hasSnapshot = false
       }
       connection = next
 
     case .snapshot(let value):
       state = Reducer.snapshot(value, rev: state.lastRev.map { $0 + 1 }, keeping: state.ranks)
+      hasSnapshot = true
       parked = state.parked
       hasOlder = value.truncatedBefore != nil
       // Every snapshot is a chance to make a refusal durable, even when no reconciliation

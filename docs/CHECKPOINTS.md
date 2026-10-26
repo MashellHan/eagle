@@ -1602,3 +1602,32 @@ A checkpoint is what a person can actually see, so this records the absence too.
   needs `BOTS_DAEMON_DIR`); it still needs a Node 24+ installation.
 - **Next broken hop:** bundling the daemon (and Node) into the app for a machine without
   the repository; the card's start/stop buttons were not clicked in automation.
+
+## 2026-10-26 — Native composer and participant controls, verification in progress
+
+- **User-visible slice:** the composer now grows from one to three lines; the next
+  slice replaces the top-left status strip with a centered identity/activity capsule.
+- **Evidence so far:** real NSHostingView layout tests first failed for the old second
+  line and four-line cap, then passed. Status tests first reproduced a stale running
+  snapshot overriding a lost connection, then passed. The macOS suite currently passes
+  72 feature and 16 design tests; the configured logic coverage script reports 97.4%.
+- **Collection/authentication/D1:** no Herdr collection or website/D1 changes; no live
+  model requests. The existing local Bots UI showed one idle bot before the rebuild.
+  No credentials were changed. The reviewer is read-only beside the Eagle controller.
+- **Rendering / next broken hop:** narrow-column light/dark fixtures were captured.
+  The dark fixture's AppKit appearance is incorrect and the native multiline field's
+  visible three-line viewport still needs live verification; these are not signed off.
+
+### Verification update
+
+The native gallery showed three complete Chinese lines, then the last three of a
+five-line draft at the same height. Its stop button removed the active control;
+clicking the identity separately toggled the preview inspector. These actions were
+local component previews, not real model/abort requests. The narrow-column light
+and dark snapshots now use explicit AppKit appearances. The card was increased to
+46 pt with 12 pt horizontal insets/gaps after the owner found the original capsule
+cramped. Two review findings (historical errors hiding activity and welcome preceding
+the subscription snapshot) have regression tests and passed a second read-only review.
+Bots daemon check: 443 tests; Bots client: 44 core, 32 feature and 14 transport tests;
+macOS: 72 feature and 16 design tests. The configured macOS coverage gate reports
+97.2%. Reduce Motion is respected in code but no system-preference UI pass was run.

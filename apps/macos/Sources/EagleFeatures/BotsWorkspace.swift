@@ -41,6 +41,29 @@ final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var canRecover = false
   @Published private(set) var running = false
   @Published private(set) var connection: ConnectionState = .connecting
+
+  var participantStatus: ParticipantStatus {
+    let ready = connection == .ready && app?.conversation.hasSnapshot == true
+    let phase: ParticipantStatus.Phase
+    let label: String
+    if !ready {
+      switch connection {
+      case .connecting, .reconnecting, .ready: phase = .connecting
+      default: phase = .offline
+      }
+      label = connection == .ready ? "正在同步…" : subtitle
+    } else if canRecover || (error != nil && !running) {
+      phase = .attention
+      label = canRecover ? "等待恢复" : "遇到问题"
+    } else {
+      phase = running ? .working : .idle
+      label = subtitle
+    }
+    return ParticipantStatus(
+      label: label, phase: phase, canStop: ready && running,
+      canRecover: ready && canRecover, error: error
+    )
+  }
   /// Set only after a send was refused for a missing gateway: progressive, never a nag.
   @Published private(set) var needsModelSetup = false
   var onOpenSettings: (() -> Void)?
@@ -237,6 +260,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
   }
 
   func abort() {
+    guard participantStatus.canStop else { return }
     app?.conversation.abort()
     publish()
   }
@@ -278,6 +302,9 @@ final class BotsWorkspaceViewModel: ObservableObject {
       subtitle = app.bots.isEmpty ? "还没有 Bot，点 + 新建一个" : "选择一个 Bot"
       entries = []
       canRecover = false
+      running = false
+      error = nil
+      connection = .stopped
       return
     }
     title = selected.title
@@ -583,11 +610,14 @@ struct BotsPresenter {
   }
 
   func subtitle(for state: ConversationState, connection: ConnectionState) -> String {
-    if state.unavailable != nil { return "不可用" }
-    if state.running { return "回答中" }
     switch connection {
     case .connecting: return "正在连接…"
-    case .ready: return "已连接"
+    case .ready:
+      if state.unavailable != nil { return "不可用" }
+      if state.running {
+        return state.streamingMessage?.text.isEmpty == false ? "回答中" : "处理中"
+      }
+      return "已连接"
     case .reconnecting(let attempt): return "正在重连（第 \(attempt) 次）"
     case .failed(let reason): return reason
     case .stopped: return "已断开"

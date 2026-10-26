@@ -142,35 +142,13 @@ public struct WorkspaceShellView: View {
             onSend: { selectedIsBot ? bots.send() : chat.send() },
             showsSidebar: layout.showsSidebar,
             showsInspector: layout.showsInspector,
+            participantStatus: selectedIsBot ? bots.participantStatus : nil,
+            onStop: { bots.abort() },
+            onRecover: { bots.recover() },
+            onDismissError: { bots.dismissError() },
             onShowSidebar: { layout.toggleSidebar() },
             onToggleInspector: { layout.toggleInspector() }
           )
-          // Status is an overlay, not a row: the three column headers keep one baseline.
-          .overlay(alignment: .topLeading) {
-            if selectedIsBot, bots.running || bots.error != nil || bots.canRecover {
-              BotStatusStrip(
-                subtitle: bots.subtitle,
-                error: bots.error,
-                canRecover: bots.canRecover,
-                running: bots.running,
-                onRecover: { bots.recover() },
-                onAbort: { bots.abort() },
-                onDismissError: { bots.dismissError() }
-              )
-              .frame(maxWidth: 300, alignment: .leading)
-              .padding(
-                .leading,
-                layout.showsSidebar
-                  ? Theme.Metric.conversationInset
-                  : Theme.Metric.trafficLightsEnd + Theme.Metric.headerControlHeight + 8
-              )
-              .padding(
-                .top,
-                Theme.Metric.headerHeight - Theme.Metric.headerBottomInset
-                  - (Theme.Metric.headerControlHeight + 26) / 2
-              )
-            }
-          }
         }
       } inspector: {
         InspectorColumn(

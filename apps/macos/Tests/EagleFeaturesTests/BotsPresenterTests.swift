@@ -8,6 +8,25 @@ import Testing
 struct BotsPresenterTests {
   private let presenter = BotsPresenter()
 
+  @Test("connection loss overrides a stale running snapshot in the header")
+  func disconnectedActivity() {
+    let state = ConversationState(botId: "b_1", running: true)
+    #expect(presenter.subtitle(for: state, connection: .reconnecting(attempt: 2)) == "正在重连（第 2 次）")
+    #expect(presenter.subtitle(for: state, connection: .stopped) == "已断开")
+    #expect(presenter.subtitle(for: state, connection: .failed(reason: "Offline")) == "Offline")
+  }
+
+  @Test("the header distinguishes processing from a visible answer")
+  func answeringActivity() {
+    var state = ConversationState(botId: "b_1", running: true)
+    #expect(presenter.subtitle(for: state, connection: .ready) == "处理中")
+    state.messages = [message("p_a1", role: .assistant, state: .streaming, text: "Hello")]
+    state.streaming = "p_a1"
+    #expect(presenter.subtitle(for: state, connection: .ready) == "回答中")
+    state.running = false
+    #expect(presenter.subtitle(for: state, connection: .ready) == "已连接")
+  }
+
   private func message(
     _ id: String,
     role: MessageRole,

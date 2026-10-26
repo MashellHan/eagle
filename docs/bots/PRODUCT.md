@@ -87,6 +87,20 @@ the composer. Clearing or sending the draft restores its one-line height. The bo
 inset and attachment/send controls stay anchored; draft ownership and send semantics
 remain unchanged.
 
+## Conversation identity and activity
+
+The centered, rounded-rectangle identity card is the conversation's single status/control surface. Its
+avatar has an animated activity ring during processing, answering and reconnecting;
+the label reflects observed connection/runtime state, never inferred completion.
+Connection loss overrides stale running state; a new welcome remains syncing until
+the subscription snapshot arrives. Historical errors stay inspectable without hiding
+a current answer or stopping its activity animation. A separate, accessible stop button
+inside the capsule aborts the selected bot only while connected and running. Clicking
+the identity still toggles the inspector. Recovery and an expandable, dismissible error
+remain available in the same capsule; there is no top-left status strip. State changes
+use a restrained spring/fade, with no continuous animation under Reduce Motion. Long
+names truncate before overlapping the side-column controls.
+
 ## Profile editing
 
 A bot's name, optional label and face are editable from its profile in the right panel:

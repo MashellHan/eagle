@@ -1,44 +1,151 @@
 import SwiftUI
 
-/// Centred participant identity in the window header. Clicking it toggles the
-/// inspector.
 public struct ParticipantBubble: View {
   private let name: String
   private let tintIndex: Int
+  private let status: ParticipantStatus?
   private let action: () -> Void
+  private let onStop: () -> Void
+  private let onRecover: () -> Void
+  private let onDismissError: () -> Void
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var hovering = false
+  @State private var showsError = false
 
-  public init(name: String, tintIndex: Int, action: @escaping () -> Void) {
+  public init(
+    name: String, tintIndex: Int, status: ParticipantStatus? = nil,
+    onStop: @escaping () -> Void = {}, onRecover: @escaping () -> Void = {},
+    onDismissError: @escaping () -> Void = {}, action: @escaping () -> Void
+  ) {
     self.name = name
     self.tintIndex = tintIndex
+    self.status = status
+    self.onStop = onStop
+    self.onRecover = onRecover
+    self.onDismissError = onDismissError
     self.action = action
   }
 
   public var body: some View {
-    Button(action: action) {
-      HStack(spacing: 8) {
-        Avatar(
-          initial: String(name.prefix(1)),
-          tint: Theme.Palette.avatarTint(tintIndex),
-          size: 22,
-          shape: .blob
-        )
-        Text(name)
-          .font(.system(size: 14, weight: .medium))
-          .foregroundStyle(Theme.Palette.textPrimary)
-          .lineLimit(1)
+    HStack(spacing: Theme.Metric.participantGap) {
+      Button(action: action) {
+        HStack(spacing: Theme.Metric.participantGap) {
+          avatar
+          VStack(alignment: .leading, spacing: 2) {
+            Text(name)
+              .font(Theme.TypeScale.cardTitle)
+              .foregroundStyle(Theme.Palette.textPrimary)
+              .lineLimit(1)
+            if let status {
+              Text(status.label)
+                .font(Theme.TypeScale.activity)
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .id(status.label)
+                .transition(.opacity)
+            }
+          }
+        }
+        .frame(height: Theme.Metric.headerControlHeight)
+        .contentShape(Rectangle())
       }
-      .padding(.horizontal, 14)
-      .frame(height: Theme.Metric.headerControlHeight)
-      .background(Capsule(style: .continuous).fill(hovering ? Theme.Palette.hover : .clear))
-      .overlay(
-        Capsule(style: .continuous)
-          .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
-      )
-      .contentShape(Capsule())
+      .accessibilityLabel("\(name)，\(status.map { $0.label + "，" } ?? "")切换检查器")
+      .help("查看 \(name) 的详情")
+
+      if let error = status?.error {
+        Button {
+          showsError.toggle()
+        } label: {
+          Image(systemName: "exclamationmark.circle")
+            .frame(width: Theme.Metric.hitTarget, height: Theme.Metric.hitTarget)
+        }
+        .foregroundStyle(Theme.Palette.destructive)
+        .accessibilityLabel("查看 Bot 错误")
+        .popover(isPresented: $showsError) {
+          VStack(alignment: .leading, spacing: 12) {
+            Text(error).font(Theme.TypeScale.note).textSelection(.enabled)
+            Button("关闭提示") {
+              showsError = false
+              onDismissError()
+            }
+          }
+          .padding(Theme.Metric.contentInset)
+          .frame(maxWidth: 320)
+        }
+      }
+      if status?.canRecover == true {
+        Button(action: onRecover) {
+          Image(systemName: "arrow.clockwise")
+            .frame(width: Theme.Metric.hitTarget, height: Theme.Metric.hitTarget)
+        }
+        .foregroundStyle(Theme.Palette.destructive)
+        .help("恢复 Bot")
+        .accessibilityLabel("恢复 Bot")
+      }
+      if status?.canStop == true {
+        Button(action: onStop) {
+          Image(systemName: "stop.fill")
+            .font(Theme.TypeScale.pill)
+            .frame(width: Theme.Metric.hitTarget, height: Theme.Metric.hitTarget)
+            .background(tint.opacity(0.12), in: Circle())
+        }
+        .foregroundStyle(tint)
+        .help("停止回答")
+        .accessibilityLabel("停止回答")
+        .transition(reduceMotion ? .opacity : .scale(scale: 0.7).combined(with: .opacity))
+      }
     }
     .buttonStyle(.plain)
+    .padding(.horizontal, Theme.Metric.participantInset)
+    .frame(height: Theme.Metric.participantHeight)
+    .background(
+      RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
+        .fill(hovering ? Theme.Palette.hover : Theme.Palette.card)
+    )
+    .overlay {
+      RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous).strokeBorder(
+        status?.isActive == true ? tint.opacity(0.4) : Theme.Palette.line,
+        lineWidth: Theme.Metric.hairline
+      )
+    }
+    .shadow(color: tint.opacity(status?.isActive == true ? 0.1 : 0), radius: 8, y: 2)
     .onHover { hovering = $0 }
-    .accessibilityLabel("\(name)，切换检查器")
+    .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.82), value: status)
+    .accessibilityElement(children: .contain)
+  }
+
+  private var avatar: some View {
+    Avatar(
+      initial: String(name.prefix(1)), tint: Theme.Palette.avatarTint(tintIndex),
+      size: Theme.Metric.participantAvatar, shape: .blob
+    )
+    .overlay {
+      if status?.isActive == true {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { context in
+          let turn =
+            reduceMotion
+            ? 0 : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2) / 2
+          Circle()
+            .trim(from: 0, to: 0.72)
+            .stroke(
+              AngularGradient(colors: [tint.opacity(0.1), tint], center: .center),
+              style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
+            )
+            .rotationEffect(.degrees(turn * 360))
+            .padding(-3)
+        }
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
+      }
+    }
+  }
+
+  private var tint: Color {
+    switch status?.phase {
+    case .working: Theme.Palette.accentStrong
+    case .connecting: Theme.Palette.info
+    case .attention: Theme.Palette.destructive
+    default: Theme.Palette.textSecondary
+    }
   }
 }
