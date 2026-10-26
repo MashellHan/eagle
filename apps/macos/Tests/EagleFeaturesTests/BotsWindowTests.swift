@@ -1,6 +1,7 @@
 import BotsCore
 import BotsFeatures
 import BotsTransport
+import Combine
 import Foundation
 import Testing
 
@@ -75,6 +76,30 @@ struct BotsWindowTests {
     )
     try await Task.sleep(nanoseconds: 60_000_000)
     #expect(bots.draft == "hello from Eagle", "the restored draft is what the user sees")
+  }
+
+  @Test("draft and error-only changes do not republish the transcript")
+  func transcriptPublicationIsolation() async throws {
+    let (bots, _, port, _) = try await window()
+    var publications = 0
+    var shellPublications = 0
+    let observer = bots.transcript.$entries.dropFirst().sink { _ in publications += 1 }
+    let shellObserver = bots.objectWillChange.sink { shellPublications += 1 }
+    defer {
+      observer.cancel()
+      shellObserver.cancel()
+    }
+    for index in 0..<30 { bots.setDraft("Draft \(index)") }
+    try await Task.sleep(nanoseconds: 80_000_000)
+    #expect(publications == 0)
+    #expect(shellPublications == 0)
+    port.emit(
+      .error(
+        kind: .invalidCommand, disposition: .notAdmitted,
+        message: "refused", failure: "f_render", requestId: nil))
+    try await Task.sleep(nanoseconds: 80_000_000)
+    #expect(bots.error == "refused")
+    #expect(publications == 0)
   }
 
   @Test("a send without a gateway is refused into the setup hint, not the daemon")

@@ -412,3 +412,25 @@ for the ignored circular style; actual footer action routing is verified in the 
 native window. Static TextField snapshots omitted a line that was present during
 native editing, so the three-line viewport and five-line scrolling were checked in
 the isolated gallery instead of treating an offscreen bitmap as input-behavior proof.
+
+## 2026-10-26 — Healthy daemon, missing runtime credentials, repeated transcript work
+
+The native app showed a healthy daemon while repeated sends immediately settled
+`model_error`. The durable assistant metadata said `Provider is not configured` with
+zero request duration; a read-only gateway model-list request succeeded. Gateway Save
+had populated an environment variable, but startup only read the persisted file and
+never activated its key for the provider. The repair binds provider authentication
+directly to the loaded configuration, with a real local HTTP/SQLite test across two
+boots and an empty-key fail-closed check. A healthy daemon or successful model-list
+probe must not be presented as proof that a generation succeeds.
+
+The UI investigation found that 30 draft changes republished the entire transcript
+30 times, and an error-only event did it twice more. Whole-workspace notifications
+recomputed tool formatting on MainActor, and View.body reparsed markdown. The repair
+coalesces metadata, isolates transcript observation, prepares content on actors and
+reuses unchanged results. Review then caught two consequences of asynchronous cold
+rendering: separate streaming/terminal branches discarded prepared state, and row-count
+scrolling ran before content acquired its final height. Share the assistant branch and
+follow measured height only while the user follows the bottom. Test cancellation,
+selection changes, publication counts and user-controlled history scrolling separately;
+none of these is a substitute for measured frame-time acceptance.

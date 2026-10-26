@@ -20,6 +20,11 @@ public enum TranscriptEntry: Identifiable, Hashable, Sendable {
       return id
     }
   }
+
+  public var isStreaming: Bool {
+    if case .streamingAssistant = self { return true }
+    return false
+  }
 }
 
 /// Middle column: a slim control strip, scrollable transcript, composer.
@@ -38,6 +43,8 @@ public struct ConversationColumn: View {
   private let onStop: () -> Void
   private let onRecover: () -> Void
   private let onDismissError: () -> Void
+  @State private var scrollState = TranscriptScrollState()
+  @State private var userIsScrolling = false
 
   public init(
     title: String,
@@ -132,7 +139,7 @@ public struct ConversationColumn: View {
   private var transcript: some View {
     ScrollViewReader { proxy in
       ScrollView {
-        VStack(alignment: .leading, spacing: Theme.Metric.turnGap) {
+        LazyVStack(alignment: .leading, spacing: Theme.Metric.turnGap) {
           ForEach(entries) { entry in
             row(entry).id(entry.id)
           }
@@ -143,13 +150,24 @@ public struct ConversationColumn: View {
         // Clear of the top edge fade: the first row must not start under it.
         .padding(.top, Theme.Metric.edgeFadeHeight + 10)
         .padding(.bottom, 12)
-        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: entries.count)
       }
       .scrollEdgeFades(
         Theme.Palette.surface, top: Theme.Metric.edgeFadeHeight, bottom: Theme.Metric.edgeFadeHeight
       )
-      .onChange(of: entries.count) {
-        withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo("bottom", anchor: .bottom) }
+      .onScrollPhaseChange { _, phase in
+        userIsScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
+        if phase == .idle, scrollState.endUserScroll() {
+          proxy.scrollTo("bottom", anchor: .bottom)
+        }
+      }
+      .onScrollGeometryChange(for: TranscriptScrollMetrics.self) { geometry in
+        TranscriptScrollMetrics(
+          contentHeight: geometry.contentSize.height, visibleBottom: geometry.visibleRect.maxY
+        )
+      } action: { _, metrics in
+        if scrollState.update(metrics, userIsScrolling: userIsScrolling) {
+          proxy.scrollTo("bottom", anchor: .bottom)
+        }
       }
     }
   }
@@ -157,17 +175,15 @@ public struct ConversationColumn: View {
   @ViewBuilder
   private func row(_ entry: TranscriptEntry) -> some View {
     switch entry {
-    case .assistant(_, let blocks):
-      AssistantBubble(text: blocks.markdown)
+    case .assistant(_, let blocks), .streamingAssistant(_, let blocks):
+      AssistantBubble(text: blocks.markdown, streaming: entry.isStreaming)
+        .equatable()
         .transition(
           .asymmetric(
             insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .bottomLeading)),
             removal: .opacity
           )
         )
-    case .streamingAssistant(_, let blocks):
-      AssistantBubble(text: blocks.markdown, streaming: true)
-        .transition(.opacity)
     case .user(_, let text):
       UserBubble(text)
         .transition(

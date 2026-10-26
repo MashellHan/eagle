@@ -74,6 +74,28 @@ from `protocol`), (c) `src/runtime/**` imports no `core/` module other than
 contain no `URLSession`/`URLRequest`/`WebSocket`/`URLProtocol` and that wire
 decoding lives only in `BotsTransport`.
 
+### Native presentation boundary
+
+The Eagle shell observes catalog/selection metadata, not transcript deltas or draft
+keystrokes. `BotsConversationContent` observes a dedicated `BotsTranscriptViewModel`;
+the original conversation view model still owns the only writable draft. Synchronous
+notification bursts coalesce into one metadata publication, with unchanged values
+left unpublished. Transcript projection and tool formatting run on a serial actor,
+reuse identical input and discard cancelled results after a selection/content change.
+
+Markdown parsing and inline attributed-text preparation run on a separate renderer
+actor, outside `View.body` and MainActor. A bubble retains its prepared content until
+its text changes; a cancelled render cannot overwrite a newer one. Only the active
+caret owns periodic animation. The transcript uses lazy rows, without whole-stack or
+whole-document streaming animations. These boundaries do not certify a frame-time
+budget; event replay and live rendering remain separate verification obligations.
+
+Streaming and terminal assistant content share one view branch so preparation survives
+a status-only transition. Bottom following responds to measured content height, including
+late markdown preparation, and is suspended when the user scrolls into history. Selecting
+another bot resets that scroll state; a new content height must not drag a history reader
+back to the bottom.
+
 ## Module inventory
 
 ### Daemon (`apps/bots`)

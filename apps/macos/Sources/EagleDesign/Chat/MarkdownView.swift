@@ -4,10 +4,10 @@ import SwiftUI
 /// paragraphs, bullet and numbered lists, quotes, fenced code and tables — with inline
 /// `**bold**`, `*italic*`, `` `code` `` chips and links. The card is the one surface a turn
 /// gets; nothing here invents a second palette.
-public struct AssistantBubble: View {
+public struct AssistantBubble: View, Equatable {
   private let text: String
   private let streaming: Bool
-  @State private var caretVisible = true
+  @StateObject private var model = MarkdownViewModel()
 
   public init(text: String, streaming: Bool = false) {
     self.text = text
@@ -17,9 +17,8 @@ public struct AssistantBubble: View {
   public var body: some View {
     HStack(alignment: .bottom, spacing: 8) {
       VStack(alignment: .leading, spacing: 10) {
-        let blocks = MarkdownBlock.parse(text)
-        ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
-          blockView(block, caret: streaming && index == blocks.count - 1)
+        ForEach(Array(model.blocks.enumerated()), id: \.offset) { index, block in
+          blockView(block, caret: streaming && index == model.blocks.count - 1)
         }
       }
       .padding(.horizontal, 16)
@@ -33,25 +32,20 @@ public struct AssistantBubble: View {
           .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
       )
       .frame(maxWidth: Theme.Metric.conversationMaxContentWidth - 120, alignment: .leading)
-      .animation(.easeOut(duration: 0.16), value: text)
       Spacer(minLength: 40)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .textSelection(.enabled)
-    .onAppear {
-      withAnimation(.easeInOut(duration: 0.62).repeatForever(autoreverses: true)) {
-        caretVisible = false
-      }
-    }
+    .task(id: text) { await model.render(text) }
   }
 
   @ViewBuilder
-  private func blockView(_ block: MarkdownBlock, caret: Bool) -> some View {
+  private func blockView(_ block: RenderedMarkdownBlock, caret: Bool) -> some View {
     switch block {
     case .paragraph(let text):
       paragraph(text, caret: caret)
     case .heading(let level, let text):
-      Text(inline(text))
+      Text(text)
         .font(.system(size: headingSize(level), weight: .semibold))
         .foregroundStyle(Theme.Palette.textPrimary)
         .lineSpacing(3)
@@ -64,11 +58,7 @@ public struct AssistantBubble: View {
               .font(Theme.TypeScale.body)
               .foregroundStyle(Theme.Palette.textSecondary)
               .frame(width: 8, alignment: .leading)
-            if caret, index == items.count - 1 {
-              Text(inline(item)) + caretMark
-            } else {
-              Text(inline(item))
-            }
+            MarkdownInline(text: item, caret: caret && index == items.count - 1)
           }
           .font(Theme.TypeScale.body)
           .foregroundStyle(Theme.Palette.textPrimary)
@@ -84,9 +74,9 @@ public struct AssistantBubble: View {
           .fill(Theme.Palette.line)
           .frame(width: 3)
         VStack(alignment: .leading, spacing: 4) {
-          ForEach(Array(text.components(separatedBy: "\n").enumerated()), id: \.offset) {
+          ForEach(Array(text.enumerated()), id: \.offset) {
             _, line in
-            Text(inline(line))
+            Text(line)
               .font(Theme.TypeScale.body)
               .foregroundStyle(Theme.Palette.textSecondary)
               .lineSpacing(4)
@@ -99,18 +89,12 @@ public struct AssistantBubble: View {
     }
   }
 
-  private func paragraph(_ text: String, caret: Bool) -> some View {
-    Group {
-      if caret {
-        Text(inline(text)) + caretMark
-      } else {
-        Text(inline(text))
-      }
-    }
-    .font(Theme.TypeScale.body)
-    .foregroundStyle(Theme.Palette.textPrimary)
-    .lineSpacing(5)
-    .fixedSize(horizontal: false, vertical: true)
+  private func paragraph(_ text: AttributedString, caret: Bool) -> some View {
+    MarkdownInline(text: text, caret: caret)
+      .font(Theme.TypeScale.body)
+      .foregroundStyle(Theme.Palette.textPrimary)
+      .lineSpacing(5)
+      .fixedSize(horizontal: false, vertical: true)
   }
 
   private func code(language: String?, body: String, caret: Bool) -> some View {
@@ -145,12 +129,14 @@ public struct AssistantBubble: View {
 
   /// A grid, not raw pipes: header cells are dim and semibold, body cells wrap, and the
   /// whole table scrolls horizontally when a model writes many columns.
-  private func table(headers: [String], rows: [[String]], caret: Bool) -> some View {
+  private func table(
+    headers: [AttributedString], rows: [[AttributedString]], caret: Bool
+  ) -> some View {
     ScrollView(.horizontal, showsIndicators: false) {
       Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
         GridRow {
           ForEach(Array(headers.enumerated()), id: \.offset) { _, header in
-            Text(inline(header))
+            Text(header)
               .font(.system(size: 13, weight: .semibold))
               .foregroundStyle(Theme.Palette.textSecondary)
               .fixedSize(horizontal: false, vertical: true)
@@ -162,7 +148,7 @@ public struct AssistantBubble: View {
         ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
           GridRow {
             ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
-              Text(inline(cell))
+              Text(cell)
                 .font(.system(size: 13.5))
                 .foregroundStyle(Theme.Palette.textPrimary)
                 .lineSpacing(3)
@@ -175,10 +161,8 @@ public struct AssistantBubble: View {
     }
   }
 
-  private var caretMark: Text {
-    Text("▍")
-      .font(.system(size: 14, weight: .regular, design: .monospaced))
-      .foregroundColor(Theme.Palette.accent.opacity(caretVisible ? 1 : 0.12))
+  public nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.text == rhs.text && lhs.streaming == rhs.streaming
   }
 
   private func headingSize(_ level: Int) -> CGFloat {
@@ -189,233 +173,25 @@ public struct AssistantBubble: View {
     }
   }
 
-  /// Inline markdown only: block structure is already handled above, so the parser must
-  /// not re-interpret newlines. Code becomes a monospaced chip, strong/emphasis shape the
-  /// weight, and links use the accent.
-  private func inline(_ text: String) -> AttributedString {
-    var value =
-      (try? AttributedString(
-        markdown: text,
-        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-      )) ?? AttributedString(text)
-    for run in value.runs {
-      let intent = run.inlinePresentationIntent
-      var container = AttributeContainer()
-      if intent?.contains(.code) == true {
-        container.font = .system(size: 13, design: .monospaced)
-        container.foregroundColor = Theme.Palette.textPrimary
-        container.backgroundColor = Theme.Palette.canvas
-      } else if intent?.contains(.stronglyEmphasized) == true {
-        container.font = .system(size: 15, weight: .semibold)
-      } else if intent?.contains(.emphasized) == true {
-        container.font = .system(size: 15).italic()
-      }
-      if run.link != nil {
-        container.foregroundColor = Theme.Palette.accent
-      }
-      value[run.range].mergeAttributes(container)
-    }
-    return value
-  }
 }
 
-/// One block of a markdown document. Parsing is line based and deliberately small: fenced
-/// code, headings, bullet and numbered lists, quotes, pipe tables and blank-line separated
-/// paragraphs.
-enum MarkdownBlock: Equatable {
-  case paragraph(String)
-  case heading(level: Int, text: String)
-  case bullets([String])
-  case code(language: String?, body: String)
-  case quote(String)
-  case table(headers: [String], rows: [[String]])
+private struct MarkdownInline: View {
+  let text: AttributedString
+  let caret: Bool
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-  /// `1. text` / `2) text` becomes a list item; the number is not rendered separately.
-  private static func orderedItem(_ line: String) -> String? {
-    var digits = 0
-    for character in line {
-      if character.isNumber {
-        digits += 1
-        continue
+  var body: some View {
+    if caret {
+      TimelineView(.animation(minimumInterval: 0.62, paused: reduceMotion)) { context in
+        let visible =
+          reduceMotion || Int(context.date.timeIntervalSinceReferenceDate / 0.62) % 2 == 0
+        Text(text)
+          + Text("▍")
+          .font(.system(size: 14, design: .monospaced))
+          .foregroundColor(Theme.Palette.accent.opacity(visible ? 1 : 0.12))
       }
-      break
+    } else {
+      Text(text)
     }
-    guard digits > 0, digits <= 3 else { return nil }
-    let rest = line.dropFirst(digits)
-    guard rest.hasPrefix(". ") || rest.hasPrefix(") ") else { return nil }
-    return String(rest.dropFirst(2))
-  }
-
-  /// `| a | b |` split into trimmed cells; escaped pipes are not split.
-  private static func tableCells(_ line: String) -> [String]? {
-    let trimmed = line.trimmingCharacters(in: .whitespaces)
-    guard trimmed.hasPrefix("|"), trimmed.count > 1 else { return nil }
-    var cells: [String] = []
-    var current = ""
-    var escaped = false
-    for character in trimmed.dropFirst() {
-      if escaped {
-        current.append(character == "|" ? "|" : character)
-        escaped = false
-        continue
-      }
-      if character == "\\" {
-        escaped = true
-        continue
-      }
-      if character == "|" {
-        cells.append(current)
-        current = ""
-        continue
-      }
-      current.append(character)
-    }
-    cells.append(current)
-    if cells.last?.trimmingCharacters(in: .whitespaces).isEmpty == true { cells.removeLast() }
-    guard cells.count > 1 else { return nil }
-    return cells.map { $0.trimmingCharacters(in: .whitespaces) }
-  }
-
-  /// `|---|:--:|` — every cell is a dash run with optional alignment colons.
-  private static func tableDivider(_ line: String) -> Bool {
-    guard let cells = tableCells(line), !cells.isEmpty else { return false }
-    return cells.allSatisfy { cell in
-      let body = cell.trimmingCharacters(in: CharacterSet(charactersIn: ":"))
-      return !body.isEmpty && body.allSatisfy { $0 == "-" }
-    }
-  }
-
-  static func parse(_ text: String) -> [MarkdownBlock] {
-    var blocks: [MarkdownBlock] = []
-    var paragraph: [String] = []
-    var bullets: [String] = []
-    var codeLines: [String] = []
-    var codeLanguage: String?
-    var codeFence = 0
-    var inCode = false
-    let lines = text.components(separatedBy: .newlines)
-    var index = 0
-
-    func flushParagraph() {
-      if !paragraph.isEmpty {
-        blocks.append(.paragraph(paragraph.joined(separator: "\n")))
-        paragraph.removeAll()
-      }
-    }
-    func flushBullets() {
-      if !bullets.isEmpty {
-        blocks.append(.bullets(bullets))
-        bullets.removeAll()
-      }
-    }
-
-    while index < lines.count {
-      let rawLine = lines[index]
-      index += 1
-      let line = rawLine
-      let trimmed = line.trimmingCharacters(in: .whitespaces)
-      let fence = trimmed.prefix { $0 == "`" }.count
-      if inCode {
-        if fence >= codeFence, trimmed.allSatisfy({ $0 == "`" }) {
-          blocks.append(.code(language: codeLanguage, body: codeLines.joined(separator: "\n")))
-          codeLines.removeAll()
-          codeLanguage = nil
-          codeFence = 0
-          inCode = false
-        } else {
-          codeLines.append(line)
-        }
-        continue
-      }
-      if fence >= 3 {
-        flushParagraph()
-        flushBullets()
-        codeFence = fence
-        codeLanguage = String(trimmed.dropFirst(fence)).trimmingCharacters(in: .whitespaces)
-        inCode = true
-        continue
-      }
-      if trimmed.isEmpty {
-        flushParagraph()
-        flushBullets()
-        continue
-      }
-      // A table needs a header row followed by a divider; without one it is a paragraph.
-      if let headers = tableCells(trimmed),
-        index < lines.count,
-        tableDivider(lines[index].trimmingCharacters(in: .whitespaces))
-      {
-        flushParagraph()
-        flushBullets()
-        index += 1
-        var rows: [[String]] = []
-        while index < lines.count {
-          let next = lines[index].trimmingCharacters(in: .whitespaces)
-          guard let cells = tableCells(next) else { break }
-          rows.append(cells)
-          index += 1
-        }
-        blocks.append(.table(headers: headers, rows: rows))
-        continue
-      }
-      if trimmed.hasPrefix("#") {
-        let hashes = trimmed.prefix { $0 == "#" }.count
-        let rest = trimmed.dropFirst(hashes)
-        if hashes <= 6, rest.hasPrefix(" ") {
-          flushParagraph()
-          flushBullets()
-          blocks.append(.heading(level: hashes, text: rest.trimmingCharacters(in: .whitespaces)))
-          continue
-        }
-      }
-      if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.hasPrefix("+ ") {
-        flushParagraph()
-        bullets.append(String(trimmed.dropFirst(2)))
-        continue
-      }
-      if let ordered = orderedItem(trimmed) {
-        flushParagraph()
-        bullets.append(ordered)
-        continue
-      }
-      if trimmed.hasPrefix("> ") {
-        flushParagraph()
-        flushBullets()
-        var quoteLines = [String(trimmed.dropFirst(2))]
-        while index < lines.count {
-          let next = lines[index].trimmingCharacters(in: .whitespaces)
-          guard next.hasPrefix("> ") else { break }
-          quoteLines.append(String(next.dropFirst(2)))
-          index += 1
-        }
-        blocks.append(.quote(quoteLines.joined(separator: "\n")))
-        continue
-      }
-      flushBullets()
-      paragraph.append(trimmed)
-    }
-    if inCode {
-      blocks.append(.code(language: codeLanguage, body: codeLines.joined(separator: "\n")))
-    }
-    flushParagraph()
-    flushBullets()
-    return blocks
-  }
-}
-
-extension Array where Element == AssistantTurn.Block {
-  /// The demo transcript keeps structured blocks; the bubble renders their text as
-  /// markdown paragraphs, lists and notes in one document.
-  var markdown: String {
-    map { block in
-      switch block {
-      case .paragraph(let text):
-        return text
-      case .bullets(let items):
-        return items.map { "- " + $0 }.joined(separator: "\n")
-      case .note(let text):
-        return "> " + text
-      }
-    }.joined(separator: "\n\n")
   }
 }

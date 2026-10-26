@@ -97,9 +97,8 @@ public struct ToolCallRow: View {
 
   private var preview: String? {
     guard let output = row.output else { return nil }
-    let line = output.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init)
-    guard let line, !line.isEmpty else { return nil }
-    return line
+    let line = output.drop(while: { $0 == "\n" }).prefix(while: { $0 != "\n" })
+    return line.isEmpty ? nil : String(line)
   }
 
   private var header: some View {

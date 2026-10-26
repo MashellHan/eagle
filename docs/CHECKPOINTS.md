@@ -1652,3 +1652,33 @@ macOS: 72 feature and 16 design tests. The configured macOS coverage gate report
   action. Its intended action (notification list or do-not-disturb) was asked of the
   owner and is not invented or claimed implemented. System Reduce Motion and actual
   model-stream interruption remain outside this UI verification run.
+
+## 2026-10-26 10:53 +08:00 — Gateway restart and transcript isolation
+
+- **Observed failure:** three latest durable assistant entries settled model_error
+  immediately with `Provider is not configured: magpie`; daemon health remained up.
+  A read-only request to the configured gateway returned HTTP 200 and included the
+  configured model. No live generation was issued. The saved key was only applied to
+  process environment on Save, not startup; the provider is being changed to bind the
+  saved credential directly instead.
+- **TDD:** a real local HTTP model + real runtime/SQLite two-boot test first failed
+  with unanswered instead of done. A native regression measured 30 transcript
+  publications for 30 draft edits, then two more for an error-only event. The fix
+  moves projection to a serial actor, gives the conversation its own observation
+  boundary, coalesces metadata publication and removes markdown parsing from View.body.
+- **Verification in progress:** daemon check reached lint after the new runtime test
+  passed; import ordering is corrected and the complete gate still needs a rerun.
+  Native compilation/tests are running. No claim of successful live chat or measured
+  frame-time improvement yet. No Herdr collection, D1, deployment or credential edits.
+- **Process gap:** no intermediate 15-minute checkpoint was recorded during this
+  investigation; this entry records the current evidence, not reconstructed checkpoints.
+
+### Gateway and rendering update
+
+The gateway repair is committed as `2fa8c7c`; the full daemon check passes, including
+real authenticated local model responses on both boots. The native publication
+regression now passes with zero transcript publications for draft/error-only changes.
+Prepared markdown reuse/cancellation and selection-switch tests pass. Review found
+cold-render branch and bottom-following issues; the assistant branch is now shared and
+scrolling follows measured content height without dragging a history reader. The final
+native gate and live rebuild are in progress; no live generation has been retried.

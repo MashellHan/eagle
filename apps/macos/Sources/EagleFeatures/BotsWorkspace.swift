@@ -32,7 +32,8 @@ public struct BotsSettings {
 @MainActor
 final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var items: [SidebarItem] = []
-  @Published private(set) var entries: [TranscriptEntry] = []
+  let transcript = BotsTranscriptViewModel()
+  var entries: [TranscriptEntry] { transcript.entries }
   @Published private(set) var title = "Bots"
   @Published private(set) var subtitle = "正在连接…"
   @Published private(set) var tintIndex = 0
@@ -83,6 +84,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
   private let presenter = BotsPresenter()
   private var app: AppViewModel?
   private var cancellables = Set<AnyCancellable>()
+  private var publicationScheduled = false
 
   init(
     settings: BotsSettings = BotsSettings(),
@@ -288,11 +290,12 @@ final class BotsWorkspaceViewModel: ObservableObject {
   /// Domain state in, Eagle's transcript out. Called after every published change.
   private func publish() {
     guard let app else {
-      items = []
-      entries = []
+      if !items.isEmpty { items = [] }
+      transcript.clear()
       return
     }
-    items = app.bots.map(presenter.sidebarItem)
+    let nextItems = app.bots.map(presenter.sidebarItem)
+    if items != nextItems { items = nextItems }
     if app.selection != selectedId, let next = app.selection {
       selectedId = next
       onSelect?(next)
@@ -300,22 +303,27 @@ final class BotsWorkspaceViewModel: ObservableObject {
     guard let selected = app.bots.first(where: { $0.id == app.selection }) else {
       title = "Bots"
       subtitle = app.bots.isEmpty ? "还没有 Bot，点 + 新建一个" : "选择一个 Bot"
-      entries = []
+      transcript.clear()
       canRecover = false
       running = false
       error = nil
       connection = .stopped
       return
     }
-    title = selected.title
-    tintIndex = presenter.tintIndex(for: selected)
+    if title != selected.title { title = selected.title }
+    let nextTint = presenter.tintIndex(for: selected)
+    if tintIndex != nextTint { tintIndex = nextTint }
     let conversation = app.conversation
-    subtitle = presenter.subtitle(for: conversation.state, connection: conversation.connection)
-    entries = presenter.transcript(for: conversation.state)
-    running = conversation.state.running
-    connection = conversation.connection
-    canRecover = conversation.state.unavailable != nil || conversation.parked
-    error = conversation.errorBanner ?? app.error
+    let nextSubtitle = presenter.subtitle(
+      for: conversation.state, connection: conversation.connection)
+    if subtitle != nextSubtitle { subtitle = nextSubtitle }
+    transcript.update(conversation.state)
+    if running != conversation.state.running { running = conversation.state.running }
+    if connection != conversation.connection { connection = conversation.connection }
+    let nextRecover = conversation.state.unavailable != nil || conversation.parked
+    if canRecover != nextRecover { canRecover = nextRecover }
+    let nextError = conversation.errorBanner ?? app.error
+    if error != nextError { error = nextError }
   }
 
   /// The conversation view model publishes many times per answer (one delta each), so the
@@ -325,8 +333,19 @@ final class BotsWorkspaceViewModel: ObservableObject {
     app.objectWillChange
       .merge(with: app.conversation.objectWillChange)
       .sink { [weak self] _ in
-        Task { @MainActor [weak self] in self?.publish() }
+        guard let self, !self.publicationScheduled else { return }
+        self.publicationScheduled = true
+        Task { @MainActor [weak self] in
+          self?.publicationScheduled = false
+          self?.publish()
+        }
       }
+      .store(in: &cancellables)
+    app.conversation.$draft.removeDuplicates()
+      .sink { [weak transcript] _ in transcript?.objectWillChange.send() }
+      .store(in: &cancellables)
+    app.conversation.$hasSnapshot.removeDuplicates()
+      .sink { [weak transcript] _ in transcript?.objectWillChange.send() }
       .store(in: &cancellables)
   }
 }
@@ -597,7 +616,8 @@ struct BotsPresenter {
     case .bool, .number:
       return value.compact
     case .array, .object:
-      return value.compact.count > 48 ? String(value.compact.prefix(47)) + "…" : value.compact
+      let compact = value.compact
+      return compact.count > 48 ? String(compact.prefix(47)) + "…" : compact
     }
   }
 

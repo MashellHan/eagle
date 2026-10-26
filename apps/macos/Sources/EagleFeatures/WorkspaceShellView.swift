@@ -133,26 +133,22 @@ public struct WorkspaceShellView: View {
               onDismiss: { bots.dismissModelSetup() }
             )
           }
-          ConversationColumn(
-            title: selectedIsBot ? bots.title : (item?.title ?? "依赖修复专家"),
-            subtitle: selectedIsBot ? bots.subtitle : (item?.tag ?? "GitHub"),
-            tintIndex: selectedIsBot ? bots.tintIndex : (item?.tintIndex ?? 2),
-            entries: selectedIsBot ? bots.entries : chat.entries,
-            // One draft: the conversation view model owns the composer, so a refusal's
-            // restored text and a queued send are the same value the user sees.
-            draft: selectedIsBot
-              ? Binding(get: { bots.draft }, set: { bots.setDraft($0) })
-              : $chat.draft,
-            onSend: { selectedIsBot ? bots.send() : chat.send() },
-            showsSidebar: layout.showsSidebar,
-            showsInspector: layout.showsInspector,
-            participantStatus: selectedIsBot ? bots.participantStatus : nil,
-            onStop: { bots.abort() },
-            onRecover: { bots.recover() },
-            onDismissError: { bots.dismissError() },
-            onShowSidebar: { layout.toggleSidebar() },
-            onToggleInspector: { layout.toggleInspector() }
-          )
+          if selectedIsBot {
+            BotsConversationContent(bots: bots, layout: layout)
+          } else {
+            ConversationColumn(
+              title: item?.title ?? "依赖修复专家",
+              subtitle: item?.tag ?? "GitHub",
+              tintIndex: item?.tintIndex ?? 2,
+              entries: chat.entries,
+              draft: $chat.draft,
+              onSend: { chat.send() },
+              showsSidebar: layout.showsSidebar,
+              showsInspector: layout.showsInspector,
+              onShowSidebar: { layout.toggleSidebar() },
+              onToggleInspector: { layout.toggleInspector() }
+            )
+          }
         }
       } inspector: {
         InspectorColumn(
