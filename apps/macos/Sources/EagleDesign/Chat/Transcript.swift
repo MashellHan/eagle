@@ -69,21 +69,44 @@ public struct UserBubble: View {
     HStack {
       Spacer(minLength: 96)
       HStack(alignment: .bottom, spacing: 8) {
-        MessageCopyButton(text: text, label: "复制用户消息", isVisible: hovering)
-        Text(text)
-          .font(Theme.TypeScale.bubble)
-          .foregroundStyle(.white)
-          .padding(.horizontal, 16)
-          .padding(.vertical, 9)
-          .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-              .fill(Theme.Palette.accentFill)
-          )
-          .textSelection(.enabled)
-          .messageCopyAlignment()
+        copyAction
+        selectable(
+          Text(text)
+            .font(Theme.TypeScale.bubble)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 9)
+            .background(
+              RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Theme.Palette.accentFill)
+            )
+        )
+        .messageCopyAlignment()
       }
       .onHover { hovering = $0 }
     }
+  }
+
+  /// Selection machinery is built only for the row under the pointer: it costs more
+  /// per row than the text it serves.
+  @ViewBuilder
+  private func selectable<Content: View>(_ content: Content) -> some View {
+    if hovering {
+      content.textSelection(.enabled)
+    } else {
+      content
+    }
+  }
+
+  private var copyAction: some View {
+    Group {
+      if hovering {
+        MessageCopyButton(text: text, label: "复制用户消息")
+      } else {
+        Color.clear
+      }
+    }
+    .frame(width: Theme.Metric.hitTarget, height: Theme.Metric.hitTarget)
   }
 }
 

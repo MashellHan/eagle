@@ -34,7 +34,6 @@ final class MessageCopyViewModel: ObservableObject {
 struct MessageCopyButton: View {
   let text: String
   let label: String
-  let isVisible: Bool
   @StateObject private var model = MessageCopyViewModel()
   @FocusState private var focused: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -52,8 +51,6 @@ struct MessageCopyButton: View {
     )
     .focused($focused)
     .disabled(text.isEmpty)
-    .opacity(isVisible || focused || model.feedback != .idle ? 1 : 0)
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isVisible)
     .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.feedback)
     .onDisappear { model.resetFeedback() }
   }
