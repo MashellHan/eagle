@@ -1682,3 +1682,30 @@ Prepared markdown reuse/cancellation and selection-switch tests pass. Review fou
 cold-render branch and bottom-following issues; the assistant branch is now shared and
 scrolling follows measured content height without dragging a history reader. The final
 native gate and live rebuild are in progress; no live generation has been retried.
+
+## 2026-10-26 12:07 +08:00 — Message interaction polish
+
+- **User-visible slice:** activity is moving to the full rounded-card outline; paired
+  CJK strong markup is normalized for display; both message roles gain a hover copy
+  action with independent feedback state.
+- **Evidence:** the supplied Chinese strong phrase passed alone but failed when followed
+  immediately by CJK text. The failing native regression now passes along with code,
+  escape and unfinished-marker preservation. Named-pasteboard tests prove raw Markdown
+  copying and that an empty streaming message cannot clear clipboard contents. The full
+  native suite is green; final appearance and live copy interaction remain to verify.
+- **Collection/authentication/D1:** no collection, D1 or credential changes. Read-only
+  durable metadata now contains successful post-repair tool rounds and a final stopped
+  answer; these were existing user-driven turns, not messages sent by this agent.
+
+### Message polish verification
+
+The rebuilt app renders the user's existing CJK strong phrase without literal
+asterisks. In the gallery, the activity highlight is on the full card outline, not
+the avatar. Live hover reveals the assistant copy action on the right and the user
+action on the left; both clicks showed the checkmark/"已复制" state. Pasting into the
+isolated gallery composer reproduced the assistant's original Markdown (without
+inserted display hair spaces) and the user's original text. Test input was cleared;
+no messages or tool requests were submitted. Native tests: 74 feature + 28 design;
+configured logic coverage: 97.4%; strict swift-format and app build pass. Bots client
+and the daemon's full 444-test check also pass. Keyboard-only focus and system Reduce
+Motion were not toggled in the live acceptance run.

@@ -434,3 +434,14 @@ scrolling ran before content acquired its final height. Share the assistant bran
 follow measured height only while the user follows the bottom. Test cancellation,
 selection changes, publication counts and user-controlled history scrolling separately;
 none of these is a substitute for measured frame-time acceptance.
+
+## 2026-10-26 — CJK strong delimiters need a contiguous-text fixture
+
+Testing isolated `**可以正常轮询。**` did not expose the real failure: Foundation's
+CommonMark parser leaves the delimiters literal when CJK text immediately follows
+the closing punctuation. Keep the adjacent-text case in the regression suite, not
+only English strong text or standalone Chinese spans. The display-only normalizer
+adds hair-space delimiter boundaries for paired CJK strong spans while preserving
+code and escaped markers; clipboard actions use the untouched source. Match backtick
+runs once rather than repeatedly scanning suffixes when model output has unfinished
+code delimiters.
