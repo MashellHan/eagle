@@ -83,6 +83,7 @@ public enum Theme {
     public static let turnGap: CGFloat = 24
     public static let inspectorRowHeight: CGFloat = 40
     public static let composerHeight: CGFloat = 54
+    public static let composerVerticalInset: CGFloat = (composerHeight - hitTarget) / 2
     public static let composerBottomInset: CGFloat = 7
     public static let windowInset: CGFloat = 8
 

@@ -26,7 +26,7 @@ public struct Composer: View {
   }
 
   public var body: some View {
-    HStack(spacing: 8) {
+    HStack(alignment: .bottom, spacing: 8) {
       IconButton(systemName: "plus", label: "添加附件", size: 28, action: onAttach)
 
       TextField(
@@ -38,7 +38,9 @@ public struct Composer: View {
       .textFieldStyle(.plain)
       .font(Theme.TypeScale.composer)
       .foregroundStyle(Theme.Palette.textPrimary)
-      .lineLimit(1...4)
+      .lineLimit(1...3)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(minHeight: Theme.Metric.hitTarget)
       .onSubmit(onSend)
       .accessibilityLabel(placeholder)
 
@@ -56,7 +58,7 @@ public struct Composer: View {
       )
     }
     .padding(.horizontal, 14)
-    .padding(.vertical, 7)
+    .padding(.vertical, Theme.Metric.composerVerticalInset)
     .frame(minHeight: Theme.Metric.composerHeight)
     .background(
       RoundedRectangle(cornerRadius: Theme.Metric.composerHeight / 2, style: .continuous)

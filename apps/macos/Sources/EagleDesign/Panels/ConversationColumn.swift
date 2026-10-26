@@ -71,6 +71,7 @@ public struct ConversationColumn: View {
         text: $draft,
         onSend: onSend
       )
+      .fixedSize(horizontal: false, vertical: true)
       .padding(.horizontal, Theme.Metric.conversationInset)
       .padding(.bottom, Theme.Metric.composerBottomInset)
     }

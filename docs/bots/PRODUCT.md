@@ -79,6 +79,14 @@ activity: they stay on the left at the answer card's width, show what is running
 runs, collapse into one line when the run's calls settle, and open a detail dialog with
 each call's arguments and output.
 
+## Native composer
+
+The composer grows upward from one visible text line to three, for both soft wraps
+and explicit newlines. Further text scrolls inside the native field without growing
+the composer. Clearing or sending the draft restores its one-line height. The bottom
+inset and attachment/send controls stay anchored; draft ownership and send semantics
+remain unchanged.
+
 ## Profile editing
 
 A bot's name, optional label and face are editable from its profile in the right panel:
