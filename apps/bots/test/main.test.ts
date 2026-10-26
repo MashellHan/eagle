@@ -1,11 +1,97 @@
 // The composition root: one daemon over one root, wired from configuration, closed cleanly.
 import assert from "node:assert/strict";
 import { mkdtemp, rm, stat } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { readConfig } from "../src/config.ts";
 import { startDaemon } from "../src/main.ts";
+import { writeGateway } from "../src/server/gateway.ts";
+import { waitFor } from "./support/pi.ts";
+
+test("saved gateway credentials authorize model requests on every daemon boot", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-saved-gateway-"));
+  const key = "test-saved-gateway-key";
+  let authorized = 0;
+  const server = createServer((request, response) => {
+    if (request.headers.authorization !== `Bearer ${key}`) {
+      response.writeHead(401).end();
+      return;
+    }
+    authorized += 1;
+    const id = `response_${authorized}`;
+    const item = {
+      type: "message",
+      id: `message_${authorized}`,
+      role: "assistant",
+      status: "completed",
+      content: [{ type: "output_text", text: "restored", annotations: [] }],
+    };
+    const event = (type: string, fields: object) =>
+      `event: ${type}\ndata: ${JSON.stringify({ type, ...fields })}\n\n`;
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end(
+      event("response.created", { response: { id, status: "in_progress" } }) +
+        event("response.output_item.added", { output_index: 0, item: { ...item, content: [] } }) +
+        event("response.output_text.delta", {
+          output_index: 0,
+          content_index: 0,
+          delta: "restored",
+        }) +
+        event("response.completed", {
+          response: {
+            id,
+            status: "completed",
+            output: [item],
+            usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+          },
+        }),
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address !== null && typeof address !== "string");
+  try {
+    await writeGateway(root, {
+      provider: "saved-test",
+      model: "saved-model",
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      apiKey: key,
+    });
+    let botId: string | undefined;
+    for (const boot of [1, 2]) {
+      const daemon = await startDaemon(
+        readConfig({ argv: ["--root", root, "--port", "0"], env: {} }),
+      );
+      try {
+        botId ??= (await daemon.registry.create("Saved gateway", "tr_create_saved")).id;
+        const handle = await daemon.registry.open(botId, "tr_open_saved");
+        const requestId = `r_saved_${boot}`;
+        await handle.submit({
+          requestId,
+          text: "test",
+          whenBusy: "followUp",
+          trace: "tr_saved_send",
+        });
+        await waitFor(async () => {
+          const record = await handle.submission({ requestId });
+          return record?.status === "done" || record?.status === "unanswered";
+        }, "the saved-key request settles");
+        assert.equal((await handle.submission({ requestId }))?.status, "done");
+        assert.equal(authorized, boot, "the saved key reached the local model endpoint");
+      } finally {
+        await daemon.close();
+      }
+    }
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      server.closeAllConnections();
+    });
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("the daemon starts from configuration and closes without leaving work behind", async () => {
   const root = await mkdtemp(join(tmpdir(), "bots-main-"));

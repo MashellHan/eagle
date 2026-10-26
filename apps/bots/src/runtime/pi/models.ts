@@ -1,11 +1,11 @@
 // The process-wide model access (docs/bots/RUNTIME.md, "Harness construction"): one
 // `Models` for every bot, built once from the daemon's configuration.
-import { createModels, createProvider, envApiKeyAuth, type Models } from "@earendil-works/pi-ai";
+import { createModels, createProvider, type Models } from "@earendil-works/pi-ai";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 
 export type ModelsConfig = {
   readonly baseUrl: string;
-  readonly apiKeyEnv: string;
+  readonly apiKey: string;
   readonly provider: string;
   readonly modelId: string;
 };
@@ -19,7 +19,13 @@ export const createDaemonModels = (config: ModelsConfig | undefined): Models => 
       id: config.provider,
       name: "Bots model endpoint",
       baseUrl: config.baseUrl,
-      auth: { apiKey: envApiKeyAuth("Bots model API key", [config.apiKeyEnv]) },
+      auth: {
+        apiKey: {
+          name: "Bots model API key",
+          resolve: async () =>
+            config.apiKey.length > 0 ? { auth: { apiKey: config.apiKey } } : undefined,
+        },
+      },
       models: [
         {
           id: config.modelId,

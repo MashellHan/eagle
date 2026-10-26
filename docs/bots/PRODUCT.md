@@ -119,6 +119,11 @@ progressive: a bot stays readable and usable until a send is attempted without a
 gateway, and only then the conversation offers a short "去设置" hint. Nothing asks for
 credentials at launch.
 
+The saved gateway key is bound directly to the daemon's provider on startup and on
+settings changes. Runtime authentication does not depend on a previous Save action
+having populated process environment variables. Daemon health proves local service
+availability, not upstream model authentication or generation success.
+
 ## Speed targets
 
 Measured on this machine with Node 26.12.0 and `pi-durable@1.4.0`, using the faux

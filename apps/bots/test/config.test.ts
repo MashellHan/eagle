@@ -45,10 +45,10 @@ test("defaults, arguments and environment agree", () => {
   );
 });
 
-test("the configured model endpoint becomes the daemon's one provider", () => {
+test("the configured model endpoint becomes the daemon's one provider", async () => {
   const models = createDaemonModels({
     baseUrl: "http://127.0.0.1:9/v1",
-    apiKeyEnv: "BOTS_API_KEY",
+    apiKey: "test-key",
     provider: "stub",
     modelId: "auto/stub",
   });
@@ -59,4 +59,12 @@ test("the configured model endpoint becomes the daemon's one provider", () => {
   assert.equal(model.api, "openai-responses");
   assert.equal(model.baseUrl, "http://127.0.0.1:9/v1");
   assert.equal(models.getModel("stub", "missing"), undefined, "only the configured model exists");
+  assert.equal((await models.getAuth(model))?.auth.apiKey, "test-key");
+  const unconfigured = createDaemonModels({
+    baseUrl: "http://127.0.0.1:9/v1",
+    apiKey: "",
+    provider: "stub",
+    modelId: "auto/stub",
+  });
+  assert.equal(await unconfigured.getAuth("stub"), undefined, "an empty key fails closed");
 });

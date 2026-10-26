@@ -70,11 +70,12 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   });
   const canonical: DaemonConfig = { ...config, root };
   const token = await loadToken(root);
+  let gateway: GatewayConfig | undefined;
   // The log exists before the lock so a refused second start is on record, and it holds
   // the token as a secret for redaction from its first record.
   const sink = new FileLogSink({ root, minimum: canonical.logLevel });
   const log = new Log(sink.sink, undefined, {
-    secrets: () => [token, process.env.BOTS_API_KEY ?? ""],
+    secrets: () => [token, gateway?.apiKey ?? ""],
   });
   const startup = "tr_boot_1";
   log.emit("info", "core", StartupEvents.singletonStart, { trace: startup });
@@ -99,13 +100,13 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   const directory = new BotDirectory(root, await nodeDirectoryFs());
   // The stored gateway wins over the dotenv; without either, the registry is empty and a
   // run settles `no_model` until a person configures it in the app.
-  let gateway: GatewayConfig | undefined = (await readGateway(root)) ?? gatewayFromEnv(process.env);
+  gateway = (await readGateway(root)) ?? gatewayFromEnv(process.env);
   let models = createDaemonModels(
     gateway === undefined
       ? undefined
       : {
           baseUrl: gateway.baseUrl,
-          apiKeyEnv: "BOTS_API_KEY",
+          apiKey: gateway.apiKey,
           provider: gateway.provider,
           modelId: gateway.model,
         },
@@ -179,12 +180,9 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       const next: GatewayConfig = { provider, baseUrl, model, apiKey };
       await writeGateway(root, next);
       gateway = next;
-      // The provider reads the key through the environment on each request, so an
-      // existing bot picks it up without being reopened.
-      process.env.BOTS_API_KEY = apiKey;
       models = createDaemonModels({
         baseUrl,
-        apiKeyEnv: "BOTS_API_KEY",
+        apiKey,
         provider,
         modelId: model,
       });
