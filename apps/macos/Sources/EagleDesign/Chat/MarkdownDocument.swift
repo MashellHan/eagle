@@ -203,9 +203,10 @@ extension Array where Element == AssistantTurn.Block {
 
 struct MarkdownDocument {
   static func inline(_ text: String) -> AttributedString {
+    let source = strongBoundaries(text)
     var value =
       (try? AttributedString(
-        markdown: text,
+        markdown: source,
         options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
       )) ?? AttributedString(text)
     for run in value.runs {
@@ -216,7 +217,7 @@ struct MarkdownDocument {
         container.foregroundColor = Theme.Palette.textPrimary
         container.backgroundColor = Theme.Palette.canvas
       } else if intent?.contains(.stronglyEmphasized) == true {
-        container.font = .system(size: 15, weight: .semibold)
+        container.font = .system(size: 15, weight: .bold)
       } else if intent?.contains(.emphasized) == true {
         container.font = .system(size: 15).italic()
       }
@@ -226,5 +227,83 @@ struct MarkdownDocument {
       value[run.range].mergeAttributes(container)
     }
     return value
+  }
+
+  // CommonMark does not close ** after CJK punctuation next to another word. Hair
+  // spaces establish display-only boundaries; code, escapes and copied source stay intact.
+  private static func strongBoundaries(_ source: String) -> String {
+    guard source.contains("**") else { return source }
+    let text = Array(source)
+    var output = ""
+    var index = 0
+
+    func runEnd(_ start: Int, character: Character) -> Int {
+      var end = start
+      while end < text.count, text[end] == character { end += 1 }
+      return end
+    }
+    var codeClosings: [Int: Int] = [:]
+    var nextFence: [Int: Int] = [:]
+    var cursor = text.count
+    while cursor > 0 {
+      guard text[cursor - 1] == "`" else {
+        cursor -= 1
+        continue
+      }
+      let end = cursor
+      while cursor > 0, text[cursor - 1] == "`" { cursor -= 1 }
+      codeClosings[cursor] = nextFence[end - cursor]
+      nextFence[end - cursor] = end
+    }
+    func strongEnd(_ start: Int) -> Int? {
+      var cursor = start + 2
+      while cursor < text.count {
+        if text[cursor] == "\\" {
+          cursor += 2
+          continue
+        }
+        if text[cursor] == "`" {
+          cursor = codeClosings[cursor] ?? runEnd(cursor, character: "`")
+          continue
+        }
+        if text[cursor] == "*" {
+          let end = runEnd(cursor, character: "*")
+          if end - cursor == 2 { return cursor }
+          cursor = end
+        } else {
+          cursor += 1
+        }
+      }
+      return nil
+    }
+
+    while index < text.count {
+      if text[index] == "\\" {
+        let end = min(index + 2, text.count)
+        output += String(text[index..<end])
+        index = end
+      } else if text[index] == "`" {
+        let end = codeClosings[index] ?? runEnd(index, character: "`")
+        output += String(text[index..<end])
+        index = end
+      } else if text[index] == "*" {
+        let opening = runEnd(index, character: "*")
+        if opening - index == 2, let closing = strongEnd(index) {
+          let body = String(text[opening..<closing])
+          let cjk = body.range(of: "\\p{Han}", options: .regularExpression) != nil
+          if cjk, index > 0, !text[index - 1].isWhitespace { output += "\u{200A}" }
+          output += String(text[index..<(closing + 2)])
+          index = closing + 2
+          if cjk, index < text.count, !text[index].isWhitespace { output += "\u{200A}" }
+        } else {
+          output += String(text[index..<opening])
+          index = opening
+        }
+      } else {
+        output.append(text[index])
+        index += 1
+      }
+    }
+    return output
   }
 }

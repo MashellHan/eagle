@@ -101,6 +101,14 @@ remain available in the same capsule; there is no top-left status strip. State c
 use a restrained spring/fade, with no continuous animation under Reduce Motion. Long
 names truncate before overlapping the side-column controls.
 
+## CJK markdown emphasis
+
+Chinese strong spans such as `**可以正常轮询。**截至...` render as bold even when
+punctuation touches following text. The prepared display inserts hair-space delimiter
+boundaries around paired CJK `**` spans for Foundation's CommonMark parser; code spans,
+escaped markers and unfinished delimiters retain their meaning. The stored source is
+unchanged. Other delimiter forms retain Foundation's parsing semantics.
+
 ## Profile editing
 
 A bot's name, optional label and face are editable from its profile in the right panel:
