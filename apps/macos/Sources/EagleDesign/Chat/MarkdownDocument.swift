@@ -201,7 +201,11 @@ extension Array where Element == AssistantTurn.Block {
   }
 }
 
-struct MarkdownDocument {
+public struct MarkdownDocument {
+  public static func plainText(_ text: String) -> String {
+    String(inline(text).characters).replacingOccurrences(of: "\u{200A}", with: "")
+  }
+
   static func inline(_ text: String) -> AttributedString {
     let source = strongBoundaries(text)
     var value =

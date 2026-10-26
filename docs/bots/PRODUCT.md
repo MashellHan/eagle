@@ -89,6 +89,14 @@ remain unchanged.
 
 ## Conversation identity and activity
 
+The native sidebar subtitle shows a single-line excerpt of the latest received
+user or assistant text, not runtime state. Thinking, tool output and system notices
+are excluded. Preview text is bounded to 160 characters and Markdown markers are
+removed for display. Received previews remain available while switching bots or
+reconnecting; a fresh empty snapshot clears the old preview. A never-loaded bot
+has no preview: the current catalog protocol does not supply global message
+summaries, so these excerpts are session-local and not evidence of background freshness.
+
 The centered, rounded-rectangle identity card is the conversation's single status/control surface. An
 indeterminate highlight travels around its entire outer border during processing, answering and reconnecting;
 the label reflects observed connection/runtime state, never inferred completion.

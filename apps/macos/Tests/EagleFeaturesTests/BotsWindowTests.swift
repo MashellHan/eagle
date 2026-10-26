@@ -78,6 +78,36 @@ struct BotsWindowTests {
     #expect(bots.draft == "hello from Eagle", "the restored draft is what the user sees")
   }
 
+  @Test("sidebar previews use the last received chat text rather than lifecycle state")
+  func sidebarPreview() async throws {
+    let (bots, _, port, _) = try await window()
+    #expect(bots.items.first?.subtitle == "")
+    port.emit(
+      .snapshot(
+        ConversationSnapshot(
+          botId: "b_1",
+          messages: [
+            Message(
+              id: "question", role: .user, state: .complete, createdAt: "x",
+              blocks: [.text("Question")]),
+            Message(
+              id: "answer", role: .assistant, state: .complete, createdAt: "x",
+              blocks: [.thinking("hidden"), .text("**可以正常轮询。**\n下一行")]),
+            Message(
+              id: "tool", role: .tool, state: .complete, createdAt: "x",
+              blocks: [.text("tool output")]),
+          ])))
+    try await Task.sleep(for: .milliseconds(60))
+    #expect(bots.items.first?.subtitle == "可以正常轮询。 下一行")
+    port.emit(.connection(.reconnecting(attempt: 1)))
+    try await Task.sleep(for: .milliseconds(60))
+    #expect(bots.items.first?.subtitle == "可以正常轮询。 下一行")
+    port.emit(.connection(.ready))
+    port.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await Task.sleep(for: .milliseconds(60))
+    #expect(bots.items.first?.subtitle == "")
+  }
+
   @Test("draft and error-only changes do not republish the transcript")
   func transcriptPublicationIsolation() async throws {
     let (bots, _, port, _) = try await window()

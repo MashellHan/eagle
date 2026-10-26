@@ -85,6 +85,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
   private var app: AppViewModel?
   private var cancellables = Set<AnyCancellable>()
   private var publicationScheduled = false
+  private var previews: [String: (source: String, text: String)] = [:]
 
   init(
     settings: BotsSettings = BotsSettings(),
@@ -294,7 +295,19 @@ final class BotsWorkspaceViewModel: ObservableObject {
       transcript.clear()
       return
     }
-    let nextItems = app.bots.map(presenter.sidebarItem)
+    let conversation = app.conversation
+    if conversation.hasSnapshot {
+      let state = conversation.state
+      let source = presenter.previewSource(for: state)
+      if previews[state.botId]?.source != source {
+        previews[state.botId] = (source, MarkdownDocument.plainText(source))
+      }
+    }
+    let ids = Set(app.bots.map(\.id))
+    previews = previews.filter { ids.contains($0.key) }
+    let nextItems = app.bots.map { bot in
+      presenter.sidebarItem(for: bot, preview: previews[bot.id]?.text ?? "")
+    }
     if items != nextItems { items = nextItems }
     if app.selection != selectedId, let next = app.selection {
       selectedId = next
@@ -313,7 +326,6 @@ final class BotsWorkspaceViewModel: ObservableObject {
     if title != selected.title { title = selected.title }
     let nextTint = presenter.tintIndex(for: selected)
     if tintIndex != nextTint { tintIndex = nextTint }
-    let conversation = app.conversation
     let nextSubtitle = presenter.subtitle(
       for: conversation.state, connection: conversation.connection)
     if subtitle != nextSubtitle { subtitle = nextSubtitle }
@@ -648,11 +660,11 @@ struct BotsPresenter {
     abs(bot.id.hashValue) % Theme.Palette.avatarTints.count
   }
 
-  func sidebarItem(for bot: BotSummary) -> SidebarItem {
+  func sidebarItem(for bot: BotSummary, preview: String = "") -> SidebarItem {
     SidebarItem(
       id: bot.id,
       title: bot.title,
-      subtitle: stateLabel(for: bot),
+      subtitle: preview,
       tag: bot.state == .running ? "回答中" : bot.label,
       tintIndex: tintIndex(for: bot),
       face: faceStyle(for: bot)
@@ -668,15 +680,19 @@ struct BotsPresenter {
     )
   }
 
-  private func stateLabel(for bot: BotSummary) -> String {
-    switch bot.state {
-    case .running: return "正在回答"
-    case .idle: return "空闲"
-    case .opening: return "打开中"
-    case .catalogued: return "未打开"
-    case .unavailable: return bot.unavailable?.message ?? "不可用"
-    case .quarantined: return "隔离中"
+  func previewSource(for state: ConversationState) -> String {
+    for message in state.messages.reversed()
+    where message.role == .user || message.role == .assistant {
+      var source = ""
+      for block in message.blocks {
+        guard case .text(let text) = block else { continue }
+        source += text.prefix(160 - source.count)
+        if source.count == 160 { break }
+      }
+      let preview = source.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+      if !preview.isEmpty { return preview }
     }
+    return ""
   }
 }
 
