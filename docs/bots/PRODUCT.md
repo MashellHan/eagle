@@ -156,7 +156,7 @@ The app starts the local Bots daemon on launch when it can find `apps/bots`
 (settings shows its state and lets a person start, stop or restart it), and stops the daemon
 it started when the app quits; a daemon that was already running is left alone. The model
 gateway (URL, API key, model) is configured in the app's Settings under
-`Bots 模型`; the same tab tests the endpoint and reports latency and model count. Setup is
+`模型`; the same tab tests the endpoint and reports latency and model count. Setup is
 progressive: a bot stays readable and usable until a send is attempted without a configured
 gateway, and only then the conversation offers a short "去设置" hint. Nothing asks for
 credentials at launch.
@@ -205,7 +205,7 @@ what is enabled, so later phases flip flags instead of rebuilding screens.
 
 | Capability | Phase 1 | What actually exists in phase 1 | Reserved for |
 | --- | --- | --- | --- |
-| `tools` | `true` (phase 2) | Tool calls and results render as transcript rows: name, arguments, status and output, live and after a snapshot; the workspace and herdr tools produce them | Approvals (none: tools execute without asking) |
+| `tools` | `true` (phase 2) | Tool calls and results render as transcript rows: name, arguments, status and output, live and after a snapshot; the workspace and herdr tools produce them. Settings → `通用` → `隐藏工具调用` drops those rows from the transcript without changing the stored conversation (off by default) | Approvals (none: tools execute without asking) |
 | `tasks` | `false` | An `error` kind for parked tasks and a `recover` command | Task panel, per-task retry, compaction control |
 | `entries` | `false` | Nothing beyond the transcript itself | Raw entry inspector |
 | `usage` | `false` | A `usage` field in snapshots, populated from `pi.usage` (the data is live; only the panel is missing) | Token and cost panel |

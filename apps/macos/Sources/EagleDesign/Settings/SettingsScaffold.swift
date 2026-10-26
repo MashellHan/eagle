@@ -3,7 +3,7 @@ import SwiftUI
 /// Sections of the settings window.
 public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
   case general = "通用"
-  case bots = "Bots 模型"
+  case bots = "模型"
   case machines = "机器"
   case realtime = "实时"
   case usage = "用量与账单"

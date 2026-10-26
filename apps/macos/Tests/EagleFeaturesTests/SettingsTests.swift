@@ -76,6 +76,12 @@ struct SettingsTests {
     #expect(model.machines.first { $0.id == id }?.permission == .deny)
   }
 
+  @Test("the rail names the model tab plainly")
+  func sectionTitles() {
+    #expect(SettingsSection.bots.rawValue == "模型")
+    #expect(SettingsSection.general.rawValue == "通用")
+  }
+
   @Test("cancelRename clears the active target")
   func cancelRename() {
     let model = SettingsViewModel()

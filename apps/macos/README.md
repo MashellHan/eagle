@@ -22,7 +22,7 @@ swift run SnapshotRenderer ../../.local/macos-snapshots   # PNGs for review
 The app supervises the daemon: it walks up from the executable for
 `apps/bots/scripts/serve.ts` (or uses `BOTS_DAEMON_DIR`), starts it with the
 machine's Node (`BOTS_NODE`, then Homebrew/`/usr/bin`), shows its state in
-Settings → `Bots 模型`, and terminates only the daemon it started when the app
+Settings → `模型`, and terminates only the daemon it started when the app
 quits. A daemon started outside the app is reported as external and left alone.
 `BOTS_ROOT`/`BOTS_PORT` move both the app and the daemon together.
 

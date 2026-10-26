@@ -25,6 +25,21 @@ public enum TranscriptEntry: Identifiable, Hashable, Sendable {
     if case .streamingAssistant = self { return true }
     return false
   }
+
+  public var isToolCall: Bool {
+    switch self {
+    case .tool, .toolRun: return true
+    default: return false
+    }
+  }
+}
+
+extension [TranscriptEntry] {
+  /// Settings → 通用 hides tool traffic without touching the stored conversation.
+  public func hidingToolCalls(_ hidden: Bool) -> [TranscriptEntry] {
+    guard hidden else { return self }
+    return filter { !$0.isToolCall }
+  }
 }
 
 /// Middle column: a slim control strip, scrollable transcript, composer.
@@ -33,6 +48,7 @@ public struct ConversationColumn: View {
   private let subtitle: String
   private let tintIndex: Int
   private let entries: [TranscriptEntry]
+  private let showsToolCalls: Bool
   private let preparedMarkdown: [String: [RenderedMarkdownBlock]]
   @Binding private var draft: String
   private let onSend: () -> Void
@@ -52,6 +68,7 @@ public struct ConversationColumn: View {
     subtitle: String,
     tintIndex: Int,
     entries: [TranscriptEntry],
+    showsToolCalls: Bool = true,
     preparedMarkdown: [String: [RenderedMarkdownBlock]] = [:],
     draft: Binding<String>,
     onSend: @escaping () -> Void,
@@ -68,6 +85,7 @@ public struct ConversationColumn: View {
     self.subtitle = subtitle
     self.tintIndex = tintIndex
     self.entries = entries
+    self.showsToolCalls = showsToolCalls
     self.preparedMarkdown = preparedMarkdown
     self._draft = draft
     self.onSend = onSend
@@ -143,7 +161,7 @@ public struct ConversationColumn: View {
     ScrollViewReader { proxy in
       ScrollView {
         LazyVStack(alignment: .leading, spacing: Theme.Metric.turnGap) {
-          ForEach(entries) { entry in
+          ForEach(entries.hidingToolCalls(!showsToolCalls)) { entry in
             row(entry).id(entry.id)
           }
           Color.clear.frame(height: 1).id("bottom")

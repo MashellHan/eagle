@@ -5,6 +5,7 @@ import SwiftUI
 public struct SettingsView: View {
   @StateObject private var model: SettingsViewModel
   @AppStorage("eagle.appearance") private var appearance = "system"
+  @AppStorage("eagle.hideToolCalls") private var hideToolCalls = false
   private let onClose: () -> Void
   private let daemon: BotsDaemonSupervisor?
 
@@ -55,6 +56,13 @@ public struct SettingsView: View {
               .tint(Theme.Palette.accentStrong)
           }
           Divider().overlay(Theme.Palette.line)
+          SettingsRow("隐藏工具调用", detail: "对话里不显示工具调用和结果") {
+            Toggle("", isOn: $hideToolCalls)
+              .labelsHidden()
+              .toggleStyle(.switch)
+              .tint(Theme.Palette.accentStrong)
+          }
+          Divider().overlay(Theme.Palette.line)
           SettingsRow("外观", detail: "浅色、深色或跟随系统") {
             PillMenu(appearanceLabel) { cycleAppearance() }
           }
@@ -70,7 +78,7 @@ public struct SettingsView: View {
         SettingsCaption("Bot 服务")
         BotsDaemonCard(daemon: daemon)
       }
-      SettingsCaption("Bot 使用这台机器上的模型网关。保存后新 Bot 立即生效，已有的 Bot 会原地切换到新模型。")
+      SettingsCaption("Bot 使用这台机器上的模型网关，保存后立即生效。")
       SettingsCard {
         VStack(alignment: .leading, spacing: 14) {
           gatewayField(

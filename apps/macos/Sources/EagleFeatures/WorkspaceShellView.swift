@@ -18,6 +18,7 @@ public struct WorkspaceShellView: View {
   @State private var showsBotFaceEditor = false
   @State private var showsSettings = false
   @AppStorage("eagle.appearance") private var appearance = "system"
+  @AppStorage("eagle.hideToolCalls") private var hideToolCalls = false
   private let onShowGallery: () -> Void
 
   public init(
@@ -140,6 +141,7 @@ public struct WorkspaceShellView: View {
               subtitle: item?.tag ?? "GitHub",
               tintIndex: item?.tintIndex ?? 2,
               entries: chat.entries,
+              showsToolCalls: !hideToolCalls,
               draft: $chat.draft,
               onSend: { chat.send() },
               showsSidebar: layout.showsSidebar,
