@@ -59,6 +59,7 @@ public struct AssistantTurn: View {
 /// The only colored surface in the transcript: a green pill aligned right.
 public struct UserBubble: View {
   private let text: String
+  @State private var hovering = false
 
   public init(_ text: String) {
     self.text = text
@@ -67,16 +68,20 @@ public struct UserBubble: View {
   public var body: some View {
     HStack {
       Spacer(minLength: 96)
-      Text(text)
-        .font(Theme.TypeScale.bubble)
-        .foregroundStyle(.white)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 9)
-        .background(
-          RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(Theme.Palette.accentFill)
-        )
-        .textSelection(.enabled)
+      HStack(alignment: .bottom, spacing: 8) {
+        MessageCopyButton(text: text, label: "复制用户消息", isVisible: hovering)
+        Text(text)
+          .font(Theme.TypeScale.bubble)
+          .foregroundStyle(.white)
+          .padding(.horizontal, 16)
+          .padding(.vertical, 9)
+          .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+              .fill(Theme.Palette.accentFill)
+          )
+          .textSelection(.enabled)
+      }
+      .onHover { hovering = $0 }
     }
   }
 }

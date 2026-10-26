@@ -1,0 +1,67 @@
+import AppKit
+import SwiftUI
+
+@MainActor
+final class MessageCopyViewModel: ObservableObject {
+  enum Feedback { case idle, copied, failed }
+  @Published private(set) var feedback: Feedback = .idle
+  private let pasteboard: NSPasteboard
+  private var reset: Task<Void, Never>?
+
+  init(pasteboard: NSPasteboard = .general) {
+    self.pasteboard = pasteboard
+  }
+
+  func copy(_ text: String) {
+    guard !text.isEmpty else { return }
+    reset?.cancel()
+    pasteboard.clearContents()
+    feedback = pasteboard.setString(text, forType: .string) ? .copied : .failed
+    reset = Task { [weak self] in
+      do { try await Task.sleep(for: .seconds(1.5)) } catch { return }
+      self?.feedback = .idle
+    }
+  }
+
+  func resetFeedback() {
+    reset?.cancel()
+    feedback = .idle
+  }
+
+  deinit { reset?.cancel() }
+}
+
+struct MessageCopyButton: View {
+  let text: String
+  let label: String
+  let isVisible: Bool
+  @StateObject private var model = MessageCopyViewModel()
+  @FocusState private var focused: Bool
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  var body: some View {
+    IconButton(
+      systemName: model.feedback == .copied ? "checkmark" : "doc.on.doc",
+      label: feedbackLabel,
+      size: Theme.Metric.hitTarget,
+      tint: model.feedback == .copied
+        ? Theme.Palette.accentStrong
+        : (model.feedback == .failed ? Theme.Palette.destructive : Theme.Palette.textSecondary),
+      action: { model.copy(text) }
+    )
+    .focused($focused)
+    .disabled(text.isEmpty)
+    .opacity(isVisible || focused || model.feedback != .idle ? 1 : 0)
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isVisible)
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.feedback)
+    .onDisappear { model.resetFeedback() }
+  }
+
+  private var feedbackLabel: String {
+    switch model.feedback {
+    case .idle: label
+    case .copied: "已复制"
+    case .failed: "复制失败，请重试"
+    }
+  }
+}

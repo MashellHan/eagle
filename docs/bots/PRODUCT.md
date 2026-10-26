@@ -101,6 +101,16 @@ remain available in the same capsule; there is no top-left status strip. State c
 use a restrained spring/fade, with no continuous animation under Reduce Motion. Long
 names truncate before overlapping the side-column controls.
 
+## Message copying
+
+Hovering a message reveals a small copy control on the left of a user bubble and
+the right of an assistant bubble. The action remains reachable while the pointer moves
+onto it and through keyboard focus. Its reserved space prevents layout jumps. Copy
+writes the original message source, including Markdown, to the clipboard and briefly
+shows a checkmark; failure reports a retryable copy error. An empty streaming bubble
+does not overwrite the clipboard. Copy feedback belongs to the leaf control, not the
+transcript or workspace view model.
+
 ## CJK markdown emphasis
 
 Chinese strong spans such as `**可以正常轮询。**截至...` render as bold even when

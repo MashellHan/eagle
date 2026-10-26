@@ -251,10 +251,7 @@ public struct TemplateGallery: View {
   private var chatSection: some View {
     GalleryCard(title: "会话") {
       VStack(alignment: .leading, spacing: Theme.Metric.turnGap) {
-        AssistantTurn([
-          .bullets(["firefly: 5 / 2, 有 CVE", "octo: 5 / 2, 有 CVE", "zhe: 11 / 2, 有 CVE"]),
-          .paragraph("第一批 8 个仓库已经开始修了，每小时给你发一次进度。"),
-        ])
+        AssistantBubble(text: "**可以正常轮询。**截至本机时间，最近一次检查已完成。\n\n- 历史消息保持不变\n- 悬停气泡可复制原始 Markdown")
         DeliveryNote("2 条消息往来：", avatars: Array(Theme.Palette.avatarTints.prefix(2)))
         UserBubble("今天 eagle 会修吗")
         TypingIndicator()

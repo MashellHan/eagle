@@ -8,6 +8,7 @@ public struct AssistantBubble: View, Equatable {
   private let text: String
   private let streaming: Bool
   @StateObject private var model = MarkdownViewModel()
+  @State private var hovering = false
 
   public init(text: String, streaming: Bool = false) {
     self.text = text
@@ -16,22 +17,26 @@ public struct AssistantBubble: View, Equatable {
 
   public var body: some View {
     HStack(alignment: .bottom, spacing: 8) {
-      VStack(alignment: .leading, spacing: 10) {
-        ForEach(Array(model.blocks.enumerated()), id: \.offset) { index, block in
-          blockView(block, caret: streaming && index == model.blocks.count - 1)
+      HStack(alignment: .bottom, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+          ForEach(Array(model.blocks.enumerated()), id: \.offset) { index, block in
+            blockView(block, caret: streaming && index == model.blocks.count - 1)
+          }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
+        .background(
+          RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .fill(Theme.Palette.card)
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+        )
+        MessageCopyButton(text: text, label: "复制 Bot 消息", isVisible: hovering)
       }
-      .padding(.horizontal, 16)
-      .padding(.vertical, 13)
-      .background(
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
-          .fill(Theme.Palette.card)
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
-          .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
-      )
       .frame(maxWidth: Theme.Metric.conversationMaxContentWidth - 120, alignment: .leading)
+      .onHover { hovering = $0 }
       Spacer(minLength: 40)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
