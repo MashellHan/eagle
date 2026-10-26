@@ -103,10 +103,33 @@ public struct ParticipantBubble: View {
         .fill(hovering ? Theme.Palette.hover : Theme.Palette.card)
     )
     .overlay {
-      RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous).strokeBorder(
-        status?.isActive == true ? tint.opacity(0.4) : Theme.Palette.line,
-        lineWidth: Theme.Metric.hairline
-      )
+      if status?.isActive == true {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { context in
+          let turn =
+            reduceMotion
+            ? 0
+            : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2.8) / 2.8
+          RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
+            .strokeBorder(
+              AngularGradient(
+                stops: [
+                  .init(color: tint.opacity(0.12), location: 0),
+                  .init(color: tint.opacity(0.12), location: 0.62),
+                  .init(color: tint, location: 0.88),
+                  .init(color: tint.opacity(0.12), location: 1),
+                ],
+                center: .center,
+                startAngle: .degrees(turn * 360), endAngle: .degrees(turn * 360 + 360)
+              ), lineWidth: 1.5
+            )
+        }
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
+      } else {
+        RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
+          .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+          .allowsHitTesting(false)
+      }
     }
     .shadow(color: tint.opacity(status?.isActive == true ? 0.1 : 0), radius: 8, y: 2)
     .onHover { hovering = $0 }
@@ -119,25 +142,6 @@ public struct ParticipantBubble: View {
       initial: String(name.prefix(1)), tint: Theme.Palette.avatarTint(tintIndex),
       size: Theme.Metric.participantAvatar, shape: .blob
     )
-    .overlay {
-      if status?.isActive == true {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { context in
-          let turn =
-            reduceMotion
-            ? 0 : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2) / 2
-          Circle()
-            .trim(from: 0, to: 0.72)
-            .stroke(
-              AngularGradient(colors: [tint.opacity(0.1), tint], center: .center),
-              style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
-            )
-            .rotationEffect(.degrees(turn * 360))
-            .padding(-3)
-        }
-        .accessibilityHidden(true)
-        .allowsHitTesting(false)
-      }
-    }
   }
 
   private var tint: Color {

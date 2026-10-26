@@ -89,8 +89,8 @@ remain unchanged.
 
 ## Conversation identity and activity
 
-The centered, rounded-rectangle identity card is the conversation's single status/control surface. Its
-avatar has an animated activity ring during processing, answering and reconnecting;
+The centered, rounded-rectangle identity card is the conversation's single status/control surface. An
+indeterminate highlight travels around its entire outer border during processing, answering and reconnecting;
 the label reflects observed connection/runtime state, never inferred completion.
 Connection loss overrides stale running state; a new welcome remains syncing until
 the subscription snapshot arrives. Historical errors stay inspectable without hiding
