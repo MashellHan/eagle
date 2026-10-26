@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Testing
 
 @testable import EagleDesign
@@ -6,6 +7,25 @@ import Testing
 @MainActor
 @Suite("Message copy")
 struct MessageCopyTests {
+  @Test("the copy glyph is small while its hit target stays full size")
+  func smallGlyph() throws {
+    let renderer = ImageRenderer(
+      content: MessageCopyButton(text: "Message", label: "Copy", isVisible: true)
+    )
+    renderer.scale = 1
+    let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+    #expect(bitmap.pixelsWide == Int(Theme.Metric.hitTarget))
+    #expect(bitmap.pixelsHigh == Int(Theme.Metric.hitTarget))
+    var paintedRows = Set<Int>()
+    for y in 0..<bitmap.pixelsHigh {
+      for x in 0..<bitmap.pixelsWide where (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.1 {
+        paintedRows.insert(y)
+      }
+    }
+    #expect(!paintedRows.isEmpty)
+    #expect(paintedRows.count <= 13)
+  }
+
   @Test("copy writes the original message and reports success")
   func copiesSource() {
     let board = NSPasteboard.withUniqueName()

@@ -44,6 +44,7 @@ struct MessageCopyButton: View {
       systemName: model.feedback == .copied ? "checkmark" : "doc.on.doc",
       label: feedbackLabel,
       size: Theme.Metric.hitTarget,
+      glyphSize: Theme.Metric.messageActionGlyph,
       tint: model.feedback == .copied
         ? Theme.Palette.accentStrong
         : (model.feedback == .failed ? Theme.Palette.destructive : Theme.Palette.textSecondary),

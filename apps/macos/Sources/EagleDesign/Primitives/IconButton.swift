@@ -12,6 +12,7 @@ public struct IconButton: View {
   private let systemName: String
   private let label: String
   private let size: CGFloat
+  private let glyphSize: CGFloat
   private let tint: Color
   private let style: Style
   private let action: () -> Void
@@ -21,6 +22,7 @@ public struct IconButton: View {
     systemName: String,
     label: String,
     size: CGFloat = Theme.Metric.iconButton,
+    glyphSize: CGFloat? = nil,
     tint: Color = Theme.Palette.textPrimary,
     style: Style = .plain,
     action: @escaping () -> Void
@@ -28,6 +30,7 @@ public struct IconButton: View {
     self.systemName = systemName
     self.label = label
     self.size = size
+    self.glyphSize = glyphSize ?? size * 0.55
     self.tint = tint
     self.style = style
     self.action = action
@@ -36,7 +39,7 @@ public struct IconButton: View {
   public var body: some View {
     Button(action: action) {
       Image(systemName: systemName)
-        .font(.system(size: size * 0.55, weight: .medium))
+        .font(.system(size: glyphSize, weight: .medium))
         .foregroundStyle(tint)
         .frame(width: size, height: size)
         .background { background }

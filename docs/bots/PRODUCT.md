@@ -104,7 +104,8 @@ names truncate before overlapping the side-column controls.
 ## Message copying
 
 Hovering a message reveals a small copy control on the left of a user bubble and
-the right of an assistant bubble. The action remains reachable while the pointer moves
+the right of an assistant bubble. Its 10 pt glyph retains a 28 pt hit target. The
+action remains reachable while the pointer moves
 onto it and through keyboard focus. Its reserved space prevents layout jumps. Copy
 writes the original message source, including Markdown, to the clipboard and briefly
 shows a checkmark; failure reports a retryable copy error. An empty streaming bubble

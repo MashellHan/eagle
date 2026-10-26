@@ -97,6 +97,7 @@ public enum Theme {
     public static let avatarNote: CGFloat = 18
     public static let iconButton: CGFloat = 32
     public static let hitTarget: CGFloat = 28
+    public static let messageActionGlyph: CGFloat = 10
 
     public static let cardRadius: CGFloat = 12
     public static let controlRadius: CGFloat = 9
