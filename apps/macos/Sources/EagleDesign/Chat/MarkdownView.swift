@@ -33,6 +33,7 @@ public struct AssistantBubble: View, Equatable {
           RoundedRectangle(cornerRadius: 20, style: .continuous)
             .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
         )
+        .messageCopyAlignment()
         MessageCopyButton(text: text, label: "复制 Bot 消息", isVisible: hovering)
       }
       .frame(maxWidth: Theme.Metric.conversationMaxContentWidth - 120, alignment: .leading)

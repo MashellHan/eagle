@@ -80,6 +80,7 @@ public struct UserBubble: View {
               .fill(Theme.Palette.accentFill)
           )
           .textSelection(.enabled)
+          .messageCopyAlignment()
       }
       .onHover { hovering = $0 }
     }

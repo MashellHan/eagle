@@ -66,3 +66,16 @@ struct MessageCopyButton: View {
     }
   }
 }
+
+extension View {
+  func messageCopyAlignment() -> some View {
+    alignmentGuide(.bottom) { dimensions in
+      if let first = dimensions[explicit: .firstTextBaseline],
+        let last = dimensions[explicit: .lastTextBaseline], abs(first - last) < 1
+      {
+        return dimensions[VerticalAlignment.center] + Theme.Metric.hitTarget / 2
+      }
+      return dimensions[.bottom]
+    }
+  }
+}
