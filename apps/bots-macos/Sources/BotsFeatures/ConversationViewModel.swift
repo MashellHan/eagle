@@ -16,7 +16,17 @@ public final class ConversationViewModel: ObservableObject {
   @Published public private(set) var hasOlder = false
   /// A parked task is recoverable: `recover` retries it.
   @Published public private(set) var parked = false
-  @Published public var draft = ""
+  private var draftStorage = ""
+  public var draft: String {
+    get { draftStorage }
+    set { updateDraft(newValue) }
+  }
+
+  /// Updates draft storage without `ObservableObject` fan-out (the shell mirrors into `composer`).
+  public func writeDraft(_ value: String) {
+    guard draftStorage != value else { return }
+    draftStorage = value
+  }
 
   private let conversation: ConversationPort
   private let outbox: OutboxStore
@@ -145,6 +155,11 @@ public final class ConversationViewModel: ObservableObject {
 
   public func dismissError() {
     errorBanner = nil
+  }
+
+  private func updateDraft(_ value: String) {
+    guard draftStorage != value else { return }
+    draftStorage = value
   }
 
   // MARK: - Sending

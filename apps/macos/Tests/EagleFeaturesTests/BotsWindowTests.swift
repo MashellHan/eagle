@@ -13,6 +13,18 @@ import Testing
 @MainActor
 @Suite("Bots window")
 struct BotsWindowTests {
+  private func waitUntil(
+    timeout: TimeInterval = 2,
+    _ condition: () -> Bool
+  ) async throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+      if condition() { return }
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    Issue.record("condition not met within \(timeout)s")
+  }
+
   private func window(
     gateway: Bool? = true
   ) async throws -> (
@@ -48,7 +60,13 @@ struct BotsWindowTests {
     bots.select("b_1")
     conversationPort.emit(.connection(.ready))
     conversationPort.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
-    try await Task.sleep(nanoseconds: 60_000_000)
+    try await waitUntil {
+      app.conversation.connection == .ready && app.conversation.hasSnapshot
+    }
+    try await waitUntil {
+      bots.connection == .ready && bots.subtitle == "已连接"
+    }
+    await bots.awaitShellQuiescence()
     return (bots, app, conversationPort, outbox)
   }
 
@@ -60,8 +78,7 @@ struct BotsWindowTests {
     #expect(app.conversation.draft == "hello from Eagle", "there is no second draft")
 
     bots.send()
-    try await Task.sleep(nanoseconds: 60_000_000)
-    #expect(conversationPort.sent.last?.text == "hello from Eagle")
+    try await waitUntil { conversationPort.sent.last?.text == "hello from Eagle" }
 
     // A refusal restores the text through the same accessor the composer binds.
     let requestId = try #require(conversationPort.sent.last?.requestId)
@@ -74,7 +91,7 @@ struct BotsWindowTests {
         requestId: requestId
       )
     )
-    try await Task.sleep(nanoseconds: 60_000_000)
+    try await waitUntil { bots.draft == "hello from Eagle" }
     #expect(bots.draft == "hello from Eagle", "the restored draft is what the user sees")
   }
 
@@ -111,6 +128,7 @@ struct BotsWindowTests {
   @Test("draft and error-only changes do not republish the transcript")
   func transcriptPublicationIsolation() async throws {
     let (bots, _, port, _) = try await window()
+    await bots.awaitScheduledPublishDrain()
     var publications = 0
     var shellPublications = 0
     let observer = bots.transcript.$entries.dropFirst().sink { _ in publications += 1 }
@@ -177,7 +195,7 @@ struct BotsWindowTests {
     #expect(port.aborted == 0)
 
     port.emit(.snapshot(ConversationSnapshot(botId: "b_1", running: true)))
-    try await Task.sleep(nanoseconds: 60_000_000)
+    try await waitUntil { bots.running }
     #expect(bots.participantStatus.phase == .working)
     #expect(bots.participantStatus.isActive)
     #expect(bots.participantStatus.label == "处理中")
@@ -189,7 +207,10 @@ struct BotsWindowTests {
     #expect(bots.participantStatus.canStop, "a sent abort is not a settled run")
 
     port.emit(.connection(.reconnecting(attempt: 1)))
-    try await Task.sleep(nanoseconds: 60_000_000)
+    try await waitUntil {
+      bots.participantStatus.phase == .connecting
+        && bots.participantStatus.label == "正在重连（第 1 次）"
+    }
     #expect(bots.participantStatus.phase == .connecting)
     #expect(bots.participantStatus.label == "正在重连（第 1 次）")
     #expect(!bots.participantStatus.canStop)
@@ -198,16 +219,18 @@ struct BotsWindowTests {
     #expect(port.aborted == 1)
 
     port.emit(.connection(.stopped))
-    try await Task.sleep(nanoseconds: 60_000_000)
+    try await waitUntil { bots.participantStatus.phase == .offline }
     #expect(bots.participantStatus.phase == .offline)
     #expect(!bots.participantStatus.isActive)
     port.emit(.connection(.ready))
-    try await Task.sleep(nanoseconds: 60_000_000)
+    try await waitUntil {
+      bots.participantStatus.phase == .connecting && bots.participantStatus.label == "正在同步…"
+    }
     #expect(bots.participantStatus.phase == .connecting)
     #expect(bots.participantStatus.label == "正在同步…")
     #expect(!bots.participantStatus.canStop, "welcome is not a fresh conversation snapshot")
     port.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
-    try await Task.sleep(nanoseconds: 60_000_000)
+    try await waitUntil { bots.participantStatus.phase == .idle }
     #expect(bots.participantStatus.phase == .idle)
     #expect(!bots.participantStatus.isActive)
     #expect(!bots.participantStatus.canStop)
@@ -217,11 +240,12 @@ struct BotsWindowTests {
   func participantError() async throws {
     let (bots, _, port, _) = try await window()
     port.emit(.snapshot(ConversationSnapshot(botId: "b_1", running: true)))
+    try await waitUntil { bots.running }
     port.emit(
       .error(
         kind: .invalidCommand, disposition: .notAdmitted,
         message: "refused", failure: "f_header", requestId: nil))
-    try await Task.sleep(nanoseconds: 60_000_000)
+    try await waitUntil { bots.participantStatus.error == "refused" }
     #expect(bots.participantStatus.phase == .working)
     #expect(bots.participantStatus.isActive, "an old error does not hide a live answer")
     #expect(bots.participantStatus.error == "refused")
@@ -260,7 +284,14 @@ struct BotsWindowTests {
       )
     )
     conversationPort.emit(.delta(messageId: "p_a1", changes: [.text(index: 0, append: "答")]))
-    try await Task.sleep(nanoseconds: 80_000_000)
+    try await waitUntil {
+      if case .streamingAssistant(_, let blocks) = bots.entries.last,
+        case .paragraph("回答") = blocks.first
+      {
+        return true
+      }
+      return false
+    }
     let rows = bots.entries
     #expect(rows.count >= 2, "the transcript grows with the stream")
     #expect(
@@ -283,7 +314,7 @@ struct BotsWindowTests {
     #expect(bots.subtitle == "已连接")
 
     conversationPort.emit(.status(running: true, inbox: [], streaming: nil))
-    try await Task.sleep(nanoseconds: 60_000_000)
+    try await waitUntil { bots.running }
     #expect(bots.running, "the stop affordance is driven by the run state")
 
     bots.abort()
@@ -344,15 +375,24 @@ final class StubConversation: ConversationPort {
   var aborted = 0
   var lastBotId: String?
   private var continuation: AsyncStream<ConversationEvent>.Continuation?
+  private var pending: [ConversationEvent] = []
 
   func open(botId: String) -> AsyncStream<ConversationEvent> {
-    AsyncStream { continuation in
+    continuation?.finish()
+    continuation = nil
+    return AsyncStream { continuation in
       self.continuation = continuation
+      for event in self.pending { continuation.yield(event) }
+      self.pending.removeAll()
     }
   }
 
   func emit(_ event: ConversationEvent) {
-    continuation?.yield(event)
+    if let continuation {
+      continuation.yield(event)
+    } else {
+      pending.append(event)
+    }
   }
 
   func send(
@@ -388,5 +428,6 @@ final class StubConversation: ConversationPort {
   func close() {
     continuation?.finish()
     continuation = nil
+    pending.removeAll()
   }
 }

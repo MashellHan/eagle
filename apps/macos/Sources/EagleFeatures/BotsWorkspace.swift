@@ -33,6 +33,7 @@ public struct BotsSettings {
 final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var items: [SidebarItem] = []
   let transcript = BotsTranscriptViewModel()
+  let composer = BotsComposerViewModel()
   var entries: [TranscriptEntry] { transcript.entries }
   @Published private(set) var title = "Bots"
   @Published private(set) var subtitle = "正在连接…"
@@ -85,6 +86,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
   private var app: AppViewModel?
   private var cancellables = Set<AnyCancellable>()
   private var publicationScheduled = false
+  private var pendingRepublish = false
   private var previews: [String: (source: String, text: String)] = [:]
 
   init(
@@ -229,10 +231,12 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   /// The conversation view model owns the only draft; the composer reads and writes it
   /// through these two members, so there is no second copy to drift.
-  var draft: String { app?.conversation.draft ?? "" }
+  var draft: String { composer.text }
 
   func setDraft(_ value: String) {
-    app?.conversation.draft = value
+    guard let conversation = app?.conversation else { return }
+    conversation.writeDraft(value)
+    if composer.text != value { composer.text = value }
   }
 
   func send() {
@@ -244,6 +248,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       return
     }
     app.conversation.send()
+    mirrorConversationDraftIntoComposer()
     publish()
   }
 
@@ -312,6 +317,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
     if app.selection != selectedId, let next = app.selection {
       selectedId = next
       onSelect?(next)
+      mirrorConversationDraftIntoComposer()
     }
     guard let selected = app.bots.first(where: { $0.id == app.selection }) else {
       title = "Bots"
@@ -335,30 +341,74 @@ final class BotsWorkspaceViewModel: ObservableObject {
     let nextRecover = conversation.state.unavailable != nil || conversation.parked
     if canRecover != nextRecover { canRecover = nextRecover }
     let nextError = conversation.errorBanner ?? app.error
-    if error != nextError { error = nextError }
+    if error != nextError {
+      error = nextError
+      mirrorConversationDraftIntoComposer()
+    }
+  }
+
+  private func mirrorConversationDraftIntoComposer() {
+    guard let conversation = app?.conversation else { return }
+    let next = conversation.draft
+    if composer.text != next { composer.text = next }
   }
 
   /// The conversation view model publishes many times per answer (one delta each), so the
   /// mapping runs on the next run loop turn rather than inside the notification.
   private func bind(_ app: AppViewModel) {
     cancellables.removeAll()
+    let conversation = app.conversation
     app.objectWillChange
-      .merge(with: app.conversation.objectWillChange)
-      .sink { [weak self] _ in
-        guard let self, !self.publicationScheduled else { return }
-        self.publicationScheduled = true
-        Task { @MainActor [weak self] in
-          self?.publicationScheduled = false
-          self?.publish()
-        }
-      }
+      .sink { [weak self] _ in self?.schedulePublish() }
       .store(in: &cancellables)
-    app.conversation.$draft.removeDuplicates()
+    // Draft edits repaint only the composer; they must not remap the sidebar or transcript.
+    Publishers.MergeMany(
+      conversation.$connection.map { _ in }.eraseToAnyPublisher(),
+      conversation.$hasSnapshot.map { _ in }.eraseToAnyPublisher(),
+      conversation.$state.map { _ in }.eraseToAnyPublisher(),
+      conversation.$errorBanner.map { _ in }.eraseToAnyPublisher(),
+      conversation.$parked.map { _ in }.eraseToAnyPublisher(),
+      conversation.$isSending.map { _ in }.eraseToAnyPublisher(),
+      conversation.$hasOlder.map { _ in }.eraseToAnyPublisher()
+    )
+    .sink { [weak self] _ in self?.schedulePublish() }
+    .store(in: &cancellables)
+    conversation.$hasSnapshot.removeDuplicates()
       .sink { [weak transcript] _ in transcript?.objectWillChange.send() }
       .store(in: &cancellables)
-    app.conversation.$hasSnapshot.removeDuplicates()
-      .sink { [weak transcript] _ in transcript?.objectWillChange.send() }
-      .store(in: &cancellables)
+  }
+
+  private func schedulePublish() {
+    if publicationScheduled {
+      pendingRepublish = true
+      return
+    }
+    publicationScheduled = true
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      repeat {
+        self.pendingRepublish = false
+        self.publish()
+      } while self.pendingRepublish
+      self.publicationScheduled = false
+    }
+  }
+
+  /// Waits until deferred shell publish passes finish (handshake, status, etc.).
+  func awaitScheduledPublishDrain() async {
+    while publicationScheduled {
+      await Task.yield()
+      try? await Task.sleep(nanoseconds: 2_000_000)
+    }
+  }
+
+  /// Yields until in-flight main-actor work (e.g. transcript projection) settles.
+  func awaitShellQuiescence() async {
+    await awaitScheduledPublishDrain()
+    for _ in 0..<6 {
+      await Task.yield()
+      try? await Task.sleep(nanoseconds: 5_000_000)
+    }
   }
 }
 
