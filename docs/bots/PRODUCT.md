@@ -103,6 +103,12 @@ names truncate before overlapping the side-column controls.
 
 ## Message copying
 
+Live transcript publication includes prepared Markdown blocks for every assistant
+row. Preparation runs off MainActor before rows enter the lazy scroll container;
+revealing history must not first lay out an empty bubble and later expand it.
+Unchanged row text reuses prepared blocks, and the cache is bounded by the current
+transcript. Scrolling history preserves user control over bottom following.
+
 Hovering a message reveals a small copy control on the left of a user bubble and
 the right of an assistant bubble. Its 10 pt glyph retains a 28 pt hit target. The
 whole target is vertically centered beside a single rendered text line and remains

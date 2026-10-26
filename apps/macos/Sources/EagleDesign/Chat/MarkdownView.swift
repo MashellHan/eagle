@@ -7,20 +7,25 @@ import SwiftUI
 public struct AssistantBubble: View, Equatable {
   private let text: String
   private let streaming: Bool
+  private let preparedBlocks: [RenderedMarkdownBlock]?
   @StateObject private var model = MarkdownViewModel()
   @State private var hovering = false
 
-  public init(text: String, streaming: Bool = false) {
+  public init(
+    text: String, streaming: Bool = false, preparedBlocks: [RenderedMarkdownBlock]? = nil
+  ) {
     self.text = text
     self.streaming = streaming
+    self.preparedBlocks = preparedBlocks
   }
 
   public var body: some View {
+    let blocks = preparedBlocks ?? model.blocks
     HStack(alignment: .bottom, spacing: 8) {
       HStack(alignment: .bottom, spacing: 8) {
         VStack(alignment: .leading, spacing: 10) {
-          ForEach(Array(model.blocks.enumerated()), id: \.offset) { index, block in
-            blockView(block, caret: streaming && index == model.blocks.count - 1)
+          ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+            blockView(block, caret: streaming && index == blocks.count - 1)
           }
         }
         .padding(.horizontal, 16)
@@ -42,7 +47,9 @@ public struct AssistantBubble: View, Equatable {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .textSelection(.enabled)
-    .task(id: text) { await model.render(text) }
+    .task(id: text) {
+      if preparedBlocks == nil { await model.render(text) }
+    }
   }
 
   @ViewBuilder
@@ -169,6 +176,7 @@ public struct AssistantBubble: View, Equatable {
 
   public nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.text == rhs.text && lhs.streaming == rhs.streaming
+      && lhs.preparedBlocks == rhs.preparedBlocks
   }
 
   private func headingSize(_ level: Int) -> CGFloat {

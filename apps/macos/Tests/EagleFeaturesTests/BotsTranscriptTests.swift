@@ -7,6 +7,23 @@ import Testing
 @MainActor
 @Suite("Transcript projection")
 struct BotsTranscriptTests {
+  @Test("published answers already contain prepared layout data")
+  func preparedBeforePublication() async throws {
+    let model = BotsTranscriptViewModel()
+    let message = Message(
+      id: "answer", role: .assistant, state: .complete, createdAt: "x",
+      blocks: [.text("**Ready**\n\nBefore scrolling")])
+    model.update(ConversationState(botId: "bot", messages: [message]))
+    for _ in 0..<100 {
+      if !model.entries.isEmpty { break }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    let entry = try #require(model.entries.first)
+    #expect(model.markdown[entry.id]?.count == 2)
+    model.clear()
+    #expect(model.markdown.isEmpty)
+  }
+
   @Test("switching bots discards pending presentation work")
   func latestSelectionWins() async throws {
     let model = BotsTranscriptViewModel()

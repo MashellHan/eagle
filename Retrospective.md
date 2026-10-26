@@ -445,3 +445,21 @@ adds hair-space delimiter boundaries for paired CJK strong spans while preservin
 code and escaped markers; clipboard actions use the untouched source. Match backtick
 runs once rather than repeatedly scanning suffixes when model output has unfinished
 code delimiters.
+
+## 2026-10-26 — Prepare lazy transcript rows before publication
+
+Moving Markdown parsing out of View.body was not sufficient: a newly visible
+assistant row still started empty and acquired its height after its task completed.
+A first-layout test with twenty paragraphs failed before the change. The live
+transcript projector now prepares all assistant blocks before publishing entries,
+reuses unchanged row text and retains only the current transcript's prepared data.
+The first-layout regression passes without putting parsing back on MainActor.
+An independent hosted probe did not reproduce the suspected whole-view invalidation
+from geometry bookkeeping; do not claim that suspicion as a measured root cause.
+Frame-time improvement still needs interactive acceptance, not just layout tests.
+
+The first UI lookup by the display name Eagle selected the unrelated asset manager.
+No input was sent to it. Bind future native checks to `ai.hexly.eagle.macos` or the
+exact build bundle path, and verify the SwiftUI window before any action. The UI
+tool's wheel action returned `noWindowsAvailable` despite a valid tree and screenshot;
+the exposed accessibility scroll action worked and is the appropriate alternative.

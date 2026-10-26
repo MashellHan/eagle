@@ -187,7 +187,7 @@ enum MarkdownBlock: Equatable, Sendable {
 extension Array where Element == AssistantTurn.Block {
   /// The demo transcript keeps structured blocks; the bubble renders their text as
   /// markdown paragraphs, lists and notes in one document.
-  var markdown: String {
+  public var markdown: String {
     map { block in
       switch block {
       case .paragraph(let text):

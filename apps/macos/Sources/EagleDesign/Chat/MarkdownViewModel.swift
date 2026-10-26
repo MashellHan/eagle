@@ -1,7 +1,7 @@
 import Combine
 import SwiftUI
 
-enum RenderedMarkdownBlock: Equatable, Sendable {
+public enum RenderedMarkdownBlock: Equatable, Sendable {
   case paragraph(AttributedString)
   case heading(level: Int, text: AttributedString)
   case bullets([AttributedString])
@@ -10,8 +10,10 @@ enum RenderedMarkdownBlock: Equatable, Sendable {
   case table(headers: [AttributedString], rows: [[AttributedString]])
 }
 
-actor MarkdownRenderer {
-  func render(_ text: String) throws -> [RenderedMarkdownBlock] {
+public actor MarkdownRenderer {
+  public init() {}
+
+  public func render(_ text: String) throws -> [RenderedMarkdownBlock] {
     try Task.checkCancellation()
     return try MarkdownBlock.parse(text).map { block in
       try Task.checkCancellation()

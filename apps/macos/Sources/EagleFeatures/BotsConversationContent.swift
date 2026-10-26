@@ -16,6 +16,7 @@ struct BotsConversationContent: View {
     ConversationColumn(
       title: bots.title, subtitle: bots.subtitle, tintIndex: bots.tintIndex,
       entries: transcript.entries,
+      preparedMarkdown: transcript.markdown,
       draft: Binding(get: { bots.draft }, set: { bots.setDraft($0) }),
       onSend: { bots.send() },
       showsSidebar: layout.showsSidebar, showsInspector: layout.showsInspector,

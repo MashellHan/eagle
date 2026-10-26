@@ -33,6 +33,7 @@ public struct ConversationColumn: View {
   private let subtitle: String
   private let tintIndex: Int
   private let entries: [TranscriptEntry]
+  private let preparedMarkdown: [String: [RenderedMarkdownBlock]]
   @Binding private var draft: String
   private let onSend: () -> Void
   private let onShowSidebar: () -> Void
@@ -51,6 +52,7 @@ public struct ConversationColumn: View {
     subtitle: String,
     tintIndex: Int,
     entries: [TranscriptEntry],
+    preparedMarkdown: [String: [RenderedMarkdownBlock]] = [:],
     draft: Binding<String>,
     onSend: @escaping () -> Void,
     showsSidebar: Bool = true,
@@ -66,6 +68,7 @@ public struct ConversationColumn: View {
     self.subtitle = subtitle
     self.tintIndex = tintIndex
     self.entries = entries
+    self.preparedMarkdown = preparedMarkdown
     self._draft = draft
     self.onSend = onSend
     self.showsSidebar = showsSidebar
@@ -176,14 +179,17 @@ public struct ConversationColumn: View {
   private func row(_ entry: TranscriptEntry) -> some View {
     switch entry {
     case .assistant(_, let blocks), .streamingAssistant(_, let blocks):
-      AssistantBubble(text: blocks.markdown, streaming: entry.isStreaming)
-        .equatable()
-        .transition(
-          .asymmetric(
-            insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .bottomLeading)),
-            removal: .opacity
-          )
+      AssistantBubble(
+        text: blocks.markdown, streaming: entry.isStreaming,
+        preparedBlocks: preparedMarkdown[entry.id]
+      )
+      .equatable()
+      .transition(
+        .asymmetric(
+          insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .bottomLeading)),
+          removal: .opacity
         )
+      )
     case .user(_, let text):
       UserBubble(text)
         .transition(
