@@ -1725,3 +1725,16 @@ Motion were not toggled in the live acceptance run.
   summaries. Unread data is conversation marks, not a message-delivery counter.
   No Herdr collection, authentication, D1 or gateway changes; no live messages sent.
   The native UI wheel tool failed; its exposed accessibility scroll action worked.
+
+### Sidebar and scroll acceptance
+
+The final native gate passes: 77 feature tests, 34 design tests, strict swift-format,
+app bundle build and configured logic coverage of 97.4% (minimum 90%). Both light
+and dark badge raster checks cover white digits, accent fill and zero-count absence.
+The rebuilt live app shows the real latest received excerpt under PR管家 and no
+group totals. Marking the bot unread shows a blue/white `1` capsule; selecting the
+row removes it. The temporary unread mark was cleared. After rebinding the UI tool
+to the restarted process, wheel scrolling also worked: history reached the top,
+then advanced through the middle back to the newest answer with prepared content.
+The composer remained empty and no messages were sent. These are layout and
+interaction checks, not a measured frame-time improvement or a live streaming test.
