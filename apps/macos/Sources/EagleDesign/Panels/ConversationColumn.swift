@@ -60,8 +60,7 @@ public struct ConversationColumn: View {
   private let onStop: () -> Void
   private let onRecover: () -> Void
   private let onDismissError: () -> Void
-  @State private var scrollState = TranscriptScrollState()
-  @State private var userIsScrolling = false
+  @State private var scroller = TranscriptScroller()
 
   public init(
     title: String,
@@ -176,8 +175,9 @@ public struct ConversationColumn: View {
         Theme.Palette.surface, top: Theme.Metric.edgeFadeHeight, bottom: Theme.Metric.edgeFadeHeight
       )
       .onScrollPhaseChange { _, phase in
-        userIsScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
-        if phase == .idle, scrollState.endUserScroll() {
+        scroller.setUserScrolling(
+          phase == .tracking || phase == .interacting || phase == .decelerating)
+        if phase == .idle, scroller.endUserScroll() {
           proxy.scrollTo("bottom", anchor: .bottom)
         }
       }
@@ -186,7 +186,7 @@ public struct ConversationColumn: View {
           contentHeight: geometry.contentSize.height, visibleBottom: geometry.visibleRect.maxY
         )
       } action: { _, metrics in
-        if scrollState.update(metrics, userIsScrolling: userIsScrolling) {
+        if scroller.update(metrics) {
           proxy.scrollTo("bottom", anchor: .bottom)
         }
       }

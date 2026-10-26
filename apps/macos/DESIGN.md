@@ -157,6 +157,17 @@ keeps a label and 24 pt hit target, and the green bubble uses white text.
    so the tree builds with Command Line Tools; a bundled `.app` and signing are
    a later, separately scoped step.
 
+## Scrolling rules
+
+The transcript scrolls at 120 Hz, so anything on the scroll path must stay out of
+SwiftUI state. `onScrollGeometryChange` fires on every tick; writing `@State`
+there invalidated the whole conversation column per tick and re-placed every
+visible row, which cost ~3.0 ms per tick against 0.3 ms for the same rows without
+it. Follow bookkeeping therefore lives in `TranscriptScroller`, a plain object
+held by `@State` whose properties are not observed, and only the decision to
+scroll the bottom into view touches the view graph. `TranscriptScrollCostTests`
+guards the ratio against a bare `LazyVStack` of the same rows.
+
 ## Toolchain constraints discovered
 
 Command Line Tools only (no Xcode) means the SwiftUI macro and Swift Testing
