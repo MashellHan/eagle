@@ -112,7 +112,6 @@ public struct WorkspaceShellView: View {
           onCollapse: { layout.toggleSidebar() },
           onAccount: { showsAccountMenu = true },
           onGallery: onShowGallery,
-          unreadCount: 2,
           onPinItem: { id in chrome.togglePin(id) },
           onMoveItem: { id, groupId in list.moveItem(id, to: groupId) },
           onMarkUnread: { id in chrome.markUnread(id) },

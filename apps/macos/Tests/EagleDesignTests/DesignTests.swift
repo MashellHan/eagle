@@ -93,9 +93,11 @@ struct SidebarDataTests {
 
   @Test("sections carry expansion state")
   func sections() {
-    let collapsed = SidebarSection(id: "s", title: "S", count: 3, isExpanded: false, items: [])
+    let collapsed = SidebarSection(
+      id: "s", title: "S", isExpanded: false,
+      items: [SidebarItem(id: "unread", title: "Unread", subtitle: "Message", unread: true)])
     #expect(collapsed.isExpanded == false)
-    #expect(collapsed.count == 3)
+    #expect(collapsed.unreadCount == 1)
     #expect(SidebarSection(id: "s", title: "S", items: []).isExpanded)
   }
 }

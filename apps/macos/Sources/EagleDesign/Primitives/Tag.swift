@@ -43,11 +43,11 @@ public struct PanelDivider: View {
 /// 11 pt secondary label used for grouping and hints.
 public struct SectionLabel: View {
   private let text: String
-  private let count: Int?
+  private let unreadCount: Int
 
-  public init(_ text: String, count: Int? = nil) {
+  public init(_ text: String, unreadCount: Int = 0) {
     self.text = text
-    self.count = count
+    self.unreadCount = unreadCount
   }
 
   public var body: some View {
@@ -57,10 +57,17 @@ public struct SectionLabel: View {
         .foregroundStyle(Theme.Palette.textSecondary)
         .tracking(0.2)
       Spacer(minLength: 0)
-      if let count {
-        Text("\(count)")
+      if unreadCount > 0 {
+        Text("\(unreadCount)")
           .font(Theme.TypeScale.sectionLabel)
-          .foregroundStyle(Theme.Palette.textSecondary)
+          .monospacedDigit()
+          .foregroundStyle(.white)
+          .padding(.horizontal, Theme.Metric.unreadBadgeInset)
+          .frame(minWidth: Theme.Metric.unreadBadgeHeight)
+          .frame(height: Theme.Metric.unreadBadgeHeight)
+          .background(Capsule().fill(Theme.Palette.accent))
+          .fixedSize()
+          .accessibilityLabel("\(unreadCount) 个未读会话")
       }
     }
     .accessibilityElement(children: .combine)

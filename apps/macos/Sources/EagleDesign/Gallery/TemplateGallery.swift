@@ -231,7 +231,7 @@ public struct TemplateGallery: View {
           Spacer(minLength: 0)
         }
 
-        SectionLabel("新闻组", count: 9)
+        SectionLabel("新闻组", unreadCount: 2)
 
         SegmentedTabs(values: InspectorColumn.Tab.allCases, selection: $tab) { $0.rawValue }
           .frame(maxWidth: 320)
@@ -277,7 +277,7 @@ public struct TemplateGallery: View {
                     id: "2", title: "工作秘书", subtitle: "哥，周末早上有两件事：", tag: "Personal", tintIndex: 1),
                 ]),
               SidebarSection(
-                id: "n", title: "新闻组", count: 9,
+                id: "n", title: "新闻组",
                 items: [
                   SidebarItem(
                     id: "3", title: "知识库", subtitle: "哥，我查过了：翻墙大师的知识库 key 现在只能...", tintIndex: 5)

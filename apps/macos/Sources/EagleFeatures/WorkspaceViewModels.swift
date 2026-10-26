@@ -8,13 +8,11 @@ import SwiftUI
 public struct WorkspaceGroup: Identifiable, Hashable, Sendable {
   public let id: String
   public var title: String
-  public var count: Int?
   public var items: [SidebarItem]
 
-  public init(id: String, title: String, count: Int? = nil, items: [SidebarItem]) {
+  public init(id: String, title: String, items: [SidebarItem]) {
     self.id = id
     self.title = title
-    self.count = count
     self.items = items
   }
 }
@@ -56,7 +54,7 @@ public enum MockWorkspace {
           subtitle: "规则已写进知识库；脚本也是按「远期」标识...", tag: "Personal", tintIndex: 4),
       ]),
     WorkspaceGroup(
-      id: "news", title: "新闻组", count: 9,
+      id: "news", title: "新闻组",
       items: [
         SidebarItem(
           id: "translator", title: "首席翻译官",
@@ -72,7 +70,7 @@ public enum MockWorkspace {
           subtitle: "查到 4 家同类产品的定价，最低的是按席位计费。", tag: "News", tintIndex: 0),
       ]),
     WorkspaceGroup(
-      id: "review", title: "审查组", count: 4,
+      id: "review", title: "审查组",
       items: [
         SidebarItem(
           id: "deps", title: "依赖修复专家",
@@ -202,7 +200,6 @@ public final class WorkspaceListViewModel: ObservableObject {
       SidebarSection(
         id: group.id,
         title: group.title,
-        count: group.count,
         isExpanded: expanded.contains(group.id),
         items: group.items
       )
@@ -308,13 +305,11 @@ public final class WorkspaceListViewModel: ObservableObject {
     groups[source] = WorkspaceGroup(
       id: groups[source].id,
       title: groups[source].title,
-      count: groups[source].count,
       items: items
     )
     groups[target] = WorkspaceGroup(
       id: groups[target].id,
       title: groups[target].title,
-      count: groups[target].count,
       items: groups[target].items + [item]
     )
   }

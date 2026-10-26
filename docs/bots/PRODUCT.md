@@ -89,6 +89,12 @@ remain unchanged.
 
 ## Conversation identity and activity
 
+Sidebar group headers show only a positive count of visible unread conversations,
+as an accent capsule with white text. Zero has no badge, and collapsed groups retain
+the same count. The count uses the existing session-local mark-unread/read state,
+not message totals or an inferred daemon delivery count; selecting a row marks it
+read. There is no hard-coded unread footer in the live workspace.
+
 The native sidebar subtitle shows a single-line excerpt of the latest received
 user or assistant text, not runtime state. Thinking, tool output and system notices
 are excluded. Preview text is bounded to 160 characters and Markdown markers are

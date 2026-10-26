@@ -39,16 +39,15 @@ public struct SidebarItem: Identifiable, Hashable, Sendable {
 public struct SidebarSection: Identifiable, Hashable, Sendable {
   public let id: String
   public let title: String
-  public let count: Int?
+  public var unreadCount: Int { items.filter(\.unread).count }
   public let isExpanded: Bool
   public let items: [SidebarItem]
 
   public init(
-    id: String, title: String, count: Int? = nil, isExpanded: Bool = true, items: [SidebarItem]
+    id: String, title: String, isExpanded: Bool = true, items: [SidebarItem]
   ) {
     self.id = id
     self.title = title
-    self.count = count
     self.isExpanded = isExpanded
     self.items = items
   }

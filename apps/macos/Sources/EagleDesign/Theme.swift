@@ -79,6 +79,8 @@ public enum Theme {
     public static let listTopGap: CGFloat = 10
     public static let unreadPillHeight: CGFloat = 28
     public static let unreadPillBottom: CGFloat = 16
+    public static let unreadBadgeHeight: CGFloat = 18
+    public static let unreadBadgeInset: CGFloat = 5
     public static let footerHeight: CGFloat = 54
     public static let footerBottom: CGFloat = 7
 

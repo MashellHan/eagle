@@ -56,7 +56,6 @@ final class SidebarChromeViewModel: ObservableObject {
     return SidebarSection(
       id: section.id,
       title: section.title,
-      count: ordered.isEmpty ? nil : ordered.count,
       isExpanded: section.isExpanded,
       items: ordered
     )

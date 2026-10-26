@@ -168,7 +168,7 @@ public struct SidebarPanel: View {
               .foregroundStyle(Theme.Palette.textPrimary)
               .onSubmit { commitSectionRename(section.id) }
           } else {
-            SectionLabel(section.title, count: section.count)
+            SectionLabel(section.title, unreadCount: section.unreadCount)
           }
         }
       }

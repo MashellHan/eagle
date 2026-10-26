@@ -12,7 +12,6 @@ struct MockWorkspaceTests {
     #expect(groups.allSatisfy { !$0.items.isEmpty })
     let ids = groups.flatMap(\.items).map(\.id)
     #expect(Set(ids).count == ids.count)
-    #expect(groups.contains { $0.count != nil })
   }
 
   @Test("items carry a subtitle and a valid tint")

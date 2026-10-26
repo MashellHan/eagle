@@ -1709,3 +1709,19 @@ no messages or tool requests were submitted. Native tests: 74 feature + 28 desig
 configured logic coverage: 97.4%; strict swift-format and app build pass. Bots client
 and the daemon's full 444-test check also pass. Keyboard-only focus and system Reduce
 Motion were not toggled in the live acceptance run.
+
+## 2026-10-26 13:04 +08:00 — Transcript layout and sidebar
+
+- **User-visible slice:** live assistant rows now enter the lazy transcript with
+  prepared Markdown instead of expanding from empty bubbles. Sidebar subtitles use
+  bounded, latest received chat excerpts rather than lifecycle labels. Group totals
+  are being replaced by badges derived from existing unread conversation marks.
+- **Evidence:** a hosted geometry probe did not reproduce whole-body invalidation.
+  A twenty-paragraph first-layout test failed before preparation moved ahead of
+  transcript publication and passes afterwards. Native tests passed for the layout
+  and preview commits; the unread aggregate regression failed on old total counts.
+  The full gate and rebuilt sidebar visual acceptance are still in progress.
+- **Boundaries:** excerpts are session-local because the catalog lacks global message
+  summaries. Unread data is conversation marks, not a message-delivery counter.
+  No Herdr collection, authentication, D1 or gateway changes; no live messages sent.
+  The native UI wheel tool failed; its exposed accessibility scroll action worked.

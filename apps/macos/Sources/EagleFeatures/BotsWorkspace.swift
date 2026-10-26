@@ -124,7 +124,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   var section: SidebarSection? {
     guard !items.isEmpty else { return nil }
-    return SidebarSection(id: "bots", title: "Bots", count: items.count, items: items)
+    return SidebarSection(id: "bots", title: "Bots", items: items)
   }
 
   var isConnected: Bool { app != nil }
