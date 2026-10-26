@@ -18,17 +18,20 @@ public struct WorkspaceShellView: View {
   @State private var showsBotFaceEditor = false
   @State private var showsSettings = false
   @AppStorage("eagle.appearance") private var appearance = "system"
+  private let onShowGallery: () -> Void
 
   public init(
     list: WorkspaceListViewModel = WorkspaceListViewModel(),
     chat: BotChatViewModel = BotChatViewModel(),
     inspector: InspectorViewModel = InspectorViewModel(),
-    layout: ShellLayoutViewModel = ShellLayoutViewModel()
+    layout: ShellLayoutViewModel = ShellLayoutViewModel(),
+    onShowGallery: @escaping () -> Void = {}
   ) {
     _list = StateObject(wrappedValue: list)
     _chat = StateObject(wrappedValue: chat)
     _inspector = StateObject(wrappedValue: inspector)
     _layout = StateObject(wrappedValue: layout)
+    self.onShowGallery = onShowGallery
   }
 
   private var sidebarSections: [SidebarSection] {
@@ -108,6 +111,7 @@ public struct WorkspaceShellView: View {
           },
           onCollapse: { layout.toggleSidebar() },
           onAccount: { showsAccountMenu = true },
+          onGallery: onShowGallery,
           unreadCount: 2,
           onPinItem: { id in chrome.togglePin(id) },
           onMoveItem: { id, groupId in list.moveItem(id, to: groupId) },

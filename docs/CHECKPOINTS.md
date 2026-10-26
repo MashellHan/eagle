@@ -1631,3 +1631,24 @@ the subscription snapshot) have regression tests and passed a second read-only r
 Bots daemon check: 443 tests; Bots client: 44 core, 32 feature and 14 transport tests;
 macOS: 72 feature and 16 design tests. The configured macOS coverage gate reports
 97.2%. Reduce Motion is respected in code but no system-preference UI pass was run.
+
+## 2026-10-26 — Gallery navigation and shared circular controls
+
+- **User-visible slice:** the identity card uses a 46 pt rounded rectangle with 12 pt
+  horizontal insets and inter-element spacing. The sidebar grid is now a separate
+  circular button, not part of the account button, and opens the existing gallery.
+  The gallery has six navigation categories, a layered preview canvas, corrected
+  typography labels, semantic color swatches and a local light/dark switch.
+- **Evidence:** the circular-style pixel regression first failed because IconButton
+  ignored its own style, then passed. The macOS package passes 72 feature and 17 design
+  tests and strict swift-format lint; the app bundle builds. Live native actions opened
+  the gallery from the footer grid, switched to the color category, enabled dark
+  preview, then returned to the light activity page. The new status-card spacing was
+  viewed in that window and in 480 pt light/dark column renders.
+- **Collection/authentication/D1:** no collection, website, D1 or credential changes.
+  Restarts were made with the existing local bot idle. Preview interactions made no
+  model calls and sent no live abort commands.
+- **Remaining decision:** the decorative bell has no notification backend or prior
+  action. Its intended action (notification list or do-not-disturb) was asked of the
+  owner and is not invented or claimed implemented. System Reduce Motion and actual
+  model-stream interruption remain outside this UI verification run.

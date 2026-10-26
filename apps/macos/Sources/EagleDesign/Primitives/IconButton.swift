@@ -39,10 +39,7 @@ public struct IconButton: View {
         .font(.system(size: size * 0.55, weight: .medium))
         .foregroundStyle(tint)
         .frame(width: size, height: size)
-        .background(
-          RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
-            .fill(hovering ? Theme.Palette.hover : .clear)
-        )
+        .background { background }
     }
     .buttonStyle(.plain)
     .contentShape(Rectangle())

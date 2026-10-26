@@ -53,9 +53,14 @@ struct SnapshotRenderer {
     )
     capture(
       TemplateGallery().preferredColorScheme(.light),
-      size: CGSize(width: 1180, height: 2100),
+      size: CGSize(width: 1180, height: 820),
       named: "gallery",
       in: directory
+    )
+    capture(
+      TemplateGallery(darkPreview: true),
+      size: CGSize(width: 1180, height: 820), named: "gallery-dark", in: directory,
+      appearance: .darkAqua
     )
     let collapsed = ShellLayoutViewModel(showsSidebar: false, showsInspector: false)
     capture(

@@ -115,6 +115,9 @@ public enum Theme {
     public static let settingsContentInset: CGFloat = 28
     public static let accountMenuWidth: CGFloat = 226
     public static let accountRowHeight: CGFloat = 38
+    public static let galleryInset: CGFloat = 24
+    public static let galleryRailWidth: CGFloat = 208
+    public static let galleryRadius: CGFloat = 18
     public static let settingsWidth: CGFloat = 900
     public static let settingsHeight: CGFloat = 640
   }

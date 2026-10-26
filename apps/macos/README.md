@@ -67,6 +67,14 @@ clipping. Groups expand and collapse with animation; right-clicking a group or a
 conversation offers rename/delete, and the header menu creates groups. Column
 widths are draggable and both side columns collapse. See [DESIGN.md](DESIGN.md).
 
+## Template library
+
+The sidebar's grid button and File -> Template Library open the same reusable
+gallery window (Command-Shift-G). The gallery has category navigation, a local
+light/dark preview switch and interactive identity/composer examples; it never
+submits preview text to a model. Footer utilities are separate from the account
+button. Circular icon controls use the shared hover and border treatment.
+
 ## Next
 
 Wire `WorkspaceListViewModel` to `GET /api/v1/overview` (one Space per

@@ -3,6 +3,9 @@ import SwiftUI
 /// Visual reference for every token and component. Used while the shell is
 /// still being aligned to the reference design.
 public struct TemplateGallery: View {
+  @State private var section: GallerySection = .activity
+  @State private var darkPreview = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var tab: InspectorColumn.Tab = .detail
   @State private var toggleOne = true
   @State private var toggleTwo = true
@@ -11,34 +14,119 @@ public struct TemplateGallery: View {
   @State private var previewRunning = true
   @State private var previewInspector = false
 
-  public init() {}
+  public init(darkPreview: Bool = false) {
+    _darkPreview = State(initialValue: darkPreview)
+  }
 
   public var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 28) {
+    HStack(spacing: 0) {
+      navigation
+      Rectangle().fill(Theme.Palette.line).frame(width: Theme.Metric.hairline)
+      VStack(spacing: 0) {
         header
-        activitySection
-        paletteSection
-        typographySection
-        primitivesSection
-        chatSection
-        panelSection
+        ScrollView {
+          selectedContent
+            .padding(Theme.Metric.galleryInset)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .id(section)
+        }
+        .background(Theme.Palette.canvas)
       }
-      .padding(28)
-      .frame(maxWidth: .infinity, alignment: .leading)
     }
+    .frame(minWidth: 960, minHeight: 640)
+    .background(Theme.Palette.surface)
+    .preferredColorScheme(darkPreview ? .dark : .light)
+    .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: section)
+  }
+
+  private var navigation: some View {
+    VStack(alignment: .leading, spacing: 24) {
+      HStack(spacing: 10) {
+        Image(systemName: "square.stack.3d.up.fill")
+          .font(.system(size: 24, weight: .medium))
+          .foregroundStyle(Theme.Palette.accentStrong)
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Eagle").font(Theme.TypeScale.brand)
+          Text("原生设计工坊").font(Theme.TypeScale.note)
+            .foregroundStyle(Theme.Palette.textSecondary)
+        }
+      }
+      VStack(spacing: 6) {
+        ForEach(GallerySection.allCases) { item in
+          Button {
+            section = item
+          } label: {
+            HStack(spacing: 12) {
+              Image(systemName: item.symbol).frame(width: 20)
+              Text(item.rawValue).font(Theme.TypeScale.cardTitle)
+              Spacer(minLength: 0)
+              if section == item {
+                Circle().fill(Theme.Palette.accentStrong).frame(width: 5, height: 5)
+              }
+            }
+            .foregroundStyle(
+              section == item ? Theme.Palette.accentStrong : Theme.Palette.textSecondary
+            )
+            .padding(12)
+            .background(
+              RoundedRectangle(cornerRadius: Theme.Metric.controlRadius)
+                .fill(section == item ? Theme.Palette.accentFill.opacity(0.09) : .clear)
+            )
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .accessibilityAddTraits(section == item ? .isSelected : [])
+        }
+      }
+      Spacer(minLength: 24)
+      VStack(alignment: .leading, spacing: 6) {
+        Text("SWIFTUI / MACOS").font(Theme.TypeScale.mono)
+        Text("真实组件 · 隔离预览")
+          .font(Theme.TypeScale.note)
+      }
+      .foregroundStyle(Theme.Palette.textMuted)
+    }
+    .padding(.horizontal, Theme.Metric.contentInset)
+    .padding(.top, 40)
+    .padding(.bottom, Theme.Metric.galleryInset)
+    .frame(width: Theme.Metric.galleryRailWidth)
     .background(Theme.Palette.surface)
   }
 
-  private var header: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      Text("Eagle 模板库")
-        .font(.system(size: 19, weight: .semibold))
-        .foregroundStyle(Theme.Palette.textPrimary)
-      Text("颜色、字号与控件均按 Grok Bot 参考图对齐；默认系统字体。")
-        .font(Theme.TypeScale.rowSubtitle)
-        .foregroundStyle(Theme.Palette.textSecondary)
+  @ViewBuilder
+  private var selectedContent: some View {
+    switch section {
+    case .activity: activitySection
+    case .chat: chatSection
+    case .primitives: primitivesSection
+    case .palette: paletteSection
+    case .typography: typographySection
+    case .panels: panelSection
     }
+  }
+
+  private var header: some View {
+    HStack(alignment: .center, spacing: 24) {
+      VStack(alignment: .leading, spacing: 6) {
+        Text("EAGLE / COMPONENT LIBRARY")
+          .font(Theme.TypeScale.mono)
+          .foregroundStyle(Theme.Palette.accentStrong)
+        Text(section.rawValue)
+          .font(.system(size: 26, weight: .semibold))
+          .foregroundStyle(Theme.Palette.textPrimary)
+        Text(section.detail)
+          .font(Theme.TypeScale.rowSubtitle)
+          .foregroundStyle(Theme.Palette.textSecondary)
+      }
+      Spacer(minLength: 0)
+      Toggle("深色预览", isOn: $darkPreview)
+        .toggleStyle(.switch)
+        .font(Theme.TypeScale.note)
+        .fixedSize()
+    }
+    .padding(Theme.Metric.galleryInset)
+    .padding(.top, 12)
+    .background(Theme.Palette.surface)
   }
 
   private var paletteSection: some View {
@@ -46,16 +134,16 @@ public struct TemplateGallery: View {
       LazyVGrid(
         columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 5), spacing: 12
       ) {
-        swatch("canvas", Theme.Palette.canvas, "F4F4F4")
-        swatch("surface", Theme.Palette.surface, "FCFCFC")
-        swatch("card", Theme.Palette.card, "FFFFFF")
-        swatch("line", Theme.Palette.line, "EEEEEE")
-        swatch("textPrimary", Theme.Palette.textPrimary, "252525")
-        swatch("textSecondary", Theme.Palette.textSecondary, "757575")
-        swatch("accent", Theme.Palette.accent, "3B7DCD")
-        swatch("accentFill", Theme.Palette.accentFill, "55A471")
-        swatch("accentStrong", Theme.Palette.accentStrong, "5DB57B")
-        swatch("hover", Theme.Palette.hover, "000000/4.5%")
+        swatch("canvas", Theme.Palette.canvas)
+        swatch("surface", Theme.Palette.surface)
+        swatch("card", Theme.Palette.card)
+        swatch("line", Theme.Palette.line)
+        swatch("textPrimary", Theme.Palette.textPrimary)
+        swatch("textSecondary", Theme.Palette.textSecondary)
+        swatch("accent", Theme.Palette.accent)
+        swatch("accentFill", Theme.Palette.accentFill)
+        swatch("accentStrong", Theme.Palette.accentStrong)
+        swatch("hover", Theme.Palette.hover)
       }
     }
   }
@@ -98,15 +186,15 @@ public struct TemplateGallery: View {
   private var typographySection: some View {
     GalleryCard(title: "字号") {
       VStack(alignment: .leading, spacing: 10) {
-        row("行标题 13 semibold", Theme.TypeScale.rowTitle)
-        row("行副标题 12 regular", Theme.TypeScale.rowSubtitle)
-        row("区块标签 11 medium", Theme.TypeScale.sectionLabel)
-        row("正文 13 regular", Theme.TypeScale.body)
-        row("气泡文字 13", Theme.TypeScale.bubble)
-        row("提示 11", Theme.TypeScale.note)
-        row("检查器标题 15 semibold", Theme.TypeScale.inspectorTitle)
-        row("卡片标题 12 medium", Theme.TypeScale.cardTitle)
-        row("等宽 12", Theme.TypeScale.mono)
+        row("行标题 · 15 medium", Theme.TypeScale.rowTitle)
+        row("行副标题 · 13.5 regular", Theme.TypeScale.rowSubtitle)
+        row("区块标签 · 13.5 medium", Theme.TypeScale.sectionLabel)
+        row("正文 · 15 regular", Theme.TypeScale.body)
+        row("气泡文字 · 15", Theme.TypeScale.bubble)
+        row("提示 · 13", Theme.TypeScale.note)
+        row("检查器标题 · 18 semibold", Theme.TypeScale.inspectorTitle)
+        row("卡片标题 · 14 medium", Theme.TypeScale.cardTitle)
+        row("等宽 · 13", Theme.TypeScale.mono)
       }
     }
   }
@@ -178,54 +266,57 @@ public struct TemplateGallery: View {
 
   private var panelSection: some View {
     GalleryCard(title: "栏目") {
-      HStack(alignment: .top, spacing: 16) {
-        SidebarPanel(
-          sections: [
-            SidebarSection(
-              id: "s", title: "秘书处",
-              items: [
-                SidebarItem(
-                  id: "1", title: "首席调查官", subtitle: "哥，最值得借鉴的是 OpenClaw 的聊天界面模块...", tintIndex: 0),
-                SidebarItem(
-                  id: "2", title: "工作秘书", subtitle: "哥，周末早上有两件事：", tag: "Personal", tintIndex: 1),
-              ]),
-            SidebarSection(
-              id: "n", title: "新闻组", count: 9,
-              items: [
-                SidebarItem(
-                  id: "3", title: "知识库", subtitle: "哥，我查过了：翻墙大师的知识库 key 现在只能...", tintIndex: 5)
-              ]),
-          ],
-          selection: "2",
-          onSelect: { _ in },
-          unreadCount: 2
-        )
-        .frame(height: 620)
-        .overlay(alignment: .topTrailing) { cornerLabel("411 × 620") }
+      ScrollView(.horizontal) {
+        HStack(alignment: .top, spacing: 16) {
+          SidebarPanel(
+            sections: [
+              SidebarSection(
+                id: "s", title: "秘书处",
+                items: [
+                  SidebarItem(
+                    id: "1", title: "首席调查官", subtitle: "哥，最值得借鉴的是 OpenClaw 的聊天界面模块...", tintIndex: 0
+                  ),
+                  SidebarItem(
+                    id: "2", title: "工作秘书", subtitle: "哥，周末早上有两件事：", tag: "Personal", tintIndex: 1),
+                ]),
+              SidebarSection(
+                id: "n", title: "新闻组", count: 9,
+                items: [
+                  SidebarItem(
+                    id: "3", title: "知识库", subtitle: "哥，我查过了：翻墙大师的知识库 key 现在只能...", tintIndex: 5)
+                ]),
+            ],
+            selection: "2",
+            onSelect: { _ in },
+            unreadCount: 2
+          )
+          .frame(height: 620)
+          .overlay(alignment: .topTrailing) { cornerLabel("侧栏") }
 
-        InspectorColumn(
-          name: "依赖修复专家",
-          subtitle: "GitHub",
-          tintIndex: 2,
-          artifacts: [
-            InspectorArtifact(id: "1", title: "deps 2026-10-24 sleepy"),
-            InspectorArtifact(id: "2", title: "deps 2026-10-24 next-ai"),
-            InspectorArtifact(id: "3", title: "deps 2026-10-24 meowth"),
-          ],
-          jobs: [
-            InspectorJob(id: "j1", title: "每日依赖修复调度", detail: "每天 8:47", isOn: true),
-            InspectorJob(
-              id: "j2", title: "依赖修复进度 10-24", detail: "每小时，10月24日，10:00 – 20:00", isOn: true),
-          ],
-          tab: .constant(.detail)
-        )
-        .frame(height: 620)
-        .overlay(alignment: .topTrailing) { cornerLabel("330 × 620") }
+          InspectorColumn(
+            name: "依赖修复专家",
+            subtitle: "GitHub",
+            tintIndex: 2,
+            artifacts: [
+              InspectorArtifact(id: "1", title: "deps 2026-10-24 sleepy"),
+              InspectorArtifact(id: "2", title: "deps 2026-10-24 next-ai"),
+              InspectorArtifact(id: "3", title: "deps 2026-10-24 meowth"),
+            ],
+            jobs: [
+              InspectorJob(id: "j1", title: "每日依赖修复调度", detail: "每天 8:47", isOn: true),
+              InspectorJob(
+                id: "j2", title: "依赖修复进度 10-24", detail: "每小时，10月24日，10:00 – 20:00", isOn: true),
+            ],
+            tab: .constant(.detail)
+          )
+          .frame(height: 620)
+          .overlay(alignment: .topTrailing) { cornerLabel("检查器") }
+        }
       }
     }
   }
 
-  private func swatch(_ name: String, _ color: Color, _ hex: String) -> some View {
+  private func swatch(_ name: String, _ color: Color) -> some View {
     VStack(alignment: .leading, spacing: 6) {
       RoundedRectangle(cornerRadius: 8, style: .continuous)
         .fill(color)
@@ -235,7 +326,7 @@ public struct TemplateGallery: View {
             .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
         )
       Text(name).font(Theme.TypeScale.note).foregroundStyle(Theme.Palette.textPrimary)
-      Text(hex).font(Theme.TypeScale.mono).foregroundStyle(Theme.Palette.textSecondary)
+      Text("动态色彩").font(Theme.TypeScale.note).foregroundStyle(Theme.Palette.textSecondary)
     }
   }
 
@@ -267,18 +358,61 @@ private struct GalleryCard<Content: View>: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      SectionLabel(title)
+    VStack(alignment: .leading, spacing: 24) {
+      HStack(spacing: 10) {
+        RoundedRectangle(cornerRadius: 2)
+          .fill(Theme.Palette.accentFill)
+          .frame(width: 4, height: 18)
+        Text(title).font(Theme.TypeScale.inspectorTitle)
+          .foregroundStyle(Theme.Palette.textPrimary)
+        Spacer(minLength: 0)
+        Text("PREVIEW").font(Theme.TypeScale.mono)
+          .foregroundStyle(Theme.Palette.textMuted)
+      }
       content
     }
-    .padding(16)
+    .padding(Theme.Metric.galleryInset)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
-      RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.Palette.card)
+      RoundedRectangle(cornerRadius: Theme.Metric.galleryRadius, style: .continuous).fill(
+        Theme.Palette.card)
     )
     .overlay(
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
+      RoundedRectangle(cornerRadius: Theme.Metric.galleryRadius, style: .continuous)
         .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
     )
+  }
+}
+
+private enum GallerySection: String, CaseIterable, Identifiable {
+  case activity = "会话状态"
+  case chat = "消息与输入"
+  case primitives = "基础控件"
+  case palette = "色彩令牌"
+  case typography = "文字排版"
+  case panels = "应用面板"
+
+  var id: Self { self }
+
+  var symbol: String {
+    switch self {
+    case .activity: "waveform"
+    case .chat: "text.bubble"
+    case .primitives: "slider.horizontal.3"
+    case .palette: "circle.lefthalf.filled"
+    case .typography: "textformat"
+    case .panels: "rectangle.split.3x1"
+    }
+  }
+
+  var detail: String {
+    switch self {
+    case .activity: "名字、实时反馈与操作，在一个控件中协作。"
+    case .chat: "从一行输入到流式回答，保留清晰的对话节奏。"
+    case .primitives: "可组合的原生控件，统一的尺寸与交互语言。"
+    case .palette: "语义化色彩随浅色与深色外观自动切换。"
+    case .typography: "清晰的字号层级，服务高密度阅读。"
+    case .panels: "侧栏与检查器，共享同一套布局网格。"
+    }
   }
 }

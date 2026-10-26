@@ -17,6 +17,7 @@ public struct SidebarPanel: View {
   private let onCompose: () -> Void
   private let onCollapse: () -> Void
   private let onAccount: () -> Void
+  private let onGallery: () -> Void
   private let unreadCount: Int
   private let onUnread: () -> Void
   private let userName: String
@@ -50,6 +51,7 @@ public struct SidebarPanel: View {
     onCompose: @escaping () -> Void = {},
     onCollapse: @escaping () -> Void = {},
     onAccount: @escaping () -> Void = {},
+    onGallery: @escaping () -> Void = {},
     unreadCount: Int = 0,
     onUnread: @escaping () -> Void = {},
     userName: String = "Zheng Li",
@@ -76,6 +78,7 @@ public struct SidebarPanel: View {
     self.onCompose = onCompose
     self.onCollapse = onCollapse
     self.onAccount = onAccount
+    self.onGallery = onGallery
     self.unreadCount = unreadCount
     self.onUnread = onUnread
     self.userName = userName
@@ -300,28 +303,28 @@ public struct SidebarPanel: View {
   /// No card and no border: the avatar lines up with the list avatars at the
   /// shared 20 pt content inset.
   private var footer: some View {
-    Button(action: onAccount) {
-      footerContent
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel("账户与设置")
-  }
-
-  private var footerContent: some View {
     HStack(spacing: Theme.Metric.rowAvatarGap) {
-      Avatar(initial: "Z", tint: Theme.Palette.avatarTint(2), size: Theme.Metric.avatarRow)
-      Text(userName)
-        .font(Theme.TypeScale.rowTitle)
-        .foregroundStyle(Theme.Palette.textPrimary)
-        .lineLimit(1)
+      Button(action: onAccount) {
+        HStack(spacing: Theme.Metric.rowAvatarGap) {
+          Avatar(initial: "Z", tint: Theme.Palette.avatarTint(2), size: Theme.Metric.avatarRow)
+          Text(userName)
+            .font(Theme.TypeScale.rowTitle)
+            .foregroundStyle(Theme.Palette.textPrimary)
+            .lineLimit(1)
+        }
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("账户与设置")
       Spacer(minLength: 0)
       HStack(spacing: 12) {
         Image(systemName: "bell")
           .font(.system(size: 13))
           .foregroundStyle(Theme.Palette.textSecondary)
-        Image(systemName: "square.grid.2x2")
-          .font(.system(size: 13))
-          .foregroundStyle(Theme.Palette.textSecondary)
+        IconButton(
+          systemName: "square.grid.2x2", label: "Eagle 模板库",
+          style: .circled, action: onGallery
+        )
       }
     }
     .padding(.leading, Theme.Metric.contentInset)

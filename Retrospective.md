@@ -404,3 +404,11 @@ environment modifier. The installed SDK exposes that value as read-only, so the
 build rejected it. Remove the unsupported override; the component reads the actual
 system preference. Do not claim a reduced-motion UI test from that failed fixture
 or change the user's system preference just to produce a snapshot.
+
+An offscreen NSHostingView footer test also returned no accessibility descendants,
+including the already-existing account button. That is not evidence that every
+button is absent. The unsupported test was replaced with a rendered-pixel regression
+for the ignored circular style; actual footer action routing is verified in the live
+native window. Static TextField snapshots omitted a line that was present during
+native editing, so the three-line viewport and five-line scrolling were checked in
+the isolated gallery instead of treating an offscreen bitmap as input-behavior proof.

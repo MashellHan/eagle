@@ -10,7 +10,7 @@ struct EagleApp: App {
 
   var body: some Scene {
     WindowGroup("Eagle") {
-      WorkspaceShellView()
+      WorkspaceShellView(onShowGallery: { GalleryWindow.show() })
         .frame(minWidth: 1280, minHeight: 760)
         .ignoresSafeArea()
         .background(WindowConfigurator())
@@ -102,7 +102,7 @@ enum GalleryWindow {
     window.titlebarAppearsTransparent = true
     window.titleVisibility = .hidden
     window.contentView = NSHostingView(
-      rootView: TemplateGallery().preferredColorScheme(.light)
+      rootView: TemplateGallery()
     )
     window.center()
     window.makeKeyAndOrderFront(nil)
