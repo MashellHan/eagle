@@ -463,3 +463,11 @@ No input was sent to it. Bind future native checks to `ai.hexly.eagle.macos` or 
 exact build bundle path, and verify the SwiftUI window before any action. The UI
 tool's wheel action returned `noWindowsAvailable` despite a valid tree and screenshot;
 the exposed accessibility scroll action worked and is the appropriate alternative.
+
+## 2026-10-26 — Generated output must stay outside source lint
+
+Pre-push passed 168 Node tests and type checking, then failed because Biome scanned
+an untracked legacy `agent/dist` directory. Git already ignores `dist/` at every
+depth, but Biome excluded only three named build locations. Replace those location
+exceptions with `!**/dist`; do not format generated JavaScript, remove local user
+artifacts or bypass the hook. Source lint rules and all push gates remain unchanged.
