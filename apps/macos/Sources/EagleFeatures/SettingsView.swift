@@ -6,10 +6,16 @@ public struct SettingsView: View {
   @StateObject private var model: SettingsViewModel
   @AppStorage("eagle.appearance") private var appearance = "system"
   private let onClose: () -> Void
+  private let daemon: BotsDaemonSupervisor?
 
-  public init(model: SettingsViewModel = SettingsViewModel(), onClose: @escaping () -> Void = {}) {
+  public init(
+    model: SettingsViewModel = SettingsViewModel(),
+    onClose: @escaping () -> Void = {},
+    daemon: BotsDaemonSupervisor? = nil
+  ) {
     _model = StateObject(wrappedValue: model)
     self.onClose = onClose
+    self.daemon = daemon
   }
 
   public var body: some View {
@@ -60,6 +66,10 @@ public struct SettingsView: View {
   /// Model gateway: the one place a person configures the bot's endpoint, key and model.
   private var bots: some View {
     VStack(alignment: .leading, spacing: 18) {
+      if let daemon {
+        SettingsCaption("Bot 服务")
+        BotsDaemonCard(daemon: daemon)
+      }
       SettingsCaption("Bot 使用这台机器上的模型网关。保存后新 Bot 立即生效，已有的 Bot 会原地切换到新模型。")
       SettingsCard {
         VStack(alignment: .leading, spacing: 14) {
@@ -277,6 +287,84 @@ public struct SettingsView: View {
         }
         .padding(.vertical, 16)
       }
+    }
+  }
+}
+
+/// The daemon's live state: running (and who started it), stopped or failed, with the root
+/// and port the app is wired to. This is where a first-run problem such as a missing Node
+/// becomes visible instead of a silent connection error.
+private struct BotsDaemonCard: View {
+  @ObservedObject var daemon: BotsDaemonSupervisor
+
+  var body: some View {
+    SettingsCard {
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 8) {
+          Circle()
+            .fill(tint)
+            .frame(width: 8, height: 8)
+          Text(statusText)
+            .font(.system(size: 14))
+            .foregroundStyle(Theme.Palette.textPrimary)
+          Spacer(minLength: 8)
+          actions
+        }
+        Text("根目录 \(daemon.rootPath) · 端口 \(daemon.port)")
+          .font(.system(size: 11.5, design: .monospaced))
+          .foregroundStyle(Theme.Palette.textMuted)
+          .lineLimit(1)
+          .truncationMode(.middle)
+        if case .failed(let message) = daemon.status {
+          Text(message)
+            .font(Theme.TypeScale.note)
+            .foregroundStyle(Theme.Palette.destructive)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        Toggle("启动 App 时自动运行", isOn: $daemon.autoStart)
+          .toggleStyle(.switch)
+          .tint(Theme.Palette.accentStrong)
+          .font(.system(size: 13))
+      }
+      .padding(.vertical, 14)
+    }
+  }
+
+  @ViewBuilder
+  private var actions: some View {
+    switch daemon.status {
+    case .starting:
+      SpinnerArc(size: 12)
+    case .running(_, _, let external):
+      if !external {
+        SettingsActionButton("重启") { Task { await daemon.restart() } }
+        SettingsActionButton("停止") { Task { await daemon.stop() } }
+      } else {
+        Text("由外部启动，不随 App 退出")
+          .font(Theme.TypeScale.note)
+          .foregroundStyle(Theme.Palette.textMuted)
+      }
+    case .stopped, .failed:
+      SettingsActionButton("启动", prominent: true) { Task { await daemon.startIfNeeded() } }
+    }
+  }
+
+  private var statusText: String {
+    switch daemon.status {
+    case .stopped: return "未运行"
+    case .starting: return "正在启动…"
+    case .running(let version, let pid, let external):
+      return "运行中 · v\(version) · pid \(pid)\(external ? "（外部）" : "")"
+    case .failed: return "启动失败"
+    }
+  }
+
+  private var tint: Color {
+    switch daemon.status {
+    case .stopped: return Theme.Palette.textMuted
+    case .starting: return Theme.Palette.avatarTint(3)
+    case .running: return Theme.Palette.accentStrong
+    case .failed: return Theme.Palette.destructive
     }
   }
 }

@@ -3,8 +3,10 @@
 Pure SwiftUI client that mirrors one Herdr Space as one conversation. No
 third-party dependencies: Foundation, SwiftUI, AppKit only.
 
-Status: **template library and three-column shell with mock data**. No daemon or
-network access yet; `EagleFeatures` view models hold static demo content.
+Status: **Bots is live, the rest is mock**. The shell connects to the local Bots
+daemon (`apps/bots`), starts it on launch when it can find it, and stops it on
+quit; the sidebar groups, inspector artifacts and settings pages other than the
+Bots ones are still demo content.
 
 ## Run
 
@@ -16,6 +18,13 @@ swift test                 # Swift Testing suites for the logic layer
 ./Scripts/coverage.sh      # same tests plus a 90% logic-coverage gate
 swift run SnapshotRenderer ../../.local/macos-snapshots   # PNGs for review
 ```
+
+The app supervises the daemon: it walks up from the executable for
+`apps/bots/scripts/serve.ts` (or uses `BOTS_DAEMON_DIR`), starts it with the
+machine's Node (`BOTS_NODE`, then Homebrew/`/usr/bin`), shows its state in
+Settings → `Bots 模型`, and terminates only the daemon it started when the app
+quits. A daemon started outside the app is reported as external and left alone.
+`BOTS_ROOT`/`BOTS_PORT` move both the app and the daemon together.
 
 `swift build` and `swift run` work with Command Line Tools only. Two toolchain
 limits shape the code:

@@ -88,7 +88,10 @@ and clicking the name or the label edits it in place. A change is written over
 
 ## Setup and guidance
 
-The model gateway (URL, API key, model) is configured in the app's Settings under
+The app starts the local Bots daemon on launch when it can find `apps/bots`
+(settings shows its state and lets a person start, stop or restart it), and stops the daemon
+it started when the app quits; a daemon that was already running is left alone. The model
+gateway (URL, API key, model) is configured in the app's Settings under
 `Bots 模型`; the same tab tests the endpoint and reports latency and model count. Setup is
 progressive: a bot stays readable and usable until a send is attempted without a configured
 gateway, and only then the conversation offers a short "去设置" hint. Nothing asks for

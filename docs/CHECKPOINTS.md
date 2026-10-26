@@ -1585,3 +1585,20 @@ A checkpoint is what a person can actually see, so this records the absence too.
   automation; the editor sheet and inline fields are compiled and reachable, not
   screenshot-tested.
 - **Next broken hop:** the face editor and inline rename have no UI-automation pass yet.
+
+## 2026-10-26 — The app supervises the Bots daemon
+
+- **What a person can observe:** launching Eagle starts the local Bots daemon (if nothing
+  answers on the configured port), Settings → `Bots 模型` shows a `Bot 服务` card with the
+  state, version, pid, root and port, plus start/stop/restart and an auto-start toggle, and
+  quitting the app stops the daemon it started. A daemon that was already running is
+  reported as external and left alone.
+- **Evidence:** live: with no daemon running, launching the built app spawned
+  `/opt/homebrew/bin/node … scripts/serve.ts` (pid 5331), `/v1/health` answered and the
+  card read `运行中 · v0.1.0 · pid 5331`; Cmd+Q removed both the app and that daemon. The
+  supervisor's daemon-directory and node resolution have unit tests
+  (`BotsDaemonSupervisorTests`). The app finds `apps/bots` by walking up from its own
+  executable, so a `.app` copied away from the repository reports a clear failure (or
+  needs `BOTS_DAEMON_DIR`); it still needs a Node 24+ installation.
+- **Next broken hop:** bundling the daemon (and Node) into the app for a machine without
+  the repository; the card's start/stop buttons were not clicked in automation.

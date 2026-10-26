@@ -56,6 +56,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     true
   }
+
+  /// The daemon is a child of the app: quitting the app must not leave it running.
+  func applicationWillTerminate(_ notification: Notification) {
+    BotsDaemonSupervisor.terminateRecordedDaemon()
+  }
 }
 
 /// Lets the whole window be dragged by its background, which is what makes the

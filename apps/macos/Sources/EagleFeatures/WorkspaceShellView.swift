@@ -10,6 +10,7 @@ public struct WorkspaceShellView: View {
   @StateObject private var layout: ShellLayoutViewModel
   @StateObject private var account = AccountMenuViewModel()
   @StateObject private var settings = SettingsViewModel()
+  @StateObject private var daemon = BotsDaemonSupervisor()
   @StateObject private var bots = BotsWorkspaceViewModel()
   @StateObject private var chrome = SidebarChromeViewModel()
   @State private var showsAccountMenu = false
@@ -209,6 +210,8 @@ public struct WorkspaceShellView: View {
           settings.selection = .bots
           showsSettings = true
         }
+        // The daemon is a prerequisite of the Bots connection, not of the window.
+        await daemon.startIfNeeded()
         await bots.start()
       }
       .onDisappear {
@@ -268,7 +271,7 @@ public struct WorkspaceShellView: View {
         .ignoresSafeArea()
         .onTapGesture { showsSettings = false }
 
-      SettingsView(model: settings, onClose: { showsSettings = false })
+      SettingsView(model: settings, onClose: { showsSettings = false }, daemon: daemon)
         .frame(width: Theme.Metric.settingsWidth, height: Theme.Metric.settingsHeight)
         .background(
           RoundedRectangle(cornerRadius: 18, style: .continuous)
