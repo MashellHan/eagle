@@ -15,25 +15,25 @@ struct TranscriptRowCostTests {
   func pageCost() {
     let entries = Self.entries(turns: 40)
     let markdown = Self.prepared(entries)
-    let column = Self.minimum {
-      Self.pageCost(
-        ConversationColumn(
-          title: "Bot", subtitle: "Bots", tintIndex: 1, entries: entries,
-          preparedMarkdown: markdown, draft: .constant(""), onSend: {}))
+    let columnView = ConversationColumn(
+      title: "Bot", subtitle: "Bots", tintIndex: 1, entries: entries,
+      preparedMarkdown: markdown, draft: .constant(""), onSend: {})
+    // Interleaved rounds: a machine that slows down mid-test must not tilt one side.
+    _ = Self.pageCost(columnView)
+    var columns: [Double] = []
+    var plains: [Double] = []
+    for _ in 0..<3 {
+      columns.append(Self.pageCost(columnView))
+      plains.append(Self.pageCost(Self.plainText(entries)))
     }
-    let plain = Self.minimum { Self.pageCost(Self.plainText(entries)) }
+    let column = columns.min() ?? .greatestFiniteMagnitude
+    let plain = plains.min() ?? .greatestFiniteMagnitude
     let ratio = column / max(plain, 0.000_001)
     print(
       "ROWCOST page=\(String(format: "%.2f", column)) ms plain=\(String(format: "%.2f", plain)) "
         + "ratio=\(String(format: "%.2f", ratio))")
     #expect(
       ratio < 2.5, "a page of conversation rows costs \(String(format: "%.1f", ratio))x plain text")
-  }
-
-  private static func minimum(_ run: () -> Double, attempts: Int = 3) -> Double {
-    var best = Double.greatestFiniteMagnitude
-    for _ in 0..<attempts { best = min(best, run()) }
-    return best
   }
 
   private static func entries(turns: Int) -> [TranscriptEntry] {
