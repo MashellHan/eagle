@@ -14,6 +14,8 @@ public struct ConversationState: Sendable, Equatable {
   public var unavailable: BotUnavailable?
   /// A parked task needs `recover`; the daemon says so in the snapshot.
   public var parked: Bool
+  /// Live work of every conversation the bot owns, newest list wins.
+  public var tasks: [TaskSummary]
   /// The newest revision applied; a snapshot resets the baseline (PROTOCOL I1/I3).
   public var lastRev: Int?
   /// Highest-ranked record per submission id, so a late reply never downgrades one (I14).
@@ -29,6 +31,7 @@ public struct ConversationState: Sendable, Equatable {
     pending: [Submission] = [],
     unavailable: BotUnavailable? = nil,
     parked: Bool = false,
+    tasks: [TaskSummary] = [],
     lastRev: Int? = nil,
     ranks: [String: Submission] = [:]
   ) {
@@ -41,6 +44,7 @@ public struct ConversationState: Sendable, Equatable {
     self.pending = pending
     self.unavailable = unavailable
     self.parked = parked
+    self.tasks = tasks
     self.lastRev = lastRev
     self.ranks = ranks
   }
@@ -84,6 +88,7 @@ public enum Reducer {
       pending: pending,
       unavailable: value.unavailable,
       parked: value.parked ?? false,
+      tasks: value.tasks,
       lastRev: rev,
       ranks: ranks
     )
@@ -129,6 +134,9 @@ public enum Reducer {
       let older = page.messages.filter { !known.contains($0.id) }
       next.messages = older + next.messages
       next.truncatedBefore = page.hasMore ? (next.truncatedBefore ?? older.first?.id) : nil
+    case .tasks(let tasks):
+      // A whole-list replacement: settled work leaves the list instead of going terminal.
+      next.tasks = tasks
     case .connection, .catalog:
       break
     case .error(let kind, _, _, _, _):

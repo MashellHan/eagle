@@ -87,6 +87,9 @@ public enum Wire {
         rev: nil,
         type: "history"
       )
+    case "tasks":
+      let frame = try decoder.decode(TasksFrame.self, from: data)
+      return Decoded(event: .tasks(frame.tasks), rev: frame.rev, type: "tasks")
     case "error":
       let frame = try decoder.decode(ErrorFrame.self, from: data)
       // The handshake failure carries `server` instead of a disposition and is sent before
@@ -219,6 +222,11 @@ public enum Wire {
   struct HistoryFrame: Decodable {
     let messages: [Message]
     let hasMore: Bool
+  }
+
+  struct TasksFrame: Decodable {
+    let rev: Int
+    let tasks: [TaskSummary]
   }
 
   struct ErrorFrame: Decodable {

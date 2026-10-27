@@ -85,6 +85,20 @@ public enum Theme {
     public static let footerBottom: CGFloat = 7
 
     public static let panelInset: CGFloat = 16
+    /// Inspector sections: a small glyph, a label, a hairline, then rows. The gap is tighter
+    /// than the sidebar's because three sections share one narrow column.
+    public static let panelSectionGap: CGFloat = 14
+    public static let panelSectionGlyph: CGFloat = 11
+    public static let panelSectionGlyphWidth: CGFloat = 15
+    public static let panelSectionBodyGap: CGFloat = 6
+    /// Glyph-to-label gap inside one section header and one empty state.
+    public static let panelSectionRowGap: CGFloat = 6
+    public static let panelTaskRowGap: CGFloat = 2
+    public static let panelTaskRowHeight: CGFloat = 28
+    public static let panelTaskIndent: CGFloat = 12
+    public static let panelTaskSpinner: CGFloat = 10
+    public static let panelEmptyGlyph: CGFloat = 15
+    public static let panelEmptyVertical: CGFloat = 8
     public static let conversationInset: CGFloat = 24
     public static let turnGap: CGFloat = 24
     public static let inspectorRowHeight: CGFloat = 40

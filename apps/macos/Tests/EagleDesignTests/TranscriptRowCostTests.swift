@@ -20,18 +20,18 @@ struct TranscriptRowCostTests {
       preparedMarkdown: markdown, draft: .constant(""), onSend: {})
     // Interleaved rounds: a machine that slows down mid-test must not tilt one side.
     _ = Self.pageCost(columnView)
-    var columns: [Double] = []
-    var plains: [Double] = []
-    for _ in 0..<3 {
-      columns.append(Self.pageCost(columnView))
-      plains.append(Self.pageCost(Self.plainText(entries)))
+    // The median of several interleaved rounds, not the minimum: one scheduling spike can
+    // inflate a single round, and the cheaper baseline is the one that shows it.
+    var ratios: [Double] = []
+    for _ in 0..<5 {
+      let column = Self.pageCost(columnView)
+      let plain = Self.pageCost(Self.plainText(entries))
+      ratios.append(column / max(plain, 0.000_001))
     }
-    let column = columns.min() ?? .greatestFiniteMagnitude
-    let plain = plains.min() ?? .greatestFiniteMagnitude
-    let ratio = column / max(plain, 0.000_001)
+    let ratio = ratios.sorted()[ratios.count / 2]
     print(
-      "ROWCOST page=\(String(format: "%.2f", column)) ms plain=\(String(format: "%.2f", plain)) "
-        + "ratio=\(String(format: "%.2f", ratio))")
+      "ROWCOST rounds=\(ratios.map { String(format: "%.2f", $0) }.joined(separator: ",")) "
+        + "median=\(String(format: "%.2f", ratio))")
     #expect(
       ratio < 2.5, "a page of conversation rows costs \(String(format: "%.1f", ratio))x plain text")
   }

@@ -338,6 +338,32 @@ built, verified once with a synthetic slow drag, and removed the same day: a nor
 press-and-move on a `Button` row never started the drag session, so the affordance was
 unreliable and the explicit menu stayed instead.
 
+## Delegation, on-demand tools, live tasks (2026-10-27)
+
+Three capabilities landed on top of the phase-2 tool work, in the order they were asked
+for.
+
+**Subagents.** `bots-agents` gives a bot `agent_spawn` / `agent_send` / `agent_stop`. A
+child is an ownerless conversation in the same Harness, configured from the caller's agent
+minus these tools, so delegation is one level deep. Its turns are driven inside a tool call
+and its final text returns as the tool result; the transcript keeps only that result. The
+`peers` capability stays false because nothing about children crosses the protocol yet.
+
+**Deferred tools.** The eight `herdr` tools are declared deferred and `tool_search` is
+installed with them, so a request carries seven tools instead of fifteen. Loading writes the
+conversation's `modelTools`, which keeps them offered for the rest of the branch. A bot
+without the herdr group gets no loader.
+
+**Live tasks.** Every open bot follows `harness.taskGraph()` and pushes one `tasks` event;
+snapshots carry the same list. The capability is now `tasks: true` and the inspector renders
+the list under 例行任务 — kind, status, blocked reason and owner nesting — with an empty
+state instead of a blank section. The panel's sections gained one decorated header style and
+their own empty states.
+
+Known gaps: children are invisible in the sidebar until a peers surface reads them; the
+task panel is read-only (no retry from the UI, although `harness.retryTask` exists); and a
+deferred tool loads per branch, so a compaction keeps it but a reset does not.
+
 ## Next work, in order
 
 1. Finish the client surface: history paging, bot settings behind the `agent`

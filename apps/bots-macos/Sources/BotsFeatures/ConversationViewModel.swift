@@ -57,6 +57,8 @@ public final class ConversationViewModel: ObservableObject {
   }
 
   public var title: String { selectedBotId ?? "" }
+  /// The live work of the selected bot, for the inspector's 任务 section.
+  public var tasks: [TaskSummary] { state.tasks }
   public var canSend: Bool {
     !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       && connection == .ready
@@ -322,6 +324,8 @@ public final class ConversationViewModel: ObservableObject {
     case .history(let page):
       state = Reducer.apply(.history(page: page), to: state)
       hasOlder = page.hasMore
+    case .tasks(let tasks):
+      state = Reducer.apply(.tasks(tasks), to: state)
     case .catalog(let catalog):
       onCatalog?(catalog)
     case .error(let kind, let disposition, let message, _, let requestId):
@@ -370,6 +374,7 @@ public final class ConversationViewModel: ObservableObject {
     next.inbox = []
     next.streaming = nil
     next.running = false
+    next.tasks = []
     return next
   }
 

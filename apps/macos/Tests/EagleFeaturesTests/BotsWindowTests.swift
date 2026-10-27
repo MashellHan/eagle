@@ -307,6 +307,25 @@ struct BotsWindowTests {
       }(), "the streamed answer is what the window renders")
   }
 
+  @Test("the window publishes the selected bot's live tasks for the inspector")
+  func tasksPublished() async throws {
+    let (bots, _, conversationPort, _) = try await window()
+    #expect(bots.tasks.isEmpty, "a connected bot with no work shows the empty section")
+    conversationPort.emit(
+      .tasks([
+        TaskSummary(id: "t_1", kind: "pi.generation", status: .running),
+        TaskSummary(id: "t_2", kind: "pi.tool", status: .waiting, owner: "t_1"),
+      ])
+    )
+    try await waitUntil { bots.tasks.count == 2 }
+    #expect(bots.tasks.map(\.title) == ["生成回答", "工具调用"])
+    #expect(bots.tasks.map(\.depth) == [0, 1])
+    #expect(bots.tasks.map(\.isRunning) == [true, false])
+
+    conversationPort.emit(.tasks([]))
+    try await waitUntil { bots.tasks.isEmpty }
+  }
+
   @Test("the sidebar exposes the daemon's groups and files every bot under one")
   func sidebarGroups() async throws {
     let catalog = StubCatalog()

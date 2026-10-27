@@ -11,6 +11,8 @@ public enum ConversationEvent: Sendable, Equatable {
   case status(running: Bool, inbox: [InboxItem], streaming: String?)
   case submission(Submission)
   case history(page: HistoryPage)
+  /// The whole live-task list of the bot; an empty list means nothing runs.
+  case tasks([TaskSummary])
   case catalog(BotCatalog)
   case error(
     kind: ErrorKind,

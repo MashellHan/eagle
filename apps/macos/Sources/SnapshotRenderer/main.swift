@@ -111,6 +111,60 @@ struct SnapshotRenderer {
       in: directory
     )
 
+    let inspectorTasks = [
+      InspectorTaskRow(
+        id: "t_12", title: "生成回答", symbolName: "sparkles", status: "运行中", depth: 0,
+        isRunning: true, isBlocked: false),
+      InspectorTaskRow(
+        id: "t_13", title: "工具调用", symbolName: "wrench.and.screwdriver", status: "等待",
+        depth: 1, isRunning: false, isBlocked: false),
+      InspectorTaskRow(
+        id: "t_14", title: "子 Agent", symbolName: "person.2", status: "已停放：重试次数过多",
+        depth: 2, isRunning: false, isBlocked: true),
+      InspectorTaskRow(
+        id: "t_15", title: "上下文压缩", symbolName: "rectangle.compress.vertical",
+        status: "休眠", depth: 0, isRunning: false, isBlocked: false),
+    ]
+    for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
+      capture(
+        InspectorColumn(
+          name: "研究员",
+          subtitle: "Bots",
+          tintIndex: 2,
+          artifacts: [
+            InspectorArtifact(id: "a1", title: "deps 2026-10-24 sleepy"),
+            InspectorArtifact(id: "a2", title: "deps 2026-10-24 next-ai"),
+          ],
+          jobs: [
+            InspectorJob(id: "j1", title: "每日依赖修复调度", detail: "每天 8:47", isOn: true),
+            InspectorJob(id: "j2", title: "依赖修复进度 10-24", detail: "每小时", isOn: false),
+          ],
+          tasks: inspectorTasks,
+          tab: .constant(.detail)
+        )
+        .preferredColorScheme(scheme),
+        size: CGSize(width: Theme.Metric.inspectorWidth, height: 780),
+        named: "inspector-\(name)",
+        in: directory,
+        appearance: scheme == .dark ? .darkAqua : .aqua
+      )
+    }
+    capture(
+      InspectorColumn(
+        name: "新的 Bot",
+        subtitle: "Bots",
+        tintIndex: 5,
+        artifacts: [],
+        jobs: [],
+        tasks: [],
+        tab: .constant(.detail)
+      )
+      .preferredColorScheme(.light),
+      size: CGSize(width: Theme.Metric.inspectorWidth, height: 780),
+      named: "inspector-empty",
+      in: directory
+    )
+
     print("wrote snapshots to \(directory.path)")
   }
 

@@ -47,6 +47,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var error: String?
   @Published private(set) var canRecover = false
   @Published private(set) var running = false
+  /// The selected bot's live tasks, already named and nested for the inspector's 任务 section.
+  @Published private(set) var tasks: [InspectorTaskRow] = []
   @Published private(set) var connection: ConnectionState = .connecting
 
   var participantStatus: ParticipantStatus {
@@ -374,6 +376,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       if !sections.isEmpty { sections = [] }
       rows = []
       transcript.clear()
+      if !tasks.isEmpty { tasks = [] }
       return
     }
     let conversation = app.conversation
@@ -410,6 +413,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       running = false
       error = nil
       connection = .stopped
+      if !tasks.isEmpty { tasks = [] }
       return
     }
     if title != selected.title { title = selected.title }
@@ -419,6 +423,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
       for: conversation.state, connection: conversation.connection)
     if subtitle != nextSubtitle { subtitle = nextSubtitle }
     transcript.update(conversation.state)
+    let nextTasks = presenter.inspectorTasks(for: conversation.state.tasks)
+    if tasks != nextTasks { tasks = nextTasks }
     if running != conversation.state.running { running = conversation.state.running }
     if connection != conversation.connection { connection = conversation.connection }
     let nextRecover = conversation.state.unavailable != nil || conversation.parked
@@ -821,6 +827,130 @@ struct BotsPresenter {
     BotFace.Style(
       shape: BotFace.Shape(rawValue: bot.face.shape.rawValue) ?? .blob,
       tint: Theme.Palette.BotTint(rawValue: bot.face.tint.rawValue) ?? .green
+    )
+  }
+
+  // MARK: - Inspector tasks
+
+  /// The task kind in the person's words. A kind the client does not know keeps its wire
+  /// name, which is still more useful than a guess.
+  func taskTitle(for kind: String) -> String {
+    switch kind {
+    case "pi.generation": return "生成回答"
+    case "pi.tool": return "工具调用"
+    case "pi.compaction": return "上下文压缩"
+    default: return Self.isSubAgent(kind) ? "子 Agent" : kind
+    }
+  }
+
+  func taskSymbol(for kind: String) -> String {
+    switch kind {
+    case "pi.generation": return "sparkles"
+    case "pi.tool": return "wrench.and.screwdriver"
+    case "pi.compaction": return "rectangle.compress.vertical"
+    default: return Self.isSubAgent(kind) ? "person.2" : "circle.dashed"
+    }
+  }
+
+  /// A task that cannot run here says why, because "等待" would hide a task that never moves.
+  func taskStatusLabel(_ status: TaskStatus, blocked: String?) -> String {
+    if let blocked { return "已停放：\(Self.blockedReason(blocked))" }
+    switch status {
+    case .pending: return "排队"
+    case .running: return "运行中"
+    case .waiting: return "等待"
+    case .sleeping: return "休眠"
+    case .completing: return "收尾"
+    default: return status.rawValue
+    }
+  }
+
+  /// The inspector's 任务 rows: parents before children, a child indented under its owner.
+  /// A task whose owner is missing — or that sits in a cycle — stays a root instead of
+  /// disappearing or nesting forever.
+  func inspectorTasks(for tasks: [TaskSummary]) -> [InspectorTaskRow] {
+    let depths = taskDepths(tasks)
+    var children: [String: [TaskSummary]] = [:]
+    var roots: [TaskSummary] = []
+    for task in tasks {
+      let depth = depths[task.id] ?? 0
+      if depth == 0 {
+        roots.append(task)
+      } else if let owner = task.owner {
+        children[owner, default: []].append(task)
+      }
+    }
+    var rows: [InspectorTaskRow] = []
+    var emitted: Set<String> = []
+    func emit(_ task: TaskSummary, _ depth: Int) {
+      guard emitted.insert(task.id).inserted else { return }
+      rows.append(row(for: task, depth: min(depth, Self.maxTaskDepth)))
+      for child in children[task.id] ?? [] {
+        emit(child, depth + 1)
+      }
+    }
+    for root in roots {
+      emit(root, 0)
+    }
+    // Anything a cycle kept out of the tree is still shown, flat, rather than dropped.
+    for task in tasks {
+      emit(task, depths[task.id] ?? 0)
+    }
+    return rows
+  }
+
+  /// How many owners a task has above it; a cycle has no root, so it reads as a root, and an
+  /// owner the frame no longer lists is not an owner at all.
+  func taskDepths(_ tasks: [TaskSummary]) -> [String: Int] {
+    let known = Set(tasks.map(\.id))
+    var owners: [String: String] = [:]
+    for task in tasks {
+      guard let owner = task.owner, known.contains(owner) else { continue }
+      owners[task.id] = owner
+    }
+    var depths: [String: Int] = [:]
+    for task in tasks {
+      var depth = 0
+      var visited: Set<String> = [task.id]
+      var owner = owners[task.id]
+      while let current = owner {
+        guard visited.insert(current).inserted else {
+          depth = 0
+          break
+        }
+        depth += 1
+        owner = owners[current]
+      }
+      depths[task.id] = min(depth, Self.maxTaskDepth)
+    }
+    return depths
+  }
+
+  private static let maxTaskDepth = 3
+
+  private static func isSubAgent(_ kind: String) -> Bool {
+    kind == "bots.agents" || kind.hasPrefix("bots.agents.")
+  }
+
+  private static func blockedReason(_ code: String) -> String {
+    switch code {
+    case "restart_limit": return "重试次数过多"
+    case "missing_task": return "任务定义缺失"
+    case "task_too_old": return "任务过旧"
+    case "migration_failed": return "迁移失败"
+    default: return code
+    }
+  }
+
+  private func row(for task: TaskSummary, depth: Int) -> InspectorTaskRow {
+    InspectorTaskRow(
+      id: task.id,
+      title: taskTitle(for: task.kind),
+      symbolName: taskSymbol(for: task.kind),
+      status: taskStatusLabel(task.status, blocked: task.blocked),
+      depth: depth,
+      isRunning: task.status == .running,
+      isBlocked: task.blocked != nil
     )
   }
 

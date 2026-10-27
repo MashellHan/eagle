@@ -1,0 +1,185 @@
+import SwiftUI
+
+/// What a section shows instead of rows: one glyph, one short line and one sentence, so an
+/// empty section still carries the panel's decoration instead of leaving a hole
+/// (docs/bots/PRODUCT.md, inspector).
+public struct InspectorPlaceholder: Hashable, Sendable {
+  public let symbolName: String
+  public let title: String
+  public let detail: String
+
+  public init(symbolName: String, title: String, detail: String) {
+    self.symbolName = symbolName
+    self.title = title
+    self.detail = detail
+  }
+}
+
+/// One live task as the inspector draws it: already named, already indented, already spelled
+/// in the person's language. The mapping lives in the view model, never in the view.
+public struct InspectorTaskRow: Identifiable, Hashable, Sendable {
+  public let id: String
+  public let title: String
+  public let symbolName: String
+  public let status: String
+  /// 0 for a root task, one more for every owner above it.
+  public let depth: Int
+  public let isRunning: Bool
+  public let isBlocked: Bool
+
+  public init(
+    id: String,
+    title: String,
+    symbolName: String,
+    status: String,
+    depth: Int,
+    isRunning: Bool,
+    isBlocked: Bool
+  ) {
+    self.id = id
+    self.title = title
+    self.symbolName = symbolName
+    self.status = status
+    self.depth = depth
+    self.isRunning = isRunning
+    self.isBlocked = isBlocked
+  }
+}
+
+/// One decorated section of the inspector: its header and either rows or a placeholder.
+public struct InspectorSectionModel: Identifiable, Hashable, Sendable {
+  public enum Rows: Hashable, Sendable {
+    case artifacts([InspectorArtifact])
+    case jobs([InspectorJob])
+    case tasks([InspectorTaskRow])
+    /// A section whose whole body is its placeholder.
+    case none
+  }
+
+  public let id: String
+  public let title: String
+  public let symbolName: String
+  public let rows: Rows
+  public let placeholder: InspectorPlaceholder
+
+  public init(
+    id: String,
+    title: String,
+    symbolName: String,
+    rows: Rows,
+    placeholder: InspectorPlaceholder
+  ) {
+    self.id = id
+    self.title = title
+    self.symbolName = symbolName
+    self.rows = rows
+    self.placeholder = placeholder
+  }
+
+  public var isEmpty: Bool {
+    switch rows {
+    case .artifacts(let rows): return rows.isEmpty
+    case .jobs(let rows): return rows.isEmpty
+    case .tasks(let rows): return rows.isEmpty
+    case .none: return true
+    }
+  }
+}
+
+/// The inspector's sections as data: which ones exist, in which order, and what they say when
+/// they hold nothing. Pure, so the decoration is decided without a running view.
+public enum InspectorSections {
+  public static let artifactsSection = InspectorSectionModel(
+    id: "artifacts",
+    title: "编码",
+    symbolName: "chevron.left.forwardslash.chevron.right",
+    rows: .artifacts([]),
+    placeholder: InspectorPlaceholder(
+      symbolName: "shippingbox",
+      title: "还没有产物",
+      detail: "这个 Bot 生成的文件会出现在这里。"
+    )
+  )
+
+  public static let jobsSection = InspectorSectionModel(
+    id: "jobs",
+    title: "例行任务",
+    symbolName: "clock",
+    rows: .jobs([]),
+    placeholder: InspectorPlaceholder(
+      symbolName: "clock.arrow.circlepath",
+      title: "没有例行任务",
+      detail: "按计划自动运行的调度会出现在这里。"
+    )
+  )
+
+  public static let tasksSection = InspectorSectionModel(
+    id: "tasks",
+    title: "任务",
+    symbolName: "bolt",
+    rows: .tasks([]),
+    placeholder: InspectorPlaceholder(
+      symbolName: "checkmark.circle",
+      title: "没有正在运行的任务",
+      detail: "发出消息后，正在跑的步骤会实时出现在这里。"
+    )
+  )
+
+  public static let librarySection = InspectorSectionModel(
+    id: "library",
+    title: "资料库",
+    symbolName: "books.vertical",
+    rows: .artifacts([]),
+    placeholder: InspectorPlaceholder(
+      symbolName: "books.vertical",
+      title: "资料库还是空的",
+      detail: "接入 Herdr 后，Space 的证据与产物会出现在这里。"
+    )
+  )
+
+  public static let computerSection = InspectorSectionModel(
+    id: "computer",
+    title: "电脑",
+    symbolName: "desktopcomputer",
+    rows: .none,
+    placeholder: InspectorPlaceholder(
+      symbolName: "desktopcomputer",
+      title: "还没接入电脑",
+      detail: "终端与会话信息在接入后展示。"
+    )
+  )
+
+  /// 编码, 例行任务, 任务 — the detail tab always shows all three, so a section never folds
+  /// away and shifts the ones below it.
+  public static func detail(
+    artifacts: [InspectorArtifact],
+    jobs: [InspectorJob],
+    tasks: [InspectorTaskRow]
+  ) -> [InspectorSectionModel] {
+    [
+      artifactsSection.with(.artifacts(artifacts)),
+      jobsSection.with(.jobs(jobs)),
+      tasksSection.with(.tasks(tasks)),
+    ]
+  }
+
+  public static func library(artifacts: [InspectorArtifact]) -> [InspectorSectionModel] {
+    [librarySection.with(.artifacts(artifacts))]
+  }
+
+  public static func computer() -> [InspectorSectionModel] {
+    [computerSection]
+  }
+}
+
+extension InspectorSectionModel {
+  func with(_ rows: Rows) -> InspectorSectionModel {
+    InspectorSectionModel(
+      id: id,
+      title: title,
+      symbolName: symbolName,
+      rows: rows,
+      placeholder: placeholder
+    )
+  }
+}

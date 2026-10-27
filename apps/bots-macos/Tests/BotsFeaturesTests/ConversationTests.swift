@@ -354,6 +354,28 @@ final class ConversationLifecycleTests: XCTestCase {
     XCTAssertEqual(model.state.messages.first?.text, "巴黎")
   }
 
+  func testTasksFollowTheSelectedBotAndAreClearedByASelection() async throws {
+    let (model, fake) = make()
+    model.select(botId: "b_1")
+    fake.emit(.connection(.ready))
+    fake.emit(
+      .snapshot(
+        ConversationSnapshot(
+          botId: "b_1",
+          tasks: [TaskSummary(id: "t_1", kind: "pi.generation", status: .running)]
+        ))
+    )
+    try await Task.sleep(nanoseconds: 40_000_000)
+    XCTAssertEqual(model.tasks.map(\.id), ["t_1"])
+
+    fake.emit(.tasks([TaskSummary(id: "t_2", kind: "pi.tool", status: .waiting)]))
+    try await Task.sleep(nanoseconds: 40_000_000)
+    XCTAssertEqual(model.tasks.map(\.id), ["t_2"], "the event replaces the list")
+
+    model.select(botId: "b_2")
+    XCTAssertEqual(model.tasks, [], "another bot starts without the previous bot's tasks")
+  }
+
   func testACatalogEventIsForwardedAndAnErrorCanBeDismissed() async throws {
     let (model, fake) = make()
     var forwarded: BotCatalog?

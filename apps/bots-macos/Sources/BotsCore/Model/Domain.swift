@@ -379,6 +379,75 @@ public struct InboxItem: Codable, Sendable, Equatable, Identifiable {
   }
 }
 
+/// One live task of a bot: the work its conversations are running right now
+/// (PROTOCOL.md, "Live tasks"). The status is a raw string, so a status the daemon adds
+/// later is shown as it arrives instead of making the whole frame unreadable.
+public struct TaskStatus: RawRepresentable, Codable, Sendable, Hashable {
+  public var rawValue: String
+
+  public init(rawValue: String) {
+    self.rawValue = rawValue
+  }
+
+  public static let pending = TaskStatus(rawValue: "pending")
+  public static let running = TaskStatus(rawValue: "running")
+  public static let waiting = TaskStatus(rawValue: "waiting")
+  public static let sleeping = TaskStatus(rawValue: "sleeping")
+  public static let completing = TaskStatus(rawValue: "completing")
+}
+
+public struct TaskSummary: Codable, Sendable, Equatable, Identifiable {
+  public var id: String
+  /// The task definition's own name (`pi.generation`, an extension's kind, …).
+  public var kind: String
+  public var status: TaskStatus
+  public var phase: String?
+  public var background: Bool
+  /// Why it cannot run here; absent means it can.
+  public var blocked: String?
+  /// The parent task, when this one is a child.
+  public var owner: String?
+  public var conversationId: String?
+
+  public init(
+    id: String,
+    kind: String,
+    status: TaskStatus,
+    phase: String? = nil,
+    background: Bool = false,
+    blocked: String? = nil,
+    owner: String? = nil,
+    conversationId: String? = nil
+  ) {
+    self.id = id
+    self.kind = kind
+    self.status = status
+    self.phase = phase
+    self.background = background
+    self.blocked = blocked
+    self.owner = owner
+    self.conversationId = conversationId
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, kind, status, phase, background, blocked, owner, conversationId
+  }
+
+  /// Only `id`, `kind` and `status` are always on the wire; the rest is optional, and a
+  /// missing `background` reads as `false`.
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(String.self, forKey: .id)
+    kind = try container.decode(String.self, forKey: .kind)
+    status = try container.decode(TaskStatus.self, forKey: .status)
+    phase = try container.decodeIfPresent(String.self, forKey: .phase)
+    background = try container.decodeIfPresent(Bool.self, forKey: .background) ?? false
+    blocked = try container.decodeIfPresent(String.self, forKey: .blocked)
+    owner = try container.decodeIfPresent(String.self, forKey: .owner)
+    conversationId = try container.decodeIfPresent(String.self, forKey: .conversationId)
+  }
+}
+
 public struct ConversationSnapshot: Codable, Sendable, Equatable {
   public var botId: String
   public var messages: [Message]
@@ -390,6 +459,8 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
   public var unavailable: BotUnavailable?
   /// A parked task keeps `recover` meaningful across clients; absent means healthy.
   public var parked: Bool?
+  /// Live work of every conversation this bot owns; absent means nothing runs.
+  public var tasks: [TaskSummary]
 
   public init(
     botId: String,
@@ -400,7 +471,8 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     inbox: [InboxItem] = [],
     running: Bool = false,
     unavailable: BotUnavailable? = nil,
-    parked: Bool? = nil
+    parked: Bool? = nil,
+    tasks: [TaskSummary] = []
   ) {
     self.botId = botId
     self.messages = messages
@@ -411,11 +483,12 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     self.running = running
     self.unavailable = unavailable
     self.parked = parked
+    self.tasks = tasks
   }
 
   private enum CodingKeys: String, CodingKey {
     case botId, messages, truncatedBefore, streaming, pending, inbox, running, unavailable, parked
-    case agent, usage
+    case tasks, agent, usage
   }
 
   /// `streaming` is `{ "messageId": "p_a1" }` on the wire and `null` when no attempt is in
@@ -430,6 +503,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     running = try container.decodeIfPresent(Bool.self, forKey: .running) ?? false
     unavailable = try container.decodeIfPresent(BotUnavailable.self, forKey: .unavailable)
     parked = try container.decodeIfPresent(Bool.self, forKey: .parked)
+    tasks = try container.decodeIfPresent([TaskSummary].self, forKey: .tasks) ?? []
     if let pointer = try container.decodeIfPresent(StreamingPointer.self, forKey: .streaming) {
       streaming = pointer.messageId
     } else {
@@ -447,6 +521,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     try container.encode(running, forKey: .running)
     try container.encodeIfPresent(unavailable, forKey: .unavailable)
     try container.encodeIfPresent(parked, forKey: .parked)
+    try container.encode(tasks, forKey: .tasks)
     if let streaming {
       try container.encode(StreamingPointer(messageId: streaming), forKey: .streaming)
     } else {
