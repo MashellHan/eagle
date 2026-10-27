@@ -280,8 +280,12 @@ export class BotRegistry {
     const resolved = resolveToolGroups(toolGroups);
     this.#defaultToolGroups = resolved;
     for (const entry of this.#entries.values()) {
-      const current = resolveToolGroups(entry.config.toolGroups ?? DEFAULT_TOOL_GROUPS);
-      if (current.join(",") === resolved.join(",")) continue;
+      // A bot that never stored a selection has to store one, even when the default happens
+      // to match: the catalog, not the daemon's default, is what a later run reads.
+      const stored = entry.config.toolGroups;
+      if (stored !== undefined && resolveToolGroups(stored).join(",") === resolved.join(",")) {
+        continue;
+      }
       const at = (this.#options.now?.() ?? new Date()).toISOString();
       try {
         const config = await this.#write(trace, entry.config.id, () =>

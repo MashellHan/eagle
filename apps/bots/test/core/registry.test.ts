@@ -172,6 +172,21 @@ test("a gateway tool-group change reaches existing bots and new ones", async () 
   }
 });
 
+test("a bot that never stored tool groups gets them written on the first save", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    const before = (await setup.directory.load())[0];
+    assert.equal(before?.toolGroups, undefined, "the fixture stores no selection");
+    await setup.registry.applyToolGroups(["core", "herdr"], "tr_groups_0004");
+    const after = (await setup.directory.load())[0];
+    assert.deepEqual(after?.toolGroups, ["core", "herdr"], "the default is now explicit");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
 test("a gateway thinking-level change reaches existing bots and new ones", async () => {
   const setup = await bench({ bots: ["a"] });
   try {

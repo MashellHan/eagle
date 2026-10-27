@@ -289,6 +289,20 @@ stays readable until a send is attempted without a gateway, then the conversatio
 short "去设置" banner; the gate is tested (`BotsWindowTests`), the fresh-install window is
 not.
 
+## Settings for effort, compaction and tool groups (2026-10-27)
+
+The model page now carries three daemon-wide choices, each stored in the gateway settings
+and applied to every bot: the reasoning level (default `medium`, written per bot and moved
+into a live conversation with `root.configure`), automatic compaction (on by default, its
+thresholds capped to `BOTS_CONTEXT_WINDOW` and overridable per `BOTS_COMPACTION*`), and the
+tool groups (`core` mandatory, `herdr` optional). Compaction is accepted on a 1 200-token
+window in `test/e2e/compaction.test.ts`: four `pi.compaction` entries, the request context
+stops growing at ~2 095 characters, and all five turns stay readable through `history`.
+Known gap, unchanged by this pass: the transcript a client receives after a compaction
+starts at the compaction head, so scrollback after a reconnect now depends on the `history`
+paging the client does not use yet. The `tasks` capability stays false, so a running
+compaction is invisible in the UI.
+
 ## Next work, in order
 
 1. Finish the client surface: history paging, bot settings behind the `agent`

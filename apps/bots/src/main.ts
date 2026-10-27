@@ -75,7 +75,7 @@ const positiveNumber = (raw: string | undefined, fallback: number): number => {
  * The compaction policy the daemon runs with: on by default, with thresholds expressed in
  * tokens of the declared window, so a small window compacts early and a large one late.
  */
-const compactionFromEnv = (
+export const compactionFromEnv = (
   env: Readonly<Record<string, string | undefined>>,
   windowTokens: number,
 ): PiSettings["compaction"] => {

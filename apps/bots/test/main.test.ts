@@ -251,3 +251,22 @@ test("settings store the tool groups, refuse an unknown group and keep core mand
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("compaction thresholds follow the declared window and can be turned off", async () => {
+  const { compactionFromEnv } = await import("../src/main.ts");
+  assert.deepEqual(compactionFromEnv({}, 200_000), {
+    enabled: true,
+    reserveTokens: 16_384,
+    keepRecentTokens: 8_192,
+    backgroundTokens: 32_768,
+  });
+  const tiny = compactionFromEnv({}, 1_200);
+  assert.equal(tiny?.enabled, true);
+  assert.equal(tiny?.reserveTokens, 600, "the reserve never exceeds half the window");
+  assert.equal(tiny?.backgroundTokens, 300, "background work stays within a quarter");
+  assert.deepEqual(compactionFromEnv({ BOTS_COMPACTION: "off" }, 200_000), { enabled: false });
+  assert.equal(
+    compactionFromEnv({ BOTS_COMPACTION_RESERVE_TOKENS: "2048" }, 200_000)?.reserveTokens,
+    2_048,
+  );
+});
