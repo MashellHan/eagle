@@ -16,24 +16,23 @@ struct TranscriptScrollCostTests {
   func costRatio() throws {
     let entries = Self.entries(turns: 40)
     let markdown = Self.prepared(entries)
-    let column = Self.minimum {
-      Self.measure(
-        ConversationColumn(
-          title: "Bot", subtitle: "Bots", tintIndex: 1, entries: entries,
-          preparedMarkdown: markdown, draft: .constant(""), onSend: {}))
+    let columnView = ConversationColumn(
+      title: "Bot", subtitle: "Bots", tintIndex: 1, entries: entries,
+      preparedMarkdown: markdown, draft: .constant(""), onSend: {})
+    // Median of interleaved rounds: a loaded CI runner inflates single rounds, and the
+    // cheaper baseline is the side that shows it. The guard exists to catch a bookkeeping
+    // regression (10x when it happened), not to police a tenth of a millisecond.
+    var ratios: [Double] = []
+    for _ in 0..<3 {
+      let column = Self.measure(columnView)
+      let bare = Self.measure(Self.bareRows(entries, markdown))
+      ratios.append(column / max(bare, 0.000_001))
     }
-    let bare = Self.minimum { Self.measure(Self.bareRows(entries, markdown)) }
-    let ratio = column / max(bare, 0.000_001)
+    let ratio = ratios.sorted()[ratios.count / 2]
     print(
-      "SCROLLBENCH column=\(String(format: "%.3f", column)) ms/step "
-        + "bare=\(String(format: "%.3f", bare)) ms/step ratio=\(String(format: "%.2f", ratio))")
-    #expect(ratio < 3, "conversation scroll costs \(String(format: "%.1f", ratio))x the same rows")
-  }
-
-  private static func minimum(_ run: () -> Double, attempts: Int = 2) -> Double {
-    var best = Double.greatestFiniteMagnitude
-    for _ in 0..<attempts { best = min(best, run()) }
-    return best
+      "SCROLLBENCH rounds=\(ratios.map { String(format: "%.2f", $0) }.joined(separator: ",")) "
+        + "median=\(String(format: "%.2f", ratio))")
+    #expect(ratio < 4, "conversation scroll costs \(String(format: "%.1f", ratio))x the same rows")
   }
 
   private static func entries(turns: Int) -> [TranscriptEntry] {

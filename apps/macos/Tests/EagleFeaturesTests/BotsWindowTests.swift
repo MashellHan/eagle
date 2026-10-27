@@ -131,6 +131,9 @@ struct BotsWindowTests {
   func transcriptPublicationIsolation() async throws {
     let (bots, _, port, _) = try await window()
     await bots.awaitScheduledPublishDrain()
+    // A loaded runner can deliver the baseline state after the drain; count from a quiet
+    // baseline so the assertion is about draft edits, not about when the socket settled.
+    try await Task.sleep(for: .milliseconds(120))
     var publications = 0
     var shellPublications = 0
     let observer = bots.transcript.$entries.dropFirst().sink { _ in publications += 1 }
