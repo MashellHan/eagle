@@ -1862,3 +1862,31 @@ test("a parked task is visible in the snapshot, so a new client can recover it",
   });
   assert.equal((wire.value as { parked?: boolean }).parked, true);
 });
+
+test("a usage event is reported to the host's statistics hook", async () => {
+  const bookings: { botId: string; totalTokens: number }[] = [];
+  const runtime = new FakeRuntime();
+  const service = new ConversationService({
+    open: (botId, openTrace) =>
+      runtime.open({
+        id: botId,
+        dir: `/tmp/${botId}`,
+        model: { provider: "faux", modelId: "faux-1" },
+        trace: openTrace,
+      }),
+    measure: utf8,
+    onUsage: (botId, usage) => bookings.push({ botId, totalTokens: usage.totalTokens }),
+  });
+  const received: HubEvent[] = [];
+  await subscribe(service, received);
+  runtime.handle("b_1").emit({
+    type: "usage",
+    trace,
+    usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15, costUsd: 0.01 },
+  });
+  assert.deepEqual(bookings, [{ botId: "b_1", totalTokens: 15 }]);
+  assert.ok(
+    received.some((event) => event.type === "usage"),
+    "the client still sees the totals",
+  );
+});

@@ -3,6 +3,7 @@
 // behaviour lives in the modules it wires.
 import { readFileSync } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
+import { join } from "node:path";
 import type { DaemonConfig } from "./config.ts";
 import { BotDirectory, nodeDirectoryFs } from "./core/BotDirectory.ts";
 import { BotRegistry } from "./core/BotRegistry.ts";
@@ -36,6 +37,7 @@ import {
 import { type Daemon, startServer } from "./server/http.ts";
 import { acquireLock, LockError } from "./server/singleton.ts";
 import { toServerEvent } from "./server/socket.ts";
+import { UsageStore } from "./server/usage.ts";
 
 export type DaemonHandle = {
   readonly config: DaemonConfig;
@@ -173,6 +175,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   await registry.start();
   // The daemon exists after the service that has to broadcast through it.
   let broadcast: (() => void) | undefined;
+  const usageStore = new UsageStore(join(root, "usage.sqlite"));
   const service = new ConversationService({
     open: (botId, trace) => registry.open(botId, trace),
     handleOf: (botId) => registry.handleOf(botId),
@@ -184,6 +187,13 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     },
     onSessionFailed: (botId, reason, message, dropHandle) => {
       if (registry.markUnavailable(botId, reason, message, { dropHandle })) broadcast?.();
+    },
+    onUsage: (botId, usage) => {
+      try {
+        usageStore.record(botId, usage);
+      } catch {
+        // Statistics are a side channel: a full disk must not fail the conversation.
+      }
     },
     onRecovered: (botId, running) => {
       // Always push: the client that showed `unavailable` has to see the recovery even
@@ -289,6 +299,14 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     capabilities,
     port: canonical.port,
     gatewayProvider: () => gateway?.provider ?? "magpie",
+    usage: async (days: number) => {
+      const report = usageStore.report(days);
+      const titles = new Map(registry.summaries().map((bot) => [bot.id, bot.title]));
+      return {
+        ...report,
+        bots: report.bots.map((bot) => ({ ...bot, title: titles.get(bot.botId) ?? bot.botId })),
+      };
+    },
     models: async () => {
       if (gateway === undefined) return [];
       const now = Date.now();

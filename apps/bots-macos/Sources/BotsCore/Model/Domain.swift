@@ -464,6 +464,70 @@ public struct Usage: Codable, Hashable, Sendable {
   }
 }
 
+/// Usage statistics over the daemon's retained window (docs/bots/PROTOCOL.md).
+public struct UsageReport: Codable, Sendable, Equatable {
+  public struct Totals: Codable, Sendable, Equatable {
+    public var totalTokens: Int
+    public var costUsd: Double
+
+    public init(totalTokens: Int, costUsd: Double) {
+      self.totalTokens = totalTokens
+      self.costUsd = costUsd
+    }
+  }
+
+  public struct Day: Codable, Sendable, Equatable, Identifiable {
+    public var day: String
+    public var totalTokens: Int
+    public var costUsd: Double
+    public var id: String { day }
+
+    public init(day: String, totalTokens: Int, costUsd: Double) {
+      self.day = day
+      self.totalTokens = totalTokens
+      self.costUsd = costUsd
+    }
+  }
+
+  public struct Bot: Codable, Sendable, Equatable, Identifiable {
+    public var botId: String
+    public var title: String
+    public var totalTokens: Int
+    public var costUsd: Double
+    public var id: String { botId }
+
+    public init(botId: String, title: String, totalTokens: Int, costUsd: Double) {
+      self.botId = botId
+      self.title = title
+      self.totalTokens = totalTokens
+      self.costUsd = costUsd
+    }
+  }
+
+  public var retentionDays: Int
+  public var today: Totals
+  public var week: Totals
+  public var month: Totals
+  public var days: [Day]
+  public var bots: [Bot]
+
+  public init(
+    retentionDays: Int,
+    today: Totals,
+    week: Totals,
+    month: Totals,
+    days: [Day],
+    bots: [Bot]
+  ) {
+    self.retentionDays = retentionDays
+    self.today = today
+    self.week = week
+    self.month = month
+    self.days = days
+    self.bots = bots
+  }
+}
+
 /// What a bot runs with, as the snapshot reports it (`agent` capability).
 public struct AgentView: Codable, Hashable, Sendable {
   public var model: ModelRef

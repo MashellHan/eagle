@@ -15,6 +15,9 @@ public final class SettingsViewModel: ObservableObject {
   @Published public var selection: SettingsSection = .bots
   @Published public var machines: [MachineDevice]
   @Published public var usage: UsageSummary
+  /// The daemon's usage statistics; nil until the 用量与账单 tab is opened.
+  @Published public var usageReport: UsageReport?
+  @Published public var usageBusy = false
   @Published public var launchAtLogin = true
   @Published public var showUnfocusedSpaces = true
   @Published public var followTerminal = true
@@ -190,6 +193,32 @@ public final class SettingsViewModel: ObservableObject {
   private func client() throws -> CatalogHTTPClient {
     let token = try TokenStore(root: botsSettings.rootURL).read()
     return CatalogHTTPClient(baseURL: botsSettings.baseURL, token: token, session: urlSession)
+  }
+
+  /// One read per visit; the daemon aggregates 90 days and answers the requested window.
+  public func loadUsage(days: Int = 30) async {
+    guard !usageBusy else { return }
+    usageBusy = true
+    defer { usageBusy = false }
+    do {
+      usageReport = try await client().loadUsage(days: days)
+    } catch {
+      usageReport = nil
+    }
+  }
+
+  /// The three headline numbers, already formatted for the settings rows.
+  public var usageSummaryRows: [(id: String, title: String, detail: String, value: String)] {
+    guard let report = usageReport else { return [] }
+    func line(_ totals: UsageReport.Totals) -> String {
+      let cost = UsageFormat.cost(totals.costUsd).map { " · \($0)" } ?? ""
+      return "\(UsageFormat.tokens(totals.totalTokens))\(cost)"
+    }
+    return [
+      ("today", "今日", "所有 Bot 的 token 与花费", line(report.today)),
+      ("week", "近 7 天", "滚动 7 天", line(report.week)),
+      ("month", "近 30 天", "滚动 30 天", line(report.month)),
+    ]
   }
 
   public func checkForUpdates() {

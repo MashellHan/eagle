@@ -444,6 +444,17 @@ final class StubCatalog: CatalogPort {
   var agentChanges: [(String, String?, String?)] = []
   var retriedTasks: [(String, String)] = []
 
+  func loadUsage(days: Int) async throws -> UsageReport {
+    UsageReport(
+      retentionDays: 90,
+      today: UsageReport.Totals(totalTokens: 0, costUsd: 0),
+      week: UsageReport.Totals(totalTokens: 0, costUsd: 0),
+      month: UsageReport.Totals(totalTokens: 0, costUsd: 0),
+      days: [],
+      bots: []
+    )
+  }
+
   func loadModels() async throws -> [String] { models }
 
   func setAgent(id: String, model: String?, thinkingLevel: String?) async throws -> BotSummary {

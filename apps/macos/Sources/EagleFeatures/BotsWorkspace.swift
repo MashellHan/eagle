@@ -960,28 +960,15 @@ struct BotsPresenter {
   func inspectorUsage(for usage: Usage?) -> [InspectorUsageRow] {
     guard let usage else { return [] }
     var rows = [
-      InspectorUsageRow(id: "input", label: "输入", value: Self.tokenLabel(usage.inputTokens)),
-      InspectorUsageRow(id: "output", label: "输出", value: Self.tokenLabel(usage.outputTokens)),
-      InspectorUsageRow(id: "total", label: "合计", value: Self.tokenLabel(usage.totalTokens)),
+      InspectorUsageRow(id: "input", label: "输入", value: UsageFormat.tokens(usage.inputTokens)),
+      InspectorUsageRow(id: "output", label: "输出", value: UsageFormat.tokens(usage.outputTokens)),
+      InspectorUsageRow(id: "total", label: "合计", value: UsageFormat.tokens(usage.totalTokens)),
     ]
     if let cost = usage.costUsd {
-      rows.append(InspectorUsageRow(id: "cost", label: "花费", value: Self.costLabel(cost)))
+      rows.append(
+        InspectorUsageRow(id: "cost", label: "花费", value: UsageFormat.cost(cost) ?? "$0"))
     }
     return rows
-  }
-
-  /// `812`, `12.3k`, `1.2M`: enough to read at a glance, never a long digit string.
-  static func tokenLabel(_ tokens: Int) -> String {
-    if tokens < 1_000 { return String(tokens) }
-    if tokens < 1_000_000 {
-      return String(format: "%.1fk", Double(tokens) / 1_000)
-    }
-    return String(format: "%.1fM", Double(tokens) / 1_000_000)
-  }
-
-  static func costLabel(_ usd: Double) -> String {
-    if usd > 0 && usd < 0.01 { return "<$0.01" }
-    return String(format: "$%.2f", usd)
   }
 
   /// The inspector's 任务 rows: parents before children, a child indented under its owner.

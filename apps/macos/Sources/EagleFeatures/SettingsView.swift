@@ -319,25 +319,100 @@ public struct SettingsView: View {
 
   private var usage: some View {
     VStack(alignment: .leading, spacing: 18) {
-      SettingsCard {
-        VStack(spacing: 0) {
-          SettingsRow("今日上报", detail: "全部机器的完整快照") {
-            Text("\(model.usage.reportsToday)").font(Theme.TypeScale.mono)
-              .foregroundStyle(Theme.Palette.textPrimary)
-          }
-          Divider().overlay(Theme.Palette.line)
-          SettingsRow("今日 API 调用", detail: "网页与 Agent 合计") {
-            Text("\(model.usage.apiCallsToday)").font(Theme.TypeScale.mono)
-              .foregroundStyle(Theme.Palette.textPrimary)
-          }
-          Divider().overlay(Theme.Palette.line)
-          SettingsRow("归档存储", detail: "D1 中的日报与语义记录") {
-            Text("\(model.usage.storageMegabytes) MB").font(Theme.TypeScale.mono)
+      if model.usageReport == nil {
+        SettingsCard {
+          HStack(spacing: 10) {
+            if model.usageBusy { SpinnerArc() }
+            Text(model.usageBusy ? "正在读取用量…" : "还没有用量数据")
+              .font(Theme.TypeScale.note)
               .foregroundStyle(Theme.Palette.textSecondary)
+            Spacer(minLength: 0)
+          }
+          .padding(.vertical, 14)
+        }
+      } else {
+        SettingsCard {
+          VStack(spacing: 0) {
+            ForEach(model.usageSummaryRows, id: \.id) { row in
+              if row.id != model.usageSummaryRows.first?.id {
+                Divider().overlay(Theme.Palette.line)
+              }
+              SettingsRow(row.title, detail: row.detail) {
+                Text(row.value)
+                  .font(Theme.TypeScale.mono)
+                  .foregroundStyle(Theme.Palette.textPrimary)
+              }
+            }
+          }
+        }
+        usageChart
+        usageBots
+        SettingsCaption("保留 \(model.usageReport?.retentionDays ?? 90) 天，按本机日期切分")
+      }
+    }
+    .task { await model.loadUsage() }
+  }
+
+  /// Thirty bars, one per day; the tallest day fills the card, a quiet day is a hairline.
+  private var usageChart: some View {
+    let days = model.usageReport?.days ?? []
+    let peak = days.map(\.totalTokens).max() ?? 0
+    return VStack(alignment: .leading, spacing: 6) {
+      SettingsCaption("近 30 天")
+      SettingsCard {
+        HStack(alignment: .bottom, spacing: 3) {
+          ForEach(days) { day in
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+              .fill(
+                day.totalTokens == 0
+                  ? Theme.Palette.line
+                  : Theme.Palette.accentFill.opacity(0.85)
+              )
+              .frame(height: barHeight(day.totalTokens, peak: peak))
+              .frame(maxWidth: .infinity)
+              .help("\(UsageFormat.shortDay(day.day)) · \(UsageFormat.tokens(day.totalTokens))")
+          }
+        }
+        .frame(height: 56, alignment: .bottom)
+        .padding(.vertical, 10)
+      }
+    }
+  }
+
+  private func barHeight(_ tokens: Int, peak: Int) -> CGFloat {
+    guard peak > 0, tokens > 0 else { return 2 }
+    return max(3, 56 * CGFloat(tokens) / CGFloat(peak))
+  }
+
+  private var usageBots: some View {
+    let bots = (model.usageReport?.bots ?? []).prefix(5)
+    return VStack(alignment: .leading, spacing: 6) {
+      SettingsCaption("消耗最多")
+      SettingsCard {
+        if bots.isEmpty {
+          HStack(spacing: 8) {
+            Image(systemName: "chart.bar")
+              .font(.system(size: 12))
+              .foregroundStyle(Theme.Palette.textMuted)
+            Text("近 90 天还没有消耗")
+              .font(Theme.TypeScale.note)
+              .foregroundStyle(Theme.Palette.textSecondary)
+            Spacer(minLength: 0)
+          }
+          .padding(.vertical, 12)
+        } else {
+          VStack(spacing: 0) {
+            ForEach(Array(bots.enumerated()), id: \.element.id) { index, bot in
+              if index > 0 { Divider().overlay(Theme.Palette.line) }
+              SettingsRow(bot.title, detail: UsageFormat.cost(bot.costUsd) ?? "") {
+                Text(UsageFormat.tokens(bot.totalTokens))
+                  .font(Theme.TypeScale.mono)
+                  .foregroundStyle(Theme.Palette.textPrimary)
+              }
+            }
           }
         }
       }
-      SettingsCaption("\(model.usage.planName) 计划 · 已用 \(model.usage.percentUsed)%")
     }
   }
 

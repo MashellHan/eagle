@@ -270,3 +270,30 @@ test("compaction thresholds follow the declared window and can be turned off", a
     2_048,
   );
 });
+
+test("the usage endpoint reports an empty window before anything runs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-usage-http-"));
+  try {
+    const daemon = await startDaemon(
+      readConfig({ argv: ["--root", root, "--port", "0"], env: {} }),
+    );
+    try {
+      const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/usage?days=7`, {
+        headers: { authorization: `Bearer ${daemon.token}` },
+      });
+      assert.equal(response.status, 200);
+      const body = (await response.json()) as {
+        usage: { retentionDays: number; days: unknown[]; today: { totalTokens: number } };
+      };
+      assert.equal(body.usage.retentionDays, 90, "ninety days are kept");
+      assert.equal(body.usage.days.length, 7, "the requested window is served");
+      assert.equal(body.usage.today.totalTokens, 0);
+      const unknown = await fetch(`http://127.0.0.1:${daemon.port}/v1/usage`);
+      assert.equal(unknown.status, 401, "the statistics need the bearer token");
+    } finally {
+      await daemon.close();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

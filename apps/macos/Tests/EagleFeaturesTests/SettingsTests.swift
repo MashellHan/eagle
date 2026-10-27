@@ -1,3 +1,4 @@
+import BotsCore
 import Foundation
 import Testing
 
@@ -510,5 +511,41 @@ struct AccountMenuTests {
     #expect(model.rows.last?.destructive == true)
     #expect(model.rows.first?.detail == "73% 已用")
     #expect(model.rows.first?.showsChevron == true)
+  }
+}
+
+@Suite("Settings usage statistics")
+@MainActor
+struct SettingsUsageTests {
+  private func report() -> UsageReport {
+    UsageReport(
+      retentionDays: 90,
+      today: UsageReport.Totals(totalTokens: 1_234, costUsd: 0.02),
+      week: UsageReport.Totals(totalTokens: 45_000, costUsd: 0.4),
+      month: UsageReport.Totals(totalTokens: 1_200_000, costUsd: 3.5),
+      days: [
+        UsageReport.Day(day: "2026-10-20", totalTokens: 0, costUsd: 0),
+        UsageReport.Day(day: "2026-10-21", totalTokens: 1_234, costUsd: 0.02),
+      ],
+      bots: [
+        UsageReport.Bot(botId: "b_1", title: "研究员", totalTokens: 1_200_000, costUsd: 3.5)
+      ]
+    )
+  }
+
+  @Test("the page shows today, a week and a month, in that order")
+  func rows() {
+    let model = SettingsViewModel()
+    model.usageReport = report()
+    let rows = model.usageSummaryRows
+    #expect(rows.map(\.title) == ["今日", "近 7 天", "近 30 天"])
+    #expect(rows[0].value == "1.2k · $0.02")
+    #expect(rows[1].value == "45.0k · $0.40")
+    #expect(rows[2].value == "1.2M · $3.50")
+  }
+
+  @Test("no report yet is no rows, so the page shows its empty state")
+  func empty() {
+    #expect(SettingsViewModel().usageSummaryRows.isEmpty)
   }
 }

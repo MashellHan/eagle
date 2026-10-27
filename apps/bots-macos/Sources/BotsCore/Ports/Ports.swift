@@ -92,6 +92,8 @@ public protocol CatalogPort: AnyObject {
   func reorderGroups(ids: [String]) async throws -> [BotGroup]
   /// Files a bot; a nil group unfiles it.
   func moveBot(id: String, groupId: String?) async throws -> BotSummary
+  /// Usage statistics over the retained window.
+  func loadUsage(days: Int) async throws -> UsageReport
   /// The model ids the gateway offers.
   func loadModels() async throws -> [String]
   /// The bot's own agent choice; nil fields are left alone.

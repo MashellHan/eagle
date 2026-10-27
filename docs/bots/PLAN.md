@@ -364,6 +364,15 @@ Known gaps: children are invisible in the sidebar until a peers surface reads th
 task panel is read-only (no retry from the UI, although `harness.retryTask` exists); and a
 deferred tool loads per branch, so a compaction keeps it but a reset does not.
 
+## Settings: real usage statistics (2026-10-27)
+
+The 用量与账单 page no longer shows sample numbers. The daemon keeps one row per bot and
+local day in `usage.sqlite` (90 days, pruned on boot and on write), turning the runtime's
+cumulative `usage` into deltas; `GET /v1/usage?days=` serves today / 7 / 30 day totals, a
+padded day series and the ten busiest bots with their catalog titles. The page shows the
+three totals, a thirty-day bar chart whose bars name their day and tokens on hover, and the
+five busiest bots — with an empty state instead of zeros before anything runs.
+
 ## Next work, in order
 
 1. Finish the client surface: history paging, bot settings behind the `agent`

@@ -151,6 +151,18 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
     ).bot
   }
 
+  /// The usage statistics over the daemon's retained days.
+  public func loadUsage(days: Int) async throws -> UsageReport {
+    struct Payload: Decodable { let usage: UsageReport }
+    return try await request(
+      path: "/v1/usage",
+      method: "GET",
+      body: nil,
+      query: [URLQueryItem(name: "days", value: String(days))],
+      as: Payload.self
+    ).usage
+  }
+
   /// The model ids the configured gateway offers, for a per-bot picker.
   public func loadModels() async throws -> [String] {
     struct Payload: Decodable { let models: [String] }
@@ -239,9 +251,10 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
     path: String,
     method: String,
     body: [String: Any]?,
+    query: [URLQueryItem] = [],
     as: T.Type
   ) async throws -> T {
-    let data = try await raw(path: path, method: method, body: body)
+    let data = try await raw(path: path, method: method, body: body, query: query)
     do {
       return try JSONDecoder().decode(T.self, from: data)
     } catch {
@@ -249,8 +262,17 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
     }
   }
 
-  private func raw(path: String, method: String, body: [String: Any]?) async throws -> Data {
-    var request = URLRequest(url: baseURL.appendingPathComponent(path))
+  private func raw(
+    path: String,
+    method: String,
+    body: [String: Any]?,
+    query: [URLQueryItem] = []
+  ) async throws -> Data {
+    var components = URLComponents(
+      url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
+    if !query.isEmpty { components?.queryItems = query }
+    guard let url = components?.url else { throw ClientError("the daemon address is invalid") }
+    var request = URLRequest(url: url)
     request.httpMethod = method
     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Accept")

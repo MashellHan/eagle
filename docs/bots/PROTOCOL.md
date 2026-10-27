@@ -89,6 +89,7 @@ version, the instance id, the pid and a bot count, never bot content.
 | `PATCH` | `/v1/groups/:id` | `{ "title" }` | `{ "group": BotGroup }` |
 | `PUT` | `/v1/groups/order` | `{ "ids": [string] }` — every group once, in display order | `{ "groups": [BotGroup] }` |
 | `DELETE` | `/v1/groups/:id` | — | `204`, or `409` while a bot is filed under it |
+| `GET` | `/v1/usage?days=` | — | `{ "usage": UsageReport }` — statistics over the daemon's retained days |
 | `GET` | `/v1/models` | — | `{ "models": [string] }` — the gateway's ids, empty when it cannot be asked |
 | `GET` | `/v1/settings` | — | `{ "settings": GatewaySettings }` |
 | `PUT` | `/v1/settings` | `{ "baseUrl", "model", "apiKey"?, "provider"?, "thinkingLevel"?, "toolGroups"? }` | `{ "settings": GatewaySettings }` |
@@ -187,6 +188,33 @@ the seven levels), which are that bot's own choice: the catalog records them and
 conversation moves in place. `GET /v1/models` is a read-only proxy of the gateway's model
 list (cached for a minute), so a picker never has to know the gateway itself. The `agent`
 capability is `true`.
+
+## Usage statistics
+
+`GET /v1/usage?days=30` answers the settings page from one table the daemon keeps for every
+bot and **local** day (a day is what the person experienced, not UTC): day, tokens and what
+the provider said it cost. Ninety days are retained; older rows are pruned on boot and on
+every write.
+
+```json
+{ "usage": {
+  "retentionDays": 90,
+  "today": { "totalTokens": 120, "costUsd": 0.01 },
+  "week":  { "totalTokens": 900, "costUsd": 0.05 },
+  "month": { "totalTokens": 5000, "costUsd": 0.3 },
+  "days": [ { "day": "2026-10-20", "totalTokens": 0, "costUsd": 0 }, … ],
+  "bots": [ { "botId": "b_1", "title": "研究员", "totalTokens": 5000, "costUsd": 0.3 } ] } }
+```
+
+- `days` is the requested window (1–90, default 30), oldest first, with a zero row for a day
+  nothing ran, so a chart needs no gap handling.
+- `bots` lists the ten busiest in the retention window, busiest first; the daemon joins the
+  title from the catalog, so a client shows a name even for a bot it never loaded.
+- The counters are deltas: the runtime reports cumulative totals, and the daemon books what
+  a conversation gained since its last report. A reset conversation books nothing rather
+  than a negative row.
+- Statistics are a side channel: if the store cannot be written, the conversation is
+  unaffected and the row is missing, never invented.
 
 ## Usage
 

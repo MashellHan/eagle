@@ -40,6 +40,8 @@ export type ServerOptions = {
   readonly models?: () => Promise<readonly string[]>;
   /** The configured gateway's provider, so a per-bot model id keeps it. */
   readonly gatewayProvider?: () => string;
+  /** Usage statistics for the Settings page; `days` is the requested window. */
+  readonly usage?: (days: number) => Promise<unknown>;
   /** Model gateway settings, when the daemon was configured with a store. */
   readonly settings?: GatewayApi;
   readonly pid?: number;
@@ -363,6 +365,14 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
           return;
         }
         json(response, 200, { result: await options.settings.test(input) });
+        return;
+      }
+      if (path === "/v1/usage" && request.method === "GET") {
+        const requested = Number(new URL(request.url ?? "/", "http://x").searchParams.get("days"));
+        const days = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 90) : 30;
+        json(response, 200, {
+          usage: options.usage === undefined ? undefined : await options.usage(days),
+        });
         return;
       }
       if (path === "/v1/models" && request.method === "GET") {

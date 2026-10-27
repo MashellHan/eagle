@@ -11,6 +11,7 @@ import type {
   Failure,
   Message,
   Submission,
+  Usage,
 } from "./domain.ts";
 import { ClassifiedFailure } from "./domain.ts";
 import { EventHub, type HubSubscriber, type HubSubscription } from "./EventHub.ts";
@@ -71,6 +72,8 @@ export type ConversationServiceOptions = {
   ) => void;
   /** `recover` brought the bot back, so the catalog may leave `unavailable`. */
   readonly onRecovered?: (botId: string, running: boolean) => void;
+  /** A conversation reported its cumulative spend, for the usage statistics. */
+  readonly onUsage?: (botId: string, usage: Usage) => void;
 };
 
 /** Only `not_admitted` lets a client drop its outbox entry (docs/bots/PROTOCOL.md). */
@@ -133,6 +136,7 @@ export class ConversationService {
     | ((botId: string, reason: ErrorKind, message: string, dropHandle: boolean) => void)
     | undefined;
   readonly #onRecovered: ((botId: string, running: boolean) => void) | undefined;
+  readonly #onUsage: ((botId: string, usage: Usage) => void) | undefined;
   /** Per-bot admission serialization: check-then-submit is one serial section. */
   readonly #admissions = new Map<string, Promise<unknown>>();
   /** Per-bot view serialization: subscribe and recover never rebuild one view twice. */
@@ -156,6 +160,7 @@ export class ConversationService {
     this.#onRunning = options.onRunning;
     this.#onSessionFailed = options.onSessionFailed;
     this.#onRecovered = options.onRecovered;
+    this.#onUsage = options.onUsage;
     this.#hubOptions = {
       measure: options.measure,
       ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
@@ -773,6 +778,7 @@ export class ConversationService {
     let bot: Bot;
     const apply = (event: RuntimeEvent): void => {
       const wasRunning = bot.snapshot.running;
+      if (event.type === "usage") this.#onUsage?.(bot.snapshot.botId, event.usage);
       if (event.type === "submission") bot.reserved.delete(event.record.requestId);
       let next = reduceView(bot.snapshot, event, bot.ranks);
       if (
