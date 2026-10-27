@@ -196,7 +196,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     tools: true,
     tasks: true,
     entries: false,
-    usage: false,
+    usage: true,
     peers: false,
   };
   const settings: GatewayApi = {

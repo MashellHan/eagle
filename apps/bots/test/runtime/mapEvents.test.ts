@@ -70,6 +70,7 @@ test("maps a recorded run to append, delta, append, submission, status", () => {
     "append", // the answer entry replaces the provisional
     "status", // run_end
     "submission", // done
+    "usage", // the conversation's totals after the turn
   ]);
   const [user, provisional, answer] = of(events, "append");
   assert.deepEqual(appends(events), [

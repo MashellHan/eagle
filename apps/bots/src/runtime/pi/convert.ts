@@ -179,12 +179,19 @@ export const convertUsage = (state: {
   let input = 0;
   let output = 0;
   let total = 0;
+  let cost = 0;
   for (const bucket of [...Object.values(state.models), ...Object.values(state.tools)]) {
     input += bucket.input;
     output += bucket.output;
     total += bucket.totalTokens;
+    cost += bucket.cost?.total ?? 0;
   }
-  return { inputTokens: input, outputTokens: output, totalTokens: total };
+  return {
+    inputTokens: input,
+    outputTokens: output,
+    totalTokens: total,
+    ...(cost > 0 ? { costUsd: cost } : {}),
+  };
 };
 
 /** The encoded size of one converted message, measured the way the wire measures it. */

@@ -46,12 +46,26 @@ public struct InspectorTaskRow: Identifiable, Hashable, Sendable {
   }
 }
 
+/// One read-only figure of the 用量 section: a label and its already-formatted value.
+public struct InspectorUsageRow: Identifiable, Hashable, Sendable {
+  public let id: String
+  public let label: String
+  public let value: String
+
+  public init(id: String, label: String, value: String) {
+    self.id = id
+    self.label = label
+    self.value = value
+  }
+}
+
 /// One decorated section of the inspector: its header and either rows or a placeholder.
 public struct InspectorSectionModel: Identifiable, Hashable, Sendable {
   public enum Rows: Hashable, Sendable {
     case artifacts([InspectorArtifact])
     case jobs([InspectorJob])
     case tasks([InspectorTaskRow])
+    case usage([InspectorUsageRow])
     /// A section whose whole body is its placeholder.
     case none
   }
@@ -81,6 +95,7 @@ public struct InspectorSectionModel: Identifiable, Hashable, Sendable {
     case .artifacts(let rows): return rows.isEmpty
     case .jobs(let rows): return rows.isEmpty
     case .tasks(let rows): return rows.isEmpty
+    case .usage(let rows): return rows.isEmpty
     case .none: return true
     }
   }
@@ -125,6 +140,18 @@ public enum InspectorSections {
     )
   )
 
+  public static let usageSection = InspectorSectionModel(
+    id: "usage",
+    title: "用量",
+    symbolName: "chart.bar",
+    rows: .usage([]),
+    placeholder: InspectorPlaceholder(
+      symbolName: "chart.bar",
+      title: "还没有用量",
+      detail: "发出消息后，token 与花费会累加在这里。"
+    )
+  )
+
   public static let librarySection = InspectorSectionModel(
     id: "library",
     title: "资料库",
@@ -154,12 +181,14 @@ public enum InspectorSections {
   public static func detail(
     artifacts: [InspectorArtifact],
     jobs: [InspectorJob],
-    tasks: [InspectorTaskRow]
+    tasks: [InspectorTaskRow],
+    usage: [InspectorUsageRow]
   ) -> [InspectorSectionModel] {
     [
       artifactsSection.with(.artifacts(artifacts)),
       jobsSection.with(.jobs(jobs)),
       tasksSection.with(.tasks(tasks)),
+      usageSection.with(.usage(usage)),
     ]
   }
 

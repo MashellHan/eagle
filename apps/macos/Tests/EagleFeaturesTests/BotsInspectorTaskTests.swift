@@ -115,8 +115,40 @@ struct BotsInspectorTaskTests {
   func empty() {
     #expect(presenter.inspectorTasks(for: []).isEmpty)
     let sections = InspectorSections.detail(
-      artifacts: [], jobs: [], tasks: presenter.inspectorTasks(for: []))
+      artifacts: [], jobs: [], tasks: presenter.inspectorTasks(for: []), usage: [])
     #expect(sections[2].isEmpty)
     #expect(sections[2].placeholder.title == "没有正在运行的任务")
+  }
+}
+
+/// The inspector's 用量 section: tokens read at a glance, cost only when the provider
+/// reports one, and nothing at all before the first answered turn.
+@Suite("Bots inspector usage")
+struct BotsInspectorUsageTests {
+  private let presenter = BotsPresenter()
+
+  @Test("no usage yet is an empty section, not a row of zeros")
+  func emptyUsage() {
+    #expect(presenter.inspectorUsage(for: nil).isEmpty)
+  }
+
+  @Test("tokens are abbreviated and the cost is formatted")
+  func rows() {
+    let usage = Usage(inputTokens: 12_345, outputTokens: 812, totalTokens: 13_157, costUsd: 0.42)
+    let rows = presenter.inspectorUsage(for: usage)
+    #expect(rows.map(\.id) == ["input", "output", "total", "cost"])
+    #expect(rows.first { $0.id == "input" }?.value == "12.3k")
+    #expect(rows.first { $0.id == "output" }?.value == "812")
+    #expect(rows.first { $0.id == "cost" }?.value == "$0.42")
+  }
+
+  @Test("a provider without cost shows tokens only, and tiny costs round down")
+  func costEdgeCases() {
+    let usage = Usage(inputTokens: 1_200_000, outputTokens: 1, totalTokens: 1_200_001)
+    let rows = presenter.inspectorUsage(for: usage)
+    #expect(rows.map(\.id) == ["input", "output", "total"])
+    #expect(rows.first { $0.id == "input" }?.value == "1.2M")
+    let tiny = Usage(inputTokens: 10, outputTokens: 1, totalTokens: 11, costUsd: 0.004)
+    #expect(presenter.inspectorUsage(for: tiny).last?.value == "<$0.01")
   }
 }

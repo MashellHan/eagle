@@ -9,6 +9,7 @@ import type {
   Message,
   Submission,
   TaskSummary,
+  Usage,
 } from "./domain.ts";
 
 export type RuntimeEvent = { readonly trace: string } & (
@@ -25,6 +26,7 @@ export type RuntimeEvent = { readonly trace: string } & (
     }
   | { readonly type: "submission"; readonly record: Submission }
   | { readonly type: "tasks"; readonly tasks: readonly TaskSummary[] }
+  | { readonly type: "usage"; readonly usage: Usage }
   | { readonly type: "snapshot"; readonly value: ConversationSnapshot }
   | {
       readonly type: "error";

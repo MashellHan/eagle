@@ -179,6 +179,16 @@ replacement, never a delta; an empty list means nothing runs.
   them may treat them as opaque strings.
 - The `tasks` capability is `true`. A client that predates the field simply ignores it.
 
+## Usage
+
+`usage` carries one conversation's totals, summed from pi's usage document — assistant
+turns and summarization attempts under the model, tool results under their tool. It is a
+whole-value replacement and arrives whenever the totals move; a snapshot carries the same
+object. Before the first answered turn the field is absent, so a client shows its empty
+state rather than three zeros.
+
+The `usage` capability is `true`.
+
 ## Entities
 
 ```jsonc
@@ -354,6 +364,10 @@ is never a gap.
   "inbox": [ InboxItem, … ] }
 
 { "type": "tasks", "rev": 45, "trace": "tr_…", "tasks": [ Task, … ] }
+
+{ "type": "usage", "rev": 45, "trace": "tr_…",
+  "usage": { "inputTokens": 1234, "outputTokens": 567, "totalTokens": 1801,
+             "costUsd": 0.42 } }              // costUsd only when the provider reports it
 
 { "type": "submission", "rev": 46, "trace": "tr_…",
   "requestId": "r_…", "submissionId": "s_3",

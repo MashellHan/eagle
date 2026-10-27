@@ -89,6 +89,9 @@ export const reduceView = (
   if (event.type === "tasks") {
     return { ...view, tasks: event.tasks };
   }
+  if (event.type === "usage") {
+    return { ...view, usage: event.usage };
+  }
   if (event.type === "submission") {
     const record = event.record;
     const known = ranks.get(record.id);

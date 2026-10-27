@@ -59,6 +59,8 @@ public final class ConversationViewModel: ObservableObject {
   public var title: String { selectedBotId ?? "" }
   /// The live work of the selected bot, for the inspector's 任务 section.
   public var tasks: [TaskSummary] { state.tasks }
+  /// Tokens and cost so far, for the inspector's 用量 section.
+  public var usage: Usage? { state.usage }
   public var canSend: Bool {
     !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       && connection == .ready
@@ -326,6 +328,8 @@ public final class ConversationViewModel: ObservableObject {
       hasOlder = page.hasMore
     case .tasks(let tasks):
       state = Reducer.apply(.tasks(tasks), to: state)
+    case .usage(let usage):
+      state = Reducer.apply(.usage(usage), to: state)
     case .catalog(let catalog):
       onCatalog?(catalog)
     case .error(let kind, let disposition, let message, _, let requestId):

@@ -465,6 +465,15 @@
       }
     },
     {
+      "type": "usage",
+      "trace": "tr_golden",
+      "usage": {
+        "inputTokens": 3,
+        "outputTokens": 7,
+        "totalTokens": 13
+      }
+    },
+    {
       "type": "append",
       "trace": "tr_golden",
       "message": {
@@ -514,6 +523,15 @@
         "status": "done",
         "entryId": "e_7",
         "answerEntryId": "e_13"
+      }
+    },
+    {
+      "type": "usage",
+      "trace": "tr_golden",
+      "usage": {
+        "inputTokens": 31,
+        "outputTokens": 11,
+        "totalTokens": 77
       }
     }
   ]

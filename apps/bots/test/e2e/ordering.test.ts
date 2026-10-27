@@ -51,7 +51,10 @@ test("a duplicate send replies with the settled record, never a lower one", asyn
       whenBusy: "followUp",
       trace: tr("order3"),
     });
-    const duplicate = await frames.next(10_000);
+    // The reply is connection-scoped; a broadcast (such as the run's `usage`) may arrive
+    // first, so read until the reply itself.
+    let duplicate = await frames.next(10_000);
+    while (duplicate.type !== "submission") duplicate = await frames.next(10_000);
     assert.equal(duplicate.type, "submission");
     assert.equal(duplicate.rev, undefined, "a reply is connection-scoped (PROTOCOL I11)");
     assert.equal(duplicate.status, "done", "a retry never reports a lower rank");

@@ -398,6 +398,15 @@
         "entryId": "e_7",
         "reason": "aborted"
       }
+    },
+    {
+      "type": "usage",
+      "trace": "tr_golden",
+      "usage": {
+        "inputTokens": 3,
+        "outputTokens": 62,
+        "totalTokens": 68
+      }
     }
   ]
 }

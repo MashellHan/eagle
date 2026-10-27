@@ -187,7 +187,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
       tools: true,
       tasks: false,
       entries: false,
-      usage: false,
+      usage: true,
       peers: false,
     },
     port: 0,

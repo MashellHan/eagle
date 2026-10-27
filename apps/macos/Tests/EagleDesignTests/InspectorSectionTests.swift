@@ -20,27 +20,40 @@ struct InspectorSectionTests {
       depth: 1, isRunning: false, isBlocked: false),
   ]
 
-  @Test("the detail tab is 编码, 例行任务, 任务 — always all three, in that order")
+  @Test("the detail tab is 编码, 例行任务, 任务, 用量 — always all four, in that order")
   func detailOrder() {
-    let sections = InspectorSections.detail(artifacts: artifacts, jobs: jobs, tasks: tasks)
-    #expect(sections.map(\.title) == ["编码", "例行任务", "任务"])
+    let usage = [
+      InspectorUsageRow(id: "input", label: "输入", value: "12.3k"),
+      InspectorUsageRow(id: "cost", label: "花费", value: "$0.42"),
+    ]
+    let sections = InspectorSections.detail(
+      artifacts: artifacts, jobs: jobs, tasks: tasks, usage: usage)
+    #expect(sections.map(\.title) == ["编码", "例行任务", "任务", "用量"])
     #expect(sections.map(\.id).count == Set(sections.map(\.id)).count)
     #expect(sections.allSatisfy { !$0.symbolName.isEmpty }, "every section header carries a glyph")
     #expect(sections.allSatisfy { !$0.isEmpty })
     guard case .tasks(let rows) = sections[2].rows else {
-      Issue.record("the last section holds the tasks")
+      Issue.record("the third section holds the tasks")
       return
     }
     #expect(rows == tasks)
+    guard case .usage(let figures) = sections[3].rows else {
+      Issue.record("the last section holds the usage")
+      return
+    }
+    #expect(figures == usage)
   }
 
   @Test("an empty section keeps its header and carries an icon, a line and a sentence")
   func emptySections() {
-    let sections = InspectorSections.detail(artifacts: [], jobs: [], tasks: [])
-    #expect(sections.map(\.title) == ["编码", "例行任务", "任务"], "a section never disappears")
+    let sections = InspectorSections.detail(
+      artifacts: [], jobs: [], tasks: [], usage: [])
+    #expect(
+      sections.map(\.title) == ["编码", "例行任务", "任务", "用量"], "a section never disappears")
     #expect(sections.allSatisfy { $0.isEmpty })
     #expect(
-      sections.map(\.placeholder.title) == ["还没有产物", "没有例行任务", "没有正在运行的任务"])
+      sections.map(\.placeholder.title)
+        == ["还没有产物", "没有例行任务", "没有正在运行的任务", "还没有用量"])
     #expect(sections.allSatisfy { !$0.placeholder.symbolName.isEmpty })
     #expect(sections.allSatisfy { !$0.placeholder.detail.isEmpty })
     #expect(sections[2].placeholder.title == "没有正在运行的任务")
@@ -64,10 +77,15 @@ struct InspectorSectionTests {
 
   @Test("a section with rows never reads as empty, whatever the row kind")
   func emptinessFollowsRows() {
-    let sections = InspectorSections.detail(artifacts: [], jobs: jobs, tasks: [])
-    #expect(sections.map(\.isEmpty) == [true, false, true])
-    let onlyArtifacts = InspectorSections.detail(artifacts: artifacts, jobs: [], tasks: [])
-    #expect(onlyArtifacts.map(\.isEmpty) == [false, true, true])
+    let sections = InspectorSections.detail(artifacts: [], jobs: jobs, tasks: [], usage: [])
+    #expect(sections.map(\.isEmpty) == [true, false, true, true])
+    let onlyArtifacts = InspectorSections.detail(
+      artifacts: artifacts, jobs: [], tasks: [], usage: [])
+    #expect(onlyArtifacts.map(\.isEmpty) == [false, true, true, true])
+    let withUsage = InspectorSections.detail(
+      artifacts: [], jobs: [], tasks: [],
+      usage: [InspectorUsageRow(id: "input", label: "输入", value: "812")])
+    #expect(withUsage.map(\.isEmpty) == [true, true, true, false])
   }
 
   @Test("a task row indents with its depth and spins only while running")

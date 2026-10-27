@@ -108,6 +108,7 @@ export const encodeSnapshot = (s: ConversationSnapshot): Wire => {
       inputTokens: s.usage.inputTokens,
       outputTokens: s.usage.outputTokens,
       totalTokens: s.usage.totalTokens,
+      ...(s.usage.costUsd === undefined ? {} : { costUsd: s.usage.costUsd }),
     };
   }
   if (s.unavailable) {
@@ -175,6 +176,14 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
     case "delta":
       wire.messageId = event.messageId;
       wire.changes = event.changes.map(encodeChange);
+      return wire;
+    case "usage":
+      wire.usage = {
+        inputTokens: event.usage.inputTokens,
+        outputTokens: event.usage.outputTokens,
+        totalTokens: event.usage.totalTokens,
+        ...(event.usage.costUsd === undefined ? {} : { costUsd: event.usage.costUsd }),
+      };
       return wire;
     case "tasks":
       wire.tasks = event.tasks.map(encodeTask);

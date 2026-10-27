@@ -228,6 +228,7 @@ public struct WorkspaceShellView: View {
           artifacts: selectedIsMock ? inspector.artifacts : [],
           jobs: selectedIsMock ? inspector.jobs : [],
           tasks: selectedIsBot ? bots.tasks : [],
+          usage: selectedIsBot ? bots.usage : [],
           tab: $inspector.tab,
           onToggleJob: { inspector.setJob($0, isOn: $1) },
           onCollapse: { layout.toggleInspector() },

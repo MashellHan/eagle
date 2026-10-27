@@ -448,6 +448,22 @@ public struct TaskSummary: Codable, Sendable, Equatable, Identifiable {
   }
 }
 
+/// What one conversation has spent, as the daemon sums it from `pi.usage`.
+public struct Usage: Codable, Hashable, Sendable {
+  public var inputTokens: Int
+  public var outputTokens: Int
+  public var totalTokens: Int
+  /// Absent when the provider reports no cost (a local gateway usually does).
+  public var costUsd: Double?
+
+  public init(inputTokens: Int, outputTokens: Int, totalTokens: Int, costUsd: Double? = nil) {
+    self.inputTokens = inputTokens
+    self.outputTokens = outputTokens
+    self.totalTokens = totalTokens
+    self.costUsd = costUsd
+  }
+}
+
 public struct ConversationSnapshot: Codable, Sendable, Equatable {
   public var botId: String
   public var messages: [Message]
@@ -461,6 +477,8 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
   public var parked: Bool?
   /// Live work of every conversation this bot owns; absent means nothing runs.
   public var tasks: [TaskSummary]
+  /// Tokens and cost so far; absent until the first answered turn.
+  public var usage: Usage?
 
   public init(
     botId: String,
@@ -472,7 +490,8 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     running: Bool = false,
     unavailable: BotUnavailable? = nil,
     parked: Bool? = nil,
-    tasks: [TaskSummary] = []
+    tasks: [TaskSummary] = [],
+    usage: Usage? = nil
   ) {
     self.botId = botId
     self.messages = messages
@@ -484,6 +503,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     self.unavailable = unavailable
     self.parked = parked
     self.tasks = tasks
+    self.usage = usage
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -504,6 +524,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     unavailable = try container.decodeIfPresent(BotUnavailable.self, forKey: .unavailable)
     parked = try container.decodeIfPresent(Bool.self, forKey: .parked)
     tasks = try container.decodeIfPresent([TaskSummary].self, forKey: .tasks) ?? []
+    usage = try container.decodeIfPresent(Usage.self, forKey: .usage)
     if let pointer = try container.decodeIfPresent(StreamingPointer.self, forKey: .streaming) {
       streaming = pointer.messageId
     } else {
@@ -522,6 +543,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     try container.encodeIfPresent(unavailable, forKey: .unavailable)
     try container.encodeIfPresent(parked, forKey: .parked)
     try container.encode(tasks, forKey: .tasks)
+    try container.encodeIfPresent(usage, forKey: .usage)
     if let streaming {
       try container.encode(StreamingPointer(messageId: streaming), forKey: .streaming)
     } else {

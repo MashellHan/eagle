@@ -106,6 +106,12 @@ export type ServerEvent =
       readonly tasks: readonly TaskSummary[];
     }
   | {
+      readonly type: "usage";
+      readonly rev: number;
+      readonly trace: string;
+      readonly usage: Usage;
+    }
+  | {
       readonly type: "history";
       readonly trace: string;
       readonly messages: readonly Message[];
@@ -364,10 +370,13 @@ const decodeMessage = (ctx: Ctx, raw: unknown): Message => {
 
 const decodeUsage = (ctx: Ctx, raw: unknown): Usage => {
   if (!isObject(raw)) fail(ctx, "usage must be an object");
+  const costUsd =
+    raw.costUsd === undefined ? undefined : nonNegative(ctx, raw.costUsd, "usage.costUsd");
   return {
     inputTokens: nonNegative(ctx, raw.inputTokens, "usage.inputTokens"),
     outputTokens: nonNegative(ctx, raw.outputTokens, "usage.outputTokens"),
     totalTokens: nonNegative(ctx, raw.totalTokens, "usage.totalTokens"),
+    ...(costUsd === undefined ? {} : { costUsd }),
   };
 };
 
@@ -730,6 +739,15 @@ export function decodeServerEvent(raw: Record<string, unknown>): ServerEvent {
         type,
         bots: arr(ctx, required(ctx, raw, "bots"), "bots").map((b) => decodeBotSummary(ctx, b)),
         ...(groups === undefined ? {} : { groups }),
+      };
+    }
+    case "usage": {
+      const { rev, trace } = requireEnvelope(ctx, raw, true);
+      return {
+        type,
+        rev: rev as number,
+        trace,
+        usage: decodeUsage(ctx, required(ctx, raw, "usage")),
       };
     }
     case "tasks": {

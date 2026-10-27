@@ -13,6 +13,8 @@ public enum ConversationEvent: Sendable, Equatable {
   case history(page: HistoryPage)
   /// The whole live-task list of the bot; an empty list means nothing runs.
   case tasks([TaskSummary])
+  /// Tokens and cost so far, whenever the daemon's totals move.
+  case usage(Usage)
   case catalog(BotCatalog)
   case error(
     kind: ErrorKind,

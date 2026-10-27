@@ -95,6 +95,8 @@ export type Usage = {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly totalTokens: number;
+  /** What the provider reported as cost for these tokens, when it reports any. */
+  readonly costUsd?: number;
 };
 
 export type AgentView = {
@@ -228,7 +230,7 @@ export const ALL_CAPABILITIES_OFF: Capabilities = {
   tools: false,
   tasks: false,
   entries: false,
-  usage: false,
+  usage: true,
   peers: false,
 };
 

@@ -49,6 +49,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var running = false
   /// The selected bot's live tasks, already named and nested for the inspector's 任务 section.
   @Published private(set) var tasks: [InspectorTaskRow] = []
+  /// The selected bot's spend, already formatted for the inspector's 用量 section.
+  @Published private(set) var usage: [InspectorUsageRow] = []
   @Published private(set) var connection: ConnectionState = .connecting
 
   var participantStatus: ParticipantStatus {
@@ -377,6 +379,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       rows = []
       transcript.clear()
       if !tasks.isEmpty { tasks = [] }
+      if !usage.isEmpty { usage = [] }
       return
     }
     let conversation = app.conversation
@@ -414,6 +417,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       error = nil
       connection = .stopped
       if !tasks.isEmpty { tasks = [] }
+      if !usage.isEmpty { usage = [] }
       return
     }
     if title != selected.title { title = selected.title }
@@ -425,6 +429,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
     transcript.update(conversation.state)
     let nextTasks = presenter.inspectorTasks(for: conversation.state.tasks)
     if tasks != nextTasks { tasks = nextTasks }
+    let nextUsage = presenter.inspectorUsage(for: conversation.state.usage)
+    if usage != nextUsage { usage = nextUsage }
     if running != conversation.state.running { running = conversation.state.running }
     if connection != conversation.connection { connection = conversation.connection }
     let nextRecover = conversation.state.unavailable != nil || conversation.parked
@@ -863,6 +869,35 @@ struct BotsPresenter {
     case .completing: return "收尾"
     default: return status.rawValue
     }
+  }
+
+  /// The inspector's 用量 rows. Absent usage is an empty list, so the section shows its own
+  /// empty state instead of three zeros.
+  func inspectorUsage(for usage: Usage?) -> [InspectorUsageRow] {
+    guard let usage else { return [] }
+    var rows = [
+      InspectorUsageRow(id: "input", label: "输入", value: Self.tokenLabel(usage.inputTokens)),
+      InspectorUsageRow(id: "output", label: "输出", value: Self.tokenLabel(usage.outputTokens)),
+      InspectorUsageRow(id: "total", label: "合计", value: Self.tokenLabel(usage.totalTokens)),
+    ]
+    if let cost = usage.costUsd {
+      rows.append(InspectorUsageRow(id: "cost", label: "花费", value: Self.costLabel(cost)))
+    }
+    return rows
+  }
+
+  /// `812`, `12.3k`, `1.2M`: enough to read at a glance, never a long digit string.
+  static func tokenLabel(_ tokens: Int) -> String {
+    if tokens < 1_000 { return String(tokens) }
+    if tokens < 1_000_000 {
+      return String(format: "%.1fk", Double(tokens) / 1_000)
+    }
+    return String(format: "%.1fM", Double(tokens) / 1_000_000)
+  }
+
+  static func costLabel(_ usd: Double) -> String {
+    if usd > 0 && usd < 0.01 { return "<$0.01" }
+    return String(format: "$%.2f", usd)
   }
 
   /// The inspector's 任务 rows: parents before children, a child indented under its owner.

@@ -53,6 +53,20 @@ public struct InspectorSectionView: View {
           )
         }
       }
+    case .usage(let rows):
+      VStack(alignment: .leading, spacing: Theme.Metric.panelTaskRowGap) {
+        ForEach(rows) { row in
+          HStack(spacing: Theme.Metric.panelSectionRowGap) {
+            Text(row.label)
+              .font(Theme.TypeScale.pill)
+              .foregroundStyle(Theme.Palette.textMuted)
+            Spacer(minLength: 8)
+            Text(row.value)
+              .font(Theme.TypeScale.mono)
+              .foregroundStyle(Theme.Palette.textPrimary)
+          }
+        }
+      }
     case .tasks(let tasks):
       VStack(alignment: .leading, spacing: Theme.Metric.panelTaskRowGap) {
         ForEach(tasks) { row in
