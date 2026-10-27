@@ -294,6 +294,36 @@ not.
 1. Finish the client surface: history paging, bot settings behind the `agent`
    capability, and an inspector that renders a bot's own state.
 
+### Proposed product expansion (2026-10-27)
+
+The requested direction is a Bot product with multiple client entry points,
+per-bot personality and durable memory, scheduling, bot creation and group chat,
+and pluggable machine/browser/connector capabilities. The requirement analysis,
+architecture proposal, ownership split and acceptance examples are in
+[DIRECTION.md](DIRECTION.md). This is a proposal, not an implemented expansion
+of phase 1; enabling a slice still requires its owning contracts and tests.
+
+The existing client gaps above remain recorded. Settings/history required by a
+milestone belong to that milestone rather than blocking all remote work on every
+inspector feature. The proposed delivery order is:
+
+| Milestone | Bot core lane | Cloud and machine lane | Exit evidence |
+| --- | --- | --- | --- |
+| M0 — shared contracts | Bot vs conversation identity, plugin/context boundaries | Host and machine routing, owner-token/session and execution contract | Agreed interfaces, file ownership and compatibility fixtures; no deployment implied |
+| M1 — one Bot from two devices | Standalone daemon lifecycle, existing chat/history/recovery | Real machine settings, authenticated outbound relay, Web chat and remote native transport | A second computer uses Web without a Bot install; both clients reach the same host state; quitting UI keeps the daemon running |
+| M2 — useful persistent assistant | Per-bot instructions, scoped memory, plugin selection, durable reminders and bounded loops | Required task/status presentation and notification/host status wiring | Role and explicit memory survive a new chat; a reminder survives daemon restart, fires once under its documented host conditions and can be cancelled |
+| M3 — bot collaboration | Restricted Bot creation, shared room timeline, explicit turn routing and stop/budget limits | Forward and render the compatible room protocol | Parent creates a Bot without duplicate creation on retry; an @mention selects the recipient; room work stops and does not inherit unrelated private context |
+| M4 — one complete external workflow | A connector and browser plugin used for sourced information collection | Required target capabilities and secure connector configuration | One real authorized X-information workflow produces source links/times; capability and upstream failures are visible |
+| M5 — wider access and execution | Computer-use plugin and further connectors as required | Responsive/mobile Web improvements; assess PWA/native push and cloud-hosted runtime only when needed | Capability-specific journeys and measured operational requirements, rather than a new mobile app as a prerequisite |
+
+M0 allows both lanes to proceed in parallel; the table orders integrated
+acceptance, not every implementation task. Core work in M2 can proceed while
+the cloud lane finishes M1 once the relevant contracts are fixed. Exact dates
+and named owners are not agreed in this proposal. Current per-bot storage remains authoritative on
+one host; the first remote slice adds neither cross-host replication nor
+cloud persistence of chat bodies. Current Agent terminal input is not a generic
+remote-command task API; that extension requires its own compatible release.
+
 ### What the adapter can do today (rows 23-36, signed off)
 
 - `mapEvents.ts` replays recorded pi runs: append, delta, submission and status
