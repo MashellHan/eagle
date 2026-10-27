@@ -85,6 +85,10 @@ export interface RuntimeHandle {
   abort(trace: string): Promise<void>;
   /** Retries parked work; never aborts a running answer. */
   recover(trace: string): Promise<void>;
+  /** Runs one parked task again, by its wire id (`t_<n>`). */
+  retryTask?(taskId: string, trace: string): Promise<void>;
+  /** Stops one live task, by its wire id; the conversation keeps everything it committed. */
+  abortTask?(taskId: string, trace: string): Promise<void>;
   busy(): Promise<{ run: boolean; tasks: boolean }>;
   /** Gateway settings changed: move a live conversation to the new model in place. */
   configureModel?(

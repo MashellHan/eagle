@@ -397,6 +397,15 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
         json(response, 200, { groups });
         return;
       }
+      const taskMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/tasks\/(t_\d+)\/(retry|abort)$/.exec(path);
+      if (taskMatch !== null && request.method === "POST") {
+        const [, botId, taskId, action] = taskMatch as unknown as [string, string, string, string];
+        const trace = `tr_http_${++sequence}`;
+        if (action === "retry") await registry.retryTask(botId, taskId, trace);
+        else await registry.abortTask(botId, taskId, trace);
+        response.writeHead(204).end();
+        return;
+      }
       const groupMatch = /^\/v1\/groups\/([A-Za-z0-9_-]+)$/.exec(path);
       if (groupMatch !== null) {
         const groupId = groupMatch[1] as string;

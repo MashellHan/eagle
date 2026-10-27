@@ -438,6 +438,16 @@ final class StubCatalog: CatalogPort {
   var reordered: [[String]] = []
   var moved: [(String, String?)] = []
   var refuseDelete: Error?
+  var retriedTasks: [(String, String)] = []
+  var stoppedTasks: [(String, String)] = []
+
+  func retryTask(bot: String, task: String) async throws {
+    retriedTasks.append((bot, task))
+  }
+
+  func abortTask(bot: String, task: String) async throws {
+    stoppedTasks.append((bot, task))
+  }
 
   func load() async throws -> BotCatalog { BotCatalog(bots: bots, groups: groups) }
 

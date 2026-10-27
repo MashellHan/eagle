@@ -27,6 +27,10 @@ public struct InspectorTaskRow: Identifiable, Hashable, Sendable {
   public let isRunning: Bool
   public let isBlocked: Bool
 
+  /// A parked task is the one a person can start again; everything else live can be stopped.
+  public var showsRetry: Bool { isBlocked }
+  public var showsStop: Bool { !isBlocked }
+
   public init(
     id: String,
     title: String,

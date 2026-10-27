@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models, ModelThinkingLevel } from "@earendil-works/pi-ai";
-import type { TaskGraph } from "@earendil-works/pi-durable";
+import type { TaskGraph, TaskId } from "@earendil-works/pi-durable";
 import {
   type AgentEvent,
   type AgentEventStream,
@@ -59,6 +59,8 @@ const Events = {
   abortFail: declareEvent("runtime.abort.fail"),
   recoverStart: declareEvent("runtime.recover.start"),
   recoverOk: declareEvent("runtime.recover.ok"),
+  taskRetryOk: declareEvent("runtime.task.retry.ok"),
+  taskAbortOk: declareEvent("runtime.task.abort.ok"),
   recoverFail: declareEvent("runtime.recover.fail"),
   closeStart: declareEvent("runtime.close.start"),
   closeOk: declareEvent("runtime.close.ok"),
@@ -95,6 +97,9 @@ const DEFAULT_SETTINGS: PiSettings = {
   progress: { partialIntervalMs: 100 },
   restartLimit: 5,
 };
+
+/** `t_12` is the wire id; pi knows the task by its number. */
+const taskIdOf = (taskId: string): TaskId => Number(taskId.replace(/^t_/, "")) as TaskId;
 
 /** One live task as the inspector sees it; ids carry the kind so a client can parse them. */
 const mapTaskGraph = (value: TaskGraph): readonly TaskSummary[] =>
@@ -577,6 +582,27 @@ class PiRuntimeHandle implements RuntimeHandle {
   ): Promise<void> {
     const root = await this.#harness.root(BACKGROUND_CONTEXT);
     await root.configure({ model }, BACKGROUND_CONTEXT);
+  }
+
+  /** Runs one parked task again; the graph then reports it as live work. */
+  async retryTask(taskId: string, trace: string): Promise<void> {
+    // The caller validated the wire id; crossing to TaskId is the only work left here.
+    await this.#harness.retryTask(taskIdOf(taskId), BACKGROUND_CONTEXT);
+    this.#options.log.emit("info", "runtime", Events.taskRetryOk, {
+      trace,
+      botId: this.#spec.id,
+      detail: { finished: taskId },
+    });
+  }
+
+  /** Stops one live task; queued input stays, the run's committed work stays. */
+  async abortTask(taskId: string, trace: string): Promise<void> {
+    await this.#harness.abortTask(taskIdOf(taskId), BACKGROUND_CONTEXT);
+    this.#options.log.emit("info", "runtime", Events.taskAbortOk, {
+      trace,
+      botId: this.#spec.id,
+      detail: { finished: taskId },
+    });
   }
 
   /** Live work of this bot's conversations, as the inspector's 任务 section shows it. */

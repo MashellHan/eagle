@@ -151,6 +151,16 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
     ).bot
   }
 
+  /// Runs one parked task again; the daemon answers 204 and the task graph follows.
+  public func retryTask(bot botId: String, task taskId: String) async throws {
+    _ = try await raw(path: "/v1/bots/\(botId)/tasks/\(taskId)/retry", method: "POST", body: nil)
+  }
+
+  /// Stops one live task; the transcript keeps everything it committed.
+  public func abortTask(bot botId: String, task taskId: String) async throws {
+    _ = try await raw(path: "/v1/bots/\(botId)/tasks/\(taskId)/abort", method: "POST", body: nil)
+  }
+
   public func loadGateway() async throws -> GatewaySettings {
     struct Payload: Decodable { let settings: GatewaySettings }
     return try await request(path: "/v1/settings", method: "GET", body: nil, as: Payload.self)

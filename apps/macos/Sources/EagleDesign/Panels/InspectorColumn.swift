@@ -44,6 +44,8 @@ public struct InspectorColumn: View {
   private let usage: [InspectorUsageRow]
   @Binding private var tab: Tab
   private let onToggleJob: (String, Bool) -> Void
+  private let onRetryTask: (String) -> Void
+  private let onStopTask: (String) -> Void
   private let onExpand: () -> Void
   private let onCollapse: () -> Void
   private let onShare: () -> Void
@@ -64,6 +66,8 @@ public struct InspectorColumn: View {
     usage: [InspectorUsageRow] = [],
     tab: Binding<Tab>,
     onToggleJob: @escaping (String, Bool) -> Void = { _, _ in },
+    onRetryTask: @escaping (String) -> Void = { _ in },
+    onStopTask: @escaping (String) -> Void = { _ in },
     onExpand: @escaping () -> Void = {},
     onCollapse: @escaping () -> Void = {},
     onShare: @escaping () -> Void = {},
@@ -83,6 +87,8 @@ public struct InspectorColumn: View {
     self.usage = usage
     self._tab = tab
     self.onToggleJob = onToggleJob
+    self.onRetryTask = onRetryTask
+    self.onStopTask = onStopTask
     self.onExpand = onExpand
     self.onCollapse = onCollapse
     self.onShare = onShare
@@ -161,7 +167,9 @@ public struct InspectorColumn: View {
       InspectorSectionView(
         section: section,
         onToggleJob: onToggleJob,
-        onExpand: onExpand
+        onExpand: onExpand,
+        onRetryTask: onRetryTask,
+        onStopTask: onStopTask
       )
     }
   }

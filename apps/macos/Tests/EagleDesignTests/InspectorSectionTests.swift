@@ -97,3 +97,26 @@ struct InspectorSectionTests {
     #expect(Theme.Metric.panelTaskRowHeight < Theme.Metric.inspectorRowHeight)
   }
 }
+
+/// A task row offers exactly one action: a parked task can be started again, everything
+/// else live can be stopped — and the stop is a hover affordance, never a permanent one.
+@Suite("Inspector task actions")
+struct InspectorTaskActionTests {
+  private func row(blocked: Bool) -> InspectorTaskRow {
+    InspectorTaskRow(
+      id: "t_12", title: "生成回答", symbolName: "sparkles",
+      status: blocked ? "已停放" : "运行中", depth: 0, isRunning: !blocked, isBlocked: blocked)
+  }
+
+  @Test("a parked row offers retry and nothing else")
+  func parked() {
+    #expect(row(blocked: true).showsRetry)
+    #expect(row(blocked: true).showsStop == false)
+  }
+
+  @Test("a live row offers stop")
+  func live() {
+    #expect(row(blocked: false).showsStop)
+    #expect(row(blocked: false).showsRetry == false)
+  }
+}

@@ -78,6 +78,8 @@ const DETAIL_SCHEMA: Readonly<Record<string, readonly string[]>> = {
   "protocol.command.fail": ["kind", "reason"],
   "core.catalog.write.ok": ["count"],
   "core.group.write.ok": ["count"],
+  "runtime.task.retry.ok": ["finished"],
+  "runtime.task.abort.ok": ["finished"],
   "core.bot.open.ok": ["count"],
   "core.bot.open.fail": ["reason"],
   "core.bot.close.fail": ["reason"],

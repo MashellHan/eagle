@@ -404,3 +404,17 @@ test("groups are created, renamed, reordered and deleted only when empty", async
     await stack.close();
   }
 });
+
+test("task actions answer 404 for an unknown bot and refuse a bot that cannot stop tasks", async () => {
+  const stack = await startStack();
+  const headers = { authorization: `Bearer ${stack.token}`, "content-type": "application/json" };
+  try {
+    const unknown = await fetch(
+      `http://127.0.0.1:${stack.port}/v1/bots/b_missing/tasks/t_1/abort`,
+      { method: "POST", headers },
+    );
+    assert.equal(unknown.status, 404, "an unknown bot is not a task action");
+  } finally {
+    await stack.close();
+  }
+});

@@ -5,15 +5,21 @@ public struct InspectorSectionView: View {
   private let section: InspectorSectionModel
   private let onToggleJob: (String, Bool) -> Void
   private let onExpand: () -> Void
+  private let onRetryTask: (String) -> Void
+  private let onStopTask: (String) -> Void
 
   public init(
     section: InspectorSectionModel,
     onToggleJob: @escaping (String, Bool) -> Void = { _, _ in },
-    onExpand: @escaping () -> Void = {}
+    onExpand: @escaping () -> Void = {},
+    onRetryTask: @escaping (String) -> Void = { _ in },
+    onStopTask: @escaping (String) -> Void = { _ in }
   ) {
     self.section = section
     self.onToggleJob = onToggleJob
     self.onExpand = onExpand
+    self.onRetryTask = onRetryTask
+    self.onStopTask = onStopTask
   }
 
   public var body: some View {
@@ -70,7 +76,11 @@ public struct InspectorSectionView: View {
     case .tasks(let tasks):
       VStack(alignment: .leading, spacing: Theme.Metric.panelTaskRowGap) {
         ForEach(tasks) { row in
-          InspectorTaskRowView(row: row)
+          InspectorTaskRowView(
+            row: row,
+            onRetry: { onRetryTask(row.id) },
+            onStop: { onStopTask(row.id) }
+          )
         }
       }
     case .none:
@@ -83,6 +93,9 @@ public struct InspectorSectionView: View {
 /// indented under its owner; a running task carries the panel's own spinner.
 struct InspectorTaskRowView: View {
   let row: InspectorTaskRow
+  var onRetry: () -> Void = {}
+  var onStop: () -> Void = {}
+  @State private var hovering = false
 
   var body: some View {
     HStack(spacing: Theme.Metric.panelSectionRowGap) {
@@ -104,9 +117,21 @@ struct InspectorTaskRowView: View {
         .foregroundStyle(row.isBlocked ? Theme.Palette.destructive : Theme.Palette.textSecondary)
         .lineLimit(1)
         .truncationMode(.tail)
+      // A parked row offers its action always, because nothing else can clear it; a live
+      // row offers 停止 only under the pointer, like every other row affordance.
+      if row.showsRetry {
+        TextAction("重试", action: onRetry)
+      } else if row.showsStop && hovering {
+        IconButton(
+          systemName: "stop.circle", label: "停止", size: Theme.Metric.messageActionGlyph + 6,
+          glyphSize: Theme.Metric.messageActionGlyph, action: onStop
+        )
+      }
     }
     .padding(.leading, CGFloat(row.depth) * Theme.Metric.panelTaskIndent)
     .frame(height: Theme.Metric.panelTaskRowHeight)
+    .contentShape(Rectangle())
+    .onHover { hovering = $0 }
     .accessibilityElement(children: .combine)
     .accessibilityLabel("\(row.title) \(row.status)")
   }

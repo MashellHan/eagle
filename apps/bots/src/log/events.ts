@@ -82,6 +82,8 @@ export const EVENTS = {
   "runtime.abort.start": true,
   "runtime.abort.ok": true,
   "runtime.abort.fail": true,
+  "runtime.task.retry.ok": true,
+  "runtime.task.abort.ok": true,
   "runtime.recover.start": true,
   "runtime.recover.ok": true,
   "runtime.recover.fail": true,

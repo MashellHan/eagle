@@ -231,6 +231,14 @@ public struct WorkspaceShellView: View {
           usage: selectedIsBot ? bots.usage : [],
           tab: $inspector.tab,
           onToggleJob: { inspector.setJob($0, isOn: $1) },
+          onRetryTask: { id in
+            guard selectedIsBot else { return }
+            Task { await bots.retryTask(id) }
+          },
+          onStopTask: { id in
+            guard selectedIsBot else { return }
+            Task { await bots.stopTask(id) }
+          },
           onCollapse: { layout.toggleInspector() },
           face: selectedIsBot ? bots.selectedFace : nil,
           label: selectedIsBot ? bots.selectedLabel : nil,

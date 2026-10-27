@@ -204,6 +204,18 @@ final class BotsWorkspaceViewModel: ObservableObject {
     publish()
   }
 
+  /// Runs one parked task again; the task list follows the daemon.
+  func retryTask(_ taskId: String) async {
+    await app?.retryTask(taskId)
+    publish()
+  }
+
+  /// Stops one live task.
+  func stopTask(_ taskId: String) async {
+    await app?.stopTask(taskId)
+    publish()
+  }
+
   /// Files a bot; nil unfiles it. The bot's place inside a group is the catalog's, never
   /// something the drop changes (the daemon keeps no order of its own).
   func moveBot(_ id: String, toGroup groupId: String?) async {

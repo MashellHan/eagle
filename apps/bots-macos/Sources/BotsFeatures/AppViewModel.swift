@@ -178,6 +178,28 @@ public final class AppViewModel: ObservableObject {
     }
   }
 
+  /// Runs one parked task of the selected bot again.
+  public func retryTask(_ taskId: String) async {
+    guard let botId = selection else { return }
+    do {
+      try await catalog.retryTask(bot: botId, task: taskId)
+      error = nil
+    } catch {
+      self.error = describe(error)
+    }
+  }
+
+  /// Stops one live task of the selected bot.
+  public func stopTask(_ taskId: String) async {
+    guard let botId = selection else { return }
+    do {
+      try await catalog.abortTask(bot: botId, task: taskId)
+      error = nil
+    } catch {
+      self.error = describe(error)
+    }
+  }
+
   /// Files a bot; a nil group unfiles it. The group's own order is never touched.
   public func moveBot(_ id: String, toGroup groupId: String?) async {
     do {

@@ -154,6 +154,18 @@ test("a bot's stored thinking level reaches the runtime spec", async () => {
   }
 });
 
+test("a task action refuses an id that is not a wire task id", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    await assert.rejects(() => setup.registry.abortTask("b_bot0", "not-a-task", "tr_task_0001"));
+    await assert.rejects(() => setup.registry.retryTask("b_bot0", "t_x", "tr_task_0002"));
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
 test("groups load at start and a moved bot's summary carries its group", async () => {
   const setup = await bench({ bots: ["a"] });
   try {

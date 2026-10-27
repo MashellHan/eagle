@@ -105,6 +105,18 @@ export const newBotId = (now: number = Date.now()): string => {
 
 const unavailable = (reason: ErrorKind, message: string) => ({ reason, message });
 
+const TASK_ID = /^t_\d+$/;
+
+/** A task id crosses as `t_<n>`; anything else never reaches the runtime. */
+const assertTaskId = (taskId: string): void => {
+  if (TASK_ID.test(taskId)) return;
+  throw new ClassifiedFailure(
+    newFailure("invalid_command"),
+    "not_admitted",
+    "task ids look like t_12",
+  );
+};
+
 export class BotRegistry {
   readonly #options: RegistryOptions;
   readonly #entries = new Map<string, Entry>();
@@ -331,6 +343,36 @@ export class BotRegistry {
         // its old model and the next save retries it.
       }
     }
+  }
+
+  /** Runs one parked task again; the task graph then reports it as live work. */
+  async retryTask(botId: string, taskId: string, trace: string): Promise<void> {
+    assertTaskId(taskId);
+    const entry = this.#entry(botId, trace);
+    const handle = entry.handle ?? (await this.open(botId, trace));
+    if (handle.retryTask === undefined) {
+      throw new ClassifiedFailure(
+        newFailure("invalid_command"),
+        "not_admitted",
+        "this bot cannot retry tasks",
+      );
+    }
+    await handle.retryTask(taskId, trace);
+  }
+
+  /** Stops one live task of a bot that is open; a closed bot has nothing to stop. */
+  async abortTask(botId: string, taskId: string, trace: string): Promise<void> {
+    assertTaskId(taskId);
+    const entry = this.#entry(botId, trace);
+    const handle = entry.handle;
+    if (handle?.abortTask === undefined) {
+      throw new ClassifiedFailure(
+        newFailure("invalid_command"),
+        "not_admitted",
+        "this bot cannot stop tasks",
+      );
+    }
+    await handle.abortTask(taskId, trace);
   }
 
   /**
