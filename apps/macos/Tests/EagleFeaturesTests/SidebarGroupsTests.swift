@@ -111,37 +111,6 @@ struct SidebarGroupTests {
     #expect(SidebarComposition.moved(["g_1"], moving: "g_1", by: 1) == nil)
   }
 
-  @Test("a drop files the bot under the section it lands on")
-  func dropTarget() {
-    let work = SidebarSection(
-      id: "g_1", title: "工作", items: [], role: .group)
-    let ungrouped = SidebarSection(
-      id: SidebarComposition.ungroupedSectionID, title: "未分组", items: [], role: .ungrouped)
-    let sample = SidebarSection(id: "secretariat", title: "秘书处", items: [])
-
-    #expect(
-      SidebarComposition.dropOutcome(on: work, from: "g_2") == .move(groupId: "g_1"),
-      "a bot from another group moves"
-    )
-    #expect(
-      SidebarComposition.dropOutcome(on: work, from: nil) == .move(groupId: "g_1"),
-      "an unfiled bot moves"
-    )
-    #expect(
-      SidebarComposition.dropOutcome(on: work, from: "g_1") == .none,
-      "dropping on its own group is not a write"
-    )
-    #expect(
-      SidebarComposition.dropOutcome(on: ungrouped, from: "g_1") == .move(groupId: nil),
-      "dropping on 未分组 clears the membership"
-    )
-    #expect(SidebarComposition.dropOutcome(on: ungrouped, from: nil) == .none)
-    #expect(
-      SidebarComposition.dropOutcome(on: sample, from: "g_1") == .none,
-      "a sample section is not a group"
-    )
-  }
-
   @Test("deleting a group that still holds a bot is refused with the reason")
   func deleteGuard() {
     let bot = SidebarItem(id: "b_1", title: "一", subtitle: "")

@@ -12,12 +12,6 @@ public struct SidebarBotRow: Hashable, Sendable {
   }
 }
 
-/// What dropping a bot on a section means: file it, or write nothing.
-public enum SidebarDropOutcome: Hashable, Sendable {
-  case move(groupId: String?)
-  case none
-}
-
 /// What the sidebar shows. Real bots live in the daemon's groups; the sample workspace is
 /// only there when the reader asked for it in settings (`加载 Mock 数据`, off by default)
 /// and always follows the real sections.
@@ -101,21 +95,5 @@ public enum SidebarComposition {
     var reordered = ids
     reordered.swapAt(index, target)
     return reordered
-  }
-
-  /// The group a dropped bot belongs in. A section that is not a daemon group refuses, and
-  /// a drop on the bot's own group writes nothing.
-  public static func dropOutcome(
-    on section: SidebarSection,
-    from currentGroupId: String?
-  ) -> SidebarDropOutcome {
-    switch section.role {
-    case .sample:
-      return .none
-    case .group:
-      return currentGroupId == section.id ? .none : .move(groupId: section.id)
-    case .ungrouped:
-      return currentGroupId == nil ? .none : .move(groupId: nil)
-    }
   }
 }

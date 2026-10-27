@@ -332,11 +332,11 @@ one is attempted anyway. The header's `+` is now a menu with `新建 Bot` and `�
 a new group is not confused with a new bot; creating a sample group stays in the sample
 section's own menu.
 
-A bot row can be dragged onto any group's header or body, or onto `未分组` to clear its
-membership (`PATCH /v1/bots/:id { groupId }`), with the target section highlighted while
-the drop is over it. The payload is the bot id alone: a drop changes membership only and
-never a group's internal order, because the daemon keeps none. The target group is a pure
-function (`SidebarComposition.dropOutcome`), so the visual rule and its test are one rule.
+A bot changes group from its row menu (移至 → a group, or 未分组), which is the same
+`PATCH /v1/bots/:id { groupId }` call with `group: null` for the latter. Drag-and-drop was
+built, verified once with a synthetic slow drag, and removed the same day: a normal
+press-and-move on a `Button` row never started the drag session, so the affordance was
+unreliable and the explicit menu stayed instead.
 
 ## Next work, in order
 

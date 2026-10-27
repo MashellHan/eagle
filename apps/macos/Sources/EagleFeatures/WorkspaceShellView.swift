@@ -80,16 +80,6 @@ public struct WorkspaceShellView: View {
     Task { await bots.moveBot(id, toGroup: target) }
   }
 
-  /// A drop is filed through the same rule the tests assert: the section decides the group,
-  /// and dropping a bot on its own group writes nothing.
-  private func dropBot(_ id: String, on section: SidebarSection) {
-    guard
-      case .move(let groupId) = SidebarComposition.dropOutcome(
-        on: section, from: bots.groupId(of: id))
-    else { return }
-    Task { await bots.moveBot(id, toGroup: groupId) }
-  }
-
   private func selectAfterHide(_ id: String) {
     guard list.selection == id else { return }
     guard let next = sidebarSections.flatMap(\.items).first?.id else {
@@ -195,8 +185,7 @@ public struct WorkspaceShellView: View {
           },
           onMoveGroup: { id, offset in
             Task { await bots.reorderGroups(moving: id, by: offset) }
-          },
-          onDropBot: { id, section in dropBot(id, on: section) }
+          }
         )
       } conversation: {
         VStack(spacing: 0) {

@@ -30,15 +30,12 @@ public struct SidebarPanel: View {
   private let onCopyId: (String) -> Void
   private let onHideItem: (String) -> Void
   private let onMoveGroup: (String, Int) -> Void
-  /// A bot dropped on a section: the feature layer owns what that target means.
-  private let onDropBot: (String, SidebarSection) -> Void
   private let width: CGFloat
 
   @State private var editingSection: String?
   @State private var editingItem: String?
   @State private var draftTitle = ""
   @State private var hoveringSection: String?
-  @State private var dropTarget: String?
 
   public init(
     sections: [SidebarSection],
@@ -67,8 +64,7 @@ public struct SidebarPanel: View {
     onMarkUnread: @escaping (String) -> Void = { _ in },
     onCopyId: @escaping (String) -> Void = { _ in },
     onHideItem: @escaping (String) -> Void = { _ in },
-    onMoveGroup: @escaping (String, Int) -> Void = { _, _ in },
-    onDropBot: @escaping (String, SidebarSection) -> Void = { _, _ in }
+    onMoveGroup: @escaping (String, Int) -> Void = { _, _ in }
   ) {
     self.sections = sections
     self.selection = selection
@@ -97,7 +93,6 @@ public struct SidebarPanel: View {
     self.onCopyId = onCopyId
     self.onHideItem = onHideItem
     self.onMoveGroup = onMoveGroup
-    self.onDropBot = onDropBot
   }
 
   private static var version: String {
@@ -156,37 +151,13 @@ public struct SidebarPanel: View {
       sectionHeader(section, isFirst: isFirst)
       if section.isExpanded {
         ForEach(section.items) { item in
-          row(item, draggable: section.role != .sample)
+          row(item)
             .transition(.opacity)
         }
       }
     }
     .padding(.vertical, 2)
-    .background {
-      RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
-        .fill(dropTarget == section.id ? Theme.Palette.hover : .clear)
-    }
     .animation(.easeInOut(duration: 0.18), value: section.isExpanded)
-    .dropDestination(for: String.self) { payload, _ in
-      guard section.role != .sample, let botId = payload.first else { return false }
-      return drop(botId, on: section)
-    } isTargeted: { targeted in
-      withAnimation(.easeOut(duration: 0.12)) {
-        if targeted {
-          dropTarget = section.id
-        } else if dropTarget == section.id {
-          dropTarget = nil
-        }
-      }
-    }
-  }
-
-  /// Only a bot section is a drop target; the panel reports what was dropped where and the
-  /// feature layer decides the group (`SidebarComposition.dropOutcome`).
-  private func drop(_ botId: String, on section: SidebarSection) -> Bool {
-    guard section.role != .sample else { return false }
-    onDropBot(botId, section)
-    return true
   }
 
   @ViewBuilder
@@ -280,8 +251,8 @@ public struct SidebarPanel: View {
   }
 
   @ViewBuilder
-  private func row(_ item: SidebarItem, draggable: Bool) -> some View {
-    let content = Button {
+  private func row(_ item: SidebarItem) -> some View {
+    Button {
       withAnimation(.easeOut(duration: 0.16)) { onSelect(item.id) }
     } label: {
       if editingItem == item.id {
@@ -303,14 +274,6 @@ public struct SidebarPanel: View {
     .buttonStyle(.plain)
     .id(item.id)
     .contextMenu { itemMenu(item) }
-
-    if draggable {
-      // The payload is the bot id alone: the groups the daemon keeps have no order of
-      // their own, so a drop only changes membership.
-      content.draggable(item.id)
-    } else {
-      content
-    }
   }
 
   @ViewBuilder
