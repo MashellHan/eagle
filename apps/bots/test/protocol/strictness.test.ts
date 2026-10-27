@@ -252,6 +252,17 @@ test("a bot summary only carries a reason while unavailable", () => {
     state: "idle",
   };
   assert.equal(decodeServerEvent({ type: "bots", bots: [bot] }).type, "bots");
+
+  // Groups travel with the catalog; a malformed one is refused like any other entity.
+  const grouped = decodeServerEvent({
+    type: "bots",
+    bots: [{ ...bot, groupId: "g_0123456789" }],
+    groups: [{ id: "g_0123456789", title: "工作" }],
+  });
+  assert.equal(grouped.type, "bots");
+  if (grouped.type === "bots") assert.equal(grouped.groups?.[0]?.title, "工作");
+  invalidEvent({ type: "bots", bots: [bot], groups: [{ id: "g_0123456789" }] });
+  invalidEvent({ type: "bots", bots: [bot], groups: "工作" });
   invalidEvent({ type: "bots", bots: [{ ...bot, state: "unavailable" }] });
   invalidEvent({
     type: "bots",

@@ -142,6 +142,15 @@ export type BotAppearance = {
 
 export const DEFAULT_APPEARANCE: BotAppearance = { shape: "blob", tint: "green" };
 
+/** A sidebar group real bots are filed under; groups live beside the catalog. */
+export type BotGroup = {
+  readonly id: string;
+  readonly title: string;
+};
+
+export const MAX_BOT_GROUPS = 50;
+export const MAX_GROUP_TITLE_CHARS = 40;
+
 export type BotSummary = {
   readonly id: BotId;
   readonly title: string;
@@ -153,6 +162,8 @@ export type BotSummary = {
   readonly updatedAt: string;
   readonly model: { readonly provider: string; readonly modelId: string };
   readonly state: BotState;
+  /** Absent when the bot is not filed under a group. */
+  readonly groupId?: string;
   readonly unavailable?: { readonly reason: ErrorKind; readonly message: string };
 };
 

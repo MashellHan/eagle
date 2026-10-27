@@ -1,6 +1,7 @@
 // Domain → wire. Key order is fixed so the encoder output can be compared
 // byte-for-byte with the normative fixtures.
 import type {
+  BotGroup,
   BotSummary,
   ContentBlock,
   ConversationSnapshot,
@@ -56,11 +57,14 @@ const encodeBot = (b: BotSummary): Wire => {
   };
   if (b.label !== undefined) wire.label = b.label;
   if (b.appearance) wire.appearance = { shape: b.appearance.shape, tint: b.appearance.tint };
+  if (b.groupId !== undefined) wire.groupId = b.groupId;
   if (b.unavailable) {
     wire.unavailable = { reason: b.unavailable.reason, message: b.unavailable.message };
   }
   return wire;
 };
+
+const encodeGroup = (group: BotGroup): Wire => ({ id: group.id, title: group.title });
 
 export const encodeSnapshot = (s: ConversationSnapshot): Wire => {
   const value: Wire = { botId: s.botId };
@@ -133,6 +137,7 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
         instance: event.server.instance,
         pid: event.server.pid,
       };
+      if (event.groups !== undefined) wire.groups = event.groups.map(encodeGroup);
       wire.capabilities = {
         agent: event.capabilities.agent === true,
         tools: event.capabilities.tools === true,
@@ -142,6 +147,7 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
         peers: event.capabilities.peers === true,
       };
       wire.bots = event.bots.map(encodeBot);
+      if (event.groups !== undefined) wire.groups = event.groups.map(encodeGroup);
       return wire;
     case "snapshot":
       wire.value = encodeSnapshot(event.value);
@@ -169,6 +175,7 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
       return wire;
     case "bots":
       wire.bots = event.bots.map(encodeBot);
+      if (event.groups !== undefined) wire.groups = event.groups.map(encodeGroup);
       return wire;
     case "history":
       wire.hasMore = event.hasMore;

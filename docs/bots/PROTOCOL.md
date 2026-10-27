@@ -81,8 +81,12 @@ version, the instance id, the pid and a bot count, never bot content.
 | `GET` | `/v1/health` | — | `{ "version", "protocolVersion", "instance", "pid", "bots" }` |
 | `GET` | `/v1/bots` | — | `{ "bots": [BotSummary] }` |
 | `POST` | `/v1/bots` | `{ "title", "label"?, "appearance"? }` — `appearance` is `{ "shape", "tint" }` | `201 { "bot": BotSummary }` |
-| `PATCH` | `/v1/bots/:id` | `{ "title"?, "label"?, "appearance"? }` — a label of `""` clears it | `{ "bot": BotSummary }` |
+| `PATCH` | `/v1/bots/:id` | `{ "title"?, "label"?, "appearance"?, "groupId"? }` — a label of `""` and a `groupId` of `null` clear their field | `{ "bot": BotSummary }` |
 | `DELETE` | `/v1/bots/:id` | — | `204` |
+| `POST` | `/v1/groups` | `{ "title" }` | `{ "group": BotGroup }` |
+| `PATCH` | `/v1/groups/:id` | `{ "title" }` | `{ "group": BotGroup }` |
+| `PUT` | `/v1/groups/order` | `{ "ids": [string] }` — every group once, in display order | `{ "groups": [BotGroup] }` |
+| `DELETE` | `/v1/groups/:id` | — | `204`, or `409` while a bot is filed under it |
 | `GET` | `/v1/settings` | — | `{ "settings": GatewaySettings }` |
 | `PUT` | `/v1/settings` | `{ "baseUrl", "model", "apiKey"?, "provider"?, "thinkingLevel"?, "toolGroups"? }` | `{ "settings": GatewaySettings }` |
 | `POST` | `/v1/settings/test` | `{ "baseUrl"?, "model"?, "apiKey"?, "provider"? }` | `{ "result": GatewayProbe }` |
@@ -132,6 +136,23 @@ knows the daemon restarted and reconnects. Errors use
 
 The model is the daemon's configured gateway model; saving settings aligns every bot with
 it. A per-bot model picker still needs the `agent` capability.
+
+## Group rules
+
+- **Groups live beside the catalog.** The catalog file holds `groups: [{ id, title }]` in
+  display order; a bot's `groupId` is its membership. A membership that points at a missing
+  group reads as ungrouped instead of failing the catalog.
+- **A group that still holds a bot cannot be deleted.** `DELETE` answers `409` with
+  `invalid_command` and a message; the client shows it rather than emptying the group.
+  Emptying a group is the person's job (`PATCH /v1/bots/:id` with `groupId: null`).
+- **Order is explicit.** `PUT /v1/groups/order` must list every group exactly once; anything
+  else is a `400` and nothing is written. Moving one group up or down is the client sending
+  the reordered list.
+- **Limits.** 50 groups, a title of 1–40 characters after trimming; a refused title is a
+  `400`. Ids are `g_` plus a UUID and are chosen by the daemon.
+- **The catalog event carries them.** A `bots` event and the `welcome` frame carry
+  `groups` (absent when there are none, so an older client keeps working) and every
+  `BotSummary` may carry a `groupId`.
 
 ## Entities
 

@@ -7,6 +7,7 @@ import type { Log } from "../log/log.ts";
 import type { BotConfig, BotDirectory } from "./BotDirectory.ts";
 import {
   type BotAppearance,
+  type BotGroup,
   type BotState,
   type BotSummary,
   ClassifiedFailure,
@@ -37,6 +38,7 @@ const Events = {
   deleteOk: declareEvent("core.delete.ok"),
   deleteFail: declareEvent("core.delete.fail"),
   reconcileOk: declareEvent("core.reconcile.ok"),
+  groupWriteOk: declareEvent("core.group.write.ok"),
   recoveryStart: declareEvent("core.recovery.start"),
   recoveryBotOk: declareEvent("core.recovery.bot.ok"),
   recoveryBotFail: declareEvent("core.recovery.bot.fail"),
@@ -112,6 +114,8 @@ export class BotRegistry {
   #defaultThinkingLevel: string;
   /** The tool groups a newly created bot records; settings can change it at runtime. */
   #defaultToolGroups: readonly ToolGroup[];
+  /** The sidebar groups, refreshed on load and after every mutation. */
+  #groups: readonly BotGroup[] = [];
   readonly #boot: () => string;
   #sequence = 0;
   /** Creations in flight, so two concurrent creates cannot both take the last slot. */
@@ -133,6 +137,7 @@ export class BotRegistry {
   /** Loads the catalog, finishes an interrupted delete, then scans for active work. */
   async start(): Promise<void> {
     const trace = this.#boot();
+    this.#groups = await this.#options.directory.loadGroups().catch(() => []);
     let bots: readonly BotConfig[];
     try {
       const reconciled = await this.#options.directory.reconcile();
@@ -174,6 +179,62 @@ export class BotRegistry {
   }
 
   /** One summary per catalogued bot, in catalog order. */
+  /** The sidebar groups, in display order. */
+  groups(): readonly BotGroup[] {
+    return this.#groups;
+  }
+
+  async createGroup(title: string, trace: string): Promise<BotGroup> {
+    const group = await this.#options.directory.createGroup(title);
+    this.#groups = await this.#options.directory.loadGroups();
+    this.#options.log.emit("info", "core", Events.groupWriteOk, {
+      trace,
+      detail: { count: this.#groups.length },
+    });
+    return group;
+  }
+
+  async renameGroup(groupId: string, title: string, trace: string): Promise<BotGroup> {
+    const group = await this.#options.directory.renameGroup(groupId, title);
+    this.#groups = await this.#options.directory.loadGroups();
+    this.#options.log.emit("info", "core", Events.groupWriteOk, {
+      trace,
+      detail: { count: this.#groups.length },
+    });
+    return group;
+  }
+
+  /** Deletes only an empty group; a group that still holds a bot is refused. */
+  async deleteGroup(groupId: string, trace: string): Promise<void> {
+    await this.#options.directory.deleteGroup(groupId);
+    this.#groups = await this.#options.directory.loadGroups();
+    this.#options.log.emit("info", "core", Events.groupWriteOk, {
+      trace,
+      detail: { count: this.#groups.length },
+    });
+  }
+
+  async reorderGroups(ids: readonly string[], trace: string): Promise<readonly BotGroup[]> {
+    const groups = await this.#options.directory.reorderGroups(ids);
+    this.#groups = groups;
+    this.#options.log.emit("info", "core", Events.groupWriteOk, {
+      trace,
+      detail: { count: groups.length },
+    });
+    return groups;
+  }
+
+  /** Files a bot under a group, or clears it with `null`; the summary follows at once. */
+  async moveBot(botId: string, groupId: string | null, trace: string): Promise<BotSummary> {
+    const entry = this.#entry(botId, trace);
+    const at = (this.#options.now?.() ?? new Date()).toISOString();
+    const config = await this.#write(trace, botId, () =>
+      this.#options.directory.setBotGroup(botId, groupId, at),
+    );
+    entry.config = config;
+    return this.#summary(entry);
+  }
+
   summaries(): readonly BotSummary[] {
     return [...this.#entries.values()].map((entry) => this.#summary(entry));
   }
@@ -844,6 +905,7 @@ export class BotRegistry {
       updatedAt: entry.config.updatedAt,
       model: entry.config.model,
       state: entry.state,
+      ...(entry.config.groupId === undefined ? {} : { groupId: entry.config.groupId }),
       ...(entry.unavailable === undefined ? {} : { unavailable: entry.unavailable }),
     };
   }

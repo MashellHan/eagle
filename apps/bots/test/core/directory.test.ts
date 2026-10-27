@@ -333,3 +333,74 @@ test("a malformed record is refused on write as well as on read", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("groups are created, renamed, reordered and only removed when empty", async () => {
+  const { root, dir } = await workspace();
+  try {
+    const work = await dir.createGroup("  工作  ");
+    assert.equal(work.title, "工作", "the title is trimmed");
+    const life = await dir.createGroup("生活");
+    assert.deepEqual(
+      (await dir.loadGroups()).map((group) => group.title),
+      ["工作", "生活"],
+    );
+
+    await dir.renameGroup(work.id, "项目");
+    assert.equal((await dir.loadGroups())[0]?.title, "项目");
+
+    await dir.reorderGroups([life.id, work.id]);
+    assert.deepEqual(
+      (await dir.loadGroups()).map((group) => group.id),
+      [life.id, work.id],
+    );
+
+    await dir.create({ ...record("b_1"), groupId: life.id });
+    await assert.rejects(
+      () => dir.deleteGroup(life.id),
+      (error: unknown) => error instanceof DirectoryError && error.reason === "group_not_empty",
+      "a group that holds a bot cannot be deleted",
+    );
+
+    await dir.setBotGroup("b_1", null, "2026-10-27T00:00:00.000Z");
+    assert.equal((await dir.load())[0]?.groupId, undefined, "null clears the membership");
+    await dir.deleteGroup(life.id);
+    assert.deepEqual(
+      (await dir.loadGroups()).map((group) => group.title),
+      ["项目"],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a stored membership pointing at a missing group reads as ungrouped", async () => {
+  const { root, dir } = await workspace();
+  try {
+    const group = await dir.createGroup("临时");
+    await dir.create({ ...record("b_1"), groupId: group.id });
+    const catalog = JSON.parse(await readFile(dir.catalogPath, "utf8")) as {
+      version: number;
+      bots: BotRecord[];
+    };
+    await writeFile(
+      dir.catalogPath,
+      JSON.stringify({ version: catalog.version, bots: catalog.bots, groups: [] }),
+    );
+    assert.equal((await dir.load())[0]?.groupId, undefined, "the sidebar keeps working");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an unknown group order or a missing group is refused", async () => {
+  const { root, dir } = await workspace();
+  try {
+    const group = await dir.createGroup("唯一");
+    await assert.rejects(() => dir.reorderGroups([group.id, "g_missing1"]));
+    await assert.rejects(() => dir.reorderGroups([]));
+    await assert.rejects(() => dir.renameGroup("g_missing1", "x"));
+    await assert.rejects(() => dir.create({ ...record("b_1"), groupId: "g_missing1" }));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -321,6 +321,7 @@ export const attachConnection = (
         server: deps.server,
         capabilities: deps.capabilities,
         bots: registry.summaries(),
+        ...(typeof registry.groups === "function" ? { groups: registry.groups() } : {}),
       });
       return;
     }

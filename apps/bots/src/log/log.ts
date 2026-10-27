@@ -77,6 +77,7 @@ const DETAIL_SCHEMA: Readonly<Record<string, readonly string[]>> = {
   "protocol.command.ok": ["kind"],
   "protocol.command.fail": ["kind", "reason"],
   "core.catalog.write.ok": ["count"],
+  "core.group.write.ok": ["count"],
   "core.bot.open.ok": ["count"],
   "core.bot.open.fail": ["reason"],
   "core.bot.close.fail": ["reason"],

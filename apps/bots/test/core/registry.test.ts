@@ -154,6 +154,40 @@ test("a bot's stored thinking level reaches the runtime spec", async () => {
   }
 });
 
+test("groups load at start and a moved bot's summary carries its group", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.directory.createGroup("工作");
+    await setup.directory.createGroup("生活");
+    await setup.registry.start();
+    assert.deepEqual(
+      setup.registry.groups().map((group) => group.title),
+      ["工作", "生活"],
+      "the sidebar order comes from the catalog",
+    );
+    const group = setup.registry.groups()[0];
+    assert.ok(group);
+    const summary = await setup.registry.moveBot("b_bot0", group.id, "tr_move_0001");
+    assert.equal(summary.groupId, group.id, "the summary follows the move");
+    const reordered = await setup.registry.reorderGroups(
+      setup.registry
+        .groups()
+        .map((entry) => entry.id)
+        .reverse(),
+      "tr_move_0002",
+    );
+    assert.deepEqual(
+      reordered.map((entry) => entry.title),
+      ["生活", "工作"],
+    );
+    await setup.registry.deleteGroup(setup.registry.groups()[0]?.id ?? "", "tr_move_0003");
+    assert.equal(setup.registry.groups().length, 1, "an empty group is deleted");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
 test("a gateway tool-group change reaches existing bots and new ones", async () => {
   const setup = await bench({ bots: ["a"] });
   try {

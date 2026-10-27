@@ -69,6 +69,7 @@ export const EVENTS = {
   "core.delete.ok": true,
   "core.delete.fail": true,
   "core.reconcile.ok": true,
+  "core.group.write.ok": true,
   "runtime.open.start": true,
   "runtime.open.ok": true,
   "runtime.open.fail": true,

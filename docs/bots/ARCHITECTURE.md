@@ -331,7 +331,7 @@ One daemon process owns every bot under one root directory (default
 ```
 botd (single process, launchd-supervised)
 ├─ <root>/token                     0600 bearer token, generated on first start
-├─ <root>/catalog.json              bot list, atomic write (tmp + rename)
+├─ <root>/catalog.json              bot list + sidebar groups, atomic write (tmp + rename)
 ├─ <root>/logs/daemon-YYYYMMDD.jsonl
 ├─ <root>/trash/<botId>/            deleted bots, deterministic name, never auto-removed
 └─ <root>/bots/<botId>/

@@ -2,6 +2,7 @@
 // ready checks and the catalog, with the bearer token checked before anything else runs.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
+import { DirectoryError } from "../core/BotDirectory.ts";
 import type { BotRegistry } from "../core/BotRegistry.ts";
 import type { ConversationService } from "../core/ConversationService.ts";
 import {
@@ -114,6 +115,21 @@ const gatewayInput = (body: unknown): GatewayInput | undefined => {
   return input;
 };
 
+const groupTitle = (body: unknown): string | undefined => {
+  if (!isObject(body)) return undefined;
+  const value = body.title;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
+};
+
+const groupOrder = (body: unknown): readonly string[] | undefined => {
+  if (!isObject(body)) return undefined;
+  const ids = body.ids;
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) return undefined;
+  return ids as string[];
+};
+
 const title = (body: unknown): string | undefined => {
   if (typeof body !== "object" || body === null) return undefined;
   const value = (body as { title?: unknown }).title;
@@ -134,7 +150,7 @@ const updateChanges = (
     }
   | undefined => {
   if (!isObject(body)) return undefined;
-  const allowed = new Set(["title", "label", "appearance"]);
+  const allowed = new Set(["title", "label", "appearance", "groupId"]);
   if (Object.keys(body).some((key) => !allowed.has(key))) return undefined;
   const changes: {
     title?: string;
@@ -174,6 +190,15 @@ const updateChanges = (
     any = true;
   }
   return any ? changes : undefined;
+};
+
+/** `{ groupId }` in a bot patch: a string files it, `null` clears it, absent changes nothing. */
+const groupChange = (body: unknown): { readonly value: string | null } | undefined => {
+  if (!isObject(body) || body.groupId === undefined) return undefined;
+  if (body.groupId === null) return { value: null };
+  if (typeof body.groupId !== "string") return undefined;
+  const trimmed = body.groupId.trim();
+  return { value: trimmed.length === 0 ? null : trimmed };
 };
 
 /** The optional label and face a create request may carry. */
@@ -226,7 +251,12 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
 
   const broadcastCatalog = (): void => {
     const bots = registry.summaries();
-    for (const writer of writers.values()) writer({ type: "bots", bots });
+    // A transported catalog carries the sidebar groups; a registry without them (a stub in
+    // a transport test) still announces its bots.
+    const groups = typeof registry.groups === "function" ? registry.groups() : undefined;
+    for (const writer of writers.values()) {
+      writer(groups === undefined ? { type: "bots", bots } : { type: "bots", bots, groups });
+    }
   };
 
   const route = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
@@ -311,7 +341,10 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
         return;
       }
       if (path === "/v1/bots" && request.method === "GET") {
-        json(response, 200, { bots: registry.summaries() });
+        json(response, 200, {
+          bots: registry.summaries(),
+          ...(typeof registry.groups === "function" ? { groups: registry.groups() } : {}),
+        });
         return;
       }
       if (path === "/v1/bots" && request.method === "POST") {
@@ -338,22 +371,75 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
         json(response, 201, { bot });
         return;
       }
+      if (path === "/v1/groups" && request.method === "POST") {
+        const title = groupTitle(await readBody(request));
+        if (title === undefined) {
+          json(response, 400, {
+            error: { kind: "invalid_command", message: "a group title is required" },
+          });
+          return;
+        }
+        const group = await registry.createGroup(title, `tr_http_${++sequence}`);
+        broadcastCatalog();
+        json(response, 201, { group });
+        return;
+      }
+      if (path === "/v1/groups/order" && request.method === "PUT") {
+        const ids = await groupOrder(await readBody(request));
+        if (ids === undefined) {
+          json(response, 400, {
+            error: { kind: "invalid_command", message: "send the group ids in display order" },
+          });
+          return;
+        }
+        const groups = await registry.reorderGroups(ids, `tr_http_${++sequence}`);
+        broadcastCatalog();
+        json(response, 200, { groups });
+        return;
+      }
+      const groupMatch = /^\/v1\/groups\/([A-Za-z0-9_-]+)$/.exec(path);
+      if (groupMatch !== null) {
+        const groupId = groupMatch[1] as string;
+        if (request.method === "PATCH") {
+          const title = groupTitle(await readBody(request));
+          if (title === undefined) {
+            json(response, 400, {
+              error: { kind: "invalid_command", message: "a group title is required" },
+            });
+            return;
+          }
+          const group = await registry.renameGroup(groupId, title, `tr_http_${++sequence}`);
+          broadcastCatalog();
+          json(response, 200, { group });
+          return;
+        }
+        if (request.method === "DELETE") {
+          await registry.deleteGroup(groupId, `tr_http_${++sequence}`);
+          broadcastCatalog();
+          response.writeHead(204).end();
+          return;
+        }
+      }
       const match = /^\/v1\/bots\/([A-Za-z0-9_-]+)$/.exec(path);
       if (match !== null) {
         const id = match[1] as string;
         if (request.method === "PATCH") {
-          const changes = updateChanges(await readBody(request));
-          if (changes === undefined) {
+          const body = await readBody(request);
+          const changes = updateChanges(body);
+          const group = groupChange(body);
+          if (changes === undefined && group === undefined) {
             json(response, 400, {
               error: {
                 kind: "invalid_command",
                 message:
-                  "send a title, a label (max 24 characters) or a face (one of the documented shapes and tints)",
+                  "send a title, a label (max 24 characters), a face (one of the documented shapes and tints) or a groupId",
               },
             });
             return;
           }
-          const bot = await registry.update(id, changes, `tr_http_${++sequence}`);
+          const trace = `tr_http_${++sequence}`;
+          let bot = changes === undefined ? undefined : await registry.update(id, changes, trace);
+          if (group !== undefined) bot = await registry.moveBot(id, group.value, trace);
           broadcastCatalog();
           json(response, 200, { bot });
           return;
@@ -367,6 +453,30 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       }
       json(response, 404, { error: { kind: "unknown_bot", message: "no such endpoint" } });
     } catch (error) {
+      if (error instanceof DirectoryError) {
+        const status =
+          error.reason === "group_not_empty"
+            ? 409
+            : error.reason === "group_not_found" || error.reason === "unknown_bot"
+              ? 404
+              : error.reason === "invalid_groups" ||
+                  error.reason === "limit_exceeded" ||
+                  error.reason === "duplicate_bot"
+                ? 400
+                : 500;
+        const kind =
+          error.reason === "group_not_empty"
+            ? "invalid_command"
+            : error.reason === "group_not_found" || error.reason === "unknown_bot"
+              ? "unknown_bot"
+              : error.reason === "invalid_groups" ||
+                  error.reason === "limit_exceeded" ||
+                  error.reason === "duplicate_bot"
+                ? "invalid_command"
+                : "storage_failed";
+        json(response, status, { error: { kind, message: error.message } });
+        return;
+      }
       const classified = error instanceof ClassifiedFailure ? error : undefined;
       const kind = classified?.failure.kind ?? "storage_failed";
       const status =

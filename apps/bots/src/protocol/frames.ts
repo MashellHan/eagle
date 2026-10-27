@@ -3,6 +3,7 @@
 // encode. Nothing reaches a domain type without passing its closed union.
 
 import type {
+  BotGroup,
   BotSummary,
   ContentBlock,
   ConversationSnapshot,
@@ -55,6 +56,7 @@ export type ServerEvent =
       };
       readonly capabilities: Readonly<Record<string, boolean>>;
       readonly bots: readonly BotSummary[];
+      readonly groups?: readonly BotGroup[];
     }
   | {
       readonly type: "snapshot";
@@ -90,7 +92,12 @@ export type ServerEvent =
       readonly trace: string;
       readonly record: Submission;
     }
-  | { readonly type: "bots"; readonly bots: readonly BotSummary[] }
+  | {
+      readonly type: "bots";
+      readonly bots: readonly BotSummary[];
+      /** The sidebar groups, in display order; absent in a catalog that has none. */
+      readonly groups?: readonly BotGroup[];
+    }
   | {
       readonly type: "history";
       readonly trace: string;
@@ -531,6 +538,24 @@ const decodeDeltaChange = (ctx: Ctx, raw: unknown): DeltaChange => {
   return fail(ctx, `unknown change kind ${kind}`);
 };
 
+const welcomeGroups = (
+  ctx: Ctx,
+  raw: Record<string, unknown>,
+): { groups?: readonly BotGroup[] } => {
+  const groups = decodeGroups(ctx, raw);
+  return groups === undefined ? {} : { groups };
+};
+
+const decodeBotGroup = (ctx: Ctx, raw: unknown): BotGroup => {
+  if (!isObject(raw)) fail(ctx, "group must be an object");
+  return { id: str(ctx, raw.id, "group.id"), title: str(ctx, raw.title, "group.title") };
+};
+
+const decodeGroups = (ctx: Ctx, raw: Record<string, unknown>): readonly BotGroup[] | undefined =>
+  present(raw, "groups") === false
+    ? undefined
+    : arr(ctx, raw.groups, "groups").map((group) => decodeBotGroup(ctx, group));
+
 const decodeBotSummary = (ctx: Ctx, raw: unknown): BotSummary => {
   if (!isObject(raw)) fail(ctx, "bot must be an object");
   const model = isObject(raw.model) ? raw.model : {};
@@ -560,9 +585,11 @@ const decodeBotSummary = (ctx: Ctx, raw: unknown): BotSummary => {
       tint: oneOf(ctx, face.tint, BOT_TINTS, "bot.appearance.tint"),
     };
   }
+  const groupId = present(raw, "groupId") ? str(ctx, raw.groupId, "bot.groupId") : undefined;
   return {
     id: str(ctx, raw.id, "bot.id"),
     title: str(ctx, raw.title, "bot.title"),
+    ...(groupId === undefined ? {} : { groupId }),
     ...(label === undefined ? {} : { label }),
     ...(appearance === undefined ? {} : { appearance }),
     createdAt: str(ctx, raw.createdAt, "bot.createdAt"),
@@ -619,6 +646,7 @@ export function decodeServerEvent(raw: Record<string, unknown>): ServerEvent {
         },
         capabilities,
         bots: arr(ctx, required(ctx, raw, "bots"), "bots").map((b) => decodeBotSummary(ctx, b)),
+        ...welcomeGroups(ctx, raw),
       };
     }
     case "snapshot": {
@@ -668,11 +696,14 @@ export function decodeServerEvent(raw: Record<string, unknown>): ServerEvent {
       const record = decodeSubmission(ctx, raw);
       return rev === undefined ? { type, trace, record } : { type, rev, trace, record };
     }
-    case "bots":
+    case "bots": {
+      const groups = decodeGroups(ctx, raw);
       return {
         type,
         bots: arr(ctx, required(ctx, raw, "bots"), "bots").map((b) => decodeBotSummary(ctx, b)),
+        ...(groups === undefined ? {} : { groups }),
       };
+    }
     case "history": {
       const { trace } = requireEnvelope(ctx, raw, false);
       return {
