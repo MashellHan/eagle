@@ -133,8 +133,36 @@ public struct SettingsView: View {
         }
         .padding(.vertical, 16)
       }
+      SettingsCaption("工具")
+      SettingsCard {
+        VStack(spacing: 0) {
+          SettingsRow(
+            "文件与命令", detail: "读写文件、列目录、执行命令；核心工具，不能关闭"
+          ) {
+            Toggle("", isOn: .constant(true))
+              .labelsHidden()
+              .toggleStyle(.switch)
+              .tint(Theme.Palette.accentStrong)
+              .disabled(true)
+          }
+          Divider().overlay(Theme.Palette.line)
+          SettingsRow("Herdr 终端协作", detail: "让 Bot 开终端工作区、派发和读取子 agent") {
+            Toggle("", isOn: toolGroupBinding(SettingsViewModel.herdrToolGroup))
+              .labelsHidden()
+              .toggleStyle(.switch)
+              .tint(Theme.Palette.accentStrong)
+          }
+        }
+      }
     }
     .task { @MainActor in await model.loadGatewayIfNeeded() }
+  }
+
+  private func toolGroupBinding(_ name: String) -> Binding<Bool> {
+    Binding(
+      get: { model.isToolGroupEnabled(name) },
+      set: { model.setToolGroup(name, isOn: $0) }
+    )
   }
 
   private func gatewayField<Content: View>(

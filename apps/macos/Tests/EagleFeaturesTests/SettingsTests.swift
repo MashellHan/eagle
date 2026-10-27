@@ -159,9 +159,11 @@ struct SettingsGatewayTests {
     let model = SettingsViewModel(botsSettings: settings, urlSession: session)
     model.gatewayBaseURL = "http://typed/v1"
     model.gatewayModel = "typed-model"
+    model.setToolGroup("herdr", isOn: false)
     await model.loadGateway()
     #expect(model.gatewayBaseURL == "http://typed/v1")
     #expect(model.gatewayModel == "typed-model")
+    #expect(model.gatewayToolGroups == ["core"])
     GatewayHTTPStub.handler = nil
   }
 
@@ -212,6 +214,56 @@ struct SettingsGatewayTests {
     #expect(model.thinkingLevels.map(\.label) == ["关闭", "极低", "低", "中", "高", "极高", "最高"])
     #expect(model.gatewayThinkingLevel == "medium")
     #expect(model.gatewayThinkingLevelLabel == "中")
+  }
+
+  @Test("loadGateway reads the enabled tool groups into the form")
+  func loadGatewayToolGroups() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { _ in
+      (
+        200,
+        Data(
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"thinkingLevel":"medium","toolGroups":["core"]}}"#
+            .utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    await model.loadGateway()
+    #expect(model.gateway?.toolGroups == ["core"])
+    #expect(model.gatewayToolGroups == ["core"])
+    #expect(model.isToolGroupEnabled("core"))
+    #expect(model.isToolGroupEnabled("herdr") == false)
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("a payload without tool groups falls back to both groups")
+  func loadGatewayWithoutToolGroups() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { _ in
+      (
+        200,
+        Data(
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true}}"#
+            .utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    await model.loadGateway()
+    #expect(model.gateway?.toolGroups == ["core", "herdr"])
+    #expect(model.gatewayToolGroups == ["core", "herdr"])
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("the core group cannot be switched off or dropped")
+  func toolGroupCoreIsMandatory() {
+    let model = SettingsViewModel()
+    model.setToolGroup("core", isOn: false)
+    #expect(model.isToolGroupEnabled("core"))
+    #expect(model.isToolGroupEnabled("herdr"))
+    model.setToolGroup("herdr", isOn: false)
+    #expect(model.isToolGroupEnabled("herdr") == false)
+    model.setToolGroup("herdr", isOn: true)
+    #expect(model.gatewayToolGroups == ["core", "herdr"])
   }
 
   @Test("loadGatewayIfNeeded fetches only once")
@@ -349,6 +401,50 @@ struct SettingsGatewayTests {
     model.setGatewayThinkingLevel("high")
     await model.saveGateway()
     #expect(model.gatewayMessage == "已保存，Bot 会使用这个网关")
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("saveGateway sends both tool groups by default")
+  func saveGatewayToolGroups() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { request in
+      let body = gatewayHTTPBody(request)
+      let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
+      #expect(parsed?["toolGroups"] as? [String] == ["core", "herdr"])
+      return (
+        200,
+        Data(
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","herdr"]}}"#
+            .utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.gatewayBaseURL = "http://gw/v1"
+    model.gatewayModel = "m1"
+    await model.saveGateway()
+    #expect(model.gatewayMessage == "已保存，Bot 会使用这个网关")
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("saveGateway sends only core once the terminal group is off")
+  func saveGatewayWithoutHerdr() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { request in
+      let body = gatewayHTTPBody(request)
+      let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
+      #expect(parsed?["toolGroups"] as? [String] == ["core"])
+      return (
+        200,
+        Data(
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core"]}}"#
+            .utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.gatewayBaseURL = "http://gw/v1"
+    model.gatewayModel = "m1"
+    model.setToolGroup("herdr", isOn: false)
+    await model.saveGateway()
     GatewayHTTPStub.handler = nil
   }
 

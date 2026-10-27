@@ -11,9 +11,11 @@ public struct GatewaySettings: Decodable, Sendable, Equatable {
   public var hasApiKey: Bool
   /// A daemon older than the field reports no level; the daemon itself then uses `medium`.
   public var thinkingLevel: String
+  /// The tool groups the model sees; `core` is mandatory and `herdr` is optional.
+  public var toolGroups: [String]
 
   private enum CodingKeys: String, CodingKey {
-    case configured, provider, baseUrl, model, hasApiKey, thinkingLevel
+    case configured, provider, baseUrl, model, hasApiKey, thinkingLevel, toolGroups
   }
 
   public init(from decoder: any Decoder) throws {
@@ -24,6 +26,8 @@ public struct GatewaySettings: Decodable, Sendable, Equatable {
     model = try container.decode(String.self, forKey: .model)
     hasApiKey = try container.decode(Bool.self, forKey: .hasApiKey)
     thinkingLevel = try container.decodeIfPresent(String.self, forKey: .thinkingLevel) ?? "medium"
+    toolGroups =
+      try container.decodeIfPresent([String].self, forKey: .toolGroups) ?? ["core", "herdr"]
   }
 }
 
@@ -113,11 +117,13 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
     baseURL: String,
     model: String,
     thinkingLevel: String,
+    toolGroups: [String],
     apiKey: String?
   ) async throws -> GatewaySettings {
     struct Payload: Decodable { let settings: GatewaySettings }
     var body: [String: Any] = [
       "baseUrl": baseURL, "model": model, "thinkingLevel": thinkingLevel,
+      "toolGroups": toolGroups,
     ]
     if let apiKey, !apiKey.isEmpty { body["apiKey"] = apiKey }
     return try await request(path: "/v1/settings", method: "PUT", body: body, as: Payload.self)
