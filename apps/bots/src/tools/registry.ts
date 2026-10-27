@@ -9,6 +9,7 @@ import {
   section,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
+import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search";
 import { DEFAULT_TOOL_GROUPS, resolveToolGroups, type ToolGroup } from "../core/domain.ts";
 import { agentsExtension } from "./agents/tools.ts";
 import { listFilesTool, readFileTool, writeFileTool } from "./files.ts";
@@ -122,6 +123,8 @@ export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistr
     }),
   );
   if (groups.includes("agents")) registry.install(agentsExtension());
+  // Deferred tools need their loader; without one the model would never see them.
+  if (herdr !== undefined) registry.install(createToolSearchExtension());
   if (herdr !== undefined) {
     registry.install(
       defineExtension({

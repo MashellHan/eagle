@@ -88,3 +88,29 @@ test("the herdr extension is installed only when a client is given", async () =>
   assert.ok(withHerdr.sections().some(({ section }) => section.key === "bots-herdr"));
   await rm(daemonRoot, { recursive: true, force: true });
 });
+
+test("herdr tools are deferred and the loader is installed with them", async () => {
+  const daemonRoot = await mkdtemp(join(tmpdir(), "bots-registry-"));
+  const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"), daemonRoot);
+  const herdr = { client: {} as HerdrClient, stateDir: join(daemonRoot, "bots", "a"), botId: "a" };
+  const snapshot = createToolRegistry(workspace, { groups: ["core", "herdr"], herdr }).snapshot();
+  const tools = snapshot.tools().map(({ tool }) => tool);
+  const herdrTools = tools.filter((tool) => tool.name.startsWith("herdr_"));
+  assert.equal(herdrTools.length, 8, "every terminal tool is registered");
+  assert.deepEqual(
+    herdrTools.filter((tool) => tool.deferred !== true).map((tool) => tool.name),
+    [],
+    "all of them load on demand",
+  );
+  assert.ok(
+    tools.some((tool) => tool.name === "tool_search"),
+    "the loader that enables deferred tools is installed",
+  );
+  const coreOnly = createToolRegistry(workspace, { groups: ["core"] }).snapshot();
+  assert.equal(
+    coreOnly.tools().some(({ tool }) => tool.name === "tool_search"),
+    false,
+    "nothing is deferred, so no loader is offered",
+  );
+  await rm(daemonRoot, { recursive: true, force: true });
+});

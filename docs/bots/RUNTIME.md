@@ -400,6 +400,17 @@ protocol yet (the `peers` capability stays false). The transcript keeps only the
 results — the child's conversation is inspectable through `history` by id, which is what a
 later peers surface would read.
 
+### Deferred tools
+
+The eight `herdr` tools are declared `deferred: true`, so they are installed and callable
+but **not offered** in each request; `createToolSearchExtension()` is installed with them
+and `tool_search` loads the matches into the conversation's `modelTools`, after which they
+stay offered (also across a compaction). The core tools and the subagent tools are always
+offered: they are what every turn needs. The herdr prompt section says the tools are loaded
+on demand, because a model that never searches would never see them.
+`test/runtime/deferred-tools.test.ts` proves the fallback works: the model searches, then
+calls `herdr_list`, and the call runs.
+
 ## Herdr tools (phase 2, slice 2)
 
 A second extension, `bots-herdr`, gives a bot a terminal collaborator. It talks to the
