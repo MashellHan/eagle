@@ -356,20 +356,23 @@ final class ConversationLifecycleTests: XCTestCase {
 
   func testACatalogEventIsForwardedAndAnErrorCanBeDismissed() async throws {
     let (model, fake) = make()
-    var forwarded: [BotSummary]?
+    var forwarded: BotCatalog?
     model.onCatalog = { forwarded = $0 }
     model.select(botId: "b_1")
     fake.emit(
-      .catalog([
-        BotSummary(
-          id: "b_1",
-          title: "一",
-          createdAt: "x",
-          updatedAt: "x",
-          model: ModelRef(provider: "p", modelId: "m"),
-          state: .idle
-        )
-      ])
+      .catalog(
+        BotCatalog(
+          bots: [
+            BotSummary(
+              id: "b_1",
+              title: "一",
+              createdAt: "x",
+              updatedAt: "x",
+              model: ModelRef(provider: "p", modelId: "m"),
+              state: .idle
+            )
+          ]
+        ))
     )
     fake.emit(
       .error(
@@ -381,7 +384,7 @@ final class ConversationLifecycleTests: XCTestCase {
       )
     )
     try await Task.sleep(nanoseconds: 40_000_000)
-    XCTAssertEqual(forwarded?.map(\.id), ["b_1"])
+    XCTAssertEqual(forwarded?.bots.map(\.id), ["b_1"])
     XCTAssertEqual(model.errorBanner, "refused")
     model.dismissError()
     XCTAssertNil(model.errorBanner)

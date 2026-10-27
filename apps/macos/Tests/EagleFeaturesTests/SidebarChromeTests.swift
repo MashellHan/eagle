@@ -23,4 +23,17 @@ struct SidebarChromeTests {
     model.hide("b")
     #expect(model.decorate(section).unreadCount == 0)
   }
+
+  @Test("decoration keeps what the section is, so a group stays a group")
+  func keepsRole() {
+    let model = SidebarChromeViewModel()
+    let group = SidebarSection(
+      id: "g_1", title: "工作", items: [SidebarItem(id: "b_1", title: "一", subtitle: "")],
+      role: .group)
+    let ungrouped = SidebarSection(
+      id: "bots.ungrouped", title: "未分组", items: [], role: .ungrouped)
+    #expect(model.decorate(group).role == .group)
+    #expect(model.decorate(ungrouped).role == .ungrouped)
+    #expect(model.decorate(group).deleteBlockedReason == "组内还有 1 个 Bot，先移走再删除")
+  }
 }

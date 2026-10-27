@@ -191,6 +191,31 @@ public enum BotState: String, Codable, Sendable {
   case catalogued, opening, idle, running, unavailable, quarantined
 }
 
+/// A sidebar group the person owns (docs/bots/PROTOCOL.md, "Group rules"). The id is the
+/// daemon's; the title is what the sidebar shows.
+public struct BotGroup: Codable, Sendable, Equatable, Identifiable, Hashable {
+  public var id: String
+  public var title: String
+
+  public init(id: String, title: String) {
+    self.id = id
+    self.title = title
+  }
+}
+
+/// What a catalog read or a pushed catalog carries: the bots and the groups in display
+/// order. The two travel together because a membership only means something with the
+/// groups beside it.
+public struct BotCatalog: Sendable, Equatable {
+  public var bots: [BotSummary]
+  public var groups: [BotGroup]
+
+  public init(bots: [BotSummary] = [], groups: [BotGroup] = []) {
+    self.bots = bots
+    self.groups = groups
+  }
+}
+
 public struct ModelRef: Codable, Sendable, Equatable {
   public var provider: String
   public var modelId: String
@@ -243,6 +268,8 @@ public struct BotSummary: Codable, Sendable, Equatable, Identifiable {
   public var model: ModelRef
   public var state: BotState
   public var unavailable: BotUnavailable?
+  /// The sidebar group this bot is filed under; absent means ungrouped.
+  public var groupId: String?
 
   public init(
     id: String,
@@ -253,7 +280,8 @@ public struct BotSummary: Codable, Sendable, Equatable, Identifiable {
     updatedAt: String,
     model: ModelRef,
     state: BotState,
-    unavailable: BotUnavailable? = nil
+    unavailable: BotUnavailable? = nil,
+    groupId: String? = nil
   ) {
     self.id = id
     self.title = title
@@ -264,6 +292,7 @@ public struct BotSummary: Codable, Sendable, Equatable, Identifiable {
     self.model = model
     self.state = state
     self.unavailable = unavailable
+    self.groupId = groupId
   }
 
   /// The face to draw, with the default for a bot written before appearance existed.

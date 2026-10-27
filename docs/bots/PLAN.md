@@ -303,6 +303,41 @@ starts at the compaction head, so scrollback after a reconnect now depends on th
 paging the client does not use yet. The `tasks` capability stays false, so a running
 compaction is invisible in the UI.
 
+## Sidebar groups and sample data (2026-10-27)
+
+Real bots now live in sidebar groups the person owns: `catalog.json` stores
+`groups: [{ id, title }]` in display order and each bot records its `groupId`, with
+`POST/PATCH/DELETE /v1/groups`, `PUT /v1/groups/order` for the whole order, and
+`PATCH /v1/bots/:id { groupId }` to file a bot. A group that still holds a bot cannot be
+deleted (`409`), because emptying it is the person's decision, not a side effect of
+deleting the folder.
+
+The sample workspace is now opt-in: `加载 Mock 数据` in 通用 is off by default, and with it
+off the sidebar shows only real groups and the conversation area shows an empty state
+instead of falling back to the demo transcript. With it on, the sample groups follow the
+real ones.
+
+### The client slice (2026-10-27)
+
+The sidebar renders the daemon's groups: one section per group in the daemon's order, an
+empty group included, and one fixed `未分组` section at the end that appears only while a
+bot is unfiled and cannot be renamed, moved or deleted. A membership pointing at a group
+the catalog no longer lists reads as ungrouped, the same rule the daemon applies.
+
+A group's context menu renames it, deletes it, and moves it up or down; reordering sends
+the whole order once through `PUT /v1/groups/order`, so the ends disable the item instead
+of writing a partial order. Deleting a group that still holds a bot offers the reason in
+the menu instead of the item, and the daemon's `409` message is what the window shows if
+one is attempted anyway. The header's `+` is now a menu with `新建 Bot` and `新建分组`, so
+a new group is not confused with a new bot; creating a sample group stays in the sample
+section's own menu.
+
+A bot row can be dragged onto any group's header or body, or onto `未分组` to clear its
+membership (`PATCH /v1/bots/:id { groupId }`), with the target section highlighted while
+the drop is over it. The payload is the bot id alone: a drop changes membership only and
+never a group's internal order, because the daemon keeps none. The target group is a pure
+function (`SidebarComposition.dropOutcome`), so the visual rule and its test are one rule.
+
 ## Next work, in order
 
 1. Finish the client surface: history paging, bot settings behind the `agent`

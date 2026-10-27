@@ -42,7 +42,7 @@ public final class ConversationViewModel: ObservableObject {
   /// Sends the user asked for that have not been confirmed yet.
   private var inFlight: [String: String] = [:]
   /// The absolute catalog a `bots` frame carries, for the window's sidebar.
-  public var onCatalog: (([BotSummary]) -> Void)?
+  public var onCatalog: ((BotCatalog) -> Void)?
 
   public init(
     botId: String = "",
@@ -322,8 +322,8 @@ public final class ConversationViewModel: ObservableObject {
     case .history(let page):
       state = Reducer.apply(.history(page: page), to: state)
       hasOlder = page.hasMore
-    case .catalog(let bots):
-      onCatalog?(bots)
+    case .catalog(let catalog):
+      onCatalog?(catalog)
     case .error(let kind, let disposition, let message, _, let requestId):
       errorBanner = message
       if kind == .taskParked { parked = true }

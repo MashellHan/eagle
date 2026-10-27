@@ -92,7 +92,7 @@ final class CatalogHTTPClientTests: XCTestCase {
       }
     }
     let loaded = try await client.load()
-    XCTAssertEqual(loaded.map(\.id), ["b_1"])
+    XCTAssertEqual(loaded.bots.map(\.id), ["b_1"])
     let created = try await client.create(title: "二", label: nil, appearance: .standard)
     XCTAssertEqual(created.id, "b_2")
     let renamed = try await client.rename(id: "b_1", title: "改")

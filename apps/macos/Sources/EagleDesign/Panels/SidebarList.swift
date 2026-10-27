@@ -37,19 +37,46 @@ public struct SidebarItem: Identifiable, Hashable, Sendable {
 }
 
 public struct SidebarSection: Identifiable, Hashable, Sendable {
+  /// What the section is, because the menu and the drop target differ: a daemon group is
+  /// renamed, reordered and deleted; 未分组 is fixed; the sample workspace is client-only.
+  public enum Role: Hashable, Sendable {
+    case sample
+    case group
+    case ungrouped
+  }
+
   public let id: String
   public let title: String
   public var unreadCount: Int { items.filter(\.unread).count }
   public let isExpanded: Bool
   public let items: [SidebarItem]
+  public let role: Role
 
   public init(
-    id: String, title: String, isExpanded: Bool = true, items: [SidebarItem]
+    id: String,
+    title: String,
+    isExpanded: Bool = true,
+    items: [SidebarItem],
+    role: Role = .sample
   ) {
     self.id = id
     self.title = title
     self.isExpanded = isExpanded
     self.items = items
+    self.role = role
+  }
+
+  /// Why this section's delete item is disabled, or nil when it can be deleted. Emptying a
+  /// group is the person's decision, not a side effect of deleting the folder.
+  public var deleteBlockedReason: String? {
+    switch role {
+    case .sample:
+      return nil
+    case .ungrouped:
+      return "未分组不能删除"
+    case .group:
+      return items.isEmpty ? nil : "组内还有 \(items.count) 个 Bot，先移走再删除"
+    }
   }
 }
 

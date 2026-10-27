@@ -6,6 +6,7 @@ public struct SettingsView: View {
   @StateObject private var model: SettingsViewModel
   @AppStorage("eagle.appearance") private var appearance = "system"
   @AppStorage("eagle.hideToolCalls") private var hideToolCalls = false
+  @AppStorage("eagle.loadMockData") private var loadMockData = false
   private let onClose: () -> Void
   private let daemon: BotsDaemonSupervisor?
 
@@ -51,6 +52,13 @@ public struct SettingsView: View {
           Divider().overlay(Theme.Palette.line)
           SettingsRow("显示未聚焦的 Space", detail: "侧栏同时列出所有 Herdr 工作区") {
             Toggle("", isOn: $model.showUnfocusedSpaces)
+              .labelsHidden()
+              .toggleStyle(.switch)
+              .tint(Theme.Palette.accentStrong)
+          }
+          Divider().overlay(Theme.Palette.line)
+          SettingsRow("加载 Mock 数据", detail: "在侧栏显示示例分组与示例对话") {
+            Toggle("", isOn: $loadMockData)
               .labelsHidden()
               .toggleStyle(.switch)
               .tint(Theme.Palette.accentStrong)

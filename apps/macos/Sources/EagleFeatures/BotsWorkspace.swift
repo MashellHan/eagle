@@ -32,6 +32,11 @@ public struct BotsSettings {
 @MainActor
 final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var items: [SidebarItem] = []
+  /// The daemon's groups in display order, and the sidebar sections built from them.
+  @Published private(set) var groups: [BotGroup] = []
+  @Published private(set) var sections: [SidebarSection] = []
+  /// Sections the person folded away. It is view state, so it lives with the window.
+  @Published private(set) var collapsed: Set<String> = []
   let transcript = BotsTranscriptViewModel()
   let composer = BotsComposerViewModel()
   var entries: [TranscriptEntry] { transcript.entries }
@@ -84,6 +89,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
   private let gatewayProbe: @MainActor () async -> Bool?
   private let presenter = BotsPresenter()
   private var app: AppViewModel?
+  private var rows: [SidebarBotRow] = []
   private var cancellables = Set<AnyCancellable>()
   private var publicationScheduled = false
   private var pendingRepublish = false
@@ -124,16 +130,83 @@ final class BotsWorkspaceViewModel: ObservableObject {
     )
   }
 
-  var section: SidebarSection? {
-    guard !items.isEmpty else { return nil }
-    return SidebarSection(id: "bots", title: "Bots", items: items)
+  var isConnected: Bool { app != nil }
+
+  /// Every bot the sidebar can show, filed under its group; nil is 未分组. A membership
+  /// that points at a group the daemon no longer lists counts as ungrouped.
+  func bots(in groupId: String?) -> [BotSummary] {
+    let known = Set(groups.map(\.id))
+    return (app?.bots ?? []).filter {
+      SidebarComposition.membership($0.groupId, known: known) == groupId
+    }
   }
 
-  var isConnected: Bool { app != nil }
+  /// The group a bot is filed under right now, resolved the same way, for a drop.
+  func groupId(of botId: String) -> String? {
+    let known = Set(groups.map(\.id))
+    guard let bot = app?.bots.first(where: { $0.id == botId }) else { return nil }
+    return SidebarComposition.membership(bot.groupId, known: known)
+  }
 
   func owns(_ id: String?) -> Bool {
     guard let id else { return false }
     return items.contains { $0.id == id }
+  }
+
+  /// Whether a section id belongs to this window's groups (a daemon group or 未分组).
+  func ownsSection(_ id: String) -> Bool {
+    sections.contains { $0.id == id }
+  }
+
+  func toggleSection(_ id: String) {
+    if collapsed.contains(id) {
+      collapsed.remove(id)
+    } else {
+      collapsed.insert(id)
+    }
+    syncSections()
+  }
+
+  // MARK: - Groups
+
+  /// A new group is empty and named so it is told apart from the existing ones.
+  func createGroup() async {
+    guard let app else { return }
+    await app.createGroup(title: SidebarComposition.newGroupTitle(existing: groups.map(\.title)))
+    publish()
+  }
+
+  func renameGroup(_ id: String, to title: String) async {
+    guard let app else { return }
+    await app.renameGroup(id, to: title)
+    publish()
+  }
+
+  func deleteGroup(_ id: String) async {
+    guard let app else { return }
+    await app.deleteGroup(id)
+    collapsed.remove(id)
+    publish()
+  }
+
+  /// 上移/下移 sends the whole order once; the ends are no-ops because the menu items are
+  /// disabled there.
+  func reorderGroups(moving id: String, by offset: Int) async {
+    guard let app else { return }
+    guard let order = SidebarComposition.moved(groups.map(\.id), moving: id, by: offset) else {
+      return
+    }
+    await app.reorderGroups(order)
+    publish()
+  }
+
+  /// Files a bot; nil unfiles it. The bot's place inside a group is the catalog's, never
+  /// something the drop changes (the daemon keeps no order of its own).
+  func moveBot(_ id: String, toGroup groupId: String?) async {
+    guard let app, app.bots.contains(where: { $0.id == id }) else { return }
+    if let groupId, !groups.contains(where: { $0.id == groupId }) { return }
+    await app.moveBot(id, toGroup: groupId)
+    publish()
   }
 
   /// Connects once. A failure is shown in the sidebar's subtitle, not as a new surface.
@@ -297,6 +370,9 @@ final class BotsWorkspaceViewModel: ObservableObject {
   private func publish() {
     guard let app else {
       if !items.isEmpty { items = [] }
+      if !groups.isEmpty { groups = [] }
+      if !sections.isEmpty { sections = [] }
+      rows = []
       transcript.clear()
       return
     }
@@ -310,10 +386,17 @@ final class BotsWorkspaceViewModel: ObservableObject {
     }
     let ids = Set(app.bots.map(\.id))
     previews = previews.filter { ids.contains($0.key) }
-    let nextItems = app.bots.map { bot in
-      presenter.sidebarItem(for: bot, preview: previews[bot.id]?.text ?? "")
+    if groups != app.groups { groups = app.groups }
+    let nextRows = app.bots.map { bot in
+      SidebarBotRow(
+        groupId: bot.groupId,
+        item: presenter.sidebarItem(for: bot, preview: previews[bot.id]?.text ?? "")
+      )
     }
+    if rows != nextRows { rows = nextRows }
+    let nextItems = nextRows.map(\.item)
     if items != nextItems { items = nextItems }
+    syncSections()
     if app.selection != selectedId, let next = app.selection {
       selectedId = next
       onSelect?(next)
@@ -345,6 +428,17 @@ final class BotsWorkspaceViewModel: ObservableObject {
       error = nextError
       mirrorConversationDraftIntoComposer()
     }
+  }
+
+  /// The sidebar is rebuilt only when its sections actually change: a delta repaint must
+  /// not invalidate it.
+  private func syncSections() {
+    let next = SidebarComposition.groupSections(
+      rows: rows,
+      groups: groups.map { SidebarItemGroup(id: $0.id, title: $0.title) },
+      collapsed: collapsed
+    )
+    if sections != next { sections = next }
   }
 
   private func mirrorConversationDraftIntoComposer() {

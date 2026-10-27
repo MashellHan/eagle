@@ -11,7 +11,7 @@ public enum ConversationEvent: Sendable, Equatable {
   case status(running: Bool, inbox: [InboxItem], streaming: String?)
   case submission(Submission)
   case history(page: HistoryPage)
-  case catalog([BotSummary])
+  case catalog(BotCatalog)
   case error(
     kind: ErrorKind,
     disposition: ErrorDisposition,
@@ -61,7 +61,9 @@ public enum Identifiers {
 }
 
 public protocol CatalogPort: AnyObject {
-  func load() async throws -> [BotSummary]
+  /// The bots and the groups in one read: a membership only means something with the
+  /// groups beside it (PROTOCOL.md, "Group rules").
+  func load() async throws -> BotCatalog
   func create(
     title: String,
     label: String?,
@@ -76,7 +78,16 @@ public protocol CatalogPort: AnyObject {
   ) async throws -> BotSummary
   func rename(id: String, title: String) async throws -> BotSummary
   func delete(id: String) async throws
-  func catalogEvents() -> AsyncStream<[BotSummary]>
+  func catalogEvents() -> AsyncStream<BotCatalog>
+
+  func createGroup(title: String) async throws -> BotGroup
+  func renameGroup(id: String, title: String) async throws -> BotGroup
+  /// The daemon refuses while a bot is still filed under it; the message is what shows.
+  func deleteGroup(id: String) async throws
+  /// The whole order, every group once: the daemon writes nothing partial.
+  func reorderGroups(ids: [String]) async throws -> [BotGroup]
+  /// Files a bot; a nil group unfiles it.
+  func moveBot(id: String, groupId: String?) async throws -> BotSummary
 }
 
 public protocol ConversationPort: AnyObject {

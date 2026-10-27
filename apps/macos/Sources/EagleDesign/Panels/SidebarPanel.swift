@@ -11,10 +11,12 @@ public struct SidebarPanel: View {
   private let onRenameSection: (String, String) -> Void
   private let onDeleteSection: (String) -> Void
   private let onCreateSection: () -> Void
+  private let onCreateGroup: () -> Void
+  private let onCreateBot: () -> Void
+  private let canCreateBot: Bool
   private let onRenameItem: (String, String) -> Void
   private let onDeleteItem: (String) -> Void
   private let onSearch: () -> Void
-  private let onCompose: () -> Void
   private let onCollapse: () -> Void
   private let onAccount: () -> Void
   private let onGallery: () -> Void
@@ -22,19 +24,21 @@ public struct SidebarPanel: View {
   private let onUnread: () -> Void
   private let userName: String
   private let onPinItem: (String) -> Void
-  private let onMoveItem: (String, String) -> Void
+  private let moveTargets: (String) -> [SidebarItemGroup]
+  private let onMoveItem: (String, String?) -> Void
   private let onMarkUnread: (String) -> Void
   private let onCopyId: (String) -> Void
   private let onHideItem: (String) -> Void
-  private let moveGroups: [SidebarItemGroup]
-  private let groupOf: (String) -> String?
-  private let onCreateGroup: () -> Void
+  private let onMoveGroup: (String, Int) -> Void
+  /// A bot dropped on a section: the feature layer owns what that target means.
+  private let onDropBot: (String, SidebarSection) -> Void
   private let width: CGFloat
 
   @State private var editingSection: String?
   @State private var editingItem: String?
   @State private var draftTitle = ""
   @State private var hoveringSection: String?
+  @State private var dropTarget: String?
 
   public init(
     sections: [SidebarSection],
@@ -45,10 +49,12 @@ public struct SidebarPanel: View {
     onRenameSection: @escaping (String, String) -> Void = { _, _ in },
     onDeleteSection: @escaping (String) -> Void = { _ in },
     onCreateSection: @escaping () -> Void = {},
+    onCreateGroup: @escaping () -> Void = {},
+    onCreateBot: @escaping () -> Void = {},
+    canCreateBot: Bool = true,
     onRenameItem: @escaping (String, String) -> Void = { _, _ in },
     onDeleteItem: @escaping (String) -> Void = { _ in },
     onSearch: @escaping () -> Void = {},
-    onCompose: @escaping () -> Void = {},
     onCollapse: @escaping () -> Void = {},
     onAccount: @escaping () -> Void = {},
     onGallery: @escaping () -> Void = {},
@@ -56,13 +62,13 @@ public struct SidebarPanel: View {
     onUnread: @escaping () -> Void = {},
     userName: String = "Zheng Li",
     onPinItem: @escaping (String) -> Void = { _ in },
-    onMoveItem: @escaping (String, String) -> Void = { _, _ in },
+    moveTargets: @escaping (String) -> [SidebarItemGroup] = { _ in [] },
+    onMoveItem: @escaping (String, String?) -> Void = { _, _ in },
     onMarkUnread: @escaping (String) -> Void = { _ in },
     onCopyId: @escaping (String) -> Void = { _ in },
     onHideItem: @escaping (String) -> Void = { _ in },
-    moveGroups: [SidebarItemGroup] = [],
-    groupOf: @escaping (String) -> String? = { _ in nil },
-    onCreateGroup: @escaping () -> Void = {}
+    onMoveGroup: @escaping (String, Int) -> Void = { _, _ in },
+    onDropBot: @escaping (String, SidebarSection) -> Void = { _, _ in }
   ) {
     self.sections = sections
     self.selection = selection
@@ -72,10 +78,12 @@ public struct SidebarPanel: View {
     self.onRenameSection = onRenameSection
     self.onDeleteSection = onDeleteSection
     self.onCreateSection = onCreateSection
+    self.onCreateGroup = onCreateGroup
+    self.onCreateBot = onCreateBot
+    self.canCreateBot = canCreateBot
     self.onRenameItem = onRenameItem
     self.onDeleteItem = onDeleteItem
     self.onSearch = onSearch
-    self.onCompose = onCompose
     self.onCollapse = onCollapse
     self.onAccount = onAccount
     self.onGallery = onGallery
@@ -83,13 +91,13 @@ public struct SidebarPanel: View {
     self.onUnread = onUnread
     self.userName = userName
     self.onPinItem = onPinItem
+    self.moveTargets = moveTargets
     self.onMoveItem = onMoveItem
     self.onMarkUnread = onMarkUnread
     self.onCopyId = onCopyId
     self.onHideItem = onHideItem
-    self.moveGroups = moveGroups
-    self.groupOf = groupOf
-    self.onCreateGroup = onCreateGroup
+    self.onMoveGroup = onMoveGroup
+    self.onDropBot = onDropBot
   }
 
   private static var version: String {
@@ -101,7 +109,9 @@ public struct SidebarPanel: View {
       BrandHeader(
         version: Self.version,
         onSearch: onSearch,
-        onCompose: onCompose,
+        onCompose: onCreateBot,
+        onCreateGroup: onCreateGroup,
+        canCompose: canCreateBot,
         onCollapse: onCollapse
       )
       list
@@ -117,16 +127,7 @@ public struct SidebarPanel: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 0) {
           ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
-            sectionHeader(section, isFirst: index == 0)
-            if section.isExpanded {
-              VStack(alignment: .leading, spacing: 2) {
-                ForEach(section.items) { item in
-                  row(item)
-                    .transition(.opacity)
-                }
-              }
-              .animation(.easeInOut(duration: 0.18), value: section.isExpanded)
-            }
+            block(section, isFirst: index == 0)
           }
         }
         .padding(.horizontal, Theme.Metric.listCardInset)
@@ -147,7 +148,58 @@ public struct SidebarPanel: View {
     }
   }
 
+  /// A section and its rows: one drop target, so a bot can be filed by dropping it on the
+  /// header or anywhere inside the group.
+  @ViewBuilder
+  private func block(_ section: SidebarSection, isFirst: Bool) -> some View {
+    VStack(alignment: .leading, spacing: 2) {
+      sectionHeader(section, isFirst: isFirst)
+      if section.isExpanded {
+        ForEach(section.items) { item in
+          row(item, draggable: section.role != .sample)
+            .transition(.opacity)
+        }
+      }
+    }
+    .padding(.vertical, 2)
+    .background {
+      RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
+        .fill(dropTarget == section.id ? Theme.Palette.hover : .clear)
+    }
+    .animation(.easeInOut(duration: 0.18), value: section.isExpanded)
+    .dropDestination(for: String.self) { payload, _ in
+      guard section.role != .sample, let botId = payload.first else { return false }
+      return drop(botId, on: section)
+    } isTargeted: { targeted in
+      withAnimation(.easeOut(duration: 0.12)) {
+        if targeted {
+          dropTarget = section.id
+        } else if dropTarget == section.id {
+          dropTarget = nil
+        }
+      }
+    }
+  }
+
+  /// Only a bot section is a drop target; the panel reports what was dropped where and the
+  /// feature layer decides the group (`SidebarComposition.dropOutcome`).
+  private func drop(_ botId: String, on section: SidebarSection) -> Bool {
+    guard section.role != .sample else { return false }
+    onDropBot(botId, section)
+    return true
+  }
+
+  @ViewBuilder
   private func sectionHeader(_ section: SidebarSection, isFirst: Bool) -> some View {
+    if section.role == .ungrouped {
+      sectionHeaderContent(section, isFirst: isFirst)
+    } else {
+      sectionHeaderContent(section, isFirst: isFirst)
+        .contextMenu { sectionMenu(section) }
+    }
+  }
+
+  private func sectionHeaderContent(_ section: SidebarSection, isFirst: Bool) -> some View {
     HStack(spacing: 6) {
       Button {
         withAnimation(.snappy(duration: 0.22)) { onToggleSection(section.id) }
@@ -173,12 +225,6 @@ public struct SidebarPanel: View {
         }
       }
       .buttonStyle(.plain)
-      .contextMenu {
-        Button("重命名") { beginSectionRename(section) }
-        Button("新建分组", action: onCreateSection)
-        Divider()
-        Button("删除分组", role: .destructive) { onDeleteSection(section.id) }
-      }
       Spacer(minLength: 0)
     }
     .padding(.leading, Theme.Metric.rowContentInset)
@@ -190,8 +236,52 @@ public struct SidebarPanel: View {
     .animation(.easeOut(duration: 0.12), value: hoveringSection)
   }
 
-  private func row(_ item: SidebarItem) -> some View {
+  /// The section menu is what a group can be: a sample section is client-only, a daemon
+  /// group is renamed, reordered and deleted, and 未分组 has no menu at all.
+  @ViewBuilder
+  private func sectionMenu(_ section: SidebarSection) -> some View {
     Button {
+      beginSectionRename(section)
+    } label: {
+      Label("重命名", systemImage: "pencil")
+    }
+    if section.role == .group {
+      let groups = sections.filter { $0.role == .group }
+      let index = groups.firstIndex { $0.id == section.id } ?? 0
+      Button(action: onCreateGroup) {
+        Label("新建分组", systemImage: "folder.badge.plus")
+      }
+      Divider()
+      Button {
+        onMoveGroup(section.id, -1)
+      } label: {
+        Label("上移", systemImage: "arrow.up")
+      }
+      .disabled(index == 0)
+      Button {
+        onMoveGroup(section.id, 1)
+      } label: {
+        Label("下移", systemImage: "arrow.down")
+      }
+      .disabled(index >= groups.count - 1)
+      Divider()
+    } else {
+      Button(action: onCreateSection) {
+        Label("新建分组", systemImage: "folder.badge.plus")
+      }
+      Divider()
+    }
+    if let reason = section.deleteBlockedReason {
+      Button("删除分组（\(reason)）") {}
+        .disabled(true)
+    } else {
+      Button("删除分组", role: .destructive) { onDeleteSection(section.id) }
+    }
+  }
+
+  @ViewBuilder
+  private func row(_ item: SidebarItem, draggable: Bool) -> some View {
+    let content = Button {
       withAnimation(.easeOut(duration: 0.16)) { onSelect(item.id) }
     } label: {
       if editingItem == item.id {
@@ -212,63 +302,65 @@ public struct SidebarPanel: View {
     }
     .buttonStyle(.plain)
     .id(item.id)
-    .contextMenu {
-      Button {
-        onPinItem(item.id)
-      } label: {
-        Label("置顶", systemImage: "pin")
-      }
-      if !moveGroups.isEmpty {
-        Menu {
-          ForEach(moveGroups) { group in
-            Button {
-              onMoveItem(item.id, group.id)
-            } label: {
-              if groupOf(item.id) == group.id {
-                Label(group.title, systemImage: "checkmark")
-              } else {
-                Label(group.title, systemImage: "folder")
-              }
-            }
-          }
-          Divider()
+    .contextMenu { itemMenu(item) }
+
+    if draggable {
+      // The payload is the bot id alone: the groups the daemon keeps have no order of
+      // their own, so a drop only changes membership.
+      content.draggable(item.id)
+    } else {
+      content
+    }
+  }
+
+  @ViewBuilder
+  private func itemMenu(_ item: SidebarItem) -> some View {
+    Button {
+      onPinItem(item.id)
+    } label: {
+      Label("置顶", systemImage: "pin")
+    }
+    let targets = moveTargets(item.id)
+    if !targets.isEmpty {
+      Menu {
+        ForEach(targets) { group in
           Button {
-            onCreateGroup()
+            onMoveItem(item.id, group.id)
           } label: {
-            Label("创建分组", systemImage: "folder.badge.plus")
+            Label(group.title, systemImage: "folder")
           }
-        } label: {
-          Label("移至", systemImage: "folder")
         }
-      }
-      Button {
-        onMarkUnread(item.id)
       } label: {
-        Label("标为未读", systemImage: "bell.slash")
+        Label("移至", systemImage: "folder")
       }
-      Divider()
-      Button {
-        beginItemRename(item)
-      } label: {
-        Label("重命名 Bot", systemImage: "pencil")
-      }
-      Divider()
-      Button {
-        onCopyId(item.id)
-      } label: {
-        Label("复制对话 ID", systemImage: "doc.on.doc")
-      }
-      Divider()
-      Button {
-        onHideItem(item.id)
-      } label: {
-        Label("从侧边栏隐藏", systemImage: "eye.slash")
-      }
-      Button(role: .destructive) {
-        onDeleteItem(item.id)
-      } label: {
-        Label("删除", systemImage: "trash")
-      }
+    }
+    Button {
+      onMarkUnread(item.id)
+    } label: {
+      Label("标为未读", systemImage: "bell.slash")
+    }
+    Divider()
+    Button {
+      beginItemRename(item)
+    } label: {
+      Label("重命名 Bot", systemImage: "pencil")
+    }
+    Divider()
+    Button {
+      onCopyId(item.id)
+    } label: {
+      Label("复制对话 ID", systemImage: "doc.on.doc")
+    }
+    Divider()
+    Button {
+      onHideItem(item.id)
+    } label: {
+      Label("从侧边栏隐藏", systemImage: "eye.slash")
+    }
+    Button(role: .destructive) {
+      onDeleteItem(item.id)
+    } label: {
+      Label("删除", systemImage: "trash")
     }
   }
 

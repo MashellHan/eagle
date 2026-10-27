@@ -53,9 +53,15 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
     self.session = session
   }
 
-  public func load() async throws -> [BotSummary] {
-    struct Payload: Decodable { let bots: [BotSummary] }
-    return try await request(path: "/v1/bots", method: "GET", body: nil, as: Payload.self).bots
+  public func load() async throws -> BotCatalog {
+    struct Payload: Decodable {
+      let bots: [BotSummary]
+      /// Absent when the daemon has no groups; a client that predates them ignores it.
+      let groups: [BotGroup]?
+    }
+    let payload = try await request(
+      path: "/v1/bots", method: "GET", body: nil, as: Payload.self)
+    return BotCatalog(bots: payload.bots, groups: payload.groups ?? [])
   }
 
   public func create(
@@ -106,6 +112,44 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
     _ = try await raw(path: "/v1/bots/\(id)", method: "DELETE", body: nil)
   }
 
+  public func createGroup(title: String) async throws -> BotGroup {
+    struct Payload: Decodable { let group: BotGroup }
+    return try await request(
+      path: "/v1/groups", method: "POST", body: ["title": title], as: Payload.self
+    ).group
+  }
+
+  public func renameGroup(id: String, title: String) async throws -> BotGroup {
+    struct Payload: Decodable { let group: BotGroup }
+    return try await request(
+      path: "/v1/groups/\(id)",
+      method: "PATCH",
+      body: ["title": title],
+      as: Payload.self
+    ).group
+  }
+
+  public func deleteGroup(id: String) async throws {
+    _ = try await raw(path: "/v1/groups/\(id)", method: "DELETE", body: nil)
+  }
+
+  public func reorderGroups(ids: [String]) async throws -> [BotGroup] {
+    struct Payload: Decodable { let groups: [BotGroup] }
+    return try await request(
+      path: "/v1/groups/order", method: "PUT", body: ["ids": ids], as: Payload.self
+    ).groups
+  }
+
+  /// `groupId: nil` is sent as `null`, which clears the membership; an omitted field would
+  /// leave the bot where it is.
+  public func moveBot(id: String, groupId: String?) async throws -> BotSummary {
+    struct Payload: Decodable { let bot: BotSummary }
+    let body: [String: Any] = ["groupId": groupId.map { $0 as Any } ?? NSNull()]
+    return try await request(
+      path: "/v1/bots/\(id)", method: "PATCH", body: body, as: Payload.self
+    ).bot
+  }
+
   public func loadGateway() async throws -> GatewaySettings {
     struct Payload: Decodable { let settings: GatewaySettings }
     return try await request(path: "/v1/settings", method: "GET", body: nil, as: Payload.self)
@@ -145,7 +189,7 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
   }
 
   /// The daemon pushes catalog changes on the conversation socket; HTTP has no push.
-  public func catalogEvents() -> AsyncStream<[BotSummary]> {
+  public func catalogEvents() -> AsyncStream<BotCatalog> {
     AsyncStream { continuation in
       continuation.finish()
     }

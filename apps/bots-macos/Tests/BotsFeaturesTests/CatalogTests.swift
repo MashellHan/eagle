@@ -109,12 +109,14 @@ final class CatalogTests: XCTestCase {
     await model.refresh()
     XCTAssertEqual(model.selection, "b_1")
     conversation.emit(
-      .catalog([
-        BotSummary(
-          id: "b_9", title: "推来的", createdAt: "x", updatedAt: "x",
-          model: ModelRef(provider: "p", modelId: "m"), state: .running
-        )
-      ])
+      .catalog(
+        BotCatalog(
+          bots: [
+            BotSummary(
+              id: "b_9", title: "推来的", createdAt: "x", updatedAt: "x",
+              model: ModelRef(provider: "p", modelId: "m"), state: .running
+            )
+          ]))
     )
     try await Task.sleep(nanoseconds: 40_000_000)
     XCTAssertEqual(model.bots.map(\.id), ["b_9"], "a bots event is absolute")
@@ -126,18 +128,68 @@ final class CatalogTests: XCTestCase {
 
 final class FakeCatalog: CatalogPort {
   var bots: [BotSummary] = []
+  var groups: [BotGroup] = []
   var created: [String] = []
   var labels: [String?] = []
   var faces: [BotAppearance] = []
   var deleted: [String] = []
+  var createdGroupTitles: [String] = []
+  var renamedGroups: [(String, String)] = []
+  var deletedGroups: [String] = []
+  var reordered: [[String]] = []
+  var moved: [(String, String?)] = []
+  var refuseDelete: Error?
   var failNext = false
 
-  func load() async throws -> [BotSummary] {
+  func load() async throws -> BotCatalog {
     if failNext {
       failNext = false
       throw ClientError("the daemon is not reachable")
     }
-    return bots
+    return BotCatalog(bots: bots, groups: groups)
+  }
+
+  func createGroup(title: String) async throws -> BotGroup {
+    createdGroupTitles.append(title)
+    let group = BotGroup(id: "g_\(groups.count + 1)", title: title)
+    groups.append(group)
+    return group
+  }
+
+  func renameGroup(id: String, title: String) async throws -> BotGroup {
+    renamedGroups.append((id, title))
+    guard let index = groups.firstIndex(where: { $0.id == id }) else {
+      throw ClientError("no group \(id)")
+    }
+    groups[index].title = title
+    return groups[index]
+  }
+
+  func deleteGroup(id: String) async throws {
+    if let refusal = refuseDelete {
+      refuseDelete = nil
+      throw refusal
+    }
+    deletedGroups.append(id)
+    groups.removeAll { $0.id == id }
+  }
+
+  func reorderGroups(ids: [String]) async throws -> [BotGroup] {
+    reordered.append(ids)
+    guard ids.count == groups.count, Set(ids) == Set(groups.map(\.id)) else {
+      throw ClientError("the order must list every group once")
+    }
+    groups = ids.compactMap { id in groups.first { $0.id == id } }
+    return groups
+  }
+
+  func moveBot(id: String, groupId: String?) async throws -> BotSummary {
+    moved.append((id, groupId))
+    guard let index = bots.firstIndex(where: { $0.id == id }) else {
+      throw ClientError("unknown bot")
+    }
+    bots[index].groupId = groupId
+    return bots[index]
   }
 
   func create(
@@ -197,7 +249,7 @@ final class FakeCatalog: CatalogPort {
     bots.removeAll { $0.id == id }
   }
 
-  func catalogEvents() -> AsyncStream<[BotSummary]> {
+  func catalogEvents() -> AsyncStream<BotCatalog> {
     AsyncStream { $0.finish() }
   }
 }

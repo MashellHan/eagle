@@ -39,6 +39,8 @@ Runtime details live in [RUNTIME.md](RUNTIME.md), layers in
 | `send.text` | 8 000 characters | `error{invalid_command}` |
 | `bot.title` (HTTP) | 80 characters | HTTP `400` |
 | `bot.label` (HTTP) | 24 characters, optional | HTTP `400` |
+| `group.title` (HTTP) | 1–40 characters after trimming | HTTP `400` |
+| Groups | 50 per catalog | `POST /v1/groups` answers `limit_exceeded` |
 | `bot.appearance` (HTTP) | one shape and one tint from the closed sets | HTTP `400` |
 | Any single frame | 256 KiB, measured on the **encoded** frame | Close `1008`; a daemon-produced frame that cannot fit is dropped and the socket closes `1008`, because the client cannot decode it either |
 | Single message payload | ≤ 96 KiB encoded | Withheld and replaced by a notice, see below |

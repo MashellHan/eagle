@@ -13,13 +13,13 @@ public enum Wire {
     public let rev: Int?
     public let type: String
     /// The absolute catalog a `welcome` or `bots` frame carries.
-    public let catalog: [BotSummary]?
+    public let catalog: BotCatalog?
 
     public init(
       event: ConversationEvent?,
       rev: Int?,
       type: String,
-      catalog: [BotSummary]? = nil
+      catalog: BotCatalog? = nil
     ) {
       self.event = event
       self.rev = rev
@@ -38,7 +38,8 @@ public enum Wire {
         throw ClientError(
           "the daemon speaks protocol \(frame.protocolVersion), not \(protocolVersion)")
       }
-      return Decoded(event: .connection(.ready), rev: nil, type: "welcome", catalog: frame.bots)
+      return Decoded(
+        event: .connection(.ready), rev: nil, type: "welcome", catalog: frame.catalog)
     case "snapshot":
       let frame = try decoder.decode(SnapshotFrame.self, from: data)
       return Decoded(event: .snapshot(frame.value), rev: frame.rev, type: "snapshot")
@@ -105,7 +106,8 @@ public enum Wire {
       )
     case "bots":
       let frame = try decoder.decode(BotsFrame.self, from: data)
-      return Decoded(event: .catalog(frame.bots), rev: nil, type: "bots", catalog: frame.bots)
+      return Decoded(
+        event: .catalog(frame.catalog), rev: nil, type: "bots", catalog: frame.catalog)
     case "pong":
       return Decoded(event: nil, rev: nil, type: "pong")
     default:
@@ -174,6 +176,10 @@ public enum Wire {
   struct Welcome: Decodable {
     let protocolVersion: Int
     let bots: [BotSummary]
+    /// Absent when the daemon has no groups, so an older client keeps working.
+    let groups: [BotGroup]?
+
+    var catalog: BotCatalog { BotCatalog(bots: bots, groups: groups ?? []) }
   }
 
   struct SnapshotFrame: Decodable {
@@ -227,6 +233,9 @@ public enum Wire {
 
   struct BotsFrame: Decodable {
     let bots: [BotSummary]
+    let groups: [BotGroup]?
+
+    var catalog: BotCatalog { BotCatalog(bots: bots, groups: groups ?? []) }
   }
 
   struct ServerVersion: Decodable {

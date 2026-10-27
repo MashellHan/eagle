@@ -26,23 +26,25 @@ struct BotsWindowTests {
   }
 
   private func window(
-    gateway: Bool? = true
+    gateway: Bool? = true,
+    catalog: StubCatalog = StubCatalog()
   ) async throws -> (
     BotsWorkspaceViewModel, AppViewModel, StubConversation, OutboxStore
   ) {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("bots-window-\(UUID().uuidString)", isDirectory: true)
-    let catalog = StubCatalog()
-    catalog.bots = [
-      BotSummary(
-        id: "b_1",
-        title: "研究员",
-        createdAt: "x",
-        updatedAt: "x",
-        model: ModelRef(provider: "p", modelId: "m"),
-        state: .idle
-      )
-    ]
+    if catalog.bots.isEmpty {
+      catalog.bots = [
+        BotSummary(
+          id: "b_1",
+          title: "研究员",
+          createdAt: "x",
+          updatedAt: "x",
+          model: ModelRef(provider: "p", modelId: "m"),
+          state: .idle
+        )
+      ]
+    }
     let conversationPort = StubConversation()
     let outbox = OutboxStore(directory: directory)
     let conversation = ConversationViewModel(
@@ -305,6 +307,86 @@ struct BotsWindowTests {
       }(), "the streamed answer is what the window renders")
   }
 
+  @Test("the sidebar exposes the daemon's groups and files every bot under one")
+  func sidebarGroups() async throws {
+    let catalog = StubCatalog()
+    catalog.groups = [BotGroup(id: "g_1", title: "工作"), BotGroup(id: "g_2", title: "研究")]
+    catalog.bots = [
+      BotSummary(
+        id: "b_1", title: "一", createdAt: "x", updatedAt: "x",
+        model: ModelRef(provider: "p", modelId: "m"), state: .idle, groupId: "g_1"),
+      BotSummary(
+        id: "b_2", title: "二", createdAt: "x", updatedAt: "x",
+        model: ModelRef(provider: "p", modelId: "m"), state: .idle),
+      BotSummary(
+        id: "b_3", title: "三", createdAt: "x", updatedAt: "x",
+        model: ModelRef(provider: "p", modelId: "m"), state: .idle, groupId: "g_gone"),
+    ]
+    let (bots, _, _, _) = try await window(catalog: catalog)
+    #expect(bots.groups.map(\.id) == ["g_1", "g_2"])
+    #expect(
+      bots.sections.map(\.id)
+        == ["g_1", "g_2", SidebarComposition.ungroupedSectionID])
+    #expect(bots.bots(in: "g_1").map(\.id) == ["b_1"])
+    #expect(bots.bots(in: "g_2").isEmpty)
+    #expect(
+      bots.bots(in: nil).map(\.id) == ["b_2", "b_3"],
+      "an ungrouped bot and one filed under a missing group")
+  }
+
+  @Test("group actions reach the daemon and republish the sidebar")
+  func groupActions() async throws {
+    let catalog = StubCatalog()
+    catalog.groups = [BotGroup(id: "g_1", title: "工作"), BotGroup(id: "g_2", title: "研究")]
+    catalog.bots = [
+      BotSummary(
+        id: "b_1", title: "一", createdAt: "x", updatedAt: "x",
+        model: ModelRef(provider: "p", modelId: "m"), state: .idle, groupId: "g_1")
+    ]
+    let (bots, _, _, _) = try await window(catalog: catalog)
+
+    await bots.createGroup()
+    #expect(catalog.createdGroupTitles == ["新分组"], "a new group gets a distinct default name")
+    #expect(bots.groups.map(\.title) == ["工作", "研究", "新分组"])
+
+    await bots.renameGroup("g_2", to: "学习")
+    #expect(catalog.renamedGroups.map { "\($0.0)=\($0.1)" } == ["g_2=学习"])
+    #expect(bots.groups.map(\.title) == ["工作", "学习", "新分组"])
+
+    let third = try #require(catalog.groups.last?.id)
+    await bots.reorderGroups(moving: "g_2", by: -1)
+    #expect(catalog.reordered == [["g_2", "g_1", third]])
+    #expect(bots.groups.first?.id == "g_2", "上移 is one reordered list, not a per-group write")
+
+    await bots.moveBot("b_1", toGroup: "g_2")
+    #expect(catalog.moved.map { "\($0.0)=\($0.1 ?? "nil")" } == ["b_1=g_2"])
+    #expect(bots.bots(in: "g_2").map(\.id) == ["b_1"])
+
+    await bots.moveBot("b_1", toGroup: nil)
+    #expect(bots.bots(in: nil).map(\.id) == ["b_1"])
+
+    await bots.deleteGroup("g_2")
+    #expect(catalog.deletedGroups == ["g_2"])
+    #expect(bots.groups.map(\.id).contains("g_2") == false)
+  }
+
+  @Test("a refused group delete is shown in the window and the group stays")
+  func groupDeleteRefusal() async throws {
+    let catalog = StubCatalog()
+    catalog.groups = [BotGroup(id: "g_1", title: "工作")]
+    catalog.bots = [
+      BotSummary(
+        id: "b_1", title: "一", createdAt: "x", updatedAt: "x",
+        model: ModelRef(provider: "p", modelId: "m"), state: .idle, groupId: "g_1")
+    ]
+    let (bots, _, _, _) = try await window(catalog: catalog)
+    catalog.refuseDelete = ClientError("the group still holds bots")
+
+    await bots.deleteGroup("g_1")
+    #expect(bots.error == "the group still holds bots")
+    #expect(bots.groups.map(\.id) == ["g_1"])
+  }
+
   @Test("the window publishes the transcript, the status and the actions")
   func publishedState() async throws {
     let (bots, app, conversationPort, _) = try await window()
@@ -327,8 +409,52 @@ struct BotsWindowTests {
 /// The two ports this window needs, with just enough behaviour for the bindings.
 final class StubCatalog: CatalogPort {
   var bots: [BotSummary] = []
+  var groups: [BotGroup] = []
+  var createdGroupTitles: [String] = []
+  var renamedGroups: [(String, String)] = []
+  var deletedGroups: [String] = []
+  var reordered: [[String]] = []
+  var moved: [(String, String?)] = []
+  var refuseDelete: Error?
 
-  func load() async throws -> [BotSummary] { bots }
+  func load() async throws -> BotCatalog { BotCatalog(bots: bots, groups: groups) }
+
+  func createGroup(title: String) async throws -> BotGroup {
+    createdGroupTitles.append(title)
+    let group = BotGroup(id: "g_\(groups.count + 1)", title: title)
+    groups.append(group)
+    return group
+  }
+
+  func renameGroup(id: String, title: String) async throws -> BotGroup {
+    renamedGroups.append((id, title))
+    guard let index = groups.firstIndex(where: { $0.id == id }) else {
+      throw ClientError("no group \(id)")
+    }
+    groups[index].title = title
+    return groups[index]
+  }
+
+  func deleteGroup(id: String) async throws {
+    if let refuseDelete { throw refuseDelete }
+    deletedGroups.append(id)
+    groups.removeAll { $0.id == id }
+  }
+
+  func reorderGroups(ids: [String]) async throws -> [BotGroup] {
+    reordered.append(ids)
+    groups = ids.compactMap { id in groups.first { $0.id == id } }
+    return groups
+  }
+
+  func moveBot(id: String, groupId: String?) async throws -> BotSummary {
+    moved.append((id, groupId))
+    guard let index = bots.firstIndex(where: { $0.id == id }) else {
+      throw ClientError("unknown bot")
+    }
+    bots[index].groupId = groupId
+    return bots[index]
+  }
   func create(title: String, label: String?, appearance: BotAppearance) async throws -> BotSummary {
     let bot = BotSummary(
       id: "b_new",
@@ -362,7 +488,7 @@ final class StubCatalog: CatalogPort {
   }
   func rename(id: String, title: String) async throws -> BotSummary { bots[0] }
   func delete(id: String) async throws { bots.removeAll { $0.id == id } }
-  func catalogEvents() -> AsyncStream<[BotSummary]> { AsyncStream { $0.finish() } }
+  func catalogEvents() -> AsyncStream<BotCatalog> { AsyncStream { $0.finish() } }
 }
 
 final class StubConversation: ConversationPort {

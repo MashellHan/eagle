@@ -33,7 +33,7 @@ if ! grep -q 'WorkspaceViewModels.swift' "$REPORT"; then
 fi
 
 awk -v minimum="$MINIMUM" '
-  /WorkspaceViewModels\.swift|SettingsViewModel\.swift|SettingsModels\.swift|Theme\.swift|SidebarList\.swift/ {
+  /WorkspaceViewModels\.swift|SettingsViewModel\.swift|SettingsModels\.swift|SidebarComposition\.swift|Theme\.swift|SidebarList\.swift/ {
     lines += $8
     missed += $9
     printf "  %-52s %6s lines, %s covered\n", $1, $8, $10

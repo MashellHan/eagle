@@ -19,7 +19,8 @@ final class SocketTests: XCTestCase {
   func testCreateBotAndChat() async throws {
     let catalog = CatalogHTTPClient(baseURL: fixture.baseURL, token: fixture.token)
     let before = try await catalog.load()
-    XCTAssertEqual(before.count, 0, "a fresh daemon has an empty catalog")
+    XCTAssertEqual(before.bots.count, 0, "a fresh daemon has an empty catalog")
+    XCTAssertEqual(before.groups, [], "and no groups")
 
     let created = try await catalog.create(
       title: "客户端自测",
@@ -32,7 +33,7 @@ final class SocketTests: XCTestCase {
     XCTAssertEqual(created.face.tint, .violet)
     XCTAssertTrue(created.id.hasPrefix("b_"))
     let listed = try await catalog.load()
-    XCTAssertEqual(listed.map(\.id), [created.id])
+    XCTAssertEqual(listed.bots.map(\.id), [created.id])
 
     let socket = ConversationSocket(
       baseURL: fixture.baseURL,
@@ -124,14 +125,48 @@ final class SocketTests: XCTestCase {
     let first = try await catalog.create(title: "一", label: nil, appearance: .standard)
     let second = try await catalog.create(title: "二", label: nil, appearance: .standard)
     let created = try await catalog.load()
-    XCTAssertEqual(Set(created.map(\.id)), [first.id, second.id])
+    XCTAssertEqual(Set(created.bots.map(\.id)), [first.id, second.id])
 
     let renamed = try await catalog.rename(id: first.id, title: "一号")
     XCTAssertEqual(renamed.title, "一号")
 
     try await catalog.delete(id: second.id)
     let remaining = try await catalog.load()
-    XCTAssertEqual(remaining.map(\.id), [first.id])
+    XCTAssertEqual(remaining.bots.map(\.id), [first.id])
+  }
+
+  /// The group endpoints against the production daemon: order, membership and the refusal
+  /// that keeps an occupied group from being emptied by a delete.
+  func testGroupsTravelWithTheCatalog() async throws {
+    let catalog = CatalogHTTPClient(baseURL: fixture.baseURL, token: fixture.token)
+    let work = try await catalog.createGroup(title: "  工作  ")
+    XCTAssertEqual(work.title, "工作", "the daemon trims the title")
+    let research = try await catalog.createGroup(title: "研究")
+    let first = try await catalog.load()
+    XCTAssertEqual(first.groups.map(\.id), [work.id, research.id])
+
+    let renamed = try await catalog.renameGroup(id: research.id, title: "学习")
+    XCTAssertEqual(renamed.title, "学习")
+
+    let reordered = try await catalog.reorderGroups(ids: [research.id, work.id])
+    XCTAssertEqual(reordered.map(\.id), [research.id, work.id], "the daemon answers the order")
+
+    let bot = try await catalog.create(title: "分组自测", label: nil, appearance: .standard)
+    let filed = try await catalog.moveBot(id: bot.id, groupId: work.id)
+    XCTAssertEqual(filed.groupId, work.id, "the bot records its membership")
+
+    do {
+      try await catalog.deleteGroup(id: work.id)
+      XCTFail("a group that still holds a bot is refused")
+    } catch {
+      XCTAssertEqual((error as? ClientError)?.message, "the group still holds bots")
+    }
+
+    let unfiled = try await catalog.moveBot(id: bot.id, groupId: nil)
+    XCTAssertNil(unfiled.groupId, "null unfiles the bot")
+    try await catalog.deleteGroup(id: work.id)
+    let last = try await catalog.load()
+    XCTAssertEqual(last.groups.map(\.id), [research.id])
   }
 }
 
