@@ -270,6 +270,22 @@ test("a bot summary only carries a reason while unavailable", () => {
   });
 });
 
+test("live tasks decode with a status the client can render", () => {
+  const task = {
+    id: "t_12",
+    kind: "pi.generation",
+    status: "running",
+    phase: "generate",
+    background: false,
+    conversationId: "c_1",
+  };
+  const decoded = decodeServerEvent({ type: "tasks", rev: 4, trace, tasks: [task] });
+  assert.equal(decoded.type, "tasks");
+  if (decoded.type === "tasks") assert.equal(decoded.tasks[0]?.kind, "pi.generation");
+  invalidEvent({ type: "tasks", rev: 4, trace, tasks: [{ ...task, status: "thinking" }] });
+  invalidEvent({ type: "tasks", rev: 4, trace, tasks: [{ ...task, background: "no" }] });
+});
+
 test("submission entry references must be committed entries", () => {
   const base = { type: "submission", trace, requestId, submissionId: "s_1" };
   invalidEvent({ ...base, status: "done", entryId: "", answerEntryId: "e_2" });

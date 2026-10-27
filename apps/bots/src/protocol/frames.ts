@@ -17,6 +17,7 @@ import type {
   StopReason,
   Submission,
   SubmissionStatus,
+  TaskSummary,
   Usage,
 } from "../core/domain.ts";
 import { BOT_SHAPES, BOT_TINTS } from "../core/domain.ts";
@@ -97,6 +98,12 @@ export type ServerEvent =
       readonly bots: readonly BotSummary[];
       /** The sidebar groups, in display order; absent in a catalog that has none. */
       readonly groups?: readonly BotGroup[];
+    }
+  | {
+      readonly type: "tasks";
+      readonly rev: number;
+      readonly trace: string;
+      readonly tasks: readonly TaskSummary[];
     }
   | {
       readonly type: "history";
@@ -505,6 +512,9 @@ const decodeSnapshot = (ctx: Ctx, raw: unknown): ConversationSnapshot => {
     ...(truncatedBefore === undefined ? {} : { truncatedBefore }),
     ...(parked === undefined ? {} : { parked }),
     ...(raw.usage === undefined ? {} : { usage: decodeUsage(ctx, raw.usage) }),
+    ...(raw.tasks === undefined
+      ? {}
+      : { tasks: arr(ctx, raw.tasks, "tasks").map((task) => decodeTaskSummary(ctx, task)) }),
     ...(agent === undefined ? {} : { agent }),
     ...(unavailable === undefined ? {} : { unavailable }),
   };
@@ -544,6 +554,24 @@ const welcomeGroups = (
 ): { groups?: readonly BotGroup[] } => {
   const groups = decodeGroups(ctx, raw);
   return groups === undefined ? {} : { groups };
+};
+
+const TASK_STATUSES = ["pending", "running", "waiting", "sleeping", "completing"] as const;
+
+const decodeTaskSummary = (ctx: Ctx, raw: unknown): TaskSummary => {
+  if (!isObject(raw)) fail(ctx, "task must be an object");
+  const blocked = present(raw, "blocked") ? str(ctx, raw.blocked, "task.blocked") : undefined;
+  const owner = present(raw, "owner") ? str(ctx, raw.owner, "task.owner") : undefined;
+  return {
+    id: str(ctx, raw.id, "task.id"),
+    kind: str(ctx, raw.kind, "task.kind"),
+    status: oneOf(ctx, raw.status, TASK_STATUSES, "task.status"),
+    phase: anyStr(ctx, raw.phase, "task.phase"),
+    background: bool(ctx, raw.background, "task.background"),
+    ...(blocked === undefined ? {} : { blocked }),
+    ...(owner === undefined ? {} : { owner }),
+    conversationId: str(ctx, raw.conversationId, "task.conversationId"),
+  };
 };
 
 const decodeBotGroup = (ctx: Ctx, raw: unknown): BotGroup => {
@@ -702,6 +730,17 @@ export function decodeServerEvent(raw: Record<string, unknown>): ServerEvent {
         type,
         bots: arr(ctx, required(ctx, raw, "bots"), "bots").map((b) => decodeBotSummary(ctx, b)),
         ...(groups === undefined ? {} : { groups }),
+      };
+    }
+    case "tasks": {
+      const { rev, trace } = requireEnvelope(ctx, raw, true);
+      return {
+        type,
+        rev: rev as number,
+        trace,
+        tasks: arr(ctx, required(ctx, raw, "tasks"), "tasks").map((task) =>
+          decodeTaskSummary(ctx, task),
+        ),
       };
     }
     case "history": {

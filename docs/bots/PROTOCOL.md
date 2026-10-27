@@ -156,6 +156,29 @@ it. A per-bot model picker still needs the `agent` capability.
   `groups` (absent when there are none, so an older client keeps working) and every
   `BotSummary` may carry a `groupId`.
 
+## Live tasks
+
+`tasks` lists the work a bot's conversations are running right now — the same graph the
+scheduler runs — and each `snapshot` carries the current list as `tasks`. It is a whole-list
+replacement, never a delta; an empty list means nothing runs.
+
+```json
+{ "id": "t_12", "kind": "pi.generation", "status": "running", "phase": "generate",
+  "background": false, "conversationId": "c_1" }
+{ "id": "t_13", "kind": "pi.tool", "status": "waiting", "phase": "run",
+  "background": false, "owner": "t_12", "conversationId": "c_1" }
+```
+
+- `status` is one of `pending`, `running`, `waiting`, `sleeping`, `completing`; only live
+  work appears, so a settled task leaves the list rather than becoming `terminal`.
+- `kind` names the task definition (`pi.generation`, `pi.tool`, `pi.compaction`, and an
+  extension's own kinds such as the compaction or subagent tasks).
+- `blocked` appears when the task cannot run here (`restart_limit`, `missing_task`,
+  `task_too_old`, `migration_failed`); `owner` names the parent task of a child.
+- Ids are wire ids (`t_` for tasks, `c_` for conversations); a client that does not parse
+  them may treat them as opaque strings.
+- The `tasks` capability is `true`. A client that predates the field simply ignores it.
+
 ## Entities
 
 ```jsonc
@@ -329,6 +352,8 @@ is never a gap.
 { "type": "status", "rev": 45, "trace": "tr_…", "running": true,
   "streaming": "p_a2",                   // null when no attempt is in flight
   "inbox": [ InboxItem, … ] }
+
+{ "type": "tasks", "rev": 45, "trace": "tr_…", "tasks": [ Task, … ] }
 
 { "type": "submission", "rev": 46, "trace": "tr_…",
   "requestId": "r_…", "submissionId": "s_3",

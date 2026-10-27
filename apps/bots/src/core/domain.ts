@@ -167,6 +167,20 @@ export type BotSummary = {
   readonly unavailable?: { readonly reason: ErrorKind; readonly message: string };
 };
 
+/** One live task of a bot, as the inspector's 任务 section shows it. */
+export type TaskSummary = {
+  readonly id: string;
+  readonly kind: string;
+  readonly status: "pending" | "running" | "waiting" | "sleeping" | "completing";
+  readonly phase: string;
+  readonly background: boolean;
+  /** Why it cannot run here: a missing definition, an old version, or the restart limit. */
+  readonly blocked?: string;
+  /** The owning task, when this one is a child. */
+  readonly owner?: string;
+  readonly conversationId: string;
+};
+
 export type ConversationSnapshot = {
   readonly botId: BotId;
   readonly agent?: AgentView;
@@ -178,6 +192,8 @@ export type ConversationSnapshot = {
   readonly streaming: string | null;
   /** A task is parked and `recover` retries it; a new client needs this from the snapshot. */
   readonly parked?: boolean;
+  /** Live work of every conversation this bot owns, for the inspector. */
+  readonly tasks?: readonly TaskSummary[];
   readonly pending: readonly Submission[];
   readonly inbox: readonly InboxItem[];
   readonly running: boolean;

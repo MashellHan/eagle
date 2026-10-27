@@ -194,7 +194,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   const capabilities = {
     agent: false,
     tools: true,
-    tasks: false,
+    tasks: true,
     entries: false,
     usage: false,
     peers: false,

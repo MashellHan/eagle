@@ -8,6 +8,7 @@ import type {
   ErrorKind,
   Message,
   Submission,
+  TaskSummary,
 } from "./domain.ts";
 
 export type RuntimeEvent = { readonly trace: string } & (
@@ -23,6 +24,7 @@ export type RuntimeEvent = { readonly trace: string } & (
       }[];
     }
   | { readonly type: "submission"; readonly record: Submission }
+  | { readonly type: "tasks"; readonly tasks: readonly TaskSummary[] }
   | { readonly type: "snapshot"; readonly value: ConversationSnapshot }
   | {
       readonly type: "error";

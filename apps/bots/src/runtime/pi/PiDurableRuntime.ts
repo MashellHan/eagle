@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models, ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { TaskGraph } from "@earendil-works/pi-durable";
 import {
   type AgentEvent,
   type AgentEventStream,
@@ -22,7 +23,7 @@ import {
   watchEvents,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import type { ConversationSnapshot, Message, Submission } from "../../core/domain.ts";
+import type { ConversationSnapshot, Message, Submission, TaskSummary } from "../../core/domain.ts";
 import { ClassifiedFailure, resolveToolGroups } from "../../core/domain.ts";
 import type {
   RuntimeBotSpec,
@@ -94,6 +95,21 @@ const DEFAULT_SETTINGS: PiSettings = {
   progress: { partialIntervalMs: 100 },
   restartLimit: 5,
 };
+
+/** One live task as the inspector sees it; ids carry the kind so a client can parse them. */
+const mapTaskGraph = (value: TaskGraph): readonly TaskSummary[] =>
+  Object.values(value.tasks)
+    .map((node) => ({
+      id: `t_${node.id}`,
+      kind: node.kind,
+      status: node.state.status,
+      phase: node.state.status === "completing" ? "" : node.state.phase,
+      background: node.background,
+      ...(node.blocked === undefined ? {} : { blocked: node.blocked }),
+      ...(node.owner === undefined ? {} : { owner: `t_${node.owner}` }),
+      conversationId: `c_${node.conversationId}`,
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id, "en", { numeric: true }));
 
 /** Entry ids cross as `e_<n>` on the wire and as `<n>` inside pi. */
 const piEntryId = (domainId: string): EntryId => Number(domainId.replace(/^e_/, "")) as EntryId;
@@ -186,6 +202,7 @@ export class PiDurableRuntime implements RuntimePort {
         options: this.#options,
         installed,
       });
+      handle.attachTaskGraph(await harness.taskGraph(BACKGROUND_CONTEXT));
       harness.closed.then((end) => handle?.sessionEnd(end));
       for (const info of pending.splice(0)) handle.report(info);
       // `open()` already recovered; resuming only enables scheduling (RUNTIME.md).
@@ -262,6 +279,8 @@ class PiRuntimeHandle implements RuntimeHandle {
   /** Sends whose admission is still in flight: the first of them owns the commits it makes. */
   readonly #admitting: string[] = [];
   #runTrace: string | undefined;
+  /** The last command's trace, so daemon-originated work while it runs inherits it. */
+  #lastTrace: string | undefined;
   /** The submission id of a run whose send is not yet known, when one is waiting. */
   #unresolvedRun: string | undefined;
   /** Episode key of the current stream, shared by that fault's two notifications. */
@@ -310,6 +329,7 @@ class PiRuntimeHandle implements RuntimeHandle {
     this.#subscriptions.set(sink, state);
     try {
       const snapshot = await this.#acquire(state, trace, { deferDelivery: true });
+      const withTasks = { ...snapshot, tasks: this.#tasks };
       this.#flushUndelivered(state);
       log.emit("info", "runtime", Events.subscribeOk, {
         trace,
@@ -319,7 +339,7 @@ class PiRuntimeHandle implements RuntimeHandle {
       });
       this.#resubscribed = true;
       return {
-        snapshot,
+        snapshot: withTasks,
         detach: () => {
           state.detached = true;
           this.#subscriptions.delete(sink);
@@ -345,6 +365,7 @@ class PiRuntimeHandle implements RuntimeHandle {
     // The admission commit can be published before `submit` returns, so the request id
     // knows its trace first; the submission id is filled in once it exists.
     this.#traces.set(input.requestId, input.trace);
+    this.#lastTrace = input.trace;
     this.#admitting.push(input.trace);
     log.emit("info", "runtime", Events.submitStart, {
       trace: input.trace,
@@ -369,6 +390,7 @@ class PiRuntimeHandle implements RuntimeHandle {
       this.#submissionIds.set(String(record.id), String(record.id));
       this.#requestIds.set(String(record.id), input.requestId);
       this.#traces.set(input.requestId, input.trace);
+      this.#lastTrace = input.trace;
       this.#traces.set(String(record.id), input.trace);
       this.#unclaimed.add(String(record.id));
       // A run that started before its admission record existed is waiting for this id;
@@ -555,6 +577,25 @@ class PiRuntimeHandle implements RuntimeHandle {
   ): Promise<void> {
     const root = await this.#harness.root(BACKGROUND_CONTEXT);
     await root.configure({ model }, BACKGROUND_CONTEXT);
+  }
+
+  /** Live work of this bot's conversations, as the inspector's 任务 section shows it. */
+  #tasks: readonly TaskSummary[] = [];
+
+  /** Follows the task graph: every change reaches the subscribers as one `tasks` event. */
+  attachTaskGraph(graph: {
+    readonly value: TaskGraph;
+    subscribe(listener: (value: TaskGraph) => void): () => void;
+  }): void {
+    this.#tasks = mapTaskGraph(graph.value);
+    graph.subscribe((value) => {
+      this.#tasks = mapTaskGraph(value);
+      this.#broadcast({
+        type: "tasks",
+        trace: this.#runTrace ?? this.#lastTrace ?? "tr_tasks",
+        tasks: this.#tasks,
+      });
+    });
   }
 
   /** Settings changed the tool groups: the conversation keeps only the chosen extensions. */
@@ -856,7 +897,12 @@ class PiRuntimeHandle implements RuntimeHandle {
 
   #deliver(state: Subscription, event: RuntimeEvent): void {
     if (state.detached) return;
-    state.sink(event);
+    // Every snapshot carries the current task graph, so a late joiner sees live work.
+    state.sink(
+      event.type === "snapshot"
+        ? { ...event, value: { ...event.value, tasks: this.#tasks } }
+        : event,
+    );
   }
 
   #watchEnd(end: WatchEnd, trace: string, state: Subscription): void {

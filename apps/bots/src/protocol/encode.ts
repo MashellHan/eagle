@@ -7,6 +7,7 @@ import type {
   ConversationSnapshot,
   DeltaChange,
   Message,
+  TaskSummary,
 } from "../core/domain.ts";
 import type { ClientCommand, ServerEvent } from "./frames.ts";
 import { PROTOCOL_VERSION } from "./version.ts";
@@ -46,6 +47,20 @@ export const encodeMessage = (m: Message): Wire => {
   return wire;
 };
 
+const encodeTask = (task: TaskSummary): Wire => {
+  const wire: Wire = {
+    id: task.id,
+    kind: task.kind,
+    status: task.status,
+    phase: task.phase,
+    background: task.background,
+    conversationId: task.conversationId,
+  };
+  if (task.blocked !== undefined) wire.blocked = task.blocked;
+  if (task.owner !== undefined) wire.owner = task.owner;
+  return wire;
+};
+
 const encodeBot = (b: BotSummary): Wire => {
   const wire: Wire = {
     id: b.id,
@@ -68,6 +83,7 @@ const encodeGroup = (group: BotGroup): Wire => ({ id: group.id, title: group.tit
 
 export const encodeSnapshot = (s: ConversationSnapshot): Wire => {
   const value: Wire = { botId: s.botId };
+  if (s.tasks !== undefined) value.tasks = s.tasks.map(encodeTask);
   if (s.agent) {
     value.agent = {
       model: { provider: s.agent.model.provider, modelId: s.agent.model.modelId },
@@ -159,6 +175,9 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
     case "delta":
       wire.messageId = event.messageId;
       wire.changes = event.changes.map(encodeChange);
+      return wire;
+    case "tasks":
+      wire.tasks = event.tasks.map(encodeTask);
       return wire;
     case "status":
       wire.running = event.running;
