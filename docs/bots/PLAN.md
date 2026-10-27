@@ -307,7 +307,7 @@ The existing client gaps above remain recorded. Settings/history required by a
 milestone belong to that milestone rather than blocking all remote work on every
 inspector feature. The proposed delivery order is:
 
-| Milestone | Bot core lane | Cloud and machine lane | Exit evidence |
+| Milestone | Bot core lane — nocoli | Cloud and machine lane — project owner | Exit evidence |
 | --- | --- | --- | --- |
 | M0 — shared contracts | Bot vs conversation identity, plugin/context boundaries | Host and machine routing, owner-token/session and execution contract | Agreed interfaces, file ownership and compatibility fixtures; no deployment implied |
 | M1 — one Bot from two devices | Standalone daemon lifecycle, existing chat/history/recovery | Real machine settings, authenticated outbound relay, Web chat and remote native transport | A second computer uses Web without a Bot install; both clients reach the same host state; quitting UI keeps the daemon running |
@@ -318,9 +318,10 @@ inspector feature. The proposed delivery order is:
 
 M0 allows both lanes to proceed in parallel; the table orders integrated
 acceptance, not every implementation task. Core work in M2 can proceed while
-the cloud lane finishes M1 once the relevant contracts are fixed. Exact dates
-and named owners are not agreed in this proposal. Current per-bot storage remains authoritative on
-one host; the first remote slice adds neither cross-host replication nor
+the cloud lane finishes M1 once the relevant contracts are fixed. Ownership is
+confirmed: nocoli owns the Bot core; the project owner owns cloud and multi-device
+access. Exact dates are not agreed. Current per-bot storage remains authoritative
+on one host; the first remote slice adds neither cross-host replication nor
 cloud persistence of chat bodies. Current Agent terminal input is not a generic
 remote-command task API; that extension requires its own compatible release.
 
