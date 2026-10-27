@@ -7,19 +7,35 @@ import { join } from "node:path";
 import test from "node:test";
 import { readConfig } from "../src/config.ts";
 import { startDaemon } from "../src/main.ts";
+import { createDaemonModels } from "../src/runtime/pi/models.ts";
 import { writeGateway } from "../src/server/gateway.ts";
 import { waitFor } from "./support/pi.ts";
 
-test("saved gateway credentials authorize model requests on every daemon boot", async () => {
+test("saved gateway credentials and provider-default reasoning work on every daemon boot", async () => {
   const root = await mkdtemp(join(tmpdir(), "bots-saved-gateway-"));
   const key = "test-saved-gateway-key";
   let authorized = 0;
-  const server = createServer((request, response) => {
+  const efforts: (string | undefined)[] = [];
+  const server = createServer(async (request, response) => {
     if (request.headers.authorization !== `Bearer ${key}`) {
       response.writeHead(401).end();
       return;
     }
     authorized += 1;
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const payload = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+      reasoning?: { effort?: string };
+    };
+    efforts.push(payload.reasoning?.effort);
+    if (payload.reasoning?.effort === "none") {
+      response.writeHead(400, { "content-type": "application/json" }).end(
+        JSON.stringify({
+          error: { message: "This reasoning model does not support effort none" },
+        }),
+      );
+      return;
+    }
     const id = `response_${authorized}`;
     const item = {
       type: "message",
@@ -84,6 +100,21 @@ test("saved gateway credentials authorize model requests on every daemon boot", 
         await daemon.close();
       }
     }
+    const models = createDaemonModels({
+      provider: "saved-test",
+      modelId: "saved-model",
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      apiKey: key,
+    });
+    const model = models.getModel("saved-test", "saved-model");
+    assert.ok(model);
+    const answer = await models.completeSimple(
+      model,
+      { messages: [{ role: "user", content: "test", timestamp: 0 }] },
+      { reasoning: "high", maxRetries: 0 },
+    );
+    assert.equal(answer.stopReason, "stop");
+    assert.deepEqual(efforts, [undefined, undefined, "high"]);
   } finally {
     await new Promise<void>((resolve) => {
       server.close(() => resolve());

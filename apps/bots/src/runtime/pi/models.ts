@@ -34,6 +34,9 @@ export const createDaemonModels = (config: ModelsConfig | undefined): Models => 
           baseUrl: config.baseUrl,
           api: "openai-responses",
           reasoning: true,
+          // A generic gateway model may require reasoning. Leave its default to the
+          // provider instead of inventing an unsupported `effort: "none"`.
+          thinkingLevelMap: { off: null },
           input: ["text"],
           contextWindow: 200_000,
           maxTokens: 8_192,

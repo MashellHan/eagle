@@ -543,3 +543,37 @@ effect, and a `../../etc/hosts` read came back as a refusal instead of a run fai
 
 Next broken hop: Slice 2 — the herdr tools (open a space, schedule the controller, monitor,
 fetch results, bidirectional messages), then Codex review at max reasoning.
+
+## 2026-10-27 16:53 +08 — Raven gpt-6.1-sol accepts the default request
+
+Observed: the local gateway was configured for Raven's advertised raw model id
+`gpt-6.1-sol`. A real request failed with HTTP 400 because pi-ai serialized the
+default reasoning setting as `effort: "none"`, while that model requires an enabled
+reasoning effort. The gateway model now leaves the default effort to the provider;
+an explicit non-off level is still sent. The App was restarted and its daemon reports
+the saved Raven model and configured credentials. No key was printed or committed.
+
+Verified:
+
+- Red: `saved gateway credentials and provider-default reasoning work on every daemon
+  boot` settled `unanswered` instead of `done` against a local provider that rejects
+  `none`. With the fix, both daemon boots complete and an explicit `high` survives
+  serialization. The fixture uses synthetic credentials and temporary SQLite.
+- `cd apps/bots && npm run check`: 444/444 tests, fixtures 29/29, typecheck and lint;
+  coverage 94.91% lines / 88.39% branches / 90.59% functions.
+- `npm run test:crash`: 5/5; `npm run perf`: all four measurements within their
+  existing bounds on Node 26.9.0, macOS arm64.
+- Authorized live verification: one request through the saved Raven configuration
+  and real pi-durable, with automatic retries disabled, returned `连接成功` in
+  1,974 ms. It used memory storage and did not add a message to the user's bot.
+- The first full check failed the unchanged shell test `a setsid descendant cannot
+  outlive the deadline`; a separate shell-suite run failed `a timeout kills the whole
+  process group and returns promptly`. The second full check passed both its test
+  and coverage runs. These failures remain recorded; no shell code, test, threshold
+  or retry policy was changed. Logs are `/tmp/eagle-bots-model-check.log`,
+  `/tmp/eagle-bots-model-check-2.log`, `/tmp/eagle-bots-model-crash.log` and
+  `/tmp/eagle-bots-model-perf.log`.
+
+Remaining evidence gap: the user's previously failed message was not replayed through
+the macOS UI, and rendering was not inspected. Website collection, authentication and
+D1 were outside this local Bots change and were not exercised.
