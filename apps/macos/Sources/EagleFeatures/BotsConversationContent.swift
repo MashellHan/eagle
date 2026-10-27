@@ -25,7 +25,9 @@ struct BotsConversationContent: View {
       onSend: { bots.send() },
       showsSidebar: layout.showsSidebar, showsInspector: layout.showsInspector,
       participantStatus: bots.participantStatus,
-      onStop: { bots.abort() }, onRecover: { bots.recover() },
+      onStop: { bots.abort() },
+      onInsert: bots.running ? { bots.send(inserting: true) } : nil,
+      onRecover: { bots.recover() },
       onDismissError: { bots.dismissError() },
       onShowSidebar: { layout.toggleSidebar() },
       onToggleInspector: { layout.toggleInspector() }

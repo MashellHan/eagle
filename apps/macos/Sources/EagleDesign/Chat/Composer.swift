@@ -5,6 +5,8 @@ public struct Composer: View {
   private let placeholder: String
   @Binding private var text: String
   private let onSend: () -> Void
+  /// Steers the running answer; nil while there is nothing to steer.
+  private let onInsert: (() -> Void)?
   private let onAttach: () -> Void
   private let onMic: () -> Void
   private let onWaveform: () -> Void
@@ -13,6 +15,7 @@ public struct Composer: View {
     placeholder: String,
     text: Binding<String>,
     onSend: @escaping () -> Void,
+    onInsert: (() -> Void)? = nil,
     onAttach: @escaping () -> Void = {},
     onMic: @escaping () -> Void = {},
     onWaveform: @escaping () -> Void = {}
@@ -20,6 +23,7 @@ public struct Composer: View {
     self.placeholder = placeholder
     self._text = text
     self.onSend = onSend
+    self.onInsert = onInsert
     self.onAttach = onAttach
     self.onMic = onMic
     self.onWaveform = onWaveform
@@ -56,6 +60,17 @@ public struct Composer: View {
           : Theme.Palette.accentFill,
         action: onSend
       )
+    }
+    // ⌘↩ steers the running answer. A hidden button carries the shortcut so the field keeps
+    // its Return behaviour; the hint above the composer tells a person it exists.
+    .background {
+      if let onInsert {
+        Button("插入当前回答", action: onInsert)
+          .keyboardShortcut(.return, modifiers: .command)
+          .opacity(0)
+          .frame(width: 0, height: 0)
+          .accessibilityHidden(true)
+      }
     }
     .padding(.horizontal, 14)
     .padding(.vertical, Theme.Metric.composerVerticalInset)

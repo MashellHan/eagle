@@ -127,6 +127,9 @@ final class CatalogTests: XCTestCase {
 }
 
 final class FakeCatalog: CatalogPort {
+  func retryTask(bot: String, task: String) async throws {}
+  func abortTask(bot: String, task: String) async throws {}
+
   var bots: [BotSummary] = []
   var groups: [BotGroup] = []
   var created: [String] = []

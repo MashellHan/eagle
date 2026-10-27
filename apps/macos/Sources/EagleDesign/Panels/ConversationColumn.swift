@@ -58,6 +58,7 @@ public struct ConversationColumn: View {
   private let showsInspector: Bool
   private let participantStatus: ParticipantStatus?
   private let onStop: () -> Void
+  private let onInsert: (() -> Void)?
   private let onRecover: () -> Void
   private let onDismissError: () -> Void
   @State private var scroller = TranscriptScroller()
@@ -75,6 +76,7 @@ public struct ConversationColumn: View {
     showsInspector: Bool = true,
     participantStatus: ParticipantStatus? = nil,
     onStop: @escaping () -> Void = {},
+    onInsert: (() -> Void)? = nil,
     onRecover: @escaping () -> Void = {},
     onDismissError: @escaping () -> Void = {},
     onShowSidebar: @escaping () -> Void = {},
@@ -92,6 +94,7 @@ public struct ConversationColumn: View {
     self.showsInspector = showsInspector
     self.participantStatus = participantStatus
     self.onStop = onStop
+    self.onInsert = onInsert
     self.onRecover = onRecover
     self.onDismissError = onDismissError
     self.onShowSidebar = onShowSidebar
@@ -105,10 +108,19 @@ public struct ConversationColumn: View {
       transcript
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+      if onInsert != nil {
+        Text("⌘↩ 插入当前回答")
+          .font(Theme.TypeScale.pill)
+          .foregroundStyle(Theme.Palette.textMuted)
+          .frame(maxWidth: .infinity, alignment: .trailing)
+          .padding(.horizontal, Theme.Metric.conversationInset)
+          .accessibilityHidden(true)
+      }
       Composer(
         placeholder: "给 \(title) 发消息",
         text: $draft,
-        onSend: onSend
+        onSend: onSend,
+        onInsert: onInsert
       )
       .fixedSize(horizontal: false, vertical: true)
       .padding(.horizontal, Theme.Metric.conversationInset)

@@ -328,7 +328,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
     if composer.text != value { composer.text = value }
   }
 
-  func send() {
+  func send(inserting: Bool = false) {
     guard let app else { return }
     // Only a known-missing gateway blocks; an unreachable settings endpoint must not turn
     // a working bot into a dead composer.
@@ -336,7 +336,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       needsModelSetup = true
       return
     }
-    app.conversation.send()
+    app.conversation.send(inserting: inserting)
     mirrorConversationDraftIntoComposer()
     publish()
   }

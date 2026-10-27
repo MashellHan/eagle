@@ -101,11 +101,17 @@ public final class ConversationViewModel: ObservableObject {
   }
 
   public func send() {
+    send(inserting: false)
+  }
+
+  /// `inserting` steers the run that is answering instead of queueing behind it; while the
+  /// bot is idle the daemon places it like any other input.
+  public func send(inserting: Bool) {
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty, connection == .ready, let botId = selectedBotId else { return }
     let requestId = Identifiers.request()
     draft = ""
-    send(text: text, requestId: requestId, botId: botId, optimistic: true)
+    send(text: text, requestId: requestId, botId: botId, optimistic: true, inserting: inserting)
   }
 
   /// Retrying keeps the original requestId, which is how it is recovered, including after a
@@ -168,7 +174,13 @@ public final class ConversationViewModel: ObservableObject {
 
   // MARK: - Sending
 
-  private func send(text: String, requestId: String, botId: String, optimistic: Bool) {
+  private func send(
+    text: String,
+    requestId: String,
+    botId: String,
+    optimistic: Bool,
+    inserting: Bool = false
+  ) {
     // The entry is stored before the frame is written; if it cannot be stored, nothing is
     // sent and the draft comes back (PROTOCOL.md, client duties 1).
     do {
@@ -192,7 +204,7 @@ public final class ConversationViewModel: ObservableObject {
       do {
         try await self.conversation.send(
           text,
-          whenBusy: .followUp,
+          whenBusy: inserting ? .steer : .followUp,
           context: context,
           botId: botId
         )
