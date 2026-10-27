@@ -63,6 +63,40 @@ public struct InspectorUsageRow: Identifiable, Hashable, Sendable {
   }
 }
 
+/// One row of the 模型 section: a label, the current choice, and the choices a menu offers.
+public struct InspectorChoiceRow: Identifiable, Hashable, Sendable {
+  public struct Choice: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let title: String
+
+    public init(id: String, title: String) {
+      self.id = id
+      self.title = title
+    }
+  }
+
+  public let id: String
+  public let label: String
+  public let value: String
+  /// The chosen id, or nil when the bot follows the daemon-wide setting.
+  public let selected: String?
+  public let choices: [Choice]
+
+  public init(
+    id: String,
+    label: String,
+    value: String,
+    selected: String?,
+    choices: [Choice]
+  ) {
+    self.id = id
+    self.label = label
+    self.value = value
+    self.selected = selected
+    self.choices = choices
+  }
+}
+
 /// One decorated section of the inspector: its header and either rows or a placeholder.
 public struct InspectorSectionModel: Identifiable, Hashable, Sendable {
   public enum Rows: Hashable, Sendable {
@@ -70,6 +104,7 @@ public struct InspectorSectionModel: Identifiable, Hashable, Sendable {
     case jobs([InspectorJob])
     case tasks([InspectorTaskRow])
     case usage([InspectorUsageRow])
+    case choices([InspectorChoiceRow])
     /// A section whose whole body is its placeholder.
     case none
   }
@@ -100,6 +135,7 @@ public struct InspectorSectionModel: Identifiable, Hashable, Sendable {
     case .jobs(let rows): return rows.isEmpty
     case .tasks(let rows): return rows.isEmpty
     case .usage(let rows): return rows.isEmpty
+    case .choices(let rows): return rows.isEmpty
     case .none: return true
     }
   }
@@ -141,6 +177,18 @@ public enum InspectorSections {
       symbolName: "checkmark.circle",
       title: "没有正在运行的任务",
       detail: "发出消息后，正在跑的步骤会实时出现在这里。"
+    )
+  )
+
+  public static let modelSection = InspectorSectionModel(
+    id: "model",
+    title: "模型",
+    symbolName: "cpu",
+    rows: .choices([]),
+    placeholder: InspectorPlaceholder(
+      symbolName: "cpu",
+      title: "这个会话没有模型",
+      detail: "选中一个 Bot 后，它的模型与思考等级会出现在这里。"
     )
   )
 
@@ -186,9 +234,11 @@ public enum InspectorSections {
     artifacts: [InspectorArtifact],
     jobs: [InspectorJob],
     tasks: [InspectorTaskRow],
-    usage: [InspectorUsageRow]
+    usage: [InspectorUsageRow],
+    choices: [InspectorChoiceRow] = []
   ) -> [InspectorSectionModel] {
     [
+      modelSection.with(.choices(choices)),
       artifactsSection.with(.artifacts(artifacts)),
       jobsSection.with(.jobs(jobs)),
       tasksSection.with(.tasks(tasks)),

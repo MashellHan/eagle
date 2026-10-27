@@ -92,6 +92,10 @@ public protocol CatalogPort: AnyObject {
   func reorderGroups(ids: [String]) async throws -> [BotGroup]
   /// Files a bot; a nil group unfiles it.
   func moveBot(id: String, groupId: String?) async throws -> BotSummary
+  /// The model ids the gateway offers.
+  func loadModels() async throws -> [String]
+  /// The bot's own agent choice; nil fields are left alone.
+  func setAgent(id: String, model: String?, thinkingLevel: String?) async throws -> BotSummary
   /// Runs one parked task again; the task graph reports it as live work.
   func retryTask(bot: String, task: String) async throws
   /// Stops one live task; the transcript keeps what it committed.

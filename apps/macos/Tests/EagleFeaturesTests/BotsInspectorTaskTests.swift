@@ -116,8 +116,8 @@ struct BotsInspectorTaskTests {
     #expect(presenter.inspectorTasks(for: []).isEmpty)
     let sections = InspectorSections.detail(
       artifacts: [], jobs: [], tasks: presenter.inspectorTasks(for: []), usage: [])
-    #expect(sections[2].isEmpty)
-    #expect(sections[2].placeholder.title == "没有正在运行的任务")
+    #expect(sections[3].isEmpty)
+    #expect(sections[3].placeholder.title == "没有正在运行的任务")
   }
 }
 
@@ -150,5 +150,49 @@ struct BotsInspectorUsageTests {
     #expect(rows.first { $0.id == "input" }?.value == "1.2M")
     let tiny = Usage(inputTokens: 10, outputTokens: 1, totalTokens: 11, costUsd: 0.004)
     #expect(presenter.inspectorUsage(for: tiny).last?.value == "<$0.01")
+  }
+}
+
+/// The inspector's 模型 section: the bot's own model and level as menus, with the daemon's
+/// accepted values and a Chinese label for the level.
+@Suite("Bots inspector agent")
+struct BotsInspectorAgentTests {
+  private let presenter = BotsPresenter()
+
+  private func bot(model: String = "auto/gpt-6-luna") -> BotSummary {
+    BotSummary(
+      id: "b_1",
+      title: "研究员",
+      createdAt: "x",
+      updatedAt: "x",
+      model: ModelRef(provider: "magpie", modelId: model),
+      state: .idle
+    )
+  }
+
+  @Test("the current model comes first when the gateway does not list it")
+  func modelChoices() {
+    let rows = presenter.agentChoices(for: bot(), agent: nil, models: ["auto/gpt-6-sol"])
+    #expect(rows.map(\.id) == ["model", "thinking"])
+    #expect(rows[0].value == "auto/gpt-6-luna")
+    #expect(rows[0].choices.map(\.id) == ["auto/gpt-6-luna", "auto/gpt-6-sol"])
+  }
+
+  @Test("the level shows in Chinese and every daemon level is offered")
+  func levelRow() {
+    let agent = AgentView(
+      model: ModelRef(provider: "magpie", modelId: "auto/gpt-6-luna"),
+      thinkingLevel: "xhigh",
+      instructions: ""
+    )
+    let rows = presenter.agentChoices(for: bot(), agent: agent, models: [])
+    #expect(rows[1].value == "极高")
+    #expect(rows[1].selected == "xhigh")
+    #expect(rows[1].choices.map(\.id) == BotsPresenter.thinkingLevels)
+  }
+
+  @Test("a missing agent view falls back to medium")
+  func fallback() {
+    #expect(presenter.agentChoices(for: bot(), agent: nil, models: [])[1].selected == "medium")
   }
 }

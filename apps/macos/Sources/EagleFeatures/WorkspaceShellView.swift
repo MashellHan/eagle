@@ -229,6 +229,11 @@ public struct WorkspaceShellView: View {
           jobs: selectedIsMock ? inspector.jobs : [],
           tasks: selectedIsBot ? bots.tasks : [],
           usage: selectedIsBot ? bots.usage : [],
+          choices: selectedIsBot ? bots.choices : [],
+          onChoose: { row, value in
+            guard selectedIsBot else { return }
+            Task { await bots.choose(row, value: value) }
+          },
           tab: $inspector.tab,
           onToggleJob: { inspector.setJob($0, isOn: $1) },
           onRetryTask: { id in
@@ -270,6 +275,7 @@ public struct WorkspaceShellView: View {
         // The daemon is a prerequisite of the Bots connection, not of the window.
         await daemon.startIfNeeded()
         await bots.start()
+        await bots.loadModels()
       }
       .onDisappear {
         // Closing the window must release the bot's connection, or its subscriber slot

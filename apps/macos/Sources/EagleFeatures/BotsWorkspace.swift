@@ -51,6 +51,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var tasks: [InspectorTaskRow] = []
   /// The selected bot's spend, already formatted for the inspector's 用量 section.
   @Published private(set) var usage: [InspectorUsageRow] = []
+  /// The selected bot's model and reasoning level, as menus.
+  @Published private(set) var choices: [InspectorChoiceRow] = []
   @Published private(set) var connection: ConnectionState = .connecting
 
   var participantStatus: ParticipantStatus {
@@ -201,6 +203,25 @@ final class BotsWorkspaceViewModel: ObservableObject {
       return
     }
     await app.reorderGroups(order)
+    publish()
+  }
+
+  /// The gateway's model list, for the per-bot menu; loaded once per launch.
+  func loadModels() async {
+    await app?.loadModelsIfNeeded()
+    publish()
+  }
+
+  /// Picks one of the bot's own agent values from the inspector menus.
+  func choose(_ row: String, value: String) async {
+    switch row {
+    case "model":
+      await app?.setAgent(model: value, thinkingLevel: nil)
+    case "thinking":
+      await app?.setAgent(model: nil, thinkingLevel: value)
+    default:
+      break
+    }
     publish()
   }
 
@@ -392,6 +413,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       transcript.clear()
       if !tasks.isEmpty { tasks = [] }
       if !usage.isEmpty { usage = [] }
+      if !choices.isEmpty { choices = [] }
       return
     }
     let conversation = app.conversation
@@ -430,6 +452,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       connection = .stopped
       if !tasks.isEmpty { tasks = [] }
       if !usage.isEmpty { usage = [] }
+      if !choices.isEmpty { choices = [] }
       return
     }
     if title != selected.title { title = selected.title }
@@ -443,6 +466,9 @@ final class BotsWorkspaceViewModel: ObservableObject {
     if tasks != nextTasks { tasks = nextTasks }
     let nextUsage = presenter.inspectorUsage(for: conversation.state.usage)
     if usage != nextUsage { usage = nextUsage }
+    let nextChoices = presenter.agentChoices(
+      for: selected, agent: conversation.state.agent, models: app.models)
+    if choices != nextChoices { choices = nextChoices }
     if running != conversation.state.running { running = conversation.state.running }
     if connection != conversation.connection { connection = conversation.connection }
     let nextRecover = conversation.state.unavailable != nil || conversation.parked
@@ -880,6 +906,50 @@ struct BotsPresenter {
     case .sleeping: return "休眠"
     case .completing: return "收尾"
     default: return status.rawValue
+    }
+  }
+
+  /// The inspector's 模型 rows: the bot's own model and reasoning level, each a menu of the
+  /// values the daemon accepts.
+  func agentChoices(
+    for bot: BotSummary, agent: AgentView?, models: [String]
+  ) -> [InspectorChoiceRow] {
+    let modelChoices =
+      models.contains(bot.model.modelId) || models.isEmpty
+      ? models
+      : [bot.model.modelId] + models
+    return [
+      InspectorChoiceRow(
+        id: "model",
+        label: "模型",
+        value: bot.model.modelId,
+        selected: bot.model.modelId,
+        choices: modelChoices.map { InspectorChoiceRow.Choice(id: $0, title: $0) }
+      ),
+      InspectorChoiceRow(
+        id: "thinking",
+        label: "思考等级",
+        value: Self.thinkingLabel(agent?.thinkingLevel ?? "medium"),
+        selected: agent?.thinkingLevel ?? "medium",
+        choices: Self.thinkingLevels.map {
+          InspectorChoiceRow.Choice(id: $0, title: $0)
+        }
+      ),
+    ]
+  }
+
+  static let thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+
+  static func thinkingLabel(_ level: String) -> String {
+    switch level {
+    case "off": return "关闭"
+    case "minimal": return "极低"
+    case "low": return "低"
+    case "medium": return "中"
+    case "high": return "高"
+    case "xhigh": return "极高"
+    case "max": return "最高"
+    default: return level
     }
   }
 

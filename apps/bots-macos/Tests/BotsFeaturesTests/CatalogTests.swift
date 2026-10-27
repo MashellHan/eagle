@@ -127,6 +127,10 @@ final class CatalogTests: XCTestCase {
 }
 
 final class FakeCatalog: CatalogPort {
+  func loadModels() async throws -> [String] { [] }
+  func setAgent(id: String, model: String?, thinkingLevel: String?) async throws -> BotSummary {
+    throw ClientError("not used")
+  }
   func retryTask(bot: String, task: String) async throws {}
   func abortTask(bot: String, task: String) async throws {}
 

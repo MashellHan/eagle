@@ -18,6 +18,8 @@ public struct ConversationState: Sendable, Equatable {
   public var tasks: [TaskSummary]
   /// Tokens and cost so far; a snapshot is the first place it appears.
   public var usage: Usage?
+  /// What the bot runs with, when the daemon reports it.
+  public var agent: AgentView?
   /// The newest revision applied; a snapshot resets the baseline (PROTOCOL I1/I3).
   public var lastRev: Int?
   /// Highest-ranked record per submission id, so a late reply never downgrades one (I14).
@@ -35,6 +37,7 @@ public struct ConversationState: Sendable, Equatable {
     parked: Bool = false,
     tasks: [TaskSummary] = [],
     usage: Usage? = nil,
+    agent: AgentView? = nil,
     lastRev: Int? = nil,
     ranks: [String: Submission] = [:]
   ) {
@@ -49,6 +52,7 @@ public struct ConversationState: Sendable, Equatable {
     self.parked = parked
     self.tasks = tasks
     self.usage = usage
+    self.agent = agent
     self.lastRev = lastRev
     self.ranks = ranks
   }
@@ -94,6 +98,7 @@ public enum Reducer {
       parked: value.parked ?? false,
       tasks: value.tasks,
       usage: value.usage,
+      agent: value.agent,
       lastRev: rev,
       ranks: ranks
     )

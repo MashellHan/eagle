@@ -438,7 +438,20 @@ final class StubCatalog: CatalogPort {
   var reordered: [[String]] = []
   var moved: [(String, String?)] = []
   var refuseDelete: Error?
+  var models: [String] = ["auto/gpt-6-luna"]
+  var agentChanges: [(String, String?, String?)] = []
   var retriedTasks: [(String, String)] = []
+
+  func loadModels() async throws -> [String] { models }
+
+  func setAgent(id: String, model: String?, thinkingLevel: String?) async throws -> BotSummary {
+    agentChanges.append((id, model, thinkingLevel))
+    guard let index = bots.firstIndex(where: { $0.id == id }) else {
+      throw ClientError("no bot \(id)")
+    }
+    if let model { bots[index].model.modelId = model }
+    return bots[index]
+  }
   var stoppedTasks: [(String, String)] = []
 
   func retryTask(bot: String, task: String) async throws {

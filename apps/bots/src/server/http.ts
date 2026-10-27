@@ -11,6 +11,7 @@ import {
   type BotShape,
   type BotTint,
   ClassifiedFailure,
+  isThinkingLevel,
 } from "../core/domain.ts";
 import { declareEvent } from "../log/events.ts";
 import type { Log } from "../log/log.ts";
@@ -35,6 +36,10 @@ export type ServerOptions = {
   readonly version: string;
   readonly instance: string;
   readonly capabilities: Readonly<Record<string, boolean>>;
+  /** The model ids the configured gateway offers, for a per-bot picker. */
+  readonly models?: () => Promise<readonly string[]>;
+  /** The configured gateway's provider, so a per-bot model id keeps it. */
+  readonly gatewayProvider?: () => string;
   /** Model gateway settings, when the daemon was configured with a store. */
   readonly settings?: GatewayApi;
   readonly pid?: number;
@@ -150,7 +155,7 @@ const updateChanges = (
     }
   | undefined => {
   if (!isObject(body)) return undefined;
-  const allowed = new Set(["title", "label", "appearance", "groupId"]);
+  const allowed = new Set(["title", "label", "appearance", "groupId", "model", "thinkingLevel"]);
   if (Object.keys(body).some((key) => !allowed.has(key))) return undefined;
   const changes: {
     title?: string;
@@ -190,6 +195,26 @@ const updateChanges = (
     any = true;
   }
   return any ? changes : undefined;
+};
+
+/** `{ model, thinkingLevel }` in a bot patch: the bot's own agent choice. */
+const agentChange = (
+  body: unknown,
+): { readonly modelId?: string; readonly thinkingLevel?: string } | undefined => {
+  if (!isObject(body)) return undefined;
+  const change: { modelId?: string; thinkingLevel?: string } = {};
+  if (body.model !== undefined) {
+    if (typeof body.model !== "string") return undefined;
+    const modelId = body.model.trim();
+    if (modelId.length === 0) return undefined;
+    change.modelId = modelId;
+  }
+  if (body.thinkingLevel !== undefined) {
+    const level = body.thinkingLevel;
+    if (!isThinkingLevel(level)) return undefined;
+    change.thinkingLevel = level;
+  }
+  return change.modelId === undefined && change.thinkingLevel === undefined ? undefined : change;
 };
 
 /** `{ groupId }` in a bot patch: a string files it, `null` clears it, absent changes nothing. */
@@ -340,6 +365,10 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
         json(response, 200, { result: await options.settings.test(input) });
         return;
       }
+      if (path === "/v1/models" && request.method === "GET") {
+        json(response, 200, { models: options.models === undefined ? [] : await options.models() });
+        return;
+      }
       if (path === "/v1/bots" && request.method === "GET") {
         json(response, 200, {
           bots: registry.summaries(),
@@ -436,7 +465,8 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
           const body = await readBody(request);
           const changes = updateChanges(body);
           const group = groupChange(body);
-          if (changes === undefined && group === undefined) {
+          const agent = agentChange(body);
+          if (changes === undefined && group === undefined && agent === undefined) {
             json(response, 400, {
               error: {
                 kind: "invalid_command",
@@ -449,6 +479,22 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
           const trace = `tr_http_${++sequence}`;
           let bot = changes === undefined ? undefined : await registry.update(id, changes, trace);
           if (group !== undefined) bot = await registry.moveBot(id, group.value, trace);
+          if (agent !== undefined) {
+            const model =
+              agent.modelId === undefined || options.gatewayProvider === undefined
+                ? undefined
+                : { provider: options.gatewayProvider(), modelId: agent.modelId };
+            bot = await registry.setAgent(
+              id,
+              {
+                ...(model === undefined ? {} : { model }),
+                ...(agent.thinkingLevel === undefined
+                  ? {}
+                  : { thinkingLevel: agent.thinkingLevel }),
+              },
+              trace,
+            );
+          }
           broadcastCatalog();
           json(response, 200, { bot });
           return;

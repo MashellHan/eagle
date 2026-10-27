@@ -10,6 +10,7 @@ import test from "node:test";
 import type { GatewayConfig } from "../../src/server/gateway.ts";
 import {
   gatewayFromEnv,
+  listGatewayModels,
   normalizeBaseUrl,
   publicGateway,
   readGateway,
@@ -129,5 +130,43 @@ test("the probe reports reachability, auth and model count", async () => {
     assert.match(refused.message, /API Key/);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("the gateway's model list is read for a per-bot picker and never throws", async () => {
+  const server = createServer((request, response) => {
+    if (request.headers.authorization !== "Bearer key") {
+      response.writeHead(401).end();
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({ data: [{ id: "auto/gpt-6-luna" }, { id: "auto/gpt-6-sol" }, {}] }),
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address !== null && typeof address !== "string");
+  try {
+    const baseUrl = `http://127.0.0.1:${address.port}/v1`;
+    assert.deepEqual(await listGatewayModels({ baseUrl, apiKey: "key" }), [
+      "auto/gpt-6-luna",
+      "auto/gpt-6-sol",
+    ]);
+    assert.deepEqual(
+      await listGatewayModels({ baseUrl, apiKey: "wrong" }),
+      [],
+      "a 401 lists nothing",
+    );
+    assert.deepEqual(
+      await listGatewayModels({ baseUrl: "http://127.0.0.1:9/v1", apiKey: "key" }),
+      [],
+      "an unreachable gateway lists nothing",
+    );
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      server.closeAllConnections();
+    });
   }
 });

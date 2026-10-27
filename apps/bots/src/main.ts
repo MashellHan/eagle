@@ -26,6 +26,7 @@ import {
   type GatewayApi,
   type GatewayConfig,
   gatewayFromEnv,
+  listGatewayModels,
   normalizeBaseUrl,
   publicGateway,
   readGateway,
@@ -192,13 +193,14 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     },
   });
   const capabilities = {
-    agent: false,
+    agent: true,
     tools: true,
     tasks: true,
     entries: false,
     usage: true,
     peers: false,
   };
+  let modelCache: { at: number; ids: readonly string[] } | undefined;
   const settings: GatewayApi = {
     public: () => publicGateway(gateway),
     save: async (input) => {
@@ -286,6 +288,15 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     instance: `i_${process.pid}`,
     capabilities,
     port: canonical.port,
+    gatewayProvider: () => gateway?.provider ?? "magpie",
+    models: async () => {
+      if (gateway === undefined) return [];
+      const now = Date.now();
+      if (modelCache !== undefined && now - modelCache.at < 60_000) return modelCache.ids;
+      const ids = await listGatewayModels(gateway);
+      modelCache = { at: now, ids };
+      return ids;
+    },
   });
   broadcast = daemon.broadcastCatalog;
   const close = async (): Promise<void> => {

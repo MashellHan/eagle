@@ -7,19 +7,22 @@ public struct InspectorSectionView: View {
   private let onExpand: () -> Void
   private let onRetryTask: (String) -> Void
   private let onStopTask: (String) -> Void
+  private let onChoose: (String, String) -> Void
 
   public init(
     section: InspectorSectionModel,
     onToggleJob: @escaping (String, Bool) -> Void = { _, _ in },
     onExpand: @escaping () -> Void = {},
     onRetryTask: @escaping (String) -> Void = { _ in },
-    onStopTask: @escaping (String) -> Void = { _ in }
+    onStopTask: @escaping (String) -> Void = { _ in },
+    onChoose: @escaping (String, String) -> Void = { _, _ in }
   ) {
     self.section = section
     self.onToggleJob = onToggleJob
     self.onExpand = onExpand
     self.onRetryTask = onRetryTask
     self.onStopTask = onStopTask
+    self.onChoose = onChoose
   }
 
   public var body: some View {
@@ -57,6 +60,45 @@ public struct InspectorSectionView: View {
               set: { onToggleJob(job.id, $0) }
             )
           )
+        }
+      }
+    case .choices(let rows):
+      VStack(alignment: .leading, spacing: Theme.Metric.panelTaskRowGap) {
+        ForEach(rows) { row in
+          HStack(spacing: Theme.Metric.panelSectionRowGap) {
+            Text(row.label)
+              .font(Theme.TypeScale.pill)
+              .foregroundStyle(Theme.Palette.textMuted)
+            Spacer(minLength: 8)
+            Menu {
+              ForEach(row.choices) { choice in
+                Button {
+                  onChoose(row.id, choice.id)
+                } label: {
+                  if choice.id == row.selected {
+                    Label(choice.title, systemImage: "checkmark")
+                  } else {
+                    Text(choice.title)
+                  }
+                }
+              }
+            } label: {
+              HStack(spacing: 4) {
+                Text(row.value)
+                  .font(Theme.TypeScale.pill)
+                  .foregroundStyle(Theme.Palette.textPrimary)
+                  .lineLimit(1)
+                Image(systemName: "chevron.down")
+                  .font(.system(size: 8, weight: .semibold))
+                  .foregroundStyle(Theme.Palette.textMuted)
+              }
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+          }
+          .frame(height: Theme.Metric.panelTaskRowHeight)
         }
       }
     case .usage(let rows):

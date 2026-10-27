@@ -154,6 +154,27 @@ test("a bot's stored thinking level reaches the runtime spec", async () => {
   }
 });
 
+test("a per-bot model and level reach the catalog and the live conversation", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    await setup.registry.open("b_bot0", "tr_agent_0001");
+    const summary = await setup.registry.setAgent(
+      "b_bot0",
+      { model: { provider: "faux", modelId: "faux-9" }, thinkingLevel: "high" },
+      "tr_agent_0002",
+    );
+    assert.equal(summary.model.modelId, "faux-9");
+    const stored = (await setup.directory.load())[0];
+    assert.equal(stored?.model.modelId, "faux-9", "the catalog is the source of truth");
+    assert.equal(stored?.thinkingLevel, "high");
+    assert.deepEqual(setup.levels, ["high"], "the live conversation follows the level");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
 test("a task action refuses an id that is not a wire task id", async () => {
   const setup = await bench({ bots: ["a"] });
   try {

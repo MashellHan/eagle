@@ -83,12 +83,13 @@ version, the instance id, the pid and a bot count, never bot content.
 | `GET` | `/v1/health` | — | `{ "version", "protocolVersion", "instance", "pid", "bots" }` |
 | `GET` | `/v1/bots` | — | `{ "bots": [BotSummary] }` |
 | `POST` | `/v1/bots` | `{ "title", "label"?, "appearance"? }` — `appearance` is `{ "shape", "tint" }` | `201 { "bot": BotSummary }` |
-| `PATCH` | `/v1/bots/:id` | `{ "title"?, "label"?, "appearance"?, "groupId"? }` — a label of `""` and a `groupId` of `null` clear their field | `{ "bot": BotSummary }` |
+| `PATCH` | `/v1/bots/:id` | `{ "title"?, "label"?, "appearance"?, "groupId"?, "model"?, "thinkingLevel"? }` — a label of `""` and a `groupId` of `null` clear their field | `{ "bot": BotSummary }` |
 | `DELETE` | `/v1/bots/:id` | — | `204` |
 | `POST` | `/v1/groups` | `{ "title" }` | `{ "group": BotGroup }` |
 | `PATCH` | `/v1/groups/:id` | `{ "title" }` | `{ "group": BotGroup }` |
 | `PUT` | `/v1/groups/order` | `{ "ids": [string] }` — every group once, in display order | `{ "groups": [BotGroup] }` |
 | `DELETE` | `/v1/groups/:id` | — | `204`, or `409` while a bot is filed under it |
+| `GET` | `/v1/models` | — | `{ "models": [string] }` — the gateway's ids, empty when it cannot be asked |
 | `GET` | `/v1/settings` | — | `{ "settings": GatewaySettings }` |
 | `PUT` | `/v1/settings` | `{ "baseUrl", "model", "apiKey"?, "provider"?, "thinkingLevel"?, "toolGroups"? }` | `{ "settings": GatewaySettings }` |
 | `POST` | `/v1/settings/test` | `{ "baseUrl"?, "model"?, "apiKey"?, "provider"? }` | `{ "result": GatewayProbe }` |
@@ -178,6 +179,14 @@ replacement, never a delta; an empty list means nothing runs.
 - Ids are wire ids (`t_` for tasks, `c_` for conversations); a client that does not parse
   them may treat them as opaque strings.
 - The `tasks` capability is `true`. A client that predates the field simply ignores it.
+
+## Per-bot agent
+
+`PATCH /v1/bots/:id` accepts `model` (an id the gateway lists) and `thinkingLevel` (one of
+the seven levels), which are that bot's own choice: the catalog records them and a live
+conversation moves in place. `GET /v1/models` is a read-only proxy of the gateway's model
+list (cached for a minute), so a picker never has to know the gateway itself. The `agent`
+capability is `true`.
 
 ## Usage
 

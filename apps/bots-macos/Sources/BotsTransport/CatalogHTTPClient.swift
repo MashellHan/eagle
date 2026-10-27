@@ -151,6 +151,27 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
     ).bot
   }
 
+  /// The model ids the configured gateway offers, for a per-bot picker.
+  public func loadModels() async throws -> [String] {
+    struct Payload: Decodable { let models: [String] }
+    return try await request(path: "/v1/models", method: "GET", body: nil, as: Payload.self).models
+  }
+
+  /// The bot's own model and reasoning level; nil fields are left alone.
+  public func setAgent(
+    id: String,
+    model: String?,
+    thinkingLevel: String?
+  ) async throws -> BotSummary {
+    struct Payload: Decodable { let bot: BotSummary }
+    var body: [String: Any] = [:]
+    if let model { body["model"] = model }
+    if let thinkingLevel { body["thinkingLevel"] = thinkingLevel }
+    return try await request(
+      path: "/v1/bots/\(id)", method: "PATCH", body: body, as: Payload.self
+    ).bot
+  }
+
   /// Runs one parked task again; the daemon answers 204 and the task graph follows.
   public func retryTask(bot botId: String, task taskId: String) async throws {
     _ = try await raw(path: "/v1/bots/\(botId)/tasks/\(taskId)/retry", method: "POST", body: nil)

@@ -153,6 +153,32 @@ export const normalizeBaseUrl = (value: string): string | undefined => {
   }
 };
 
+/** The model ids the gateway offers, in its own order; empty when it cannot be asked. */
+export const listGatewayModels = async (
+  config: Pick<GatewayConfig, "baseUrl" | "apiKey">,
+  options: { readonly timeoutMs?: number } = {},
+): Promise<readonly string[]> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? TEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${config.baseUrl.replace(/\/$/, "")}/models`, {
+      headers: { authorization: `Bearer ${config.apiKey}` },
+      signal: controller.signal,
+    });
+    if (!response.ok) return [];
+    const body = (await response.json().catch(() => undefined)) as { data?: unknown } | undefined;
+    if (!Array.isArray(body?.data)) return [];
+    return body.data.flatMap((item) => {
+      const id = (item as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? [id] : [];
+    });
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 /**
  * Proves the app can reach the gateway and that the key is accepted. It asks for the
  * model list, which the OpenAI-compatible endpoint implements, instead of spending a

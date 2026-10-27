@@ -42,6 +42,8 @@ public struct InspectorColumn: View {
   private let jobs: [InspectorJob]
   private let tasks: [InspectorTaskRow]
   private let usage: [InspectorUsageRow]
+  private let choices: [InspectorChoiceRow]
+  private let onChoose: (String, String) -> Void
   @Binding private var tab: Tab
   private let onToggleJob: (String, Bool) -> Void
   private let onRetryTask: (String) -> Void
@@ -64,6 +66,8 @@ public struct InspectorColumn: View {
     jobs: [InspectorJob],
     tasks: [InspectorTaskRow] = [],
     usage: [InspectorUsageRow] = [],
+    choices: [InspectorChoiceRow] = [],
+    onChoose: @escaping (String, String) -> Void = { _, _ in },
     tab: Binding<Tab>,
     onToggleJob: @escaping (String, Bool) -> Void = { _, _ in },
     onRetryTask: @escaping (String) -> Void = { _ in },
@@ -85,6 +89,8 @@ public struct InspectorColumn: View {
     self.jobs = jobs
     self.tasks = tasks
     self.usage = usage
+    self.choices = choices
+    self.onChoose = onChoose
     self._tab = tab
     self.onToggleJob = onToggleJob
     self.onRetryTask = onRetryTask
@@ -154,7 +160,7 @@ public struct InspectorColumn: View {
     switch tab {
     case .detail:
       return InspectorSections.detail(
-        artifacts: artifacts, jobs: jobs, tasks: tasks, usage: usage)
+        artifacts: artifacts, jobs: jobs, tasks: tasks, usage: usage, choices: choices)
     case .library:
       return InspectorSections.library(artifacts: artifacts)
     case .computer:
@@ -169,7 +175,8 @@ public struct InspectorColumn: View {
         onToggleJob: onToggleJob,
         onExpand: onExpand,
         onRetryTask: onRetryTask,
-        onStopTask: onStopTask
+        onStopTask: onStopTask,
+        onChoose: onChoose
       )
     }
   }

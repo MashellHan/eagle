@@ -178,6 +178,26 @@ public final class AppViewModel: ObservableObject {
     }
   }
 
+  /// The gateway's models, loaded once for the per-bot picker.
+  @Published public private(set) var models: [String] = []
+
+  public func loadModelsIfNeeded() async {
+    guard models.isEmpty else { return }
+    models = (try? await catalog.loadModels()) ?? []
+  }
+
+  /// The selected bot's own model and reasoning level.
+  public func setAgent(model: String?, thinkingLevel: String?) async {
+    guard let botId = selection else { return }
+    do {
+      _ = try await catalog.setAgent(id: botId, model: model, thinkingLevel: thinkingLevel)
+      await reload()
+      error = nil
+    } catch {
+      self.error = describe(error)
+    }
+  }
+
   /// Runs one parked task of the selected bot again.
   public func retryTask(_ taskId: String) async {
     guard let botId = selection else { return }

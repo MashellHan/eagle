@@ -216,7 +216,7 @@ public struct BotCatalog: Sendable, Equatable {
   }
 }
 
-public struct ModelRef: Codable, Sendable, Equatable {
+public struct ModelRef: Codable, Hashable, Sendable {
   public var provider: String
   public var modelId: String
 
@@ -464,6 +464,19 @@ public struct Usage: Codable, Hashable, Sendable {
   }
 }
 
+/// What a bot runs with, as the snapshot reports it (`agent` capability).
+public struct AgentView: Codable, Hashable, Sendable {
+  public var model: ModelRef
+  public var thinkingLevel: String
+  public var instructions: String
+
+  public init(model: ModelRef, thinkingLevel: String, instructions: String) {
+    self.model = model
+    self.thinkingLevel = thinkingLevel
+    self.instructions = instructions
+  }
+}
+
 public struct ConversationSnapshot: Codable, Sendable, Equatable {
   public var botId: String
   public var messages: [Message]
@@ -479,6 +492,8 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
   public var tasks: [TaskSummary]
   /// Tokens and cost so far; absent until the first answered turn.
   public var usage: Usage?
+  /// What the bot runs with, when the daemon reports it.
+  public var agent: AgentView?
 
   public init(
     botId: String,
@@ -491,7 +506,8 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     unavailable: BotUnavailable? = nil,
     parked: Bool? = nil,
     tasks: [TaskSummary] = [],
-    usage: Usage? = nil
+    usage: Usage? = nil,
+    agent: AgentView? = nil
   ) {
     self.botId = botId
     self.messages = messages
@@ -504,6 +520,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     self.parked = parked
     self.tasks = tasks
     self.usage = usage
+    self.agent = agent
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -525,6 +542,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     parked = try container.decodeIfPresent(Bool.self, forKey: .parked)
     tasks = try container.decodeIfPresent([TaskSummary].self, forKey: .tasks) ?? []
     usage = try container.decodeIfPresent(Usage.self, forKey: .usage)
+    agent = try container.decodeIfPresent(AgentView.self, forKey: .agent)
     if let pointer = try container.decodeIfPresent(StreamingPointer.self, forKey: .streaming) {
       streaming = pointer.messageId
     } else {
@@ -544,6 +562,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     try container.encodeIfPresent(parked, forKey: .parked)
     try container.encode(tasks, forKey: .tasks)
     try container.encodeIfPresent(usage, forKey: .usage)
+    try container.encodeIfPresent(agent, forKey: .agent)
     if let streaming {
       try container.encode(StreamingPointer(messageId: streaming), forKey: .streaming)
     } else {

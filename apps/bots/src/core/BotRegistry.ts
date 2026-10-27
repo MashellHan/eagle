@@ -345,6 +345,45 @@ export class BotRegistry {
     }
   }
 
+  /**
+   * Per-bot agent choice (the `agent` capability): the catalog records it and a live
+   * conversation follows in place, so no answer has to be interrupted.
+   */
+  async setAgent(
+    botId: string,
+    change: {
+      readonly model?: { readonly provider: string; readonly modelId: string };
+      readonly thinkingLevel?: string;
+    },
+    trace: string,
+  ): Promise<BotSummary> {
+    const entry = this.#entry(botId, trace);
+    const at = (this.#options.now?.() ?? new Date()).toISOString();
+    let config = entry.config;
+    if (change.model !== undefined && change.model.modelId !== config.model.modelId) {
+      config = await this.#write(trace, botId, () =>
+        this.#options.directory.setModel(
+          botId,
+          change.model as NonNullable<typeof change.model>,
+          at,
+        ),
+      );
+      if (entry.handle?.configureModel !== undefined) {
+        await entry.handle.configureModel(change.model, trace);
+      }
+    }
+    if (change.thinkingLevel !== undefined && change.thinkingLevel !== config.thinkingLevel) {
+      config = await this.#write(trace, botId, () =>
+        this.#options.directory.setThinkingLevel(botId, change.thinkingLevel as string, at),
+      );
+      if (entry.handle?.configureThinkingLevel !== undefined) {
+        await entry.handle.configureThinkingLevel(change.thinkingLevel as string, trace);
+      }
+    }
+    entry.config = config;
+    return this.#summary(entry);
+  }
+
   /** Runs one parked task again; the task graph then reports it as live work. */
   async retryTask(botId: string, taskId: string, trace: string): Promise<void> {
     assertTaskId(taskId);
