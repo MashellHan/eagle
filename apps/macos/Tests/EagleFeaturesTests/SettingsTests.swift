@@ -165,6 +165,55 @@ struct SettingsGatewayTests {
     GatewayHTTPStub.handler = nil
   }
 
+  @Test("loadGateway reads the stored thinking level into the form")
+  func loadGatewayThinkingLevel() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { _ in
+      (
+        200,
+        Data(
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"thinkingLevel":"xhigh"}}"#
+            .utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    await model.loadGateway()
+    #expect(model.gateway?.thinkingLevel == "xhigh")
+    #expect(model.gatewayThinkingLevel == "xhigh")
+    #expect(model.gatewayThinkingLevelLabel == "极高")
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("a payload without a thinking level falls back to medium")
+  func loadGatewayWithoutThinkingLevel() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { _ in
+      (
+        200,
+        Data(
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true}}"#
+            .utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    await model.loadGateway()
+    #expect(model.gateway?.thinkingLevel == "medium")
+    #expect(model.gatewayThinkingLevel == "medium")
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("the seven levels name themselves in increasing effort")
+  func thinkingLevelLabels() {
+    let model = SettingsViewModel()
+    #expect(
+      model.thinkingLevels.map(\.value) == [
+        "off", "minimal", "low", "medium", "high", "xhigh", "max",
+      ])
+    #expect(model.thinkingLevels.map(\.label) == ["关闭", "极低", "低", "中", "高", "极高", "最高"])
+    #expect(model.gatewayThinkingLevel == "medium")
+    #expect(model.gatewayThinkingLevelLabel == "中")
+  }
+
   @Test("loadGatewayIfNeeded fetches only once")
   func loadGatewayIfNeededOnce() async throws {
     let (settings, session) = try settingsGatewayFixture()
@@ -276,6 +325,30 @@ struct SettingsGatewayTests {
     #expect(model.gatewayProbe == nil)
     #expect(model.gatewayMessage == "已保存，Bot 会使用这个网关")
     #expect(notified.value)
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("saveGateway sends the chosen thinking level")
+  func saveGatewayThinkingLevel() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { request in
+      #expect(request.httpMethod == "PUT")
+      let body = gatewayHTTPBody(request)
+      let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
+      #expect(parsed?["thinkingLevel"] as? String == "high")
+      return (
+        200,
+        Data(
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"thinkingLevel":"high"}}"#
+            .utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.gatewayBaseURL = "http://gw/v1"
+    model.gatewayModel = "m1"
+    model.setGatewayThinkingLevel("high")
+    await model.saveGateway()
+    #expect(model.gatewayMessage == "已保存，Bot 会使用这个网关")
     GatewayHTTPStub.handler = nil
   }
 

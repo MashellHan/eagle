@@ -1,13 +1,13 @@
 // The composition root: one daemon over one root, wired from configuration, closed cleanly.
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { readConfig } from "../src/config.ts";
 import { startDaemon } from "../src/main.ts";
-import { writeGateway } from "../src/server/gateway.ts";
+import { readGateway, writeGateway } from "../src/server/gateway.ts";
 import { waitFor } from "./support/pi.ts";
 
 test("saved gateway credentials authorize model requests on every daemon boot", async () => {
@@ -58,6 +58,8 @@ test("saved gateway credentials authorize model requests on every daemon boot", 
       model: "saved-model",
       baseUrl: `http://127.0.0.1:${address.port}/v1`,
       apiKey: key,
+      thinkingLevel: "medium",
+      toolGroups: ["core", "herdr"],
     });
     let botId: string | undefined;
     for (const boot of [1, 2]) {
@@ -145,6 +147,106 @@ test("the daemon starts from configuration and closes without leaving work behin
     // close the lock is free again.
     const again = await startDaemon(readConfig({ argv: ["--root", root, "--port", "0"], env: {} }));
     await again.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("settings store the thinking level, refuse an unknown one and apply it to bots", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-levels-"));
+  try {
+    const config = readConfig({ argv: ["--root", root, "--port", "0"], env: {} });
+    const daemon = await startDaemon(config);
+    const put = (body: unknown) =>
+      fetch(`http://127.0.0.1:${daemon.port}/v1/settings`, {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${daemon.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    const settings = {
+      baseUrl: "http://127.0.0.1:9/v1",
+      model: "auto/gpt-6-luna",
+      apiKey: "sk-levels-000000000000000000",
+    };
+    try {
+      const refused = await put({ ...settings, thinkingLevel: "loud" });
+      assert.equal(refused.status, 400, "an unknown level is refused");
+      assert.equal(
+        (await readGateway(root))?.thinkingLevel ?? "medium",
+        "medium",
+        "a refused save writes nothing",
+      );
+
+      const saved = await put({ ...settings, thinkingLevel: "xhigh" });
+      assert.equal(saved.status, 200);
+      const shown = (await saved.json()) as { settings: { thinkingLevel: string; model: string } };
+      assert.equal(shown.settings.thinkingLevel, "xhigh");
+      assert.equal(shown.settings.model, "auto/gpt-6-luna");
+      assert.equal((await readGateway(root))?.thinkingLevel, "xhigh", "the choice is stored");
+
+      const created = await fetch(`http://127.0.0.1:${daemon.port}/v1/bots`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${daemon.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ title: "等级" }),
+      });
+      const botId = ((await created.json()) as { bot: { id: string } }).bot.id;
+      const stored = JSON.parse(await readFile(join(root, "bots", botId, "bot.json"), "utf8")) as {
+        thinkingLevel?: string;
+        model: { modelId: string };
+      };
+      assert.equal(stored.thinkingLevel, "xhigh", "a new bot records the settings level");
+      assert.equal(stored.model.modelId, "auto/gpt-6-luna");
+    } finally {
+      await daemon.close();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("settings store the tool groups, refuse an unknown group and keep core mandatory", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-groups-"));
+  try {
+    const config = readConfig({ argv: ["--root", root, "--port", "0"], env: {} });
+    const daemon = await startDaemon(config);
+    const put = (body: unknown) =>
+      fetch(`http://127.0.0.1:${daemon.port}/v1/settings`, {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${daemon.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    const settings = {
+      baseUrl: "http://127.0.0.1:9/v1",
+      model: "auto/gpt-6-luna",
+      apiKey: "sk-groups-000000000000000000",
+      thinkingLevel: "medium",
+    };
+    try {
+      const refused = await put({ ...settings, toolGroups: ["core", "web"] });
+      assert.equal(refused.status, 400, "an unknown group is refused");
+      assert.equal(await readGateway(root), undefined, "a refused save writes nothing");
+
+      const saved = await put({ ...settings, toolGroups: ["herdr"] });
+      assert.equal(saved.status, 200);
+      const shown = (await saved.json()) as { settings: { toolGroups: string[] } };
+      assert.deepEqual(shown.settings.toolGroups, ["core", "herdr"], "core is implied");
+      assert.deepEqual((await readGateway(root))?.toolGroups, ["core", "herdr"]);
+
+      const trimmed = await put({ ...settings, toolGroups: [] });
+      assert.equal(trimmed.status, 200);
+      assert.deepEqual((await readGateway(root))?.toolGroups, ["core"], "core alone remains");
+    } finally {
+      await daemon.close();
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

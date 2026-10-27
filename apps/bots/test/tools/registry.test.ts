@@ -41,6 +41,22 @@ test("the bots-tools extension installs the four tools and a workspace section",
   await rm(daemonRoot, { recursive: true, force: true });
 });
 
+test("a bot's tool groups decide which extensions are installed", async () => {
+  const daemonRoot = await mkdtemp(join(tmpdir(), "bots-registry-"));
+  const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"), daemonRoot);
+  const herdr = { client: {} as HerdrClient, stateDir: join(daemonRoot, "bots", "a"), botId: "a" };
+  const coreOnly = createToolRegistry(workspace, { groups: ["core"], herdr }).snapshot();
+  assert.equal(
+    coreOnly.extension(HERDR_TOOLS_EXTENSION),
+    undefined,
+    "core alone installs no herdr",
+  );
+  assert.equal(coreOnly.tools().length, 4, "the core extension keeps its four workspace tools");
+  const both = createToolRegistry(workspace, { groups: ["core", "herdr"], herdr }).snapshot();
+  assert.ok(both.extension(HERDR_TOOLS_EXTENSION), "the herdr group adds its extension");
+  await rm(daemonRoot, { recursive: true, force: true });
+});
+
 test("the herdr extension is installed only when a client is given", async () => {
   const daemonRoot = await mkdtemp(join(tmpdir(), "bots-registry-"));
   const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"), daemonRoot);
@@ -51,9 +67,7 @@ test("the herdr extension is installed only when a client is given", async () =>
   // the wiring contract the runtime depends on.
   const client = {} as HerdrClient;
   const withHerdr = createToolRegistry(workspace, {
-    client,
-    stateDir: join(daemonRoot, "bots", "a"),
-    botId: "a",
+    herdr: { client, stateDir: join(daemonRoot, "bots", "a"), botId: "a" },
   }).snapshot();
   const names = withHerdr
     .tools()

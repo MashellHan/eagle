@@ -79,6 +79,8 @@ const bench = async (
   const timers = fakeTimers();
   let opens = 0;
   const specs: RuntimeBotSpec[] = [];
+  const levels: string[] = [];
+  const groupCalls: (readonly string[])[] = [];
   const registry = new BotRegistry({
     directory,
     openRuntime: async (spec) => {
@@ -89,6 +91,12 @@ const bench = async (
       const busy = (options.busy ?? []).includes(spec.id);
       return {
         ...handle,
+        configureThinkingLevel: async (level: string) => {
+          levels.push(level);
+        },
+        configureToolGroups: async (groups: readonly string[]) => {
+          groupCalls.push(groups);
+        },
         busy: async () => (busy ? { run: true, tasks: false } : handle.busy()),
         close: async (_trace: string, deadlineMs: number) => {
           if (options.waitDeadline === true) {
@@ -116,6 +124,8 @@ const bench = async (
     timers,
     directory,
     specs,
+    levels,
+    groupCalls,
     opens: () => opens,
     setCloseOutcome: (outcome: "closed" | "timeout") => {
       options.closeOutcome = outcome;
@@ -138,6 +148,42 @@ test("a bot's stored thinking level reaches the runtime spec", async () => {
     await setup.registry.start();
     await setup.registry.open("b_think", "tr_think_0001");
     assert.equal(setup.specs.at(-1)?.thinkingLevel, "medium");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
+test("a gateway tool-group change reaches existing bots and new ones", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    await setup.registry.open("b_bot0", "tr_groups_0001");
+    await setup.registry.applyToolGroups(["core"], "tr_groups_0002");
+    assert.deepEqual(setup.groupCalls.at(-1), ["core"], "the live conversation follows");
+    const stored = await setup.directory.load();
+    assert.deepEqual(stored[0]?.toolGroups, ["core"], "the catalog is the source of truth");
+    await setup.registry.create("new", "tr_groups_0003");
+    const created = (await setup.directory.load()).find((bot) => bot.title === "new");
+    assert.deepEqual(created?.toolGroups, ["core"], "a new bot records the settings groups");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
+test("a gateway thinking-level change reaches existing bots and new ones", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    await setup.registry.open("b_bot0", "tr_level_0001");
+    await setup.registry.applyThinkingLevel("high", "tr_level_0002");
+    assert.deepEqual(setup.levels, ["high"], "the live conversation follows in place");
+    const stored = await setup.directory.load();
+    assert.equal(stored[0]?.thinkingLevel, "high", "the catalog is the source of truth");
+    await setup.registry.create("new", "tr_level_0003");
+    const created = (await setup.directory.load()).find((bot) => bot.title === "new");
+    assert.equal(created?.thinkingLevel, "high", "a new bot records the settings level");
   } finally {
     await setup.registry.shutdown();
     await setup.cleanup();

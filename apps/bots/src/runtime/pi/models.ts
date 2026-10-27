@@ -8,6 +8,9 @@ export type ModelsConfig = {
   readonly apiKey: string;
   readonly provider: string;
   readonly modelId: string;
+  /** The window the daemon declares for this model; compaction thresholds count from it. */
+  readonly contextWindow?: number;
+  readonly maxTokens?: number;
 };
 
 /** No gateway means an empty registry: a run settles `no_model` until settings exist. */
@@ -35,8 +38,8 @@ export const createDaemonModels = (config: ModelsConfig | undefined): Models => 
           api: "openai-responses",
           reasoning: true,
           input: ["text"],
-          contextWindow: 200_000,
-          maxTokens: 8_192,
+          contextWindow: config.contextWindow ?? 200_000,
+          maxTokens: config.maxTokens ?? 8_192,
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         },
       ],

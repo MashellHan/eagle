@@ -12,6 +12,7 @@ import {
   type ConversationId,
   type Cursor,
   type EntryId,
+  type Extension,
   type Harness,
   Harness as HarnessFactory,
   type ReportInfo,
@@ -22,7 +23,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import type { ConversationSnapshot, Message, Submission } from "../../core/domain.ts";
-import { ClassifiedFailure } from "../../core/domain.ts";
+import { ClassifiedFailure, resolveToolGroups } from "../../core/domain.ts";
 import type {
   RuntimeBotSpec,
   RuntimeEvent,
@@ -35,6 +36,7 @@ import type {
 import { type DeclaredEvent, declareEvent } from "../../log/events.ts";
 import type { Log } from "../../log/log.ts";
 import { createHerdrClient } from "../../tools/herdr/client.ts";
+import { HERDR_TOOLS_EXTENSION } from "../../tools/herdr/tools.ts";
 import { createToolRegistry } from "../../tools/registry.ts";
 import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
@@ -70,7 +72,15 @@ const Events = {
 export type PiSettings = {
   readonly stream?: { readonly timeoutMs?: number; readonly deferred?: boolean };
   readonly retry?: { readonly maxRetries?: number };
-  readonly compaction?: { readonly enabled?: boolean };
+  readonly compaction?: {
+    readonly enabled?: boolean;
+    /** Room kept free for the answer; generation compacts above `contextWindow - reserveTokens`. */
+    readonly reserveTokens?: number;
+    /** Recent context a summary keeps verbatim. */
+    readonly keepRecentTokens?: number;
+    /** Background compaction starts this far below the blocking threshold; 0 disables it. */
+    readonly backgroundTokens?: number;
+  };
   readonly progress?: { readonly partialIntervalMs?: number };
   readonly restartLimit?: number;
 };
@@ -78,8 +88,9 @@ export type PiSettings = {
 const DEFAULT_SETTINGS: PiSettings = {
   stream: { timeoutMs: 120_000 },
   retry: { maxRetries: 3 },
-  // F16: a compacting bot looks idle to the close condition, so phase 1 keeps it off.
-  compaction: { enabled: false },
+  // F16: compaction is a conversation-owned background task. The close condition reads
+  // `busy().tasks`, so a compacting bot stays warm instead of being closed mid-summary.
+  compaction: { enabled: true },
   progress: { partialIntervalMs: 100 },
   restartLimit: 5,
 };
@@ -97,6 +108,8 @@ export type PiRuntimeOptions = {
   readonly storage?: (path: string) => Promise<Storage>;
   /** Settings per bot; never shared between bots (F19). */
   readonly settings?: (spec: RuntimeBotSpec) => PiSettings;
+  /** The daemon's compaction policy; the thresholds count from the model's window. */
+  readonly compaction?: PiSettings["compaction"];
   readonly now?: () => number;
   readonly clock?: () => Date;
   readonly windowMessages?: number;
@@ -130,16 +143,24 @@ export class PiDurableRuntime implements RuntimePort {
       const storage = await (this.#options.storage ?? defaultStorage)(
         join(spec.dir, "session.sqlite"),
       );
+      const groups = resolveToolGroups(spec.toolGroups);
+      const registry = createToolRegistry(workspace, {
+        groups,
+        herdr: { client: createHerdrClient(), stateDir: spec.dir, botId: spec.id },
+      });
+      const installed = registry.snapshot().installed();
       const harness = await HarnessFactory.open(
         storage,
         {
           models: this.#options.models,
-          registry: createToolRegistry(workspace, {
-            client: createHerdrClient(),
-            stateDir: spec.dir,
-            botId: spec.id,
-          }),
-          settings: { ...DEFAULT_SETTINGS, ...this.#options.settings?.(spec) } as never,
+          registry,
+          settings: {
+            ...DEFAULT_SETTINGS,
+            ...(this.#options.compaction === undefined
+              ? {}
+              : { compaction: this.#options.compaction }),
+            ...this.#options.settings?.(spec),
+          } as never,
           onReport: (_error, info) => {
             if (handle === undefined) pending.push(info);
             else handle.report(info);
@@ -151,6 +172,7 @@ export class PiDurableRuntime implements RuntimePort {
         agent: {
           model: { provider: spec.model.provider, modelId: spec.model.modelId },
           cwd: workspace.root,
+          extensions: installed,
           ...(spec.thinkingLevel === undefined
             ? {}
             : { thinkingLevel: spec.thinkingLevel as ModelThinkingLevel }),
@@ -162,6 +184,7 @@ export class PiDurableRuntime implements RuntimePort {
         rootId: root.id,
         classifier,
         options: this.#options,
+        installed,
       });
       harness.closed.then((end) => handle?.sessionEnd(end));
       for (const info of pending.splice(0)) handle.report(info);
@@ -209,9 +232,14 @@ type HandleOptions = {
   readonly rootId: ConversationId;
   readonly classifier: FailureClassifier;
   readonly options: PiRuntimeOptions;
+  /** Extensions the registry installed for this bot's groups. */
+  readonly installed: readonly Extension[];
 };
 
 class PiRuntimeHandle implements RuntimeHandle {
+  /** Extensions this handle installed, so a settings change can select among them. */
+  readonly #installed: readonly Extension[];
+
   readonly #spec: RuntimeBotSpec;
   readonly #harness: Harness;
   readonly #rootId: ConversationId;
@@ -248,6 +276,7 @@ class PiRuntimeHandle implements RuntimeHandle {
     this.#rootId = options.rootId;
     this.#classifier = options.classifier;
     this.#options = options.options;
+    this.#installed = options.installed;
     this.#mapper = new EventMapper({
       botId: options.spec.id,
       now: options.options.clock ?? (() => new Date()),
@@ -526,6 +555,25 @@ class PiRuntimeHandle implements RuntimeHandle {
   ): Promise<void> {
     const root = await this.#harness.root(BACKGROUND_CONTEXT);
     await root.configure({ model }, BACKGROUND_CONTEXT);
+  }
+
+  /** Settings changed the tool groups: the conversation keeps only the chosen extensions. */
+  async configureToolGroups(toolGroups: readonly string[], _trace: string): Promise<void> {
+    const chosen = new Set(resolveToolGroups(toolGroups));
+    const keep = this.#installed.filter((extension) =>
+      chosen.has(extension.name === HERDR_TOOLS_EXTENSION ? "herdr" : "core"),
+    );
+    const root = await this.#harness.root(BACKGROUND_CONTEXT);
+    await root.configure({ extensions: keep }, BACKGROUND_CONTEXT);
+  }
+
+  /** Settings changed the reasoning level: the conversation follows without a reopen. */
+  async configureThinkingLevel(thinkingLevel: string, _trace: string): Promise<void> {
+    const root = await this.#harness.root(BACKGROUND_CONTEXT);
+    await root.configure(
+      { thinkingLevel: thinkingLevel as ModelThinkingLevel },
+      BACKGROUND_CONTEXT,
+    );
   }
 
   async busy(): Promise<{ run: boolean; tasks: boolean }> {

@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import type { GatewayConfig } from "../../src/server/gateway.ts";
 import {
   gatewayFromEnv,
   normalizeBaseUrl,
@@ -25,11 +26,13 @@ test("settings round-trip, stay 0600 and never expose the key", async () => {
   const bench_ = await bench();
   try {
     assert.equal(await readGateway(bench_.root), undefined);
-    const config = {
+    const config: GatewayConfig = {
       provider: "magpie",
       baseUrl: "http://127.0.0.1:3425/v1",
       model: "auto/gpt-6-astra",
       apiKey: "sk-secret-0123456789",
+      thinkingLevel: "medium",
+      toolGroups: ["core", "herdr"],
     };
     await writeGateway(bench_.root, config);
     assert.deepEqual(await readGateway(bench_.root), config);
@@ -40,6 +43,8 @@ test("settings round-trip, stay 0600 and never expose the key", async () => {
     assert.deepEqual(shown, {
       configured: true,
       provider: "magpie",
+      thinkingLevel: "medium",
+      toolGroups: ["core", "herdr"],
       baseUrl: "http://127.0.0.1:3425/v1",
       model: "auto/gpt-6-astra",
       hasApiKey: true,
@@ -58,8 +63,18 @@ test("dotenv values are the fallback, and a broken file is not configured", asyn
       BOTS_MODEL: " m ",
       BOTS_PROVIDER: "",
     }),
-    { provider: "magpie", baseUrl: "http://x/v1", model: "m", apiKey: "k" },
+    {
+      provider: "magpie",
+      baseUrl: "http://x/v1",
+      model: "m",
+      apiKey: "k",
+      thinkingLevel: "medium",
+      toolGroups: ["core", "herdr"],
+    },
   );
+  const env = { BOTS_BASE_URL: "http://x/v1", BOTS_API_KEY: "k", BOTS_MODEL: "m" };
+  assert.equal(gatewayFromEnv({ ...env, BOTS_THINKING_LEVEL: "xhigh" })?.thinkingLevel, "xhigh");
+  assert.equal(gatewayFromEnv({ ...env, BOTS_THINKING_LEVEL: "loud" })?.thinkingLevel, "medium");
   assert.equal(gatewayFromEnv({ BOTS_BASE_URL: "http://x" }), undefined);
   const bench_ = await bench();
   try {

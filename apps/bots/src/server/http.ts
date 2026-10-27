@@ -92,12 +92,24 @@ const gatewayInput = (body: unknown): GatewayInput | undefined => {
   if (body === undefined) return {};
   if (typeof body !== "object" || body === null) return undefined;
   const raw = body as Record<string, unknown>;
-  const input: { baseUrl?: string; apiKey?: string; model?: string; provider?: string } = {};
-  for (const key of ["baseUrl", "apiKey", "model", "provider"] as const) {
+  const input: {
+    baseUrl?: string;
+    apiKey?: string;
+    model?: string;
+    provider?: string;
+    thinkingLevel?: string;
+    toolGroups?: readonly string[];
+  } = {};
+  for (const key of ["baseUrl", "apiKey", "model", "provider", "thinkingLevel"] as const) {
     const value = raw[key];
     if (value === undefined) continue;
     if (typeof value !== "string") return undefined;
     input[key] = value;
+  }
+  const groups = raw.toolGroups;
+  if (groups !== undefined) {
+    if (!Array.isArray(groups) || groups.some((name) => typeof name !== "string")) return undefined;
+    input.toolGroups = groups as string[];
   }
   return input;
 };

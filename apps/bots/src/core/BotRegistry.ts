@@ -11,8 +11,12 @@ import {
   type BotSummary,
   ClassifiedFailure,
   DEFAULT_APPEARANCE,
+  DEFAULT_THINKING_LEVEL,
+  DEFAULT_TOOL_GROUPS,
   type ErrorKind,
   type Failure,
+  resolveToolGroups,
+  type ToolGroup,
 } from "./domain.ts";
 import { newFailure } from "./failures.ts";
 import type { RuntimeBotSpec, RuntimeHandle } from "./RuntimePort.ts";
@@ -58,6 +62,10 @@ export type RegistryOptions = {
   readonly directory: BotDirectory;
   readonly openRuntime: (spec: RuntimeBotSpec) => Promise<RuntimeHandle>;
   readonly model: { readonly provider: string; readonly modelId: string };
+  /** The reasoning level a newly created bot records; settings can change it at runtime. */
+  readonly thinkingLevel?: string;
+  /** The tool groups a newly created bot records; settings can change it at runtime. */
+  readonly toolGroups?: readonly ToolGroup[];
   readonly log: Log;
   readonly idleCloseMs: number;
   readonly quarantineRetryMs: number;
@@ -100,6 +108,10 @@ export class BotRegistry {
   readonly #entries = new Map<string, Entry>();
   /** The model a newly created bot records; settings can change it at runtime. */
   #defaultModel: { readonly provider: string; readonly modelId: string };
+  /** The reasoning level a newly created bot records; settings can change it at runtime. */
+  #defaultThinkingLevel: string;
+  /** The tool groups a newly created bot records; settings can change it at runtime. */
+  #defaultToolGroups: readonly ToolGroup[];
   readonly #boot: () => string;
   #sequence = 0;
   /** Creations in flight, so two concurrent creates cannot both take the last slot. */
@@ -107,6 +119,8 @@ export class BotRegistry {
 
   constructor(options: RegistryOptions) {
     this.#defaultModel = options.model;
+    this.#defaultThinkingLevel = options.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
+    this.#defaultToolGroups = options.toolGroups ?? DEFAULT_TOOL_GROUPS;
     this.#options = options;
     this.#boot =
       options.bootTrace ??
@@ -204,6 +218,29 @@ export class BotRegistry {
   }
 
   /**
+   * Applies a reasoning level to every bot: the catalog records it and a live conversation
+   * follows in place, so no answer has to be interrupted.
+   */
+  async applyThinkingLevel(thinkingLevel: string, trace: string): Promise<void> {
+    this.#defaultThinkingLevel = thinkingLevel;
+    for (const entry of this.#entries.values()) {
+      if (entry.config.thinkingLevel === thinkingLevel) continue;
+      const at = (this.#options.now?.() ?? new Date()).toISOString();
+      try {
+        const config = await this.#write(trace, entry.config.id, () =>
+          this.#options.directory.setThinkingLevel(entry.config.id, thinkingLevel, at),
+        );
+        entry.config = config;
+        if (entry.handle?.configureThinkingLevel !== undefined) {
+          await entry.handle.configureThinkingLevel(thinkingLevel, trace);
+        }
+      } catch {
+        // One bot that cannot be written must not stop the others.
+      }
+    }
+  }
+
+  /**
    * Applies a gateway model to every bot: the catalog records it, a live conversation is
    * moved in place (its session keeps its history), and a closed one opens with it later.
    */
@@ -231,6 +268,31 @@ export class BotRegistry {
       } catch {
         // One bot that cannot be written must not stop the others; the failed entry keeps
         // its old model and the next save retries it.
+      }
+    }
+  }
+
+  /**
+   * Applies a tool-group selection to every bot: the catalog records it and a live
+   * conversation drops or regains the extensions in place.
+   */
+  async applyToolGroups(toolGroups: readonly string[], trace: string): Promise<void> {
+    const resolved = resolveToolGroups(toolGroups);
+    this.#defaultToolGroups = resolved;
+    for (const entry of this.#entries.values()) {
+      const current = resolveToolGroups(entry.config.toolGroups ?? DEFAULT_TOOL_GROUPS);
+      if (current.join(",") === resolved.join(",")) continue;
+      const at = (this.#options.now?.() ?? new Date()).toISOString();
+      try {
+        const config = await this.#write(trace, entry.config.id, () =>
+          this.#options.directory.setToolGroups(entry.config.id, resolved, at),
+        );
+        entry.config = config;
+        if (entry.handle?.configureToolGroups !== undefined) {
+          await entry.handle.configureToolGroups(resolved, trace);
+        }
+      } catch {
+        // One bot that cannot be written must not stop the others.
       }
     }
   }
@@ -268,6 +330,8 @@ export class BotRegistry {
       createdAt: at,
       updatedAt: at,
       model: this.#defaultModel,
+      thinkingLevel: this.#defaultThinkingLevel,
+      toolGroups: this.#defaultToolGroups,
     };
     // Checked before the write: a summary the `bots` event cannot carry must not exist.
     this.#assertSummary({ ...config, state: "catalogued" }, trace);
@@ -531,9 +595,8 @@ export class BotRegistry {
         id: entry.config.id,
         dir: this.#options.directory.botDir(entry.config.id),
         model: entry.config.model,
-        ...(entry.config.thinkingLevel === undefined
-          ? {}
-          : { thinkingLevel: entry.config.thinkingLevel }),
+        thinkingLevel: entry.config.thinkingLevel ?? this.#defaultThinkingLevel,
+        toolGroups: resolveToolGroups(entry.config.toolGroups ?? this.#defaultToolGroups),
         trace,
       });
       entry.handle = handle;

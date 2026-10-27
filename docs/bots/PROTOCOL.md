@@ -84,13 +84,14 @@ version, the instance id, the pid and a bot count, never bot content.
 | `PATCH` | `/v1/bots/:id` | `{ "title"?, "label"?, "appearance"? }` — a label of `""` clears it | `{ "bot": BotSummary }` |
 | `DELETE` | `/v1/bots/:id` | — | `204` |
 | `GET` | `/v1/settings` | — | `{ "settings": GatewaySettings }` |
-| `PUT` | `/v1/settings` | `{ "baseUrl", "model", "apiKey"?, "provider"? }` | `{ "settings": GatewaySettings }` |
+| `PUT` | `/v1/settings` | `{ "baseUrl", "model", "apiKey"?, "provider"?, "thinkingLevel"?, "toolGroups"? }` | `{ "settings": GatewaySettings }` |
 | `POST` | `/v1/settings/test` | `{ "baseUrl"?, "model"?, "apiKey"?, "provider"? }` | `{ "result": GatewayProbe }` |
 
 ```json
 // GatewaySettings: the key is never returned, only whether one is stored.
 { "configured": true, "provider": "magpie", "baseUrl": "http://127.0.0.1:3425/v1",
-  "model": "auto/gpt-6-astra", "hasApiKey": true }
+  "model": "auto/gpt-6-luna", "hasApiKey": true, "thinkingLevel": "medium",
+  "toolGroups": ["core", "herdr"] }
 
 // GatewayProbe: the test asks the gateway for its model list.
 { "ok": true, "status": 200, "message": "连接成功，网关报告 17 个模型",
@@ -99,7 +100,7 @@ version, the instance id, the pid and a bot count, never bot content.
 
 Gateway rules:
 
-- **One stored gateway.** The daemon keeps `{ provider, baseUrl, model, apiKey }` in
+- **One stored gateway.** The daemon keeps `{ provider, baseUrl, model, apiKey, thinkingLevel }` in
   `<root>/gateway.json` (0600, beside the token); the dotenv is only the fallback when that
   file is absent. `configured` means all three of `baseUrl`, `model` and `apiKey` are set.
 - **The key is write-only.** `PUT` with an omitted or empty `apiKey` keeps the stored one,
@@ -108,6 +109,16 @@ Gateway rules:
   place (its session keeps its history), and the catalog is rebroadcast because every
   summary's `model` changes. A malformed URL, an empty model or an empty key is a `400`
   and nothing is written.
+- **The thinking level is one setting for every bot.** `thinkingLevel` is one of `off`,
+  `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; `medium` is the default when the
+  field or the whole file is absent. Saving it writes each bot's stored configuration and moves a
+  live conversation to the new level in place; an unknown value is a `400` and nothing is
+  written.
+- **Tool groups are chosen per daemon.** `toolGroups` lists the groups every bot is given:
+  `core` (the workspace tools: read, write, list and run) and `herdr` (the terminal
+  collaborator). An empty array means `core` alone, because the core group cannot be turned
+  off; an unknown name is a `400` and nothing is written. Saving it records the selection on
+  every bot and changes what a live conversation offers in place.
 - **Testing is separate.** `POST /v1/settings/test` probes `GET {baseUrl}/models` with the
   key; a `401` is reported as a refused key, a timeout as an unreachable gateway. It does
   not save and does not spend a generation.

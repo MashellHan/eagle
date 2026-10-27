@@ -97,8 +97,14 @@ public struct SettingsView: View {
               secure: true
             )
           }
-          gatewayField("模型", detail: "Bot 使用的模型 id，例如 auto/gpt-6-astra") {
+          gatewayField("模型", detail: "Bot 使用的模型 id，例如 auto/gpt-6-luna") {
             SettingsTextField("模型 id", text: $model.gatewayModel)
+          }
+          gatewayField("思考等级", detail: "Bot 的推理努力程度，保存后立即生效") {
+            HStack(spacing: 0) {
+              thinkingLevelMenu
+              Spacer(minLength: 0)
+            }
           }
           HStack(spacing: 10) {
             SettingsActionButton("测试连接") {
@@ -146,6 +152,32 @@ public struct SettingsView: View {
         .font(.system(size: 11.5))
         .foregroundStyle(Theme.Palette.textMuted)
     }
+  }
+
+  /// The seven reasoning levels as a popup, drawn like `PillMenu` so the tab keeps one style.
+  private var thinkingLevelMenu: some View {
+    Menu {
+      ForEach(model.thinkingLevels, id: \.value) { level in
+        Button(level.label) { model.setGatewayThinkingLevel(level.value) }
+      }
+    } label: {
+      HStack(spacing: 6) {
+        Text(model.gatewayThinkingLevelLabel)
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(Theme.Palette.textPrimary)
+        Image(systemName: "chevron.down")
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundStyle(Theme.Palette.textSecondary)
+      }
+      .padding(.horizontal, 14)
+      .frame(height: 32)
+      .background(Capsule().fill(Theme.Palette.canvas))
+      .overlay(Capsule().strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline))
+    }
+    .menuStyle(.button)
+    .buttonStyle(.plain)
+    .menuIndicator(.hidden)
+    .fixedSize()
   }
 
   private var appearanceLabel: String {

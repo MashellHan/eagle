@@ -9,6 +9,22 @@ public struct GatewaySettings: Decodable, Sendable, Equatable {
   public var baseUrl: String
   public var model: String
   public var hasApiKey: Bool
+  /// A daemon older than the field reports no level; the daemon itself then uses `medium`.
+  public var thinkingLevel: String
+
+  private enum CodingKeys: String, CodingKey {
+    case configured, provider, baseUrl, model, hasApiKey, thinkingLevel
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    configured = try container.decode(Bool.self, forKey: .configured)
+    provider = try container.decode(String.self, forKey: .provider)
+    baseUrl = try container.decode(String.self, forKey: .baseUrl)
+    model = try container.decode(String.self, forKey: .model)
+    hasApiKey = try container.decode(Bool.self, forKey: .hasApiKey)
+    thinkingLevel = try container.decodeIfPresent(String.self, forKey: .thinkingLevel) ?? "medium"
+  }
 }
 
 /// The daemon's probe of a gateway: reachability, auth and how long it took.
@@ -92,14 +108,17 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
       .settings
   }
 
-  /// Saving applies the gateway to new bots and moves live conversations to the model.
+  /// Saving applies the gateway to new bots and moves live conversations to the model and level.
   public func saveGateway(
     baseURL: String,
     model: String,
+    thinkingLevel: String,
     apiKey: String?
   ) async throws -> GatewaySettings {
     struct Payload: Decodable { let settings: GatewaySettings }
-    var body: [String: Any] = ["baseUrl": baseURL, "model": model]
+    var body: [String: Any] = [
+      "baseUrl": baseURL, "model": model, "thinkingLevel": thinkingLevel,
+    ]
     if let apiKey, !apiKey.isEmpty { body["apiKey"] = apiKey }
     return try await request(path: "/v1/settings", method: "PUT", body: body, as: Payload.self)
       .settings

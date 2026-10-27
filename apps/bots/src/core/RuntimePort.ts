@@ -42,6 +42,8 @@ export type RuntimeBotSpec = {
   readonly model: { readonly provider: string; readonly modelId: string };
   /** A bot's stored reasoning level, when it has one; the runtime applies it per bot. */
   readonly thinkingLevel?: string;
+  /** The tool groups this bot was given; `core` is always included. */
+  readonly toolGroups?: readonly string[];
   readonly trace: string;
 };
 
@@ -85,6 +87,10 @@ export interface RuntimeHandle {
     model: { readonly provider: string; readonly modelId: string },
     trace: string,
   ): Promise<void>;
+  /** Gateway settings changed: move a live conversation to the new reasoning level. */
+  configureThinkingLevel?(thinkingLevel: string, trace: string): Promise<void>;
+  /** Gateway settings changed: keep only the chosen tool groups' extensions. */
+  configureToolGroups?(toolGroups: readonly string[], trace: string): Promise<void>;
   close(trace: string, deadlineMs: number): Promise<"closed" | "timeout">;
 }
 

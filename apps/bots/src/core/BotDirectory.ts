@@ -3,8 +3,8 @@
 // (docs/bots/ARCHITECTURE.md "Bot lifecycle"). Everything that mutates the catalog runs
 // on one internal queue, so concurrent callers cannot overwrite each other.
 import { randomUUID } from "node:crypto";
-import type { BotAppearance, BotRecord } from "./domain.ts";
-import { BOT_ID_PATTERN } from "./domain.ts";
+import type { BotAppearance, BotRecord, ToolGroup } from "./domain.ts";
+import { BOT_ID_PATTERN, isToolGroup } from "./domain.ts";
 
 export type DirEntry = { readonly name: string; isDirectory(): boolean };
 
@@ -40,6 +40,8 @@ const CATALOG_VERSION = 1;
 export type BotConfig = BotRecord & {
   readonly instructions?: string;
   readonly thinkingLevel?: string;
+  /** The tool groups this bot was given; absent means every group. */
+  readonly toolGroups?: readonly ToolGroup[];
 };
 
 export type ReconcileResult = {
@@ -60,6 +62,7 @@ const RECORD_KEYS = new Set([
   "model",
   "instructions",
   "thinkingLevel",
+  "toolGroups",
 ]);
 
 const isBotRecord = (value: unknown): value is BotConfig => {
@@ -78,6 +81,13 @@ const isBotRecord = (value: unknown): value is BotConfig => {
     if (typeof appearance.shape !== "string" || typeof appearance.tint !== "string") return false;
   }
   if (optional.thinkingLevel !== undefined && typeof optional.thinkingLevel !== "string") {
+    return false;
+  }
+  const grouped = value as { toolGroups?: unknown };
+  if (
+    grouped.toolGroups !== undefined &&
+    (!Array.isArray(grouped.toolGroups) || grouped.toolGroups.some((name) => !isToolGroup(name)))
+  ) {
     return false;
   }
   return (
@@ -248,6 +258,34 @@ export class BotDirectory {
       if (index === -1) throw new DirectoryError("unknown_bot", `bot ${id} does not exist`);
       const current = bots[index] as BotConfig;
       const updated: BotConfig = { ...current, model, updatedAt: at };
+      await this.#writeAll(bots.map((bot, position) => (position === index ? updated : bot)));
+      return updated;
+    });
+  }
+
+  async setThinkingLevel(id: string, thinkingLevel: string, at: string): Promise<BotConfig> {
+    return this.#serial(async () => {
+      const bots = await this.load();
+      const index = bots.findIndex((bot) => bot.id === id);
+      if (index === -1) throw new DirectoryError("unknown_bot", `bot ${id} does not exist`);
+      const current = bots[index] as BotConfig;
+      const updated: BotConfig = { ...current, thinkingLevel, updatedAt: at };
+      await this.#writeAll(bots.map((bot, position) => (position === index ? updated : bot)));
+      return updated;
+    });
+  }
+
+  async setToolGroups(
+    id: string,
+    toolGroups: readonly ToolGroup[],
+    at: string,
+  ): Promise<BotConfig> {
+    return this.#serial(async () => {
+      const bots = await this.load();
+      const index = bots.findIndex((bot) => bot.id === id);
+      if (index === -1) throw new DirectoryError("unknown_bot", `bot ${id} does not exist`);
+      const current = bots[index] as BotConfig;
+      const updated: BotConfig = { ...current, toolGroups, updatedAt: at };
       await this.#writeAll(bots.map((bot, position) => (position === index ? updated : bot)));
       return updated;
     });

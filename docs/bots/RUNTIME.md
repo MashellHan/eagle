@@ -286,12 +286,13 @@ Projection, which is also part of the mapping contract:
 | --- | --- | --- |
 | `stream.timeoutMs` | 120 000 | A stalled provider must eventually fail the run |
 | `retry.maxRetries` | 3 | 429/5xx are transient |
-| `compaction.enabled` | **false** | F16: compaction is a conversation-owned background task. Phase 1 closes a bot on "no run, no task" and would close a compacting bot out from under itself. Long chats fail with `model_error` and stay readable. Enabling it later needs no close-condition change (it already reads `busy().tasks`) but does need the `tasks` capability so the UI can show a background compaction |
+| `compaction.enabled` | **true** | F16: compaction is a conversation-owned background task. The close condition reads `busy().tasks`, so a compacting bot stays warm instead of being closed mid-summary. Thresholds: `reserveTokens` 16 384, `keepRecentTokens` 8 192, `backgroundTokens` 32 768, each capped to the declared window (`BOTS_CONTEXT_WINDOW`, default 200 000) and overridable per `BOTS_COMPACTION_*`; `BOTS_COMPACTION=off` disables it. `test/e2e/compaction.test.ts` is the acceptance on a 1 200-token window: four `pi.compaction` entries, the request context stops growing at ~2 095 characters while five turns stay readable. The `tasks` capability stays false, so the UI does not show a running compaction yet |
 | `progress.partialIntervalMs` | 100 | Matches the protocol's 50 ms coalescing; local storage makes 100 cheap |
 | `progress.outputIntervalMs` | 100 | Reserved (tool output) |
 | `afterFailedRun` | `"continue"` | A failed run must not strand queued follow-ups |
 | `restartLimit` | 5 (default) | Parked tasks surface as `task_parked` and are cleared by `recover` |
-| `thinkingLevel` (per bot) | from `bot.json`, absent = the model's default | Applied when the Harness opens; a stored level is the bot's own reasoning effort |
+| `toolGroups` (per bot) | from the bot's stored config, default `["core", "herdr"]` | The registry installs only the selected groups: `core` is the four workspace tools and cannot be turned off; `herdr` adds the eight terminal tools. The conversation's agent stores the same selection, so a settings change selects among the installed extensions in place (`root.configure({ extensions })`); `resolveToolGroups` drops unknown names and always keeps `core` |
+| `thinkingLevel` (per bot) | from `bot.json`, default `medium` | Written by the settings page for every bot; applied when the Harness opens and moved in place on a live conversation (`root.configure`). One value for the whole daemon, because a bot cannot yet choose its own |
 | Model gateway | `<root>/gateway.json` (0600), dotenv fallback | The daemon registers one provider from the stored `{provider, baseUrl, model, apiKey}`. `PUT /v1/settings` rewrites the file, swaps the process-wide `Models` (the Harness reads it through a getter), binds the saved key directly to the provider auth resolver (the same path used on startup, without mutating process environment), and moves every bot to the new model in place with `conversation.configure({model})`; a closed bot opens with the catalog's new model. A bot naming another id before that settles `no_model` |
 | `contextRetentionMs`, `documentRetentionMs` | 600 000 (default) | Idle close frees memory; defaults keep reopen cheap |
 
@@ -368,6 +369,18 @@ Rules:
   snapshot and history, and the client pairs them by `callId` into one row (PROTOCOL.md,
   "Tool rows"). A result above the message budget is clamped with a
   `[tool output truncated]` tail instead of the answer's oversized notice.
+
+### Tool groups
+
+The tools are installed as two pi-durable extensions, chosen per bot: `bots-tools`
+(`core`: `read_file`, `write_file`, `list_files`, `run_command`) and `bots-herdr`
+(`herdr`: the eight terminal tools). A bot's stored group selection decides which
+extensions the registry installs, and the conversation's agent stores the same names, so
+the model is offered exactly those tools. `core` is mandatory: a selection without it is
+normalized to include it, and the group table lives in `core/domain.ts` so the daemon, the
+settings API and the registry share one vocabulary. Preferences and limits are unchanged
+per group; turning `herdr` off removes its prompt section and its eight tools from every
+request.
 
 ## Herdr tools (phase 2, slice 2)
 

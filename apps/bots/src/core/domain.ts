@@ -245,3 +245,36 @@ export type BotRecord = {
   readonly updatedAt: string;
   readonly model: { readonly provider: string; readonly modelId: string };
 };
+
+/** The reasoning levels pi accepts; `medium` is the product default. */
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+
+export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
+
+export const isThinkingLevel = (value: unknown): value is ThinkingLevel =>
+  typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
+
+/**
+ * The tools a bot can be given, as groups a person turns on in settings. `core` holds the
+ * workspace tools and cannot be turned off: a bot that cannot read, write or run anything
+ * is not a bot this product ships.
+ */
+export const TOOL_GROUP_NAMES = ["core", "herdr"] as const;
+
+export type ToolGroup = (typeof TOOL_GROUP_NAMES)[number];
+
+export const MANDATORY_TOOL_GROUPS: readonly ToolGroup[] = ["core"];
+
+export const DEFAULT_TOOL_GROUPS: readonly ToolGroup[] = [...TOOL_GROUP_NAMES];
+
+export const isToolGroup = (value: unknown): value is ToolGroup =>
+  typeof value === "string" && (TOOL_GROUP_NAMES as readonly string[]).includes(value);
+
+/** A stored selection, normalized: mandatory groups always present, order stable. */
+export const resolveToolGroups = (names: readonly string[] | undefined): readonly ToolGroup[] => {
+  const chosen = new Set<ToolGroup>(MANDATORY_TOOL_GROUPS);
+  for (const name of names ?? []) if (isToolGroup(name)) chosen.add(name);
+  return TOOL_GROUP_NAMES.filter((name) => chosen.has(name));
+};

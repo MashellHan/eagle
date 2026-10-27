@@ -26,9 +26,17 @@ public final class SettingsViewModel: ObservableObject {
   @Published public var gatewayBaseURL = ""
   @Published public var gatewayModel = ""
   @Published public var gatewayAPIKey = ""
+  @Published public var gatewayThinkingLevel = SettingsViewModel.defaultThinkingLevel
   @Published public var gatewayProbe: GatewayProbe?
   @Published public var gatewayBusy = false
   @Published public var gatewayMessage: String?
+  /// The daemon's reasoning levels, in increasing effort, as the menu lists them.
+  public let thinkingLevels: [(value: String, label: String)] = [
+    ("off", "关闭"), ("minimal", "极低"), ("low", "低"), ("medium", "中"),
+    ("high", "高"), ("xhigh", "极高"), ("max", "最高"),
+  ]
+  public static let defaultThinkingLevel = "medium"
+  private var gatewayThinkingLevelChosen = false
   private var gatewayLoaded = false
   private let botsSettings: BotsSettings
   private let urlSession: URLSession
@@ -93,10 +101,24 @@ public final class SettingsViewModel: ObservableObject {
       gatewayLoaded = true
       if gatewayBaseURL.isEmpty { gatewayBaseURL = settings.baseUrl }
       if gatewayModel.isEmpty { gatewayModel = settings.model }
+      if !gatewayThinkingLevelChosen { gatewayThinkingLevel = settings.thinkingLevel }
       gatewayMessage = settings.configured ? "已配置" : "尚未配置"
     } catch {
       gatewayMessage = "无法读取 Bots 设置：\(error.localizedDescription)"
     }
+  }
+
+  /// The chosen level as the menu shows it; an unknown value falls back to the default's label.
+  public var gatewayThinkingLevelLabel: String {
+    (thinkingLevels.first { $0.value == gatewayThinkingLevel }
+      ?? thinkingLevels.first { $0.value == Self.defaultThinkingLevel })?.label
+      ?? Self.defaultThinkingLevel
+  }
+
+  /// A pick is a draft until saved; loading must not overwrite it with the stored level.
+  public func setGatewayThinkingLevel(_ value: String) {
+    gatewayThinkingLevelChosen = true
+    gatewayThinkingLevel = value
   }
 
   /// Probes the typed values; an empty key field tests the one already stored.
@@ -122,6 +144,7 @@ public final class SettingsViewModel: ObservableObject {
       let settings = try await client().saveGateway(
         baseURL: gatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
         model: gatewayModel.trimmingCharacters(in: .whitespacesAndNewlines),
+        thinkingLevel: gatewayThinkingLevel.trimmingCharacters(in: .whitespacesAndNewlines),
         apiKey: gatewayAPIKey
       )
       gateway = settings
