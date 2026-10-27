@@ -163,7 +163,7 @@ struct SettingsGatewayTests {
     await model.loadGateway()
     #expect(model.gatewayBaseURL == "http://typed/v1")
     #expect(model.gatewayModel == "typed-model")
-    #expect(model.gatewayToolGroups == ["core"])
+    #expect(model.gatewayToolGroups == ["core", "agents"])
     GatewayHTTPStub.handler = nil
   }
 
@@ -249,8 +249,8 @@ struct SettingsGatewayTests {
     }
     let model = SettingsViewModel(botsSettings: settings, urlSession: session)
     await model.loadGateway()
-    #expect(model.gateway?.toolGroups == ["core", "herdr"])
-    #expect(model.gatewayToolGroups == ["core", "herdr"])
+    #expect(model.gateway?.toolGroups == ["core", "herdr", "agents"])
+    #expect(model.gatewayToolGroups == ["core", "herdr", "agents"])
     GatewayHTTPStub.handler = nil
   }
 
@@ -263,7 +263,7 @@ struct SettingsGatewayTests {
     model.setToolGroup("herdr", isOn: false)
     #expect(model.isToolGroupEnabled("herdr") == false)
     model.setToolGroup("herdr", isOn: true)
-    #expect(model.gatewayToolGroups == ["core", "herdr"])
+    #expect(model.gatewayToolGroups == ["core", "herdr", "agents"])
   }
 
   @Test("loadGatewayIfNeeded fetches only once")
@@ -410,11 +410,11 @@ struct SettingsGatewayTests {
     GatewayHTTPStub.handler = { request in
       let body = gatewayHTTPBody(request)
       let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
-      #expect(parsed?["toolGroups"] as? [String] == ["core", "herdr"])
+      #expect(parsed?["toolGroups"] as? [String] == ["core", "herdr", "agents"])
       return (
         200,
         Data(
-          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","herdr"]}}"#
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","herdr","agents"]}}"#
             .utf8)
       )
     }
@@ -426,17 +426,17 @@ struct SettingsGatewayTests {
     GatewayHTTPStub.handler = nil
   }
 
-  @Test("saveGateway sends only core once the terminal group is off")
+  @Test("saveGateway keeps the other groups when the terminal group is off")
   func saveGatewayWithoutHerdr() async throws {
     let (settings, session) = try settingsGatewayFixture()
     GatewayHTTPStub.handler = { request in
       let body = gatewayHTTPBody(request)
       let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
-      #expect(parsed?["toolGroups"] as? [String] == ["core"])
+      #expect(parsed?["toolGroups"] as? [String] == ["core", "agents"])
       return (
         200,
         Data(
-          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core"]}}"#
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","agents"]}}"#
             .utf8)
       )
     }

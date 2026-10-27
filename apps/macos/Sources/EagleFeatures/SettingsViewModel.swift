@@ -38,9 +38,10 @@ public final class SettingsViewModel: ObservableObject {
   ]
   public static let defaultThinkingLevel = "medium"
   /// The daemon's tool groups in the order it reports them; `core` cannot be closed.
-  public static let toolGroups = ["core", "herdr"]
+  public static let toolGroups = ["core", "herdr", "agents"]
   public static let mandatoryToolGroup = "core"
   public static let herdrToolGroup = "herdr"
+  public static let agentsToolGroup = "agents"
   private var gatewayThinkingLevelChosen = false
   private var gatewayToolGroupsChosen = false
   private var gatewayLoaded = false

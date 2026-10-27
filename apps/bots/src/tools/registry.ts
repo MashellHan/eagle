@@ -10,6 +10,7 @@ import {
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { DEFAULT_TOOL_GROUPS, resolveToolGroups, type ToolGroup } from "../core/domain.ts";
+import { agentsExtension } from "./agents/tools.ts";
 import { listFilesTool, readFileTool, writeFileTool } from "./files.ts";
 import {
   createHerdrTools,
@@ -120,6 +121,7 @@ export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistr
       ],
     }),
   );
+  if (groups.includes("agents")) registry.install(agentsExtension());
   if (herdr !== undefined) {
     registry.install(
       defineExtension({

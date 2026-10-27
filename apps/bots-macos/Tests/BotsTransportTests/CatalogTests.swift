@@ -145,7 +145,7 @@ final class CatalogHTTPClientTests: XCTestCase {
     XCTAssertTrue(loaded.hasApiKey)
     // A daemon that predates the level or the groups reports none; the client assumes defaults.
     XCTAssertEqual(loaded.thinkingLevel, "medium")
-    XCTAssertEqual(loaded.toolGroups, ["core", "herdr"])
+    XCTAssertEqual(loaded.toolGroups, ["core", "herdr", "agents"])
     // An omitted key must not be sent, so the daemon keeps the stored one.
     let saved = try await client.saveGateway(
       baseURL: "http://x/v1", model: "m2", thinkingLevel: "xhigh", toolGroups: ["core"],

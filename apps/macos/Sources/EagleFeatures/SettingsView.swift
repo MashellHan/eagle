@@ -160,6 +160,13 @@ public struct SettingsView: View {
               .toggleStyle(.switch)
               .tint(Theme.Palette.accentStrong)
           }
+          Divider().overlay(Theme.Palette.line)
+          SettingsRow("子 Agent", detail: "把独立任务委派给子 agent，拿回它的答案") {
+            Toggle("", isOn: toolGroupBinding(SettingsViewModel.agentsToolGroup))
+              .labelsHidden()
+              .toggleStyle(.switch)
+              .tint(Theme.Palette.accentStrong)
+          }
         }
       }
     }

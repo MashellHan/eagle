@@ -9,6 +9,7 @@ test("the core group cannot be turned off and unknown names are dropped", () => 
   assert.deepEqual(resolveToolGroups(["herdr"]), ["core", "herdr"]);
   assert.deepEqual(resolveToolGroups(["core"]), ["core"]);
   assert.deepEqual(resolveToolGroups(["herdr", "web"]), ["core", "herdr"]);
+  assert.deepEqual(resolveToolGroups(["agents"]), ["core", "agents"]);
   assert.deepEqual(resolveToolGroups(undefined), ["core"]);
-  assert.deepEqual(DEFAULT_TOOL_GROUPS, ["core", "herdr"]);
+  assert.deepEqual(DEFAULT_TOOL_GROUPS, ["core", "herdr", "agents"]);
 });

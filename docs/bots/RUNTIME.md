@@ -372,15 +372,33 @@ Rules:
 
 ### Tool groups
 
-The tools are installed as two pi-durable extensions, chosen per bot: `bots-tools`
-(`core`: `read_file`, `write_file`, `list_files`, `run_command`) and `bots-herdr`
-(`herdr`: the eight terminal tools). A bot's stored group selection decides which
+The tools are installed as three pi-durable extensions, chosen per bot: `bots-tools`
+(`core`: `read_file`, `write_file`, `list_files`, `run_command`), `bots-herdr`
+(`herdr`: the eight terminal tools) and `bots-agents` (`agents`: `agent_spawn`,
+`agent_send`, `agent_stop`). A bot's stored group selection decides which
 extensions the registry installs, and the conversation's agent stores the same names, so
 the model is offered exactly those tools. `core` is mandatory: a selection without it is
 normalized to include it, and the group table lives in `core/domain.ts` so the daemon, the
 settings API and the registry share one vocabulary. Preferences and limits are unchanged
 per group; turning `herdr` off removes its prompt section and its eight tools from every
 request.
+
+### Subagents (phase 2, slice 3)
+
+`bots-agents` lets a bot delegate a self-contained task to a child conversation instead of
+doing everything in one context.
+
+| Tool | Behaviour |
+| --- | --- |
+| `agent_spawn` | Creates an ownerless conversation in the same Harness, configured from the caller's agent (model, reasoning level, extensions, tool list, `cwd`, instructions) minus these three tools — one level of delegation, never a tree. Appends a `bots.agent` marker entry (no `model`, so the child never sees it) and answers the child id |
+| `agent_send` | Submits to the child with a request id derived from the call, waits for settlement, and answers the child's final text; a run that ends `unanswered` is an error result naming the reason |
+| `agent_stop` | Aborts the child: queued work is withdrawn and the transcript stays readable |
+
+The child is not a second product: it lives in the same sqlite file, so the daemon's one
+`busy()` and idle close cover it while a tool waits on it, and nothing about it reaches the
+protocol yet (the `peers` capability stays false). The transcript keeps only the tool
+results — the child's conversation is inspectable through `history` by id, which is what a
+later peers surface would read.
 
 ## Herdr tools (phase 2, slice 2)
 

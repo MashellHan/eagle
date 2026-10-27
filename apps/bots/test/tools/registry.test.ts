@@ -13,7 +13,7 @@ import { openWorkspace } from "../../src/tools/workspace.ts";
 test("the bots-tools extension installs the four tools and a workspace section", async () => {
   const daemonRoot = await mkdtemp(join(tmpdir(), "bots-registry-"));
   const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"), daemonRoot);
-  const registry = createToolRegistry(workspace);
+  const registry = createToolRegistry(workspace, { groups: ["core"] });
   const snapshot = registry.snapshot();
   assert.deepEqual(
     snapshot

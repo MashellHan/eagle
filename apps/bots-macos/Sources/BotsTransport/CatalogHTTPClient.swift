@@ -27,7 +27,8 @@ public struct GatewaySettings: Decodable, Sendable, Equatable {
     hasApiKey = try container.decode(Bool.self, forKey: .hasApiKey)
     thinkingLevel = try container.decodeIfPresent(String.self, forKey: .thinkingLevel) ?? "medium"
     toolGroups =
-      try container.decodeIfPresent([String].self, forKey: .toolGroups) ?? ["core", "herdr"]
+      try container.decodeIfPresent([String].self, forKey: .toolGroups)
+        ?? ["core", "herdr", "agents"]
   }
 }
 

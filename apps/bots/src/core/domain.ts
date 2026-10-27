@@ -272,7 +272,7 @@ export const isThinkingLevel = (value: unknown): value is ThinkingLevel =>
  * workspace tools and cannot be turned off: a bot that cannot read, write or run anything
  * is not a bot this product ships.
  */
-export const TOOL_GROUP_NAMES = ["core", "herdr"] as const;
+export const TOOL_GROUP_NAMES = ["core", "herdr", "agents"] as const;
 
 export type ToolGroup = (typeof TOOL_GROUP_NAMES)[number];
 
