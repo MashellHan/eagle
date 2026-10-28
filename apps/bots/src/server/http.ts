@@ -22,6 +22,7 @@ import { parseBearer, tokenMatches } from "./auth.ts";
 import { serverFailure } from "./failures.ts";
 import type { GatewayApi, GatewayInput } from "./gateway.ts";
 import type { ProviderApi } from "./providers.ts";
+import { type RemoteSettingsApi, RemoteSettingsError } from "./remote-settings.ts";
 import { attachConnection, CLOSE, MAX_CONNECTIONS, refuseUpgrade } from "./socket.ts";
 
 const Events = {
@@ -30,6 +31,7 @@ const Events = {
 } as const;
 
 export type ServerOptions = {
+  readonly remoteSettings?: RemoteSettingsApi;
   readonly token: string;
   readonly log: Log;
   readonly registry: BotRegistry;
@@ -320,6 +322,52 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       return;
     }
     try {
+      const remoteMatch = /^\/v1\/bots\/([^/]+)\/remote-tools$/.exec(path);
+      if (remoteMatch !== null) {
+        const botId = remoteMatch[1];
+        if (
+          !botId ||
+          options.remoteSettings === undefined ||
+          !registry.summaries().some((bot) => bot.id === botId)
+        ) {
+          json(response, 404, {
+            error: { kind: "unknown_bot", message: "no such Bot or endpoint" },
+          });
+          return;
+        }
+        try {
+          if (request.method === "GET") {
+            json(response, 200, { remoteTools: options.remoteSettings.read(botId) });
+            return;
+          }
+          if (request.method === "PUT") {
+            let input: unknown;
+            try {
+              input = await readBody(request);
+            } catch {
+              throw new RemoteSettingsError("invalid");
+            }
+            json(response, 200, { remoteTools: await options.remoteSettings.save(botId, input) });
+            return;
+          }
+          json(response, 405, {
+            error: { kind: "invalid_command", message: "method not allowed" },
+          });
+          return;
+        } catch (error) {
+          const code = error instanceof RemoteSettingsError ? error.code : "unavailable";
+          json(response, code === "invalid" ? 400 : code === "conflict" ? 409 : 503, {
+            error: {
+              kind: code === "unavailable" ? "internal" : "invalid_command",
+              message:
+                code === "unavailable"
+                  ? "Remote settings unavailable; refresh to check persisted denial or pending credential cleanup"
+                  : `Remote settings ${code}`,
+            },
+          });
+          return;
+        }
+      }
       if (path === "/v1/settings" && request.method === "GET") {
         json(response, 200, {
           settings: options.settings?.public() ?? {

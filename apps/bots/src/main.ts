@@ -1,7 +1,9 @@
 // The daemon entry point (docs/bots/ARCHITECTURE.md "Process model"): one root, one lock,
 // one token, one log, one registry and one server. Everything here is composition; the
 // behaviour lives in the modules it wires.
-import { readFileSync } from "node:fs";
+
+import { createHash } from "node:crypto";
+import { accessSync, constants, readFileSync, statSync } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import type { DaemonConfig } from "./config.ts";
@@ -42,9 +44,15 @@ import {
   readProviders,
   writeProviders,
 } from "./server/providers.ts";
+import {
+  type RemoteSettingsApi,
+  RemoteSettingsError,
+  RemoteSettingsStore,
+} from "./server/remote-settings.ts";
 import { acquireLock, LockError } from "./server/singleton.ts";
 import { toServerEvent } from "./server/socket.ts";
 import { UsageStore } from "./server/usage.ts";
+import { containsRemoteCredential, createRemoteCredentials } from "./tools/remote/keychain.ts";
 import { createDeepSeekSearch, type SearchClient } from "./tools/search/deepseek.ts";
 
 export type DaemonHandle = {
@@ -164,12 +172,113 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   );
   const compaction = compactionFromEnv(process.env, windowTokens);
   const usageStore = new UsageStore(join(root, "usage.sqlite"));
+  const remoteStore = new RemoteSettingsStore(
+    root,
+    createHash("sha256").update(root).digest("hex"),
+  );
+  const remoteCredentials =
+    canonical.credentialHelper === undefined
+      ? undefined
+      : createRemoteCredentials(canonical.credentialHelper);
+  const helperAvailable = () => {
+    if (canonical.credentialHelper === undefined) return false;
+    try {
+      accessSync(canonical.credentialHelper, constants.X_OK);
+      return statSync(canonical.credentialHelper).isFile();
+    } catch {
+      return false;
+    }
+  };
+  const remoteCleanup = new Map<string, Promise<void>>();
+  const cleanupRemoteBinding = (
+    botId: string,
+    binding: { origin: string; credentialRef: string },
+  ): Promise<void> => {
+    const key = JSON.stringify([botId, binding.origin, binding.credentialRef]);
+    const pending = remoteCleanup.get(key);
+    if (pending !== undefined) return pending;
+    const work = Promise.resolve()
+      .then(async () => {
+        // A prior save may have completed cleanup before this caller resumed.
+        if (
+          !remoteStore
+            .read(botId)
+            .pendingRemovals.some(
+              (current) =>
+                current.origin === binding.origin &&
+                current.credentialRef === binding.credentialRef,
+            )
+        )
+          return;
+        if (remoteCredentials === undefined) throw new RemoteSettingsError("unavailable");
+        await remoteCredentials.remove({ namespace: remoteStore.namespace, botId, ...binding });
+        remoteStore.completeRemoval(botId, binding);
+      })
+      .finally(() => {
+        remoteCleanup.delete(key);
+      });
+    remoteCleanup.set(key, work);
+    return work;
+  };
+  const remoteSettings: RemoteSettingsApi = {
+    read: (botId) => {
+      const { namespace, revision, targets, pendingRemovals, blocked } = remoteStore.read(botId);
+      return {
+        namespace,
+        revision,
+        targets,
+        helperAvailable: helperAvailable(),
+        cleanupPending: blocked || pendingRemovals.length > 0,
+      };
+    },
+    save: async (botId, input) => {
+      let saved: ReturnType<RemoteSettingsStore["read"]>;
+      let incomplete = false;
+      try {
+        saved = await remoteStore.save(botId, input, async (target, signal) => {
+          if (remoteCredentials === undefined) return false;
+          const credential = await remoteCredentials.read(
+            {
+              namespace: remoteStore.namespace,
+              botId,
+              origin: target.origin,
+              credentialRef: target.credentialRef,
+            },
+            signal,
+          );
+          return !containsRemoteCredential(target, credential);
+        });
+      } catch (error) {
+        if (!(error instanceof RemoteSettingsError) || error.code !== "unavailable") throw error;
+        saved = remoteStore.read(botId);
+        if (!saved.blocked) throw error;
+        // Legacy-full files already deny all tools. Drain existing cleanup, then
+        // require an explicit refreshed save instead of silently restoring access.
+        incomplete = true;
+      }
+      const cleanup = await Promise.allSettled(
+        saved.pendingRemovals.map((binding) => cleanupRemoteBinding(botId, binding)),
+      );
+      if (incomplete || cleanup.some((result) => result.status === "rejected"))
+        throw new RemoteSettingsError("unavailable");
+      return remoteSettings.read(botId);
+    },
+  };
   const runtime = new PiDurableRuntime({
     models: () => models,
     log,
     compaction,
     usage: usageStore,
     search: () => searchClient(),
+    remote: (spec) =>
+      remoteCredentials === undefined
+        ? undefined
+        : {
+            botId: spec.id,
+            receiptKey: token,
+            read: () => remoteStore.read(spec.id),
+            credentials: remoteCredentials,
+          },
   });
   const defaultModel =
     gateway === undefined
@@ -314,6 +423,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     },
   };
   const daemon = await startServer({
+    remoteSettings,
     token,
     log,
     registry,

@@ -154,6 +154,42 @@ it. A per-bot model picker still needs the `agent` capability.
 
 ## Group rules
 
+### Per-Bot remote machine grants
+
+`GET /v1/bots/:id/remote-tools` and `PUT /v1/bots/:id/remote-tools` require the
+existing local daemon bearer and an existing Bot. GET returns `{remoteTools:
+{namespace, revision, helperAvailable, cleanupPending, targets}}`; namespace is the SHA256 of the
+canonical daemon root. PUT accepts only `{revision, targets}` and replaces that
+Bot's targets after checking the expected revision (409 on conflict). A target
+contains `alias`, `enabled`, canonical `origin`, `machineId`, `credentialRef`, and
+`operations` from command.exec/file.read/file.list/herdr.setup/herdr.inspect.
+At most eight targets fit within the existing 8 KiB HTTP body limit. Aliases and
+machine IDs are bounded identifiers. No token/header/helper path is accepted.
+
+New or expanded enabled targets must resolve their exact helper binding before
+saving, within one 15-second verification budget. Pure reductions do not depend
+on other targets' credentials, and a slow verification cannot block another
+Bot's revocation. A final synchronous revision check protects the atomic commit.
+Removal
+or disable first persists denial, then removes the associated Keychain item;
+cleanup failure is reported as incomplete, never as a successful revocation.
+Only non-secret origin/reference pairs remain pending in the same configuration
+until cleanup is confirmed, so a retry after reopening can finish removal. A
+pending binding cannot be enabled again. GET reports `cleanupPending`; a failed
+PUT may already have persisted denial, so refresh before retrying its revision.
+Concurrent retries share one cleanup for each Bot/origin/reference, including
+the final persisted acknowledgement. Cleanup rechecks the current pending set
+before touching Keychain. Enabling or expanding a grant reserves space for all
+currently enabled bindings to be revoked within the unchanged 128-pending and
+64 KiB file limits. A legacy file without this reserve denies every remote
+target; a retry may clean its existing backlog but does not silently restore
+access. Refresh and explicitly save again to finish removal or verify new grants.
+The non-secret file is replaced atomically with mode 0600 and a directory fsync.
+Corruption refuses remote use while ordinary chat remains available. `remote`
+is an optional tool group, off by default; its visibility alone grants nothing.
+Changing/removing the App's shared deployment must revoke its prior grants before
+reporting completion. Generic tool rows carry only bounded, filtered results.
+
 - **Groups live beside the catalog.** The catalog file holds `groups: [{ id, title }]` in
   display order; a bot's `groupId` is its membership. A membership that points at a missing
   group reads as ungrouped instead of failing the catalog.

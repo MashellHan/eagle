@@ -2,10 +2,12 @@
 // that reads the environment, so every default lives in one place and a test can build a
 // config without touching the process.
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import type { Level } from "./log/log.ts";
 
 export type DaemonConfig = {
+  /** Non-secret host-supplied executable; all credential requests use private stdin. */
+  readonly credentialHelper?: string;
   /** Canonical root: the catalog, the token, the logs and every bot directory. */
   readonly root: string;
   /** Loopback service port. */
@@ -56,6 +58,13 @@ export type ConfigInput = {
 export const readConfig = (input: ConfigInput = {}): DaemonConfig => {
   const argv = input.argv ?? process.argv.slice(2);
   const env = input.env ?? process.env;
+  const credentialHelper = env.BOTS_CREDENTIAL_HELPER;
+  if (
+    credentialHelper !== undefined &&
+    (!isAbsolute(credentialHelper) || credentialHelper.includes("\0"))
+  ) {
+    throw new Error("BOTS_CREDENTIAL_HELPER must be an absolute executable path");
+  }
   let root =
     env.BOTS_ROOT ??
     (input.home === undefined ? defaultRoot() : join(input.home, ".local", "share", "eagle-bots"));
@@ -73,6 +82,7 @@ export const readConfig = (input: ConfigInput = {}): DaemonConfig => {
     }
   }
   return {
+    ...(credentialHelper === undefined ? {} : { credentialHelper }),
     root,
     port,
     idleCloseMs: integer(env.BOTS_IDLE_CLOSE_MS, DEFAULT_IDLE_CLOSE_MS),

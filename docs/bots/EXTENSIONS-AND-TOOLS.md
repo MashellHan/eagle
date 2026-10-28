@@ -384,6 +384,67 @@ fixtures; neither registering tools nor this guide enables a peer UI.
 
 ## 7. Development and acceptance recipe
 
+### Current machine-access slice
+
+The optional `remote` group binds one `bots-remote` extension to each Bot and
+reuses the native shared deferred loader. It starts unselected. Machine capability
+and per-Bot permission are independent: an enabled tool group grants neither.
+The model selects a saved target alias and a fixed command/file/Herdr operation;
+it never selects an origin, credential reference, headers or a helper executable.
+Core and native local coding tools keep their existing semantics.
+
+The host composes remote settings and credentials before runtime open/recovery.
+Each call first persists only the resolved target and a stable operation ID using
+the SDK's `ToolExecutionApi` (second execute parameter) and memo. The ID derives
+from protocol/deployment/machine/Bot/conversation/call identity; arguments are
+checked by the target journal. Reconnect uses get with that ID, not a new run.
+An existing memo with `not_found` never falls back to run: the caller cannot tell
+an unadmitted request from a lost/replaced journal. It retains the receipt for
+explicit inspection.
+Permission is rechecked before sending, querying, cancelling and returning content;
+revocation refuses output and cannot undo effects already applied.
+
+The three deferred tools are `remote_status(target?)` (saved aliases, or one
+machine's real capabilities), `remote_execute(target, operation)` (fixed command,
+file or Herdr union), and `remote_operation(receipt, action: get|cancel)`.
+An opaque non-secret receipt retains the original Bot/target/grant revision,
+conversation/call/tool identity and derived operation ID. Query/cancel validates
+that identity against the current Bot; it cannot use an arbitrary operation ID
+or follow an alias that was rebound. Receipts and SDK memos contain no credentials.
+The full receipt payload is authenticated by domain-separated HMAC-SHA256 with
+the existing private daemon token, checked in constant time before any request.
+Its operation ID stays unchanged. The key is not serialized in receipts or memos;
+rotating that local token invalidates prior receipts. A valid receipt may be used
+from another conversation of the same Bot; different Bots are always refused.
+Changing a Bot's grant revision invalidates prior receipts; restore permissions
+explicitly rather than silently forwarding old work. The target journal handles
+argument conflicts. The adapter uses the version-1 machine execution WebSocket
+wire without importing Eagle code or sharing a build. Caller cancellation stops
+waiting; explicit `remote_operation(cancel)` requests cancellation on the machine.
+Owner authentication uses `Authorization: Bearer`; optional Access service-token
+headers are separate. Requests are at most 16 KiB. Replies are strict, limited
+to 512 KiB frames and 64 KiB operation output, with
+credentials rejected before arguments/memos/results and no redirect following.
+
+`BotsCredentialHelper` is an independent Foundation/Security executable supplied
+with Bots and bundled by its host App. Explicit local authorization calls `put`
+over private stdin to create its own Keychain item; `read`, `status` and `remove`
+use a fixed service and a binding of canonical-root SHA256 namespace, Bot ID,
+random credential reference and canonical deployment origin. The item repeats
+that binding. No arbitrary Keychain service/account is accepted. A different
+origin cannot overwrite or remove an existing binding. `read` emits credentials
+only into the caller's private pipe; all other replies and errors are fixed,
+non-secret status. Both streams/inputs are bounded (64 KiB) and callers enforce
+a 15-second deadline. Keychain reads forbid authentication UI and fail closed
+when missing, locked or denied; they never fall back to the App's own item.
+Items are device-local. App updates may require explicit reauthorization if the
+helper's code-signing identity changes; no ACL compatibility is assumed.
+
+This protects the ordinary invocation path, not against arbitrary code running
+as the same macOS account. No sandbox or new plugin framework is added. The
+Keychain/process fixture and real Harness/WS round trip are distinct acceptance
+steps; implementation status remains in PLAN and checkpoints.
+
 1. Record the operation, group, inputs/results, output bounds, failure cases,
    side effects and replay decision here and in the relevant contract before
    code. Inspect the pinned SDK's exports/types; reuse an existing native tool

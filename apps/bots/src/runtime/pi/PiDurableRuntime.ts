@@ -39,6 +39,7 @@ import { type DeclaredEvent, declareEvent } from "../../log/events.ts";
 import type { Log } from "../../log/log.ts";
 import { createHerdrClient } from "../../tools/herdr/client.ts";
 import { createToolRegistry, selectToolExtensions } from "../../tools/registry.ts";
+import type { RemoteToolOptions } from "../../tools/remote/tools.ts";
 import type { SearchClient } from "../../tools/search/deepseek.ts";
 import type { UsageMeter } from "../../tools/usage.ts";
 import { openWorkspace } from "../../tools/workspace.ts";
@@ -126,6 +127,7 @@ const piEntryId = (domainId: string): EntryId => Number(domainId.replace(/^e_/, 
 const defaultStorage = (path: string): Promise<Storage> => openNodeSqliteStorage(path);
 
 export type PiRuntimeOptions = {
+  readonly remote?: (spec: RuntimeBotSpec) => RemoteToolOptions | undefined;
   /** One `Models` for the process; a provider swap needs no reopen (F19). */
   readonly models: Models | (() => Models);
   readonly log: Log;
@@ -172,7 +174,9 @@ export class PiDurableRuntime implements RuntimePort {
       );
       const groups = resolveToolGroups(spec.toolGroups);
       const search = this.#options.search?.(spec);
+      const remote = this.#options.remote?.(spec);
       const registry = createToolRegistry(workspace, {
+        ...(remote === undefined ? {} : { remote }),
         herdr: { client: createHerdrClient(), stateDir: spec.dir, botId: spec.id },
         ...(search === undefined
           ? {}

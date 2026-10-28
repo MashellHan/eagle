@@ -285,7 +285,35 @@ export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 export const isThinkingLevel = (value: unknown): value is ThinkingLevel =>
   typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
 
-export const TOOL_GROUP_NAMES = ["core", "coding", "herdr", "agents", "search"] as const;
+export const TOOL_GROUP_NAMES = ["core", "coding", "herdr", "agents", "search", "remote"] as const;
+
+export const REMOTE_OPERATIONS = [
+  "command.exec",
+  "file.read",
+  "file.list",
+  "herdr.setup",
+  "herdr.inspect",
+] as const;
+export type RemoteOperationName = (typeof REMOTE_OPERATIONS)[number];
+export type RemoteBinding = {
+  readonly namespace: string;
+  readonly botId: string;
+  readonly credentialRef: string;
+  readonly origin: string;
+};
+export type RemoteTarget = {
+  readonly alias: string;
+  readonly enabled: boolean;
+  readonly origin: string;
+  readonly machineId: string;
+  readonly credentialRef: string;
+  readonly operations: readonly RemoteOperationName[];
+};
+export type RemoteConfiguration = {
+  readonly namespace: string;
+  readonly revision: string;
+  readonly targets: readonly RemoteTarget[];
+};
 
 export type ToolGroup = (typeof TOOL_GROUP_NAMES)[number];
 

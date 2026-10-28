@@ -577,3 +577,36 @@ Verified:
 Remaining evidence gap: the user's previously failed message was not replayed through
 the macOS UI, and rendering was not inspected. Website collection, authentication and
 D1 were outside this local Bots change and were not exercised.
+
+## 2026-10-28 17:35 +08:00 — Optional remote tools and per-Bot authority
+
+The real daemon entry composes private credential IPC and per-Bot non-secret
+grants before the shared registry/runtime opens. The optional remote group uses
+the existing deferred loader; status, fixed execution and receipt query/cancel
+are separate from native local coding tools. Receipts authenticate their complete
+payload with the private daemon token. Stable operation IDs and SDK memos survive
+recovery; an existing memo with a missing target journal never starts another run.
+
+- Red evidence is retained under `.local/bots-remote-*-red.log`: wrong owner
+  header, oversized request, missing-journal replay, receipt tampering, duplicate
+  credential cleanup, and denial-capacity count/byte boundaries. Fixes preserve
+  the documented limits. A legacy-full file denies all targets through cleanup;
+  new access requires an explicit refreshed save.
+- `cd apps/bots && npm run check` exited 0: 514/514, zero skips; fixtures,
+  TypeScript and lint passed; coverage 95.27% lines / 87.54% branches / 91.43%
+  functions. Log: `.local/bots-remote-complete-check.log`. Crash 5/5 and perf 1/1
+  also exited 0 with all four existing performance bounds met.
+- Reviewer and Backend closed receipt integrity and cleanup findings after
+  static review of the final code and retained red/green evidence. Per-Bot
+  cross-conversation use and whole-Bot revision invalidation remain intentional.
+- Parent's real startDaemon/HTTP/private Swift helper/Harness/production relay/
+  Agent receipt chain passed 20/20 on immutable eba1b8a6. True daemon SIGKILL
+  recovery independently passed 14/14 with the original journal and 16/16 with
+  a replacement journal; the same ID/receipt remained and the effect occurred
+  once. Only the model provider used local SSE fixture data. All owned processes
+  and random Keychain items were cleaned. These are separate parent runs, not
+  the daemon unit/coverage gate.
+
+The host still needs to package the helper and expose native per-Bot grants.
+Complete Worker/D1/Access, a physical second Mac, root/browser release gates and
+standalone Bots XCTest are not established by this slice. No push or publication.

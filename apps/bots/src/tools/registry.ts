@@ -16,6 +16,7 @@ import {
   herdrSection,
 } from "./herdr/tools.ts";
 import { createListTool } from "./list.ts";
+import { REMOTE_EXTENSION, type RemoteToolOptions, remoteExtension } from "./remote/tools.ts";
 import { SEARCH_TOOLS_EXTENSION, searchExtension } from "./search/tools.ts";
 import type { BotWorkspace } from "./types.ts";
 
@@ -27,6 +28,7 @@ const GROUP_EXTENSIONS: Record<ToolGroup, readonly string[]> = {
   herdr: [HERDR_TOOLS_EXTENSION, toolSearch.name],
   agents: [AGENTS_TOOLS_EXTENSION],
   search: [SEARCH_TOOLS_EXTENSION, toolSearch.name],
+  remote: [REMOTE_EXTENSION, toolSearch.name],
 };
 
 export const selectToolExtensions = (registry: RegistryReader, groups: readonly string[]) => {
@@ -65,6 +67,7 @@ const bash = createBashTool({
 });
 
 export type ToolRegistryOptions = {
+  readonly remote?: RemoteToolOptions;
   /** Herdr tools need the CLI client and this bot's state directory. */
   readonly herdr?: Omit<HerdrToolOptions, "workspace">;
   /** Web search needs a provider client; absent when no key is configured. */
@@ -95,8 +98,10 @@ export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistr
   registry.install(CodingTools);
   registry.install(agentsExtension());
   if (options.search !== undefined) registry.install(searchExtension(options.search));
+  if (options.remote !== undefined) registry.install(remoteExtension(options.remote));
   // Deferred tools need their loader; without one the model would never see them.
-  if (herdr !== undefined || options.search !== undefined) registry.install(toolSearch);
+  if (herdr !== undefined || options.search !== undefined || options.remote !== undefined)
+    registry.install(toolSearch);
   if (herdr !== undefined) {
     registry.install(
       defineExtension({

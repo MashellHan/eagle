@@ -20,6 +20,7 @@ import {
   type PiRuntimeOptions,
   type PiSettings,
 } from "../../src/runtime/pi/PiDurableRuntime.ts";
+import type { RemoteToolOptions } from "../../src/tools/remote/tools.ts";
 import type { SearchClient } from "../../src/tools/search/deepseek.ts";
 import type { UsageMeter } from "../../src/tools/usage.ts";
 
@@ -36,6 +37,7 @@ export type Bench = {
 };
 
 export type BenchOptions = {
+  readonly remote?: (spec: RuntimeBotSpec) => RemoteToolOptions | undefined;
   readonly settings?: PiSettings;
   readonly provider?: Parameters<typeof fauxProvider>[0];
   readonly storage?: (path: string) => Promise<Storage>;
@@ -60,6 +62,7 @@ export const createBench = async (options: BenchOptions = {}): Promise<Bench> =>
     ...(options.maxMessageBytes === undefined ? {} : { maxMessageBytes: options.maxMessageBytes }),
     ...(options.search === undefined ? {} : { search: options.search }),
     ...(options.usage === undefined ? {} : { usage: options.usage }),
+    ...(options.remote === undefined ? {} : { remote: options.remote }),
   };
   return {
     runtime: new PiDurableRuntime(runtimeOptions),
