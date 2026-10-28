@@ -1800,3 +1800,34 @@ reactivated the new app process, so the app was not assumed stopped during testi
 final daemon restart follows the commit. Herdr ingestion, dashboard auth, D1 and public
 deployment remain outside this change. Extra full-package Swift formatting inspection found
 pre-existing issues in untouched Bots files; edited Swift files pass strict formatting.
+
+## 2026-10-28 10:29 CST - Task hierarchy presentation
+
+The inspector now draws shared dashed trunks and rounded final elbows for the existing
+visible task depths. Row height, task ordering and actions are unchanged. A raster test
+first found zero guide pixels in both appearances; the new rendering and topology tests
+now pass with all 119 feature and 49 design tests. Light/dark snapshots at 319 and 256
+points were inspected, including sibling branches and a separate root. The inspector-only
+snapshot mode uses static fixtures and does not start a Bots connection or daemon.
+
+Coverage and the final app build are running next. Herdr collection, authentication, D1
+and the daemon are unchanged; no real model messages or settings writes were performed.
+The first red run also hit the known row-cost timing fluctuation; its unchanged gate
+passed on the subsequent complete run. No thresholds, exclusions or backend code changed.
+
+### 10:36 CST - Task guide acceptance
+
+The complete coverage run passes 168 tests (119 feature, 49 design), with 95.8% of the
+configured logic lines covered. The new guide shape reports 100% line and function
+coverage. The app bundle builds and its ad-hoc signature verifies. Both appearances and
+both preview widths are accepted; narrow status text truncates while its retry action
+stays visible. The latest live-app inspection showed no running tasks; that state will be
+checked again before restarting the built app after the atomic commit. No real task was
+created for the demo.
+
+The commit hook rejected the test's SwiftUI path visitor under a formatter rule; the
+test now uses the equivalent CoreGraphics visitor without a suppression. Strict formatting
+passes. The final complete coverage rerun passes all 168 tests at 94.4% configured logic
+line coverage (minimum 90%); the new guide remains at 100% lines and functions. The first
+post-format rerun hit the unchanged row-cost benchmark's known fluctuation, which is kept
+in the run logs rather than hidden or addressed by changing its threshold.

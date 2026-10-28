@@ -497,3 +497,12 @@ requires one identity and one origin error. Test failure propagation across SDK,
 and transport together; calling a service twice is not proof that the actual client can
 recover. The new tests use pi-ai's `getCurrentTools` for normalized transcript declarations
 and the wire snapshot's `value.botId`, rather than assuming raw context/envelope fields.
+
+## 2026-10-28 - Native path visitors and the formatter
+
+The task-guide raster and geometry tests passed, but pre-commit rejected `Path.forEach`
+under `ReplaceForEachWithForLoop`. That API visits path elements rather than iterating a
+Sequence, so the suggested collection rewrite was not appropriate. The test now uses
+CoreGraphics' native `applyWithBlock` visitor without disabling the rule. Strict formatting
+must run alongside rendering tests before staging; a passing Swift compiler does not prove
+the project's formatter accepts a native API idiom.

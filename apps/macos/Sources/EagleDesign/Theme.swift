@@ -13,6 +13,7 @@ public enum Theme {
     public static let textPrimary = Color(light: 0x141416, dark: 0xF5F5F7)
     public static let textSecondary = Color(light: 0x6C6C72, dark: 0xA6A6AE)
     public static let textMuted = Color(light: 0x9A9AA2, dark: 0x75757D)
+    public static let taskGuide = textMuted.opacity(0.55)
     public static let accent = Color(light: 0x0B84C4, dark: 0x4FC3F7)
     public static let accentFill = Color(light: 0x2FB457, dark: 0x2FB457)
     public static let accentStrong = Color(light: 0x2FB457, dark: 0x3DD068)
@@ -95,7 +96,10 @@ public enum Theme {
     public static let panelSectionRowGap: CGFloat = 6
     public static let panelTaskRowGap: CGFloat = 2
     public static let panelTaskRowHeight: CGFloat = 28
-    public static let panelTaskIndent: CGFloat = 12
+    public static let panelTaskIndent: CGFloat = 16
+    public static let panelTaskGuideClearance: CGFloat = 3
+    public static let panelTaskGuideRadius: CGFloat = 3
+    public static let panelTaskGuideDash: [CGFloat] = [2, 3]
     public static let panelTaskSpinner: CGFloat = 10
     public static let panelEmptyGlyph: CGFloat = 15
     public static let panelEmptyVertical: CGFloat = 8

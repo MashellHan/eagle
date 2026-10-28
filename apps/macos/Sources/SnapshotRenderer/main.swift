@@ -9,7 +9,7 @@ import SwiftUI
 /// `ImageRenderer` cannot draw AppKit-backed views (`ScrollView`, `TextField`),
 /// so this hosts each view in an offscreen `NSWindow` and caches its display.
 ///
-///     swift run SnapshotRenderer [output-directory]
+///     swift run SnapshotRenderer [output-directory] [--inspector-only]
 @main
 struct SnapshotRenderer {
   @MainActor
@@ -23,6 +23,11 @@ struct SnapshotRenderer {
 
     let app = NSApplication.shared
     app.setActivationPolicy(.prohibited)
+    captureInspectors(in: directory)
+    if CommandLine.arguments.contains("--inspector-only") {
+      print("wrote inspector snapshots to \(directory.path)")
+      return
+    }
 
     for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
       capture(
@@ -111,6 +116,11 @@ struct SnapshotRenderer {
       in: directory
     )
 
+    print("wrote snapshots to \(directory.path)")
+  }
+
+  @MainActor
+  private static func captureInspectors(in directory: URL) {
     let inspectorTasks = [
       InspectorTaskRow(
         id: "t_12", title: "生成回答", symbolName: "sparkles", status: "运行中", depth: 0,
@@ -122,10 +132,36 @@ struct SnapshotRenderer {
         id: "t_14", title: "子 Agent", symbolName: "person.2", status: "已停放：重试次数过多",
         depth: 2, isRunning: false, isBlocked: true),
       InspectorTaskRow(
+        id: "t_16", title: "读取文件", symbolName: "doc.text", status: "等待",
+        depth: 2, isRunning: false, isBlocked: false),
+      InspectorTaskRow(
+        id: "t_17", title: "工具调用", symbolName: "wrench.and.screwdriver", status: "运行中",
+        depth: 1, isRunning: true, isBlocked: false),
+      InspectorTaskRow(
+        id: "t_18", title: "检查结果", symbolName: "checkmark.circle", status: "排队",
+        depth: 2, isRunning: false, isBlocked: false),
+      InspectorTaskRow(
         id: "t_15", title: "上下文压缩", symbolName: "rectangle.compress.vertical",
         status: "休眠", depth: 0, isRunning: false, isBlocked: false),
     ]
     for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
+      let taskSection = InspectorSections.detail(
+        artifacts: [], jobs: [], tasks: inspectorTasks, usage: [])[3]
+      let taskHeight =
+        Theme.Metric.sectionHeaderHeight + Theme.Metric.panelSectionBodyGap
+        + CGFloat(inspectorTasks.count) * Theme.Metric.panelTaskRowHeight
+        + CGFloat(inspectorTasks.count - 1) * Theme.Metric.panelTaskRowGap
+        + Theme.Metric.panelInset * 2
+      for width: CGFloat in [Theme.Metric.inspectorWidth, 256] {
+        capture(
+          InspectorSectionView(section: taskSection)
+            .padding(Theme.Metric.panelInset)
+            .background(Theme.Palette.surface)
+            .preferredColorScheme(scheme),
+          size: CGSize(width: width, height: taskHeight),
+          named: "task-tree-\(Int(width))-\(name)", in: directory,
+          appearance: scheme == .dark ? .darkAqua : .aqua)
+      }
       capture(
         InspectorColumn(
           name: "研究员",
@@ -165,7 +201,6 @@ struct SnapshotRenderer {
       in: directory
     )
 
-    print("wrote snapshots to \(directory.path)")
   }
 
   @MainActor

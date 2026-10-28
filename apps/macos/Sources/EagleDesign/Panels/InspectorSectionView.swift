@@ -125,6 +125,17 @@ public struct InspectorSectionView: View {
           )
         }
       }
+      .background(alignment: .topLeading) {
+        InspectorTaskTree(depths: tasks.map(\.depth))
+          .stroke(
+            Theme.Palette.taskGuide,
+            style: StrokeStyle(
+              lineWidth: Theme.Metric.hairline, lineCap: .round, lineJoin: .round,
+              dash: Theme.Metric.panelTaskGuideDash)
+          )
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
+      }
     case .none:
       EmptyView()
     }
