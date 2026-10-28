@@ -32,6 +32,7 @@ const Events = {
 
 export type ServerOptions = {
   readonly remoteSettings?: RemoteSettingsApi;
+  readonly removeBot?: (id: string, trace: string) => Promise<void>;
   readonly token: string;
   readonly log: Log;
   readonly registry: BotRegistry;
@@ -619,7 +620,9 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
           return;
         }
         if (request.method === "DELETE") {
-          await registry.remove(id, `tr_http_${++sequence}`);
+          const trace = `tr_http_${++sequence}`;
+          if (options.removeBot === undefined) await registry.remove(id, trace);
+          else await options.removeBot(id, trace);
           broadcastCatalog();
           response.writeHead(204).end();
           return;
@@ -627,6 +630,18 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       }
       json(response, 404, { error: { kind: "unknown_bot", message: "no such endpoint" } });
     } catch (error) {
+      if (error instanceof RemoteSettingsError) {
+        json(response, error.code === "conflict" ? 409 : 503, {
+          error: {
+            kind: error.code === "conflict" ? "invalid_command" : "internal",
+            message:
+              error.code === "conflict"
+                ? "Remote setup is still reserved; complete or explicitly clear it before deleting the Bot"
+                : "Remote credential cleanup is incomplete; the Bot remains available for retry",
+          },
+        });
+        return;
+      }
       if (error instanceof DirectoryError) {
         const status =
           error.reason === "group_not_empty"

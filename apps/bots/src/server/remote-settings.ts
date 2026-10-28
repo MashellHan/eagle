@@ -128,7 +128,6 @@ export class RemoteSettingsStore {
     const pendingRemovals = [...value.pendingRemovals];
     for (const target of value.targets) {
       if (
-        target.enabled &&
         !pendingRemovals.some(
           (binding) =>
             binding.origin === target.origin && binding.credentialRef === target.credentialRef,
@@ -207,10 +206,9 @@ export class RemoteSettingsStore {
     const pendingRemovals = [...old.pendingRemovals];
     for (const prior of old.targets) {
       if (
-        prior.enabled &&
         !parsed.data.targets.some(
           (target) =>
-            target.enabled &&
+            (!prior.enabled || target.enabled) &&
             target.origin === prior.origin &&
             target.credentialRef === prior.credentialRef &&
             target.machineId === prior.machineId,

@@ -156,6 +156,14 @@ it. A per-bot model picker still needs the `agent` capability.
 
 ### Per-Bot remote machine grants
 
+Deleting a Bot first persists denial of its remote grants and confirms credential
+cleanup, then removes the Bot from the catalog. Cleanup failure returns 503 and
+keeps the Bot and pending references for retry. A disabled setup reservation must
+be completed or explicitly cleared first (409); deletion must not race a private
+copy that has not finished. Concurrent PUTs cannot grant a deleting Bot, and
+duplicate DELETEs share the same cleanup. The empty authority revision is retained
+after deletion, so an older in-flight verifier cannot recreate its grants.
+
 `GET /v1/bots/:id/remote-tools` and `PUT /v1/bots/:id/remote-tools` require the
 existing local daemon bearer and an existing Bot. GET returns `{remoteTools:
 {namespace, revision, helperAvailable, cleanupPending, targets}}`; namespace is the SHA256 of the
@@ -179,11 +187,15 @@ pending binding cannot be enabled again. GET reports `cleanupPending`; a failed
 PUT may already have persisted denial, so refresh before retrying its revision.
 Concurrent retries share one cleanup for each Bot/origin/reference, including
 the final persisted acknowledgement. Cleanup rechecks the current pending set
-before touching Keychain. Enabling or expanding a grant reserves space for all
-currently enabled bindings to be revoked within the unchanged 128-pending and
+before touching Keychain. Saving a target reserves space for all
+stored bindings to be revoked within the unchanged 128-pending and
 64 KiB file limits. A legacy file without this reserve denies every remote
 target; a retry may clean its existing backlog but does not silently restore
 access. Refresh and explicitly save again to finish removal or verify new grants.
+The host may reserve a disabled target before its private helper writes a new
+credential. Removing that disabled row also schedules idempotent credential
+cleanup, so interrupted local setup keeps an identifiable recovery path. The
+reference is generated locally, and no credential is sent to this HTTP endpoint.
 The non-secret file is replaced atomically with mode 0600 and a directory fsync.
 Corruption refuses remote use while ordinary chat remains available. `remote`
 is an optional tool group, off by default; its visibility alone grants nothing.

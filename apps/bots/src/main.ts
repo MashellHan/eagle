@@ -198,6 +198,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     }
   };
   const remoteCleanup = new Map<string, Promise<void>>();
+  const deletingBots = new Map<string, Promise<void>>();
   const cleanupRemoteBinding = (
     botId: string,
     binding: { origin: string; credentialRef: string },
@@ -240,37 +241,43 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       };
     },
     save: async (botId, input) => {
-      let saved: ReturnType<RemoteSettingsStore["read"]>;
-      let incomplete = false;
-      try {
-        saved = await remoteStore.save(botId, input, async (target, signal) => {
-          if (remoteCredentials === undefined) return false;
-          const credential = await remoteCredentials.read(
-            {
-              namespace: remoteStore.namespace,
-              botId,
-              origin: target.origin,
-              credentialRef: target.credentialRef,
-            },
-            signal,
-          );
-          return !containsRemoteCredential(target, credential);
-        });
-      } catch (error) {
-        if (!(error instanceof RemoteSettingsError) || error.code !== "unavailable") throw error;
-        saved = remoteStore.read(botId);
-        if (!saved.blocked) throw error;
-        // Legacy-full files already deny all tools. Drain existing cleanup, then
-        // require an explicit refreshed save instead of silently restoring access.
-        incomplete = true;
+      if (deletingBots.has(botId) || !registry.summaries().some((bot) => bot.id === botId)) {
+        throw new RemoteSettingsError("conflict");
       }
-      const cleanup = await Promise.allSettled(
-        saved.pendingRemovals.map((binding) => cleanupRemoteBinding(botId, binding)),
-      );
-      if (incomplete || cleanup.some((result) => result.status === "rejected"))
-        throw new RemoteSettingsError("unavailable");
-      return remoteSettings.read(botId);
+      return saveAndDrainRemote(botId, input);
     },
+  };
+  const saveAndDrainRemote = async (botId: string, input: unknown) => {
+    let saved: ReturnType<RemoteSettingsStore["read"]>;
+    let incomplete = false;
+    try {
+      saved = await remoteStore.save(botId, input, async (target, signal) => {
+        if (remoteCredentials === undefined) return false;
+        const credential = await remoteCredentials.read(
+          {
+            namespace: remoteStore.namespace,
+            botId,
+            origin: target.origin,
+            credentialRef: target.credentialRef,
+          },
+          signal,
+        );
+        return !containsRemoteCredential(target, credential);
+      });
+    } catch (error) {
+      if (!(error instanceof RemoteSettingsError) || error.code !== "unavailable") throw error;
+      saved = remoteStore.read(botId);
+      if (!saved.blocked) throw error;
+      // Legacy-full files already deny all tools. Drain existing cleanup, then
+      // require an explicit refreshed save instead of silently restoring access.
+      incomplete = true;
+    }
+    const cleanup = await Promise.allSettled(
+      saved.pendingRemovals.map((binding) => cleanupRemoteBinding(botId, binding)),
+    );
+    if (incomplete || cleanup.some((result) => result.status === "rejected"))
+      throw new RemoteSettingsError("unavailable");
+    return remoteSettings.read(botId);
   };
   const runtime = new PiDurableRuntime({
     models: () => models,
@@ -284,7 +291,10 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
         : {
             botId: spec.id,
             receiptKey: token,
-            read: () => remoteStore.read(spec.id),
+            read: () => {
+              if (deletingBots.has(spec.id)) throw new RemoteSettingsError("unavailable");
+              return remoteStore.read(spec.id);
+            },
             credentials: remoteCredentials,
           },
   });
@@ -419,8 +429,33 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       });
     },
   };
+  const removeBot = (id: string, trace: string): Promise<void> => {
+    const pending = deletingBots.get(id);
+    if (pending !== undefined) return pending;
+    if (!registry.summaries().some((bot) => bot.id === id)) return registry.remove(id, trace);
+    const work = Promise.resolve()
+      .then(async () => {
+        const current = remoteStore.read(id);
+        if (current.blocked) throw new RemoteSettingsError("unavailable");
+        // A native private copy may still be running for this disabled reference.
+        if (current.targets.some((target) => !target.enabled))
+          throw new RemoteSettingsError("conflict");
+        await saveAndDrainRemote(id, { revision: current.revision, targets: [] });
+        const cleaned = remoteStore.read(id);
+        if (cleaned.blocked || cleaned.targets.length > 0 || cleaned.pendingRemovals.length > 0) {
+          throw new RemoteSettingsError("unavailable");
+        }
+        await registry.remove(id, trace);
+      })
+      .finally(() => {
+        deletingBots.delete(id);
+      });
+    deletingBots.set(id, work);
+    return work;
+  };
   const daemon = await startServer({
     remoteSettings,
+    removeBot,
     token,
     log,
     registry,
