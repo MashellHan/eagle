@@ -486,6 +486,9 @@ callers that will use it. Design decisions frozen with the owner:
   like every other group and deferred behind `tool_search`. The Bot's own model
   creates and manages its triggers; the app lists them read-only with a single
   enable switch. No user-facing trigger creation exists.
+- The app lists a Bot's triggers in the sidebar under that bot and mirrors them in
+  read-only detail, with enable as the person's only action; an additive `triggers`
+  event mirrors `tasks` and the model remains the only creator.
 - Transcript messages gain an additive `origin` field backed by a per-Bot
   `origins.jsonl` sidecar, written before admission and applied on all four render
   paths, so a label survives a restart and absence means `unknown`, never `human`.
@@ -495,13 +498,13 @@ callers that will use it. Design decisions frozen with the owner:
 
 Stage order: 0 interface and its contract tests (including the two adapter/registry
 fixes it needs), 1 `trigger` group with schedule plus origin field and app surface,
-2 webhook ingress, 3 `peers`. Each stage states its exit criteria in TRIGGERS.md §11.
+2 webhook ingress, 3 `peers`. Each stage states its exit criteria in TRIGGERS.md §12.
 
 ## Next work, in order
 
 1. Finish the client surface: history paging, bot settings behind the `agent`
    capability, and an inspector that renders a bot's own state.
-2. Deliver the trigger stages in [TRIGGERS.md](TRIGGERS.md) §11, starting with the
+2. Deliver the trigger stages in [TRIGGERS.md](TRIGGERS.md) §12, starting with the
    invocation port, because every later caller depends on it and none of them
    changes it.
 

@@ -20,9 +20,9 @@ engine, a second queue of model work, or a new delivery state machine.
 | --- | --- |
 | One bot-side invocation port every caller uses | A generic job queue, message bus or plugin framework |
 | A `trigger` tool group: the Bot creates and manages its own schedule and webhook triggers | Any user-facing creation, editing or deletion of triggers |
-| A read-only trigger surface in the app: list, detail, enable switch | Per-trigger editing in the app, templates, folders |
+| A read-only trigger surface in the app: sidebar rows, inspector detail, enable switch | Per-trigger editing in the app, templates, folders |
 | A `peers` tool group: Bot-to-Bot admission and observation | Broadcast, fan-out, answer forwarding, synchronous peer calls |
-| Durable definitions, queues, admission origins, ordered shutdown | Public ingress: the daemon stays loopback-only (§8.3) |
+| Durable definitions, queues, admission origins, ordered shutdown | Public ingress: the daemon stays loopback-only (§9.3) |
 | Additive `origin` on transcript messages | Reusing the website, Worker or D1 as a relay |
 
 The owner's decision that cron is not our product means: no scheduling service the
@@ -122,7 +122,7 @@ characters (`BotRegistry.ts:95`) and SDK call IDs may contain `/`
 | Client `send` | `r_<client id>` | 8–64 | Client outbox |
 | `schedule` | `sh_<triggerId>_<dueAtUnixSeconds>` | 3 + 12 + 1 + 10 = 26 | The due instant named by the durable cursor |
 | `webhook` | `wh_<triggerId>_<batchId>` | 3 + 12 + 1 + ≤10 = ≤26 | The trigger's durable batch counter |
-| `peer` | `pr_<16 hex>` of `sha256(fromBotId ‖ toBotId ‖ conversationId ‖ callId)` | 19 | The durable tool-task call identity |
+| `peer` | `pr_<16 hex>` of `sha256(fromBotId ‖ toBotId ‖ taskId)` | 19 | The durable tool-task identity (`ToolExecutionApi.taskId`) |
 
 `triggerId` is therefore fixed at 12 characters (`t_` + 10 base32). A key that names
 a moment in time, a random value or a queue position is a defect.
@@ -205,9 +205,25 @@ Triggers add producers to a process that previously had only a transport:
    logs and the lock. A producer that admits after the drain is a defect; the
    registry's `closing` flag refuses new work, and `invoke` surfaces that refusal
    instead of retrying.
-3. **Delete:** the registry refuses new leases for a bot in a delete window; queued
-   items for that bot are discarded with one record in the journal, and the
-   directory move takes triggers, secrets and journals along.
+3. **Delete:** four ordered steps, each resumable after a crash:
+   1. set a **deleting** flag that refuses new leases and new `invoke` for that bot,
+   2. wait for the leases already granted, and for their journal writes, to finish,
+   3. only then take the existing lifecycle `settling` window, close the handle,
+   4. move the directory.
+
+   The order is not cosmetic. `settling` is exactly what `open()` waits for
+   (`BotRegistry.ts:531`, `591`), so setting it before draining deadlocks: a delete
+   waits for a lease whose `open()` waits for the delete. While the drain runs,
+   `settling` stays unset, so an admission that already holds a lease completes
+   normally; a refusal is never waited on. The drain has a deadline: a lease that
+   does not settle in `closeDeadlineMs` marks the bot quarantined instead of moving
+   a directory under a live lookup.
+
+   `BotRegistry.remove()` today waits only for an in-flight open
+   (`BotRegistry.ts:542`) and never for a lease. Queued items are discarded with one
+   journal record; the move takes triggers, secrets and journals along. While
+   `deleting` is set, `invoke` refuses with `unknown_bot/not_admitted`, and the
+   caller disables the trigger only once the catalog no longer lists the bot (§3.4).
 
 ### 3.7 Tests that lock stage 0
 
@@ -231,6 +247,12 @@ Triggers add producers to a process that previously had only a transport:
     through `submissionByRequest` and runs nothing, even with a full budget.
 11. Shutdown: a producer that admits while draining receives a refusal; no Harness
     opens after `registry.shutdown()` resolves.
+12. Delete during an admission: with an admission paused between its lease and its
+    `open()`, `remove()` drains it without deadlocking on `settling` (the door closes
+    first, the lifecycle window second), and the directory is never moved under a
+    live lookup. A second case pauses after the dedupe lookup and before `submit`.
+    A third holds a lease past `closeDeadlineMs` and must leave the bot quarantined,
+    not moved.
 
 `test/architecture.test.ts` gains an edge for `src/triggers/**`: it may import
 `core/Invocation.ts`, `core/TriggerStore.ts`, `core/domain.ts` and `log/**`, and
@@ -291,7 +313,13 @@ Rules:
 5. Enable and disable are read live by the scheduler, the HTTP endpoint and the
    tools. No Harness restart, no registry refresh, no new subscription.
 6. The app surface is read-only plus one switch; the model is the only creator,
-   editor and deleter.
+   editor and deleter. Sidebar visibility and the exact wire shape are §8.
+7. At most 8 triggers per bot. The cap bounds the sidebar and the catalog-adjacent
+   frames; `trigger_create` refuses the ninth with `limit_exceeded` and a message
+   naming the cap. The name check, the count check, the `opId` lookup and the
+   journal append are one serialized section of the bot's store, because the SDK may
+   run two tool calls in parallel (`ToolExecutionApi` siblings) and a check outside
+   that section would let both succeed.
 
 ## 5. Delivery, queue and batching (stages 1 and 2)
 
@@ -357,7 +385,7 @@ the same admission and pi collapses it.
 | `queued` / `placed` | Admitted, run pending | Open, items stay frozen, no re-cut |
 | `done` | Answered | Closed + receipt |
 | `unanswered` | Terminal, no answer (`model_error`, `aborted`, …) | Closed + receipt; **never replayed** |
-| refusal `not_admitted` (busy/budget) | Not admitted | Uncut: members return to the queue head, same `batchId` retired |
+| refusal `not_admitted` (busy/budget) | Not admitted | Stay frozen with the same key and retry with backoff; never uncut, because returning members to the queue can exceed the 32 cap while new fires filled it |
 | refusal `runtime` / `unknown` | Unconfirmed or unavailable | Keep frozen, retry same key with backoff |
 
 Only a terminal record closes a batch. A `model_error` is an answer failure, not a
@@ -375,9 +403,12 @@ Each module therefore runs one **drain pump per bot**, and the pump:
 
 1. takes its lock before the first `await` and records every wake that happens while
    it is busy,
-2. re-evaluates the cut condition after every admission settles, after every
-   refusal and on every observed transition,
-3. never waits for an edge to re-check; `observe` only avoids polling,
+2. **reconciles the frozen batch first**: on every wake and after every `invoke`
+   return it reads `submission({botId, requestId})` and applies the record through
+   the §5.3 table, so a terminal record that arrived before `submit` returned still
+   closes the batch and releases the queue,
+3. only then re-evaluates the cut condition; it never waits for an edge to re-check,
+   and `observe` only avoids polling,
 4. arbitrates **round-robin across that bot's triggers**, so one busy trigger cannot
    starve another (the core port is serial but not fair,
    `ConversationService.ts:536`),
@@ -420,7 +451,7 @@ No revision-based pruning: a page boundary does not prove an entry is deleted
 | Path | Today | Handler |
 | --- | --- | --- |
 | Attach baseline | `#attach` trims `subscription.snapshot` (`ConversationService.ts:823`) | enrich while trimming |
-| Live `append` / `append.replaces` | `apply()` publishes the **raw** runtime event (`ConversationService.ts:818`) | enrich the published message |
+| Live `append` / `append.replaces` | `apply()` publishes the **raw** runtime event (`ConversationService.ts:818`) | enrich the published message (§6.3a) |
 | `history` | returns runtime messages directly (`ConversationService.ts:376`) | enrich each page |
 | `resync` / rerender | rendered from the fold | enrich the rendered page |
 
@@ -436,18 +467,46 @@ A test asserts the four paths agree on one message.
 
 - Present on committed user messages and on a live `send`'s provisional message;
   `{kind:"human"}` is explicit.
+- A committed user message is never published without an origin (§6.3a).
 - `label` is the trigger's `name`, or the sender Bot's title for `peer`; clients
   must not depend on it for logic.
 - `{kind:"unknown"}` renders as a plain user message with no chip.
 - Absent `origin` in a decode normalizes to `unknown`, so fixtures recorded before
   this lands stay valid.
 
+### 6.3a The live user append has no identity yet
+
+The adapter publishes `message_end(pi.user)` **before** the submission record that
+names its `requestId` (RUNTIME.md, message identity), so at publish time the daemon
+knows neither the `requestId` nor the `entryId` — the recorded golden case shows the
+append with no `requestId` (`test/runtime/mapEvents.test.ts:82`). Attaching an origin
+there is therefore impossible, and a later "enriched replacement" would make the
+chip appear late.
+
+The fix belongs in the adapter and uses the batch it already has: `watchEvents()`
+delivers **one batch per commit** (RUNTIME.md F8), so the mapper runs two passes over
+that batch — first the batch's `submission` events, to learn
+`requestId → entryId → origin`, then the batch's appends. Publication order on the
+wire stays `append` → `submission`, exactly as today.
+
+Order matters for the client, not just for tidiness: the reducer drops the optimistic
+bubble as soon as a `submission` frame names an `entryId`
+(`BotsCore/Logic/Reducer.swift:173`), so publishing the submission first would make
+the bubble vanish and reappear. Reducing within a batch (the client already coalesces)
+leaves the message present throughout, now with its chip.
+
+A user entry the daemon never admitted (an older session, a foreign write) publishes
+as `unknown` in the same pass. Test: replay the recorded live order through the
+adapter and assert one enriched append, the wire order unchanged, and the client
+reducer's state after each frame of the batch.
+
 ### 6.5 Tests
 
 Restart replay; the one-record crash window degrading to `unknown`; a human
 admission rendered as `{kind:"human"}`; the four paths agreeing; strict fixture
 decode; a trimmed record degrading to `unknown`; no origin for an entry the daemon
-never admitted.
+never admitted; §6.3a's two-pass batch producing one enriched append in the
+unchanged wire order, asserted through the client reducer frame by frame.
 
 ## 7. Tool groups
 
@@ -483,7 +542,7 @@ the handler; it does not cache business results, `harness/tool.js:104`):
 | Tool | Replay | Enforcement |
 | --- | --- | --- |
 | `trigger_list`, `peer_list` | safe | Read-only |
-| `trigger_create` | safe | Idempotent by `(botId, name)` **and** by `opId` = tool `callId`; an identical payload returns `created: false`; a different payload under a taken name is refused |
+| `trigger_create` | safe | Idempotent by `(botId, name)` **and** by `opId` = `ToolExecutionApi.taskId` (the durable tool-task identity; `callId` is provider-supplied and may repeat across turns); an identical payload returns `created: false`; a different payload under a taken name is refused |
 | `trigger_update`, `trigger_enable` | safe | `opId` lookup returns the recorded result, so a replay cannot re-open a switch the user closed |
 | `trigger_delete` | safe | `opId` lookup; absent trigger returns the same recorded result |
 | `peer_send` | unsafe | Admits work into another Bot; an interrupted call is abandoned, not repeated |
@@ -495,9 +554,82 @@ Every trigger mutation therefore goes through the journal's `opId` record (§4 r
 The model never receives a webhook secret: `trigger_create` and `trigger_list`
 return an endpoint path without credentials, and the app shows the token separately.
 
-## 8. Stage 1 and 2 — schedule and webhook
+## 8. App surface and wire
 
-### 8.1 Schedule
+### 8.1 What the person sees
+
+| Surface | Content | Allowed actions |
+| --- | --- | --- |
+| Sidebar, under the selected bot | One row per trigger: kind icon, `name`, an enable switch, and a `lastSkipped`/`dropped` badge when non-zero | Toggle enable; open detail |
+| Inspector column | Read-only detail: kind, name, prompt text, schedule expression and timezone with the next due instant, counters, last fired/skipped, and for webhook the endpoint URL and the token with copy buttons | Toggle enable; copy endpoint/token |
+
+The person never creates, edits or deletes a trigger. A missing trigger section
+means the bot has none, not that the feature is off. The sidebar rows come from the
+bot-scoped event below, so a trigger the model creates mid-run appears without
+reselecting the bot.
+
+### 8.2 Wire (additive; PROTOCOL.md gains this section in the same commit as the code)
+
+A bot-scoped `triggers` event is a whole-list replacement, numbered by `rev` like
+`tasks`, and `snapshot` carries the same list so a fresh subscriber needs no extra
+request. The `triggers` capability becomes `true`. This mirrors the existing `tasks`
+precedent rather than inventing a delta protocol.
+
+```json
+{ "type": "triggers", "rev": 47,
+  "triggers": [
+    { "id": "t_9f2a1c3d04", "kind": "schedule", "name": "morning triage",
+      "enabled": true, "schedule": { "cron": "0 9 * * *", "timezone": "Asia/Shanghai",
+      "nextDueAt": "2026-10-29T01:00:00.000Z" },
+      "counters": { "fired": 12, "dropped": 0, "refused": 1 },
+      "lastFiredAt": "2026-10-28T01:00:03.114Z" },
+    { "id": "t_7b1e55aa10", "kind": "webhook", "name": "deploy notify",
+      "enabled": false, "counters": { "fired": 3, "dropped": 4, "refused": 0 },
+      "lastSkipped": { "at": "…", "reason": "disabled" } }
+  ] }
+```
+
+- The event never carries `prompt`, the token or the endpoint: the list must stay
+  small and a credential must never ride a broadcast frame.
+- A bot-scoped event is delivered to the bot's subscribers only. Because a
+  connection subscribes to one bot for its whole life (PROTOCOL.md), the sidebar
+  rows of the selected bot are live and other bots' rows are not subscribed.
+- Order is stable (`createdAt`, then `id`), so a re-render cannot reshuffle rows.
+- Bounded by construction, not by hope: `name` ≤ 64 chars, `cron` normalized to ≤ 64
+  chars and re-encoded from its parsed fields, timezone must be a known IANA name, so
+  the 8-trigger worst case stays far inside the 192 KiB page and 256 KiB frame
+  budgets (`protocol/limits.ts`). A test renders 8 worst-case triggers through
+  `assertFrameBudget` in both the event and the snapshot.
+- No new client command exists: enable is an HTTP call, and the event is the
+  authoritative reply. A client that fails to toggle shows the previous state.
+
+### 8.3 HTTP
+
+Both routes require the daemon bearer, like every other `/v1` route.
+
+| Route | Purpose | Notes |
+| --- | --- | --- |
+| `GET /v1/triggers?botId=<id>` | Detail for one bot: prompt, endpoint, token | The only place a token is returned |
+| `PATCH /v1/triggers/<triggerId>` with `{enabled}` | The person's only mutation | Rejects any other field with `invalid_command` |
+
+The daemon publishes the `triggers` event after every accepted mutation, whoever
+made it (tool or switch), so both surfaces converge on one source.
+
+### 8.4 Tests
+
+The event is a whole-list replacement, ordered and capability-gated; `snapshot`
+carries the same list as the event at its `rev`; a tool-created trigger appears on
+the event without a resubscribe; a token never appears in an event, a snapshot or a
+log line; `PATCH` refuses unknown fields and unknown ids; toggle → event → switch
+state converges, including when the write fails; the client renders no section for a
+bot with no triggers. The event and a snapshot carrying 8 worst-case triggers
+(64-character names, 64-character cron, long timezone) both pass
+`assertFrameBudget`; two concurrent `trigger_create` calls at the cap produce one
+success and one `limit_exceeded`.
+
+## 9. Stage 1 and 2 — schedule and webhook
+
+### 9.1 Schedule
 
 - Five fields, minute resolution; IANA `timezone`, validated at creation.
 - `schedule.cursor` is the absolute next due instant and the only scheduling state.
@@ -523,7 +655,7 @@ neither double-fire nor lose a fire. Downtime beyond the freshness window is nev
 replayed. DST follows the parser's documented rule for the stored zone and is tested
 in both directions.
 
-### 8.2 Webhook
+### 9.2 Webhook
 
 `POST /v1/triggers/<botId>/<triggerId>` with `Authorization: Bearer <triggerToken>`.
 The URL carries no credential: the token is a per-trigger secret in a header, so a
@@ -545,8 +677,10 @@ Other hardening: reject a request carrying an `Origin` header, POST only, no que
 parameters, per-token token bucket 120/min, per-trigger `maxFiresPerHour` default 60.
 
 Item identity: `Idempotency-Key` when present, else `sha256(body ‖ content-type)`
-truncated to 16 chars, deduped against the live queue and the last delivered batch,
-so an at-least-once sender never enqueues one delivery twice inside the window.
+truncated to 16 chars, deduped against the queued items, **every open frozen batch**
+and the last delivered batch. A cut moves members out of the queue, so a live-queue
+only check would re-admit a retry while its batch is still running; an
+at-least-once sender must never enqueue one delivery twice inside the window.
 
 Text: `application/json` with string `text`, else the raw body; clamped to
 `MAX_SEND_TEXT` with the marker; empty text is `422`.
@@ -555,7 +689,7 @@ Loopback only: the daemon binds 127.0.0.1, so this endpoint serves local
 integrations (scripts, a local service, system cron calling `curl`) and whatever a
 user exposes through their own tunnel. Exposing external traffic is not our product.
 
-### 8.3 Tests
+### 9.3 Tests
 
 Shared harness, both kinds: queue cap and eviction; budget cut producing several
 batches in arrival order with no loss; the single oversize item; the envelope golden
@@ -575,7 +709,7 @@ error body** (redaction test); idempotency with and without the header; a retry
 inside the window enqueuing once; `409` leaving the queue untouched; `429` not
 evicting.
 
-## 9. Stage 3 — peers
+## 10. Stage 3 — peers
 
 Tool faces are owned by
 [Extensions and tools](EXTENSIONS-AND-TOOLS.md#64-agents-and-peers-discovery-listing-and-communication);
@@ -584,14 +718,20 @@ this section adds the host side and must not contradict it.
 - `peer_send` calls `invoke` with `origin: {kind:"peer", fromBotId}` and
   `whenBusy: "followUp"`, returns `{botId, requestId, status}` and never waits for
   an answer.
-- The tool handler passes `bid` metadata from `ToolExecutionApi` — `conversationId`
-  and `callId`, never model-supplied identity — and the port derives the 16-hex key
-  (§3.2). The host signature carries that metadata, not just `{toBotId, message}`.
+- The tool handler passes the durable identity from `ToolExecutionApi` —
+  **`taskId`**, plus `conversationId` — never model-supplied identity and never
+  `callId`, which is provider-supplied and may repeat across turns. The port derives
+  the 16-hex key from `taskId` (§3.2), and the same value is what the outbound receipt
+  records, so the digest and the receipt can never disagree. The host DTO carries
+  `{taskId, conversationId, toBotId, message}`.
 - **Lost acknowledgement.** `unsafe` stops our retry, but a crash between the
-  recipient's admission and the sender's receipt leaves the sender without a
-  `submissionId`. Stage 3 therefore writes a sender-side outbound receipt
-  (`{requestId, toBotId, callId}`) **before** `invoke`, and `peer_read` is keyed by
-  the caller's own `requestId`, not by a `submissionId` the sender may never have.
+  recipient's admission and the sender's receipt leaves the sender without the
+  key it just minted, because the missing thing is the tool result that carries it.
+  Stage 3 therefore writes a sender-side outbound receipt
+  (`{requestId, toBotId, taskId, at}`) **before** `invoke`, and `peer_read` accepts
+  either a `requestId` or, without one, returns a bounded list (≤ 20, newest first)
+  of that caller's own receipts. Ownership comes from the receipt journal keyed by
+  the calling Bot, never from scanning a transcript.
 - **Answer text.** `Submission` carries `answerEntryId`, not text
   (`core/domain.ts:82`), so `peer_read` needs an owner-scoped read of that entry.
   The stage-3 spike decides whether that is a new `RuntimeHandle.entryById` or a
@@ -610,7 +750,7 @@ this section adds the host side and must not contradict it.
   Whichever wins, `peer_send` ships with the path check, the four-Bot cap and the
   numeric caps together: per-pair 8/hour, per-bot inbound 24/hour.
 
-## 10. Observability
+## 11. Observability
 
 Existing logger constraints: event names must start with their layer
 (`log/log.ts:211`), layers are `transport | protocol | core | runtime | pi`
@@ -632,13 +772,13 @@ answers "who admitted this run". One trace spans the episode (tick or HTTP →
 queue → cut → `invoke` → run); the innermost failure is the only one logged with
 `origin: true`.
 
-## 11. Stage order and exit criteria
+## 12. Stage order and exit criteria
 
 | Stage | Content | Exit |
 | --- | --- | --- |
-| 0 | `core/Invocation.ts`; `invoke`/`observe`; thin `send`; registry activity generation; durable `submissionByRequest`; self-ready internal view; ordered shutdown; contract tests | §3.7 green; no caller; `npm run check` |
-| 1 | `trigger` group, journal-backed store with `opId`, queue/cut/drain pump, origin sidecar and wire field, schedule scheduler, app list/detail/switch | §8.3 green; a real Harness fires a real schedule; the app shows detail and toggles it |
-| 2 | webhook endpoint, per-trigger tokens in headers and log redaction, response matrix, limits, idempotency | §8.3 green; local `curl` enqueues once under retry; no token in logs |
+| 0 | `core/Invocation.ts`; `invoke`/`observe`; thin `send`; registry activity generation and a delete that drains a lease; durable `submissionByRequest`; self-ready internal view; ordered shutdown; contract tests | §3.7 green; no caller; `npm run check` |
+| 1 | `trigger` group, journal-backed store with `opId`, queue/cut/drain pump, origin sidecar and wire field, schedule scheduler, `triggers` event plus capability, sidebar rows and inspector detail | §9.3 green; a real Harness fires a real schedule; the sidebar lists it and the switch works |
+| 2 | webhook endpoint, per-trigger tokens in headers and log redaction, response matrix, limits, idempotency | §9.3 green; local `curl` enqueues once under retry; no token in logs |
 | 3 | `peers` group, route-enforcement spike, outbound receipts, answer read, caps | Two real Harnesses; `peer_read` ownership; path and caps proven; capability decision recorded |
 
 The origin field lands in its own commit at the start of stage 1, before the first
@@ -647,7 +787,7 @@ fired message exists, so no migration is needed.
 Every stage: failing test first, then the smallest implementation, then the affected
 gates. No skipped test, no widened limit, no silenced log.
 
-## 12. Non-goals
+## 13. Non-goals
 
 - A scheduler service, cron catch-up, or a user-facing job editor.
 - Public ingress, cloud relay, or any coupling to the website/Worker/D1.

@@ -335,7 +335,7 @@ rules, the transcript origin field and the read-only app surface are owned by
 | `trigger_create` | `kind, name, prompt, cron?, timezone?` | Creates one trigger owned by the calling Bot; returns its summary and a credential-free endpoint path | Safe by `opId` (§4 and §7 of TRIGGERS.md) |
 | `trigger_list` | `{}` | Lists the calling Bot's triggers with `enabled`, counters and the last fired/skipped instant | Safe |
 | `trigger_update` | `triggerId, name?, prompt?` | Replaces name or prompt only; a payload that changes the schedule is a separate operation | Safe by `opId` |
-| `trigger_enable` | `triggerId, enabled` | Switches one trigger without touching its queue or its cursor | Safe by `opId` |
+| `trigger_enable` | `triggerId, enabled` | Switches one trigger; the queue is untouched. Disabling clears the schedule cursor, enabling sets it to the next instant after now, so neither direction catches up | Safe by `opId` |
 | `trigger_delete` | `triggerId` | Removes the definition, its secret and its queue | Safe by `opId` |
 
 A Bot creates and manages its own triggers; the app lists them read-only with one
@@ -362,8 +362,8 @@ Independent Bots use the new **`peers`** group:
 | Tool | Planned input | Result and single responsibility | Replay |
 | --- | --- | --- | --- |
 | `peer_list` | `query?, cursor?, limit?` | Discover/list other local catalog Bots, optionally matching their names; return stable `botId`, display name and observed availability, with `nextCursor` | Safe |
-| `peer_send` | `botId, message` | Admit one message to that Bot, normally with `followUp`; return recipient `botId`, `submissionId` and admission status, without waiting for its answer | Unsafe initially |
-| `peer_read` | `botId, submissionId` | Observe one submission sent by this caller, with its existing status and answered text or unanswered reason; never submit or read an unrelated transcript | Safe |
+| `peer_send` | `botId, message` | Admit one message to that Bot, normally with `followUp`; return recipient `botId`, the caller-owned `requestId` and admission status, without waiting for its answer | Unsafe initially |
+| `peer_read` | `botId, requestId?` | Observe one submission **this caller** sent: with `requestId`, its status and answer; without it, a bounded list of this caller's own outbound receipts so a lost acknowledgement is recoverable. Never submits, never reads an unrelated transcript | Safe |
 
 `peer_list` serves both discovery and listing; do not add `peer_discover` or
 `peer_search`. `peer_read` polls durable delivery/answer state, not a general
@@ -404,7 +404,7 @@ cycles so communication cannot silently turn into an unbounded model loop.
 This is product routing/cost control, not an execution sandbox.
 
 `peer_send` is not registered until the route-enforcement spike in
-[TRIGGERS.md](TRIGGERS.md) §9 decides its mechanism: a numeric-only release would
+[TRIGGERS.md](TRIGGERS.md) §10 decides its mechanism: a numeric-only release would
 contradict the durable visited-path requirement above, and `peers: false` does not
 prevent an already-selected tool from being called. The wire flag stays false until
 the documented enable slice lands; tool selection and a future peer UI capability
