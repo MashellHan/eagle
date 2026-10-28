@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 export type ProviderDefinition = {
   readonly id: string;
   readonly title: string;
-  readonly kind: "deepseek-search";
+  readonly kind: "deepseek-search" | "tavily-search";
   readonly baseUrl: string;
   readonly docsUrl: string;
   /** What the key field asks for, in the person's words. */
@@ -19,11 +19,19 @@ export type ProviderDefinition = {
 export const PROVIDERS: readonly ProviderDefinition[] = [
   {
     id: "deepseek-search",
-    title: "DeepSeek 搜索",
+    title: "DeepSeek",
     kind: "deepseek-search",
     baseUrl: "https://api.deepseek.com",
     docsUrl: "https://api-docs.deepseek.com/guides/search/",
     keyLabel: "DeepSeek API Key",
+  },
+  {
+    id: "tavily-search",
+    title: "Tavily",
+    kind: "tavily-search",
+    baseUrl: "https://api.tavily.com",
+    docsUrl: "https://docs.tavily.com/documentation/quickstart",
+    keyLabel: "Tavily API Key",
   },
 ];
 
@@ -67,7 +75,7 @@ export const readProviders = async (
     const out: Record<string, ProviderConfig> = {};
     for (const [id, value] of Object.entries(raw.providers)) {
       if (!isObject(value) || typeof value.apiKey !== "string") continue;
-      out[id] = { apiKey: value.apiKey, enabled: value.enabled !== false };
+      out[id] = { apiKey: value.apiKey, enabled: value.enabled === true };
     }
     return out;
   } catch {
@@ -100,7 +108,7 @@ export const publicProviders = (
       docsUrl: provider.docsUrl,
       keyLabel: provider.keyLabel,
       hasApiKey: (config?.apiKey.length ?? 0) > 0,
-      enabled: config?.enabled ?? false,
+      enabled: selectedProvider(configs)?.id === provider.id,
     };
   });
 
@@ -119,4 +127,11 @@ export type ProviderApi = {
   public(): readonly PublicProvider[];
   save(id: string, input: ProviderInput): Promise<{ provider?: PublicProvider; error?: string }>;
   test(id: string): Promise<ProviderProbe>;
+};
+
+export const selectedProvider = (configs: Readonly<Record<string, ProviderConfig>>) => {
+  const selected = PROVIDERS.filter((provider) => configs[provider.id]?.enabled);
+  return selected.length === 1 && configs[selected[0]?.id ?? ""]?.apiKey.trim()
+    ? selected[0]
+    : undefined;
 };

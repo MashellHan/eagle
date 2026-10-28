@@ -24,6 +24,11 @@ struct SnapshotRenderer {
 
     let app = NSApplication.shared
     app.setActivationPolicy(.prohibited)
+    if CommandLine.arguments.contains("--services-only") {
+      captureSearchProviders(in: directory)
+      print("wrote service snapshots to \(directory.path)")
+      return
+    }
     captureInspectors(in: directory)
     if CommandLine.arguments.contains("--inspector-only") {
       print("wrote inspector snapshots to \(directory.path)")
@@ -148,6 +153,28 @@ struct SnapshotRenderer {
     )
 
     print("wrote snapshots to \(directory.path)")
+  }
+
+  @MainActor
+  private static func captureSearchProviders(in directory: URL) {
+    let fixture = snapshotBotsSettings()
+    defer {
+      fixture.session.invalidateAndCancel()
+      try? FileManager.default.removeItem(at: fixture.settings.rootURL)
+    }
+    for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
+      for width in [920, 760] {
+        let model = SettingsViewModel(
+          botsSettings: fixture.settings, urlSession: fixture.session)
+        model.selection = .providers
+        capture(
+          SettingsView(model: model).preferredColorScheme(scheme),
+          size: CGSize(width: width, height: 600),
+          named: "search-providers-\(name)-\(width)", in: directory,
+          appearance: scheme == .dark ? .darkAqua : .aqua
+        )
+      }
+    }
   }
 
   /// A root with a readable token and a session whose answers are fixtures, never a daemon.
@@ -290,10 +317,17 @@ struct SnapshotRenderer {
 /// Answers the two settings reads with static JSON so a snapshot needs no daemon.
 final class SnapshotHTTPStub: URLProtocol {
   private static let provider = """
-    {"id":"deepseek-search","title":"DeepSeek 搜索","kind":"deepseek-search",
+    {"id":"deepseek-search","title":"DeepSeek","kind":"deepseek-search",
      "baseUrl":"https://api.deepseek.com",
      "docsUrl":"https://api-docs.deepseek.com/guides/search/",
      "keyLabel":"DeepSeek API Key","hasApiKey":true,"enabled":true}
+    """
+
+  private static let tavily = """
+    {"id":"tavily-search","title":"Tavily","kind":"tavily-search",
+     "baseUrl":"https://api.tavily.com",
+     "docsUrl":"https://docs.tavily.com/documentation/quickstart",
+     "keyLabel":"Tavily API Key","hasApiKey":true,"enabled":false}
     """
 
   private static let usage = """
@@ -324,7 +358,7 @@ final class SnapshotHTTPStub: URLProtocol {
     let path = request.url?.path ?? ""
     let body: String
     switch path {
-    case "/v1/providers": body = "{\"providers\":[\(Self.provider)]}"
+    case "/v1/providers": body = "{\"providers\":[\(Self.provider),\(Self.tavily)]}"
     case "/v1/usage": body = "{\"usage\":\(Self.usage)}"
     case "/v1/settings": body = "{\"settings\":\(Self.gateway)}"
     default: body = "{}"

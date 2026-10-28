@@ -210,6 +210,7 @@ public final class SettingsViewModel: ObservableObject {
   // MARK: - Providers
 
   public func loadProviders() async {
+    guard !providerBusy else { return }
     providerBusy = true
     defer { providerBusy = false }
     do {
@@ -222,14 +223,18 @@ public final class SettingsViewModel: ObservableObject {
 
   /// A typed key is a draft: an empty field keeps the stored one.
   public func saveProvider(_ id: String) async {
+    guard !providerBusy else { return }
     providerBusy = true
+    providerMessage = nil
     defer { providerBusy = false }
     let typed = providerKeys[id]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     do {
       let saved = try await client().saveProvider(
         id: id, apiKey: typed.isEmpty ? nil : typed, enabled: nil)
       providers = providers.map { $0.id == id ? saved : $0 }
-      if !typed.isEmpty { providerKeys[id] = "" }
+      if providerKeys[id]?.trimmingCharacters(in: .whitespacesAndNewlines) == typed {
+        providerKeys[id] = ""
+      }
       providerProbe[id] = nil
       providerMessage = "已保存"
     } catch {
@@ -237,28 +242,40 @@ public final class SettingsViewModel: ObservableObject {
     }
   }
 
-  /// The enable switch flips at once; a refused save puts it back where it was.
+  public var selectedSearchProvider: ProviderSettings? {
+    let selected = providers.filter { $0.enabled && $0.hasApiKey }
+    return selected.count == 1 ? selected.first : nil
+  }
+
   public func setProviderEnabled(_ id: String, _ enabled: Bool) async {
+    guard !providerBusy else { return }
     guard let index = providers.firstIndex(where: { $0.id == id }) else { return }
-    let previous = providers[index].enabled
-    guard previous != enabled else { return }
-    providers[index].enabled = enabled
+    if enabled && !providers[index].hasApiKey {
+      providerMessage = "请先保存这个服务商的 API Key"
+      return
+    }
+    guard enabled ? selectedSearchProvider?.id != id : providers[index].enabled else { return }
     providerBusy = true
     defer { providerBusy = false }
     do {
       let saved = try await client().saveProvider(id: id, apiKey: nil, enabled: enabled)
-      if let current = providers.firstIndex(where: { $0.id == id }) { providers[current] = saved }
+      providers = providers.map { provider in
+        if provider.id == id { return saved }
+        var other = provider
+        if saved.enabled { other.enabled = false }
+        return other
+      }
       providerMessage = nil
     } catch {
-      if let current = providers.firstIndex(where: { $0.id == id }) {
-        providers[current].enabled = previous
-      }
       providerMessage = (error as? ClientError)?.message ?? error.localizedDescription
     }
   }
 
   public func testProvider(_ id: String) async {
+    guard !providerBusy else { return }
     providerBusy = true
+    providerMessage = nil
+    providerProbe[id] = nil
     defer { providerBusy = false }
     do {
       providerProbe[id] = try await client().testProvider(id: id)

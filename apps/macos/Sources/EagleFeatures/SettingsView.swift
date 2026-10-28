@@ -179,7 +179,7 @@ public struct SettingsView: View {
               .tint(Theme.Palette.accentStrong)
           }
           Divider().overlay(Theme.Palette.line)
-          SettingsRow("搜索", detail: "web_search 与 web_fetch；需要先在“服务”里保存搜索服务的 Key") {
+          SettingsRow("搜索", detail: "web_search 与 web_fetch；在“服务”里保存 Key 并选择搜索服务商") {
             Toggle("", isOn: toolGroupBinding(SettingsViewModel.searchToolGroup))
               .labelsHidden()
               .toggleStyle(.switch)
@@ -258,84 +258,132 @@ public struct SettingsView: View {
       }
   }
 
-  /// One card per third-party service: endpoint, key, enable switch, probe.
   private var providersPage: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      ForEach(model.providers) { provider in
-        SettingsCard {
-          VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-              Text(provider.title)
+    VStack(alignment: .leading, spacing: 12) {
+      SettingsCard {
+        VStack(alignment: .leading, spacing: 0) {
+          HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("搜索")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Theme.Palette.textPrimary)
-              Spacer(minLength: 0)
-              Toggle("", isOn: enabledBinding(provider))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .tint(Theme.Palette.accentStrong)
-                .disabled(model.providerBusy)
-            }
-            Text(provider.baseUrl)
-              .font(.system(size: 11.5, design: .monospaced))
-              .foregroundStyle(Theme.Palette.textMuted)
-            gatewayField(
-              provider.keyLabel,
-              detail: provider.hasApiKey ? "已保存；留空则保持不变" : "在服务商控制台创建，只存到本机配置"
-            ) {
-              SettingsTextField(
-                provider.hasApiKey ? "已保存" : "sk-…",
-                text: keyBinding(provider.id),
-                secure: true
-              )
-            }
-            HStack(spacing: 10) {
-              SettingsActionButton("测试") {
-                Task { @MainActor in await model.testProvider(provider.id) }
-              }
-              .disabled(model.providerBusy || !provider.hasApiKey)
-              SettingsActionButton("保存", prominent: true) {
-                Task { @MainActor in await model.saveProvider(provider.id) }
-              }
-              .disabled(model.providerBusy)
-              if model.providerBusy { SpinnerArc(size: 12) }
-              Spacer(minLength: 0)
-              if let probe = model.providerProbe[provider.id] {
-                Label(
-                  "\(probe.message) · \(probe.latencyMs) ms",
-                  systemImage: probe.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-                )
+              Text("网页检索与正文提取，共用一个服务商")
                 .font(Theme.TypeScale.note)
-                .foregroundStyle(probe.ok ? Theme.Palette.accentStrong : Theme.Palette.destructive)
-              } else if let message = model.providerMessage {
-                Text(message)
-                  .font(Theme.TypeScale.note)
-                  .foregroundStyle(Theme.Palette.textSecondary)
-              }
+                .foregroundStyle(Theme.Palette.textSecondary)
             }
-            Text("文档：\(provider.docsUrl)")
-              .font(.system(size: 11.5))
-              .foregroundStyle(Theme.Palette.textMuted)
-              .textSelection(.enabled)
+            Spacer(minLength: 0)
+            if model.providerBusy { SpinnerArc(size: 12) }
+            searchProviderMenu
           }
           .padding(.vertical, 16)
+          ForEach(model.providers) { provider in
+            Divider().overlay(Theme.Palette.line)
+            searchProviderRow(provider)
+          }
+          if let message = model.providerMessage {
+            Text(message)
+              .font(Theme.TypeScale.note)
+              .foregroundStyle(Theme.Palette.textSecondary)
+              .padding(.bottom, 12)
+          }
         }
       }
-      SettingsCaption("保存后新会话立即生效；Bot 的搜索工具按需加载（tool_search）。")
+      Text("Key 独立保存在本机，保存不会切换服务商。选择后从下一次调用生效，不会自动切换。")
+        .font(Theme.TypeScale.note)
+        .foregroundStyle(Theme.Palette.textSecondary)
+      Text("测试会使用已保存的 Key 发起一次搜索，可能消耗服务额度。")
+        .font(Theme.TypeScale.note)
+        .foregroundStyle(Theme.Palette.textMuted)
     }
     .task { await model.loadProviders() }
+  }
+
+  private var searchProviderMenu: some View {
+    Menu {
+      Button("不使用搜索服务") {
+        if let selected = model.selectedSearchProvider {
+          Task { await model.setProviderEnabled(selected.id, false) }
+        }
+      }
+      Divider()
+      ForEach(model.providers) { provider in
+        Button(provider.hasApiKey ? provider.title : "\(provider.title) · 请先保存 Key") {
+          Task { await model.setProviderEnabled(provider.id, true) }
+        }
+        .disabled(!provider.hasApiKey)
+      }
+    } label: {
+      HStack(spacing: 6) {
+        Text(model.selectedSearchProvider.map { "使用 \($0.title)" } ?? "选择服务商")
+        Image(systemName: "chevron.down")
+      }
+      .font(Theme.TypeScale.note)
+      .foregroundStyle(Theme.Palette.textPrimary)
+      .padding(.horizontal, 12)
+      .frame(height: 32)
+      .background(Capsule().fill(Theme.Palette.canvas))
+      .overlay(Capsule().strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline))
+    }
+    .menuStyle(.button)
+    .buttonStyle(.plain)
+    .menuIndicator(.hidden)
+    .fixedSize()
+    .disabled(model.providerBusy)
+    .accessibilityLabel("当前搜索服务商")
+  }
+
+  private func searchProviderRow(_ provider: ProviderSettings) -> some View {
+    let hasDraft = !(model.providerKeys[provider.id] ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    return VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 8) {
+        Text(provider.title)
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(Theme.Palette.textPrimary)
+        Text(provider.enabled ? "使用中" : (provider.hasApiKey ? "Key 已保存" : "未配置"))
+          .font(Theme.TypeScale.note)
+          .foregroundStyle(provider.enabled ? Theme.Palette.accentStrong : Theme.Palette.textMuted)
+        Spacer(minLength: 0)
+        if let url = URL(string: provider.docsUrl) {
+          Link(destination: url) { Label("文档", systemImage: "arrow.up.right") }
+            .font(Theme.TypeScale.note)
+            .foregroundStyle(Theme.Palette.textSecondary)
+        }
+      }
+      HStack(spacing: 8) {
+        SettingsTextField(
+          provider.hasApiKey ? "已保存 · 输入新 Key 可替换" : provider.keyLabel,
+          text: keyBinding(provider.id), secure: true
+        )
+        .disabled(model.providerBusy)
+        .accessibilityLabel(provider.keyLabel)
+        SettingsActionButton("保存", prominent: hasDraft) {
+          Task { await model.saveProvider(provider.id) }
+        }
+        .disabled(model.providerBusy || !hasDraft)
+        .fixedSize()
+        SettingsActionButton("测试") {
+          Task { await model.testProvider(provider.id) }
+        }
+        .disabled(model.providerBusy || !provider.hasApiKey || hasDraft)
+        .fixedSize()
+      }
+      if let probe = model.providerProbe[provider.id] {
+        Label(
+          "\(probe.message) · \(probe.latencyMs) ms",
+          systemImage: probe.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+        )
+        .font(Theme.TypeScale.note)
+        .foregroundStyle(probe.ok ? Theme.Palette.accentStrong : Theme.Palette.destructive)
+      }
+    }
+    .padding(.vertical, 16)
   }
 
   private func keyBinding(_ id: String) -> Binding<String> {
     Binding(
       get: { model.providerKeys[id] ?? "" },
       set: { model.providerKeys[id] = $0 }
-    )
-  }
-
-  private func enabledBinding(_ provider: ProviderSettings) -> Binding<Bool> {
-    Binding(
-      get: { model.providers.first { $0.id == provider.id }?.enabled ?? provider.enabled },
-      set: { value in Task { await model.setProviderEnabled(provider.id, value) } }
     )
   }
 

@@ -9,8 +9,7 @@ import {
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import type { UsageMeter } from "../usage.ts";
-import type { SearchClient } from "./deepseek.ts";
-import { searchFailure } from "./deepseek.ts";
+import type { SearchClient } from "./client.ts";
 
 export const SEARCH_TOOLS_EXTENSION = "bots-search";
 
@@ -60,14 +59,13 @@ const formatResults = (
       .filter((line) => line.length > 0)
       .join("\n");
   });
-  return [`来源：DeepSeek 搜索 · 检索于 ${retrievedAt}`, ...blocks].join("\n\n");
+  return [`检索于 ${retrievedAt}`, ...blocks].join("\n\n");
 };
 
 export const createSearchTools = (options: SearchToolOptions): readonly ToolRegistration[] => [
   defineTool({
     name: "web_search",
-    description:
-      "Search the live web and return ranked pages (title, URL, snippet, summary). Use the query operators the provider documents, such as site:, lang:, after: and quoted phrases.",
+    description: "Search the live web and return ranked pages (title, URL, snippet, summary).",
     parameters: Type.Object({
       query: Type.String({ description: "The search query, 1-128 characters" }),
       count: Type.Optional(Type.Number({ description: "How many results, 1-50 (default 10)" })),
@@ -78,7 +76,7 @@ export const createSearchTools = (options: SearchToolOptions): readonly ToolRegi
     replay: "unsafe",
     deferred: true,
     outputLimits: { maxBytes: 256 * 1024, maxLines: 100_000, retain: "head" },
-    execute: async (args) => {
+    execute: async (args, _api, context) => {
       const query = args.query.trim();
       if (query.length === 0 || [...query].length > MAX_QUERY_CHARS) {
         return {
@@ -88,11 +86,14 @@ export const createSearchTools = (options: SearchToolOptions): readonly ToolRegi
       }
       const count = Math.min(Math.max(Math.round(args.count ?? 10), 1), MAX_RESULTS);
       try {
-        const results = await options.client.search({
-          query,
-          count,
-          ...(args.needContent === undefined ? {} : { needContent: args.needContent }),
-        });
+        const results = await options.client.search(
+          {
+            query,
+            count,
+            ...(args.needContent === undefined ? {} : { needContent: args.needContent }),
+          },
+          context.abortSignal,
+        );
         options.meter?.record({ botId: options.botId, source: "search", calls: 1 });
         const retrievedAt = (options.now?.() ?? new Date()).toISOString();
         const clipped = clip(formatResults(results, retrievedAt));
@@ -101,8 +102,7 @@ export const createSearchTools = (options: SearchToolOptions): readonly ToolRegi
           details: { count: results.length, truncated: clipped.truncated },
         };
       } catch (error) {
-        const failure = searchFailure(error);
-        return { output: [{ type: "text" as const, text: failure.output }], isError: true };
+        return searchFailure(error);
       }
     },
   }),
@@ -115,7 +115,7 @@ export const createSearchTools = (options: SearchToolOptions): readonly ToolRegi
     replay: "safe",
     deferred: true,
     outputLimits: { maxBytes: 256 * 1024, maxLines: 100_000, retain: "head" },
-    execute: async (args) => {
+    execute: async (args, _api, context) => {
       if (!/^https?:\/\//i.test(args.url)) {
         return {
           output: [{ type: "text" as const, text: "只支持 http(s) 链接。" }],
@@ -123,20 +123,33 @@ export const createSearchTools = (options: SearchToolOptions): readonly ToolRegi
         };
       }
       try {
-        const page = await options.client.fetchPage({ url: args.url });
+        const page = await options.client.fetchPage({ url: args.url }, context.abortSignal);
         options.meter?.record({ botId: options.botId, source: "search", calls: 1 });
-        const clipped = clip(`# ${page.title}\n\n${page.url}\n\n${page.content}`);
+        const clipped = clip(
+          [page.title ? `# ${page.title}` : "", page.url, page.content]
+            .filter(Boolean)
+            .join("\n\n"),
+        );
         return {
           output: [{ type: "text" as const, text: clipped.text }],
           details: { url: page.url, truncated: clipped.truncated },
         };
       } catch (error) {
-        const failure = searchFailure(error);
-        return { output: [{ type: "text" as const, text: failure.output }], isError: true };
+        return searchFailure(error);
       }
     },
   }),
 ];
+
+const searchFailure = (error: unknown) => ({
+  output: [
+    {
+      type: "text" as const,
+      text: `搜索失败：${error instanceof Error ? error.message : String(error)}`,
+    },
+  ],
+  isError: true,
+});
 
 export const searchSection = (): string =>
   [

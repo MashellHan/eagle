@@ -23,7 +23,7 @@ test("a saved key is stored 0600 and never comes back out", async () => {
     assert.match(raw, /sk-secret/, "the daemon owns the file; the API redacts it");
     const shown = publicProviders(await readProviders(path));
     assert.equal(shown[0]?.id, "deepseek-search");
-    assert.equal(shown[0]?.title, "DeepSeek 搜索");
+    assert.equal(shown[0]?.title, "DeepSeek");
     assert.equal(shown[0]?.hasApiKey, true);
     assert.equal(shown[0]?.enabled, true);
     assert.equal(JSON.stringify(shown).includes("sk-secret"), false, "the key stays in the file");
@@ -49,16 +49,19 @@ test("an absent or malformed file is nothing configured", async () => {
   }
 });
 
-test("the catalogue is code: one entry, and only known ids resolve", () => {
+test("the search catalogue has two providers with independent unselected keys", () => {
   assert.deepEqual(
     PROVIDERS.map((provider) => provider.id),
-    ["deepseek-search"],
+    ["deepseek-search", "tavily-search"],
   );
   assert.equal(providerDefinition("deepseek-search")?.kind, "deepseek-search");
   assert.equal(providerDefinition("nope"), undefined);
   assert.deepEqual(
     publicProviders({}).map((provider) => [provider.hasApiKey, provider.enabled]),
-    [[false, false]],
+    [
+      [false, false],
+      [false, false],
+    ],
     "an unconfigured provider is neither set nor enabled",
   );
 });
