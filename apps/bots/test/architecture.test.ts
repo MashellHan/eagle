@@ -39,6 +39,15 @@ const EDGES: ReadonlyArray<{
       target.startsWith("src/server/"),
   },
   {
+    // A caller of the invocation port: it may reach the two core ports and the log, and
+    // nothing else — no service, no registry, no runtime, no transport (TRIGGERS.md §3.7).
+    prefix: "src/triggers/",
+    allows: (target) =>
+      target === "src/core/Invocation.ts" ||
+      target === "src/core/TriggerStore.ts" ||
+      target === "src/core/domain.ts",
+  },
+  {
     prefix: "src/runtime/",
     allows: (target) =>
       target.startsWith("src/runtime/") ||
@@ -144,6 +153,11 @@ test("the rules reject every forbidden edge", () => {
     { file: "src/runtime/pi/mapEvents.ts", specifier: "../../core/BotDirectory.ts" },
     { file: "src/log/log.ts", specifier: "../server/auth.ts" },
     { file: "src/core/BotDirectory.ts", specifier: "../server/http.ts" },
+    { file: "src/triggers/webhook/module.ts", specifier: "../../core/ConversationService.ts" },
+    { file: "src/triggers/webhook/module.ts", specifier: "../../core/BotRegistry.ts" },
+    { file: "src/triggers/schedule/tick.ts", specifier: "../../runtime/pi/PiDurableRuntime.ts" },
+    { file: "src/triggers/webhook/module.ts", specifier: "../../server/http.ts" },
+    { file: "src/triggers/webhook/module.ts", specifier: "@earendil-works/pi-durable" },
   ];
   for (const { file, specifier } of cases) {
     const found = violations([{ file, dependencies: [specifier] }]);
@@ -162,6 +176,10 @@ test("the rules allow the documented edges", () => {
     { file: "src/runtime/pi/PiDurableRuntime.ts", specifier: "../../tools/registry.ts" },
     { file: "src/tools/registry.ts", specifier: "@earendil-works/pi-ai" },
     { file: "src/main.ts", specifier: "./server/http.ts" },
+    { file: "src/triggers/webhook/module.ts", specifier: "../../core/Invocation.ts" },
+    { file: "src/triggers/webhook/module.ts", specifier: "../../core/TriggerStore.ts" },
+    { file: "src/triggers/schedule/tick.ts", specifier: "../../core/domain.ts" },
+    { file: "src/triggers/webhook/module.ts", specifier: "../../log/log.ts" },
   ];
   assert.deepEqual(
     violations(allowed.map(({ file, specifier }) => ({ file, dependencies: [specifier] }))),

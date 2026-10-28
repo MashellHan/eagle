@@ -467,7 +467,7 @@ daemon nor a key. Not verified in this pass: a real
 DeepSeek key and a live `web_search` call, and a bot switching the `search` group on against
 a running daemon (the runtime path is covered by the deterministic faux-model test).
 
-## Triggers and peers (contract written 2026-10-28, nothing implemented)
+## Triggers and peers (stage 0 delivered 2026-10-28; stages 1-3 planned)
 
 [TRIGGERS.md](TRIGGERS.md) defines the bot-side invocation port and the three
 callers that will use it. Design decisions frozen with the owner:
@@ -496,9 +496,41 @@ callers that will use it. Design decisions frozen with the owner:
   user-registered cron jobs. External cron uses a webhook endpoint authenticated by
   a per-trigger bearer token in a header, and the daemon stays loopback-only.
 
-Stage order: 0 interface and its contract tests (including the two adapter/registry
-fixes it needs), 1 `trigger` group with schedule plus origin field and app surface,
-2 webhook ingress, 3 `peers`. Each stage states its exit criteria in TRIGGERS.md §12.
+Stage order: 0 interface and its contract tests (including the four adapter,
+registry and lifecycle fixes it needs), 1 `trigger` group with schedule plus origin
+field and app surface, 2 webhook ingress, 3 `peers`. Each stage states its exit
+criteria in TRIGGERS.md §12.
+
+### Stage 0, as built
+
+The port, its four prerequisite fixes and their tests are in. `ConversationService`
+implements `InvocationPort`: `invoke` is idempotent by `(botId, requestId)`, opens a
+cold bot under the registry's lease, validates the key alphabet and text budget
+before any runtime call, and shares the human admission chain; `submission` answers a
+bot-scoped durable lookup; `observe` reports the current run state and its edges
+without opening anything; `drain` refuses new work and waits for admissions already
+in flight. `send` is now a thin wrapper over the same path.
+
+The four fixes stage 0 depended on:
+
+1. The adapter resolves a settled `requestId` through
+   `Tx.submissionByRequest`, because the in-memory ledger dies with the process and
+   `inspect()` lists only queued and placed work.
+2. `BotRegistry` tracks a per-bot activity generation, so an idle close that spanned
+   `await busy()` is abandoned when a lease was taken meanwhile.
+3. Delete closes its door, drains the leases already granted under the close
+   deadline, and only then takes the lifecycle window; the reverse order deadlocks
+   against an `open()` waiting for that window. A miss quarantines instead of moving
+   the directory.
+4. The internal per-bot view is live without a subscriber, and shutdown drains the
+   service before the registry closes handles.
+
+Evidence: `npm run check` green at 527 tests, 95.41% lines / 88.32% branches /
+91.38% functions over 90/85/90 thresholds; `test/core/invocation.test.ts` (13),
+`test/core/invocation-stack.test.ts` (2), `test/core/registry.test.ts` (+4) and
+`test/runtime/idempotency.test.ts` (+1). Two existing service tests were rewritten
+because they asserted the buffering mechanism this stage replaced; RUNTIME.md's
+baseline paragraph now states the new rule.
 
 ## Next work, in order
 

@@ -459,6 +459,10 @@ class PiRuntimeHandle implements RuntimeHandle {
   /**
    * Resolves by either id. A settled input is gone from the live inspection list, so the
    * ledger carries `requestId → submissionId` and pi reacquires the record by id (F12).
+   * The ledger is memory-only, so a record admitted by a previous process needs the
+   * durable index: `inspect()` lists queued and placed work only
+   * (harness/types.d.ts:656), and without this lookup a restart would hide an already
+   * settled key from duplicate detection (TRIGGERS.md §3.2).
    */
   async submission(
     key: { submissionId: string } | { requestId: string },
@@ -473,8 +477,35 @@ class PiRuntimeHandle implements RuntimeHandle {
     }
     if ("submissionId" in key) return undefined;
     const inspection = await this.#harness.inspect(BACKGROUND_CONTEXT);
-    const record = inspection.submissions.find((item) => item.requestId === key.requestId);
-    return record === undefined ? undefined : convertSubmission(record);
+    const live = inspection.submissions.find((item) => item.requestId === key.requestId);
+    if (live !== undefined) return convertSubmission(live);
+    const stored = await this.#durableSubmission(key.requestId);
+    if (stored === undefined) return undefined;
+    // Remember it, so a duplicate answers from memory from now on.
+    this.#submissionIds.set(key.requestId, String(stored.id));
+    this.#requestIds.set(String(stored.id), key.requestId);
+    return convertSubmission(stored);
+  }
+
+  /** The durable index of a settled admission, for a key this process never admitted. */
+  async #durableSubmission(requestId: string) {
+    try {
+      const root = await this.#harness.root(BACKGROUND_CONTEXT);
+      return await root.commit(
+        (tx) => tx.submissionByRequest(this.#rootId, requestId),
+        BACKGROUND_CONTEXT,
+      );
+    } catch (cause) {
+      if (cause instanceof ClassifiedFailure) throw cause;
+      const minted = this.#classifier.classify("submission", "internal", "runtime");
+      this.#logFailure(minted, this.#spec.trace, Events.classify, "runtime");
+      throw new ClassifiedFailure(
+        minted.classification.failure,
+        "unknown",
+        minted.classification.message,
+        { cause },
+      );
+    }
   }
 
   /** Older messages, oldest first; the newest window is not re-fetched. */

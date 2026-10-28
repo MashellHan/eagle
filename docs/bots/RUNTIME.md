@@ -269,9 +269,12 @@ Projection, which is also part of the mapping contract:
   inbox name, with records the adapter already holds supplying their details. Work
   the snapshot does not name is settled, so it leaves `pending` even if a settlement
   event was missed, and a cold start still shows the input a crash interrupted.
-- The baseline of a subscription is delivered before any later commit: events that
-  arrive while it is being computed are buffered, so a fresh snapshot can never
-  replace content that is already newer.
+- An internal view is live as soon as the bot is open, whether or not a client ever
+  subscribes: `ConversationService` releases the buffered commits at attach, so a
+  port caller observes them and a later subscriber's baseline already contains them
+  (TRIGGERS.md §3.5). The baseline is read synchronously before it is published, so
+  a commit that arrives during the open is folded into the snapshot a client first
+  sees, and a commit that arrives after it is numbered later.
 - Each converted message is measured as its encoded JSON; above `MAX_MESSAGE_BYTES`
   it is withheld and replaced by the notice (PROTOCOL.md). The adapter may not
   import the wire layer, so `src/runtime/pi/limits.ts` mirrors those two numbers and

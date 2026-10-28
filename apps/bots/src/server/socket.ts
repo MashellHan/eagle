@@ -218,7 +218,7 @@ export const attachConnection = (
     closed = true;
     if (idleTimer !== undefined) clearTimeout(idleTimer);
     service.unsubscribe(deps.connId);
-    if (subscribed) registry.release(connectionBot);
+    if (subscribed && leased) registry.release(connectionBot);
     deps.unregister(socket);
     log.emit("info", "transport", Events.closeEnd, { trace: connTrace, connId });
   });
@@ -226,6 +226,8 @@ export const attachConnection = (
 
   // Filled in by `subscribe`; the close handler uses it to release the idle hold.
   let connectionBot = "";
+  /** Whether this connection actually holds a lease (a deleting bot grants none). */
+  let leased = false;
 
   socket.on("message", (data, isBinary) => {
     if (closed) return;
@@ -438,7 +440,7 @@ export const attachConnection = (
       });
       subscribed = true;
       connectionBot = command.botId;
-      registry.touch(command.botId);
+      leased = registry.touch(command.botId);
       // The hub already published this baseline to the sink, numbered: sending it again
       // would paint an older snapshot over anything that arrived since (PROTOCOL I1/I3).
       subscribing = false;

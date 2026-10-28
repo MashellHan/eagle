@@ -204,6 +204,12 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     settlingOf: (botId) => registry.settling(botId),
     measure: measureEvent,
     log,
+    // A caller without a connection still needs the bot open while it admits, and the bot
+    // must be able to idle-close afterwards (TRIGGERS.md §3.3).
+    lease: {
+      acquire: (botId) => registry.touch(botId),
+      release: (botId) => registry.release(botId),
+    },
     onRunning: (botId, running) => {
       if (registry.markRunning(botId, running)) broadcast?.();
     },
@@ -350,7 +356,10 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       timer.unref?.();
     });
     const stopped = (async () => {
+      // Producers stop accepting, then admissions already in flight settle, and only then
+      // may the registry close handles under them (TRIGGERS.md §3.6).
       await daemon.close();
+      await service.drain();
       await registry.shutdown();
       await sink.close();
       await lock.close();

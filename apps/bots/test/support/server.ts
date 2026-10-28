@@ -161,6 +161,12 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     settlingOf: (botId) => registry.settling(botId),
     measure: measureEvent,
     log,
+    // The composition root's lease (main.ts does the same), so an invocation without a
+    // connection keeps the bot open while it admits.
+    lease: {
+      acquire: (botId) => registry.touch(botId),
+      release: (botId) => registry.release(botId),
+    },
     onRunning: (botId, running) => {
       if (registry.markRunning(botId, running)) broadcast?.();
     },

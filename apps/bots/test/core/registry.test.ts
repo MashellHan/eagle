@@ -52,6 +52,8 @@ const bench = async (
     renameGate?: Promise<void>;
     openGate?: Promise<void>;
     waitDeadline?: boolean;
+    /** Held open inside `busy()`, to land a lease across the idle-close decision. */
+    busyGate?: Promise<void>;
   } = {},
 ) => {
   const root = await mkdtemp(join(tmpdir(), "bots-registry-"));
@@ -77,6 +79,8 @@ const bench = async (
   const { log, records } = captureLog();
   const runtime = new FakeRuntime();
   const timers = fakeTimers();
+  let openGate = options.openGate;
+  let busyGate = options.busyGate;
   let opens = 0;
   const specs: RuntimeBotSpec[] = [];
   const levels: string[] = [];
@@ -86,7 +90,7 @@ const bench = async (
     openRuntime: async (spec) => {
       opens += 1;
       specs.push(spec);
-      if (options.openGate !== undefined) await options.openGate;
+      if (openGate !== undefined) await openGate;
       const handle = await runtime.open(spec);
       const busy = (options.busy ?? []).includes(spec.id);
       return {
@@ -97,7 +101,10 @@ const bench = async (
         configureToolGroups: async (groups: readonly string[]) => {
           groupCalls.push(groups);
         },
-        busy: async () => (busy ? { run: true, tasks: false } : handle.busy()),
+        busy: async () => {
+          if (busyGate !== undefined) await busyGate;
+          return busy ? { run: true, tasks: false } : handle.busy();
+        },
         close: async (_trace: string, deadlineMs: number) => {
           if (options.waitDeadline === true) {
             await new Promise((resolve) => setTimeout(resolve, deadlineMs));
@@ -129,6 +136,12 @@ const bench = async (
     opens: () => opens,
     setCloseOutcome: (outcome: "closed" | "timeout") => {
       options.closeOutcome = outcome;
+    },
+    setOpenGate: (gate: Promise<void> | undefined) => {
+      openGate = gate;
+    },
+    setBusyGate: (gate: Promise<void> | undefined) => {
+      busyGate = gate;
     },
     cleanup: () => rm(root, { recursive: true, force: true }),
   };
@@ -743,6 +756,122 @@ test("an idle close finishing during a delete does not open a second handle", as
     await opening;
     assert.equal(outcome, "rejected", "the deleted bot never opens");
     assert.equal(setup.opens(), 1, "no second harness was created during the delete");
+  } finally {
+    await setup.cleanup();
+  }
+});
+
+test("an idle close cannot close a bot whose lease was taken while it awaited busy()", async () => {
+  let releaseBusy: () => void = () => undefined;
+  const busyGate = new Promise<void>((resolve) => {
+    releaseBusy = resolve;
+  });
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    // The recovery scan left the bot open; let its idle window pass so a real open happens.
+    await setup.timers.advance(1_000);
+    await settle();
+    setup.setBusyGate(busyGate);
+    await setup.registry.open("b_bot0", "tr_lease_0001");
+    setup.registry.touch("b_bot0");
+    setup.registry.release("b_bot0");
+
+    const closing = setup.timers.advance(1_000);
+    await settle();
+    // The close decision is now parked inside `busy()`. A trigger admission lands here:
+    // lease taken and released while that answer is still outstanding.
+    assert.equal(setup.registry.touch("b_bot0"), true, "a lease is still grantable");
+    setup.registry.release("b_bot0");
+    setup.setBusyGate(undefined);
+    releaseBusy();
+    await closing;
+    assert.notEqual(
+      setup.registry.handleOf("b_bot0"),
+      undefined,
+      "the stale busy() answer must not close a bot that just took a lease",
+    );
+  } finally {
+    await setup.registry.shutdown().catch(() => undefined);
+    await setup.cleanup();
+  }
+});
+
+test("a delete waits for a lease that is already granted", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    await setup.registry.open("b_bot0", "tr_lease_0002");
+    assert.equal(setup.registry.touch("b_bot0"), true, "the lease is granted");
+    const removing = setup.registry.remove("b_bot0", "tr_delete_0002");
+    await settle();
+    assert.equal(setup.registry.touch("b_bot0"), false, "a deleting bot grants no new lease");
+    assert.notEqual(
+      await setup.directory.load().then((bots) => bots.length),
+      0,
+      "the directory is still there while the lease is held",
+    );
+    setup.registry.release("b_bot0");
+    await removing;
+    assert.equal(
+      await setup.directory.load().then((bots) => bots.length),
+      0,
+      "the delete finished",
+    );
+  } finally {
+    await setup.cleanup();
+  }
+});
+
+test("a delete that cannot drain a lease quarantines instead of moving the directory", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    await setup.registry.open("b_bot0", "tr_lease_0003");
+    setup.registry.touch("b_bot0");
+    const removing = setup.registry.remove("b_bot0", "tr_delete_0003").then(
+      () => "resolved" as const,
+      (error: unknown) => error,
+    );
+    await settle();
+    await setup.timers.advance(40);
+    const outcome = await removing;
+    assert.equal(
+      outcome instanceof ClassifiedFailure && outcome.disposition === "not_admitted",
+      true,
+      "a drain that misses its deadline refuses the delete",
+    );
+    assert.equal(setup.registry.state("b_bot0"), "quarantined");
+    assert.equal(await setup.directory.load().then((bots) => bots.length), 1, "nothing moved");
+  } finally {
+    await setup.cleanup();
+  }
+});
+
+test("a lease granted before its open cannot deadlock a delete", async () => {
+  let releaseOpen: () => void = () => undefined;
+  const openGate = new Promise<void>((resolve) => {
+    releaseOpen = resolve;
+  });
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    await setup.timers.advance(1_000);
+    await settle();
+    assert.equal(setup.registry.handleOf("b_bot0"), undefined, "the recovery scan closed it");
+    const before = setup.opens();
+    setup.setOpenGate(openGate);
+    setup.registry.touch("b_bot0");
+    const opening = setup.registry.open("b_bot0", "tr_open_0010");
+    await settle();
+    const removing = setup.registry.remove("b_bot0", "tr_delete_0010");
+    await settle();
+    releaseOpen();
+    await opening;
+    assert.equal(setup.opens(), before + 1, "the delete did not force a second open");
+    setup.registry.release("b_bot0");
+    await removing;
+    assert.equal(await setup.directory.load().then((bots) => bots.length), 0);
   } finally {
     await setup.cleanup();
   }

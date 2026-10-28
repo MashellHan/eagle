@@ -96,7 +96,7 @@ five files kept.
 | `evt` | always | One declared name |
 | `trace` | always | Per the ownership table |
 | `botId` | when a bot is involved | Bot id |
-| `connId` | transport and everything below one connection | Connection id |
+| `connId` | transport and everything below one connection; absent for a port invocation, which has no connection ([TRIGGERS.md](TRIGGERS.md) §3) | Connection id |
 | `reqId` | commands carrying a `requestId` | Client request id |
 | `rev` | hub publishes | Assigned revision |
 | `durMs` | `*.ok` / `*.fail` with a paired start | Layer's own work |

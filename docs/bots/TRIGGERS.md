@@ -1,6 +1,6 @@
 # Bots — triggers, invocation and peers
 
-Status: **planned contract, stage 0 not implemented**. This document owns the
+Status: **stage 0 implemented; stages 1-3 planned**. This document owns the
 bot-side invocation interface, trigger definitions and delivery, and the peers
 group. It precedes the code: the commit that implements a section updates it.
 Product scope is in [PRODUCT.md](PRODUCT.md), layers in
@@ -166,6 +166,7 @@ new entry point wraps it while keeping the original `failure.id`.
 | Bot truly absent from the catalog | `unknown_bot` | `not_admitted` | Disable the trigger, record the reason |
 | Malformed key, text or origin | `invalid_command` | `not_admitted` | Caller bug: fail closed, log once |
 | Admission unconfirmed | `internal` | `unknown` | Retry with the same key |
+| Daemon shutting down (draining) | `internal` | `not_admitted` | Hold: the process is going away, so retry after the next start |
 
 Busy and budget exhaustion are **not** distinguished by kind or disposition: both
 are `limit_exceeded/not_admitted`, which is what the adapter already returns for
