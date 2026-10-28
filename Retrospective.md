@@ -521,3 +521,18 @@ sides. A thread of `options.x` from composition root to consumer is one behaviou
 one end-to-end test; a test of the consumer in isolation would have accepted the dead handoff.
 The same review found the sibling leak: selecting an unavailable group still offered its
 loader, because selection matched extension names without asking which were installed.
+
+## 2026-10-28 - A truncated wire id is not a selector
+
+Verifying the search tool end to end created two throwaway bots, then cleaned their usage rows
+with `delete from usage_daily where bot_id like 'b_01a18114%'`. Wire ids are ULID-shaped, so
+a bot the person had just created shared that prefix; the predicate deleted their bot's day
+of usage too (30,871 tokens, 2 search calls). The damage was noticed because the next
+`/v1/usage` lost a bot that the catalog still listed, and it was repaired from the numbers
+printed before the delete (same day, model tokens and search calls, plus `last_seen` so the
+next cumulative report cannot book the total twice) and confirmed through the API.
+
+Always list the rows first and delete by exact id, one id at a time. A prefix match against a
+time-ordered id selects more than the artifact just created, and deleting rows is not a
+reversible cleanup step. Cleanup of verification artifacts must be scoped to ids the command
+itself created and printed.
