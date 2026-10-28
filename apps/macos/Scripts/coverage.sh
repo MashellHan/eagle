@@ -46,8 +46,19 @@ for logic in Sources/EagleFeatures/Machines/*.swift; do
   fi
 done
 
+# These Bots files are exercised by this App consumer's HTTP tests. Their rows
+# must exist as well as count toward the floor; standalone Bots totals omit them.
+for logic in BotsCore/Domain/RemoteTools BotsTransport/RemoteToolsHTTPClient; do
+  if ! grep -Eq "(^|/)$logic\\.swift[[:space:]]" "$REPORT"; then
+    echo "coverage: missing consumer logic $logic.swift"
+    exit 1
+  fi
+done
+
 awk -v minimum="$MINIMUM" '
-  /WorkspaceViewModels\.swift|SettingsViewModel\.swift|SettingsModels\.swift|SidebarComposition\.swift|Theme\.swift|SidebarList\.swift/ || (/Machines\/.*\.swift/ && !/View\.swift/) {
+  /WorkspaceViewModels\.swift|SettingsViewModel\.swift|SettingsModels\.swift|SidebarComposition\.swift|Theme\.swift|SidebarList\.swift/ || (/Machines\/.*\.swift/ && !/View\.swift/) ||
+  $1 ~ /(^|\/)BotsCore\/Domain\/RemoteTools\.swift$/ ||
+  $1 ~ /(^|\/)BotsTransport\/RemoteToolsHTTPClient\.swift$/ {
     lines += $8
     missed += $9
     printf "  %-52s %6s lines, %s covered\n", $1, $8, $10

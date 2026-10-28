@@ -295,6 +295,15 @@ swift test
 ./Scripts/coverage.sh    # Bots logic gate, own script
 ```
 
+The native remote-authority DTO (`BotsCore/Domain/RemoteTools.swift`) and HTTP
+client (`BotsTransport/RemoteToolsHTTPClient.swift`) are tested by their Eagle
+consumer in `BotRemoteHTTPTests.swift`. The App's
+`apps/macos/Scripts/coverage.sh` includes both in its 90% logic-coverage floor and
+fails if either file is absent from the report. `CoverageGateTests.swift` runs
+the real script against isolated compiler-report fixtures to assert both missing
+files and uncovered lines affect the gate; it does not replace the HTTP tests.
+The standalone Bots percentage does not include these two consumer-tested files.
+
 One file list, defined once in `scripts/unit-files.sh` and used by both `npm test`
 and `npm run coverage`, so the deterministic gate and the coverage gate can never
 drift. `test/crash/**` and `test/perf/**` are deliberately absent from it: a real
