@@ -50,10 +50,18 @@ struct BotsDaemonSupervisorTests {
   }
 
   @Test("an explicit node path is used or refused, never silently replaced")
-  func nodeResolution() {
+  func nodeResolution() throws {
     #expect(BotsDaemonSupervisor.resolveNode(environment: ["BOTS_NODE": "/bin/sh"]) == "/bin/sh")
     #expect(BotsDaemonSupervisor.resolveNode(environment: ["BOTS_NODE": "/nope"]) == nil)
-    // Without an explicit path the machine's node is found (Homebrew or /usr/bin).
-    #expect(BotsDaemonSupervisor.resolveNode(environment: ["PATH": "/bin"]) != nil)
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "eagle-node-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let node = root.appendingPathComponent("node")
+    try "#!/bin/sh\nexit 0\n".write(to: node, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: node.path)
+    #expect(BotsDaemonSupervisor.resolveNode(environment: ["BOTS_NODE": node.path]) == node.path)
+    // PATH has an actual fixture executable even on hosts without Homebrew Node.
+    #expect(BotsDaemonSupervisor.resolveNode(environment: ["PATH": root.path]) != nil)
   }
 }

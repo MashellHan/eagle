@@ -9,17 +9,22 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+if [ -z "${DEVELOPER_DIR:-}" ] && [ -d /Applications/Xcode.app/Contents/Developer ]; then
+  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+fi
 MINIMUM="${1:-90}"
 
-swift test --enable-code-coverage
+coverage_root="$(mktemp -d "${TMPDIR:-/tmp}/eagle-macos-coverage.XXXXXX")"
+trap 'rm -rf "$coverage_root"' EXIT
+../../scripts/swift-gate.sh test --scratch-path "$coverage_root" --enable-code-coverage
 
-PROFILE="$(find .build -name default.profdata -print -quit)"
+PROFILE="$(find "$coverage_root" -name default.profdata -print -quit)"
 [ -n "$PROFILE" ] || { echo "coverage: no profile data found"; exit 1; }
 
 REPORT=".build/coverage.txt"
+mkdir -p .build
 : > "$REPORT"
-for bundle in $(find .build -name '*.xctest' -type d); do
+for bundle in $(find "$coverage_root" -name '*.xctest' -type d); do
   name="$(basename "$bundle" .xctest)"
   binary="$bundle/Contents/MacOS/$name"
   [ -x "$binary" ] || continue
@@ -32,8 +37,17 @@ if ! grep -q 'WorkspaceViewModels.swift' "$REPORT"; then
   exit 1
 fi
 
+# New machine logic must be instrumented too; views keep their image-review gate.
+for logic in Sources/EagleFeatures/Machines/*.swift; do
+  case "$logic" in *View.swift) continue ;; esac
+  if ! grep -q "$(basename "$logic")" "$REPORT"; then
+    echo "coverage: missing machine logic $logic"
+    exit 1
+  fi
+done
+
 awk -v minimum="$MINIMUM" '
-  /WorkspaceViewModels\.swift|SettingsViewModel\.swift|SettingsModels\.swift|SidebarComposition\.swift|Theme\.swift|SidebarList\.swift/ {
+  /WorkspaceViewModels\.swift|SettingsViewModel\.swift|SettingsModels\.swift|SidebarComposition\.swift|Theme\.swift|SidebarList\.swift/ || (/Machines\/.*\.swift/ && !/View\.swift/) {
     lines += $8
     missed += $9
     printf "  %-52s %6s lines, %s covered\n", $1, $8, $10
