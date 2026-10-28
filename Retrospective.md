@@ -536,3 +536,17 @@ Always list the rows first and delete by exact id, one id at a time. A prefix ma
 time-ordered id selects more than the artifact just created, and deleting rows is not a
 reversible cleanup step. Cleanup of verification artifacts must be scoped to ids the command
 itself created and printed.
+
+## 2026-10-28 - Keep provider composition out of transport
+
+The first exclusive-provider implementation moved the factory into `server/providers.ts`,
+which made transport import the tool adapters. The full architecture gate rejected those
+three imports. The factory now stays in `main.ts`, while the server module owns only
+provider definitions and persistence. Moving a factory for tidiness is not a reason to
+change the layer allowlist; inspect dependency rules before choosing its destination.
+
+The first native selection test also crashed before its assertion: a nested `Optional.flatMap`
+closure created in a MainActor test inherited isolation but ran inside URLProtocol's
+background callback. The crash report identified the executor assertion. Replacing the
+nested callback with ordinary decoding exposed the intended red test (both providers
+remained selected). A crashed or uncompilable test is not behavioral red evidence.

@@ -13,6 +13,29 @@ discovery. Those additions are not implemented or enabled by this plan update.
 
 ## Where the code lives
 
+### Exclusive search providers (2026-10-28)
+
+Services now has one compact Search section: a single provider selector above
+independent DeepSeek and Tavily key rows. Saving a key preserves selection; choosing
+a provider deselects the other without deleting its key. A provider without a key
+cannot be selected. Persistence serializes changes and publishes only after a
+successful write. Neither an ambiguous file nor an upstream failure chooses a
+provider by catalogue order.
+
+Bot tools stay `web_search(query, count?, needContent?)` and `web_fetch(url)`.
+A stable routing client resolves provider credentials at each invocation, so a warm
+Bot follows saved changes without a new Harness; in-flight calls retain their client.
+Tavily uses native Search/Extract through platform fetch, with no additional package.
+Provider wire normalization stays below the tool interface and usage remains `search`.
+
+The daemon gate passes 509 tests with 95.51% lines, 88.20% branches and 91.42%
+functions. Both provider adapters and their shared HTTP client have 100% line/function
+coverage. The hosted app passes 177 tests with 95.9% configured logic-line coverage.
+Tests cover explicit selection, separate keys, persistence failure/retry, warm routing,
+in-flight changes, schema equality, cancellation and refusal without fallback. Earlier
+red runs also hit the existing row-cost benchmark fluctuation; its gate is unchanged.
+Live paid searches and real-key mutation are not part of these checks.
+
 ### Native tool consolidation (2026-10-28)
 
 The owner requires separate mandatory `core` and `coding` groups. `coding` is the native

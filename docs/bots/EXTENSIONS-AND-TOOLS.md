@@ -1,9 +1,9 @@
 # Bot extensions and tools
 
 Status: **development guide and proposed tool roadmap**, 2026-10-28.
-The implemented inventory is checked against `541f1d4`, including native-tool
-consolidation (`cd8971c`) and Registry refresh (`e5f2200`), with
-`@earendil-works/pi-durable@1.4.0`. Every item marked **planned** is a design for
+The native baseline includes consolidation (`cd8971c`) and Registry refresh
+(`e5f2200`); the inventory also includes the current first-party search providers.
+The SDK remains `@earendil-works/pi-durable@1.4.0`. Every item marked **planned** is a design for
 review, not an installed tool, enabled capability or passing test.
 
 [PLAN.md](PLAN.md) owns delivery status; this guide owns tool taxonomy, naming
@@ -94,16 +94,18 @@ existing/new Bots, not independently editable group policies for each sidebar
 Bot. `core` and `coding` are normalized back in even for an empty selection;
 their settings switches stay on and cannot be disabled. Herdr registrations
 require an injected CLI client, which the normal daemon runtime supplies. The
-search registrations require a saved provider key.
+search registrations use the daemon's provider-independent routing client.
 
 A group whose own extension is not installed contributes nothing, not even its
-loader: selecting `search` without a provider key offers no `tool_search`, because
-a loader that can load nothing is a lie to the model.
+loader. The normal daemon installs search even before configuration: its tools
+can explain a missing selection without making an external request. A test/host
+that supplies no search client installs no search extension or loader for it.
 
 There are **19 tool names** with all current groups registered: five filesystem/
 coding tools, three child-agent tools, eight Herdr tools, two search tools and one
 SDK loader. With the default selection (no `search`) nine are initially offered and
-eight are deferred; selecting `search` adds `tool_search` and defers the two.
+eight are deferred; selecting `search` defers two more tools and reuses the same
+`tool_search` loader.
 
 ### Filesystem and coding
 
@@ -126,10 +128,23 @@ Do not add custom paging, edit matching or process execution already provided by
 
 | Group / tool | Input | Behavior | Replay |
 | --- | --- | --- | --- |
-| `search` / `web_search` | `query, count?, needContent?` | DeepSeek search: ranked title, URL, snippet and summary; content on request; the provider's operators (`site:`, `lang:`, `after:`, quoted phrases) pass through | Unsafe |
-| `search` / `web_fetch` | `url` | DeepSeek fetch: one page as Markdown, at most 50 KiB of model-facing text with an explicit truncation notice | Safe |
+| `search` / `web_search` | `query, count?, needContent?` | Ranked title, URL, snippet and summary; content on request, through the user's selected search provider | Unsafe |
+| `search` / `web_fetch` | `url` | One page as Markdown through the same provider, at most 50 KiB of model-facing text | Safe |
 
-Both are deferred and need a provider key (`GET /v1/providers`, PROTOCOL.md "Providers").
+Both are deferred. Settings -> Services -> Search stores independent DeepSeek and
+Tavily keys and explicitly selects one provider (`GET /v1/providers`, PROTOCOL.md
+"Providers"). Tool schemas and output formatting never depend on that selection;
+there is no provider argument or provider-specific tool name. The route resolves
+at invocation, not Harness open, and has no automatic fallback. With no selection,
+the tools return a configuration error without an external request.
+
+The Tavily adapter uses [Search](https://docs.tavily.com/documentation/api-reference/endpoint/search)
+and [Extract](https://docs.tavily.com/documentation/api-reference/endpoint/extract).
+`count` stays an upper bound of 1-50; Tavily returns at most its native 20 results.
+`needContent` maps to `include_raw_content`; fetch extracts exactly one URL.
+Native basic search/extraction is explicit, with no automatic paid depth upgrade.
+Timeouts and cancellation reach both providers; raw provider fields are normalized
+inside their adapters, never by the Bot or its UI.
 Each performed call books one `search` call in the usage statistics, so the Settings page
 shows search next to model spend.
 
@@ -293,31 +308,20 @@ pipeline, automatic memory extraction or pluggable storage interface is required
 Choose the smallest existing storage/search primitive during implementation;
 shared mutation and crash tests are prerequisites, not optional optimizations.
 
-### 6.2 Search: web discovery versus content retrieval
+### 6.2 Search: delivered
 
-| Tool | Planned input | Result and single responsibility | Replay |
-| --- | --- | --- | --- |
-| `web_search` | `query, limit?` | Ranked `{title, url, snippet}` results, provider attribution and retrieval time; publication time only if supplied | Unsafe initially: external requests can be billed |
-| `web_fetch` | `url` | Requested/final URL, retrieval time, content type, extracted text and truncation diagnostics | Safe for the planned read-only HTTP GET |
+The implemented [Search inventory](#search) replaces the original planning
+signatures. Do not introduce a second `limit` argument or a direct-GET fetch
+implementation alongside the current `count` and provider-backed extraction.
+`web_search` finds pages and includes content only when requested; `web_fetch`
+extracts one URL. Neither is tool discovery or local memory search.
 
-`web_search` finds URLs; it does not fetch every result. `web_fetch` retrieves
-one URL; it does not launch a search, follow page links recursively or run browser
-scripts. Neither overlaps `tool_search` or local `memory_search`.
-
-Plan for search default 10/max 20 results, 2 KiB queries, a 30-second request
-deadline, fetch cap of 2 MiB received data, at most five redirects and 50 KiB
-model-facing output. Propagate cancellation; report truncation rather than
-presenting a partial page as complete. Accept HTTP(S) page URLs only, validate
-redirect targets too, and do not accept embedded credentials or attach daemon
-tokens/browser cookies. Retrieved content is source data, not tool instructions.
-HTTP errors, unsupported content and provider failures must be distinguishable
-from an empty search result.
-
-The search provider and HTML-to-text library are not selected. Inspect existing
-dependencies first; use Node's native `fetch` for transport and a maintained
-extractor if needed. Provider credentials stay in secure configuration. No
-provider-selection tool, browser automation stack or generic connector framework
-is required. Live provider acceptance is separate from deterministic local tests.
+The shared `SearchClient` interface lives in `src/tools/search/client.ts`.
+Provider adapters own external wire differences. The composition root binds
+stored credentials and exclusive selection; server storage never imports tools.
+Adding a provider means adding its adapter/catalog entry and the same contract
+tests, not adding a new Bot tool or extending the model's schema with vendor
+options. Actual provider acceptance is separate from deterministic local tests.
 
 ### 6.3 Agents and peers: discovery, listing and communication
 

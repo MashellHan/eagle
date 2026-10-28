@@ -380,6 +380,31 @@ test("provider keys are saved behind the bearer and never returned", async () =>
         body: JSON.stringify({ apiKey: "   " }),
       });
       assert.equal(blank.status, 400, "a blank key is refused rather than clearing the stored one");
+      const tavily = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers/tavily-search`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ apiKey: "tvly-http-fixture" }),
+      });
+      assert.equal(tavily.status, 200, "a second provider key saves independently");
+      const choose = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers/tavily-search`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ enabled: true }),
+      });
+      assert.equal(choose.status, 200);
+      const state = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers`, { headers });
+      const providers = (
+        (await state.json()) as {
+          providers: { id: string; hasApiKey: boolean; enabled: boolean }[];
+        }
+      ).providers;
+      assert.deepEqual(
+        providers.map((provider) => [provider.id, provider.hasApiKey, provider.enabled]),
+        [
+          ["deepseek-search", true, false],
+          ["tavily-search", true, true],
+        ],
+      );
       const unauthenticated = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers`);
       assert.equal(unauthenticated.status, 401);
     } finally {

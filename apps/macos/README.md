@@ -18,6 +18,7 @@ swift test                 # Swift Testing suites for the logic layer
 ./Scripts/coverage.sh      # same tests plus a 90% logic-coverage gate
 swift run SnapshotRenderer ../../.local/macos-snapshots   # PNGs for review
 swift run SnapshotRenderer ../../.local/macos-inspector --inspector-only   # static inspector fixtures only
+swift run SnapshotRenderer ../../.local/macos-services --services-only   # isolated search-provider fixtures only
 ```
 
 The app supervises the daemon: it walks up from the executable for

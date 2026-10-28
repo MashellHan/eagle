@@ -1860,3 +1860,34 @@ render is what proved the HTTP path against a real process.
 Not verified: a real DeepSeek key, a live `web_search`, and toggling `search` on for a bot in
 the running app. Herdr collection, dashboard auth, D1 and deployment are untouched by this
 change.
+
+## 2026-10-28 14:24 CST - Exclusive search provider selection
+
+The running app remains on the earlier build. The new contract keeps `web_search` and
+`web_fetch` provider-independent, stores DeepSeek/Tavily keys separately, and selects one
+provider without fallback. The HTTP/catalog tests first failed because Tavily was absent;
+24 affected daemon tests now pass against isolated files and fake provider responses.
+The native regression demonstrates the old view model leaving both providers enabled.
+Its first test draft hit a Swift actor assertion in a nested URLProtocol callback; removing
+that callback closure exposes the intended failing expectation. The unchanged row-cost
+benchmark also failed on the red runs; its threshold is not being changed.
+
+Next unverified hop: new selection semantics -> compact service UI -> full coverage gates
+and offline light/dark snapshots. No live keys, provider calls, Bot messages, Herdr
+collection, dashboard authentication, D1 or public deployment were changed or exercised.
+
+### 14:38 CST - Search settings acceptance
+
+The complete daemon gate passes 509 tests at 95.51% lines / 88.20% branches /
+91.42% functions. The independent Bots client passes 126 tests at 91.5% configured
+logic-line coverage; the hosted app passes 177 tests at 95.9%. All existing thresholds
+and exclusions remain unchanged. The first daemon gate rejected transport-to-tool
+imports; keeping composition in `main.ts` fixes the boundary without weakening the guard.
+
+Offline service-only snapshots at 920 and 760 points in both appearances show the
+compact Search section, one selected provider and two independent saved-key rows.
+This renderer uses an isolated temporary root and a stub URL session, removes only
+its own fixture root, and never opens the live daemon. The app bundle builds and its
+ad-hoc signature verifies. The running old app is connected with no running tasks;
+restart of the built bundle follows the commit. No real provider calls or key writes
+were used for acceptance; live DeepSeek/Tavily verification remains unperformed.

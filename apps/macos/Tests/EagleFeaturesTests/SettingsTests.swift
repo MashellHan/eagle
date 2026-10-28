@@ -225,6 +225,79 @@ struct SettingsGatewayTests {
     GatewayHTTPStub.handler = nil
   }
 
+  @Test("choosing a search provider deselects the previous one without losing either key")
+  func exclusiveSearchProvider() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.providers = [
+      ProviderSettings(
+        id: "deepseek-search", title: "DeepSeek", kind: "deepseek-search",
+        baseUrl: "https://api.deepseek.com", docsUrl: "", keyLabel: "API Key",
+        hasApiKey: true, enabled: true),
+      ProviderSettings(
+        id: "tavily-search", title: "Tavily", kind: "tavily-search",
+        baseUrl: "https://api.tavily.com", docsUrl: "", keyLabel: "API Key",
+        hasApiKey: true, enabled: false),
+    ]
+    GatewayHTTPStub.handler = { request in
+      #expect(request.url?.path == "/v1/providers/tavily-search")
+      var body: [String: Any] = [:]
+      if let data = gatewayHTTPBody(request) {
+        body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+      }
+      #expect(body["apiKey"] == nil)
+      #expect(body["enabled"] as? Bool == true)
+      return (
+        200,
+        Data(
+          #"{"provider":{"id":"tavily-search","title":"Tavily","kind":"tavily-search","baseUrl":"https://api.tavily.com","docsUrl":"","keyLabel":"API Key","hasApiKey":true,"enabled":true}}"#
+            .utf8)
+      )
+    }
+    await model.setProviderEnabled("tavily-search", true)
+    #expect(model.providers.filter(\.enabled).map(\.id) == ["tavily-search"])
+    #expect(model.providers.map(\.hasApiKey) == [true, true])
+    #expect(model.selectedSearchProvider?.id == "tavily-search")
+    GatewayHTTPStub.handler = { _ in
+      (400, Data(#"{"error":{"kind":"invalid_command","message":"拒绝切换"}}"#.utf8))
+    }
+    await model.setProviderEnabled("deepseek-search", true)
+    #expect(model.selectedSearchProvider?.id == "tavily-search")
+    #expect(model.providerMessage == "拒绝切换")
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("search selection requires a saved key and busy provider work cannot race")
+  func searchSelectionGuards() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.providers = [
+      ProviderSettings(
+        id: "tavily-search", title: "Tavily", kind: "tavily-search",
+        baseUrl: "https://api.tavily.com", docsUrl: "", keyLabel: "API Key",
+        hasApiKey: false, enabled: false)
+    ]
+    #expect(model.selectedSearchProvider == nil)
+    await model.setProviderEnabled("tavily-search", true)
+    #expect(model.selectedSearchProvider == nil)
+    #expect(model.providerMessage?.contains("先保存") == true)
+    model.providerMessage = nil
+    model.providerBusy = true
+    await model.loadProviders()
+    await model.saveProvider("tavily-search")
+    await model.testProvider("tavily-search")
+    await model.setProviderEnabled("tavily-search", true)
+    #expect(model.providerMessage == nil)
+    #expect(model.providerKeys.isEmpty)
+    model.providerBusy = false
+    model.providers[0].hasApiKey = true
+    model.providers[0].enabled = true
+    var duplicate = model.providers[0]
+    duplicate.id = "deepseek-search"
+    model.providers.append(duplicate)
+    #expect(model.selectedSearchProvider == nil, "an ambiguous state does not select by order")
+  }
+
   @Test("a probe reports its latency, and a failed probe reports why")
   func probe() async throws {
     let (settings, session) = try settingsGatewayFixture()

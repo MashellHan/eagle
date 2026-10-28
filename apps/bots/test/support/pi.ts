@@ -21,7 +21,7 @@ import {
   type PiSettings,
 } from "../../src/runtime/pi/PiDurableRuntime.ts";
 import type { RemoteToolOptions } from "../../src/tools/remote/tools.ts";
-import type { SearchClient } from "../../src/tools/search/deepseek.ts";
+import type { SearchClient } from "../../src/tools/search/client.ts";
 import type { UsageMeter } from "../../src/tools/usage.ts";
 
 export const trace = "tr_runtime_1";

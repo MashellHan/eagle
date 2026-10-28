@@ -1,132 +1,48 @@
-// DeepSeek search and fetch (https://api-docs.deepseek.com/guides/search/): raw JSON over
-// bearer auth. Search finds pages, fetch reads one; neither launches a browser.
-import type { ToolOutcome } from "../types.ts";
+import {
+  isRecord,
+  requestSearch,
+  type SearchClient,
+  type SearchClientOptions,
+  text,
+} from "./client.ts";
 
-export type SearchResult = {
-  readonly title: string;
-  readonly url: string;
-  readonly snippet: string;
-  readonly summary: string;
-  readonly content?: string;
-  readonly siteName?: string;
-  readonly publishedAt?: string;
-  readonly score?: number;
+export const createDeepSeekSearch = (options: SearchClientOptions): SearchClient => {
+  const http = { ...options, baseUrl: options.baseUrl ?? "https://api.deepseek.com" };
+  return {
+    async search(input, signal) {
+      const body: Record<string, unknown> = {
+        query: input.query,
+        need_content: input.needContent === true,
+      };
+      if (input.count !== undefined) body.count = input.count;
+      const payload = await requestSearch(http, "/v1/tools/search", body, signal);
+      if (!Array.isArray(payload.results))
+        throw new Error("the search provider returned an invalid response");
+      return payload.results.flatMap((item: unknown) => {
+        if (!isRecord(item) || text(item.url).length === 0) return [];
+        return [
+          {
+            title: text(item.title),
+            url: text(item.url),
+            snippet: text(item.snippet),
+            summary: text(item.summary),
+            ...(text(item.content) === "" ? {} : { content: text(item.content) }),
+            ...(text(item.site_name) === "" ? {} : { siteName: text(item.site_name) }),
+            ...(text(item.date) === "" ? {} : { publishedAt: text(item.date) }),
+            ...(typeof item.rerank_score === "number" ? { score: item.rerank_score } : {}),
+          },
+        ];
+      });
+    },
+    async fetchPage(input, signal) {
+      const payload = await requestSearch(http, "/v1/tools/fetch", { url: input.url }, signal);
+      if (typeof payload.content !== "string")
+        throw new Error("the search provider returned an invalid response");
+      return {
+        url: text(payload.url) || input.url,
+        title: text(payload.title),
+        content: payload.content,
+      };
+    },
+  };
 };
-
-export type FetchedPage = {
-  readonly url: string;
-  readonly title: string;
-  readonly content: string;
-};
-
-export type SearchClient = {
-  /** Up to `count` results for one query, best first. */
-  search(input: {
-    readonly query: string;
-    readonly count?: number;
-    readonly needContent?: boolean;
-    readonly originalQuestion?: string;
-  }): Promise<readonly SearchResult[]>;
-  /** One page as Markdown. */
-  fetchPage(input: { readonly url: string }): Promise<FetchedPage>;
-};
-
-export type DeepSeekOptions = {
-  readonly apiKey: string;
-  readonly baseUrl?: string;
-  readonly timeoutMs?: number;
-  /** Injected for tests; the real client uses the platform fetch. */
-  readonly fetch?: typeof fetch;
-};
-
-const DEFAULT_BASE_URL = "https://api.deepseek.com";
-const DEFAULT_TIMEOUT_MS = 30_000;
-
-const request = async (options: DeepSeekOptions, path: string, body: unknown): Promise<unknown> => {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-  try {
-    const doFetch = options.fetch ?? fetch;
-    const response = await doFetch(
-      `${(options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "")}${path}`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${options.apiKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      },
-    );
-    if (!response.ok) {
-      throw new Error(
-        response.status === 401
-          ? "the search provider refused the API key"
-          : `the search provider answered ${response.status}`,
-      );
-    }
-    return await response.json();
-  } finally {
-    clearTimeout(timer);
-  }
-};
-
-const text = (value: unknown): string => (typeof value === "string" ? value : "");
-
-const optionalText = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-export const createDeepSeekSearch = (options: DeepSeekOptions): SearchClient => ({
-  async search(input) {
-    const body: Record<string, unknown> = { query: input.query };
-    if (input.count !== undefined) body.count = input.count;
-    body.need_content = input.needContent === true;
-    if (input.originalQuestion !== undefined) body.ori_question = input.originalQuestion;
-    const payload = (await request(options, "/v1/tools/search", body)) as {
-      results?: unknown;
-    };
-    if (!Array.isArray(payload.results)) return [];
-    return payload.results.flatMap((item) => {
-      const result = item as Record<string, unknown>;
-      const url = text(result.url);
-      if (url.length === 0) return [];
-      return [
-        {
-          title: text(result.title),
-          url,
-          snippet: text(result.snippet),
-          summary: text(result.summary),
-          ...(optionalText(result.content) === undefined
-            ? {}
-            : { content: optionalText(result.content) as string }),
-          ...(optionalText(result.site_name) === undefined
-            ? {}
-            : { siteName: optionalText(result.site_name) as string }),
-          ...(optionalText(result.date) === undefined
-            ? {}
-            : { publishedAt: optionalText(result.date) as string }),
-          ...(typeof result.rerank_score === "number" ? { score: result.rerank_score } : {}),
-        },
-      ];
-    });
-  },
-
-  async fetchPage(input) {
-    const payload = (await request(options, "/v1/tools/fetch", { url: input.url })) as {
-      title?: unknown;
-      content?: unknown;
-      url?: unknown;
-    };
-    return {
-      url: optionalText(payload.url) ?? input.url,
-      title: text(payload.title),
-      content: text(payload.content),
-    };
-  },
-});
-
-export const searchFailure = (error: unknown): ToolOutcome => ({
-  output: `搜索失败：${error instanceof Error ? error.message : String(error)}`,
-  isError: true,
-});

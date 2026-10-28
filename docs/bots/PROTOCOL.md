@@ -240,7 +240,9 @@ capability is `true`.
 
 Third-party services a bot's tools may call. The catalogue is code (`id`, `title`,
 `kind`, `baseUrl`, `docsUrl`, `keyLabel`); the first entry is `deepseek-search`, whose
-search and fetch APIs back the `web_search`/`web_fetch` tools.
+search and fetch APIs back the `web_search`/`web_fetch` tools. The search section
+also offers `tavily-search`. Each provider stores one independent key; the user
+selects at most one provider to serve both operations.
 
 ```json
 { "id": "deepseek-search", "title": "DeepSeek 搜索", "kind": "deepseek-search",
@@ -253,8 +255,18 @@ search and fetch APIs back the `web_search`/`web_fetch` tools.
   bot's directory: `<XDG_CONFIG_HOME or ~/.config>/eagle-bots/providers.json`, mode 0600. A
   `PUT` with an omitted key keeps the stored one; an empty key is a `400` and writes nothing.
   The public shape only says whether a key is set.
-- **`enabled` decides whether bots get the tools.** The `search` tool group also has to be
-  selected; with no key or a disabled provider the group installs nothing callable.
+- **Selection is exclusive.** `PUT` with `enabled: true` requires a saved or supplied
+  nonblank key and atomically deselects the other search providers without deleting
+  their keys. Saving only a key never changes selection. `enabled: false` deselects
+  that provider. Concurrent saves serialize; failed writes change neither keys nor
+  the active route. Ambiguous persisted selections do not pick a provider by order.
+- **The Bot API is provider-independent.** `web_search(query, count?, needContent?)`
+  and `web_fetch(url)` keep identical schemas, results and usage accounting. The
+  daemon installs its routing client even before a provider is selected; the optional
+  `search` tool group still controls discovery. Without a valid selection, a call
+  returns a configuration error and sends no external request. Selection/key changes
+  apply at the next invocation, including existing conversations. In-flight requests
+  retain their original client. Failures never fall back to another provider.
 - **`test` spends one search**: it asks the provider for a single result and reports
   reachability, the message and the latency. It saves nothing.
 - An unknown provider is a `400`; a refused key reads as "the provider refused the API key".

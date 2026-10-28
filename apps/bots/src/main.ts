@@ -39,9 +39,14 @@ import {
 import { type Daemon, startServer } from "./server/http.ts";
 import {
   PROVIDERS,
+  type ProviderApi,
+  type ProviderDefinition,
+  type PublicProvider,
   providerDefinition,
+  providersPath,
   publicProviders,
   readProviders,
+  selectedProvider,
   writeProviders,
 } from "./server/providers.ts";
 import {
@@ -53,7 +58,9 @@ import { acquireLock, LockError } from "./server/singleton.ts";
 import { toServerEvent } from "./server/socket.ts";
 import { UsageStore } from "./server/usage.ts";
 import { containsRemoteCredential, createRemoteCredentials } from "./tools/remote/keychain.ts";
-import { createDeepSeekSearch, type SearchClient } from "./tools/search/deepseek.ts";
+import type { SearchClient } from "./tools/search/client.ts";
+import { createDeepSeekSearch } from "./tools/search/deepseek.ts";
+import { createTavilySearch } from "./tools/search/tavily.ts";
 
 export type DaemonHandle = {
   readonly config: DaemonConfig;
@@ -124,12 +131,13 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   });
   const canonical: DaemonConfig = { ...config, root };
   const token = await loadToken(root);
+  const providers = await createProviderService();
   let gateway: GatewayConfig | undefined;
   // The log exists before the lock so a refused second start is on record, and it holds
   // the token as a secret for redaction from its first record.
   const sink = new FileLogSink({ root, minimum: canonical.logLevel });
   const log = new Log(sink.sink, undefined, {
-    secrets: () => [token, gateway?.apiKey ?? ""],
+    secrets: () => [token, gateway?.apiKey ?? "", ...providers.secrets()],
   });
   const startup = "tr_boot_1";
   log.emit("info", "core", StartupEvents.singletonStart, { trace: startup });
@@ -269,7 +277,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     log,
     compaction,
     usage: usageStore,
-    search: () => searchClient(),
+    search: () => providers.client,
     remote: (spec) =>
       remoteCredentials === undefined
         ? undefined
@@ -299,17 +307,6 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   await registry.start();
   // The daemon exists after the service that has to broadcast through it.
   let broadcast: (() => void) | undefined;
-  let providers = await readProviders();
-  const searchClient = (): SearchClient | undefined => {
-    for (const definition of PROVIDERS) {
-      const config = providers[definition.id];
-      if (config === undefined || !config.enabled || config.apiKey.length === 0) continue;
-      if (definition.kind === "deepseek-search") {
-        return createDeepSeekSearch({ apiKey: config.apiKey, baseUrl: definition.baseUrl });
-      }
-    }
-    return undefined;
-  };
   const service = new ConversationService({
     open: (botId, trace) => registry.open(botId, trace),
     handleOf: (botId) => registry.handleOf(botId),
@@ -434,58 +431,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     capabilities,
     port: canonical.port,
     gatewayProvider: () => gateway?.provider ?? "magpie",
-    providers: {
-      public: () => publicProviders(providers),
-      save: async (id, input) => {
-        const definition = providerDefinition(id);
-        if (definition === undefined) {
-          return { error: `未知的服务：${id}` };
-        }
-        const current = providers[id] ?? { apiKey: "", enabled: false };
-        const apiKey = input.apiKey === undefined ? current.apiKey : input.apiKey.trim();
-        if (input.apiKey !== undefined && apiKey.length === 0) {
-          return { error: "API Key 不能为空" };
-        }
-        const next = {
-          apiKey,
-          enabled: input.enabled === undefined ? current.enabled : input.enabled,
-        };
-        const all = { ...providers, [id]: next };
-        await writeProviders(all);
-        providers = all;
-        const saved = publicProviders(all).find((provider) => provider.id === id);
-        return saved === undefined ? { error: `未知的服务：${id}` } : { provider: saved };
-      },
-      test: async (id) => {
-        const definition = providerDefinition(id);
-        const config = providers[id];
-        if (definition === undefined || config === undefined || config.apiKey.length === 0) {
-          return { ok: false, message: "还没有保存这个服务的 API Key", latencyMs: 0 };
-        }
-        if (definition.kind !== "deepseek-search") {
-          return { ok: false, message: "这个服务还不支持测试", latencyMs: 0 };
-        }
-        const started = performance.now();
-        try {
-          const results = await createDeepSeekSearch({
-            apiKey: config.apiKey,
-            baseUrl: definition.baseUrl,
-          }).search({ query: "DeepSeek", count: 1 });
-          return {
-            ok: true,
-            message: `连接成功，返回 ${results.length} 条结果`,
-            latencyMs: Math.round(performance.now() - started),
-            results: results.length,
-          };
-        } catch (error) {
-          return {
-            ok: false,
-            message: error instanceof Error ? error.message : "搜索服务不可用",
-            latencyMs: Math.round(performance.now() - started),
-          };
-        }
-      },
-    },
+    providers,
     usage: async (days: number) => {
       const report = usageStore.report(days);
       const titles = new Map(registry.summaries().map((bot) => [bot.id, bot.title]));
@@ -526,4 +472,87 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     }
   };
   return { config: canonical, port: daemon.port, token, daemon, registry, close };
+};
+
+export const createProviderService = async (
+  options: { readonly path?: string; readonly fetch?: typeof fetch } = {},
+): Promise<ProviderApi & { readonly client: SearchClient; secrets(): readonly string[] }> => {
+  const path = options.path ?? providersPath();
+  let configs = await readProviders(path);
+  let queue = Promise.resolve();
+  const clientFor = (definition: ProviderDefinition): SearchClient => {
+    const http = {
+      apiKey: configs[definition.id]?.apiKey ?? "",
+      baseUrl: definition.baseUrl,
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    };
+    return definition.kind === "deepseek-search"
+      ? createDeepSeekSearch(http)
+      : createTavilySearch(http);
+  };
+  const selectedClient = (): SearchClient => {
+    const definition = selectedProvider(configs);
+    if (definition === undefined) throw new Error("请先在服务中选择一个已保存 Key 的搜索服务商。");
+    return clientFor(definition);
+  };
+  const save: ProviderApi["save"] = async (id, input) => {
+    const definition = providerDefinition(id);
+    if (definition === undefined) return { error: `未知的服务：${id}` };
+    const current = configs[id] ?? { apiKey: "", enabled: false };
+    const apiKey = input.apiKey === undefined ? current.apiKey : input.apiKey.trim();
+    if ((input.apiKey !== undefined || input.enabled === true) && apiKey.length === 0) {
+      return { error: "请先保存 API Key" };
+    }
+    const next = { ...configs, [id]: { apiKey, enabled: input.enabled ?? current.enabled } };
+    if (input.enabled === true) {
+      for (const provider of PROVIDERS) {
+        const config = next[provider.id];
+        if (config !== undefined && provider.id !== id)
+          next[provider.id] = { ...config, enabled: false };
+      }
+    }
+    await writeProviders(next, path);
+    configs = next;
+    return {
+      provider: publicProviders(configs).find((provider) => provider.id === id) as PublicProvider,
+    };
+  };
+  return {
+    public: () => publicProviders(configs),
+    secrets: () => Object.values(configs).map((config) => config.apiKey),
+    save(id, input) {
+      const result = queue.then(() => save(id, input));
+      queue = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    },
+    async test(id) {
+      const definition = providerDefinition(id);
+      if (definition === undefined || !configs[id]?.apiKey.trim()) {
+        return { ok: false, message: "还没有保存这个服务的 API Key", latencyMs: 0 };
+      }
+      const started = performance.now();
+      try {
+        const results = await clientFor(definition).search({ query: "web search", count: 1 });
+        return {
+          ok: true,
+          message: `连接成功，返回 ${results.length} 条结果`,
+          latencyMs: Math.round(performance.now() - started),
+          results: results.length,
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          message: error instanceof Error ? error.message : "搜索服务不可用",
+          latencyMs: Math.round(performance.now() - started),
+        };
+      }
+    },
+    client: {
+      search: async (input, signal) => selectedClient().search(input, signal),
+      fetchPage: async (input, signal) => selectedClient().fetchPage(input, signal),
+    },
+  };
 };
