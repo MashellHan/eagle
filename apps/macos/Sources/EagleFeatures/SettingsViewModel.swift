@@ -15,6 +15,12 @@ public final class SettingsViewModel: ObservableObject {
   @Published public var selection: SettingsSection = .bots
   @Published public var machines: [MachineDevice]
   @Published public var usage: UsageSummary
+  /// Third-party providers (search today), loaded when the 服务 tab opens.
+  @Published public var providers: [ProviderSettings] = []
+  @Published public var providerKeys: [String: String] = [:]
+  @Published public var providerBusy = false
+  @Published public var providerProbe: [String: ProviderProbe] = [:]
+  @Published public var providerMessage: String?
   /// The daemon's usage statistics; nil until the 用量与账单 tab is opened.
   @Published public var usageReport: UsageReport?
   @Published public var usageBusy = false
@@ -30,7 +36,7 @@ public final class SettingsViewModel: ObservableObject {
   @Published public var gatewayModel = ""
   @Published public var gatewayAPIKey = ""
   @Published public var gatewayThinkingLevel = SettingsViewModel.defaultThinkingLevel
-  @Published public var gatewayToolGroups = SettingsViewModel.toolGroups
+  @Published public var gatewayToolGroups = SettingsViewModel.defaultToolGroups
   @Published public var gatewayProbe: GatewayProbe?
   @Published public var gatewayBusy = false
   @Published public var gatewayMessage: String?
@@ -40,10 +46,14 @@ public final class SettingsViewModel: ObservableObject {
     ("high", "高"), ("xhigh", "极高"), ("max", "最高"),
   ]
   public static let defaultThinkingLevel = "medium"
-  public static let toolGroups = ["core", "coding", "herdr", "agents"]
+  /// Every group the daemon knows, in display order; the daemon owns which are installed.
+  public static let toolGroups = ["core", "coding", "herdr", "agents", "search"]
+  /// What a daemon that predates a new group is assumed to run: new groups stay off.
+  public static let defaultToolGroups = ["core", "coding", "herdr", "agents"]
   public static let mandatoryToolGroups: Set<String> = ["core", "coding"]
   public static let herdrToolGroup = "herdr"
   public static let agentsToolGroup = "agents"
+  public static let searchToolGroup = "search"
   private var gatewayThinkingLevelChosen = false
   private var gatewayToolGroupsChosen = false
   private var gatewayLoaded = false
@@ -197,6 +207,103 @@ public final class SettingsViewModel: ObservableObject {
     return CatalogHTTPClient(baseURL: botsSettings.baseURL, token: token, session: urlSession)
   }
 
+  // MARK: - Providers
+
+  public func loadProviders() async {
+    providerBusy = true
+    defer { providerBusy = false }
+    do {
+      providers = try await client().loadProviders()
+      providerMessage = nil
+    } catch {
+      providerMessage = (error as? ClientError)?.message ?? error.localizedDescription
+    }
+  }
+
+  /// A typed key is a draft: an empty field keeps the stored one.
+  public func saveProvider(_ id: String) async {
+    providerBusy = true
+    defer { providerBusy = false }
+    let typed = providerKeys[id]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    do {
+      let saved = try await client().saveProvider(
+        id: id, apiKey: typed.isEmpty ? nil : typed, enabled: nil)
+      providers = providers.map { $0.id == id ? saved : $0 }
+      if !typed.isEmpty { providerKeys[id] = "" }
+      providerProbe[id] = nil
+      providerMessage = "已保存"
+    } catch {
+      providerMessage = (error as? ClientError)?.message ?? error.localizedDescription
+    }
+  }
+
+  /// The enable switch flips at once; a refused save puts it back where it was.
+  public func setProviderEnabled(_ id: String, _ enabled: Bool) async {
+    guard let index = providers.firstIndex(where: { $0.id == id }) else { return }
+    let previous = providers[index].enabled
+    guard previous != enabled else { return }
+    providers[index].enabled = enabled
+    providerBusy = true
+    defer { providerBusy = false }
+    do {
+      let saved = try await client().saveProvider(id: id, apiKey: nil, enabled: enabled)
+      if let current = providers.firstIndex(where: { $0.id == id }) { providers[current] = saved }
+      providerMessage = nil
+    } catch {
+      if let current = providers.firstIndex(where: { $0.id == id }) {
+        providers[current].enabled = previous
+      }
+      providerMessage = (error as? ClientError)?.message ?? error.localizedDescription
+    }
+  }
+
+  public func testProvider(_ id: String) async {
+    providerBusy = true
+    defer { providerBusy = false }
+    do {
+      providerProbe[id] = try await client().testProvider(id: id)
+    } catch {
+      providerMessage = (error as? ClientError)?.message ?? error.localizedDescription
+    }
+  }
+
+  /// The 消耗最多 card: a bot that only searched has calls and no tokens.
+  public var usageBotRows: [(id: String, title: String, detail: String, value: String)] {
+    guard let report = usageReport else { return [] }
+    return report.bots.prefix(5).map { bot in
+      (
+        bot.botId, bot.title, "",
+        Self.usageLine(tokens: bot.totalTokens, calls: bot.calls, costUsd: bot.costUsd)
+      )
+    }
+  }
+
+  /// The 用量与账单 sources card: models spend tokens, search spends calls.
+  public var usageSourceRows: [(id: String, title: String, value: String)] {
+    guard let report = usageReport, let sources = report.sources else { return [] }
+    return sources.map { source in
+      let title =
+        switch source.source {
+        case "model": "模型"
+        case "search": "搜索"
+        default: source.source
+        }
+      return (
+        source.source, title,
+        Self.usageLine(tokens: source.totalTokens, calls: source.calls, costUsd: source.costUsd)
+      )
+    }
+  }
+
+  /// One spend in words: tokens, calls and money, with the zero parts left out.
+  private static func usageLine(tokens: Int, calls: Int?, costUsd: Double) -> String {
+    var parts: [String] = []
+    if tokens > 0 { parts.append(UsageFormat.tokens(tokens)) }
+    if let calls, calls > 0 { parts.append("\(calls) 次") }
+    if let cost = UsageFormat.cost(costUsd), cost != "$0" { parts.append(cost) }
+    return parts.isEmpty ? "—" : parts.joined(separator: " · ")
+  }
+
   /// One read per visit; the daemon aggregates 90 days and answers the requested window.
   public func loadUsage(days: Int = 30) async {
     guard !usageBusy else { return }
@@ -213,11 +320,10 @@ public final class SettingsViewModel: ObservableObject {
   public var usageSummaryRows: [(id: String, title: String, detail: String, value: String)] {
     guard let report = usageReport else { return [] }
     func line(_ totals: UsageReport.Totals) -> String {
-      let cost = UsageFormat.cost(totals.costUsd).map { " · \($0)" } ?? ""
-      return "\(UsageFormat.tokens(totals.totalTokens))\(cost)"
+      Self.usageLine(tokens: totals.totalTokens, calls: totals.calls, costUsd: totals.costUsd)
     }
     return [
-      ("today", "今日", "所有 Bot 的 token 与花费", line(report.today)),
+      ("today", "今日", "所有 Bot 的 token、调用与花费", line(report.today)),
       ("week", "近 7 天", "滚动 7 天", line(report.week)),
       ("month", "近 30 天", "滚动 30 天", line(report.month)),
     ]

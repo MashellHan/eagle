@@ -444,6 +444,20 @@ final class StubCatalog: CatalogPort {
   var agentChanges: [(String, String?, String?)] = []
   var retriedTasks: [(String, String)] = []
 
+  var providers: [ProviderSettings] = []
+  var savedProviders: [(String, String?, Bool?)] = []
+
+  func loadProviders() async throws -> [ProviderSettings] { providers }
+
+  func saveProvider(id: String, apiKey: String?, enabled: Bool?) async throws -> ProviderSettings {
+    savedProviders.append((id, apiKey, enabled))
+    throw ClientError("not used")
+  }
+
+  func testProvider(id: String) async throws -> ProviderProbe {
+    throw ClientError("not used")
+  }
+
   func loadUsage(days: Int) async throws -> UsageReport {
     UsageReport(
       retentionDays: 90,

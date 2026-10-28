@@ -238,6 +238,52 @@ final class CatalogHTTPClientTests: XCTestCase {
     StubProtocol.handler = { _ in throw ClientError("connection refused") }
     await expectThrows({ try await self.client.load() }, handler: { _ in })
   }
+
+  func testProvidersLoadSaveAndProbe() async throws {
+    var savedBody: [String: Any] = [:]
+    var probed = false
+    let provider = """
+      {"id":"deepseek-search","title":"DeepSeek 搜索","kind":"deepseek-search",
+       "baseUrl":"https://api.deepseek.com","docsUrl":"https://api-docs.deepseek.com/guides/search/",
+       "keyLabel":"DeepSeek API Key","hasApiKey":true,"enabled":true}
+      """
+    StubProtocol.handler = { request in
+      switch (request.httpMethod, request.url?.path) {
+      case ("GET", "/v1/providers"):
+        return (200, Data("{\"providers\":[\(provider)]}".utf8))
+      case ("PUT", "/v1/providers/deepseek-search"):
+        if let data = bodyData(request) {
+          savedBody = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        }
+        return (200, Data("{\"provider\":\(provider)}".utf8))
+      case ("POST", "/v1/providers/deepseek-search/test"):
+        probed = true
+        return (
+          200,
+          Data(
+            "{\"result\":{\"ok\":true,\"message\":\"ok\",\"latencyMs\":4,\"results\":1}}"
+              .utf8)
+        )
+      default:
+        return (404, Data())
+      }
+    }
+    let listed = try await client.loadProviders()
+    XCTAssertEqual(listed.first?.id, "deepseek-search")
+    XCTAssertEqual(listed.first?.hasApiKey, true)
+    XCTAssertEqual(listed.first?.keyLabel, "DeepSeek API Key")
+
+    let saved = try await client.saveProvider(
+      id: "deepseek-search", apiKey: "sk-new", enabled: false)
+    XCTAssertEqual(saved.title, "DeepSeek 搜索")
+    XCTAssertEqual(savedBody["apiKey"] as? String, "sk-new")
+    XCTAssertEqual(savedBody["enabled"] as? Bool, false)
+
+    let probe = try await client.testProvider(id: "deepseek-search")
+    XCTAssertTrue(probed)
+    XCTAssertTrue(probe.ok)
+    XCTAssertEqual(probe.results, 1)
+  }
 }
 
 private func expectThrows(

@@ -215,6 +215,23 @@ final class FakeCatalog: CatalogPort {
   var modelLoads = 0
   var agentChanges: [(String, String?, String?)] = []
   var taskActions: [(String, String)] = []
+  var providers: [ProviderSettings] = []
+  var savedProviders: [(String, String?, Bool?)] = []
+  var providerProbes: [String] = []
+
+  func loadProviders() async throws -> [ProviderSettings] { providers }
+
+  func saveProvider(id: String, apiKey: String?, enabled: Bool?) async throws -> ProviderSettings {
+    savedProviders.append((id, apiKey, enabled))
+    guard let found = providers.first else { throw ClientError("no provider") }
+    return found
+  }
+
+  func testProvider(id: String) async throws -> ProviderProbe {
+    providerProbes.append(id)
+    return ProviderProbe(ok: true, message: "ok", latencyMs: 1, results: 1)
+  }
+
   func loadUsage(days: Int) async throws -> UsageReport {
     UsageReport(
       retentionDays: 90,

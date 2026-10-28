@@ -464,14 +464,73 @@ public struct Usage: Codable, Hashable, Sendable {
   }
 }
 
+/// A third-party service a bot's tools may call (docs/bots/PROTOCOL.md, "Providers").
+public struct ProviderSettings: Codable, Sendable, Equatable, Identifiable {
+  public var id: String
+  public var title: String
+  public var kind: String
+  public var baseUrl: String
+  public var docsUrl: String
+  public var keyLabel: String
+  public var hasApiKey: Bool
+  public var enabled: Bool
+
+  public init(
+    id: String, title: String, kind: String, baseUrl: String, docsUrl: String,
+    keyLabel: String, hasApiKey: Bool, enabled: Bool
+  ) {
+    self.id = id
+    self.title = title
+    self.kind = kind
+    self.baseUrl = baseUrl
+    self.docsUrl = docsUrl
+    self.keyLabel = keyLabel
+    self.hasApiKey = hasApiKey
+    self.enabled = enabled
+  }
+}
+
+/// The daemon's probe of one provider: reachable, accepted and how long it took.
+public struct ProviderProbe: Codable, Sendable, Equatable {
+  public var ok: Bool
+  public var message: String
+  public var latencyMs: Int
+  public var results: Int?
+
+  public init(ok: Bool, message: String, latencyMs: Int, results: Int? = nil) {
+    self.ok = ok
+    self.message = message
+    self.latencyMs = latencyMs
+    self.results = results
+  }
+}
+
 /// Usage statistics over the daemon's retained window (docs/bots/PROTOCOL.md).
 public struct UsageReport: Codable, Sendable, Equatable {
   public struct Totals: Codable, Sendable, Equatable {
     public var totalTokens: Int
+    public var calls: Int?
     public var costUsd: Double
 
-    public init(totalTokens: Int, costUsd: Double) {
+    public init(totalTokens: Int, calls: Int? = nil, costUsd: Double) {
       self.totalTokens = totalTokens
+      self.calls = calls
+      self.costUsd = costUsd
+    }
+  }
+
+  /// One source's share of the work: models spend tokens, search spends calls.
+  public struct SourceTotals: Codable, Sendable, Equatable, Identifiable {
+    public var source: String
+    public var totalTokens: Int
+    public var calls: Int
+    public var costUsd: Double
+    public var id: String { source }
+
+    public init(source: String, totalTokens: Int, calls: Int, costUsd: Double) {
+      self.source = source
+      self.totalTokens = totalTokens
+      self.calls = calls
       self.costUsd = costUsd
     }
   }
@@ -493,13 +552,17 @@ public struct UsageReport: Codable, Sendable, Equatable {
     public var botId: String
     public var title: String
     public var totalTokens: Int
+    /// Search spends calls instead of tokens; absent from a daemon that predates the split.
+    public var calls: Int?
     public var costUsd: Double
     public var id: String { botId }
 
-    public init(botId: String, title: String, totalTokens: Int, costUsd: Double) {
+    public init(botId: String, title: String, totalTokens: Int, calls: Int? = nil, costUsd: Double)
+    {
       self.botId = botId
       self.title = title
       self.totalTokens = totalTokens
+      self.calls = calls
       self.costUsd = costUsd
     }
   }
@@ -510,6 +573,8 @@ public struct UsageReport: Codable, Sendable, Equatable {
   public var month: Totals
   public var days: [Day]
   public var bots: [Bot]
+  /// Absent from a daemon that predates the source split.
+  public var sources: [SourceTotals]?
 
   public init(
     retentionDays: Int,
@@ -517,7 +582,8 @@ public struct UsageReport: Codable, Sendable, Equatable {
     week: Totals,
     month: Totals,
     days: [Day],
-    bots: [Bot]
+    bots: [Bot],
+    sources: [SourceTotals]? = nil
   ) {
     self.retentionDays = retentionDays
     self.today = today
@@ -525,6 +591,7 @@ public struct UsageReport: Codable, Sendable, Equatable {
     self.month = month
     self.days = days
     self.bots = bots
+    self.sources = sources
   }
 }
 

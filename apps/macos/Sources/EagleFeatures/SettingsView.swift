@@ -1,3 +1,4 @@
+import BotsCore
 import EagleDesign
 import SwiftUI
 
@@ -27,6 +28,8 @@ public struct SettingsView: View {
         general
       case .bots:
         bots
+      case .providers:
+        providersPage
       case .machines:
         machines
       case .realtime:
@@ -175,6 +178,13 @@ public struct SettingsView: View {
               .toggleStyle(.switch)
               .tint(Theme.Palette.accentStrong)
           }
+          Divider().overlay(Theme.Palette.line)
+          SettingsRow("搜索", detail: "web_search 与 web_fetch；需要先在“服务”里保存搜索服务的 Key") {
+            Toggle("", isOn: toolGroupBinding(SettingsViewModel.searchToolGroup))
+              .labelsHidden()
+              .toggleStyle(.switch)
+              .tint(Theme.Palette.accentStrong)
+          }
         }
       }
     }
@@ -246,6 +256,87 @@ public struct SettingsView: View {
       case "light": "dark"
       default: "system"
       }
+  }
+
+  /// One card per third-party service: endpoint, key, enable switch, probe.
+  private var providersPage: some View {
+    VStack(alignment: .leading, spacing: 18) {
+      ForEach(model.providers) { provider in
+        SettingsCard {
+          VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+              Text(provider.title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.Palette.textPrimary)
+              Spacer(minLength: 0)
+              Toggle("", isOn: enabledBinding(provider))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(Theme.Palette.accentStrong)
+                .disabled(model.providerBusy)
+            }
+            Text(provider.baseUrl)
+              .font(.system(size: 11.5, design: .monospaced))
+              .foregroundStyle(Theme.Palette.textMuted)
+            gatewayField(
+              provider.keyLabel,
+              detail: provider.hasApiKey ? "已保存；留空则保持不变" : "在服务商控制台创建，只存到本机配置"
+            ) {
+              SettingsTextField(
+                provider.hasApiKey ? "已保存" : "sk-…",
+                text: keyBinding(provider.id),
+                secure: true
+              )
+            }
+            HStack(spacing: 10) {
+              SettingsActionButton("测试") {
+                Task { @MainActor in await model.testProvider(provider.id) }
+              }
+              .disabled(model.providerBusy || !provider.hasApiKey)
+              SettingsActionButton("保存", prominent: true) {
+                Task { @MainActor in await model.saveProvider(provider.id) }
+              }
+              .disabled(model.providerBusy)
+              if model.providerBusy { SpinnerArc(size: 12) }
+              Spacer(minLength: 0)
+              if let probe = model.providerProbe[provider.id] {
+                Label(
+                  "\(probe.message) · \(probe.latencyMs) ms",
+                  systemImage: probe.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                )
+                .font(Theme.TypeScale.note)
+                .foregroundStyle(probe.ok ? Theme.Palette.accentStrong : Theme.Palette.destructive)
+              } else if let message = model.providerMessage {
+                Text(message)
+                  .font(Theme.TypeScale.note)
+                  .foregroundStyle(Theme.Palette.textSecondary)
+              }
+            }
+            Text("文档：\(provider.docsUrl)")
+              .font(.system(size: 11.5))
+              .foregroundStyle(Theme.Palette.textMuted)
+              .textSelection(.enabled)
+          }
+          .padding(.vertical, 16)
+        }
+      }
+      SettingsCaption("保存后新会话立即生效；Bot 的搜索工具按需加载（tool_search）。")
+    }
+    .task { await model.loadProviders() }
+  }
+
+  private func keyBinding(_ id: String) -> Binding<String> {
+    Binding(
+      get: { model.providerKeys[id] ?? "" },
+      set: { model.providerKeys[id] = $0 }
+    )
+  }
+
+  private func enabledBinding(_ provider: ProviderSettings) -> Binding<Bool> {
+    Binding(
+      get: { model.providers.first { $0.id == provider.id }?.enabled ?? provider.enabled },
+      set: { value in Task { await model.setProviderEnabled(provider.id, value) } }
+    )
   }
 
   private var machines: some View {
@@ -354,11 +445,45 @@ public struct SettingsView: View {
           }
         }
         usageChart
+        usageSources
         usageBots
         SettingsCaption("保留 \(model.usageReport?.retentionDays ?? 90) 天，按本机日期切分")
       }
     }
     .task { await model.loadUsage() }
+  }
+
+  /// Where the work went: models spend tokens, search spends calls.
+  private var usageSources: some View {
+    let rows = model.usageSourceRows
+    return VStack(alignment: .leading, spacing: 6) {
+      SettingsCaption("来源")
+      SettingsCard {
+        if rows.isEmpty {
+          HStack(spacing: 8) {
+            Image(systemName: "square.stack.3d.up")
+              .font(.system(size: 12))
+              .foregroundStyle(Theme.Palette.textMuted)
+            Text("还没有消耗记录")
+              .font(Theme.TypeScale.note)
+              .foregroundStyle(Theme.Palette.textSecondary)
+            Spacer(minLength: 0)
+          }
+          .padding(.vertical, 12)
+        } else {
+          VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+              if index > 0 { Divider().overlay(Theme.Palette.line) }
+              SettingsRow(row.title, detail: "") {
+                Text(row.value)
+                  .font(Theme.TypeScale.mono)
+                  .foregroundStyle(Theme.Palette.textPrimary)
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   /// Thirty bars, one per day; the tallest day fills the card, a quiet day is a hairline.
@@ -393,7 +518,7 @@ public struct SettingsView: View {
   }
 
   private var usageBots: some View {
-    let bots = (model.usageReport?.bots ?? []).prefix(5)
+    let bots = model.usageBotRows
     return VStack(alignment: .leading, spacing: 6) {
       SettingsCaption("消耗最多")
       SettingsCard {
@@ -412,8 +537,8 @@ public struct SettingsView: View {
           VStack(spacing: 0) {
             ForEach(Array(bots.enumerated()), id: \.element.id) { index, bot in
               if index > 0 { Divider().overlay(Theme.Palette.line) }
-              SettingsRow(bot.title, detail: UsageFormat.cost(bot.costUsd) ?? "") {
-                Text(UsageFormat.tokens(bot.totalTokens))
+              SettingsRow(bot.title, detail: bot.detail) {
+                Text(bot.value)
                   .font(Theme.TypeScale.mono)
                   .foregroundStyle(Theme.Palette.textPrimary)
               }

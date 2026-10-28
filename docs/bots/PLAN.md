@@ -411,6 +411,38 @@ padded day series and the ten busiest bots with their catalog titles. The page s
 three totals, a thirty-day bar chart whose bars name their day and tokens on hover, and the
 five busiest bots — with an empty state instead of zeros before anything runs.
 
+## Search provider and usage sources (2026-10-28)
+
+Settings gained 服务: one card per third-party provider, starting with DeepSeek's search and
+fetch APIs. The key is write-only and stored in the user's own config (`~/.config/eagle-bots/
+providers.json`, 0600), never in the daemon root or a bot directory; `测试` spends one search
+and reports latency. The `search` group ships unselected by default (the doc's rule for new
+optional groups), installs the same single `tool-search` loader, and both tools are deferred.
+`GET /v1/providers`, `PUT /v1/providers/:id` and `POST /v1/providers/:id/test` are the wire;
+the runtime now hands the saved client to the registry, so a bot whose groups include `search`
+loads `web_search`/`web_fetch` through `tool_search` and books one `search` call per call.
+
+Usage turned into a source-agnostic meter: models book token deltas, search books calls, and
+`GET /v1/usage` reports per-source totals beside the bots. The old token-only day table is
+migrated into the `model` source on first open. 用量与账单 gained a 来源 card; a bot that only
+searched shows calls instead of a zero token row.
+
+The 模型 page's tool list gained the 搜索 switch, and the form's group list is now the
+daemon's five groups with the four old ones as the fallback, so saving settings no longer
+drops a stored `search` selection. A group whose own extension is not installed contributes
+nothing, not even its loader: selecting `search` without a key offers no `tool_search`.
+
+Evidence, this pass: the daemon gate passes 497 tests with 95.1% lines / 87.8% branches /
+90.9% functions (thresholds 90/85/90); `typecheck`, `lint` and `fixtures:check` are green.
+The Bots client passes 126 tests at 91.5% configured logic coverage after tests for provider
+decoding, the additive `sources` field and the wire round trip. The Eagle app passes 175
+tests at 95.8% configured logic coverage, and the app bundle builds. Snapshot review covers
+服务 (configured and unconfigured), 用量与账单 with two sources and the 模型 tool list with the
+搜索 row; those snapshots answer the daemon from a stub session, so they need neither a
+daemon nor a key. Not verified in this pass: a real
+DeepSeek key and a live `web_search` call, and a bot switching the `search` group on against
+a running daemon (the runtime path is covered by the deterministic faux-model test).
+
 ## Next work, in order
 
 1. Finish the client surface: history paging, bot settings behind the `agent`

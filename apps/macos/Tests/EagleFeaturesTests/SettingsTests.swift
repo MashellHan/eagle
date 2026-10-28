@@ -93,6 +93,13 @@ struct SettingsTests {
   }
 }
 
+/// The daemon fixture both settings pages read: one configured search provider.
+let settingsProviderJSON = #"""
+  {"id":"deepseek-search","title":"DeepSeek 搜索","kind":"deepseek-search",
+   "baseUrl":"https://api.deepseek.com","docsUrl":"https://api-docs.deepseek.com/guides/search/",
+   "keyLabel":"DeepSeek API Key","hasApiKey":true,"enabled":true}
+  """#
+
 @Suite("Settings gateway", .serialized)
 @MainActor
 struct SettingsGatewayTests {
@@ -143,6 +150,100 @@ struct SettingsGatewayTests {
     let model = SettingsViewModel(botsSettings: settings, urlSession: session)
     await model.loadGateway()
     #expect(model.gatewayMessage?.contains("无法读取 Bots 设置") == true)
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("the tab lists each provider and reports a refused read")
+  func load() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { request in
+      #expect(request.url?.path == "/v1/providers")
+      return (200, Data(#"{"providers":[\#(settingsProviderJSON)]}"#.utf8))
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    await model.loadProviders()
+    #expect(model.providers.map(\.id) == ["deepseek-search"])
+    #expect(model.providers.first?.hasApiKey == true)
+    #expect(model.providerBusy == false)
+
+    GatewayHTTPStub.handler = { _ in (401, Data()) }
+    await model.loadProviders()
+    #expect(model.providerMessage != nil)
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("a typed key is sent once and the draft clears")
+  func saveKey() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    var body: [String: Any] = [:]
+    GatewayHTTPStub.handler = { request in
+      #expect(request.url?.path == "/v1/providers/deepseek-search")
+      if let data = gatewayHTTPBody(request) {
+        body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+      }
+      return (200, Data(#"{"provider":\#(settingsProviderJSON)}"#.utf8))
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.providers = [
+      ProviderSettings(
+        id: "deepseek-search", title: "DeepSeek 搜索", kind: "deepseek-search",
+        baseUrl: "https://api.deepseek.com", docsUrl: "", keyLabel: "DeepSeek API Key",
+        hasApiKey: false, enabled: false)
+    ]
+    model.providerKeys["deepseek-search"] = "  sk-typed  "
+    await model.saveProvider("deepseek-search")
+    #expect(body["apiKey"] as? String == "sk-typed")
+    #expect(body["enabled"] == nil, "saving the key leaves the switch alone")
+    #expect(model.providerKeys["deepseek-search"] == "")
+    #expect(model.providerMessage == "已保存")
+    #expect(model.providers.first?.hasApiKey == true)
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("the enable switch flips at once and a refusal puts it back")
+  func toggle() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { _ in (200, Data(#"{"provider":\#(settingsProviderJSON)}"#.utf8)) }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.providers = [
+      ProviderSettings(
+        id: "deepseek-search", title: "DeepSeek 搜索", kind: "deepseek-search",
+        baseUrl: "https://api.deepseek.com", docsUrl: "", keyLabel: "DeepSeek API Key",
+        hasApiKey: true, enabled: false)
+    ]
+    await model.setProviderEnabled("deepseek-search", true)
+    #expect(model.providers.first?.enabled == true, "the saved state is the server's answer")
+    #expect(model.providerMessage == nil)
+
+    GatewayHTTPStub.handler = { _ in
+      (400, Data(#"{"error":{"kind":"invalid_command","message":"拒绝"}}"#.utf8))
+    }
+    await model.setProviderEnabled("deepseek-search", false)
+    #expect(model.providers.first?.enabled == true, "a refused save keeps the stored flag")
+    #expect(model.providerMessage?.contains("拒绝") == true)
+    await model.setProviderEnabled("unknown", true)
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("a probe reports its latency, and a failed probe reports why")
+  func probe() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { request in
+      #expect(request.url?.path == "/v1/providers/deepseek-search/test")
+      return (
+        200,
+        Data(#"{"result":{"ok":true,"message":"连接成功","latencyMs":42,"results":1}}"#.utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    await model.testProvider("deepseek-search")
+    #expect(model.providerProbe["deepseek-search"]?.ok == true)
+    #expect(model.providerProbe["deepseek-search"]?.latencyMs == 42)
+    #expect(model.providerBusy == false)
+
+    GatewayHTTPStub.handler = { _ in (500, Data()) }
+    await model.testProvider("deepseek-search")
+    #expect(model.providerMessage != nil)
     GatewayHTTPStub.handler = nil
   }
 
@@ -451,6 +552,46 @@ struct SettingsGatewayTests {
     GatewayHTTPStub.handler = nil
   }
 
+  @Test("the search group is off until a daemon reports it, and never silently dropped")
+  func searchGroup() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    #expect(model.isToolGroupEnabled("search") == false, "a new optional group starts off")
+    model.setToolGroup("search", isOn: true)
+    #expect(model.isToolGroupEnabled("search"))
+
+    var saved: [String]?
+    GatewayHTTPStub.handler = { request in
+      let body = gatewayHTTPBody(request)
+      let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
+      saved = parsed?["toolGroups"] as? [String]
+      return (
+        200,
+        Data(
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","coding","herdr","agents","search"]}}"#
+            .utf8)
+      )
+    }
+    model.gatewayBaseURL = "http://gw/v1"
+    model.gatewayModel = "m1"
+    await model.saveGateway()
+    #expect(saved == ["core", "coding", "herdr", "agents", "search"])
+
+    GatewayHTTPStub.handler = { request in
+      #expect(request.httpMethod == "GET")
+      return (
+        200,
+        Data(
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","coding","herdr","agents","search"]}}"#
+            .utf8)
+      )
+    }
+    let reloaded = SettingsViewModel(botsSettings: settings, urlSession: session)
+    await reloaded.loadGateway()
+    #expect(reloaded.isToolGroupEnabled("search"), "a stored search group survives the read")
+    GatewayHTTPStub.handler = nil
+  }
+
   @Test("saveGateway surfaces daemon errors")
   func saveGatewayFailure() async throws {
     let (settings, session) = try settingsGatewayFixture()
@@ -549,5 +690,36 @@ struct SettingsUsageTests {
   @Test("no report yet is no rows, so the page shows its empty state")
   func empty() {
     #expect(SettingsViewModel().usageSummaryRows.isEmpty)
+  }
+
+  @Test("the busiest bots show calls too, and a search-only bot has no token row")
+  func botRows() {
+    let model = SettingsViewModel()
+    var report = report()
+    report.bots = [
+      UsageReport.Bot(botId: "b_1", title: "研究员", totalTokens: 12_345, calls: 4, costUsd: 0.42),
+      UsageReport.Bot(botId: "b_2", title: "搜索员", totalTokens: 0, calls: 9, costUsd: 0),
+    ]
+    model.usageReport = report
+    let rows = model.usageBotRows
+    #expect(rows.map(\.title) == ["研究员", "搜索员"])
+    #expect(rows[0].value == "12.3k · 4 次 · $0.42")
+    #expect(rows[1].value == "9 次")
+    #expect(rows.allSatisfy { $0.detail.isEmpty })
+  }
+
+  @Test("sources read in Chinese, with calls for search and tokens for models")
+  func sources() {
+    let model = SettingsViewModel()
+    var report = report()
+    report.sources = [
+      UsageReport.SourceTotals(source: "model", totalTokens: 12_345, calls: 0, costUsd: 0.42),
+      UsageReport.SourceTotals(source: "search", totalTokens: 0, calls: 7, costUsd: 0),
+    ]
+    model.usageReport = report
+    let rows = model.usageSourceRows
+    #expect(rows.map(\.title) == ["模型", "搜索"])
+    #expect(rows[0].value == "12.3k · $0.42")
+    #expect(rows[1].value == "7 次")
   }
 }

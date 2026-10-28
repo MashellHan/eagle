@@ -1831,3 +1831,32 @@ passes. The final complete coverage rerun passes all 168 tests at 94.4% configur
 line coverage (minimum 90%); the new guide remains at 100% lines and functions. The first
 post-format rerun hit the unchanged row-cost benchmark's known fluctuation, which is kept
 in the run logs rather than hidden or addressed by changing its threshold.
+
+## 2026-10-28 13:45 CST - Search provider and usage sources, continued
+
+The previous session stopped after the daemon, client and Settings surface were written but
+before the runtime handoff. The breakpoint was real: `PiDurableRuntime` declared the `search`
+and `usage` options and never passed them to the tool registry, so a bot with the `search`
+group could not load `web_search` and no search call would ever be booked. A faux-model test
+failed first (`Tool web_search is not available`), then the runtime handed the client and the
+meter to `createToolRegistry`.
+
+A second red test found the loader leak: with Herdr installed and no provider key, selecting
+`search` still offered `tool_search` that could load nothing. `selectToolExtensions` now skips
+a group whose own extension is not installed.
+
+Client work in this checkpoint: the enable switch is optimistic and rolls back on a refused
+save (its own view-model method, so the 保存 button no longer sends a stale flag); `calls`
+reaches the day/bot/source rows through one `usageLine` formatter; 报告 rows for a search-only
+bot show 次 instead of a zero token; the 模型 tool list gained 搜索, and the form now keeps the
+daemon's five groups so saving no longer drops a stored `search` selection.
+
+Verified by running, not assumed: the daemon gate (497 tests, coverage above every threshold),
+the Bots client suite at 91.5% logic coverage, the Eagle app suite at 95.8% with the bundle
+built, and snapshot review of 服务 / 用量与账单 / 模型 in both appearances. Those snapshots use a
+stub URL session, so they neither read nor need the running daemon; the earlier live-daemon
+render is what proved the HTTP path against a real process.
+
+Not verified: a real DeepSeek key, a live `web_search`, and toggling `search` on for a bot in
+the running app. Herdr collection, dashboard auth, D1 and deployment are untouched by this
+change.

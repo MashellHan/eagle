@@ -151,6 +151,36 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
     ).bot
   }
 
+  /// The third-party providers and whether each has a key.
+  public func loadProviders() async throws -> [ProviderSettings] {
+    struct Payload: Decodable { let providers: [ProviderSettings] }
+    return try await request(path: "/v1/providers", method: "GET", body: nil, as: Payload.self)
+      .providers
+  }
+
+  /// Saves a provider's key or enable flag; nil fields are left alone.
+  public func saveProvider(
+    id: String,
+    apiKey: String?,
+    enabled: Bool?
+  ) async throws -> ProviderSettings {
+    struct Payload: Decodable { let provider: ProviderSettings }
+    var body: [String: Any] = [:]
+    if let apiKey { body["apiKey"] = apiKey }
+    if let enabled { body["enabled"] = enabled }
+    return try await request(
+      path: "/v1/providers/\(id)", method: "PUT", body: body, as: Payload.self
+    ).provider
+  }
+
+  /// Probes one provider with a single search; nothing is saved.
+  public func testProvider(id: String) async throws -> ProviderProbe {
+    struct Payload: Decodable { let result: ProviderProbe }
+    return try await request(
+      path: "/v1/providers/\(id)/test", method: "POST", body: nil, as: Payload.self
+    ).result
+  }
+
   /// The usage statistics over the daemon's retained days.
   public func loadUsage(days: Int) async throws -> UsageReport {
     struct Payload: Decodable { let usage: UsageReport }

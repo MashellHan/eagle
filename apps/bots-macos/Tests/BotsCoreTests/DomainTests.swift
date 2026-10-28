@@ -298,7 +298,9 @@ final class DomainCoverageMoreTests: XCTestCase {
       )
     )
     XCTAssertEqual(
-      call, .toolCall(callId: "c_1", name: "list_files", args: ["path": .string("."), "limit": .number(50)])
+      call,
+      .toolCall(
+        callId: "c_1", name: "list_files", args: ["path": .string("."), "limit": .number(50)])
     )
     let result = try JSONDecoder().decode(
       ContentBlock.self,
@@ -366,7 +368,8 @@ final class DomainCoverageMoreTests: XCTestCase {
     )
     XCTAssertEqual(
       largest,
-      .toolResult(callId: "c", name: "n", text: "t", isError: false, durationMs: 9_007_199_254_740_991)
+      .toolResult(
+        callId: "c", name: "n", text: "t", isError: false, durationMs: 9_007_199_254_740_991)
     )
     // Unknown extra fields are still tolerated: additive evolution is the protocol's rule.
     let extra = try decoder.decode(
@@ -376,7 +379,8 @@ final class DomainCoverageMoreTests: XCTestCase {
           .utf8
       )
     )
-    XCTAssertEqual(extra, .toolResult(callId: "c", name: "n", text: "t", isError: false, durationMs: nil))
+    XCTAssertEqual(
+      extra, .toolResult(callId: "c", name: "n", text: "t", isError: false, durationMs: nil))
   }
 
   func testJSONValuesRenderCompactlyAndPretty() throws {
@@ -421,5 +425,75 @@ final class DomainCoverageMoreTests: XCTestCase {
     )
     XCTAssertEqual(message.visibleText, "答")
     XCTAssertEqual(message.text, "想答果")
+  }
+
+  func testProviderSettingsDecodeAndReportTheirConfiguredState() throws {
+    let json = #"""
+      {"id":"deepseek-search","title":"DeepSeek 搜索","kind":"deepseek-search",
+       "baseUrl":"https://api.deepseek.com",
+       "docsUrl":"https://api-docs.deepseek.com/guides/search/",
+       "keyLabel":"DeepSeek API Key","hasApiKey":true,"enabled":true}
+      """#
+    let provider = try JSONDecoder().decode(ProviderSettings.self, from: Data(json.utf8))
+    XCTAssertEqual(provider.id, "deepseek-search")
+    XCTAssertEqual(provider.hasApiKey, true)
+    XCTAssertEqual(provider.enabled, true)
+    XCTAssertEqual(provider.keyLabel, "DeepSeek API Key")
+  }
+
+  func testUsageReportReadsSourcesAndStaysReadableWithoutThem() throws {
+    let older = #"""
+      {"retentionDays":90,
+       "today":{"totalTokens":1,"costUsd":0},"week":{"totalTokens":1,"costUsd":0},
+       "month":{"totalTokens":1,"costUsd":0},
+       "days":[{"day":"2026-10-20","totalTokens":1,"costUsd":0}],
+       "bots":[{"botId":"b_1","title":"研究员","totalTokens":1,"costUsd":0}]}
+      """#
+    let bare = try JSONDecoder().decode(UsageReport.self, from: Data(older.utf8))
+    XCTAssertNil(bare.sources, "a daemon before the source split still reads")
+    XCTAssertEqual(bare.today.calls, nil)
+    XCTAssertEqual(bare.bots.first?.calls, nil)
+
+    let newer = #"""
+      {"retentionDays":90,
+       "today":{"totalTokens":12,"calls":3,"costUsd":0.1},
+       "week":{"totalTokens":12,"calls":3,"costUsd":0.1},
+       "month":{"totalTokens":12,"calls":3,"costUsd":0.1},
+       "days":[{"day":"2026-10-20","totalTokens":12,"costUsd":0.1}],
+       "bots":[{"botId":"b_1","title":"研究员","totalTokens":12,"calls":3,"costUsd":0.1}],
+       "sources":[{"source":"model","totalTokens":12,"calls":0,"costUsd":0.1},
+                  {"source":"search","totalTokens":0,"calls":3,"costUsd":0}]}
+      """#
+    let report = try JSONDecoder().decode(UsageReport.self, from: Data(newer.utf8))
+    XCTAssertEqual(report.sources?.map(\.id), ["model", "search"])
+    XCTAssertEqual(report.sources?.last?.calls, 3)
+    XCTAssertEqual(report.bots.first?.calls, 3)
+    XCTAssertEqual(report.today.calls, 3)
+  }
+
+  func testProviderProbeCarriesItsResult() {
+    let probe = ProviderProbe(ok: true, message: "连接成功", latencyMs: 42, results: 1)
+    XCTAssertEqual(probe.ok, true)
+    XCTAssertEqual(probe.latencyMs, 42)
+    XCTAssertEqual(probe.results, 1)
+    XCTAssertNil(ProviderProbe(ok: false, message: "拒绝", latencyMs: 0).results)
+  }
+
+  func testAConstructedUsageReportRoundTripsItsSources() throws {
+    let report = UsageReport(
+      retentionDays: 90,
+      today: .init(totalTokens: 12, calls: 3, costUsd: 0.1),
+      week: .init(totalTokens: 12, calls: 3, costUsd: 0.1),
+      month: .init(totalTokens: 12, calls: 3, costUsd: 0.1),
+      days: [.init(day: "2026-10-20", totalTokens: 12, costUsd: 0.1)],
+      bots: [.init(botId: "b_1", title: "研究员", totalTokens: 12, calls: 3, costUsd: 0.1)],
+      sources: [.init(source: "model", totalTokens: 12, calls: 0, costUsd: 0.1)]
+    )
+    let decoded = try JSONDecoder().decode(
+      UsageReport.self, from: try JSONEncoder().encode(report))
+    XCTAssertEqual(decoded, report)
+    XCTAssertEqual(decoded.sources?.first?.id, "model")
+    XCTAssertEqual(decoded.days.first?.id, "2026-10-20")
+    XCTAssertEqual(decoded.bots.first?.id, "b_1")
   }
 }
