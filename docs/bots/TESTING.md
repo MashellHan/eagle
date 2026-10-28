@@ -295,6 +295,15 @@ swift test
 ./Scripts/coverage.sh    # Bots logic gate, own script
 ```
 
+The standalone Swift coverage script builds and tests in a fresh private scratch
+directory for each invocation and reads profile data only from that run. It keeps
+the text report at `.build/coverage.txt`, removes the scratch on exit, and retains
+the 90% floor. The shared Swift gate selects the available validated toolchain;
+this does not replace tests with a previous build's report or skip a suite.
+Both Swift coverage scripts preserve spaces in the scratch path when finding test
+binaries. The existing App coverage-script fixture asserts report collection and
+scratch cleanup for each script with a spaced temporary directory.
+
 The native remote-authority DTO (`BotsCore/Domain/RemoteTools.swift`) and HTTP
 client (`BotsTransport/RemoteToolsHTTPClient.swift`) are tested by their Eagle
 consumer in `BotRemoteHTTPTests.swift`. The App's

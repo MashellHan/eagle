@@ -7,22 +7,29 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+if [ -z "${DEVELOPER_DIR:-}" ] && [ -d /Applications/Xcode.app/Contents/Developer ]; then
+  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+fi
 MINIMUM="${1:-90}"
 
-swift test --enable-code-coverage
+coverage_root="$(mktemp -d "${TMPDIR:-/tmp}/eagle-bots-coverage.XXXXXX")"
+trap 'rm -rf "$coverage_root"' EXIT
+../../scripts/swift-gate.sh test --scratch-path "$coverage_root" --enable-code-coverage
 
-PROFILE="$(find .build -name default.profdata -print -quit)"
+PROFILE="$(find "$coverage_root" -name default.profdata -print -quit)"
 [ -n "$PROFILE" ] || { echo "coverage: no profile data found"; exit 1; }
 
 REPORT=".build/coverage.txt"
+mkdir -p .build
 : > "$REPORT"
-for bundle in $(find .build -name '*.xctest' -type d); do
+coverage_bundles="$coverage_root/test-bundles.txt"
+find "$coverage_root" -name '*.xctest' -type d -print > "$coverage_bundles"
+while IFS= read -r bundle; do
   name="$(basename "$bundle" .xctest)"
   binary="$bundle/Contents/MacOS/$name"
   [ -x "$binary" ] || continue
   xcrun llvm-cov report "$binary" -instr-profile "$PROFILE" >> "$REPORT"
-done
+done < "$coverage_bundles"
 
 awk -v minimum="$MINIMUM" '
   /Reducer\.swift|RevisionGap\.swift|Domain\.swift|JSONValue\.swift|Ports\.swift|Wire\.swift|CatalogHTTPClient\.swift|TokenStore\.swift|AppViewModel\.swift|ConversationViewModel\.swift|OutboxStore\.swift/ {

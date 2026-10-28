@@ -24,12 +24,14 @@ PROFILE="$(find "$coverage_root" -name default.profdata -print -quit)"
 REPORT=".build/coverage.txt"
 mkdir -p .build
 : > "$REPORT"
-for bundle in $(find "$coverage_root" -name '*.xctest' -type d); do
+coverage_bundles="$coverage_root/test-bundles.txt"
+find "$coverage_root" -name '*.xctest' -type d -print > "$coverage_bundles"
+while IFS= read -r bundle; do
   name="$(basename "$bundle" .xctest)"
   binary="$bundle/Contents/MacOS/$name"
   [ -x "$binary" ] || continue
   xcrun llvm-cov report "$binary" -instr-profile "$PROFILE" >> "$REPORT"
-done
+done < "$coverage_bundles"
 
 if ! grep -q 'WorkspaceViewModels.swift' "$REPORT"; then
   echo "coverage: no logic files matched; profile=$PROFILE"
