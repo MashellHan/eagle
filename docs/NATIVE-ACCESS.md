@@ -1,8 +1,9 @@
 # Native machine access
 
-Native connection and local-service logic is delivered first; machine-page and
-Bot/plugin UI composition follow in their own commits. This contract defines the
-owner identity, observable state and independent Agent control they consume.
+Native connection/local-service logic and the Herdr execution/panel components
+are delivered independently; machine-page and Bot UI composition follow in their
+own commits. This contract defines their owner identity, observable state and
+independent Agent control. Complete candidate delivery still requires its gates.
 
 ## Authentication and lifecycle contract
 
@@ -76,6 +77,18 @@ Directory grants are managed only on the target Mac through the bundled CLI.
 Choosing a folder authorizes bounded file read/list; revocation takes effect on
 in-flight delivery and cached results. The remote machine row exposes grant
 labels/availability, never absolute roots. This does not restrict command access.
+
+Herdr settings on each machine use the same owner-authenticated execution socket
+as a Bot's remote setup. The target machine is fixed; users choose an existing
+session or explicitly create a new named headless session. CLI/service/session/
+tools show separate observations. A non-secret operation reference is saved before
+sending; reopening queries that ID. Network loss does not create a replacement
+operation or cancel remote work. Historical results are labelled separately from
+current capabilities, and credentials remain in headers/Keychain only.
+An unresolved operation retains its original bookmark and blocks new setup calls;
+query/cancel always target that ID. A durable `unknown` result requires explicitly
+checking the target before continuing. Its reference remains available in the
+panel's saved-operation list, including after reopening; continuing never replays it.
 
 Recorded local checks and unresolved release gates are in [CHECKPOINTS.md](CHECKPOINTS.md).
 The complete candidate App, Access edge and a second physical Mac remain unverified.
