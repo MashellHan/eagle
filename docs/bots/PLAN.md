@@ -502,6 +502,40 @@ on one host; the first remote slice adds neither cross-host replication nor
 cloud persistence of chat bodies. Current Agent terminal input is not a generic
 remote-command task API; that extension requires its own compatible release.
 
+#### M0–M1 原子提交边界（2026-10-28）
+
+每组包含对应契约、实现与回归；共享文件先落在依赖组，不能提交缺文件或不可编译的中间态。
+以下编号是功能分组；实际提交顺序取决于可编译的依赖闭包和门禁，不能把工作树里的
+implemented 状态解释为已经完整提交、安装或发布。
+已合并的上游基线 `d77d676`、`90a633f` 保持独立，后续上游合并也单独提交。
+
+| 分组 | 提交边界 | 收口依据 |
+| --- | --- | --- |
+| 1 | 同步运维：4h/8h driver、系统安装/停用、Git/进程回归与操作文档 | 实际 launchd、锁、首跑与失败候选证据；不与产品实现混合 |
+| 2 | 原生 owner 认证：HTTP/WS 统一身份、凭据校验和契约 | helper 与真实路由证据分开；路由缺依赖不记通过 |
+| 3 | 执行端基础：版本化协议、journal/runner、file/Herdr providers、relay 与恢复测试 | 当前 runner 静态引用 providers，必须同组保留编译依赖；Agent CLI/service/候选装配另接下一组 |
+| 4 | 独立 Agent 生命周期：配置/身份/受控修复、launchd、CLI、candidate 打包 | 仓库外安装和隔离真实服务链路；保留既有 App/collector |
+| 5 | macOS 机器管理：Keychain/连接、机器操作、本机接入/控制、文件授权 | SPM/coverage、HTTP/进程整链与图审；只依赖此前 Agent/协议 |
+| 6 | macOS Herdr 插件：执行 client、按机器 session/setup 面板和操作恢复 | 先闭环未决书签 P1，再固定 UI 快照；共享两种 setup 的 Agent 实现属于第 3 组 |
+| 7 | Bot remote：独立凭据 helper、每 Bot 授权与实际 runtime extension 接线 | 可再分 helper/授权与 extension 两个完整依赖片；真实 Harness/WS，凭据不入模型 |
+| 8 | 集成门禁和交付：CI/hooks 接线、最终包及多 Mac 指南 | 全量门禁、审查与自有 feature 推送；无 PR/部署/npm 发布 |
+
+实际提交前检查所选文件的 import/构建闭包；只为真实依赖合并相邻小组，不把全部功能压成一条。
+每次正常执行 prepare 和 hooks。root 精确依赖不足时保留阻塞证据，不换版本或绕过门禁。
+已提交的 Bot runtime/授权主片为 `53aad3a`；中断 setup 引用和删除清理为独立的
+`86fdf90`，其完整待提交树 Bots check 为 533/533。尚未完成的锁定依赖打包片不混入
+这两组，也不把本机已观察依赖的检查当作 fresh-lock 安装证明。
+原生连接/本机服务基础逻辑为独立的 `1261190`：正常 pre-commit 通过，完整受测树
+169 feature + 49 design、覆盖率 93.7%。它不包含后续视图装配或 Supervisor 改动。
+Herdr 原生 client/恢复/面板组件的原七文件完整受测树（含真实 WS 的 `.mjs` fixture）：
+181 + 49、覆盖率 94.7%，正常 pre-commit 因缺少 root Biome 而拒绝，尚未提交。
+原树/补丁完整保留；进度记录单独提交，NATIVE-ACCESS/REMOTE-ACCESS 的行为契约增量
+留在对应实现组，Herdr 代码、原契约增量与测试仍一起等待门禁。
+不改 fixture 类型或抽走测试来规避该门禁。最终工作源码的原生门禁为 217 + 49、
+91.7%，仍不能替代独立 Bots XCTest、root/browser 或完整 App bundle 门禁。
+Supervisor 的共享控制/root 别名/退出广播已获 Reviewer 关闭和父真实 32 项复验；
+其余原生授权/UI、helper 和打包按上述依赖组保留，资源恢复后继续正常验证与提交。
+
 #### M0–M1 执行计划更新（2026-10-28）
 
 本轮实施范围是“macOS 多机器管理、基础跨机器执行、按机器安装可选 Herdr 能力”。
@@ -512,12 +546,12 @@ remote-command task API; that extension requires its own compatible release.
 
 | 阶段 | 状态 | 交付与依赖 | 验收证据 |
 | --- | --- | --- | --- |
-| R0 — 上游对齐与接口/设计 | in progress | 对照上游和本地已有改动，明确 Bot/机器插件接缝；专用 Designer/Reviewer 已启动并完成首次静态建议；落地每 4 小时检查、每 8 小时隔离合并 | 固定双方 commit 的采用建议；真实首跑、合并候选、门禁结果、下次触发和失败记录；当前调度尚未安装 |
-| R1 — 基础 Agent 与真实机器页 | planned | 部署级认证、机器独立身份、出站连接；App 启用本机执行与后台服务；机器页接真实状态；基础通路不依赖 Herdr | 未安装 Herdr 的 B 可接入；凭据错误拒绝；退出 UI 后服务继续；失联显示离线，安装不冒充就绪 |
-| R2 — 通用机器执行 | in progress | 独立操作 journal 首片 6 个测试红转绿；文件/命令 runner、云端路由及 Bot 接线继续实现 | 最终须 A 的 Bot 在 B 完成真实操作并返回结果/退出状态；不误投机器；去重、取消和 unknown 有证据。journal 通过不代表端到端已完成 |
-| R3 — 可配置机器插件与 Herdr | planned | 静态 provider/installer 注册；机器页按设备安装/配置/启用；用户本地与 Bot 辅助 setup 共用流程；依赖 R1/R2 | B 无 Herdr 时基础能力正常；两条 setup 路径均经探测变为就绪；Herdr 工具限定所选机器/会话；安装失败/需本地操作可见 |
+| R0 — 上游对齐与接口/设计 | integrated; review continues | d77d676 合并 3405ff8；90a633f 独立合并 7101566，保留 remote 注入及 off→omitted；复用单 loader/工具组 | 2026-10-28 launchd 已启用并首跑，旧冲突候选保留；第二次合并 Bots check 526/526、App build 通过，107 项保护改动恢复审计完整；见 [运行证据](../CHECKPOINTS.md) 和 [同步操作](../UPSTREAM-SYNC.md) |
+| R1 — 基础 Agent 与真实机器页 | implemented; delivery gates open | 原生连接/钥匙串、真实目录、部署绑定、独立 launchd、同身份修复与每 Bot 授权已接线 | HTTP/WS、私有 Keychain、真实服务和 App 模型退出后执行已验证；安装包 cold launch、真实 Access、完整 Worker 与物理双 Mac 尚待验收 |
+| R2 — 通用机器执行 | implemented; acceptance in progress | journal、有界命令与授权文件 provider 接真实 WS；实际 startDaemon/Harness/remote extension 已注入 helper 和每 Bot 权限 | 父真实本地主链 20/20；SIGKILL 保留 journal 14/14、丢失 journal 16/16，原 ID 查询且不重放；恢复已留入 native 回归并实跑 3/3。模型 SSE 为本地 fixture，非完整 Worker/D1 或物理 A/B Macs |
+| R3 — 可配置机器插件与 Herdr | implemented; delivery gates open | 静态 provider、官方 installer、显式 named session 和机器面板已接线；原生/Bot 共用 run/get/cancel 与 journal，未决 ID 可恢复 | 父真实官方安装 9 项、原生 client→生产 relay→Agent→已装 Herdr 10 项通过；Bot 无 Herdr 返回 not_installed，既有会话保留；整包安装和物理双 Mac 尚未验证 |
 | R4 — 多台 Mac 访问同一 Bot（后续独立交付） | planned | 本轮不实现跨 Mac 聊天视图；后续复用 v1 HTTP/WS 和原生 transport | 两客户端共享历史/实时消息及独立 Bot 主机生命周期的验收留后续；不阻塞本轮机器管理与插件交付 |
-| R5 — 审查与跨机器交付 | planned | 关闭 Reviewer 发现，跑相关 root/Bots/Swift 门禁；Agent candidate 版本/安装包；自己的 fork 分支和冷启动指南 | 各门禁实际结果、干净安装路径与未验证项；推送后的 commit/分支可查；无 PR、无生产部署或 npm 发布 |
+| R5 — 审查与跨机器交付 | in progress; gates blocked | 已关闭已报告权限/恢复/清理缺陷，继续包装审查和新原生 coverage；alpha.2 Agent 已 pack/install，未发布；七步指南已写 | root 精确 Biome/Wrangler/Anthropic 与 Bot bundle 精确 Smithy 缺失，独立 Bots XCTest 缺模块；完整 gates 前不 push，未替换现有 App；无 PR、部署或 npm 发布 |
 
 R1/R2/R3/R5 是本轮功能交付范围，不能退化为只操作已有 Herdr 终端；R4 和 Web UI 留后续。
 按可独立审查的原子提交集成到本地 main，保留先前三个提交和父对话计划；只推送

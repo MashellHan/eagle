@@ -1891,3 +1891,1110 @@ its own fixture root, and never opens the live daemon. The app bundle builds and
 ad-hoc signature verifies. The running old app is connected with no running tasks;
 restart of the built bundle follows the commit. No real provider calls or key writes
 were used for acceptance; live DeepSeek/Tavily verification remains unperformed.
+
+## 2026-10-28 10:45 +08:00 — Independent machine execution, first slice
+
+- **Actual result:** `node --test tests/operation-journal.test.ts` first failed all
+  six behavior tests against the unimplemented journal, then passed all six after
+  SQLite admission/settlement was added. Tests use isolated temporary databases and
+  cover deduplication, conflicting content, reopen-to-unknown, exclusive ownership,
+  immutable settlement and private storage/capacity. This is journal evidence, not
+  a completed remote-command or cancellation path.
+- **User path:** no live Eagle collection was run. Cloud/native authentication and
+  realtime identity are the next integration slice; no new auth success is claimed.
+  No D1 or production data was written. Native machine UI rendering is unchanged.
+- **Team:** dedicated `eagle-review-1` and `eagle-design-1` are read-only Astra max;
+  the former has returned initial architecture review, the latter is designing the
+  existing machine settings flow. Other projects and the team-config reviewer were
+  not directed. The original three commits and parent-authored plans are preserved.
+- **Gates and next broken hop:** `npm run prepare` installed `.githooks`. Root
+  `npm ci` hit a Wrangler 4.152.0 tarball 404 at the then-effective default registry;
+  the parent is checking the approved registry. An additional public-registry
+  reachability check failed and is not evidence about the approved source; no more
+  public-registry attempts will be made. Full root/Bots gates await dependencies.
+  The parent verified CLT cannot import XCTest and is locating full Xcode; native
+  test gates are not reported passed. The next slice connects authenticated routing
+  and a real bounded runner to this journal.
+
+## 2026-10-28 11:12 +08:00 — Journal review fixes and remaining user path
+
+- **Executed:** the original six tests passed. Independent review and the parent
+  then reproduced a combined same-process/cross-process lock failure and an
+  inconsistent settlement return value. Both new regression tests failed before
+  the fixes; `node --test tests/operation-journal.test.ts` now passes 8/8. The
+  parent independently reproduced the failures and confirmed the updated 8/8.
+  The journal/tests also passed the focused strict/noEmit TypeScript 7.0.2 check
+  with Node types 26.6.5. This does not replace the root gate.
+- **Fix and review:** a shared path/inode guard now rejects another local owner
+  before opening a database descriptor; the journal is primary-thread-only.
+  Settlement returns the persisted fields, not caller-supplied extra properties.
+  Reviewer follow-up must cover aliases, ownership registration and failure cleanup.
+  The contract now says the other execution integration tests remain to be done.
+- **User path:** no real remote command, file provider, cancellation path or
+  native owner HTTP/WS authentication is connected yet. No new Herdr collection,
+  D1 ingestion, native machine-page rendering or physical second-Mac verification
+  was performed. Journal recovery alone is not an end-to-end success.
+- **Dependencies:** full Xcode is not available and CLT cannot import XCTest.
+  The approved registry lacks the pinned Wrangler 4.152.0, Vite 8.3.5, Biome
+  2.6.3 and Basalt 3.2.1 artifacts; no versions or component systems were replaced.
+  Only the available pinned Node test dependencies were installed in ignored
+  `.local/agent-test-deps` for isolated follow-up work. Root/Bots/native full gates
+  remain unproven; the parent is checking approved sources/cache and Xcode.
+- **Repository and operations:** `8b617d5` committed the preserved parent plans
+  with the latest scope; the original three commits remain. The journal slice is
+  uncommitted. Personal identity/fork permissions were verified and credentials
+  were bound only in this repository. Upstream fetched at `bda8b7e` (21 commits
+  since the shared baseline). Periodic checks/merges are not installed or enabled;
+  there is no scheduler first-run or 8-hour merge success evidence yet. The next
+  runnable slice is the bounded runner and isolated Git/launchd execution.
+
+## 2026-10-28 11:22 +08:00 — Current user-path checkpoint
+
+- **Journal:** 8/8 behavior tests pass, including the two independently reproduced
+  review regressions (same-process rejection preserving the cross-process lock,
+  and settlement returning only persisted identity/fields). Focused strict
+  TypeScript 7.0.2 checking passed; neither result is a full root gate. Reviewer
+  follow-up on path/inode ownership, primary-thread enforcement and cleanup is
+  still pending acceptance.
+- **User path:** real file/command execution, cancellation, native HTTP/realtime
+  authentication and machine-page rendering are not connected yet. No new live
+  Herdr collection, D1 ingestion or physical second-Mac result is claimed. The
+  next broken hop is the bounded local runner before authenticated remote routing.
+- **Environment:** full Xcode is unavailable (CLT cannot import XCTest); the
+  approved registry still lacks pinned Wrangler 4.152.0, Vite 8.3.5, Biome 2.6.3
+  and Basalt 3.2.1. Full root, browser, Bots and native gates remain unverified;
+  hooks stay installed and pinned versions are unchanged.
+- **Operations:** the 4-hour upstream check and 8-hour merge jobs are not installed
+  or enabled, with no first-run success evidence. The journal is uncommitted;
+  protected commits and parent-authored plans remain intact. Implementation
+  continues with runnable slices; this checkpoint does not certify delivery.
+
+## 2026-10-28 11:34 +08:00 — Owner authentication helper passes; route gate blocked
+
+- **Executed:** owner authentication tests went from 5 failures / 1 pass to 6/6.
+  `node --test tests/viewer-auth.test.ts tests/operation-journal.test.ts` passed
+  14/14 with zero skips; the parent independently reran and confirmed 14/14.
+  Reviewer closed the journal's original P1/P2 after checking ownership and
+  cleanup boundaries. The new authentication changes are under independent review.
+- **User path:** the helper now distinguishes owner, Access and local identity;
+  rejects bad explicit credentials without fallback; carries a bounded verified
+  lease; and recognizes the owner secret in payload filtering. HTTP/realtime
+  call sites have been wired, but the real whole-Worker suite could not bundle:
+  the approved registry also lacks pinned `@ai-sdk/anthropic@4.0.88`. No substitute
+  SDK or stub was used. This is not native HTTP/WS or remote execution acceptance.
+- **Still unverified:** new live Herdr collection, D1 ingestion, real machine-page
+  rendering and another physical Mac. Full Xcode/XCTest and the earlier exact
+  Wrangler/Vite/Biome/Basalt dependencies remain missing. Required full gates and
+  code commits/push are not reported passed.
+- **Scope and next hop:** no sandbox code, dependency or configuration was added.
+  File grants apply to file tools; an explicitly enabled command capability uses
+  the Agent account's permissions. The bounded command runner is next. The 4-hour
+  check / 8-hour merge launchd jobs remain uninstalled, with no first-run evidence;
+  their implementation can proceed independently of the missing application SDKs.
+
+## 2026-10-28 11:49 +08:00 — Real command slice and isolated Git driver
+
+- **Executed:** journal 8 + viewer-auth 9 + command-runner 8 tests pass, 25/25
+  with zero skips, independently rerun by the parent. Journal/runner and their
+  tests passed the focused strict/noEmit TypeScript 7.0.2 / Node 26.6.5 check,
+  also independently confirmed. The runner tests exercise real child processes,
+  actual exit 7, one file effect across retries, bounded output, timeout and
+  cancellation signals. Quoted credentials now fail before admission.
+- **Review fixes:** decoded strings are checked before storage/WS forwarding.
+  AI settings save/test share credential validation before any provider call.
+  A genuinely signed machine token cannot become the owner credential. These
+  additions each had failing regression tests before the fixes; review continues.
+  The parent's local HTTP JWKS + real RS256 helper checks also passed for Access
+  identity/expiry and rejection cases, without proving Worker route behavior.
+- **Periodic work:** six driver tests went red to green using real temporary Git
+  repositories and separate Python owners: dirty source/index/config unchanged,
+  protected commits retained, real merge/conflict candidates retained, stale
+  lockfile recovery and coalesced cadence. Launchd installation and the real
+  upstream first run are next; these fixture tests are not enablement evidence.
+- **User path:** execution remains a local runner slice, not A Bot to B. Full
+  Worker HTTP/WS, Agent network capability/state, native rendering, Herdr setup,
+  D1/live collection and a second physical Mac remain unverified. Exact AI SDK,
+  Wrangler/Vite/Biome/Basalt and full Xcode gaps still block full gates and push.
+
+## 2026-10-28 12:04 +08:00 — Launchd installed; review fixes before further sync
+
+- The LaunchAgent com.mashellhan.eagle.upstream-sync is installed and its first
+  real check started at 11:59:24. It fetched upstream
+  8ebf1765c7a8f1422383e510cb7439f97423f2c7, captured main at 8b617d5 plus its dirty
+  fingerprint, verified MashellHan and found no open PRs. The configured personal
+  branch feature/eagle-machines-herdr does not yet exist. The parent independently
+  confirmed loaded/running state and rejection of a second flock owner.
+- Seven Python/Git tests pass through the Node suite wrapper, independently
+  rerun by the parent. These prove local isolation fixtures, not a successful
+  upstream merge or publication. Next configured calendar tick is 16:00 +08.
+- Review found interrupt handling, bounded cleanup and gate-tree binding defects,
+  plus incomplete evidence on preparation failure. The owned driver was stopped
+  with SIGSTOP before allowing further sync while these receive regression fixes;
+  its read-only comparison child may finish. No successful merge/push is claimed.
+  Runtime evidence is in the private Eagle/upstream-sync directory.
+- Product evidence remains journal/auth/runner 25/25 and focused journal/runner
+  strict types. Full Worker/native gates, real remote routing, machine-page
+  rendering and Herdr setup remain pending; no sandbox or Web UI was added.
+
+## 2026-10-28 12:19 +08:00 — Sync regression fixes and runner failure boundaries
+
+- Actual Node run: journal 8, auth helper 9, runner 11 and the sync wrapper all
+  pass (29 Node tests, zero skips); the wrapper executes 13 Python/Git/process
+  tests. New red-to-green cases cover real SIGTERM, detached inherited pipes,
+  commit-hook tree changes, preparation failure evidence, persistent launchd
+  control and the host's disabled/enabled status words.
+- Runner review found partial credentials on interruption and admission storage
+  failures not stopping the service. Real child output and SQLite query_only
+  regressions reproduced both; fixes pass and are back with the independent
+  Reviewer. Auth's two prior findings are closed. The actual Agent build
+  tsconfig noEmit check passes; this is not a root gate.
+- The old stopped Python driver was ended and booted out, never resumed with
+  stale code. Its comparison JSON is preserved and recommends combining our
+  owner/journal/runner with upstream registry/deferred/refresh. Its interrupted
+  workflow has no collected exit code. Persistent disable was executed for only
+  com.mashellhan.eagle.upstream-sync; corrected-driver merge and resume evidence
+  are next. No merge publication has occurred.
+- Parent's native baseline builds with explicit CLT SDK26.5 (exit 0), with
+  existing warnings. Default SDK27 fails on existing State macros; no bulk UI
+  rewrite was made. XCTest/coverage still require full Xcode. Missing exact npm
+  artifacts still block complete Worker/root/browser gates and any push.
+- User path remains local helper/runner evidence: no live authenticated remote
+  execution, D1/live collection, native machine rendering or Herdr setup is yet
+  certified. Next product slice is the independent Agent network connection.
+
+## 2026-10-28 12:34 +08:00 — First real execution network path
+
+- Actual execution network tests now pass 8/8: the production execution route,
+  real Miniflare MachineState DO and a separate cli.ts serve process advertise
+  capability without Herdr/reports, enforce owner/machine identity and Origin,
+  execute real commands, retain one file effect across retries, query after a
+  viewer disconnect, cancel to unknown and revoke real registration. The parent
+  found the __proto__ request-ID defect; a real WS red regression failed before
+  own-property routing fixed __proto__/constructor/toString. Combined local
+  journal/auth/runner/network run is 36/36, zero skips.
+- Agent-channel loss and temporary HTTP 409 are a newly reproduced gap, distinct
+  from viewer loss. A real forwarding-proxy regression failed to reconnect; 409 must retry
+  without cancelling active work. API and Designer are providing read-only
+  protocol and machine-page advice. Reviewer closed the runner findings.
+- Agent build tsconfig noEmit passes with the network service included. The
+  additional standalone test-file strict check hits missing/broken Miniflare
+  declaration dependencies. It is not a passing root check. Deterministic daily
+  input helpers were moved unchanged out of AI settings dependencies so the
+  production machine DO can be exercised independently; no AI SDK was stubbed.
+- Corrected launchd recovery is loaded=true, disabled=false. Its new check
+  completed successfully at runs/20261028T042005Z-check-25d2fe45; the real merge
+  at runs/20261028T041914Z-merge-1ce037b8 stopped on the three preserved Bot/docs
+  conflicts with MERGE_HEAD 8ebf1765 and push_attempted=false. Next check/merge
+  is 16:00 +08. Reviewer additionally identified file-log timeout cleanup and
+  implicit extra Git push destinations/tags; these need regression closure.
+- Full Worker entry, native machine UI, Herdr provider/setup, physical second Mac
+  and production/D1 collection remain unverified. SDK26.5 permits a native build;
+  full Xcode and exact root dependencies remain outstanding. No push or deploy.
+
+## 2026-10-28 12:49 +08:00 — Network recovery, bounded replies and candidate install
+
+- Execution network suite passes 12/12, zero skips. It now includes real
+  temporary 409 recovery without stopping the command, five-second query timeout
+  despite continuing Agent heartbeats, wrong response-kind rejection, strict
+  viewer output schemas and a deliberately delayed old Agent close event. That
+  last regression failed against unconditional viewer closure, then passed with
+  pending requests bound to their Agent connection generation.
+- Parent independently ran real DO eviction with WebSockets hibernated: constructor
+  boot ID changed, the original viewer remained connected, and the running command
+  succeeded with one marker effect. A real SIGKILL/restart of cli.ts serve then
+  recovered unfinished work as unknown; both query and same-ID retry remained
+  unknown with the marker still once. These two checks are being retained in the
+  repository suite; no full Worker/physical-Mac claim follows from them.
+- Agent source candidate and lock are 1.1.0-alpha.0. The actual npm pack/build,
+  isolated tarball install, installed CLI version/help and secure stdin-config
+  package test passed. Published onboarding remains 1.0.0; nothing was published.
+  Agent build tsconfig passed with execution-service included. Full root/native
+  gates still need exact unavailable dependencies and full Xcode.
+- Sync wrapper passes all 16 Python/Git tests after three new red-to-green fixes:
+  file-log timeout halts the complete tick, annotated tags are not implicitly
+  pushed, and multiple effective push URLs are rejected. Independent Reviewer
+  is checking those fixes and the network slice. Launchd remains enabled; its
+  successful comparison and failed conflict candidate are retained, next 16:00.
+- Next user-visible hop is the native machine page and independent local service
+  lifecycle, followed by shared Herdr setup/provider. Designer supplied state and
+  interaction guidance; Backend is reading bounded file/provider and official
+  Herdr installation evidence. UI rendering, Herdr setup, physical second Mac,
+  full Worker entry and live collection/D1 remain unverified. No sandbox or Web UI.
+
+## 2026-10-28 13:04 +08:00 — Network review closed; first native HTTP slice
+
+- Both final network findings had real red regressions and are fixed: duplicate
+  pending request IDs close the viewer for original-ID reconciliation, and failed
+  runner construction releases journal ownership. Network 13 + service 1 pass,
+  14/14 with zero skips, independently rerun by the parent. Reviewer closed both
+  findings and the three remaining sync findings. Agent build tsconfig noEmit passes.
+- Native URLSession integration went from five failing behavior checks to 5/5:
+  real local HTTP directory/status, distinct command permission, rename/revoke
+  acknowledgements, address/authentication rejection, no credential forwarding on
+  redirect, and HTML/oversized-response refusal. The Swift probe compiles against
+  SDK26.5. It now lives under tests/native and has its own native command/macOS
+  CI/pre-push gate, rather than entering the Linux root test glob. These fixture
+  responses do not prove the full Worker entry or native rendering.
+- Parent independently verified managed JWT issuance against real DO configuration,
+  hibernation, SIGKILL/restart, token rotation closing owner viewers with 4001,
+  rejection of the still-signed old jti, and new-token reconnection preserving the
+  original result and one effect. Its separate installed Agent package check also
+  passed. Recovery cases still need consolidation into the repository suite.
+- No live App, existing Bots, default Agent configuration or Herdr session was
+  changed. No new collection, D1 ingestion, physical second Mac, Access edge policy
+  or UI rendering is certified. Keychain-backed machine UI and the independent
+  launchd Agent lifecycle are next; Herdr/file provider and Bot setup remain pending.
+- Launchd sync enablement, successful check and retained failed merge are recorded
+  above; plan documents now link that dated evidence instead of saying uninstalled.
+  No successful merge publication or push occurred. Exact root dependencies and
+  full Xcode still prevent the complete root/browser/native release gates; no
+  replacement versions, hook bypass, sandbox runtime or Web UI were added.
+
+## 2026-10-28 13:20 +08:00 — Real Keychain/model and native UI build
+
+- Native integration now passes 10/10, zero skips. Actual isolated Keychain
+  round trips and replacement, model directory/status and acknowledged rename/revoke
+  passed; the parent independently reran the first seven. Backend's UTF-16 name
+  length and invalid timestamp findings each failed first, then passed. Parent's
+  empty required Access-pair case also failed first; both test/save now reject it
+  before any HTTP request. LAContext replaces the deprecated Keychain UI flag.
+- The machine settings route now renders the real model instead of the old sample
+  machine list and fake permission/update/reset actions. An SDK26.5 app build
+  completed with exit 0 in 27.41 seconds, with existing Bots/CLT warnings and a
+  since-replaced Keychain deprecation. Designer is reviewing the new view; image
+  acceptance, independent Agent lifecycle and Herdr setup remain the next hops.
+- Toolchain evidence changed: parent found the installed TestingMacros library
+  and actually compiled/executed the complete Swift tests with SDK26.5 and explicit
+  plugin loading. All 34 design tests passed; 76/77 feature tests passed, with one
+  existing Node resolver test depending on a host installation path. This is no
+  longer "Swift tests cannot run". The new Machines SPM tests and coverage-file
+  inclusion are present; our complete run is in progress, not yet claimed green.
+- No existing Eagle App/Bots, default Agent configuration, live Herdr collection
+  or production/D1 state was changed. Physical second-Mac, Access edge policy and
+  full Worker entry remain unverified. Upstream sync retains its enabled schedule
+  and failed conflict candidate; no push/deploy/publication occurred. Exact pinned
+  npm dependencies still block root/browser release gates. UI/service work continues.
+
+## 2026-10-28 13:39 +08:00 — Native behavior review and service red slice
+
+- Parent independently ran native integration 10/10 (zero skips) and the complete
+  App Swift gate: 82 feature + 34 design tests pass with SDK26.5 and the installed
+  CLT TestingMacros plugin. Strict App Swift formatting also passes. Bots standalone
+  still fails because the actual XCTest module is absent. App logic coverage was
+  actually measured at 84.9%, below the unchanged 90% gate; it is not a release pass.
+- Designer's four interaction findings have model/UI fixes. Parent's retained old
+  object reproduced three failures; current source passes vault retry, persistent
+  mutation error and rename/polling regressions, plus three Access-pair checks.
+  These are URLProtocol/memory-vault model checks, separate from the real HTTP and
+  isolated Keychain integration. Necessary cases are being retained in SPM tests.
+- Four actual fixture machine-page images were reviewed in light/dark mode. No
+  clipping was found; small-text/button contrast still needs correction using the
+  existing theme. Reviewer found a new delayed-save lifecycle P1: an old page can
+  overwrite a newer page's saved deployment. Parent reproduced it with a shared
+  memory vault; regression and invalidation are next. Ordinary snapshot rendering
+  must also inject an isolated model rather than load the default Keychain item.
+- The Agent service contract and real packed-CLI/launchd fixture exist; service
+  implementation is still a red stub, not an installed execution service. Existing
+  App/Bots/default Agent configuration and Herdr sessions remain untouched. Network
+  recovery evidence is unchanged; production collection/D1, full Worker entry,
+  physical second Mac and shared Herdr setup remain unverified. Recovery probes
+  still need retention in the repository integration suite.
+- Upstream sync retains its enabled schedule and failed conflict candidate, with
+  no successful merge publication. Five exact approved-registry tarballs are
+  independently confirmed 404; no substitute stack, hook bypass, push, deployment
+  or npm publication. Next product hop remains the independent Agent service.
+
+## 2026-10-28 13:54 +08:00 — Independent launchd Agent runs real work
+
+- The packed/externally installed candidate CLI now installs its own disabled
+  LaunchAgent, starts an independent serve process, connects over real local WS,
+  executes a command with one file effect, preserves PID on duplicate start, stops
+  with damaged configuration and resumes without deleting the journal. A separate
+  process holding the control SQLite lock rejects start; altered plist, public
+  config permissions and log symlinks are rejected. Authentication exit(1) stays
+  stopped across launchd's ten-second throttle interval. Test labels/configs are
+  isolated and cleaned; existing App/Bots/collector jobs remain untouched.
+- Parent found that a valid large diagnostic log blocked restart. The retained
+  native regression failed first, then passed after log validation stopped reading
+  or size-limiting log contents. Config/receipt limits stay intact; old logs are not
+  truncated. The expanded real service fixture passes in 18.9 seconds, zero skips.
+  Plists use system plutil; KeepAlive.Crashed does not promise SIGKILL auto-restart.
+- The native delayed-save regression now passes with invalidate/onDisappear and
+  the parent's independent shared-vault probe also passes. Snapshot machine paths
+  inject a memory vault. Registration/rotation red-to-green tests require a distinct
+  machine credential; complete App tests are 86 feature + 34 design, all passing.
+  Native HTTP/Keychain plus package/service-construction regressions pass 12/12.
+- Native-to-CLI service control is the current next hop: its Swift fixture failed
+  at the initial unavailable stub; the real process implementation is now under
+  test. It is not yet a completed App enablement flow. Reviewer is checking service
+  ownership/lifecycle; Backend supplied thin file/Herdr provider seams. App coverage
+  last measured 84.9% remains below 90% and must be rerun after behavior coverage.
+- Parent actually ran root check: 163/173 pass, ten tests fail to load missing
+  next-ai/Anthropic/Vite dependencies; browser gate exits 127 (Playwright absent).
+  Bots standalone still lacks XCTest. These are failed gates, not product passes.
+  No push, deployment or npm publication. Sync remains enabled with its retained
+  conflict candidate. Physical second Mac, full Worker entry, live collection/D1
+  and Herdr setup remain unverified; no sandbox or Web UI was added.
+
+## 2026-10-28 14:09 +08:00 — Native service control and App candidate wiring
+
+- Reviewer closed the loaded-argv ownership, running-but-disabled start and working
+  directory findings after three actual red regressions. The expanded service suite
+  passes 4/4, zero skips, 18.9 seconds, including real Swift controller → packed CLI
+  → launchd → command. Parent separately verified seven real Node/Swift Process
+  boundaries: nonzero exit without secret diagnostics, output limits, invalid PID,
+  split output, large stderr drain, early stdin closure and a 15-second timeout.
+- App model setup has a passing red-to-green test for owner-origin registration,
+  distinct ingestion origin, stdin-only machine credentials and no repeated init.
+  Complete App tests pass 87 feature + 34 design. The machine page now exposes
+  independent service status/start/stop and setup; it has not yet passed a complete
+  HTTP-registration-to-service UI fixture or updated image review. Snapshot models
+  inject no local service adapter and keep using an isolated vault.
+- The CLI reserves a stable local identity before registration; its real package
+  install test passes. App bundling now packs the source candidate locally and
+  installs that tarball into Resources/Agent, without requesting an unpublished
+  version from npm. Candidate bundle verification is a separate test, not evidence
+  of a released App. Finder's restricted PATH does not find this host's Node;
+  explicit saved Node selection is being added, without a global symlink or install.
+- Full root/browser/Bots gates remain failed for the previously recorded dependency
+  and XCTest gaps. Coverage must include the new service/model logic and still has
+  no passing 90% evidence. Sync retains its enabled schedule/conflict candidate;
+  no publication or push. Next are native setup/image/coverage closure and the
+  shared bounded file/Herdr provider. Full Worker, live D1/collection, production
+  Access and a physical second Mac remain unverified.
+
+## 2026-10-28 14:24 +08:00 — App setup evidence and configuration recovery
+
+- Parent independently passed the real Swift model → local owner HTTP/Access →
+  reserved identity → issued machine credential on stdin → packed candidate →
+  launchd → Agent WebSocket → command path. With Finder-like PATH, selecting the
+  actual Node binary persists its path; a second enable keeps the PID and does not
+  register again. The service continues after the model process exits, and two
+  runs of one operation ID produce one file effect. Owner/Access credentials stay
+  out of Agent config, argv, receipt and plist. All fixture jobs were cleaned.
+  This is an isolated model/memory-vault test, not physical Finder clicks, a second
+  Mac, real Access edge policy or the complete Worker entry. Parent's refreshed
+  native HTTP/service suite also passes 14/14, zero skips, 18.81 seconds.
+- Real Process regressions now live in the App SPM suite. Added HTTP/model behavior
+  coverage passes with measured logic coverage 1301/1374 lines = 94.7%, above the
+  unchanged 90% gate. A subsequent new preflight test is red: a relative working
+  directory registers and writes invalid config before install fails. Parent's
+  real probe confirms a retry then fails inside identity/validConfiguration,
+  before configured is returned. Pre-registration validation is implemented and
+  under test; explicit same-identity repair and deployment binding remain open.
+- Candidate bundle/package checks have finished; no concurrent pack is held by
+  Lead. Ten refreshed native component images are with Designer, and Reviewer is
+  inspecting identity/registration/Node/bundle boundaries. No existing App/Bots,
+  default configuration or live Herdr session was stopped or replaced.
+- Network recovery evidence remains real local Miniflare/process evidence; the
+  parent hibernation/SIGKILL/managed-token probes still need repository regression
+  retention. Live collection/D1, complete Worker, second physical Mac and the
+  shared file/Herdr/Bot setup hop are not yet complete. Root/browser/Bots gates
+  retain the exact dependency/XCTest failures above. Sync is enabled with its
+  preserved conflict candidate; no commit, push, deployment or npm publication.
+
+## 2026-10-28 14:39 +08:00 — Configuration repair and bounded file slice
+
+- Native directory preflight is red-to-green. The parent independently reproduced
+  and then passed all four control regressions: localBusy/rename, stale status
+  after stop, quota 409 and setup 401 invalidation. SPM tests retain these cases.
+  Bundle ownership now exclusively claims its target; a real directory race/fault
+  regression proves a losing invocation does not delete another owner's contents.
+- CLI identity now exposes non-secret binding/settings even when cwd needs repair.
+  Explicit stdin reconfigure preserves machine/owner/ingestion identity, validates
+  before atomic 0600 replacement and refuses active execution. Four configuration
+  tests plus eight journal tests pass. Parent separately held a journal in another
+  Node process: update was refused without changing config or running evidence;
+  after exit, repair retained the token and did not run recovery, while the next
+  journal open recovered unknown and deduplicated the original ID. No live service
+  or user configuration was used. Native binding/repair UI tests are now in progress;
+  they are not yet full App-chain acceptance. Root/browser/Bots gaps remain.
+- The thin file provider runs real bounded read/list operations. Initial four tests
+  pass, and parent independently checked mid-read revocation, changed root inode,
+  cancellation, exact 32 KiB and invalid UTF-8. Parent found that redacting an already
+  encoded listing could break JSON. A fifth regression failed then passed after
+  credential-like names were omitted before encoding. File scope persistence,
+  transport, local grants, Herdr setup and Bot extension are still the next hops.
+- Designer rechecked ten refreshed pictures, then withdrew the disabled-button
+  finding after the renderer's activate lifecycle was corrected. Connection-card
+  height, Node placement and a redundant start action remain actionable UI work.
+  Full Worker/Access/physical second Mac and live collection/D1 remain unverified.
+  Sync retains its enabled schedule and conflict evidence; no push, deployment,
+  npm publication or changes to the existing App/Bots/Herdr session.
+
+## 2026-10-28 14:56 +08:00 — Native repair accepted locally; file transport next
+
+- App SPM now passes 110 feature + 34 design tests, including the two residual
+  read-order races. Logic coverage actually passes again at 1412/1492 = 94.6%.
+  The real packed CLI/Swift/launchd service suite passes 5/5, zero skips, 19.49s:
+  active-service replacement is refused, stopped configuration is repaired with
+  the same token and identity, and operation evidence remains unchanged.
+- Parent independently passed five App/CLI setup chains from an immutable source
+  copy (sourceHash b1fa661b...): fresh setup, preflight/retry, repair, explicit
+  same-ID rotation and foreign-owner rejection. Four include real HTTP, launchd,
+  WS and commands after the model exits; mismatch preserves config bytes and
+  starts/registers nothing. These use isolated vaults/local fixtures, not full
+  Worker, real Keychain, physical Finder interaction or two physical Macs.
+- The native-repair Agent artifact is retained at
+  .local/candidates/20261028-native-repair/nocoo-eagle-agent-1.1.0-alpha.0.tgz,
+  SHA-256 7dd71ba84c6978f8337ec6b672b0913dbd3d167514ac2aad0607daf08a6463e9,
+  with source hashes in evidence.json. Subsequent file/WS work uses source
+  candidate 1.1.0-alpha.1 with the synchronized lock; the published pointer stays
+  1.0.0. No candidate was published or used to replace the user's App/service.
+- File execution now shares one active slot/admission with commands and persists
+  scope so restart/query/retry cannot expose a revoked grant's cache. The 27-test
+  runner/journal/file group passes; further real fs regressions cover in-flight
+  revocation/abort, replaced root, exact byte limit and listing type replacement.
+  Parent independently passed the earlier 18-test config/journal/file/bundle
+  group. New red tests require disabled commands to ignore obsolete cwd in the
+  constructor, CLI and native preflight; that boundary is being corrected.
+- Local grant controls, file WS integration, shared Herdr setup and Bot extension
+  remain unfinished. Recovery probes still need repository retention. Full
+  root/browser/Bots and production/Access/physical-Mac gaps remain as recorded.
+  Sync stays enabled with retained merge-conflict evidence; no commit or push.
+
+## 2026-10-28 15:13 +08:00 — File WS slice passes; authority and native entry fixes next
+
+- Real CLI/Miniflare execution passes 14/14, zero skips (10.64s), including file
+  read/query/retry, revoke and regrant while commands are disabled and cwd is
+  obsolete. Agent build-tsconfig strict noEmit passes. The local grant/provider/
+  execution group passes 16/16; configuration/runner/file passes 20/20. App SPM
+  passes 111 feature + 34 design tests after the disabled-command preflight fix.
+  These are source alpha.1 checks, not a new packed-candidate verification.
+- Backend's full 15:07 review and the parent's independent authority probe expose
+  private-root rename, authority directory permissions and blocking FIFO reads.
+  The rename evidence is for a fixed-grant FileProvider; the dynamic authority
+  already refuses a disappeared private path. Regression/fix work is now active.
+- Reviewer's full 15:00 findings and the parent's direct-entry probe expose start
+  bypassing deployment binding and an installed unbound configuration without an
+  explicit rotation entry. Earlier matching-owner repair chains remain green;
+  these separate UI entry paths are still open and will be fixed before acceptance.
+- Actual Herdr collection, production auth/D1, complete Worker, physical second
+  Mac and the shared Herdr/Bot setup hop remain unverified/unfinished. Root,
+  browser and standalone Bots gates retain their recorded dependency/XCTest gaps.
+  Sync remains enabled with preserved failed merge evidence; no commit, push,
+  deployment, npm publication or changes to the user's existing App/services.
+
+## 2026-10-28 15:28 +08:00 — Upstream integrated; feature changes restored
+
+- Main now contains merge d77d676 with parents 8b617d5 and upstream 3405ff8.
+  All four earlier local commits remain ancestors. The 66-file pre-merge backup
+  and named stash 2f46b202 remain retained; 61 restored files match their original
+  hashes/modes, and the five overlapping files were combined locally (Settings,
+  SnapshotRenderer, coverage and both progress documents). There are no unmerged
+  paths. The machine snapshot branch stays before inspector rendering and uses
+  an isolated vault; coverage retains both SidebarComposition and machine logic.
+- Bots check passes 497/497 with lines 95.12%, branches 87.75%, functions 90.91%.
+  The gateway regression first failed on medium/medium and now explicitly tests
+  off/omitted effort, retaining the product's medium default. Mandatory crash
+  tests first failed 2/5 on a recovering initial snapshot; they now wait for real
+  completion within the existing deadline and retain all final history/dedupe
+  assertions: 5/5 pass. Backend reviewed this boundary and its deadline check.
+  Strict Bots types/lint, App swift-format and SDK26.5 build pass (existing CLT
+  warnings remain). Normal pre-commit ran successfully; no hook was bypassed.
+- Before the merge, source alpha.1 file/authority/network tests passed 33/33 and
+  App tests 113 feature + 34 design. Reviewer closed both direct-start/unbound
+  entry findings. Parent independently passed the original five entry checks and
+  authority probe, plus 21 snapshot network/service/grant checks. Extra provider
+  secrets now share filtering with the runner and messages; a real WS regression
+  was red then passed, checking response and journal contents. A parent's older
+  snapshot independently reproduced that red and passed the two waiting-caller
+  revocation checks; repository retention of that latter probe remains to do.
+- Parent independently saved/read/updated/deleted a random Keychain item using
+  the frozen production credential code. The isolated item was cleaned; returned
+  synchronizable/accessibility attributes were not proven. This is not signed-App
+  or Finder acceptance. Restore-time full App tests are now running; alpha.1 is
+  not yet re-packed. Herdr setup, Bot remote and retained recovery regressions
+  remain next. Live Herdr/D1, full Worker/Access and physical two-Mac checks remain
+  unverified. Root/browser/Bots-XCTest release gaps remain; no push or publication.
+
+## 2026-10-28 15:43 +08:00 — Restored baseline accepted; Herdr admission red tests
+
+- Lead's restored App SPM run completed with 162 feature + 49 design tests passing.
+  Parent checked the merge parents and restoration hashes, then reran the real
+  file WS waiter/revocation and extra-secret probe against restored
+  source: all checks pass. The two waiting callers receive denied after revocation,
+  only one read occurs, and response/journal extra secrets are filtered. Retaining
+  the waiter and managed-recovery probes in the repository is still outstanding.
+- Parent's immutable alpha.1 source snapshot (39 inputs, sourceHash prefix
+  9e654268; not a tarball hash) was actually packed/installed and passes the five
+  model/CLI/launchd/WS setup chains plus installed legacy's explicit ingestion and
+  rotation chain. The initial legacy failure was the probe's missing input. This
+  does not exercise the full Worker, Access edge or two physical Macs. Lead has
+  no concurrent main-checkout pack. Subsequent Herdr work is source alpha.2 with
+  manifest/lock synchronized; the published pointer remains 1.0.0.
+- Herdr provider's initial three real executable/installer-fixture tests passed,
+  and Agent build-tsconfig noEmit passed. New regressions now exercise failed
+  installation retry, configuration revision checks, overall deadline and the
+  shared runner admission; these are red and being implemented. The fixed official
+  installer URL is downloaded when requested, not copied into the package. Its
+  independently retrieved Apache-2.0 source/license evidence is linked in
+  EXECUTION.md. No existing Herdr was installed, upgraded, started or stopped.
+  Parent separately started a fresh named headless fixture with no HERDR_ENV,
+  verified real status/agent/workspace calls, then stopped/deleted only that
+  fixture and checked the existing team remained reachable. This supports an
+  explicit create-new-session action; lack of a session alone needs no TUI.
+- Parent's post-merge SPM run on source snapshot 66bf094f is in progress; it is
+  not yet independent passing evidence. Parent has now read Lead's restored log.
+- Native file-grant controls, Herdr machine panel and Bot remote adapter are the
+  next product hops. Live Herdr collection/D1, complete Worker/production Access,
+  physical two-Mac verification and full App assembly remain unverified. Root,
+  browser and standalone Bots XCTest gates retain the recorded dependency/tooling
+  failures. The enabled 4h/8h launchd job retains its original failed candidate;
+  main's normal upstream merge is separate evidence. No push/deploy/publication.
+
+## 2026-10-28 15:58 +08:00 — Herdr execution passes; native plugin controls next
+
+- Herdr provider/runner/headless tests were red then green (8/8). The real
+  Miniflare/WS, service and Herdr group passes 25/25, zero skips, 11.42 seconds;
+  Agent build-tsconfig noEmit passes. Commands may stay disabled with an obsolete
+  cwd while setup uses the same admission/get/cancel path. Configuration revisions
+  reject stale changes; retries return historical evidence. Existing CLI binaries
+  are never overwritten, failed install candidates remain, and explicit creation
+  starts only a fresh named session. No existing session is stopped by the provider.
+- Parent independently verified production provider/runner/journal against the
+  installed real Herdr (seven assertions), then the actual fixed official download
+  and installer in a private fixture (nine assertions). SourceHash 63284efe refers
+  to 36 frozen source inputs, not a package hash. Real new headless sessions reach
+  CLI/server/session/tools ready, retry/reopen preserves IDs, and disable leaves
+  the session running but refuses new use. Only those named fixtures were cleaned;
+  the existing binary hash is unchanged and default team remains reachable. This
+  is local provider evidence, separate from WS and the unfinished Bot runtime.
+- New native URLSession WebSocket tests are red-to-green: 4/4, zero skips, 2.24s.
+  They exchange real run/get/cancel frames with header-only owner/Access credentials,
+  reject authentication/redirect/identity/secret/size failures, and close a caller
+  without sending remote cancellation or replay. The machine Herdr panel and local
+  file-grant UI are in progress; this is not yet a complete App plugin journey.
+- Parent's independent post-merge App SPM completed 162 feature + 49 design tests
+  on source snapshot 66bf094f. Eighteen base machine component images were sent to
+  Designer; they exclude the new panel. Lead has not packed main concurrently.
+  Recovery/waiter repository retention, Bot runtime/Keychain handoff and final
+  candidate/App assembly remain next. The enabled scheduler's 16:00 run is due;
+  its previous failed candidate remains retained. Root/browser/Bots-XCTest gates,
+  full Worker/real Access/D1/physical two-Mac gaps remain; no push or publication.
+
+## 2026-10-28 16:13 +08:00 — Native controls and retained recovery regressions
+
+- Reviewer's Herdr JSON P1 is closed after a real WS red-to-green regression:
+  15/15 network tests pass, including credential-shaped fields, valid redacted JSON,
+  continued Agent connectivity and original-ID get. Parent independently reproduced
+  four failures on old 63284efe and passed five assertions on fixed c9760b16.
+  Neither the final send filter nor the journal checks were relaxed.
+- Native file-grant CLI/model behavior is red-to-green with App SPM 164 feature +
+  49 design tests passing. The native WS suite passes 4/4, now also refusing an
+  inconsistent ready capability. Herdr's new model tests first encountered Swift
+  scaffold compile errors, then actually ran red on saved-ID reopening, late replies
+  and auth invalidation. The implementation and machine panel now pass full App
+  SPM: 167 feature + 49 design. File UI is local-only, with owner-binding checks
+  before mutations. Updated panel image review and coverage remain to run.
+- Parent independently passed ten assertions for real native URLSession → production
+  executionRoute/MachineState → Agent → installed Herdr, sourceHash e3384126 (50
+  inputs). A fresh headless session, four checks, retry/get/cancel(false), disable
+  and service-independent session lifetime were verified and precisely cleaned.
+  This is not the full Worker/D1/Access/physical two-Mac path or final App UI.
+- The repository now contains the parent's managed hibernation/SIGKILL/rotation
+  regression and duplicate file-waiter revocation regression; the retained group
+  passes 4/4, zero skips, 3.59 seconds. Parent also reproduced the packed Agent identity assertion
+  against its old two-field expectation; the test will assert the new non-secret
+  settings explicitly. Current source is alpha.2, not a published release.
+- The actual 16:00 scheduler check completed with combine; the 16:08 merge candidate
+  against 7101566 stopped on RUNTIME.md conflicts and did not push. Evidence is
+  retained separately from main d77d676. Approved-source Vite/Basalt tarballs were
+  independently downloaded with matching lock integrity; Biome/Wrangler/Anthropic
+  exact versions remain unavailable, and standalone Bots still lacks XCTest.
+  Full release gates, Bot remote/Keychain hookup and final App assembly remain open.
+
+## 2026-10-28 16:28 +08:00 — Preserved operation bookmarks and first feature commit
+
+- Parent's native model probe reproduced four bookmark failures for running and
+  lost replies. The retained SPM regression ran red with eight assertions, and
+  explicit unknown recovery ran red with four. The fix blocks new setup while
+  an ID is unresolved, retains query/cancel on that ID, and archives a durable
+  unknown only after explicit target inspection. Archived references stay queryable
+  after reopening. Full App SPM passes 169 feature + 49 design tests. Independent
+  review of this new panel/client is in progress; no final UI signoff is claimed.
+- New Machines view state now uses ObservableObject/StateObject, with no new
+  State/Observable/Preview macros. The actual updated coverage gate is red:
+  2130/2623 lines = 81.2%, below 90%. MachineExecution's real external Swift WS
+  harness is not counted in SPM coverage; those behavioral cases need to run in
+  the instrumented test target. No threshold or existing test was relaxed.
+- Alpha.2 pack/install/version test passes 1/1. The retained tarball is
+  `.local/candidates/20261028-alpha2-herdr/nocoo-eagle-agent-1.1.0-alpha.2.tgz`,
+  SHA256 `66329ae161032d37c5ffdd953751770ddb6a90c4886056c5ac552e08489f62d3`;
+  its separately recorded sourceHash is `2e6757f687af092192ce8cffb456f07638be8e553b8f9fbcdc1c9264ce59f5c4`.
+  The same tarball was actually installed outside the checkout and reported the
+  candidate version. This is neither npm publication nor final App assembly.
+- Normal commit `11dbff0` contains only sync operations, its 16 passing Python/Git
+  tests, the required Swift wrapper and operations contract. Prepare/hooks ran;
+  staged diff check passed. The remaining functional commit boundaries are recorded
+  in PLAN. The installed job and retained 16:08 conflict are unaffected; no push.
+- Parent independently passed 71 backend tests on immutable sourceHash fb5246bb,
+  including retained recovery, waiters and real package install. This is separate
+  from Lead's runs and does not pass the full root gate. Native/Bot credential
+  handoff and actual runtime remote tools remain unfinished. Real Access edge,
+  complete Worker/D1 and physical second-Mac checks remain unverified; root/browser
+  exact dependency gaps and standalone Bots XCTest failure remain recorded.
+
+## 2026-10-28 16:43 +08:00 — Native deadline regression and Bot credentials
+
+- Instrumented SPM now runs the native client against an owned real Node/WS
+  fixture. It exposed a real deadline failure: the 5-second timer fired but
+  structured task-group exit waited about 40 seconds for receive. Adding session
+  invalidation or plain socket cancellation alone both still failed. The bounded
+  single-completion implementation no longer waits on that receive to release the
+  caller; it cancels all workers and ignores late replies. The unchanged deadline,
+  caller cancellation and 10-second heartbeat regression passes in 15.89s, and
+  full App SPM passes 173 feature + 49 design. Coverage has not yet been rerun.
+  Parent independently reran unchanged production source d1fcdc28: cancellation
+  returned immediately, a stalled get returned unknown in 5.238s, and the next
+  probe succeeded after a real ping without sending remote cancel. This proves
+  caller bounds; peer-close was only observed when the fixture exited, so immediate
+  underlying socket reclamation is not established.
+- Parent independently closed the original four bookmark assertions against
+  sourceHash 8d5f8b43. Reviewer identified residual shared-window query/restore
+  ownership plus stale readiness, local offline revocation and new-session
+  selection issues. These four remain open pending their targeted regressions;
+  the panel is not signed off. No release gate is inferred from the prior green.
+- Independent BotsCredentialHelper now has a real process/Keychain red-to-green
+  test (1/1, 19.65s) on an isolated random binding, with no Eagle import. Backend
+  found origin mutation races, namespace newline acceptance and internal credential
+  whitespace. Parent reproduced nine failing assertions against frozen cc5cf71e;
+  these findings remain to fix, and actual daemon/App credential sharing is next.
+  The retained real Keychain race fixture also reproduced all nine assertions;
+  the four native review scenarios reproduced nine SPM issues. Fix verification
+  is in progress in separate native and helper logs. Parent owns the new panel
+  screenshots and an immutable coverage run; no duplicate rendering is started.
+- Per-Bot non-secret grant storage ran red then green (1/1): atomic replacement,
+  0600, per-Bot separation, revision conflicts, refused credentials and corrupt-file
+  denial. HTTP/runtime/UI wiring is unfinished; this is storage evidence only.
+  Alpha.2 main packing is complete and retained separately from later native/Bot
+  source changes. Head is 11dbff0, with normal atomic sync commit and no push.
+  Parent independently recomputed the retained alpha.2 tarball's SHA256 above
+  (51,548 bytes); later native and Bot helper changes are outside that artifact.
+- Actual Herdr/provider and native relay evidence remains as previously scoped.
+  Complete Worker/D1/real Access/physical two-Mac verification, final images/App
+  assembly, root/browser/standalone Bots gates and final feature push remain open.
+  The enabled scheduler's failed 7101566 merge candidate remains preserved.
+
+## 2026-10-28 16:58 +08:00 — Native review closed; Bot credential pipe running
+
+- The four native review regressions ran red (nine SPM issues) then green:
+  176 feature + 49 design tests. Reviewer closed shared-window bookmarks, stale
+  readiness, offline local revocation and new-session selection, and found no
+  direct residual in the single-completion deadline fix. Parent independently
+  ran the instrumented App coverage gate on immutable source ef2423a0:
+  2589/2775 lines = 93.3%, above the unchanged 90% threshold. Parent/Designer
+  reviewed 18 fixture panel images with no must-fix; they are not live cloud UI.
+- Helper origin mutation and input fixes pass two native process/Keychain tests,
+  including the retained nine-assertion real interleaving fixture. Backend closed
+  the original three findings; Parent independently passed all nine on 2d7b6f3d.
+  The new daemon private-pipe adapter ran a behavior red then green (1/1, 16.05s),
+  covering binding, secret-free argv/environment, reply bounds, stderr draining,
+  cancellation and the actual 15-second deadline. This is not yet App-to-Bot wiring.
+- Remote settings now have red evidence for unrelated credential/queue blocking,
+  the missing verification budget and stat/read growth (four failing tests).
+  Tightening grants skips unrelated verification; async expansions use a deadline
+  and a final synchronous CAS, while reads have a hard 65,537-byte probe limit.
+  Green verification is running. JS namespace/identifier LF/CRLF probes already
+  rejected on Node 26 before this change; no reproduced JS newline defect is claimed.
+- The next broken hop remains real Bot runtime/helper/remote injection and per-Bot
+  native authorization. Alpha.2 stays the separately verified retained tarball;
+  no new pack, App replacement, deployment, publication or push occurred. The
+  enabled upstream job and preserved 7101566 conflict are unchanged. Full Worker,
+  real Access and physical second-Mac evidence, root/browser exact dependency
+  gates and standalone Bots XCTest remain outstanding.
+
+## 2026-10-28 17:15 +08:00 — Real Bot entry chain connected; commit hook blocked
+
+- The owner-auth atomic slice was prepared with implementation, HTTP/realtime
+  tests and its contract, excluding later execution/native changes. Prepare
+  installed hooks and staged diff validation passed. Normal commit failed at
+  pre-commit's root Biome command because the exact dependency is absent; no
+  substitute ran. `.local/atomic-owner-auth.patch` preserves the eight-file slice
+  and `.local/owner-auth-complete-commit.log` the refusal. The index was cleared
+  only for that owned slice; all working changes remain. HEAD is still 11dbff0.
+- Parent reproduced the Bot client's incorrect owner header against the production
+  relay. The client now uses the existing Authorization Bearer contract and rejects
+  requests above 16 KiB before sending (512 KiB remains the response frame limit).
+  Both boundaries have retained red/green tests. Parent's production relay/Agent
+  client rerun passes 6/6 on ba87b27c; 03a5936e is a different diagnostic snapshot.
+- Existing memo plus not_found now only queries and retains the receipt; a real
+  WS regression demonstrated the former second run, then passed after removal of
+  that fallback. Real Harness/SQLite + deferred loader + WS and actual startDaemon
+  HTTP grants now pass the three-test slice. Environment entry is the non-secret
+  `BOTS_CREDENTIAL_HELPER`; the helper/runtime factory is composed before registry
+  startup. Tools are remote_status, remote_execute and remote_operation.
+- Parent's first full entry chain passes 20/20 with 15 local SSE model requests,
+  sourceHash 6eaa63e0 (98 inputs), log
+  `/tmp/eagle-parent-full-bot-chain-first-20261028.log`: actual startDaemon, HTTP
+  grants, Swift Keychain helper, pi-durable Harness, production executionRoute/
+  MachineState and Agent. Evidence includes a single command effect, authorized
+  files, accurate not_installed Herdr probe, separate Bot grants, completed-request
+  restart dedupe, persisted grants/credentials, revoked receipt refusal and Keychain
+  cleanup. Fixtures were stopped and random items removed. This does not test an
+  in-flight SIGKILL, the full Worker/D1/Access edge or two physical Macs.
+- Remote authority passes 6/6 including async-expansion versus same-Bot revocation
+  CAS, bounded reads and retryable credential cleanup metadata. Keychain IPC's
+  fixed synchronous-error/exit-confirmation slice passes 2/2; Parent separately
+  passed seven adapter-to-real-helper assertions on c52b1e0f. Reviewer/Backend
+  previously closed the native model, WS deadline and authority findings; current
+  Bot client/tool review is in progress. Native grant UI, helper packaging and
+  retained full-entry regression remain next. Root/browser exact dependencies,
+  standalone Bots XCTest, final App assembly and feature push are still open.
+
+## 2026-10-28 17:28 +08:00 — Receipt integrity independently verified; cleanup races under test
+
+- The Bot receipt now authenticates its entire payload with domain-separated
+  HMAC-SHA256 using the existing private daemon token. Stable operation IDs are
+  unchanged. Tampered revision/reference/alias data is rejected before query or
+  cancel; the key is absent from receipts, memos and tool output. Legitimate use
+  remains per Bot across conversations; changing the Bot configuration revision
+  or daemon token invalidates prior receipts, as documented.
+- The retained real-WS tampering regression first failed, then passed with the
+  Harness, missing-journal and main HTTP slice (4/4). Parent independently
+  reproduced the P1 in the full entry chain on 6eaa63e0, then passed 20/20 with
+  16 local model exchanges on sourceHash eba1b8a6e0b696f32b31730c2494f7d6a6799d413f522c21270259eba597887a:
+  `/tmp/eagle-parent-receipt-rebind-green-20261028.log`. Parent cleaned both random
+  Keychain items and fixture processes. The earlier normal 20/20 is not the
+  tampering evidence. Parent's in-flight daemon SIGKILL recovery run is pending.
+- Backend's complete main/cleanup review identified two further P2 boundaries:
+  duplicate helper removals can delete a rebound credential, and pending count
+  or byte exhaustion can prevent denial from being committed. New regressions
+  exercise real daemon HTTP/private helper interleavings, reservation at the
+  unchanged limits, and legacy-full fail-closed recovery. Their initial run is
+  in progress; these findings are not yet closed.
+- Native grants/helper App packaging and the retained full-entry harness remain
+  unfinished. Previous native coverage, provider/Agent and production relay
+  evidence retain their stated scopes. The owner-auth commit is still blocked
+  by the normal root Biome hook, with its atomic patch preserved; HEAD remains
+  11dbff0, no push. Root/browser exact dependencies, standalone Bots XCTest,
+  complete Worker/D1/Access and physical second-Mac verification remain open.
+
+## 2026-10-28 17:45 +08:00 — Independent Bot commit; native authority transport
+
+- Normal commit 53aad3a contains the independent Bot remote implementation,
+  protocol and regressions. Its Bots pre-commit lint checked 19 files with no
+  fixes; no hook was bypassed. Lead's complete Bots check exited 0 with 514/514,
+  zero skips and coverage 95.27/87.54/91.43 (lines/branches/functions); crash 5/5
+  and perf 1/1 also exited 0. Parent independently passed the full gate on immutable
+  14532a7c, 197 inputs, with 95.27/87.51/91.43. The difference is recorded rather
+  than combining these separate executions. The owner-auth slice is still blocked
+  by the root Biome hook; its patch and other dirty feature work remain intact.
+- Reviewer and Backend closed the receipt P1 and two cleanup P2 findings. Parent
+  independently passed actual daemon SIGKILL recovery on eba1b8a6: original target
+  journal 14/14, replaced journal 16/16, three local model exchanges each. Recovery
+  retained the operation ID/receipt and one effect; the absent record returned
+  not_found without another run. It queried the original persistent submissionId,
+  not the daemon's in-memory requestId index. Owned processes and Keychain items
+  were cleaned; the host regression scripts still need repository retention.
+- New native non-secret remote HTTP DTO/client and group selection ran red
+  (17 behavior assertions after a corrected test visibility error) then passed
+  full App SPM: 181 feature + 49 design. It bounds request/response bytes and
+  refuses redirects; this run uses URLProtocol and is not the parent's upcoming
+  real Swift-to-daemon interoperability probe. Native grant model/UI and helper
+  assembly are in progress, not yet a completed App path.
+- Disabled native reservation references now remain reachable for cleanup after
+  interrupted setup. Two new tests ran red, then the authority/HTTP/reservation
+  slice passed 13/13. This is a later change than 53aad3a and the parent's 514-test
+  snapshot; it will be validated and committed with its native dependency slice.
+  Alpha.2 remains the earlier separately verified Agent artifact. No App/service
+  replacement, push, deployment or publication occurred. Complete Worker/D1/real
+  Access, physical two-Mac evidence and root/browser/standalone Bots release gates
+  remain outstanding.
+
+## 2026-10-28 18:00 +08:00 — Native credential boundary closed; private bridge in progress
+
+- Native remote transport now rejects the known daemon credential in decoded
+  outbound paths/body strings and incoming JSON keys/values. New behavior tests
+  first recorded seven credential-boundary failures; after the fix the complete
+  App SPM run passed 191 feature + 49 design tests together with shared-connection
+  writer tests (`.local/native-shared-credential-green.log`). Parent independently
+  passed real HTTP 9/9 on b3e27741428b76f9667833970526887018ec737816ca1e15ffa5836aa4c42488
+  (two input files): four credential-bearing inputs made zero requests and five
+  incoming cases were refused. Its old ecfaa432 source remains 9/9 red. This is
+  distinct from the earlier normal HTTP interoperability 10/10 on 23a9e324.
+- Parent also passed nine real-socket transport assertions on the same b3e27741
+  source (`/tmp/eagle-parent-native-remote-transport-20261028.log`): valid response,
+  307 with zero redirected requests, 401/409, chunked byte overflow, absent headers
+  and slow body ending near 15.46 seconds, and cancellation near 0.425 seconds.
+  These tests use local sockets, not URLProtocol, and do not exercise Worker/D1.
+- The native grant model uses disabled reservation, private credential copy and
+  CAS activation. The shared-connection writer checks cleanup before replacing
+  the vault. Their behavior tests pass, but Inspector UI and live connection
+  injection are not yet complete. Reviewer is examining helper put/revoke
+  interleaving. No race closure is claimed from the current happy-path tests.
+- The durable Keychain sharing marker and private helper bridge each produced an
+  expected red (`.local/native-credential-bridge-red.log`, 193 feature tests with
+  two failures; 49 design passed). The implementation reuses the bounded process
+  pipe; `.local/native-credential-bridge-green.log` now passes the full 193 feature
+  and 49 design tests. Helper App packaging/supervisor injection
+  and retained full Bot SIGKILL host regressions remain next.
+- HEAD is 53aad3a; later reservation/native changes are still separate uncommitted
+  work. Alpha.2 remains the earlier verified Agent artifact. The root exact
+  dependencies, browser and standalone Bots XCTest gates remain open. No push,
+  PR, deployment, npm publication or replacement of the existing App/services.
+  Full Worker/D1/real Access and physical two-Mac verification remain unclaimed.
+
+## 2026-10-28 18:15 +08:00 — Inspector grants connected; bundle dependency evidence
+
+- Inspector Computer now opens a sheet fixed to its selected Bot, using the real
+  directory, five explicit permissions, disabled reservation recovery, revoke and
+  cleanup. MachineSettingsModel now invokes the shared-connection writer before
+  saving. Six entry assertions first failed; the completed entry is included in
+  later App SPM runs. The new sheet builds successfully in
+  `.local/native-remote-sheet-build.log`; Parent has 40 isolated fixture PNGs on
+  a8279154 under Designer review. These are not screenshots of live remote Macs.
+- Reviewer closed three further authority findings after eight regression
+  failures and a full 200 feature + 49 design green run: same-Bot grant/revoke
+  share a lease, cancellation stops subsequent stages, and shared-connection
+  reads cannot start revocation after the page leaves. Parent's real native model,
+  HTTP daemon, helper process and Keychain happy path passed 14/14 on 3b6c28fb.
+  Its actual late-put race was red on that source, then green on eadd688e; the
+  original binding remains reachable and explicit retry removes the real item.
+  Both fixtures confirmed exact Keychain cleanup. This is same-App coordination,
+  not a cross-process authority lock or full Worker/Access evidence.
+- Bundled daemon discovery and saved Node preference each ran red, then the
+  supervisor slice passed full App SPM, 202 feature + 49 design. The helper path
+  is injected only into a child the App starts; installed-App assembly and its
+  actual cold launch are still under implementation.
+- The new daemon bundle's true outside-checkout smoke test remains red because
+  the exact lock dependency @smithy/core 3.36.2 is absent from npm's local cache.
+  An isolated approved-feed npm ci also returned 404 for its locked tarball.
+  Installed Bots uses 3.36.0 for that package; it is not substituted into the
+  candidate. Existing 514-test Bots evidence remains valid for its observed local
+  installation, not proof of a fresh lock installation. Metadata source checking
+  is in progress; no lock or version was changed.
+- Backend's final approved-feed scan also found no exact root Biome 2.6.3,
+  Wrangler 4.152.0 or Anthropic 4.0.88 artifacts (eight tarball requests 404),
+  preserved under `/tmp/eagle-exact-deps-20261028-ZLXrZ9/`. No further repeat fetch
+  is planned for those known misses. Native coverage after the new grant UI,
+  helper/App packaging, retained Bot SIGKILL regression and upstream 7101566
+  integration remain next. HEAD stays 53aad3a; no push/PR/deployment/publication.
+
+## 2026-10-28 18:34 +08:00 — Upstream merge and feature restoration audited
+
+- The 18:30 checkpoint follows the protected merge window. Independent upstream
+  commit `90a633f8ce22f9edbf18393055b8da39cb4f997b` has parents
+  `53aad3acde183624d03cde0baf692ba3c3698c2d` and
+  `71015666a904fc8636bb783e5b0448d72be79004`. Normal pre-commit ran Bots lint
+  and strict Swift format successfully. Before restoring feature work, the
+  complete Bots check passed 526/526, zero skips, with 95.72/88.01/91.87
+  line/branch/function coverage; App build exited 0. These checks cover the
+  committed merge, not the later restored DELETE/native/bundle changes.
+- All 107 protected files were restored from retained stash
+  `f2121a139a3b81edafe5c7d40e9730487dab8211`. The restoration audit at
+  `.local/upstream-7101566-restoration-audit.json` records 100 identical
+  hash/mode pairs and seven upstream-overlap files matching an independent
+  three-way replay, with zero missing files, unexpected differences or unmerged
+  paths. SnapshotRenderer and this checkpoint file had additive conflicts; both
+  sides were retained. The backup manifest SHA256 remains
+  `694d0823909f94e50c1f0a148f746a91716f2a3a020ad099334602b002599f77`.
+  This new checkpoint is a subsequent documented edit, not part of that audit.
+- Gateway `thinkingLevelMap: { off: null }` and its real request regression remain
+  unchanged; RUNTIME keeps the explicit off-to-omitted contract. Search uses the
+  upstream stable DeepSeek/Tavily routing client alongside the existing remote
+  runtime injection. The old sync conflict candidate and both protection stashes
+  remain available. Main-source reads can resume; no push was attempted.
+- Before the merge, native grant availability/authentication presentation fixes
+  passed the full 206 feature + 49 design tests. Designer read those logs and
+  closed the three P2 findings in a source review; no new screenshot acceptance
+  is claimed. Backend closed Bot deletion cleanup after five red HTTP cases and
+  a 9/9 green run; it independently read the code/logs, without rerunning tests.
+- Parent independently verified real Supervisor wiring, 9/9, on 70-input source
+  hash `770c6eae6fd1758ed55906820274e93490f7f3bb0f3164012d94af3354add03e`
+  (`/tmp/eagle-root-supervisor-live-first-20261028.log`): concurrent starts,
+  bundled discovery/helper injection, actual private Keychain grant/revoke,
+  external-process protection and owner stop. Its fixture used observed local
+  dependencies, not an exact-lock candidate App. Exact Smithy 3.36.2 remains
+  unavailable, as do the three recorded root dependencies; no replacements or
+  repeated downloads were made.
+- Next: post-merge native coverage, retained full Bot SIGKILL regressions,
+  independently reviewable commits and final packaging review. Full App bundle,
+  root/browser/standalone Bots XCTest gates remain unpassed. No new live Herdr
+  collection, D1 ingestion, real Access, physical two-Mac or installed-App evidence
+  is claimed, and no existing App/service was replaced.
+
+## 2026-10-28 18:50 +08:00 — Cleanup commit, retained Bot recovery and supervisor review
+
+- `86fdf901885878b1ec8c8ce148f4d5723738b32a` independently commits disabled
+  setup-reference cleanup and Bot deletion. Its exact six-file staged tree
+  `328518b82c09a7dc999c0a6c5755df82f91a5d6b` passed the complete Bots gate:
+  533/533, no skips, 95.71/88.09/91.93 line/branch/function coverage. Normal
+  pre-commit passed. The separate bundle script/test is still uncommitted and
+  blocked on exact Smithy 3.36.2; no previously committed test was skipped.
+- Post-merge App coverage first passed 208 feature tests but failed the existing
+  row-cost benchmark at 3.30 against its unchanged 2.5 limit. That complete red
+  log remains `.local/native-final-7101566-coverage.log`. With the parallel Bots
+  check finished, the unchanged native source passed the full serial rerun:
+  208 feature + 49 design, row-cost median 1.68, 3011/3323 lines = 90.6% against
+  90%. Evidence is `.local/native-final-7101566-coverage-serial.log`. Later Swift
+  formatting is a separate edit; strict lint now passes with an empty log.
+- The actual Bot SIGKILL proof is now retained as a macOS-only integration gate,
+  with production daemon/Harness, a real private helper/Keychain binding,
+  production relay/DO and real Agent execution. The migrated wrapper passed
+  3/3 (two scenarios), zero skips, 23.56 seconds; it asserts the original
+  submission/operation IDs, 14 preserved-journal and 16 missing-journal checks,
+  three local model exchanges, one effect and exact cleanup. It uses the fixed
+  BOTS_CREDENTIAL_HELPER name and the Swift gate wrapper, not a hardcoded SDK.
+  `.local/native-retained-bot-sigkill.log` is this execution, separate from the
+  parent's earlier frozen-source proof. CI now declares the independent Bots
+  install needed by that native test; fresh installation is still resource-blocked.
+- Reviewer identified four further Supervisor gaps outside the parent's 9/9:
+  historical PID ownership, a shared-preferences observer's Stop, health PID
+  binding and overlapping Stop/Restart. They remain open while isolated real
+  process regressions are written. A preferences injection seam prevents the
+  historical-PID test from touching UserDefaults.standard or user processes.
+  Connection/local-service foundation code is being checked as its own complete
+  staged tree; Supervisor and bundle changes are not folded into that commit.
+- No other team member is running new rendering or coverage at this checkpoint.
+  The parent is preparing a separate lightweight frozen Supervisor fixture;
+  Lead alone owns current source changes and one staged-tree native coverage run.
+  No new real Herdr collection or installation, cloud authentication, D1 write,
+  live rendering, existing App/Agent/Bots replacement, push or publication occurred.
+  The next broken product hop is Supervisor ownership/lifecycle; exact App bundle,
+  root/browser and standalone Bots XCTest gates remain open, as do complete
+  Worker/Access and physical two-Mac acceptance.
+
+## 2026-10-28 19:08 +08:00 — Supervisor residuals reproduced; delivery prerequisites clarified
+
+- The first four Supervisor regressions produced eight real failures against
+  isolated preferences and owned fixture processes. Their initial fix passed the
+  complete 212 feature + 49 design run in
+  `.local/native-supervisor-ownership-green.log`: an old PID no longer permits
+  shutdown, ordinary same-App adoption has a Process handle, health is compared
+  with the launched PID, and one controller's later stop wins. This is narrower
+  than complete multi-window lifecycle acceptance.
+- Parent's real daemon exposed root canonicalization and cross-window control
+  residuals: canonical root text changes when the daemon creates a previously
+  absent root, and another controller's last Stop does not invalidate Restart.
+  Reviewer also identified an observing controller missing the owner's exit;
+  the parent's real reproduction of that third case followed at 19:10.
+  The parent's shared-ownership and cross-window red logs retain these failures.
+  Its earlier weak 9/9 merely avoided a false stopped report and is explicitly
+  not accepted as successful shared stop. New repository tests create the root
+  like the daemon, exercise a symlink alias and cover shared generation/exit
+  observation; `.local/native-supervisor-shared-red.log` is running. These remain
+  open, and the draft shared-generation contract is not yet a verified behavior.
+- Parent/Designer completed twenty new loaded fixture PNGs on source hash
+  909774d7 (169 inputs). Designer reports the three grant presentation P2s closed
+  with no new P2/obstruction. These use an in-memory vault; they do not prove an
+  installed App. No rendering is still running. Lead has one active Swift
+  regression run and has deferred the separate foundation coverage until it ends.
+- The native foundation's first exact staged-tree run reproduced the already
+  known host-dependent Node PATH assertion. Its corrected, self-created executable
+  fixture is now included in the nine-file boundary; Supervisor behavior and
+  bundle code remain outside that tree. The prior complete-source coverage
+  90.6% and initial 3.30 row-cost failure are retained, not promoted to proof for
+  later source changes. No native foundation commit is claimed yet.
+- Delivery documentation now separates the verified unpublished alpha.2 tgz from
+  the undelivered complete App/feature branch, names macOS 15+/external Node 24+
+  prerequisites, and requires a compatible authorized backend before the seven
+  post-delivery steps. Production has not received this branch's routes. CLI-only
+  B uses explicit executor EAGLE_CONFIG/stdin; build-app repacks current source,
+  and a different App path does not isolate preferences or Keychain.
+- No new real Herdr collection, cloud authentication, D1 ingestion, live-machine
+  rendering or physical two-Mac evidence was produced. Exact dependency/App
+  bundle, root/browser and standalone Bots XCTest gates remain blocked. No user
+  App/service, production resources or Git remotes were modified. Next broken hop:
+  shared Supervisor lifecycle, followed by normal native atomic commits and final
+  coverage; no push, PR, deployment or publication.
+
+## 2026-10-28 19:23 +08:00 — Shared Supervisor closed; foundation gate remains separate
+
+- The initial shared-lifecycle run failed to compile a Swift Testing key-path
+  assertion; it is not a behavior red. After correcting that expression, the full
+  run reproduced three failures with five issues in
+  `.local/native-supervisor-shared-behavior-red.log`. The shared control fix then
+  passed 215 feature + 49 design tests, exit 0, in
+  `.local/native-supervisor-shared-green.log`. It shares the actual child, control
+  generation, startup/stop task and published status, and resolves absent roots
+  through the longest existing POSIX realpath ancestor.
+- Reviewer 19:18 closed the three residuals in a read-only source/log review with
+  no new P1/P2. Parent independently reran the four original real-daemon fixtures:
+  shared ownership 10, cross-window control 11, observer update 10 and stale PID 1,
+  all passing without changing their scripts or assertions. The 72-input source
+  hash is `f46bcbc44d709af9ee14a86d147f8cfd22183cd77f4f891f6d7e01aae3508cd0`;
+  Supervisor SHA256 is
+  `4786ec94849e808d5a39cf5bde923e0efd39d4fb18f2df35d09816988fa4c377`.
+  `/tmp/eagle-root-supervisor-retest-20261028.md` and its JSON retain each log/hash,
+  exact Keychain cleanup and all four exited fixture PIDs. The observer behavior
+  red was obtained at 19:10, after the preceding checkpoint. The earlier weak
+  9/9 is still not used as proof of shared stop.
+- Those parent fixtures use observed dependencies, including Smithy 3.36.0 where
+  the lock requires 3.36.2; they do not certify a complete candidate App. The
+  Supervisor API did not change and its matching source remained fixed throughout
+  the parent runs. No existing daemon, default preferences or user Keychain item
+  was used for this verification.
+- The separate nine-file native foundation staged tree
+  `8d16cba802fea20438f32a33a7f74941313ebef3` passed its full tests but failed coverage:
+  1844/2068 lines = 89.2%, against the unchanged 90% threshold. That result is
+  retained in `.local/native-foundation-atomic-green.log` and its explicit
+  `coverageExitCode: 1` evidence; the filename is not a passing claim. No foundation
+  commit has been made. New HTTP capability tests cover complete file/Herdr evidence
+  and malformed readiness. A further zero-request regression actually found 15
+  outgoing fixture requests for known credentials passed as machine IDs
+  (`.local/native-machine-identifier-requests-red.log`); the shared ID validator is
+  being fixed before the next complete staged-tree gate.
+- No team rendering or parent heavy gate is running; Lead alone runs the current
+  native regression. There is no new live Herdr collection, production owner/Access
+  authentication, D1 ingestion, live-machine rendering or physical two-Mac evidence.
+  The exact-dependency and full App, root/browser and standalone Bots XCTest gates
+  remain open. The registry remains unchanged while the parent's separate resource
+  question awaits a reply. Next broken hop: foundation HTTP boundary/coverage,
+  followed by dependency-complete atomic commits. No push, PR, deployment,
+  publication or existing App/service replacement.
+
+## 2026-10-28 19:40 +08:00 — Native foundation committed; complete pending slices preserved
+
+- Native foundation is committed independently as
+  `1261190736d120ecc057418283b2b9e3c1ed5999`, parent `86fdf90`. Normal pre-commit
+  ran strict Swift format. Its commit tree is the reviewed and tested
+  `50dfbc19e2c81e01d08791c532de0bd9c1662156`: 169 feature + 49 design tests and
+  1940/2071 lines = 93.7%, minimum 90%. Parent independently confirmed the tree,
+  hook log and results. The earlier 89.2% failure remains preserved. The new
+  credential-ID regression changed from 15 outgoing fixture requests to zero;
+  complete provider metadata is accepted and malformed readiness is rejected.
+- The separate Herdr native client/recovery/panel slice includes all seven files,
+  including the real WebSocket `.mjs` fixture. Its exact tree
+  `c04e8c43a272cf4ad4434d88d5738572a13519a8` passed 181 feature + 49 design tests,
+  2677/2828 lines = 94.7%, minimum 90%, in `.local/native-herdr-atomic-coverage.log`.
+  Normal commit was refused by the root Biome hook; the local locked binary is
+  missing and `npx --no-install` declined its unresolved fallback. No package was
+  installed and no hook/fixture was removed. `.local/native-herdr-atomic-tree.json`
+  retains the complete source snapshot; `.local/native-herdr-commit.log` records
+  the failed commit. This slice has no commit SHA.
+- A final complete working-source native coverage run also passed: 217 feature
+  + 49 design tests, 3088/3367 lines = 91.7% against 90%. Its 576-input source hash
+  is `1c4f9dec9e6d5fc8dc2d9867c7a977ea34bb97efc44b128560c0f31aa1674303`;
+  `.local/native-final-working-coverage.json` records every file/hash/mode and
+  `.local/native-final-working-coverage.log` records exit 0. This includes the
+  current native grant UI/helper logic and Supervisor tests, not a complete App
+  package. The original 3.30 row-cost failure and subsequent serial green remain
+  separate evidence; no threshold was changed.
+  Parent subsequently verified all 148 current native input files still match
+  that frozen run; this was a hash audit, not another test execution.
+- The already recorded Supervisor real-fixture acceptance remains 32/32 on its
+  own 72-input source hash, with Reviewer closure at 19:18. No unchanged backend,
+  Bot runtime, launchd or Keychain chain was rerun. A separate packaging regression
+  reproduced the reviewer's optional early-lock cleanup issue using the actual
+  shell script with a failing fixture mktemp: the old App stayed intact but a lock
+  remained. Moving cleanup registration before staging allocation passed 1/1;
+  `.local/native-app-assembly-lock-{red,green}.log` preserve both outcomes. This
+  fix/test belongs to packaging and does not prove bundle installation.
+- Remaining concrete gates: root's exact Biome 2.6.3, Wrangler 4.152.0 and
+  Anthropic 4.0.88 are unavailable from the approved source; Bot candidate
+  assembly also needs exact Smithy 3.36.2. Standalone Bots Swift tests still lack
+  the real XCTest module. The existing approved tarball evidence for Vite/Basalt
+  and observed local dependencies do not satisfy these gaps. Root/browser, the
+  fresh-lock Bot bundle, complete App cold launch and feature push remain
+  unpassed. The parent's registry/Xcode resource question still has no reply;
+  the registry and exact versions have not changed.
+- Lead remains the only writer. Native compilation/coverage and all parent
+  fixture processes have ended; no team rendering or packaging is active.
+  Remaining source/contracts/tests stay grouped and reviewable; status documents
+  can land independently without changing the blocked product trees. No new real
+  Herdr collection, cloud owner/Access authentication, D1 ingestion, live rendering,
+  physical two-Mac check, existing App/service replacement, push, PR, deployment
+  or publication occurred. Next step after resources are available: install only
+  the exact locked artifacts, finish the normal hooks and complete gates, then
+  assemble and verify an isolated candidate before any authorized feature push.
