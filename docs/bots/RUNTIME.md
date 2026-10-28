@@ -5,6 +5,9 @@ evidence that established them. Protocol shape is in
 [PROTOCOL.md](PROTOCOL.md), layers in [ARCHITECTURE.md](ARCHITECTURE.md), logs in
 [OBSERVABILITY.md](OBSERVABILITY.md).
 
+For the current inventory, extension-development rules and explicitly planned
+tool families, see [001 - Extensions and tools](001-EXTENSIONS-AND-TOOLS.md).
+
 The adapter owns a Harness per bot, translates its behaviour into `RuntimeEvent`,
 classifies failures, and owns the submission ledger. It owns no catalog, no
 transport and no `rev`.
@@ -45,12 +48,17 @@ evidence says upstream source. Probe scripts and inputs are listed in
 
 ## Harness construction (per bot)
 
+The snippet below records the original phase-1 chat-only baseline. Current
+construction creates a Registry per Bot, installs built-in extensions, supplies
+`NodeExecutionEnv`, and configures selected extensions before resume; see
+[Tools](#tools-phase-2) and the extension guide.
+
 ```ts
 const harness = await Harness.open(
   await openNodeSqliteStorage(join(spec.dir, "session.sqlite")),
   {
     models,                   // one shared Models for the process
-    registry,                 // empty in phase 1 (see "No tools")
+    registry,                 // empty in this phase-1 baseline
     settings: perBotSettings(),  // fresh object per bot, never shared
     onReport: (error, info) => classifyReport(info),   // F15
   },
@@ -63,11 +71,12 @@ harness.resume();                                      // recovery, before servi
 
 - `open()` performs recovery. The registry never calls `resume()` separately, so a
   run interrupted by a crash continues without an extra port operation.
-- One `Models` and one `Registry` are shared process-wide (constructed once, no
-  conversation state); everything else is per bot (F19).
+- `Models` is shared process-wide. The phase-1 empty Registry could be shared;
+  the current Registry is per Bot because tools bind Bot-specific dependencies.
+  Settings and storage remain per Bot (F19).
 - `root()` is idempotent: conversation `1` for a new storage, the same root after
   reopen.
-- Phase 1 keeps exactly one conversation per bot and never calls
+- Phase 1 kept exactly one conversation per bot and never called
   `createConversation`, `fork` or subagent APIs.
 
 ## Event mapping
@@ -376,10 +385,16 @@ doing everything in one context.
 | `agent_stop` | Aborts the child: queued work is withdrawn and the transcript stays readable |
 
 The child is not a second product: it lives in the same sqlite file, so the daemon's one
-`busy()` and idle close cover it while a tool waits on it, and nothing about it reaches the
-protocol yet (the `peers` capability stays false). The transcript keeps only the tool
-results — the child's conversation is inspectable through `history` by id, which is what a
-later peers surface would read.
+`busy()` and idle close cover it while a tool waits on it. There is no child-conversation
+listing in the client protocol; the parent transcript contains the tool results, while
+the SDK can inspect the child by conversation id. The generic task graph is separate
+from a child-conversation UI. The `peers` capability stays false.
+
+Current `agent_send` and `agent_stop` look up a conversation in this Harness without
+checking its parent marker. Their documented child-targeting intent is not yet fully
+enforced; the extension guide plans `agent_list` and direct-parent validation with
+negative tests. Independent catalog Bot communication belongs to planned `peer_*`
+tools, not a reinterpretation of these same-Harness `agent_*` operations.
 
 ### Deferred tools
 
@@ -446,16 +461,17 @@ Rules:
   and is decoded across chunk boundaries. A herdr JSON error becomes the tool result with
   its own code and message (`agent_blocked: ...`); a non-zero exit without JSON keeps the
   exit and the detail.
-- **The bot's own sandbox does not apply to the CLI.** `herdr` is a host tool (it needs the
-  session socket), so it is not run through the workspace sandbox; what it may touch is
-  bounded by the space rule above, not by the file system profile.
+- **The CLI is a host tool, not a sandboxed process.** `herdr` needs the session socket;
+  these tools constrain their targets by the Space rule above. There is no workspace
+  sandbox or filesystem profile, and native coding tools retain normal local access.
 - **A label is not an ownership credential.** The nonce makes a collision with a user
   workspace implausible, but a user who copies the exact label of a bot's space can be
   adopted when that bot has lost both its state file and its tombstone list. That trade-off
   keeps a lost state from leaking a second space; several candidates are refused instead of
   guessed, and a state file that is present but fails verification is never adopted. Both
-  files live in the bot's own directory, which the model cannot write; removing them is a
-  person's deliberate act, and adoption then resumes as described above.
+  files live in the bot's own directory, outside its default workspace. That location
+  is not a security boundary: native coding tools can access it. Removing both records
+  discards the targeting evidence, and adoption then resumes as described above.
 - **Reading is evidence, not proof.** `idle`/`done` mean herdr saw a settled agent, not
   that its work finished; `blocked` is a dialog the controller raised, and the bot may
   inspect it with `herdr_read` and answer it with `herdr_keys`.
@@ -471,12 +487,12 @@ own change set:
 
 | Capability | Work required when enabling |
 | --- | --- |
-| `tools` | Enabled in phase 2: the four workspace tools (slice 1) and the herdr tools (slice 2), all auto-executed; rendering tool calls and results in the client is the next slice |
+| `tools` | Enabled: native coding, core list, Herdr, child-agent tools and deferred discovery; calls/results render through the existing generic client rows. The extension guide maps the current inventory and tests |
 | `agent` | Add a `configure` command and a model catalog endpoint; add `configure` to the port; render the settings panel |
 | `tasks` | Emit `task` events from `watchTaskGraph`; add a `retry` command; make the close condition task-aware |
 | `entries` | Serve raw entries from `conversation.entries()` behind a paging command |
 | `usage` | Already populated in phase 1: `snapshot.usage` comes from `pi.usage`; the panel is what phase 2 adds |
-| `peers` | Bot-to-bot delivery as a tool or background task; a `peers` policy document |
+| `peers` | Planned independent Bot discovery/delivery via `peer_list`, `peer_send`, `peer_read`; the extension guide defines boundaries and acceptance before capability enablement |
 
 None of them may change v1 semantics for existing fields.
 

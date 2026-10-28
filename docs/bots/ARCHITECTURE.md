@@ -6,6 +6,11 @@ here land in the same commit as the code they describe. Product scope lives in
 runtime mapping in [RUNTIME.md](RUNTIME.md), logging in
 [OBSERVABILITY.md](OBSERVABILITY.md), tests in [TESTING.md](TESTING.md).
 
+The current extension/tool structure, native SDK integration and planned tool
+families are in [001 - Extensions and tools](001-EXTENSIONS-AND-TOOLS.md).
+Tool groups select native extensions; they do not replace the application core
+or introduce another execution engine.
+
 ## Isolation
 
 Bots is a separate project that happens to live in this repository.

@@ -6,6 +6,11 @@ Status snapshot. The contracts live in
 [OBSERVABILITY.md](OBSERVABILITY.md) and [TESTING.md](TESTING.md). This file says
 what exists, what is next, and where it lives. Update it whenever a stage closes.
 
+The current tool taxonomy, native extension integration and test-evidence map are
+in [001 - Extensions and tools](001-EXTENSIONS-AND-TOOLS.md). That guide also
+specifies planned optional `memory`, `search` and `peers` groups and child-agent
+discovery. Those additions are not implemented or enabled by this plan update.
+
 ## Where the code lives
 
 ### Native tool consolidation (2026-10-28)
@@ -410,6 +415,22 @@ five busiest bots — with an empty state instead of zeros before anything runs.
 
 1. Finish the client surface: history paging, bot settings behind the `agent`
    capability, and an inspector that renders a bot's own state.
+
+The extension/tool track has its own proposed sequence in
+[001 - Extensions and tools](001-EXTENSIONS-AND-TOOLS.md#6-planned-optional-groups):
+
+1. Add child discovery with `agent_list`, direct-parent target validation and the
+   missing negative/stop/recovery tests for existing delegation tools.
+2. Add optional `memory`: `memory_list`, `memory_search`, `memory_read`,
+   `memory_write`, `memory_delete`, with explicit shared/private scope. Make the
+   one native discovery loader independent of Herdr in this slice.
+3. Add optional `search`: `web_search` and `web_fetch`, separating URL discovery
+   from page retrieval and proving bounded, cancellable provider calls.
+4. Add optional `peers`: `peer_list`, `peer_send`, `peer_read`, with durable
+   cross-Bot admission, observable settlement and bounded routing.
+
+All four tool rows are planned, not implemented. New groups remain optional and
+must not become default-enabled merely by extending the group-name list.
 
 ### What the adapter can do today (rows 23-36, signed off)
 
