@@ -2998,3 +2998,424 @@ were used for acceptance; live DeepSeek/Tavily verification remains unperformed.
   or publication occurred. Next step after resources are available: install only
   the exact locked artifacts, finish the normal hooks and complete gates, then
   assemble and verify an isolated candidate before any authorized feature push.
+
+## 2026-10-28 22:42 +08:00 — Authorized dependency recovery; official connection still failing
+
+- User authorized the official npm registry for this task's processes at 22:31,
+  keeping every locked version and the machine's default npm configuration. Parent
+  owns the separately authorized full Xcode installation; its administrator prompt
+  is pending and no usable Xcode installation is claimed. Lead has not installed
+  Xcode or changed the global toolchain.
+- The first root `npm ci --registry=https://registry.npmjs.org/` exited 1 with
+  `read ENOTCONN` while fetching Wrangler 4.152.0. Independent curl requests to
+  the official registry root, Biome metadata and Wrangler tarball also failed
+  during TLS with `Socket is not connected`, including IPv4/IPv6 attempts. This
+  is connection failure evidence, not an official-registry 404 or a successful
+  dependency installation. `.local/npm-ci-official-root-20261028.log` and
+  `.local/dependency-recovery-official-20261028.json` retain the installation result.
+  Root node_modules was cleared by ci; Bots ci has not started.
+- Both lockfiles and the default registry are unchanged. Root lock SHA256 remains
+  `a2ab0b2649a6bc598c2625192afa37c6b10d841fa1cfe03bf95c89e51cb5558a`;
+  Bots lock remains
+  `177687adf5cff461cb0513dcbb2a32c0f8dea26ce1328ba6b2a146979f17018f`.
+  The seven-file Herdr staged patch still exactly matches its saved
+  `ba319f34816d500962a0556c3fb2d185ba4301a7cc8956a8c776e1f34abc79f9`
+  hash; HEAD is still `18ee059`. The 97-file preservation manifest remains in
+  `.local/pending-delivery-latest.json`; no product changes or new commits occurred.
+- Herdr's live roster was read for coordination only. Backend is checking the
+  official connection read-only; no Agent collection, production owner/Access
+  authentication, D1 ingestion, live-machine rendering, test, pack or App launch
+  was performed in this recovery attempt. Existing accepted evidence retains its
+  original source boundaries. Next broken hop is exact npm retrieval, followed by
+  the normal Herdr seven-file hook and remaining atomic groups. Full Xcode gates
+  await Parent's verified installation notice. No push, PR, deployment, npm
+  publication or replacement of an existing App/service.
+
+## 2026-10-28 22:56 +08:00 — Independent native client tree checked; resource gates remain open
+
+- Backend's bounded independent official Wrangler request also ended with curl 35,
+  HTTP 000 and `Socket is not connected`. Its exact-integrity cache audit found
+  no Biome 2.6.3, Darwin ARM64 Biome 2.6.3, Wrangler 4.152.0 or Anthropic 4.0.88
+  blob. Further identical requests have stopped; official version availability
+  remains unknown. Real root/Bots installation is not reported recovered.
+- Bots' two mirror URLs contain a `/npm/` prefix. A generated, isolated loopback
+  tarball and real npm 11.19.1 confirmed that
+  `--replace-registry-host=https://mirrors.tencent.com/npm/` replaces the complete
+  prefix while retaining the lock, whereas `always` would retain the extra path.
+  `.local/bots-official-prefix-rewrite-20261028.json` records four passing checks
+  and ci exit 0 for that fixture only. The first probe's overly strict request-list
+  assertion failed on npm's additional `/npm` version reads; it is retained
+  separately and was corrected to assert the exact tarball request. No product
+  dependency, version, lockfile or default registry changed in this probe.
+- Reviewer identified a complete five-file native authority-client slice: DTO,
+  HTTP client, its whole existing test file, the Settings remote vocabulary and
+  its own contract section. It does not include the helper or grant panel. The
+  separately saved tree `a442960a331cfa7f16dbc3ad86c6e1eb5a868338` passed 175 feature
+  + 49 design tests and 1941/2071 lines = 93.7%, minimum 90%, in 74.296 seconds.
+  `.local/native-remote-http-atomic-plan.json` and its coverage log retain the
+  exact five-file boundary. This ran with the existing CLT SDK/plugin explicitly
+  selected; it does not satisfy standalone Bots XCTest. No client commit is claimed.
+- App strict Swift format passed. A separate complete Bots Swift format check
+  found ten diagnostics in four pre-existing files. Formatting those four files
+  left every non-whitespace byte unchanged, and the complete Bots format check
+  now exits 0. `.local/bots-macos-format-recovery.json` retains the failure, patch
+  and passing check. Its independent format-only boundary is under read-only
+  review; it is not folded into the client or Herdr feature patches.
+- Parent confirmed Xcode 27.1 metadata is present and the global developer path
+  now resolves to it, but both license and first-launch checks still exit 69.
+  Lead observed the same license error through an ordinary Python shim and then
+  kept Apple tool invocations on process-only CLT. Lead did not accept a license,
+  run first launch, install Xcode or change the global developer selection.
+- The original Herdr seven-file staged patch remains `ba319f34…`; the 97-file
+  preservation audit matched every source/backup hash and mode before the new
+  documented format-only edits and client contract section. No test, rendering or
+  pack is now running. Herdr was used only for team coordination; no new collection,
+  production owner/Access authentication, D1 ingestion, live-machine rendering or
+  physical two-Mac evidence was produced. Next hops: finish the normal format-only
+  review/commit, then verified Xcode client gates and exact npm recovery. No push,
+  PR, deployment, npm publication or replacement of a user App/service.
+
+## 2026-10-28 23:01 +08:00 — Full Xcode available; independent client gate started
+
+- Parent completed the authorized App Store Xcode installation, license acceptance
+  and first-launch initialization, all exit 0, and confirmed XCTest.framework.
+  Evidence is `/tmp/eagle-xcode-visible-20261028-9bhy9msx/install.log`; its earlier
+  sudo/mas attempt remains separate. Lead then read Xcode 27.1 / build 27A9275
+  with an explicit process developer path. The Xcode resource blocker is closed;
+  prior exit-69 observations above describe the earlier installation state.
+- The reviewed, four-file formatting-only group is committed independently as
+  `e3020f915d65d7c8745fc1e941b7a3d93e523d97`, tree
+  `9f32cc7b7f597e43fb897e737b9f019a984f4224`. Normal pre-commit executed and the
+  commit exited 0; `.local/bots-macos-format-commit-trace.jsonl` records the hook.
+  Reviewer 22:58 confirmed unchanged strings, logic, assertions and modes. The
+  original Herdr seven-file staged patch was restored byte-for-byte afterward;
+  no Herdr commit or root gate is implied.
+- The five-file native HTTP client tree was rebased only over that independent
+  whitespace commit, producing `95064298b1076f490386a3b7804b2722cce7d2d8`. Its full
+  standalone Bots Swift coverage script is now running on verified full Xcode;
+  `.local/native-remote-http-xcode-atomic.json` and
+  `.local/native-remote-http-xcode-bots-coverage.log` retain that exact boundary.
+  Its earlier CLT 175 + 49 / 93.7% result remains separate. No new XCTest result
+  is claimed until the current command exits.
+- Only Lead's one native gate is active; previous CLT runs ended, and no rendering
+  or pack runs concurrently. Official npm remains blocked at the connection/TLS
+  layer despite the user's authorization, with no new source or version change.
+  There is no new real Herdr collection, production authentication, D1 ingestion,
+  live-machine rendering or physical two-Mac evidence. Next hop: complete the
+  native client checks and normal atomic commit while exact npm retrieval is
+  resolved. No push, PR, deployment, publication or user App/service replacement.
+
+## 2026-10-28 23:17 +08:00 — Native HTTP client committed; observed socket verification complete
+
+- Full Xcode ran the standalone Swift suites. The first isolated archive lacked
+  Bots node_modules: Core 49 and Features 43 passed, while five real-daemon
+  Transport setups failed before `daemon.start` and XCTest also labelled those
+  five setups skipped. Direct dependency resolution returned MODULE_NOT_FOUND;
+  this was neither a missing XCTest module nor a reproduced client behavior bug.
+  The failing log and build profiles remain preserved.
+- Following Parent's explicit observed-environment instruction, the same source
+  tree used the existing Bots node_modules through an isolated link, with private
+  fixture configuration and an empty fresh build directory. The entire unchanged
+  suite passed: Core 49, Features 43, Transport 34, including all five real socket
+  cases; 126 total, no failures/skips. Coverage is 1893/2068 = 91.5%, minimum 90%,
+  exit 0 in 24.955 seconds. Both lock hashes stayed unchanged.
+  `.local/native-remote-http-observed-bots-coverage.json` lists all twenty existing
+  version differences, including AWS, Babel and Smithy; this is functional
+  verification, not a fresh-lock candidate or release-gate approval. Exact npm
+  installation and the full formal gates still need to run after retrieval works.
+- The same five-file candidate's full-Xcode App gate passed 175 + 49 tests and
+  1941/2071 = 93.7%, minimum 90%, exit 0 in 49.745 seconds. The client, complete
+  tests, Settings vocabulary and their own contract were committed with the normal
+  Swift-format hook as `c91c2bf56b2e2318b5fd70548f31f97123775684`, whose tree is
+  exactly the checked `95064298b1076f490386a3b7804b2722cce7d2d8`.
+  `.local/native-remote-http-xcode-atomic.json` retains the source, both failed and
+  successful checks, commit result and hook trace. The Herdr seven-file staged
+  patch was again restored byte-for-byte, still `ba319f34…`.
+- Separately, all current Swift sources were frozen in 169 inputs with source hash
+  `789fa0196a5548bb8a24a22b0230c843aaa6518ae586e7f5da5a6c79222f1b59`.
+  Xcode release builds of EagleApp and BotsCredentialHelper both exited 0;
+  `.local/native-complete-xcode-release-build.json` records their exact binaries
+  and hashes. These are compilation/link checks, not App bundle assembly or launch.
+- No heavy test, pack or rendering is now active. Backend is preparing exact
+  isolated compatible-backend/A-to-B connection instructions, and Reviewer is
+  checking the real App entry's existing isolation hooks before a candidate launch.
+  Designer's narrow Orca reference study is separate from the accepted UI image
+  reviews. There is no new Herdr collection, production owner/Access authentication,
+  D1 ingestion, live-machine rendering or physical two-Mac acceptance. Official npm
+  remains blocked at TLS/connection level. Next hops are safe candidate preparation
+  and the executable local-backend guide while exact dependencies are recovered.
+  No push, PR, production deployment, npm publication or existing App/service replacement.
+
+## 2026-10-28 23:35 +08:00 — Consumer coverage gap retained as a gate regression
+
+- Parent identified an inclusion gap in the Swift coverage scripts, not a new HTTP
+  behavior failure. The earlier 93.7% App and 91.5% standalone Bots totals do not
+  include `BotsCore/Domain/RemoteTools.swift` or
+  `BotsTransport/RemoteToolsHTTPClient.swift`. The App's raw report already records
+  15/16 and 168/173 covered lines respectively; those rows were omitted by its
+  selection expression. Existing behavior evidence remains valid with this scope.
+- The minimum fix assigns these consumer-tested files to the App's unchanged 90%
+  logic floor, with an explicit failure when either report row is missing. New
+  regression tests execute the real coverage script against private compiler-report
+  fixtures; the complete existing HTTP tests remain intact. The full App red run
+  is now running on Xcode 27.1 in an isolated `c91c2bf`-based tree. Its source and
+  results are recorded in `.local/native-consumer-coverage-atomic.json`; no green
+  result is claimed yet. The original seven-file Herdr stage still matches
+  `ba319f34…`, and both lock hashes remain unchanged.
+- Reviewer and Backend finished static preparation for App isolation and a
+  compatible local Worker/SSH guide. Existing environment overrides do not isolate
+  App preferences, Keychain factories and outbox together; a different App path is
+  insufficient. No App, backend or SSH was started. Designer's public-source study
+  and its permissions remain coordinated by Parent.
+- Only Lead's one native run is active; no rendering or pack is running here.
+  Full Xcode is ready; exact npm retrieval remains blocked before HTTP at the
+  official registry connection/TLS layer. No new Herdr collection, production
+  owner/Access authentication, D1 ingestion, live-machine rendering or physical
+  two-Mac evidence was produced. Next hop is the coverage guard's red/green review
+  and independent normal commit, then the remaining candidate isolation and
+  delivery preparation. No push, PR, deployment, publication or user App/service
+  replacement.
+
+## 2026-10-28 23:50 +08:00 — Consumer gate committed; isolated launch preparation narrowed
+
+- The consumer-coverage regression finished with 11 failing assertions against
+  the old script, then passed the complete Xcode App suite: 178 feature + 49
+  design tests, 2124/2260 = 94.0%, unchanged 90% minimum. This total explicitly
+  includes the DTO's 15/16 and HTTP client's 168/173 lines. Reviewer 23:39 closed
+  the three-file boundary after reading both logs and hashes. Normal pre-commit
+  ran Swift format and committed `bbc826f358fbad76a85a6b8fcf4fb22d7383028e`, tree
+  `6c6a1230662c8f0297d199fcdbe52f9445a6fe65`, exactly the tested tree. The original
+  Herdr seven-file stage was restored byte-for-byte; its patch remains `ba319f34…`.
+  `.local/native-consumer-coverage-atomic.json` includes commit and hook evidence.
+- The compatible-backend/A-to-B SSH preparation is now written in
+  `docs/NATIVE-ACCESS.md`: private config, distinct owner/signing secrets, complete
+  Worker entry and bindings, local migrations and shared persistence, loopback
+  ports and foreground SSH. These commands have not been run. The old execution
+  fixture is not evidence of a complete Worker cold start or machine registration.
+- Parent relayed Designer's four source-backed Orca patterns at fixed commit
+  `823ca6870fd46bc979ee073ee0731516a0607daa`: explicit target ownership, layered
+  readiness, capability prerequisites and retaining long-operation identity.
+  Its nine-file/78438-byte evidence is
+  `/tmp/eagle-orca-designer-selected-7XQNvO/evidence.json`. This was a static
+  reference study, not an installed/running Orca or physical two-Mac acceptance.
+  No old UI redesign is being added.
+- The launch work is limited to an explicit verification composition: private
+  preferences/credential stores, Agent/Bots paths and outbox including refusal
+  fallback, with automatic start/connect controlled together. Supervisor's
+  default development `.env` load must also be disabled for that configuration.
+  The first bounded slice is the missing host-controlled outbox fallback; its
+  actual filesystem red test is running in a standalone Swift tree using the
+  already recorded observed Bots dependencies. It is not a fresh-lock gate.
+  No complete App verification entry or cold launch is claimed yet.
+- Only Lead's one native run is active. Parent is not compiling/rendering; no
+  new pack, App, SSH or Worker has been started. Official npm remains blocked at
+  the connection/TLS layer; repeated network/cache/artifact probes have stopped.
+  Xcode is ready and both product locks remain unchanged. No new Herdr collection,
+  production owner/Access authentication, D1 ingestion, live-machine rendering or
+  physical two-Mac result. Complete App assembly/runtime, full backend cold start,
+  physical A/B acceptance and feature push all remain separate open outcomes.
+  No push, PR, deployment, publication or existing App/service replacement.
+
+## 2026-10-29 00:05 +08:00 — Verification composition checked; runtime delivery still open
+
+- The three-file host-controlled outbox fallback is committed independently as
+  `06ee74d62373f6fb4bc09b7b6c1303ad038ebf92`, tree
+  `0e1aa8b44d18fc1216f825b1e2b8b3b5f292aba4`. Its first fixture scope compilation
+  mistake is separate from the subsequent actual two-assertion filesystem red.
+  With explicit private fallback paths the same assertions passed; the complete
+  standalone Bots suite passed 127/127, coverage 1899/2072 = 91.7%, and strict
+  Swift format exited 0. Reviewer 23:56 closed the boundary. The normal commit
+  hook ran, and the original Herdr stage was restored exactly. The existing
+  observed dependency differences remain documented; this is not a fresh-lock
+  release gate. Evidence: `.local/native-outbox-isolation-atomic.json`.
+- The explicit App verification configuration is now wired through the App's
+  own AppStorage, Shell and Settings, local Node selection, machine/shared
+  credential factories, operation bookmarks, lazy outbox creation, Supervisor
+  environment-file policy and App-exit ownership cleanup. It retains ordinary
+  defaults when no verification settings are supplied. The new logic is included
+  in the App coverage gate and must be present in its report. No UI redesign or
+  change to the existing Herdr operation contract was added.
+- The initial missing-API compilation failure is retained and is not called
+  behavior-red evidence. A clearly labelled, build-compatible control variant
+  ignored verification keys and selected the previous standard-default composition;
+  the same safety-guarded tests produced 15 failures without writing standard
+  preferences. The unchanged old Supervisor also loaded the fixture `.env` against
+  the host's requested isolation, producing one real process assertion failure.
+  This control variant is not an unmodified historical App binary.
+- The production composition then passed the complete App suite: 226 feature +
+  49 design tests, strict format exit 0, coverage 3372/3655 = 92.3% against the
+  unchanged 90% floor. AppLaunchConfiguration is included at 81/89 = 91.0%.
+  `.local/native-app-isolation.json` records the complete frozen input set,
+  source hash `7e8f3da2fd722e86cc6a541c0ec64f4b11e2d5308dac07a8c48d097ee5248bf5`,
+  the separate red forms and final log. The WS fixture uses the observed Bots
+  dependency installation; no exact candidate or real App launch is implied.
+  Reviewer is now checking the actual composition call sites, while Backend
+  checks only the newly written guide.
+- The A/B guide now distinguishes ordinary A's existing Bot from a new isolated
+  profile: machine management/Herdr need no model key; A Bot → B in that profile
+  requires normal Raven setup and a new test Bot. No daily database or credentials
+  are copied, and B still needs no model key. All Wrangler, SSH and candidate App
+  commands remain unexecuted.
+- Parent reports the 00:00 scheduled comparison started at 16:00:05Z in
+  `runs/20261028T160005Z-check-77925105`, prepared, still seeing upstream
+  `71015666a904fc8636bb783e5b0448d72be79004`, with null target SHA and no push.
+  That comparison has not yet reported completion. Lead did not start another run.
+- No heavy test is now active here. No new pack, App, SSH, Worker, real Herdr
+  collection, production owner/Access authentication, D1 ingestion or live-machine
+  rendering was performed. Xcode is ready; official npm still fails at connection
+  level, and further identical probes remain stopped. Complete App assembly and
+  runtime, full compatible-backend cold start, physical two-Mac acceptance and
+  feature push are four separate open outcomes. No PR, deployment, publication or
+  existing App/service replacement.
+
+## 2026-10-29 00:20 +08:00 — Selected client environment being closed
+
+- HEAD remains `06ee74d`; the original seven-file Herdr index patch remains
+  `ba319f34816d500962a0556c3fb2d185ba4301a7cc8956a8c776e1f34abc79f9`.
+  Backend 00:07 read the new compatible-backend guide and reported no new
+  substantive contract error. Its Wrangler, SSH and App commands remain unrun.
+- Reviewer 00:10 found a real composition gap: four client factories re-read
+  ambient `BOTS_TOKEN` after verification had filtered its environment. Actual
+  loopback HTTP regressions reproduced both the selected-override and private-file
+  header failures. The fix keeps token reading and `BOTS_OPEN` in `BotsSettings`'s
+  selected environment. The two HTTP cases then passed, each observing five
+  requests across settings, catalog, gateway probe and remote grants.
+- The first test macro compilation failure is separate setup evidence. A third
+  test initially expected no selected Bot even though the existing catalog model
+  selects its first item; that fixture assumption is not a product failure.
+  It now checks whether an existing second-Bot selection is preserved or explicitly
+  replaced. The same corrected tests are running against the frozen old readers
+  before final green verification. All tests run; no filter/skip or global setenv
+  is used. Only the child gate process receives synthetic ambient credentials.
+  Evidence: `.local/native-app-token-boundary.json` and its separate logs.
+- The two narrow Orca-inspired labels now show deployment host/port and operation
+  action plus machine name in the Herdr component. They are new working changes,
+  separate from the original staged seven-file acceptance. No state model or
+  setup behavior was changed. Reviewer is checking these labels with the client
+  environment fix; no new image or real App launch is claimed.
+- Parent read the completed 00:00 comparison: `evidence_insufficient` because the
+  target feature does not yet exist; upstream `7101566` is already an ancestor,
+  with no new upstream delta. The no-op merge candidate in
+  `runs/20261028T160723Z-merge-59d4956e` used `06ee74d`/`0e1aa8b4` and failed
+  root-install at 00:09:06; `push_attempted=false`. Main was not changed and Lead
+  did not repeat the scheduled work.
+- One isolated native run is active, with observed dependencies; no other team
+  compile or rendering is active. No new Herdr collection, production owner/Access
+  authentication, D1 ingestion or live-machine rendering. Xcode is ready; exact
+  npm installation remains blocked at the connection layer and further probes
+  remain stopped. Complete App assembly/runtime, full backend cold start,
+  physical A/B acceptance and feature push are still separate open outcomes.
+
+## 2026-10-29 00:35 +08:00 — Native coordination and lifecycle committed separately
+
+- The selected-environment P1 is closed by Reviewer 00:23. With identical final
+  tests the old three reader sources produced three valid behavioral failures;
+  the fixed working source passed 229 feature + 49 design tests, strict format,
+  and 3376/3655 = 92.4% coverage. The initial macro compilation failure and the
+  incorrect nil-selection fixture assumption remain separate evidence, not
+  product failures. Source `8a8447fe6dcf9b9e2a59ea2fcb083e2791c4bfcc6f299f8dbf83699627d8df5d`,
+  `.local/native-app-token-boundary.json`. The two narrow Herdr target/action
+  labels were reviewed in that source; no new state or operation was introduced.
+- Native grant coordination is committed as `23f9c99`, tree `696291d7`: four
+  production sources, three complete regressions and only its 20-line contract.
+  The exact candidate passed 197 + 49 tests, 2523/2716 = 92.9%, strict format;
+  Reviewer 00:26 accepted the dependency closure. The private helper client is
+  independent of the helper executable and its retained real cross-process tests.
+  Evidence: `.local/native-grant-coordination-atomic.json`.
+- Supervisor lifecycle is committed separately as `b731cd0`, tree `0585d145`:
+  the source, both complete test files and only the host-lifecycle contract.
+  Reviewer 00:31 accepted its closure; the exact tree then passed 207 + 49,
+  2533/2716 = 93.3%, strict format. Both commits ran normal pre-commit Swift
+  format. After each, the original seven-file Herdr stage was restored byte for
+  byte to patch SHA256 `ba319f34816d500962a0556c3fb2d185ba4301a7cc8956a8c776e1f34abc79f9`.
+  Evidence: `.local/native-supervisor-atomic.json`.
+- The final independent operational slice is the standalone Bots coverage script
+  and its six-line contract. The candidate uses a fresh scratch and reads only
+  its own profile, with the unchanged 90% floor and full suite. It is now running
+  serially against tree `f0766346`; no result is claimed yet. Observed daemon
+  dependencies retain the documented 20 lock differences, so this remains
+  functional evidence, not a fresh-lock candidate gate.
+- Parent confirmed the coverage scratch had removed the exact runnable product;
+  that was artifact unavailability, not an App startup failure. Parent then used
+  the released compile window for one retained debug EagleApp build from all 201
+  hash/mode-matched `8a8447fe` inputs: exit 0 in 20.019 seconds, arm64 binary SHA256
+  `2d7b86b069a43046e14d995e8682521fc03b27b69f5c9ed0d31f06ea9cf3367e`,
+  `/tmp/eagle-root-native-launch-20261029-md7h6el3/evidence.json`.
+  Parent's subsequent evidence records the 00:34 limited launch: private profile,
+  port 62990, no credentials in the environment, an on-screen layer-0 window at
+  1728×1082, alive after 8.544 seconds with no child processes, and five private
+  state directories at 0700. SIGTERM reaped only its owned PID 31516, exit -15.
+  That is a raw-executable window result, not complete App assembly, normal
+  `applicationWillTerminate`, an active backend or two-Mac acceptance. Lead later
+  read the evidence (SHA256 `33bff77234f3c1c876df7d9412b162b5376c82ad51ed46e93a9b549efb779166`).
+  Parent reports no remaining process or compilation.
+- Backend 00:33 also read the concrete verification-root launch example and
+  reported no new contract error. All full Worker/SSH guide commands remain
+  unrun. No new Herdr collection, production owner/Access authentication, D1
+  ingestion or live-machine rendering. Exact npm remains connection-blocked;
+  no repeated network/cache/CI probes. Complete App assembly/runtime, full backend
+  cold start, physical A/B acceptance and feature push remain open individually.
+
+## 2026-10-29 00:50 +08:00 — Final independent coverage slice closed
+
+- HEAD is `45c5cc91524b34e649b49768a8902efb3b52620d`, tree
+  `bece2ed4da7c9411f8919499d67fafbde10ce1c0`. The four-file coverage slice keeps
+  standalone Bots profile data in a fresh scratch and preserves spaces when both
+  Swift scripts traverse test-bundle paths. The same retained fixture produced
+  four behavioral failures with the old loops, then passed with only the two
+  traversal fixes. Find and report failures still propagate, cleanup stays active,
+  and the 90% floor and consumer-file coverage checks are unchanged.
+- That exact tree passed complete App tests, 208 feature + 49 design,
+  2532/2716 = 93.2%, and strict format. Its standalone Bots gate ran with a real
+  spaced TMPDIR: 34 + 44 + 49 = 127/127 XCTest, zero failures, 1899/2072 = 91.7%,
+  strict format, retained report and removed scratch. Reviewer 00:48 closed the
+  P2 and four-file boundary. The normal pre-commit ran Swift format and exit 0;
+  no repeated grant/Supervisor product gate. Evidence:
+  `.local/native-coverage-paths-atomic.json`,
+  `.local/native-coverage-paths-bots-atomic.json`, and the preserved
+  `.local/native-coverage-paths-red-atomic.json` (its runner's log name contains
+  `red-green`, but the actual red exit code is 1).
+- The latest full implementation snapshot remains `8a8447fe…`: 229 feature +
+  49 design, 3376/3655 = 92.4%, strict format. Its selected-environment token P1
+  and the two Orca target/action labels were closed at 00:23. These working UI
+  and verification changes remain separate from the already committed grant
+  coordination `23f9c99` and Supervisor `b731cd0`. Parent independently checked
+  both commits' trees and actual hook/verification-log hashes; they were not
+  retested for this update. PLAN and NATIVE-ACCESS now distinguish the latest
+  results from historical 217/226 and standalone 126-test snapshots.
+- The 00:34 runtime evidence is a limited bare-executable launch: all 201 source
+  inputs matched `8a8447fe…`, debug product build exit 0, a private profile and
+  unused port with automatic Bot startup/connection off, an on-screen window
+  alive after 8.544 seconds, and no child processes. Only the owned child received
+  SIGTERM; no normal App-exit callback is certified. The record is
+  `/tmp/eagle-root-native-launch-20261029-md7h6el3/evidence.json`. It does not
+  establish complete `.app` assembly/runtime, an active backend or physical A/B.
+- The original Herdr seven-file stage was restored byte for byte after the
+  coverage commit, patch SHA256
+  `ba319f34816d500962a0556c3fb2d185ba4301a7cc8956a8c776e1f34abc79f9`.
+  The next independent progress commit contains only CHECKPOINTS and PLAN;
+  remaining NATIVE/REMOTE/ARCHITECTURE behavior contracts stay with their pending
+  implementations. PLAN records the full pending groups and the real dependency
+  from file/Herdr providers to service/config/journal and from configuration tests
+  to CLI. The helper executable retains its real cross-process regressions;
+  SIGKILL, recovery and duplicate-waiter coverage are not removed. The preservation
+  record for resuming is `.local/pending-delivery-latest.json`; the earlier 97-file
+  backup and all red evidence remain retained alongside the final pending backup.
+- Xcode 27.1 / 27A9275 is ready. Official npm use is authorized for this task,
+  but exact installation remains blocked before HTTP. No further identical
+  network/cache/artifact probes, version changes or hook retries were made.
+  Lock SHA256 values remain root
+  `a2ab0b2649a6bc598c2625192afa37c6b10d841fa1cfe03bf95c89e51cb5558a`
+  and Bots `177687adf5cff461cb0513dcbb2a32c0f8dea26ce1328ba6b2a146979f17018f`.
+  Observed dependencies still have 20 recorded differences and cannot certify
+  fresh-lock gates. Recovery starts by checking stage/backup/locks, then exact
+  task-scoped official `npm ci` in root and Bots after connectivity is available,
+  followed by normal atomic commits and all required gates. Parent must review
+  that complete summary before any permitted feature-branch push.
+- No gate, compiler or renderer is active in this team. No new installed Herdr
+  collection, production owner/Access authentication, D1 ingestion or live-machine
+  rendering occurred. The compatible Worker/SSH guide is written and reviewed
+  but unrun. Complete App assembly/runtime, complete backend cold start, physical
+  two-Mac acceptance and feature push are four individually open outcomes. No
+  App/Agent/Bot/Worker/SSH process was started here during this closure, and no
+  existing App/service was replaced. No push, PR, deployment or publication.
