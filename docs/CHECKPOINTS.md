@@ -1738,3 +1738,125 @@ to the restarted process, wheel scrolling also worked: history reached the top,
 then advanced through the middle back to the newest answer with prepared content.
 The composer remained empty and no messages were sent. These are layout and
 interaction checks, not a measured frame-time improvement or a live streaming test.
+
+## 2026-10-28 08:05 CST - Native tools and mandatory groups
+
+- The daemon baseline passed all 475 tests and its configured coverage gate: 94.97%
+  lines, 87.22% branches, 90.44% functions. No thresholds or exclusions were changed.
+- Native `CodingTools` now supplies read/write/edit/bash; `core` supplies `list`. Tests
+  first demonstrated missing mandatory `coding` in TypeScript and Swift. Native tool
+  execution, filesystem effects and WebSocket result rendering pass targeted checks.
+- The full daemon suite most recently ran 465 tests with one stale mandatory-group
+  expectation; that expectation is being updated to the requested two mandatory groups.
+  Final coverage and rebuilt-app acceptance have not run yet.
+- Herdr collection, dashboard authentication and D1 are outside this Bots-only change;
+  no collection, credential changes or remote calls were made. The existing app remains
+  on its earlier build. The next unverified hop is new code -> full gates -> native UI.
+- Bot-switch hot refresh remains pending scope confirmation; no source watcher or
+  third-party plugin loader has been added.
+
+### 08:21 CST - Coverage and existing-session verification
+
+The reopened-session regression first returned `coding missing`; explicit native agent
+configuration before resume fixes it. The daemon gate passed with 94.87% lines, 87.30%
+branches and 90.53% functions before the additional retained Herdr-path tests. `list`
+has 100% of all three measured metrics. No gate settings or exclusions changed.
+
+The macOS app gate now passes all 119 feature and 46 design tests, with 95.8% configured
+logic-line coverage. Two earlier runs failed the existing row-cost benchmark; a clean
+detached baseline and the subsequent working-tree run both passed. The temporary worktree
+was removed. The separate Bots client tests pass but their existing logic coverage is
+88.1%, below 90%; selected-bot action and transport contract tests are being added rather
+than weakening the gate. No live model requests, Herdr collection, authentication or D1
+changes have occurred. Rebuilt app acceptance and Bot-switch registry refresh remain next.
+
+### 08:36 CST - Registry refresh regressions
+
+Native tool consolidation is committed as `cd8971c`. The app bundle builds, all configured
+coverage gates passed, and no source changes outside Bots and its hosted UI were made.
+The hot-refresh regressions first reproduced all three defects: a warm bot could not enable
+an initially absent group, disabling optional groups retained agent tools/the loader, and
+cached A -> B -> A subscriptions performed no refresh. The native Registry implementation
+now passes those focused tests. A separate regression demonstrated that an application
+failure was swallowed and the same saved selection could not retry; that path now reports
+the failure and retries. In-flight-answer, trace attribution and real-socket switch tests
+are being completed before the full gate. No disk-source loader or filesystem watcher was
+introduced; current Registry refresh is independent of that unconfirmed extra scope.
+
+### 08:54 CST - Final gates and native acceptance
+
+The daemon gate passes all 482 tests with 95.10% lines, 87.96% branches and 90.81%
+functions; the client rerun passes 121 tests at 90.6% configured logic coverage. The app's
+unchanged Swift lane passed 165 tests at 95.8%. A review identified a trapped unsubscribed
+socket and duplicate storage-failure identities; both were reproduced, fixed and accepted
+on follow-up review. The real-socket switch test proves three refreshes, two runtime watches,
+no extra Harness open and zero model requests. Review panes and the baseline worktree were
+removed. Earlier lock-port collisions and row-cost failures remain recorded, not claimed fixed.
+
+Native UI inspection of the rebuilt App shows Core and Coding both on with disabled
+switches; the existing bot's history loads and it remains connected with no running tasks.
+No settings were saved and no real model message was sent. The UI observation after Quit
+reactivated the new app process, so the app was not assumed stopped during testing. The
+final daemon restart follows the commit. Herdr ingestion, dashboard auth, D1 and public
+deployment remain outside this change. Extra full-package Swift formatting inspection found
+pre-existing issues in untouched Bots files; edited Swift files pass strict formatting.
+
+## 2026-10-28 10:29 CST - Task hierarchy presentation
+
+The inspector now draws shared dashed trunks and rounded final elbows for the existing
+visible task depths. Row height, task ordering and actions are unchanged. A raster test
+first found zero guide pixels in both appearances; the new rendering and topology tests
+now pass with all 119 feature and 49 design tests. Light/dark snapshots at 319 and 256
+points were inspected, including sibling branches and a separate root. The inspector-only
+snapshot mode uses static fixtures and does not start a Bots connection or daemon.
+
+Coverage and the final app build are running next. Herdr collection, authentication, D1
+and the daemon are unchanged; no real model messages or settings writes were performed.
+The first red run also hit the known row-cost timing fluctuation; its unchanged gate
+passed on the subsequent complete run. No thresholds, exclusions or backend code changed.
+
+### 10:36 CST - Task guide acceptance
+
+The complete coverage run passes 168 tests (119 feature, 49 design), with 95.8% of the
+configured logic lines covered. The new guide shape reports 100% line and function
+coverage. The app bundle builds and its ad-hoc signature verifies. Both appearances and
+both preview widths are accepted; narrow status text truncates while its retry action
+stays visible. The latest live-app inspection showed no running tasks; that state will be
+checked again before restarting the built app after the atomic commit. No real task was
+created for the demo.
+
+The commit hook rejected the test's SwiftUI path visitor under a formatter rule; the
+test now uses the equivalent CoreGraphics visitor without a suppression. Strict formatting
+passes. The final complete coverage rerun passes all 168 tests at 94.4% configured logic
+line coverage (minimum 90%); the new guide remains at 100% lines and functions. The first
+post-format rerun hit the unchanged row-cost benchmark's known fluctuation, which is kept
+in the run logs rather than hidden or addressed by changing its threshold.
+
+## 2026-10-28 13:45 CST - Search provider and usage sources, continued
+
+The previous session stopped after the daemon, client and Settings surface were written but
+before the runtime handoff. The breakpoint was real: `PiDurableRuntime` declared the `search`
+and `usage` options and never passed them to the tool registry, so a bot with the `search`
+group could not load `web_search` and no search call would ever be booked. A faux-model test
+failed first (`Tool web_search is not available`), then the runtime handed the client and the
+meter to `createToolRegistry`.
+
+A second red test found the loader leak: with Herdr installed and no provider key, selecting
+`search` still offered `tool_search` that could load nothing. `selectToolExtensions` now skips
+a group whose own extension is not installed.
+
+Client work in this checkpoint: the enable switch is optimistic and rolls back on a refused
+save (its own view-model method, so the 保存 button no longer sends a stale flag); `calls`
+reaches the day/bot/source rows through one `usageLine` formatter; 报告 rows for a search-only
+bot show 次 instead of a zero token; the 模型 tool list gained 搜索, and the form now keeps the
+daemon's five groups so saving no longer drops a stored `search` selection.
+
+Verified by running, not assumed: the daemon gate (497 tests, coverage above every threshold),
+the Bots client suite at 91.5% logic coverage, the Eagle app suite at 95.8% with the bundle
+built, and snapshot review of 服务 / 用量与账单 / 模型 in both appearances. Those snapshots use a
+stub URL session, so they neither read nor need the running daemon; the earlier live-daemon
+render is what proved the HTTP path against a real process.
+
+Not verified: a real DeepSeek key, a live `web_search`, and toggling `search` on for a bot in
+the running app. Herdr collection, dashboard auth, D1 and deployment are untouched by this
+change.

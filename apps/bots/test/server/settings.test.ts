@@ -13,6 +13,8 @@ test("the settings endpoints read, validate, save and test behind the bearer", a
     baseUrl: "",
     model: "",
     hasApiKey: false,
+    thinkingLevel: "medium",
+    toolGroups: ["core", "coding", "herdr"],
   };
   const saves: GatewayInput[] = [];
   const tests: GatewayInput[] = [];
@@ -32,6 +34,8 @@ test("the settings endpoints read, validate, save and test behind the bearer", a
         baseUrl: input.baseUrl ?? "",
         model: input.model ?? "",
         hasApiKey: true,
+        thinkingLevel: "medium",
+        toolGroups: ["core", "coding", "herdr"],
       };
       return { settings: stored };
     },

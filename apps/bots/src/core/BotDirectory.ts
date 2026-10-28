@@ -3,8 +3,8 @@
 // (docs/bots/ARCHITECTURE.md "Bot lifecycle"). Everything that mutates the catalog runs
 // on one internal queue, so concurrent callers cannot overwrite each other.
 import { randomUUID } from "node:crypto";
-import type { BotAppearance, BotRecord } from "./domain.ts";
-import { BOT_ID_PATTERN } from "./domain.ts";
+import type { BotAppearance, BotGroup, BotRecord, ToolGroup } from "./domain.ts";
+import { BOT_ID_PATTERN, isToolGroup, MAX_BOT_GROUPS, MAX_GROUP_TITLE_CHARS } from "./domain.ts";
 
 export type DirEntry = { readonly name: string; isDirectory(): boolean };
 
@@ -22,7 +22,11 @@ export type DirectoryErrorReason =
   | "unknown_bot"
   | "duplicate_bot"
   | "corrupt_catalog"
-  | "storage_failed";
+  | "storage_failed"
+  | "group_not_found"
+  | "group_not_empty"
+  | "invalid_groups"
+  | "limit_exceeded";
 
 export class DirectoryError extends Error {
   readonly reason: DirectoryErrorReason;
@@ -36,10 +40,32 @@ export class DirectoryError extends Error {
 
 const CATALOG = "catalog.json";
 const CATALOG_VERSION = 1;
+const GROUP_ID_PATTERN = /^g_[A-Za-z0-9_-]{6,}$/;
+
+type CatalogState = {
+  readonly bots: readonly BotConfig[];
+  readonly groups: readonly BotGroup[];
+};
+
+const isGroupRecord = (value: unknown): value is BotGroup =>
+  isObject(value) &&
+  typeof value.id === "string" &&
+  GROUP_ID_PATTERN.test(value.id) &&
+  typeof value.title === "string" &&
+  value.title.trim().length > 0;
 
 export type BotConfig = BotRecord & {
   readonly instructions?: string;
   readonly thinkingLevel?: string;
+  /** The sidebar group this bot is filed under; absent means ungrouped. */
+  readonly groupId?: string;
+  /** The tool groups this bot was given; absent means every group. */
+  readonly toolGroups?: readonly ToolGroup[];
+};
+
+const withGroup = (bot: BotConfig, groupId: string | undefined): BotConfig => {
+  const { groupId: _previous, ...rest } = bot;
+  return groupId === undefined ? rest : { ...rest, groupId };
 };
 
 export type ReconcileResult = {
@@ -60,6 +86,8 @@ const RECORD_KEYS = new Set([
   "model",
   "instructions",
   "thinkingLevel",
+  "toolGroups",
+  "groupId",
 ]);
 
 const isBotRecord = (value: unknown): value is BotConfig => {
@@ -78,6 +106,15 @@ const isBotRecord = (value: unknown): value is BotConfig => {
     if (typeof appearance.shape !== "string" || typeof appearance.tint !== "string") return false;
   }
   if (optional.thinkingLevel !== undefined && typeof optional.thinkingLevel !== "string") {
+    return false;
+  }
+  const inGroup = value as { groupId?: unknown };
+  if (inGroup.groupId !== undefined && typeof inGroup.groupId !== "string") return false;
+  const grouped = value as { toolGroups?: unknown };
+  if (
+    grouped.toolGroups !== undefined &&
+    (!Array.isArray(grouped.toolGroups) || grouped.toolGroups.some((name) => !isToolGroup(name)))
+  ) {
     return false;
   }
   return (
@@ -120,11 +157,20 @@ export class BotDirectory {
   }
 
   async load(): Promise<readonly BotConfig[]> {
+    return (await this.#readCatalog()).bots;
+  }
+
+  async loadGroups(): Promise<readonly BotGroup[]> {
+    return (await this.#readCatalog()).groups;
+  }
+
+  /** One read of the catalog: the bots, the groups, and no dangling membership. */
+  async #readCatalog(): Promise<CatalogState> {
     let body: string;
     try {
       body = await this.#fs.readFile(this.catalogPath);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { bots: [], groups: [] };
       throw new DirectoryError("storage_failed", "cannot read catalog", { cause: error });
     }
     let parsed: unknown;
@@ -140,7 +186,19 @@ export class BotDirectory {
     const bots = parsed.bots;
     if (!Array.isArray(bots))
       throw new DirectoryError("corrupt_catalog", "catalog has no bots array");
+    const groups = parsed.groups ?? [];
+    if (!Array.isArray(groups) || groups.some((group) => !isGroupRecord(group))) {
+      throw new DirectoryError("corrupt_catalog", "catalog has a malformed groups array");
+    }
+    const ids = new Set<string>();
+    for (const group of groups as readonly BotGroup[]) {
+      if (ids.has(group.id)) {
+        throw new DirectoryError("corrupt_catalog", `catalog repeats group ${group.id}`);
+      }
+      ids.add(group.id);
+    }
     const seen = new Set<string>();
+    const kept: BotConfig[] = [];
     for (const [index, bot] of bots.entries()) {
       if (!isBotRecord(bot)) {
         throw new DirectoryError("corrupt_catalog", `catalog entry ${index} is malformed`);
@@ -149,11 +207,16 @@ export class BotDirectory {
         throw new DirectoryError("corrupt_catalog", `catalog repeats bot ${bot.id}`);
       }
       seen.add(bot.id);
+      // A bot that points at a group which no longer exists is simply ungrouped: the
+      // sidebar must keep working after a manual edit.
+      kept.push(
+        bot.groupId === undefined || ids.has(bot.groupId) ? bot : withGroup(bot, undefined),
+      );
     }
-    return bots as readonly BotConfig[];
+    return { bots: kept, groups: groups as readonly BotGroup[] };
   }
 
-  #writeAll(bots: readonly BotConfig[]): Promise<void> {
+  async #writeAll(bots: readonly BotConfig[]): Promise<void> {
     for (const [index, bot] of bots.entries()) {
       if (!isBotRecord(bot)) {
         return Promise.reject(
@@ -161,12 +224,15 @@ export class BotDirectory {
         );
       }
     }
-    return this.#writeCatalog(bots);
+    // Called from inside the serial queue already; reading the groups here keeps the
+    // membership and the bot list in one atomic write without a nested acquire.
+    const { groups } = await this.#readCatalog();
+    return this.#writeCatalog({ bots, groups });
   }
 
-  async #writeCatalog(bots: readonly BotConfig[]): Promise<void> {
+  async #writeCatalog(state: CatalogState): Promise<void> {
     const temp = `${this.catalogPath}.${randomUUID()}.tmp`;
-    const body = `${JSON.stringify({ version: CATALOG_VERSION, bots }, null, 2)}\n`;
+    const body = `${JSON.stringify({ version: CATALOG_VERSION, bots: state.bots, groups: state.groups }, null, 2)}\n`;
     try {
       await this.#fs.writeFile(temp, body, 0o600);
       await this.#fs.rename(temp, this.catalogPath);
@@ -185,6 +251,12 @@ export class BotDirectory {
       const bots = await this.load();
       if (bots.some((bot) => bot.id === config.id)) {
         throw new DirectoryError("duplicate_bot", `bot ${config.id} already exists`);
+      }
+      if (config.groupId !== undefined) {
+        const groups = await this.loadGroups();
+        if (!groups.some((group) => group.id === config.groupId)) {
+          throw new DirectoryError("group_not_found", `no group ${config.groupId}`);
+        }
       }
       try {
         await this.#fs.mkdir(this.botDir(config.id), { recursive: true });
@@ -253,6 +325,34 @@ export class BotDirectory {
     });
   }
 
+  async setThinkingLevel(id: string, thinkingLevel: string, at: string): Promise<BotConfig> {
+    return this.#serial(async () => {
+      const bots = await this.load();
+      const index = bots.findIndex((bot) => bot.id === id);
+      if (index === -1) throw new DirectoryError("unknown_bot", `bot ${id} does not exist`);
+      const current = bots[index] as BotConfig;
+      const updated: BotConfig = { ...current, thinkingLevel, updatedAt: at };
+      await this.#writeAll(bots.map((bot, position) => (position === index ? updated : bot)));
+      return updated;
+    });
+  }
+
+  async setToolGroups(
+    id: string,
+    toolGroups: readonly ToolGroup[],
+    at: string,
+  ): Promise<BotConfig> {
+    return this.#serial(async () => {
+      const bots = await this.load();
+      const index = bots.findIndex((bot) => bot.id === id);
+      if (index === -1) throw new DirectoryError("unknown_bot", `bot ${id} does not exist`);
+      const current = bots[index] as BotConfig;
+      const updated: BotConfig = { ...current, toolGroups, updatedAt: at };
+      await this.#writeAll(bots.map((bot, position) => (position === index ? updated : bot)));
+      return updated;
+    });
+  }
+
   async rename(id: string, title: string, at: string): Promise<BotConfig> {
     return this.#serial(async () => {
       const bots = await this.load();
@@ -270,6 +370,104 @@ export class BotDirectory {
    * gone *and* the trash directory is there; anything else keeps the catalog entry so
    * the bot cannot become unreachable.
    */
+  async createGroup(title: string): Promise<BotGroup> {
+    const clean = title.trim();
+    if (clean.length === 0 || clean.length > MAX_GROUP_TITLE_CHARS) {
+      throw new DirectoryError(
+        "invalid_groups",
+        `a group title is 1-${MAX_GROUP_TITLE_CHARS} characters`,
+      );
+    }
+    return this.#serial(async () => {
+      const state = await this.#readCatalog();
+      if (state.groups.length >= MAX_BOT_GROUPS) {
+        throw new DirectoryError("limit_exceeded", "the catalog holds too many groups");
+      }
+      const group: BotGroup = { id: `g_${randomUUID()}`, title: clean };
+      await this.#writeCatalog({ bots: state.bots, groups: [...state.groups, group] });
+      return group;
+    });
+  }
+
+  async renameGroup(id: string, title: string): Promise<BotGroup> {
+    const clean = title.trim();
+    if (clean.length === 0 || clean.length > MAX_GROUP_TITLE_CHARS) {
+      throw new DirectoryError(
+        "invalid_groups",
+        `a group title is 1-${MAX_GROUP_TITLE_CHARS} characters`,
+      );
+    }
+    return this.#serial(async () => {
+      const state = await this.#readCatalog();
+      const index = state.groups.findIndex((group) => group.id === id);
+      if (index === -1) throw new DirectoryError("group_not_found", `no group ${id}`);
+      const renamed = { ...(state.groups[index] as BotGroup), title: clean };
+      await this.#writeCatalog({
+        bots: state.bots,
+        groups: state.groups.map((group, position) => (position === index ? renamed : group)),
+      });
+      return renamed;
+    });
+  }
+
+  /** Removes an empty group; a group that still holds a bot is refused, never emptied. */
+  async deleteGroup(id: string): Promise<void> {
+    await this.#serial(async () => {
+      const state = await this.#readCatalog();
+      if (!state.groups.some((group) => group.id === id)) {
+        throw new DirectoryError("group_not_found", `no group ${id}`);
+      }
+      if (state.bots.some((bot) => bot.groupId === id)) {
+        throw new DirectoryError("group_not_empty", "the group still holds bots");
+      }
+      await this.#writeCatalog({
+        bots: state.bots,
+        groups: state.groups.filter((group) => group.id !== id),
+      });
+    });
+  }
+
+  /** The full display order; ids must be a permutation of the stored groups. */
+  async reorderGroups(ids: readonly string[]): Promise<readonly BotGroup[]> {
+    return this.#serial(async () => {
+      const state = await this.#readCatalog();
+      const known = new Set(state.groups.map((group) => group.id));
+      const unique = new Set(ids);
+      if (
+        ids.length !== known.size ||
+        unique.size !== ids.length ||
+        ids.some((id) => !known.has(id))
+      ) {
+        throw new DirectoryError("invalid_groups", "the order must list every group once");
+      }
+      const ordered = ids.map((id) => state.groups.find((group) => group.id === id) as BotGroup);
+      await this.#writeCatalog({ bots: state.bots, groups: ordered });
+      return ordered;
+    });
+  }
+
+  /** Files a bot under a group, or clears the membership with `null`. */
+  async setBotGroup(id: string, groupId: string | null, at: string): Promise<BotConfig> {
+    return this.#serial(async () => {
+      const state = await this.#readCatalog();
+      const index = state.bots.findIndex((bot) => bot.id === id);
+      if (index === -1) throw new DirectoryError("unknown_bot", `bot ${id} does not exist`);
+      if (groupId !== null && !state.groups.some((group) => group.id === groupId)) {
+        throw new DirectoryError("group_not_found", `no group ${groupId}`);
+      }
+      const current = state.bots[index] as BotConfig;
+      const updated: BotConfig = {
+        ...withGroup(current, groupId ?? undefined),
+        updatedAt: at,
+      };
+      await this.#writeCatalog({
+        bots: state.bots.map((bot, position) => (position === index ? updated : bot)),
+        groups: state.groups,
+      });
+      return updated;
+    });
+  }
+
   async remove(id: string): Promise<void> {
     await this.#serial(async () => {
       const bots = await this.load();

@@ -135,7 +135,8 @@ export class EventMapper {
     }
     this.#running = event.run !== undefined;
     this.#inbox = event.inbox.map((item) => ({ id: String(item.id), mode: inboxMode(item.mode) }));
-    this.#usage = convertUsage(event.usage);
+    const snapshotUsage = convertUsage(event.usage);
+    this.#usage = snapshotUsage.totalTokens > 0 ? snapshotUsage : undefined;
     this.#agent = {
       model: {
         provider: event.agent.model?.provider ?? "",
@@ -197,9 +198,13 @@ export class EventMapper {
         return [this.#status(trace)];
       case "submission":
         return this.#submission(event.record, trace);
-      case "usage_changed":
-        this.#usage = convertUsage(event.usage);
-        return [];
+      case "usage_changed": {
+        const usage = convertUsage(event.usage);
+        // A conversation that has not spent anything yet reports zeros; the client shows
+        // its empty state instead of a row of zeros.
+        this.#usage = usage.totalTokens > 0 ? usage : undefined;
+        return this.#usage === undefined ? [] : [{ type: "usage", trace, usage: this.#usage }];
+      }
       case "agent_changed":
         this.#agent = {
           model: {

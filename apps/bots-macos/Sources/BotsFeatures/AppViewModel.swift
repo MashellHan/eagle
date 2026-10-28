@@ -8,6 +8,8 @@ import SwiftUI
 @MainActor
 public final class AppViewModel: ObservableObject {
   @Published public private(set) var bots: [BotSummary] = []
+  /// The sidebar groups in the daemon's display order; a bot's `groupId` is its membership.
+  @Published public private(set) var groups: [BotGroup] = []
   @Published public private(set) var selection: String?
   @Published public private(set) var error: String?
   @Published public private(set) var isLoading = false
@@ -22,9 +24,8 @@ public final class AppViewModel: ObservableObject {
     self.catalog = catalog
     self.conversation = conversation
     self.outbox = outbox
-    conversation.onCatalog = { [weak self] bots in
-      self?.bots = bots
-      self?.keepSelectionValid()
+    conversation.onCatalog = { [weak self] catalog in
+      self?.apply(catalog)
     }
   }
 
@@ -46,8 +47,7 @@ public final class AppViewModel: ObservableObject {
     isLoading = true
     defer { isLoading = false }
     do {
-      bots = try await catalog.load()
-      keepSelectionValid()
+      apply(try await catalog.load())
       error = nil
     } catch {
       self.error = describe(error)
@@ -81,7 +81,7 @@ public final class AppViewModel: ObservableObject {
         appearance: appearance
       )
       if rawTitle == newBotTitle { newBotTitle = "" }
-      bots = try await catalog.load()
+      await reload()
       select(created.id)
       error = nil
     } catch {
@@ -111,7 +111,7 @@ public final class AppViewModel: ObservableObject {
         label: trimmedLabel,
         appearance: appearance
       )
-      bots = try await catalog.load()
+      await reload()
       error = nil
     } catch {
       self.error = describe(error)
@@ -122,11 +122,109 @@ public final class AppViewModel: ObservableObject {
     do {
       if selection == bot.id { conversation.disconnect() }
       try await catalog.delete(id: bot.id)
-      bots = try await catalog.load()
-      keepSelectionValid()
-      if selection == nil, let first = bots.first {
-        select(first.id)
-      }
+      await reload()
+      error = nil
+    } catch {
+      self.error = describe(error)
+    }
+  }
+
+  // MARK: - Groups
+
+  /// A group is only a name and a place in the sidebar; the daemon chooses its id.
+  public func createGroup(title rawTitle: String) async {
+    let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !title.isEmpty else { return }
+    do {
+      _ = try await catalog.createGroup(title: title)
+      await reload()
+      error = nil
+    } catch {
+      self.error = describe(error)
+    }
+  }
+
+  public func renameGroup(_ id: String, to rawTitle: String) async {
+    let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !title.isEmpty else { return }
+    do {
+      _ = try await catalog.renameGroup(id: id, title: title)
+      await reload()
+      error = nil
+    } catch {
+      self.error = describe(error)
+    }
+  }
+
+  /// A refused delete (a group that still holds a bot) leaves the group where it is and
+  /// puts the daemon's reason in `error`.
+  public func deleteGroup(_ id: String) async {
+    do {
+      try await catalog.deleteGroup(id: id)
+      await reload()
+      error = nil
+    } catch {
+      self.error = describe(error)
+    }
+  }
+
+  public func reorderGroups(_ ids: [String]) async {
+    do {
+      groups = try await catalog.reorderGroups(ids: ids)
+      await reload()
+      error = nil
+    } catch {
+      self.error = describe(error)
+    }
+  }
+
+  /// The gateway's models, loaded once for the per-bot picker.
+  @Published public private(set) var models: [String] = []
+
+  public func loadModelsIfNeeded() async {
+    guard models.isEmpty else { return }
+    models = (try? await catalog.loadModels()) ?? []
+  }
+
+  /// The selected bot's own model and reasoning level.
+  public func setAgent(model: String?, thinkingLevel: String?) async {
+    guard let botId = selection else { return }
+    do {
+      _ = try await catalog.setAgent(id: botId, model: model, thinkingLevel: thinkingLevel)
+      await reload()
+      error = nil
+    } catch {
+      self.error = describe(error)
+    }
+  }
+
+  /// Runs one parked task of the selected bot again.
+  public func retryTask(_ taskId: String) async {
+    guard let botId = selection else { return }
+    do {
+      try await catalog.retryTask(bot: botId, task: taskId)
+      error = nil
+    } catch {
+      self.error = describe(error)
+    }
+  }
+
+  /// Stops one live task of the selected bot.
+  public func stopTask(_ taskId: String) async {
+    guard let botId = selection else { return }
+    do {
+      try await catalog.abortTask(bot: botId, task: taskId)
+      error = nil
+    } catch {
+      self.error = describe(error)
+    }
+  }
+
+  /// Files a bot; a nil group unfiles it. The group's own order is never touched.
+  public func moveBot(_ id: String, toGroup groupId: String?) async {
+    do {
+      _ = try await catalog.moveBot(id: id, groupId: groupId)
+      await reload()
       error = nil
     } catch {
       self.error = describe(error)
@@ -159,5 +257,20 @@ public final class AppViewModel: ObservableObject {
   private func describe(_ error: Error) -> String {
     if let client = error as? ClientError { return client.message }
     return error.localizedDescription
+  }
+
+  private func apply(_ catalog: BotCatalog) {
+    bots = catalog.bots
+    groups = catalog.groups
+    keepSelectionValid()
+  }
+
+  /// A write is followed by a read: the daemon owns the ids, the order and the memberships.
+  private func reload() async {
+    do {
+      apply(try await catalog.load())
+    } catch {
+      self.error = describe(error)
+    }
   }
 }

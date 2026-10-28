@@ -156,7 +156,7 @@ The app starts the local Bots daemon on launch when it can find `apps/bots`
 (settings shows its state and lets a person start, stop or restart it), and stops the daemon
 it started when the app quits; a daemon that was already running is left alone. The model
 gateway (URL, API key, model) is configured in the app's Settings under
-`Bots 模型`; the same tab tests the endpoint and reports latency and model count. Setup is
+`模型`; the same tab tests the endpoint and reports latency and model count. Setup is
 progressive: a bot stays readable and usable until a send is attempted without a configured
 gateway, and only then the conversation offers a short "去设置" hint. Nothing asks for
 credentials at launch.
@@ -205,7 +205,7 @@ what is enabled, so later phases flip flags instead of rebuilding screens.
 
 | Capability | Phase 1 | What actually exists in phase 1 | Reserved for |
 | --- | --- | --- | --- |
-| `tools` | `true` (phase 2) | Tool calls and results render as transcript rows: name, arguments, status and output, live and after a snapshot; the workspace and herdr tools produce them | Approvals (none: tools execute without asking) |
+| `tools` | `true` (phase 2) | Tool calls and results render as transcript rows: name, arguments, status and output, live and after a snapshot; the workspace and herdr tools produce them. Settings → `通用` → `隐藏工具调用` drops those rows from the transcript without changing the stored conversation (off by default) | Approvals (none: tools execute without asking) |
 | `tasks` | `false` | An `error` kind for parked tasks and a `recover` command | Task panel, per-task retry, compaction control |
 | `entries` | `false` | Nothing beyond the transcript itself | Raw entry inspector |
 | `usage` | `false` | A `usage` field in snapshots, populated from `pi.usage` (the data is live; only the panel is missing) | Token and cost panel |
@@ -216,6 +216,17 @@ Reserved means exactly two things: the wire can represent the concept, and a
 client that receives it while the flag is off must ignore it. It does **not**
 mean a hidden implementation exists. Each enable path is a change set of its own,
 listed in [RUNTIME.md](RUNTIME.md#reserved-capability-enable-paths).
+
+## Built-in tools (phase 2)
+
+Tools are trusted, built-in pi-durable extensions, not third-party plugins. The mandatory
+`coding` group uses the native `CodingTools` extension (`read`, `write`, `edit`, `bash`).
+The mandatory `core` group supplies missing native functionality, starting with `list`.
+Herdr and child-agent groups remain optional. Tool execution has no approval dialog.
+The bot's workspace is its default working directory, not a security boundary. A plugin
+marketplace, third-party module discovery and an execution sandbox are not product goals.
+Argument validation, cancellation, bounded output and keeping credentials out of logs and
+inherited command environments remain correctness requirements.
 
 ## Non-goals (phase 1)
 

@@ -39,6 +39,8 @@ Runtime details live in [RUNTIME.md](RUNTIME.md), layers in
 | `send.text` | 8 000 characters | `error{invalid_command}` |
 | `bot.title` (HTTP) | 80 characters | HTTP `400` |
 | `bot.label` (HTTP) | 24 characters, optional | HTTP `400` |
+| `group.title` (HTTP) | 1–40 characters after trimming | HTTP `400` |
+| Groups | 50 per catalog | `POST /v1/groups` answers `limit_exceeded` |
 | `bot.appearance` (HTTP) | one shape and one tint from the closed sets | HTTP `400` |
 | Any single frame | 256 KiB, measured on the **encoded** frame | Close `1008`; a daemon-produced frame that cannot fit is dropped and the socket closes `1008`, because the client cannot decode it either |
 | Single message payload | ≤ 96 KiB encoded | Withheld and replaced by a notice, see below |
@@ -65,6 +67,13 @@ Runtime details live in [RUNTIME.md](RUNTIME.md), layers in
 
 ## One bot per connection
 
+Selecting a bot uses the existing subscription flow. Before answering its baseline, the
+daemon refreshes the selected bot's native tool registry configuration, even when its
+conversation view is cached. This adds no frame, request or UI loading state and does not
+restart the bot's Harness or interrupt an answer already running.
+A runtime failure before the subscription baseline sends its error and closes `1011`,
+so the existing client reconnect policy retries instead of leaving an open, unsubscribed socket.
+
 A connection subscribes exactly once and lives as long as that bot's chat. There
 is no `unsubscribe`: switching bots closes the socket and opens a new one. This
 removes an entire class of leak (late frames from the previous bot) instead of
@@ -81,16 +90,26 @@ version, the instance id, the pid and a bot count, never bot content.
 | `GET` | `/v1/health` | — | `{ "version", "protocolVersion", "instance", "pid", "bots" }` |
 | `GET` | `/v1/bots` | — | `{ "bots": [BotSummary] }` |
 | `POST` | `/v1/bots` | `{ "title", "label"?, "appearance"? }` — `appearance` is `{ "shape", "tint" }` | `201 { "bot": BotSummary }` |
-| `PATCH` | `/v1/bots/:id` | `{ "title"?, "label"?, "appearance"? }` — a label of `""` clears it | `{ "bot": BotSummary }` |
+| `PATCH` | `/v1/bots/:id` | `{ "title"?, "label"?, "appearance"?, "groupId"?, "model"?, "thinkingLevel"? }` — a label of `""` and a `groupId` of `null` clear their field | `{ "bot": BotSummary }` |
 | `DELETE` | `/v1/bots/:id` | — | `204` |
+| `POST` | `/v1/groups` | `{ "title" }` | `{ "group": BotGroup }` |
+| `PATCH` | `/v1/groups/:id` | `{ "title" }` | `{ "group": BotGroup }` |
+| `PUT` | `/v1/groups/order` | `{ "ids": [string] }` — every group once, in display order | `{ "groups": [BotGroup] }` |
+| `DELETE` | `/v1/groups/:id` | — | `204`, or `409` while a bot is filed under it |
+| `GET` | `/v1/providers` | — | `{ "providers": [Provider] }` |
+| `PUT` | `/v1/providers/:id` | `{ "apiKey"?, "enabled"? }` | `{ "provider": Provider }` |
+| `POST` | `/v1/providers/:id/test` | — | `{ "result": { "ok", "message", "latencyMs", "results"? } }` |
+| `GET` | `/v1/usage?days=` | — | `{ "usage": UsageReport }` — statistics over the daemon's retained days |
+| `GET` | `/v1/models` | — | `{ "models": [string] }` — the gateway's ids, empty when it cannot be asked |
 | `GET` | `/v1/settings` | — | `{ "settings": GatewaySettings }` |
-| `PUT` | `/v1/settings` | `{ "baseUrl", "model", "apiKey"?, "provider"? }` | `{ "settings": GatewaySettings }` |
+| `PUT` | `/v1/settings` | `{ "baseUrl", "model", "apiKey"?, "provider"?, "thinkingLevel"?, "toolGroups"? }` | `{ "settings": GatewaySettings }` |
 | `POST` | `/v1/settings/test` | `{ "baseUrl"?, "model"?, "apiKey"?, "provider"? }` | `{ "result": GatewayProbe }` |
 
 ```json
 // GatewaySettings: the key is never returned, only whether one is stored.
 { "configured": true, "provider": "magpie", "baseUrl": "http://127.0.0.1:3425/v1",
-  "model": "auto/gpt-6-astra", "hasApiKey": true }
+  "model": "auto/gpt-6-luna", "hasApiKey": true, "thinkingLevel": "medium",
+  "toolGroups": ["core", "coding", "herdr", "agents"] }
 
 // GatewayProbe: the test asks the gateway for its model list.
 { "ok": true, "status": 200, "message": "连接成功，网关报告 17 个模型",
@@ -99,7 +118,7 @@ version, the instance id, the pid and a bot count, never bot content.
 
 Gateway rules:
 
-- **One stored gateway.** The daemon keeps `{ provider, baseUrl, model, apiKey }` in
+- **One stored gateway.** The daemon keeps `{ provider, baseUrl, model, apiKey, thinkingLevel }` in
   `<root>/gateway.json` (0600, beside the token); the dotenv is only the fallback when that
   file is absent. `configured` means all three of `baseUrl`, `model` and `apiKey` are set.
 - **The key is write-only.** `PUT` with an omitted or empty `apiKey` keeps the stored one,
@@ -108,6 +127,17 @@ Gateway rules:
   place (its session keeps its history), and the catalog is rebroadcast because every
   summary's `model` changes. A malformed URL, an empty model or an empty key is a `400`
   and nothing is written.
+- **The thinking level is one setting for every bot.** `thinkingLevel` is one of `off`,
+  `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; `medium` is the default when the
+  field or the whole file is absent. Saving it writes each bot's stored configuration and moves a
+  live conversation to the new level in place; an unknown value is a `400` and nothing is
+  written.
+- **Tool groups are chosen per daemon.** `toolGroups` lists the groups every bot is given:
+  `core` (the `list` tool), `coding` (pi-durable's `read`, `write`, `edit`, `bash`),
+  `herdr` (the terminal collaborator), and `agents` (child conversations). Both `core`
+  and `coding` are mandatory: an empty array selects those two groups. An unknown name
+  is a `400` and nothing is written. Saving records the selection on every bot and changes
+  what a live conversation offers in place. There are no aliases for the old tool names.
 - **Testing is separate.** `POST /v1/settings/test` probes `GET {baseUrl}/models` with the
   key; a `401` is reported as a refused key, a timeout as an unreachable gateway. It does
   not save and does not spend a generation.
@@ -121,6 +151,121 @@ knows the daemon restarted and reconnects. Errors use
 
 The model is the daemon's configured gateway model; saving settings aligns every bot with
 it. A per-bot model picker still needs the `agent` capability.
+
+## Group rules
+
+- **Groups live beside the catalog.** The catalog file holds `groups: [{ id, title }]` in
+  display order; a bot's `groupId` is its membership. A membership that points at a missing
+  group reads as ungrouped instead of failing the catalog.
+- **A group that still holds a bot cannot be deleted.** `DELETE` answers `409` with
+  `invalid_command` and a message; the client shows it rather than emptying the group.
+  Emptying a group is the person's job (`PATCH /v1/bots/:id` with `groupId: null`).
+- **Order is explicit.** `PUT /v1/groups/order` must list every group exactly once; anything
+  else is a `400` and nothing is written. Moving one group up or down is the client sending
+  the reordered list.
+- **Limits.** 50 groups, a title of 1–40 characters after trimming; a refused title is a
+  `400`. Ids are `g_` plus a UUID and are chosen by the daemon.
+- **The catalog event carries them.** A `bots` event and the `welcome` frame carry
+  `groups` (absent when there are none, so an older client keeps working) and every
+  `BotSummary` may carry a `groupId`.
+
+## Live tasks
+
+`tasks` lists the work a bot's conversations are running right now — the same graph the
+scheduler runs — and each `snapshot` carries the current list as `tasks`. It is a whole-list
+replacement, never a delta; an empty list means nothing runs.
+
+```json
+{ "id": "t_12", "kind": "pi.generation", "status": "running", "phase": "generate",
+  "background": false, "conversationId": "c_1" }
+{ "id": "t_13", "kind": "pi.tool", "status": "waiting", "phase": "run",
+  "background": false, "owner": "t_12", "conversationId": "c_1" }
+```
+
+- `status` is one of `pending`, `running`, `waiting`, `sleeping`, `completing`; only live
+  work appears, so a settled task leaves the list rather than becoming `terminal`.
+- `kind` names the task definition (`pi.generation`, `pi.tool`, `pi.compaction`, and an
+  extension's own kinds such as the compaction or subagent tasks).
+- `blocked` appears when the task cannot run here (`restart_limit`, `missing_task`,
+  `task_too_old`, `migration_failed`); `owner` names the parent task of a child.
+- Ids are wire ids (`t_` for tasks, `c_` for conversations); a client that does not parse
+  them may treat them as opaque strings.
+- The `tasks` capability is `true`. A client that predates the field simply ignores it.
+
+## Per-bot agent
+
+`PATCH /v1/bots/:id` accepts `model` (an id the gateway lists) and `thinkingLevel` (one of
+the seven levels), which are that bot's own choice: the catalog records them and a live
+conversation moves in place. `GET /v1/models` is a read-only proxy of the gateway's model
+list (cached for a minute), so a picker never has to know the gateway itself. The `agent`
+capability is `true`.
+
+## Providers
+
+Third-party services a bot's tools may call. The catalogue is code (`id`, `title`,
+`kind`, `baseUrl`, `docsUrl`, `keyLabel`); the first entry is `deepseek-search`, whose
+search and fetch APIs back the `web_search`/`web_fetch` tools.
+
+```json
+{ "id": "deepseek-search", "title": "DeepSeek 搜索", "kind": "deepseek-search",
+  "baseUrl": "https://api.deepseek.com",
+  "docsUrl": "https://api-docs.deepseek.com/guides/search/",
+  "keyLabel": "DeepSeek API Key", "hasApiKey": true, "enabled": true }
+```
+
+- **The key is write-only and lives in the user's config**, not in the daemon root or a
+  bot's directory: `<XDG_CONFIG_HOME or ~/.config>/eagle-bots/providers.json`, mode 0600. A
+  `PUT` with an omitted key keeps the stored one; an empty key is a `400` and writes nothing.
+  The public shape only says whether a key is set.
+- **`enabled` decides whether bots get the tools.** The `search` tool group also has to be
+  selected; with no key or a disabled provider the group installs nothing callable.
+- **`test` spends one search**: it asks the provider for a single result and reports
+  reachability, the message and the latency. It saves nothing.
+- An unknown provider is a `400`; a refused key reads as "the provider refused the API key".
+
+## Usage statistics
+
+`GET /v1/usage?days=30` answers the settings page from one table the daemon keeps for every
+bot, **local** day (a day is what the person experienced, not UTC) and source: tokens, calls
+and what the provider said it cost. Ninety days are retained; older rows are pruned on boot
+and on every write.
+
+```json
+{ "usage": {
+  "retentionDays": 90,
+  "today": { "totalTokens": 120, "calls": 3, "costUsd": 0.01 },
+  "week":  { "totalTokens": 900, "calls": 12, "costUsd": 0.05 },
+  "month": { "totalTokens": 5000, "calls": 40, "costUsd": 0.3 },
+  "days": [ { "day": "2026-10-20", "totalTokens": 0, "calls": 0, "costUsd": 0 }, … ],
+  "bots": [ { "botId": "b_1", "title": "研究员", "totalTokens": 5000, "calls": 40, "costUsd": 0.3 } ],
+  "sources": [ { "source": "model", "totalTokens": 4990, "calls": 0, "costUsd": 0.3 },
+               { "source": "search", "totalTokens": 0, "calls": 40, "costUsd": 0 } ] } }
+```
+
+- Sources: `model` spends tokens, `search` spends calls (one per search or fetch); `sources`
+  lists each one's share, busiest first, so a client shows where the work went. `model` and
+  `search` are today's set; the store keys on a string, so the next spender needs no migration.
+- The first schema counted tokens only; the daemon migrates that day table into the `model`
+  source when it opens the store.
+- `days` is the requested window (1–90, default 30), oldest first, with a zero row for a day
+  nothing ran, so a chart needs no gap handling.
+- `bots` lists the ten busiest in the retention window, busiest first; the daemon joins the
+  title from the catalog, so a client shows a name even for a bot it never loaded.
+- The counters are deltas: the runtime reports cumulative totals, and the daemon books what
+  a conversation gained since its last report. A reset conversation books nothing rather
+  than a negative row.
+- Statistics are a side channel: if the store cannot be written, the conversation is
+  unaffected and the row is missing, never invented.
+
+## Usage
+
+`usage` carries one conversation's totals, summed from pi's usage document — assistant
+turns and summarization attempts under the model, tool results under their tool. It is a
+whole-value replacement and arrives whenever the totals move; a snapshot carries the same
+object. Before the first answered turn the field is absent, so a client shows its empty
+state rather than three zeros.
+
+The `usage` capability is `true`.
 
 ## Entities
 
@@ -295,6 +440,12 @@ is never a gap.
 { "type": "status", "rev": 45, "trace": "tr_…", "running": true,
   "streaming": "p_a2",                   // null when no attempt is in flight
   "inbox": [ InboxItem, … ] }
+
+{ "type": "tasks", "rev": 45, "trace": "tr_…", "tasks": [ Task, … ] }
+
+{ "type": "usage", "rev": 45, "trace": "tr_…",
+  "usage": { "inputTokens": 1234, "outputTokens": 567, "totalTokens": 1801,
+             "costUsd": 0.42 } }              // costUsd only when the provider reports it
 
 { "type": "submission", "rev": 46, "trace": "tr_…",
   "requestId": "r_…", "submissionId": "s_3",

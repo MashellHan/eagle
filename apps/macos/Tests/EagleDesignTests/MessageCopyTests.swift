@@ -10,7 +10,7 @@ struct MessageCopyTests {
   @Test("the copy glyph is small while its hit target stays full size")
   func smallGlyph() throws {
     let renderer = ImageRenderer(
-      content: MessageCopyButton(text: "Message", label: "Copy", isVisible: true)
+      content: MessageCopyButton(text: "Message", label: "Copy")
     )
     renderer.scale = 1
     let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))

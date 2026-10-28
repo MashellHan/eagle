@@ -555,6 +555,15 @@
       "replaces": "p_a1"
     },
     {
+      "type": "usage",
+      "trace": "tr_golden",
+      "usage": {
+        "inputTokens": 3,
+        "outputTokens": 0,
+        "totalTokens": 6
+      }
+    },
+    {
       "type": "append",
       "trace": "tr_golden",
       "message": {
@@ -589,6 +598,15 @@
       "replaces": "p_a2"
     },
     {
+      "type": "usage",
+      "trace": "tr_golden",
+      "usage": {
+        "inputTokens": 3,
+        "outputTokens": 0,
+        "totalTokens": 9
+      }
+    },
+    {
       "type": "append",
       "trace": "tr_golden",
       "message": {
@@ -621,6 +639,15 @@
         "stopReason": "error"
       },
       "replaces": "p_a3"
+    },
+    {
+      "type": "usage",
+      "trace": "tr_golden",
+      "usage": {
+        "inputTokens": 3,
+        "outputTokens": 0,
+        "totalTokens": 12
+      }
     },
     {
       "type": "append",
@@ -672,6 +699,15 @@
         "status": "unanswered",
         "entryId": "e_7",
         "reason": "model_error"
+      }
+    },
+    {
+      "type": "usage",
+      "trace": "tr_golden",
+      "usage": {
+        "inputTokens": 3,
+        "outputTokens": 0,
+        "totalTokens": 15
       }
     }
   ]

@@ -252,11 +252,38 @@ test("a bot summary only carries a reason while unavailable", () => {
     state: "idle",
   };
   assert.equal(decodeServerEvent({ type: "bots", bots: [bot] }).type, "bots");
+
+  // Groups travel with the catalog; a malformed one is refused like any other entity.
+  const grouped = decodeServerEvent({
+    type: "bots",
+    bots: [{ ...bot, groupId: "g_0123456789" }],
+    groups: [{ id: "g_0123456789", title: "工作" }],
+  });
+  assert.equal(grouped.type, "bots");
+  if (grouped.type === "bots") assert.equal(grouped.groups?.[0]?.title, "工作");
+  invalidEvent({ type: "bots", bots: [bot], groups: [{ id: "g_0123456789" }] });
+  invalidEvent({ type: "bots", bots: [bot], groups: "工作" });
   invalidEvent({ type: "bots", bots: [{ ...bot, state: "unavailable" }] });
   invalidEvent({
     type: "bots",
     bots: [{ ...bot, unavailable: { reason: "storage_failed", message: "boom" } }],
   });
+});
+
+test("live tasks decode with a status the client can render", () => {
+  const task = {
+    id: "t_12",
+    kind: "pi.generation",
+    status: "running",
+    phase: "generate",
+    background: false,
+    conversationId: "c_1",
+  };
+  const decoded = decodeServerEvent({ type: "tasks", rev: 4, trace, tasks: [task] });
+  assert.equal(decoded.type, "tasks");
+  if (decoded.type === "tasks") assert.equal(decoded.tasks[0]?.kind, "pi.generation");
+  invalidEvent({ type: "tasks", rev: 4, trace, tasks: [{ ...task, status: "thinking" }] });
+  invalidEvent({ type: "tasks", rev: 4, trace, tasks: [{ ...task, background: "no" }] });
 });
 
 test("submission entry references must be committed entries", () => {

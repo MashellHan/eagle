@@ -6,7 +6,45 @@ Status snapshot. The contracts live in
 [OBSERVABILITY.md](OBSERVABILITY.md) and [TESTING.md](TESTING.md). This file says
 what exists, what is next, and where it lives. Update it whenever a stage closes.
 
+The current tool taxonomy, native extension integration and test-evidence map are
+in [Extensions and tools](EXTENSIONS-AND-TOOLS.md). That guide also
+specifies planned optional `memory`, `search` and `peers` groups and child-agent
+discovery. Those additions are not implemented or enabled by this plan update.
+
 ## Where the code lives
+
+### Native tool consolidation (2026-10-28)
+
+The owner requires separate mandatory `core` and `coding` groups. `coding` is the native
+pi-durable `CodingTools`; `core` adds a native-style `list` tool. The previous custom
+read/write/command implementations and their aliases are removed, together with their
+obsolete sandbox contract. Native tool integration tests replace implementation-specific
+tests; the existing coverage scope and thresholds are unchanged. Missing-group and
+existing-session regressions failed before implementation. The daemon gate passes 471
+tests with 95.08% lines, 87.55% branches and 90.65% functions; `list` is 100% in all three.
+The macOS app passes 119 feature and 46 design tests with 95.8% configured logic coverage.
+The Bots client passes 121 tests with 90.6% configured logic coverage after meaningful
+selected-bot and transport tests raised the observed 88.1% shortfall. The app bundle builds.
+The rebuilt app shows both mandatory groups enabled with disabled switches. Disk-source
+reloading is not part of the native Registry refresh described below.
+
+### Native Registry refresh (2026-10-28)
+
+All built-ins register once per Harness, while one explicit group-to-extension mapping
+selects the agent's capabilities from the current native Registry snapshot. Every client
+subscription refreshes that selection, including cached A -> B -> A switches, without a
+new wire request, runtime watch or model call. Existing answers continue running. A failed
+runtime subscription closes `1011` for the existing client retry policy; a storage fault
+shares one Harness failure identity across the refresh and SDK notification channels.
+Same-value settings saves retry an earlier application failure instead of silently skipping it.
+
+The final daemon gate passes 482 tests, with 95.10% lines, 87.96% branches and 90.81%
+functions. `list` and the retained workspace helpers are 100% in all three measured metrics.
+The Bots client gate passes 121 tests at 90.6% logic coverage; the unchanged native app lane
+passed 165 tests at 95.8%. The review's two failure-path findings were reproduced by real
+WebSocket/SQLite tests, fixed, and accepted on follow-up static review. Original thresholds
+and exclusions remain unchanged. Third-party plugins, filesystem watchers and source-module
+hot loading were not added.
 
 ```
 docs/bots/                 contracts and this plan
@@ -289,6 +327,122 @@ stays readable until a send is attempted without a gateway, then the conversatio
 short "去设置" banner; the gate is tested (`BotsWindowTests`), the fresh-install window is
 not.
 
+## Settings for effort, compaction and tool groups (2026-10-27)
+
+The model page now carries three daemon-wide choices, each stored in the gateway settings
+and applied to every bot: the reasoning level (default `medium`, written per bot and moved
+into a live conversation with `root.configure`), automatic compaction (on by default, its
+thresholds capped to `BOTS_CONTEXT_WINDOW` and overridable per `BOTS_COMPACTION*`), and the
+tool groups (`core` mandatory, `herdr` optional). Compaction is accepted on a 1 200-token
+window in `test/e2e/compaction.test.ts`: four `pi.compaction` entries, the request context
+stops growing at ~2 095 characters, and all five turns stay readable through `history`.
+Known gap, unchanged by this pass: the transcript a client receives after a compaction
+starts at the compaction head, so scrollback after a reconnect now depends on the `history`
+paging the client does not use yet. The `tasks` capability stays false, so a running
+compaction is invisible in the UI.
+
+## Sidebar groups and sample data (2026-10-27)
+
+Real bots now live in sidebar groups the person owns: `catalog.json` stores
+`groups: [{ id, title }]` in display order and each bot records its `groupId`, with
+`POST/PATCH/DELETE /v1/groups`, `PUT /v1/groups/order` for the whole order, and
+`PATCH /v1/bots/:id { groupId }` to file a bot. A group that still holds a bot cannot be
+deleted (`409`), because emptying it is the person's decision, not a side effect of
+deleting the folder.
+
+The sample workspace is now opt-in: `加载 Mock 数据` in 通用 is off by default, and with it
+off the sidebar shows only real groups and the conversation area shows an empty state
+instead of falling back to the demo transcript. With it on, the sample groups follow the
+real ones.
+
+### The client slice (2026-10-27)
+
+The sidebar renders the daemon's groups: one section per group in the daemon's order, an
+empty group included, and one fixed `未分组` section at the end that appears only while a
+bot is unfiled and cannot be renamed, moved or deleted. A membership pointing at a group
+the catalog no longer lists reads as ungrouped, the same rule the daemon applies.
+
+A group's context menu renames it, deletes it, and moves it up or down; reordering sends
+the whole order once through `PUT /v1/groups/order`, so the ends disable the item instead
+of writing a partial order. Deleting a group that still holds a bot offers the reason in
+the menu instead of the item, and the daemon's `409` message is what the window shows if
+one is attempted anyway. The header's `+` is now a menu with `新建 Bot` and `新建分组`, so
+a new group is not confused with a new bot; creating a sample group stays in the sample
+section's own menu.
+
+A bot changes group from its row menu (移至 → a group, or 未分组), which is the same
+`PATCH /v1/bots/:id { groupId }` call with `group: null` for the latter. Drag-and-drop was
+built, verified once with a synthetic slow drag, and removed the same day: a normal
+press-and-move on a `Button` row never started the drag session, so the affordance was
+unreliable and the explicit menu stayed instead.
+
+## Delegation, on-demand tools, live tasks (2026-10-27)
+
+Three capabilities landed on top of the phase-2 tool work, in the order they were asked
+for.
+
+**Subagents.** `bots-agents` gives a bot `agent_spawn` / `agent_send` / `agent_stop`. A
+child is an ownerless conversation in the same Harness, configured from the caller's agent
+minus these tools, so delegation is one level deep. Its turns are driven inside a tool call
+and its final text returns as the tool result; the transcript keeps only that result. The
+`peers` capability stays false because nothing about children crosses the protocol yet.
+
+**Deferred tools.** The eight `herdr` tools are declared deferred and `tool_search` is
+installed with them, so a request carries seven tools instead of fifteen. Loading writes the
+conversation's `modelTools`, which keeps them offered for the rest of the branch. A bot
+without the herdr group gets no loader.
+
+**Live tasks.** Every open bot follows `harness.taskGraph()` and pushes one `tasks` event;
+snapshots carry the same list. The capability is now `tasks: true` and the inspector renders
+the list under 例行任务 — kind, status, blocked reason and owner nesting — with an empty
+state instead of a blank section. The panel's sections gained one decorated header style and
+their own empty states.
+
+Known gaps: children are invisible in the sidebar until a peers surface reads them; the
+task panel is read-only (no retry from the UI, although `harness.retryTask` exists); and a
+deferred tool loads per branch, so a compaction keeps it but a reset does not.
+
+## Settings: real usage statistics (2026-10-27)
+
+The 用量与账单 page no longer shows sample numbers. The daemon keeps one row per bot and
+local day in `usage.sqlite` (90 days, pruned on boot and on write), turning the runtime's
+cumulative `usage` into deltas; `GET /v1/usage?days=` serves today / 7 / 30 day totals, a
+padded day series and the ten busiest bots with their catalog titles. The page shows the
+three totals, a thirty-day bar chart whose bars name their day and tokens on hover, and the
+five busiest bots — with an empty state instead of zeros before anything runs.
+
+## Search provider and usage sources (2026-10-28)
+
+Settings gained 服务: one card per third-party provider, starting with DeepSeek's search and
+fetch APIs. The key is write-only and stored in the user's own config (`~/.config/eagle-bots/
+providers.json`, 0600), never in the daemon root or a bot directory; `测试` spends one search
+and reports latency. The `search` group ships unselected by default (the doc's rule for new
+optional groups), installs the same single `tool-search` loader, and both tools are deferred.
+`GET /v1/providers`, `PUT /v1/providers/:id` and `POST /v1/providers/:id/test` are the wire;
+the runtime now hands the saved client to the registry, so a bot whose groups include `search`
+loads `web_search`/`web_fetch` through `tool_search` and books one `search` call per call.
+
+Usage turned into a source-agnostic meter: models book token deltas, search books calls, and
+`GET /v1/usage` reports per-source totals beside the bots. The old token-only day table is
+migrated into the `model` source on first open. 用量与账单 gained a 来源 card; a bot that only
+searched shows calls instead of a zero token row.
+
+The 模型 page's tool list gained the 搜索 switch, and the form's group list is now the
+daemon's five groups with the four old ones as the fallback, so saving settings no longer
+drops a stored `search` selection. A group whose own extension is not installed contributes
+nothing, not even its loader: selecting `search` without a key offers no `tool_search`.
+
+Evidence, this pass: the daemon gate passes 497 tests with 95.1% lines / 87.8% branches /
+90.9% functions (thresholds 90/85/90); `typecheck`, `lint` and `fixtures:check` are green.
+The Bots client passes 126 tests at 91.5% configured logic coverage after tests for provider
+decoding, the additive `sources` field and the wire round trip. The Eagle app passes 175
+tests at 95.8% configured logic coverage, and the app bundle builds. Snapshot review covers
+服务 (configured and unconfigured), 用量与账单 with two sources and the 模型 tool list with the
+搜索 row; those snapshots answer the daemon from a stub session, so they need neither a
+daemon nor a key. Not verified in this pass: a real
+DeepSeek key and a live `web_search` call, and a bot switching the `search` group on against
+a running daemon (the runtime path is covered by the deterministic faux-model test).
+
 ## Next work, in order
 
 1. Finish the client surface: history paging, bot settings behind the `agent`
@@ -353,6 +507,24 @@ MashellHan/eagle 的工作分支，不开 PR、不推 main、不发布 npm 或�
 本轮我们负责云端、机器执行、安装管理与远程适配；nocoli 的人格、记忆、调度和
 群聊仍是核心侧后续主线。需要的 Bot extension 接线应最小且可验证，不能留为 stub。
 现有上游工具组和延迟加载优先评估复用，不另做竞争的 Bot 插件框架。
+### Upstream optional tool track
+
+The extension/tool track has its own proposed sequence in
+[Extensions and tools](EXTENSIONS-AND-TOOLS.md#6-planned-optional-groups):
+
+1. Add child discovery with `agent_list`, direct-parent target validation and the
+   missing negative/stop/recovery tests for existing delegation tools.
+2. Add optional `memory`: `memory_list`, `memory_search`, `memory_read`,
+   `memory_write`, `memory_delete`, with explicit shared/private scope. Make the
+   one native discovery loader independent of Herdr in this slice.
+3. Optional `search` now supplies `web_search` and `web_fetch`, separating URL
+   discovery from page retrieval with bounded, cancellable provider calls (see
+   the delivered search-provider slice above).
+4. Add optional `peers`: `peer_list`, `peer_send`, `peer_read`, with durable
+   cross-Bot admission, observable settlement and bounded routing.
+
+The other tool rows remain planned; search is implemented. New groups remain optional and
+must not become default-enabled merely by extending the group-name list.
 
 ### What the adapter can do today (rows 23-36, signed off)
 

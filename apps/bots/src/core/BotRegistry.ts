@@ -7,12 +7,17 @@ import type { Log } from "../log/log.ts";
 import type { BotConfig, BotDirectory } from "./BotDirectory.ts";
 import {
   type BotAppearance,
+  type BotGroup,
   type BotState,
   type BotSummary,
   ClassifiedFailure,
   DEFAULT_APPEARANCE,
+  DEFAULT_THINKING_LEVEL,
+  DEFAULT_TOOL_GROUPS,
   type ErrorKind,
   type Failure,
+  resolveToolGroups,
+  type ToolGroup,
 } from "./domain.ts";
 import { newFailure } from "./failures.ts";
 import type { RuntimeBotSpec, RuntimeHandle } from "./RuntimePort.ts";
@@ -33,6 +38,7 @@ const Events = {
   deleteOk: declareEvent("core.delete.ok"),
   deleteFail: declareEvent("core.delete.fail"),
   reconcileOk: declareEvent("core.reconcile.ok"),
+  groupWriteOk: declareEvent("core.group.write.ok"),
   recoveryStart: declareEvent("core.recovery.start"),
   recoveryBotOk: declareEvent("core.recovery.bot.ok"),
   recoveryBotFail: declareEvent("core.recovery.bot.fail"),
@@ -58,6 +64,10 @@ export type RegistryOptions = {
   readonly directory: BotDirectory;
   readonly openRuntime: (spec: RuntimeBotSpec) => Promise<RuntimeHandle>;
   readonly model: { readonly provider: string; readonly modelId: string };
+  /** The reasoning level a newly created bot records; settings can change it at runtime. */
+  readonly thinkingLevel?: string;
+  /** The tool groups a newly created bot records; settings can change it at runtime. */
+  readonly toolGroups?: readonly ToolGroup[];
   readonly log: Log;
   readonly idleCloseMs: number;
   readonly quarantineRetryMs: number;
@@ -95,11 +105,29 @@ export const newBotId = (now: number = Date.now()): string => {
 
 const unavailable = (reason: ErrorKind, message: string) => ({ reason, message });
 
+const TASK_ID = /^t_\d+$/;
+
+/** A task id crosses as `t_<n>`; anything else never reaches the runtime. */
+const assertTaskId = (taskId: string): void => {
+  if (TASK_ID.test(taskId)) return;
+  throw new ClassifiedFailure(
+    newFailure("invalid_command"),
+    "not_admitted",
+    "task ids look like t_12",
+  );
+};
+
 export class BotRegistry {
   readonly #options: RegistryOptions;
   readonly #entries = new Map<string, Entry>();
   /** The model a newly created bot records; settings can change it at runtime. */
   #defaultModel: { readonly provider: string; readonly modelId: string };
+  /** The reasoning level a newly created bot records; settings can change it at runtime. */
+  #defaultThinkingLevel: string;
+  /** The tool groups a newly created bot records; settings can change it at runtime. */
+  #defaultToolGroups: readonly ToolGroup[];
+  /** The sidebar groups, refreshed on load and after every mutation. */
+  #groups: readonly BotGroup[] = [];
   readonly #boot: () => string;
   #sequence = 0;
   /** Creations in flight, so two concurrent creates cannot both take the last slot. */
@@ -107,6 +135,8 @@ export class BotRegistry {
 
   constructor(options: RegistryOptions) {
     this.#defaultModel = options.model;
+    this.#defaultThinkingLevel = options.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
+    this.#defaultToolGroups = options.toolGroups ?? DEFAULT_TOOL_GROUPS;
     this.#options = options;
     this.#boot =
       options.bootTrace ??
@@ -119,6 +149,7 @@ export class BotRegistry {
   /** Loads the catalog, finishes an interrupted delete, then scans for active work. */
   async start(): Promise<void> {
     const trace = this.#boot();
+    this.#groups = await this.#options.directory.loadGroups().catch(() => []);
     let bots: readonly BotConfig[];
     try {
       const reconciled = await this.#options.directory.reconcile();
@@ -160,6 +191,62 @@ export class BotRegistry {
   }
 
   /** One summary per catalogued bot, in catalog order. */
+  /** The sidebar groups, in display order. */
+  groups(): readonly BotGroup[] {
+    return this.#groups;
+  }
+
+  async createGroup(title: string, trace: string): Promise<BotGroup> {
+    const group = await this.#options.directory.createGroup(title);
+    this.#groups = await this.#options.directory.loadGroups();
+    this.#options.log.emit("info", "core", Events.groupWriteOk, {
+      trace,
+      detail: { count: this.#groups.length },
+    });
+    return group;
+  }
+
+  async renameGroup(groupId: string, title: string, trace: string): Promise<BotGroup> {
+    const group = await this.#options.directory.renameGroup(groupId, title);
+    this.#groups = await this.#options.directory.loadGroups();
+    this.#options.log.emit("info", "core", Events.groupWriteOk, {
+      trace,
+      detail: { count: this.#groups.length },
+    });
+    return group;
+  }
+
+  /** Deletes only an empty group; a group that still holds a bot is refused. */
+  async deleteGroup(groupId: string, trace: string): Promise<void> {
+    await this.#options.directory.deleteGroup(groupId);
+    this.#groups = await this.#options.directory.loadGroups();
+    this.#options.log.emit("info", "core", Events.groupWriteOk, {
+      trace,
+      detail: { count: this.#groups.length },
+    });
+  }
+
+  async reorderGroups(ids: readonly string[], trace: string): Promise<readonly BotGroup[]> {
+    const groups = await this.#options.directory.reorderGroups(ids);
+    this.#groups = groups;
+    this.#options.log.emit("info", "core", Events.groupWriteOk, {
+      trace,
+      detail: { count: groups.length },
+    });
+    return groups;
+  }
+
+  /** Files a bot under a group, or clears it with `null`; the summary follows at once. */
+  async moveBot(botId: string, groupId: string | null, trace: string): Promise<BotSummary> {
+    const entry = this.#entry(botId, trace);
+    const at = (this.#options.now?.() ?? new Date()).toISOString();
+    const config = await this.#write(trace, botId, () =>
+      this.#options.directory.setBotGroup(botId, groupId, at),
+    );
+    entry.config = config;
+    return this.#summary(entry);
+  }
+
   summaries(): readonly BotSummary[] {
     return [...this.#entries.values()].map((entry) => this.#summary(entry));
   }
@@ -204,6 +291,29 @@ export class BotRegistry {
   }
 
   /**
+   * Applies a reasoning level to every bot: the catalog records it and a live conversation
+   * follows in place, so no answer has to be interrupted.
+   */
+  async applyThinkingLevel(thinkingLevel: string, trace: string): Promise<void> {
+    this.#defaultThinkingLevel = thinkingLevel;
+    for (const entry of this.#entries.values()) {
+      if (entry.config.thinkingLevel === thinkingLevel) continue;
+      const at = (this.#options.now?.() ?? new Date()).toISOString();
+      try {
+        const config = await this.#write(trace, entry.config.id, () =>
+          this.#options.directory.setThinkingLevel(entry.config.id, thinkingLevel, at),
+        );
+        entry.config = config;
+        if (entry.handle?.configureThinkingLevel !== undefined) {
+          await entry.handle.configureThinkingLevel(thinkingLevel, trace);
+        }
+      } catch {
+        // One bot that cannot be written must not stop the others.
+      }
+    }
+  }
+
+  /**
    * Applies a gateway model to every bot: the catalog records it, a live conversation is
    * moved in place (its session keeps its history), and a closed one opens with it later.
    */
@@ -233,6 +343,104 @@ export class BotRegistry {
         // its old model and the next save retries it.
       }
     }
+  }
+
+  /**
+   * Per-bot agent choice (the `agent` capability): the catalog records it and a live
+   * conversation follows in place, so no answer has to be interrupted.
+   */
+  async setAgent(
+    botId: string,
+    change: {
+      readonly model?: { readonly provider: string; readonly modelId: string };
+      readonly thinkingLevel?: string;
+    },
+    trace: string,
+  ): Promise<BotSummary> {
+    const entry = this.#entry(botId, trace);
+    const at = (this.#options.now?.() ?? new Date()).toISOString();
+    let config = entry.config;
+    if (change.model !== undefined && change.model.modelId !== config.model.modelId) {
+      config = await this.#write(trace, botId, () =>
+        this.#options.directory.setModel(
+          botId,
+          change.model as NonNullable<typeof change.model>,
+          at,
+        ),
+      );
+      if (entry.handle?.configureModel !== undefined) {
+        await entry.handle.configureModel(change.model, trace);
+      }
+    }
+    if (change.thinkingLevel !== undefined && change.thinkingLevel !== config.thinkingLevel) {
+      config = await this.#write(trace, botId, () =>
+        this.#options.directory.setThinkingLevel(botId, change.thinkingLevel as string, at),
+      );
+      if (entry.handle?.configureThinkingLevel !== undefined) {
+        await entry.handle.configureThinkingLevel(change.thinkingLevel as string, trace);
+      }
+    }
+    entry.config = config;
+    return this.#summary(entry);
+  }
+
+  /** Runs one parked task again; the task graph then reports it as live work. */
+  async retryTask(botId: string, taskId: string, trace: string): Promise<void> {
+    assertTaskId(taskId);
+    const entry = this.#entry(botId, trace);
+    const handle = entry.handle ?? (await this.open(botId, trace));
+    if (handle.retryTask === undefined) {
+      throw new ClassifiedFailure(
+        newFailure("invalid_command"),
+        "not_admitted",
+        "this bot cannot retry tasks",
+      );
+    }
+    await handle.retryTask(taskId, trace);
+  }
+
+  /** Stops one live task of a bot that is open; a closed bot has nothing to stop. */
+  async abortTask(botId: string, taskId: string, trace: string): Promise<void> {
+    assertTaskId(taskId);
+    const entry = this.#entry(botId, trace);
+    const handle = entry.handle;
+    if (handle?.abortTask === undefined) {
+      throw new ClassifiedFailure(
+        newFailure("invalid_command"),
+        "not_admitted",
+        "this bot cannot stop tasks",
+      );
+    }
+    await handle.abortTask(taskId, trace);
+  }
+
+  /**
+   * Applies a tool-group selection to every bot: the catalog records it and a live
+   * conversation drops or regains the extensions in place.
+   */
+  async applyToolGroups(toolGroups: readonly string[], trace: string): Promise<void> {
+    const resolved = resolveToolGroups(toolGroups);
+    this.#defaultToolGroups = resolved;
+    const failures: unknown[] = [];
+    for (const entry of this.#entries.values()) {
+      // A bot that never stored a selection has to store one, even when the default happens
+      // to match: the catalog, not the daemon's default, is what a later run reads.
+      const stored = entry.config.toolGroups;
+      try {
+        if (stored === undefined || resolveToolGroups(stored).join(",") !== resolved.join(",")) {
+          const at = (this.#options.now?.() ?? new Date()).toISOString();
+          entry.config = await this.#write(trace, entry.config.id, () =>
+            this.#options.directory.setToolGroups(entry.config.id, resolved, at),
+          );
+        }
+        if (entry.handle?.configureToolGroups !== undefined) {
+          await entry.handle.configureToolGroups(resolved, trace);
+        }
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0) throw failures[0];
   }
 
   async create(
@@ -268,6 +476,8 @@ export class BotRegistry {
       createdAt: at,
       updatedAt: at,
       model: this.#defaultModel,
+      thinkingLevel: this.#defaultThinkingLevel,
+      toolGroups: this.#defaultToolGroups,
     };
     // Checked before the write: a summary the `bots` event cannot carry must not exist.
     this.#assertSummary({ ...config, state: "catalogued" }, trace);
@@ -531,9 +741,8 @@ export class BotRegistry {
         id: entry.config.id,
         dir: this.#options.directory.botDir(entry.config.id),
         model: entry.config.model,
-        ...(entry.config.thinkingLevel === undefined
-          ? {}
-          : { thinkingLevel: entry.config.thinkingLevel }),
+        thinkingLevel: entry.config.thinkingLevel ?? this.#defaultThinkingLevel,
+        toolGroups: resolveToolGroups(entry.config.toolGroups ?? this.#defaultToolGroups),
         trace,
       });
       entry.handle = handle;
@@ -777,6 +986,7 @@ export class BotRegistry {
       updatedAt: entry.config.updatedAt,
       model: entry.config.model,
       state: entry.state,
+      ...(entry.config.groupId === undefined ? {} : { groupId: entry.config.groupId }),
       ...(entry.unavailable === undefined ? {} : { unavailable: entry.unavailable }),
     };
   }

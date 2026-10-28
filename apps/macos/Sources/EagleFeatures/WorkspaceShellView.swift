@@ -18,6 +18,8 @@ public struct WorkspaceShellView: View {
   @State private var showsBotFaceEditor = false
   @State private var showsSettings = false
   @AppStorage("eagle.appearance") private var appearance = "system"
+  @AppStorage("eagle.hideToolCalls") private var hideToolCalls = false
+  @AppStorage("eagle.loadMockData") private var loadMockData = false
   private let onShowGallery: () -> Void
 
   public init(
@@ -35,12 +37,47 @@ public struct WorkspaceShellView: View {
   }
 
   private var sidebarSections: [SidebarSection] {
-    let base = bots.section.map { [$0] + list.sections } ?? list.sections
-    return base.map(chrome.decorate)
+    SidebarComposition.sections(
+      botSections: bots.sections,
+      mock: list.sections,
+      showsMock: loadMockData
+    )
+    .map(chrome.decorate)
+  }
+
+  /// Identifiers that belong to the sample workspace, so switching it off drops them.
+  private var mockIDs: Set<String> {
+    Set(list.groups.flatMap(\.items).map(\.id))
+  }
+
+  private func dropSampleSelectionIfHidden() {
+    guard
+      !SidebarComposition.keepsSelection(list.selection, mockIDs: mockIDs, showsMock: loadMockData)
+    else { return }
+    list.selection = nil
   }
 
   private var moveGroups: [SidebarItemGroup] {
     list.groups.map { SidebarItemGroup(id: $0.id, title: $0.title) }
+  }
+
+  /// A real bot moves between the daemon's groups (plus 未分组); a sample row moves between
+  /// the sample groups.
+  private func moveTargets(for id: String) -> [SidebarItemGroup] {
+    guard bots.owns(id) else { return moveGroups }
+    var targets = bots.groups.map { SidebarItemGroup(id: $0.id, title: $0.title) }
+    // A grouped bot can always be unfiled, even while no 未分组 section is on screen yet.
+    if bots.groupId(of: id) != nil {
+      targets.append(
+        SidebarItemGroup(id: SidebarComposition.ungroupedSectionID, title: "未分组"))
+    }
+    return targets
+  }
+
+  private func moveItem(_ id: String, to groupId: String?) {
+    guard bots.owns(id) else { return }
+    let target = groupId == SidebarComposition.ungroupedSectionID ? nil : groupId
+    Task { await bots.moveBot(id, toGroup: target) }
   }
 
   private func selectAfterHide(_ id: String) {
@@ -59,6 +96,11 @@ public struct WorkspaceShellView: View {
   }
 
   private var selectedIsBot: Bool { bots.owns(list.selection) }
+
+  /// The sample transcript is only reachable while the sample data is switched on.
+  private var selectedIsMock: Bool {
+    loadMockData && list.selection != nil && !selectedIsBot
+  }
 
   public var body: some View {
     let item = list.selectedItem
@@ -84,10 +126,31 @@ public struct WorkspaceShellView: View {
               list.select(id)
             }
           },
-          onToggleSection: { list.toggleSection($0) },
-          onRenameSection: { list.renameSection($0, to: $1) },
-          onDeleteSection: { list.deleteSection($0) },
+          onToggleSection: { id in
+            if bots.ownsSection(id) {
+              bots.toggleSection(id)
+            } else {
+              list.toggleSection(id)
+            }
+          },
+          onRenameSection: { id, title in
+            if bots.ownsSection(id) {
+              Task { await bots.renameGroup(id, to: title) }
+            } else {
+              list.renameSection(id, to: title)
+            }
+          },
+          onDeleteSection: { id in
+            if bots.ownsSection(id) {
+              Task { await bots.deleteGroup(id) }
+            } else {
+              list.deleteSection(id)
+            }
+          },
           onCreateSection: { list.createSection() },
+          onCreateGroup: { Task { await bots.createGroup() } },
+          onCreateBot: { showsBotCreate = true },
+          canCreateBot: bots.isConnected,
           onRenameItem: { id, title in
             if bots.owns(id) {
               Task { await bots.rename(id, to: title) }
@@ -102,27 +165,27 @@ public struct WorkspaceShellView: View {
               list.deleteItem(id)
             }
           },
-          onCompose: {
-            if bots.isConnected {
-              showsBotCreate = true
-            } else {
-              list.createSection()
-            }
-          },
           onCollapse: { layout.toggleSidebar() },
           onAccount: { showsAccountMenu = true },
           onGallery: onShowGallery,
           onPinItem: { id in chrome.togglePin(id) },
-          onMoveItem: { id, groupId in list.moveItem(id, to: groupId) },
+          moveTargets: { id in moveTargets(for: id) },
+          onMoveItem: { id, groupId in
+            if bots.owns(id) {
+              moveItem(id, to: groupId)
+            } else if let groupId {
+              list.moveItem(id, to: groupId)
+            }
+          },
           onMarkUnread: { id in chrome.markUnread(id) },
           onCopyId: { id in chrome.copyId(id) },
           onHideItem: { id in
             chrome.hide(id)
             selectAfterHide(id)
           },
-          moveGroups: moveGroups,
-          groupOf: { id in list.groupID(of: id) },
-          onCreateGroup: { list.addGroup() }
+          onMoveGroup: { id, offset in
+            Task { await bots.reorderGroups(moving: id, by: offset) }
+          }
         )
       } conversation: {
         VStack(spacing: 0) {
@@ -134,12 +197,13 @@ public struct WorkspaceShellView: View {
           }
           if selectedIsBot {
             BotsConversationContent(bots: bots, layout: layout)
-          } else {
+          } else if selectedIsMock {
             ConversationColumn(
               title: item?.title ?? "依赖修复专家",
               subtitle: item?.tag ?? "GitHub",
               tintIndex: item?.tintIndex ?? 2,
               entries: chat.entries,
+              showsToolCalls: !hideToolCalls,
               draft: $chat.draft,
               onSend: { chat.send() },
               showsSidebar: layout.showsSidebar,
@@ -147,18 +211,39 @@ public struct WorkspaceShellView: View {
               onShowSidebar: { layout.toggleSidebar() },
               onToggleInspector: { layout.toggleInspector() }
             )
+          } else {
+            NoConversationPlaceholder(
+              onCreate: { showsBotCreate = true },
+              onShowSidebar: { layout.toggleSidebar() },
+              showsSidebar: layout.showsSidebar
+            )
           }
         }
       } inspector: {
         InspectorColumn(
-          name: selectedIsBot ? bots.title : (item?.title ?? "依赖修复专家"),
-          subtitle: selectedIsBot ? "Bots" : (item?.tag ?? "GitHub"),
+          name: selectedIsBot ? bots.title : (selectedIsMock ? (item?.title ?? "示例") : "未选择"),
+          subtitle: selectedIsBot ? "Bots" : (selectedIsMock ? (item?.tag ?? "示例") : ""),
           tintIndex: selectedIsBot ? bots.tintIndex : (item?.tintIndex ?? 2),
           width: layout.inspectorWidth,
-          artifacts: selectedIsBot ? [] : inspector.artifacts,
-          jobs: selectedIsBot ? [] : inspector.jobs,
+          artifacts: selectedIsMock ? inspector.artifacts : [],
+          jobs: selectedIsMock ? inspector.jobs : [],
+          tasks: selectedIsBot ? bots.tasks : [],
+          usage: selectedIsBot ? bots.usage : [],
+          choices: selectedIsBot ? bots.choices : [],
+          onChoose: { row, value in
+            guard selectedIsBot else { return }
+            Task { await bots.choose(row, value: value) }
+          },
           tab: $inspector.tab,
           onToggleJob: { inspector.setJob($0, isOn: $1) },
+          onRetryTask: { id in
+            guard selectedIsBot else { return }
+            Task { await bots.retryTask(id) }
+          },
+          onStopTask: { id in
+            guard selectedIsBot else { return }
+            Task { await bots.stopTask(id) }
+          },
           onCollapse: { layout.toggleInspector() },
           face: selectedIsBot ? bots.selectedFace : nil,
           label: selectedIsBot ? bots.selectedLabel : nil,
@@ -190,6 +275,7 @@ public struct WorkspaceShellView: View {
         // The daemon is a prerequisite of the Bots connection, not of the window.
         await daemon.startIfNeeded()
         await bots.start()
+        await bots.loadModels()
       }
       .onDisappear {
         // Closing the window must release the bot's connection, or its subscriber slot
@@ -205,6 +291,8 @@ public struct WorkspaceShellView: View {
           onCancel: { showsBotCreate = false }
         )
       }
+      .onChange(of: loadMockData) { _, _ in dropSampleSelectionIfHidden() }
+      .task { dropSampleSelectionIfHidden() }
       .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSidebar)) { _ in
         layout.toggleSidebar()
       }

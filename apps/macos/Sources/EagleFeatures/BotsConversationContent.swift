@@ -6,6 +6,7 @@ struct BotsConversationContent: View {
   @ObservedObject var layout: ShellLayoutViewModel
   @ObservedObject private var transcript: BotsTranscriptViewModel
   @ObservedObject private var composer: BotsComposerViewModel
+  @AppStorage("eagle.hideToolCalls") private var hideToolCalls = false
 
   init(bots: BotsWorkspaceViewModel, layout: ShellLayoutViewModel) {
     self.bots = bots
@@ -18,12 +19,15 @@ struct BotsConversationContent: View {
     ConversationColumn(
       title: bots.title, subtitle: bots.subtitle, tintIndex: bots.tintIndex,
       entries: transcript.entries,
+      showsToolCalls: !hideToolCalls,
       preparedMarkdown: transcript.markdown,
       draft: Binding(get: { composer.text }, set: { bots.setDraft($0) }),
       onSend: { bots.send() },
       showsSidebar: layout.showsSidebar, showsInspector: layout.showsInspector,
       participantStatus: bots.participantStatus,
-      onStop: { bots.abort() }, onRecover: { bots.recover() },
+      onStop: { bots.abort() },
+      onInsert: bots.running ? { bots.send(inserting: true) } : nil,
+      onRecover: { bots.recover() },
       onDismissError: { bots.dismissError() },
       onShowSidebar: { layout.toggleSidebar() },
       onToggleInspector: { layout.toggleInspector() }

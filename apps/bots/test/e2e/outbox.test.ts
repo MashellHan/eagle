@@ -91,6 +91,7 @@ test("an admitted input whose record read failed is reconciled by the same reque
   const runtime = {
     async open(): Promise<RuntimeHandle> {
       return {
+        refreshTools: async () => {},
         subscribe: async () => ({
           snapshot: {
             botId: "b_52f",
@@ -173,6 +174,7 @@ test("a not_admitted rejection restores the draft and an unknown result keeps th
     async open(): Promise<RuntimeHandle> {
       let sink: ((event: RuntimeEvent) => void) | undefined;
       return {
+        refreshTools: async () => {},
         subscribe: async () => ({
           snapshot: {
             botId: "b_outbox",

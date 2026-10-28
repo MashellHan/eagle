@@ -24,7 +24,9 @@ public struct InspectorJob: Identifiable, Hashable, Sendable {
   }
 }
 
-/// Right column: participant summary, text tabs, artifact rows and job switches.
+/// Right column: participant summary, text tabs, then the decorated sections of the
+/// selected tab. Every section is a header (glyph, title, hairline) plus rows or an empty
+/// state, so the column keeps one grid whether or not a bot has anything to show.
 public struct InspectorColumn: View {
   public enum Tab: String, CaseIterable, Hashable, Sendable {
     case detail = "详情"
@@ -38,8 +40,14 @@ public struct InspectorColumn: View {
   private let width: CGFloat
   private let artifacts: [InspectorArtifact]
   private let jobs: [InspectorJob]
+  private let tasks: [InspectorTaskRow]
+  private let usage: [InspectorUsageRow]
+  private let choices: [InspectorChoiceRow]
+  private let onChoose: (String, String) -> Void
   @Binding private var tab: Tab
   private let onToggleJob: (String, Bool) -> Void
+  private let onRetryTask: (String) -> Void
+  private let onStopTask: (String) -> Void
   private let onExpand: () -> Void
   private let onCollapse: () -> Void
   private let onShare: () -> Void
@@ -56,8 +64,14 @@ public struct InspectorColumn: View {
     width: CGFloat = Theme.Metric.inspectorWidth,
     artifacts: [InspectorArtifact],
     jobs: [InspectorJob],
+    tasks: [InspectorTaskRow] = [],
+    usage: [InspectorUsageRow] = [],
+    choices: [InspectorChoiceRow] = [],
+    onChoose: @escaping (String, String) -> Void = { _, _ in },
     tab: Binding<Tab>,
     onToggleJob: @escaping (String, Bool) -> Void = { _, _ in },
+    onRetryTask: @escaping (String) -> Void = { _ in },
+    onStopTask: @escaping (String) -> Void = { _ in },
     onExpand: @escaping () -> Void = {},
     onCollapse: @escaping () -> Void = {},
     onShare: @escaping () -> Void = {},
@@ -73,8 +87,14 @@ public struct InspectorColumn: View {
     self.width = width
     self.artifacts = artifacts
     self.jobs = jobs
+    self.tasks = tasks
+    self.usage = usage
+    self.choices = choices
+    self.onChoose = onChoose
     self._tab = tab
     self.onToggleJob = onToggleJob
+    self.onRetryTask = onRetryTask
+    self.onStopTask = onStopTask
     self.onExpand = onExpand
     self.onCollapse = onCollapse
     self.onShare = onShare
@@ -118,7 +138,7 @@ public struct InspectorColumn: View {
         .padding(.horizontal, Theme.Metric.panelInset)
 
       ScrollView {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Theme.Metric.panelSectionGap) {
           content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -136,42 +156,28 @@ public struct InspectorColumn: View {
     .background(Theme.Palette.surface)
   }
 
-  @ViewBuilder
-  private var content: some View {
+  private var sections: [InspectorSectionModel] {
     switch tab {
     case .detail:
-      SectionLabel("编码")
-      ForEach(artifacts) { artifact in
-        ChevronRow(
-          systemName: "chevron.left.forwardslash.chevron.right",
-          title: artifact.title
-        )
-      }
-      TextAction("展开", action: onExpand)
-        .frame(maxWidth: .infinity)
-        .padding(.top, 2)
-
-      SectionLabel("例行任务").padding(.top, 10)
-      ForEach(jobs) { job in
-        ToggleRow(
-          title: job.title,
-          detail: job.detail,
-          isOn: Binding(
-            get: { job.isOn },
-            set: { onToggleJob(job.id, $0) }
-          )
-        )
-      }
+      return InspectorSections.detail(
+        artifacts: artifacts, jobs: jobs, tasks: tasks, usage: usage, choices: choices)
     case .library:
-      SectionLabel("资料库")
-      Text("尚无资料。接入 Herdr 后，Space 的证据与产物会出现在这里。")
-        .font(Theme.TypeScale.note)
-        .foregroundStyle(Theme.Palette.textSecondary)
+      return InspectorSections.library(artifacts: artifacts)
     case .computer:
-      SectionLabel("电脑")
-      Text("终端与会话信息在接入后展示。")
-        .font(Theme.TypeScale.note)
-        .foregroundStyle(Theme.Palette.textSecondary)
+      return InspectorSections.computer()
+    }
+  }
+
+  private var content: some View {
+    ForEach(sections) { section in
+      InspectorSectionView(
+        section: section,
+        onToggleJob: onToggleJob,
+        onExpand: onExpand,
+        onRetryTask: onRetryTask,
+        onStopTask: onStopTask,
+        onChoose: onChoose
+      )
     }
   }
 }

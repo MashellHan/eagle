@@ -43,17 +43,24 @@ public struct BrandHeader: View {
   private let version: String
   private let onSearch: () -> Void
   private let onCompose: () -> Void
+  /// A daemon group is a second kind of thing to create, so the + becomes a menu.
+  private let onCreateGroup: (() -> Void)?
+  private let canCompose: Bool
   private let onCollapse: () -> Void
 
   public init(
     version: String,
     onSearch: @escaping () -> Void = {},
     onCompose: @escaping () -> Void = {},
+    onCreateGroup: (() -> Void)? = nil,
+    canCompose: Bool = true,
     onCollapse: @escaping () -> Void = {}
   ) {
     self.version = version
     self.onSearch = onSearch
     self.onCompose = onCompose
+    self.onCreateGroup = onCreateGroup
+    self.canCompose = canCompose
     self.onCollapse = onCollapse
   }
 
@@ -97,13 +104,30 @@ public struct BrandHeader: View {
         style: .circled,
         action: onSearch
       )
-      IconButton(
-        systemName: "plus",
-        label: "新建会话",
-        size: Theme.Metric.headerControlHeight,
-        style: .circled,
-        action: onCompose
-      )
+      if let onCreateGroup {
+        MenuIconButton(
+          systemName: "plus",
+          label: "新建",
+          size: Theme.Metric.headerControlHeight
+        ) {
+          Button(action: onCompose) {
+            Label("新建 Bot", systemImage: "person.badge.plus")
+          }
+          .disabled(!canCompose)
+          Button(action: onCreateGroup) {
+            Label("新建分组", systemImage: "folder.badge.plus")
+          }
+          .disabled(!canCompose)
+        }
+      } else {
+        IconButton(
+          systemName: "plus",
+          label: "新建会话",
+          size: Theme.Metric.headerControlHeight,
+          style: .circled,
+          action: onCompose
+        )
+      }
       IconButton(
         systemName: "sidebar.left",
         label: "收起侧栏",

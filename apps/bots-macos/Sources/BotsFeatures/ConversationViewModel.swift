@@ -42,7 +42,7 @@ public final class ConversationViewModel: ObservableObject {
   /// Sends the user asked for that have not been confirmed yet.
   private var inFlight: [String: String] = [:]
   /// The absolute catalog a `bots` frame carries, for the window's sidebar.
-  public var onCatalog: (([BotSummary]) -> Void)?
+  public var onCatalog: ((BotCatalog) -> Void)?
 
   public init(
     botId: String = "",
@@ -57,6 +57,10 @@ public final class ConversationViewModel: ObservableObject {
   }
 
   public var title: String { selectedBotId ?? "" }
+  /// The live work of the selected bot, for the inspector's 任务 section.
+  public var tasks: [TaskSummary] { state.tasks }
+  /// Tokens and cost so far, for the inspector's 用量 section.
+  public var usage: Usage? { state.usage }
   public var canSend: Bool {
     !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       && connection == .ready
@@ -97,11 +101,17 @@ public final class ConversationViewModel: ObservableObject {
   }
 
   public func send() {
+    send(inserting: false)
+  }
+
+  /// `inserting` steers the run that is answering instead of queueing behind it; while the
+  /// bot is idle the daemon places it like any other input.
+  public func send(inserting: Bool) {
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty, connection == .ready, let botId = selectedBotId else { return }
     let requestId = Identifiers.request()
     draft = ""
-    send(text: text, requestId: requestId, botId: botId, optimistic: true)
+    send(text: text, requestId: requestId, botId: botId, optimistic: true, inserting: inserting)
   }
 
   /// Retrying keeps the original requestId, which is how it is recovered, including after a
@@ -164,7 +174,13 @@ public final class ConversationViewModel: ObservableObject {
 
   // MARK: - Sending
 
-  private func send(text: String, requestId: String, botId: String, optimistic: Bool) {
+  private func send(
+    text: String,
+    requestId: String,
+    botId: String,
+    optimistic: Bool,
+    inserting: Bool = false
+  ) {
     // The entry is stored before the frame is written; if it cannot be stored, nothing is
     // sent and the draft comes back (PROTOCOL.md, client duties 1).
     do {
@@ -188,7 +204,7 @@ public final class ConversationViewModel: ObservableObject {
       do {
         try await self.conversation.send(
           text,
-          whenBusy: .followUp,
+          whenBusy: inserting ? .steer : .followUp,
           context: context,
           botId: botId
         )
@@ -322,8 +338,12 @@ public final class ConversationViewModel: ObservableObject {
     case .history(let page):
       state = Reducer.apply(.history(page: page), to: state)
       hasOlder = page.hasMore
-    case .catalog(let bots):
-      onCatalog?(bots)
+    case .tasks(let tasks):
+      state = Reducer.apply(.tasks(tasks), to: state)
+    case .usage(let usage):
+      state = Reducer.apply(.usage(usage), to: state)
+    case .catalog(let catalog):
+      onCatalog?(catalog)
     case .error(let kind, let disposition, let message, _, let requestId):
       errorBanner = message
       if kind == .taskParked { parked = true }
@@ -370,6 +390,7 @@ public final class ConversationViewModel: ObservableObject {
     next.inbox = []
     next.streaming = nil
     next.running = false
+    next.tasks = []
     return next
   }
 

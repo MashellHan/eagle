@@ -94,6 +94,10 @@ export const toServerEvent = (event: HubEvent): ServerEvent => {
         messageId: event.messageId,
         changes: event.changes,
       };
+    case "usage":
+      return { type: "usage", rev: event.rev, trace: event.trace, usage: event.usage };
+    case "tasks":
+      return { type: "tasks", rev: event.rev, trace: event.trace, tasks: event.tasks };
     case "status":
       return {
         type: "status",
@@ -321,6 +325,7 @@ export const attachConnection = (
         server: deps.server,
         capabilities: deps.capabilities,
         bots: registry.summaries(),
+        ...(typeof registry.groups === "function" ? { groups: registry.groups() } : {}),
       });
       return;
     }
@@ -517,6 +522,9 @@ export const attachConnection = (
       message: safeMessage(classified.message),
       ...(requestId === undefined ? {} : { requestId }),
     });
+    if (command.type === "subscribe" && disposition === "runtime") {
+      close(CLOSE.internal, "subscription failed");
+    }
   };
 
   armIdle();

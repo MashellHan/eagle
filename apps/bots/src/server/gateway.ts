@@ -4,12 +4,23 @@
 // that already carries the bearer token; the public shape only says whether it is set.
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  DEFAULT_THINKING_LEVEL,
+  DEFAULT_TOOL_GROUPS,
+  isThinkingLevel,
+  resolveToolGroups,
+  type ThinkingLevel,
+  type ToolGroup,
+} from "../core/domain.ts";
 
 export type GatewayConfig = {
   readonly provider: string;
   readonly baseUrl: string;
   readonly model: string;
   readonly apiKey: string;
+  readonly thinkingLevel: ThinkingLevel;
+  /** The tool groups every bot is given; `core` is always included. */
+  readonly toolGroups: readonly ToolGroup[];
 };
 
 export type PublicGateway = {
@@ -18,6 +29,8 @@ export type PublicGateway = {
   readonly baseUrl: string;
   readonly model: string;
   readonly hasApiKey: boolean;
+  readonly thinkingLevel: ThinkingLevel;
+  readonly toolGroups: readonly ToolGroup[];
 };
 
 export type GatewayTest = {
@@ -33,6 +46,8 @@ export type GatewayInput = {
   readonly apiKey?: string;
   readonly model?: string;
   readonly provider?: string;
+  readonly thinkingLevel?: string;
+  readonly toolGroups?: readonly string[];
 };
 
 const FILE = "gateway.json";
@@ -65,6 +80,17 @@ export const readGateway = async (root: string): Promise<GatewayConfig | undefin
       baseUrl,
       model,
       apiKey,
+      thinkingLevel: isThinkingLevel(raw.thinkingLevel)
+        ? raw.thinkingLevel
+        : DEFAULT_THINKING_LEVEL,
+      toolGroups:
+        raw.toolGroups === undefined
+          ? DEFAULT_TOOL_GROUPS
+          : resolveToolGroups(
+              Array.isArray(raw.toolGroups)
+                ? raw.toolGroups.filter((name): name is string => typeof name === "string")
+                : [],
+            ),
     };
   } catch {
     return undefined;
@@ -88,7 +114,18 @@ export const gatewayFromEnv = (
   const model = env.BOTS_MODEL?.trim() ?? "";
   if (baseUrl.length === 0 || apiKey.length === 0 || model.length === 0) return undefined;
   const provider = env.BOTS_PROVIDER?.trim() ?? "";
-  return { provider: provider.length > 0 ? provider : DEFAULT_PROVIDER, baseUrl, model, apiKey };
+  const level = env.BOTS_THINKING_LEVEL?.trim();
+  return {
+    provider: provider.length > 0 ? provider : DEFAULT_PROVIDER,
+    baseUrl,
+    model,
+    apiKey,
+    thinkingLevel: isThinkingLevel(level) ? level : DEFAULT_THINKING_LEVEL,
+    toolGroups:
+      env.BOTS_TOOL_GROUPS === undefined
+        ? DEFAULT_TOOL_GROUPS
+        : resolveToolGroups(env.BOTS_TOOL_GROUPS.split(",").map((name) => name.trim())),
+  };
 };
 
 export const publicGateway = (config: GatewayConfig | undefined): PublicGateway => ({
@@ -101,6 +138,8 @@ export const publicGateway = (config: GatewayConfig | undefined): PublicGateway 
   baseUrl: config?.baseUrl ?? "",
   model: config?.model ?? "",
   hasApiKey: (config?.apiKey.length ?? 0) > 0,
+  thinkingLevel: config?.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
+  toolGroups: config?.toolGroups ?? DEFAULT_TOOL_GROUPS,
 });
 
 /** A gateway URL is http(s) and has no trailing slash, so `/models` appends cleanly. */
@@ -114,13 +153,39 @@ export const normalizeBaseUrl = (value: string): string | undefined => {
   }
 };
 
+/** The model ids the gateway offers, in its own order; empty when it cannot be asked. */
+export const listGatewayModels = async (
+  config: Pick<GatewayConfig, "baseUrl" | "apiKey">,
+  options: { readonly timeoutMs?: number } = {},
+): Promise<readonly string[]> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? TEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${config.baseUrl.replace(/\/$/, "")}/models`, {
+      headers: { authorization: `Bearer ${config.apiKey}` },
+      signal: controller.signal,
+    });
+    if (!response.ok) return [];
+    const body = (await response.json().catch(() => undefined)) as { data?: unknown } | undefined;
+    if (!Array.isArray(body?.data)) return [];
+    return body.data.flatMap((item) => {
+      const id = (item as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? [id] : [];
+    });
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 /**
  * Proves the app can reach the gateway and that the key is accepted. It asks for the
  * model list, which the OpenAI-compatible endpoint implements, instead of spending a
  * generation; a 401 is an auth problem, a timeout is a reachability problem.
  */
 export const testGateway = async (
-  config: GatewayConfig,
+  config: Pick<GatewayConfig, "provider" | "baseUrl" | "model" | "apiKey">,
   options: { readonly timeoutMs?: number } = {},
 ): Promise<GatewayTest> => {
   const started = performance.now();

@@ -370,6 +370,9 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       }),
       replay: "safe",
       outputLimits: { maxBytes: 8 * 1024, maxLines: 100, retain: "head" },
+      // Eight terminal tools are too much prompt to carry in every request; the model
+      // loads the ones it needs with tool_search.
+      deferred: true,
       execute: (args, _api, context) =>
         run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
@@ -521,6 +524,9 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
         ),
       }),
       outputLimits: { maxBytes: 8 * 1024, maxLines: 100, retain: "head" },
+      // Eight terminal tools are too much prompt to carry in every request; the model
+      // loads the ones it needs with tool_search.
+      deferred: true,
       execute: (args, _api, context) =>
         run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
@@ -596,6 +602,9 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       parameters: Type.Object({}),
       replay: "safe",
       outputLimits: { maxBytes: 16 * 1024, maxLines: 300, retain: "head" },
+      // Eight terminal tools are too much prompt to carry in every request; the model
+      // loads the ones it needs with tool_search.
+      deferred: true,
       execute: (_args, _api, context) =>
         run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
@@ -637,6 +646,9 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
         timeoutMs: Type.Optional(Type.Number({ description: "Deadline in milliseconds" })),
       }),
       outputLimits: { maxBytes: 8 * 1024, maxLines: 100, retain: "head" },
+      // Eight terminal tools are too much prompt to carry in every request; the model
+      // loads the ones it needs with tool_search.
+      deferred: true,
       execute: (args, _api, context) =>
         run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
@@ -677,6 +689,9 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       }),
       replay: "safe",
       outputLimits: { maxBytes: 8 * 1024, maxLines: 100, retain: "head" },
+      // Eight terminal tools are too much prompt to carry in every request; the model
+      // loads the ones it needs with tool_search.
+      deferred: true,
       execute: (args, _api, context) =>
         run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
@@ -716,6 +731,9 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       }),
       replay: "safe",
       outputLimits: { maxBytes: 128 * 1024, maxLines: 4_000, retain: "tail" },
+      // Eight terminal tools are too much prompt to carry in every request; the model
+      // loads the ones it needs with tool_search.
+      deferred: true,
       execute: (args, _api, context) =>
         run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
@@ -754,6 +772,9 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
         keys: Type.Array(Type.String({ description: "One logical key per entry" })),
       }),
       outputLimits: { maxBytes: 4 * 1024, maxLines: 50, retain: "head" },
+      // Eight terminal tools are too much prompt to carry in every request; the model
+      // loads the ones it needs with tool_search.
+      deferred: true,
       execute: (args, _api, context) =>
         run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
@@ -781,6 +802,9 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
       description: "Close this bot's own herdr space and forget it.",
       parameters: Type.Object({}),
       outputLimits: { maxBytes: 4 * 1024, maxLines: 50, retain: "head" },
+      // Eight terminal tools are too much prompt to carry in every request; the model
+      // loads the ones it needs with tool_search.
+      deferred: true,
       execute: (_args, _api, context) =>
         run(context.abortSignal, async (): Promise<ToolOutcome> => {
           try {
@@ -811,6 +835,7 @@ export const createHerdrTools = (options: HerdrToolOptions): readonly ToolRegist
 export const herdrSection = (botId: string): string =>
   [
     `You own one herdr space named ${spaceLabelOf(botId)}; open it with herdr_open_space.`,
+    'The herdr tools are not loaded yet: call tool_search with a query like "herdr" to enable them.',
     "Start one controller with herdr_start_controller, talk to it with herdr_send, watch it with herdr_wait, and read its answer with herdr_read.",
     "When the work is done, close the space with herdr_close_space.",
   ].join("\n");

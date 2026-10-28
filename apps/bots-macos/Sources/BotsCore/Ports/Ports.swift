@@ -11,7 +11,11 @@ public enum ConversationEvent: Sendable, Equatable {
   case status(running: Bool, inbox: [InboxItem], streaming: String?)
   case submission(Submission)
   case history(page: HistoryPage)
-  case catalog([BotSummary])
+  /// The whole live-task list of the bot; an empty list means nothing runs.
+  case tasks([TaskSummary])
+  /// Tokens and cost so far, whenever the daemon's totals move.
+  case usage(Usage)
+  case catalog(BotCatalog)
   case error(
     kind: ErrorKind,
     disposition: ErrorDisposition,
@@ -61,7 +65,9 @@ public enum Identifiers {
 }
 
 public protocol CatalogPort: AnyObject {
-  func load() async throws -> [BotSummary]
+  /// The bots and the groups in one read: a membership only means something with the
+  /// groups beside it (PROTOCOL.md, "Group rules").
+  func load() async throws -> BotCatalog
   func create(
     title: String,
     label: String?,
@@ -76,7 +82,32 @@ public protocol CatalogPort: AnyObject {
   ) async throws -> BotSummary
   func rename(id: String, title: String) async throws -> BotSummary
   func delete(id: String) async throws
-  func catalogEvents() -> AsyncStream<[BotSummary]>
+  func catalogEvents() -> AsyncStream<BotCatalog>
+
+  func createGroup(title: String) async throws -> BotGroup
+  func renameGroup(id: String, title: String) async throws -> BotGroup
+  /// The daemon refuses while a bot is still filed under it; the message is what shows.
+  func deleteGroup(id: String) async throws
+  /// The whole order, every group once: the daemon writes nothing partial.
+  func reorderGroups(ids: [String]) async throws -> [BotGroup]
+  /// Files a bot; a nil group unfiles it.
+  func moveBot(id: String, groupId: String?) async throws -> BotSummary
+  /// The third-party providers and their saved state.
+  func loadProviders() async throws -> [ProviderSettings]
+  /// Saves one provider's key or enable flag.
+  func saveProvider(id: String, apiKey: String?, enabled: Bool?) async throws -> ProviderSettings
+  /// Probes one provider with a single search.
+  func testProvider(id: String) async throws -> ProviderProbe
+  /// Usage statistics over the retained window.
+  func loadUsage(days: Int) async throws -> UsageReport
+  /// The model ids the gateway offers.
+  func loadModels() async throws -> [String]
+  /// The bot's own agent choice; nil fields are left alone.
+  func setAgent(id: String, model: String?, thinkingLevel: String?) async throws -> BotSummary
+  /// Runs one parked task again; the task graph reports it as live work.
+  func retryTask(bot: String, task: String) async throws
+  /// Stops one live task; the transcript keeps what it committed.
+  func abortTask(bot: String, task: String) async throws
 }
 
 public protocol ConversationPort: AnyObject {

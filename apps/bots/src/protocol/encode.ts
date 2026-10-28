@@ -1,11 +1,13 @@
 // Domain → wire. Key order is fixed so the encoder output can be compared
 // byte-for-byte with the normative fixtures.
 import type {
+  BotGroup,
   BotSummary,
   ContentBlock,
   ConversationSnapshot,
   DeltaChange,
   Message,
+  TaskSummary,
 } from "../core/domain.ts";
 import type { ClientCommand, ServerEvent } from "./frames.ts";
 import { PROTOCOL_VERSION } from "./version.ts";
@@ -45,6 +47,20 @@ export const encodeMessage = (m: Message): Wire => {
   return wire;
 };
 
+const encodeTask = (task: TaskSummary): Wire => {
+  const wire: Wire = {
+    id: task.id,
+    kind: task.kind,
+    status: task.status,
+    phase: task.phase,
+    background: task.background,
+    conversationId: task.conversationId,
+  };
+  if (task.blocked !== undefined) wire.blocked = task.blocked;
+  if (task.owner !== undefined) wire.owner = task.owner;
+  return wire;
+};
+
 const encodeBot = (b: BotSummary): Wire => {
   const wire: Wire = {
     id: b.id,
@@ -56,14 +72,18 @@ const encodeBot = (b: BotSummary): Wire => {
   };
   if (b.label !== undefined) wire.label = b.label;
   if (b.appearance) wire.appearance = { shape: b.appearance.shape, tint: b.appearance.tint };
+  if (b.groupId !== undefined) wire.groupId = b.groupId;
   if (b.unavailable) {
     wire.unavailable = { reason: b.unavailable.reason, message: b.unavailable.message };
   }
   return wire;
 };
 
+const encodeGroup = (group: BotGroup): Wire => ({ id: group.id, title: group.title });
+
 export const encodeSnapshot = (s: ConversationSnapshot): Wire => {
   const value: Wire = { botId: s.botId };
+  if (s.tasks !== undefined) value.tasks = s.tasks.map(encodeTask);
   if (s.agent) {
     value.agent = {
       model: { provider: s.agent.model.provider, modelId: s.agent.model.modelId },
@@ -88,6 +108,7 @@ export const encodeSnapshot = (s: ConversationSnapshot): Wire => {
       inputTokens: s.usage.inputTokens,
       outputTokens: s.usage.outputTokens,
       totalTokens: s.usage.totalTokens,
+      ...(s.usage.costUsd === undefined ? {} : { costUsd: s.usage.costUsd }),
     };
   }
   if (s.unavailable) {
@@ -133,6 +154,7 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
         instance: event.server.instance,
         pid: event.server.pid,
       };
+      if (event.groups !== undefined) wire.groups = event.groups.map(encodeGroup);
       wire.capabilities = {
         agent: event.capabilities.agent === true,
         tools: event.capabilities.tools === true,
@@ -142,6 +164,7 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
         peers: event.capabilities.peers === true,
       };
       wire.bots = event.bots.map(encodeBot);
+      if (event.groups !== undefined) wire.groups = event.groups.map(encodeGroup);
       return wire;
     case "snapshot":
       wire.value = encodeSnapshot(event.value);
@@ -153,6 +176,17 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
     case "delta":
       wire.messageId = event.messageId;
       wire.changes = event.changes.map(encodeChange);
+      return wire;
+    case "usage":
+      wire.usage = {
+        inputTokens: event.usage.inputTokens,
+        outputTokens: event.usage.outputTokens,
+        totalTokens: event.usage.totalTokens,
+        ...(event.usage.costUsd === undefined ? {} : { costUsd: event.usage.costUsd }),
+      };
+      return wire;
+    case "tasks":
+      wire.tasks = event.tasks.map(encodeTask);
       return wire;
     case "status":
       wire.running = event.running;
@@ -169,6 +203,7 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
       return wire;
     case "bots":
       wire.bots = event.bots.map(encodeBot);
+      if (event.groups !== undefined) wire.groups = event.groups.map(encodeGroup);
       return wire;
     case "history":
       wire.hasMore = event.hasMore;

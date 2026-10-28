@@ -1,6 +1,6 @@
 // The composition root: one daemon over one root, wired from configuration, closed cleanly.
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +8,7 @@ import test from "node:test";
 import { readConfig } from "../src/config.ts";
 import { startDaemon } from "../src/main.ts";
 import { createDaemonModels } from "../src/runtime/pi/models.ts";
-import { writeGateway } from "../src/server/gateway.ts";
+import { readGateway, writeGateway } from "../src/server/gateway.ts";
 import { waitFor } from "./support/pi.ts";
 
 test("saved gateway credentials and provider-default reasoning work on every daemon boot", async () => {
@@ -74,6 +74,8 @@ test("saved gateway credentials and provider-default reasoning work on every dae
       model: "saved-model",
       baseUrl: `http://127.0.0.1:${address.port}/v1`,
       apiKey: key,
+      thinkingLevel: "off",
+      toolGroups: ["core", "herdr"],
     });
     let botId: string | undefined;
     for (const boot of [1, 2]) {
@@ -178,5 +180,215 @@ test("the daemon starts from configuration and closes without leaving work behin
     await again.close();
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("settings store the thinking level, refuse an unknown one and apply it to bots", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-levels-"));
+  try {
+    const config = readConfig({ argv: ["--root", root, "--port", "0"], env: {} });
+    const daemon = await startDaemon(config);
+    const put = (body: unknown) =>
+      fetch(`http://127.0.0.1:${daemon.port}/v1/settings`, {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${daemon.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    const settings = {
+      baseUrl: "http://127.0.0.1:9/v1",
+      model: "auto/gpt-6-luna",
+      apiKey: "sk-levels-000000000000000000",
+    };
+    try {
+      const refused = await put({ ...settings, thinkingLevel: "loud" });
+      assert.equal(refused.status, 400, "an unknown level is refused");
+      assert.equal(
+        (await readGateway(root))?.thinkingLevel ?? "medium",
+        "medium",
+        "a refused save writes nothing",
+      );
+
+      const saved = await put({ ...settings, thinkingLevel: "xhigh" });
+      assert.equal(saved.status, 200);
+      const shown = (await saved.json()) as { settings: { thinkingLevel: string; model: string } };
+      assert.equal(shown.settings.thinkingLevel, "xhigh");
+      assert.equal(shown.settings.model, "auto/gpt-6-luna");
+      assert.equal((await readGateway(root))?.thinkingLevel, "xhigh", "the choice is stored");
+
+      const created = await fetch(`http://127.0.0.1:${daemon.port}/v1/bots`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${daemon.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ title: "等级" }),
+      });
+      const botId = ((await created.json()) as { bot: { id: string } }).bot.id;
+      const stored = JSON.parse(await readFile(join(root, "bots", botId, "bot.json"), "utf8")) as {
+        thinkingLevel?: string;
+        model: { modelId: string };
+      };
+      assert.equal(stored.thinkingLevel, "xhigh", "a new bot records the settings level");
+      assert.equal(stored.model.modelId, "auto/gpt-6-luna");
+    } finally {
+      await daemon.close();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("settings store tool groups, reject unknown names and keep core and coding mandatory", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-groups-"));
+  try {
+    const config = readConfig({ argv: ["--root", root, "--port", "0"], env: {} });
+    const daemon = await startDaemon(config);
+    const put = (body: unknown) =>
+      fetch(`http://127.0.0.1:${daemon.port}/v1/settings`, {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${daemon.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    const settings = {
+      baseUrl: "http://127.0.0.1:9/v1",
+      model: "auto/gpt-6-luna",
+      apiKey: "sk-groups-000000000000000000",
+      thinkingLevel: "medium",
+    };
+    try {
+      const refused = await put({ ...settings, toolGroups: ["core", "web"] });
+      assert.equal(refused.status, 400, "an unknown group is refused");
+      assert.equal(await readGateway(root), undefined, "a refused save writes nothing");
+
+      const saved = await put({ ...settings, toolGroups: ["herdr"] });
+      assert.equal(saved.status, 200);
+      const shown = (await saved.json()) as { settings: { toolGroups: string[] } };
+      assert.deepEqual(
+        shown.settings.toolGroups,
+        ["core", "coding", "herdr"],
+        "both required groups are implied",
+      );
+      assert.deepEqual((await readGateway(root))?.toolGroups, ["core", "coding", "herdr"]);
+
+      const trimmed = await put({ ...settings, toolGroups: [] });
+      assert.equal(trimmed.status, 200);
+      assert.deepEqual(
+        (await readGateway(root))?.toolGroups,
+        ["core", "coding"],
+        "neither required group can be disabled",
+      );
+    } finally {
+      await daemon.close();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("compaction thresholds follow the declared window and can be turned off", async () => {
+  const { compactionFromEnv } = await import("../src/main.ts");
+  assert.deepEqual(compactionFromEnv({}, 200_000), {
+    enabled: true,
+    reserveTokens: 16_384,
+    keepRecentTokens: 8_192,
+    backgroundTokens: 32_768,
+  });
+  const tiny = compactionFromEnv({}, 1_200);
+  assert.equal(tiny?.enabled, true);
+  assert.equal(tiny?.reserveTokens, 600, "the reserve never exceeds half the window");
+  assert.equal(tiny?.backgroundTokens, 300, "background work stays within a quarter");
+  assert.deepEqual(compactionFromEnv({ BOTS_COMPACTION: "off" }, 200_000), { enabled: false });
+  assert.equal(
+    compactionFromEnv({ BOTS_COMPACTION_RESERVE_TOKENS: "2048" }, 200_000)?.reserveTokens,
+    2_048,
+  );
+});
+
+test("the usage endpoint reports an empty window before anything runs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-usage-http-"));
+  try {
+    const daemon = await startDaemon(
+      readConfig({ argv: ["--root", root, "--port", "0"], env: {} }),
+    );
+    try {
+      const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/usage?days=7`, {
+        headers: { authorization: `Bearer ${daemon.token}` },
+      });
+      assert.equal(response.status, 200);
+      const body = (await response.json()) as {
+        usage: { retentionDays: number; days: unknown[]; today: { totalTokens: number } };
+      };
+      assert.equal(body.usage.retentionDays, 90, "ninety days are kept");
+      assert.equal(body.usage.days.length, 7, "the requested window is served");
+      assert.equal(body.usage.today.totalTokens, 0);
+      const unknown = await fetch(`http://127.0.0.1:${daemon.port}/v1/usage`);
+      assert.equal(unknown.status, 401, "the statistics need the bearer token");
+    } finally {
+      await daemon.close();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("provider keys are saved behind the bearer and never returned", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-providers-http-"));
+  const configHome = await mkdtemp(join(tmpdir(), "bots-providers-home-"));
+  const previous = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = configHome;
+  try {
+    const daemon = await startDaemon(
+      readConfig({ argv: ["--root", root, "--port", "0"], env: {} }),
+    );
+    const headers = { authorization: `Bearer ${daemon.token}`, "content-type": "application/json" };
+    try {
+      const initial = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers`, { headers });
+      const listed = (await initial.json()) as {
+        providers: { id: string; hasApiKey: boolean; enabled: boolean }[];
+      };
+      assert.equal(listed.providers[0]?.id, "deepseek-search");
+      assert.equal(listed.providers[0]?.hasApiKey, false);
+
+      const saved = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers/deepseek-search`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ apiKey: "sk-http-secret", enabled: true }),
+      });
+      assert.equal(saved.status, 200);
+      const body = (await saved.json()) as {
+        provider: { hasApiKey: boolean; enabled: boolean; title: string };
+      };
+      assert.equal(body.provider.hasApiKey, true);
+      assert.equal(body.provider.enabled, true);
+      assert.equal(JSON.stringify(body).includes("sk-http-secret"), false, "the key stays stored");
+
+      const unknown = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers/nope`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ apiKey: "k" }),
+      });
+      assert.equal(unknown.status, 400);
+      const blank = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers/deepseek-search`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ apiKey: "   " }),
+      });
+      assert.equal(blank.status, 400, "a blank key is refused rather than clearing the stored one");
+      const unauthenticated = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers`);
+      assert.equal(unauthenticated.status, 401);
+    } finally {
+      await daemon.close();
+    }
+  } finally {
+    if (previous === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previous;
+    await rm(root, { recursive: true, force: true });
+    await rm(configHome, { recursive: true, force: true });
   }
 });

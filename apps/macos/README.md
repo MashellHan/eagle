@@ -17,12 +17,13 @@ swift run EagleApp          # same shell without a bundle; ⌘⇧G opens the gal
 swift test                 # Swift Testing suites for the logic layer
 ./Scripts/coverage.sh      # same tests plus a 90% logic-coverage gate
 swift run SnapshotRenderer ../../.local/macos-snapshots   # PNGs for review
+swift run SnapshotRenderer ../../.local/macos-inspector --inspector-only   # static inspector fixtures only
 ```
 
 The app supervises the daemon: it walks up from the executable for
 `apps/bots/scripts/serve.ts` (or uses `BOTS_DAEMON_DIR`), starts it with the
 machine's Node (`BOTS_NODE`, then Homebrew/`/usr/bin`), shows its state in
-Settings → `Bots 模型`, and terminates only the daemon it started when the app
+Settings → `模型`, and terminates only the daemon it started when the app
 quits. A daemon started outside the app is reported as external and left alone.
 `BOTS_ROOT`/`BOTS_PORT` move both the app and the daemon together.
 
@@ -66,6 +67,12 @@ unread pill, monochrome plus one green, and scroll edges fade instead of
 clipping. Groups expand and collapse with animation; right-clicking a group or a
 conversation offers rename/delete, and the header menu creates groups. Column
 widths are draggable and both side columns collapse. See [DESIGN.md](DESIGN.md).
+
+The inspector's task hierarchy uses fine dashed gutter lines and rounded final
+elbows, rather than indentation alone. Each parent has one continuous trunk that
+ends at its last visible child; independent roots are never joined. Row height,
+task ordering, status and retry/stop controls remain unchanged. Guides are purely
+decorative and never intercept pointer or accessibility interaction.
 
 ## Template library
 

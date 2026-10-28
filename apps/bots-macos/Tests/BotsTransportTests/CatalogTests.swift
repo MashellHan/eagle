@@ -92,7 +92,7 @@ final class CatalogHTTPClientTests: XCTestCase {
       }
     }
     let loaded = try await client.load()
-    XCTAssertEqual(loaded.map(\.id), ["b_1"])
+    XCTAssertEqual(loaded.bots.map(\.id), ["b_1"])
     let created = try await client.create(title: "二", label: nil, appearance: .standard)
     XCTAssertEqual(created.id, "b_2")
     let renamed = try await client.rename(id: "b_1", title: "改")
@@ -143,11 +143,18 @@ final class CatalogHTTPClientTests: XCTestCase {
     let loaded = try await client.loadGateway()
     XCTAssertEqual(loaded.model, "m")
     XCTAssertTrue(loaded.hasApiKey)
+    // A daemon that predates the level or the groups reports none; the client assumes defaults.
+    XCTAssertEqual(loaded.thinkingLevel, "medium")
+    XCTAssertEqual(loaded.toolGroups, ["core", "coding", "herdr", "agents"])
     // An omitted key must not be sent, so the daemon keeps the stored one.
-    let saved = try await client.saveGateway(baseURL: "http://x/v1", model: "m2", apiKey: nil)
+    let saved = try await client.saveGateway(
+      baseURL: "http://x/v1", model: "m2", thinkingLevel: "xhigh", toolGroups: ["core", "coding"],
+      apiKey: nil)
     XCTAssertEqual(saved.model, "m2")
     XCTAssertNil(savedBody["apiKey"])
     XCTAssertEqual(savedBody["model"] as? String, "m2")
+    XCTAssertEqual(savedBody["thinkingLevel"] as? String, "xhigh")
+    XCTAssertEqual(savedBody["toolGroups"] as? [String], ["core", "coding"])
     let probe = try await client.testGateway(baseURL: "http://x/v1", model: "m", apiKey: "k")
     XCTAssertTrue(probe.ok)
     XCTAssertEqual(probe.models, 2)
@@ -156,35 +163,126 @@ final class CatalogHTTPClientTests: XCTestCase {
 
   func testARejectedTokenIsASetupError() async {
     StubProtocol.handler = { _ in (401, Data()) }
-    await expectThrows({ try await self.client.load() }) { error in
-      XCTAssertEqual((error as? ClientError)?.message, "the daemon rejected the token")
+    await expectThrows(
+      { try await self.client.load() },
+      handler: { error in
+        XCTAssertEqual((error as? ClientError)?.message, "the daemon rejected the token")
+      })
+  }
+
+  func testSelectedBotConfigurationAndTaskActionsUseTheCorrectEndpoints() async throws {
+    var requests: [(String, String)] = []
+    var updates: [[String: Any]] = []
+    StubProtocol.handler = { request in
+      let method = request.httpMethod ?? ""
+      let path = request.url?.path ?? ""
+      requests.append((method, path))
+      switch (method, path) {
+      case ("GET", "/v1/models"):
+        return (200, Data(#"{"models":["m1","m2"]}"#.utf8))
+      case ("PATCH", "/v1/bots/b_1"):
+        let data = try XCTUnwrap(bodyData(request))
+        updates.append(try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any]))
+        return (200, Data("{\"bot\":\(self.bot("b_1", "configured"))}".utf8))
+      case ("POST", "/v1/bots/b_1/tasks/t_1/retry"),
+        ("POST", "/v1/bots/b_1/tasks/t_2/abort"):
+        XCTAssertNil(bodyData(request))
+        return (204, Data())
+      default:
+        XCTFail("unexpected request \(method) \(path)")
+        return (404, Data())
+      }
     }
+    let models = try await client.loadModels()
+    XCTAssertEqual(models, ["m1", "m2"])
+    let configured = try await client.setAgent(id: "b_1", model: "m2", thinkingLevel: "high")
+    XCTAssertEqual(configured.title, "configured")
+    _ = try await client.setAgent(id: "b_1", model: nil, thinkingLevel: nil)
+    try await client.retryTask(bot: "b_1", task: "t_1")
+    try await client.abortTask(bot: "b_1", task: "t_2")
+    XCTAssertEqual(updates.first?["model"] as? String, "m2")
+    XCTAssertEqual(updates.first?["thinkingLevel"] as? String, "high")
+    XCTAssertTrue(updates.last?.isEmpty == true)
+    XCTAssertEqual(requests.map { $0.0 }, ["GET", "PATCH", "PATCH", "POST", "POST"])
+    XCTAssertEqual(StubProtocol.lastAuthorization, "Bearer test-token-0123456789")
   }
 
   func testAnErrorBodyAndAnUnknownStatusAreReported() async {
     StubProtocol.handler = { _ in
       (409, Data("{\"error\":{\"kind\":\"internal\",\"message\":\"the bot is quarantined\"}}".utf8))
     }
-    await expectThrows({ try await self.client.load() }) { error in
-      XCTAssertEqual((error as? ClientError)?.message, "the bot is quarantined")
-    }
+    await expectThrows(
+      { try await self.client.load() },
+      handler: { error in
+        XCTAssertEqual((error as? ClientError)?.message, "the bot is quarantined")
+      })
 
     StubProtocol.handler = { _ in (500, Data("boom".utf8)) }
-    await expectThrows({ try await self.client.load() }) { error in
-      XCTAssertEqual((error as? ClientError)?.message, "the daemon answered 500")
-    }
+    await expectThrows(
+      { try await self.client.load() },
+      handler: { error in
+        XCTAssertEqual((error as? ClientError)?.message, "the daemon answered 500")
+      })
   }
 
   func testAReadableButWrongBodyIsReportedAndAnUnreachableDaemonToo() async {
     StubProtocol.handler = { _ in (200, Data("{}".utf8)) }
-    await expectThrows({ try await self.client.load() }) { error in
-      XCTAssertTrue(
-        (error as? ClientError)?.message.contains("cannot read") == true
-      )
-    }
+    await expectThrows(
+      { try await self.client.load() },
+      handler: { error in
+        XCTAssertTrue(
+          (error as? ClientError)?.message.contains("cannot read") == true
+        )
+      })
 
     StubProtocol.handler = { _ in throw ClientError("connection refused") }
-    await expectThrows({ try await self.client.load() }) { _ in }
+    await expectThrows({ try await self.client.load() }, handler: { _ in })
+  }
+
+  func testProvidersLoadSaveAndProbe() async throws {
+    var savedBody: [String: Any] = [:]
+    var probed = false
+    let provider = """
+      {"id":"deepseek-search","title":"DeepSeek 搜索","kind":"deepseek-search",
+       "baseUrl":"https://api.deepseek.com","docsUrl":"https://api-docs.deepseek.com/guides/search/",
+       "keyLabel":"DeepSeek API Key","hasApiKey":true,"enabled":true}
+      """
+    StubProtocol.handler = { request in
+      switch (request.httpMethod, request.url?.path) {
+      case ("GET", "/v1/providers"):
+        return (200, Data("{\"providers\":[\(provider)]}".utf8))
+      case ("PUT", "/v1/providers/deepseek-search"):
+        if let data = bodyData(request) {
+          savedBody = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        }
+        return (200, Data("{\"provider\":\(provider)}".utf8))
+      case ("POST", "/v1/providers/deepseek-search/test"):
+        probed = true
+        return (
+          200,
+          Data(
+            "{\"result\":{\"ok\":true,\"message\":\"ok\",\"latencyMs\":4,\"results\":1}}"
+              .utf8)
+        )
+      default:
+        return (404, Data())
+      }
+    }
+    let listed = try await client.loadProviders()
+    XCTAssertEqual(listed.first?.id, "deepseek-search")
+    XCTAssertEqual(listed.first?.hasApiKey, true)
+    XCTAssertEqual(listed.first?.keyLabel, "DeepSeek API Key")
+
+    let saved = try await client.saveProvider(
+      id: "deepseek-search", apiKey: "sk-new", enabled: false)
+    XCTAssertEqual(saved.title, "DeepSeek 搜索")
+    XCTAssertEqual(savedBody["apiKey"] as? String, "sk-new")
+    XCTAssertEqual(savedBody["enabled"] as? Bool, false)
+
+    let probe = try await client.testProvider(id: "deepseek-search")
+    XCTAssertTrue(probed)
+    XCTAssertTrue(probe.ok)
+    XCTAssertEqual(probe.results, 1)
   }
 }
 

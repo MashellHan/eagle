@@ -23,11 +23,13 @@ public struct AssistantBubble: View, Equatable {
     let blocks = preparedBlocks ?? model.blocks
     HStack(alignment: .bottom, spacing: 8) {
       HStack(alignment: .bottom, spacing: 8) {
-        VStack(alignment: .leading, spacing: 10) {
-          ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
-            blockView(block, caret: streaming && index == blocks.count - 1)
+        selectable(
+          VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+              blockView(block, caret: streaming && index == blocks.count - 1)
+            }
           }
-        }
+        )
         .padding(.horizontal, 16)
         .padding(.vertical, 13)
         .background(
@@ -39,14 +41,14 @@ public struct AssistantBubble: View, Equatable {
             .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
         )
         .messageCopyAlignment()
-        MessageCopyButton(text: text, label: "复制 Bot 消息", isVisible: hovering)
+        copyAction
       }
       .frame(maxWidth: Theme.Metric.conversationMaxContentWidth - 120, alignment: .leading)
       .onHover { hovering = $0 }
       Spacer(minLength: 40)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .textSelection(.enabled)
+
     .task(id: text) {
       if preparedBlocks == nil { await model.render(text) }
     }
@@ -123,7 +125,7 @@ public struct AssistantBubble: View, Equatable {
         Text(body)
           .font(.system(size: 12.5, design: .monospaced))
           .foregroundStyle(Theme.Palette.textPrimary)
-          .textSelection(.enabled)
+
           .fixedSize(horizontal: true, vertical: true)
           .padding(.horizontal, 12)
           .padding(.vertical, 9)
@@ -177,6 +179,28 @@ public struct AssistantBubble: View, Equatable {
   public nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.text == rhs.text && lhs.streaming == rhs.streaming
       && lhs.preparedBlocks == rhs.preparedBlocks
+  }
+
+  @ViewBuilder
+  private func selectable<Content: View>(_ content: Content) -> some View {
+    if hovering {
+      content.textSelection(.enabled)
+    } else {
+      content
+    }
+  }
+
+  /// The copy action exists only for the row under the pointer: building a button per
+  /// row costs milliseconds of scroll work for rows nobody is pointing at.
+  private var copyAction: some View {
+    Group {
+      if hovering {
+        MessageCopyButton(text: text, label: "复制 Bot 消息")
+      } else {
+        Color.clear
+      }
+    }
+    .frame(width: Theme.Metric.hitTarget, height: Theme.Metric.hitTarget)
   }
 
   private func headingSize(_ level: Int) -> CGFloat {

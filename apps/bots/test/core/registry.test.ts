@@ -79,6 +79,8 @@ const bench = async (
   const timers = fakeTimers();
   let opens = 0;
   const specs: RuntimeBotSpec[] = [];
+  const levels: string[] = [];
+  const groupCalls: (readonly string[])[] = [];
   const registry = new BotRegistry({
     directory,
     openRuntime: async (spec) => {
@@ -89,6 +91,12 @@ const bench = async (
       const busy = (options.busy ?? []).includes(spec.id);
       return {
         ...handle,
+        configureThinkingLevel: async (level: string) => {
+          levels.push(level);
+        },
+        configureToolGroups: async (groups: readonly string[]) => {
+          groupCalls.push(groups);
+        },
         busy: async () => (busy ? { run: true, tasks: false } : handle.busy()),
         close: async (_trace: string, deadlineMs: number) => {
           if (options.waitDeadline === true) {
@@ -116,6 +124,8 @@ const bench = async (
     timers,
     directory,
     specs,
+    levels,
+    groupCalls,
     opens: () => opens,
     setCloseOutcome: (outcome: "closed" | "timeout") => {
       options.closeOutcome = outcome;
@@ -138,6 +148,155 @@ test("a bot's stored thinking level reaches the runtime spec", async () => {
     await setup.registry.start();
     await setup.registry.open("b_think", "tr_think_0001");
     assert.equal(setup.specs.at(-1)?.thinkingLevel, "medium");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
+test("a per-bot model and level reach the catalog and the live conversation", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    await setup.registry.open("b_bot0", "tr_agent_0001");
+    const summary = await setup.registry.setAgent(
+      "b_bot0",
+      { model: { provider: "faux", modelId: "faux-9" }, thinkingLevel: "high" },
+      "tr_agent_0002",
+    );
+    assert.equal(summary.model.modelId, "faux-9");
+    const stored = (await setup.directory.load())[0];
+    assert.equal(stored?.model.modelId, "faux-9", "the catalog is the source of truth");
+    assert.equal(stored?.thinkingLevel, "high");
+    assert.deepEqual(setup.levels, ["high"], "the live conversation follows the level");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
+test("a task action refuses an id that is not a wire task id", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    await assert.rejects(() => setup.registry.abortTask("b_bot0", "not-a-task", "tr_task_0001"));
+    await assert.rejects(() => setup.registry.retryTask("b_bot0", "t_x", "tr_task_0002"));
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
+test("groups load at start and a moved bot's summary carries its group", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.directory.createGroup("工作");
+    await setup.directory.createGroup("生活");
+    await setup.registry.start();
+    assert.deepEqual(
+      setup.registry.groups().map((group) => group.title),
+      ["工作", "生活"],
+      "the sidebar order comes from the catalog",
+    );
+    const group = setup.registry.groups()[0];
+    assert.ok(group);
+    const summary = await setup.registry.moveBot("b_bot0", group.id, "tr_move_0001");
+    assert.equal(summary.groupId, group.id, "the summary follows the move");
+    const reordered = await setup.registry.reorderGroups(
+      setup.registry
+        .groups()
+        .map((entry) => entry.id)
+        .reverse(),
+      "tr_move_0002",
+    );
+    assert.deepEqual(
+      reordered.map((entry) => entry.title),
+      ["生活", "工作"],
+    );
+    await setup.registry.deleteGroup(setup.registry.groups()[0]?.id ?? "", "tr_move_0003");
+    assert.equal(setup.registry.groups().length, 1, "an empty group is deleted");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
+test("a gateway tool-group change reaches existing bots and new ones", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    await setup.registry.open("b_bot0", "tr_groups_0001");
+    await setup.registry.applyToolGroups(["core", "coding"], "tr_groups_0002");
+    assert.deepEqual(setup.groupCalls.at(-1), ["core", "coding"], "the live conversation follows");
+    const stored = await setup.directory.load();
+    assert.deepEqual(
+      stored[0]?.toolGroups,
+      ["core", "coding"],
+      "the catalog is the source of truth",
+    );
+    await setup.registry.create("new", "tr_groups_0003");
+    const created = (await setup.directory.load()).find((bot) => bot.title === "new");
+    assert.deepEqual(
+      created?.toolGroups,
+      ["core", "coding"],
+      "a new bot records the settings groups",
+    );
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
+test("a bot that never stored tool groups gets them written on the first save", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    const before = (await setup.directory.load())[0];
+    assert.equal(before?.toolGroups, undefined, "the fixture stores no selection");
+    await setup.registry.applyToolGroups(["core", "coding", "herdr"], "tr_groups_0004");
+    const after = (await setup.directory.load())[0];
+    assert.deepEqual(after?.toolGroups, ["core", "coding", "herdr"], "the default is now explicit");
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
+test("a failed live tool refresh is reported and an identical save retries it", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    const handle = await setup.registry.open("b_bot0", "tr_tools_retry");
+    let attempts = 0;
+    handle.configureToolGroups = async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("tool refresh failed");
+    };
+    await assert.rejects(
+      setup.registry.applyToolGroups([], "tr_tools_retry"),
+      /tool refresh failed/,
+    );
+    assert.deepEqual((await setup.directory.load())[0]?.toolGroups, ["core", "coding"]);
+    await setup.registry.applyToolGroups([], "tr_tools_retry");
+    assert.equal(attempts, 2);
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
+test("a gateway thinking-level change reaches existing bots and new ones", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    await setup.registry.open("b_bot0", "tr_level_0001");
+    await setup.registry.applyThinkingLevel("high", "tr_level_0002");
+    assert.deepEqual(setup.levels, ["high"], "the live conversation follows in place");
+    const stored = await setup.directory.load();
+    assert.equal(stored[0]?.thinkingLevel, "high", "the catalog is the source of truth");
+    await setup.registry.create("new", "tr_level_0003");
+    const created = (await setup.directory.load()).find((bot) => bot.title === "new");
+    assert.equal(created?.thinkingLevel, "high", "a new bot records the settings level");
   } finally {
     await setup.registry.shutdown();
     await setup.cleanup();

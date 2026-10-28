@@ -166,9 +166,12 @@ test("a refused submit is not_admitted and its own episode", () => {
   assert.equal(busy.classification.failure.kind, "limit_exceeded");
   assert.equal(busy.classification.failure.layer, "runtime");
   assert.equal(classifier.refusedBusy().minted, false);
-  const failed = classifier.submitFailed(new Error("boom"));
+  const failed = classifier.operationFailed("submit", new Error("boom"));
   assert.equal(failed.classification.failure.kind, "internal");
-  const session = classifier.submitFailed(Object.assign(new Error("x"), { name: "SessionFailed" }));
+  const session = classifier.operationFailed(
+    "submit",
+    Object.assign(new Error("x"), { name: "SessionFailed" }),
+  );
   assert.equal(session.classification.failure.kind, "storage_failed");
   assert.equal(
     session.classification.failure.layer,

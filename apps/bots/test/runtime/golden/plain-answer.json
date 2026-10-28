@@ -229,6 +229,15 @@
         "entryId": "e_7",
         "reason": "model_error"
       }
+    },
+    {
+      "type": "usage",
+      "trace": "tr_golden",
+      "usage": {
+        "inputTokens": 4,
+        "outputTokens": 0,
+        "totalTokens": 8
+      }
     }
   ]
 }

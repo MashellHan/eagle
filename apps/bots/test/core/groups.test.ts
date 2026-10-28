@@ -1,0 +1,16 @@
+// Tool groups (docs/bots/PROTOCOL.md, "Gateway settings"): the core group is mandatory, a
+// stored selection is normalized, and an unknown name never survives.
+import assert from "node:assert/strict";
+import test from "node:test";
+import { DEFAULT_TOOL_GROUPS, resolveToolGroups } from "../../src/core/domain.ts";
+
+test("core and coding cannot be turned off and unknown names are dropped", () => {
+  assert.deepEqual(resolveToolGroups([]), ["core", "coding"]);
+  assert.deepEqual(resolveToolGroups(["herdr"]), ["core", "coding", "herdr"]);
+  assert.deepEqual(resolveToolGroups(["core"]), ["core", "coding"]);
+  assert.deepEqual(resolveToolGroups(["coding"]), ["core", "coding"]);
+  assert.deepEqual(resolveToolGroups(["herdr", "web"]), ["core", "coding", "herdr"]);
+  assert.deepEqual(resolveToolGroups(["agents"]), ["core", "coding", "agents"]);
+  assert.deepEqual(resolveToolGroups(undefined), ["core", "coding"]);
+  assert.deepEqual(DEFAULT_TOOL_GROUPS, ["core", "coding", "herdr", "agents"]);
+});

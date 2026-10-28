@@ -336,6 +336,15 @@
       "replaces": "p_a1"
     },
     {
+      "type": "usage",
+      "trace": "tr_golden",
+      "usage": {
+        "inputTokens": 3,
+        "outputTokens": 0,
+        "totalTokens": 6
+      }
+    },
+    {
       "type": "append",
       "trace": "tr_golden",
       "message": {
@@ -385,6 +394,15 @@
         "status": "done",
         "entryId": "e_7",
         "answerEntryId": "e_11"
+      }
+    },
+    {
+      "type": "usage",
+      "trace": "tr_golden",
+      "usage": {
+        "inputTokens": 3,
+        "outputTokens": 2,
+        "totalTokens": 11
       }
     }
   ]

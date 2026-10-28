@@ -32,6 +32,11 @@ public struct BotsSettings {
 @MainActor
 final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var items: [SidebarItem] = []
+  /// The daemon's groups in display order, and the sidebar sections built from them.
+  @Published private(set) var groups: [BotGroup] = []
+  @Published private(set) var sections: [SidebarSection] = []
+  /// Sections the person folded away. It is view state, so it lives with the window.
+  @Published private(set) var collapsed: Set<String> = []
   let transcript = BotsTranscriptViewModel()
   let composer = BotsComposerViewModel()
   var entries: [TranscriptEntry] { transcript.entries }
@@ -42,6 +47,12 @@ final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var error: String?
   @Published private(set) var canRecover = false
   @Published private(set) var running = false
+  /// The selected bot's live tasks, already named and nested for the inspector's 任务 section.
+  @Published private(set) var tasks: [InspectorTaskRow] = []
+  /// The selected bot's spend, already formatted for the inspector's 用量 section.
+  @Published private(set) var usage: [InspectorUsageRow] = []
+  /// The selected bot's model and reasoning level, as menus.
+  @Published private(set) var choices: [InspectorChoiceRow] = []
   @Published private(set) var connection: ConnectionState = .connecting
 
   var participantStatus: ParticipantStatus {
@@ -84,6 +95,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
   private let gatewayProbe: @MainActor () async -> Bool?
   private let presenter = BotsPresenter()
   private var app: AppViewModel?
+  private var rows: [SidebarBotRow] = []
   private var cancellables = Set<AnyCancellable>()
   private var publicationScheduled = false
   private var pendingRepublish = false
@@ -124,16 +136,115 @@ final class BotsWorkspaceViewModel: ObservableObject {
     )
   }
 
-  var section: SidebarSection? {
-    guard !items.isEmpty else { return nil }
-    return SidebarSection(id: "bots", title: "Bots", items: items)
+  var isConnected: Bool { app != nil }
+
+  /// Every bot the sidebar can show, filed under its group; nil is 未分组. A membership
+  /// that points at a group the daemon no longer lists counts as ungrouped.
+  func bots(in groupId: String?) -> [BotSummary] {
+    let known = Set(groups.map(\.id))
+    return (app?.bots ?? []).filter {
+      SidebarComposition.membership($0.groupId, known: known) == groupId
+    }
   }
 
-  var isConnected: Bool { app != nil }
+  /// The group a bot is filed under right now, resolved the same way, for a drop.
+  func groupId(of botId: String) -> String? {
+    let known = Set(groups.map(\.id))
+    guard let bot = app?.bots.first(where: { $0.id == botId }) else { return nil }
+    return SidebarComposition.membership(bot.groupId, known: known)
+  }
 
   func owns(_ id: String?) -> Bool {
     guard let id else { return false }
-    return items.contains { $0.id == id }
+    // Membership follows the catalog, not whether a deferred publish has projected rows yet.
+    return app?.bots.contains { $0.id == id } ?? false
+  }
+
+  /// Whether a section id belongs to this window's groups (a daemon group or 未分组).
+  func ownsSection(_ id: String) -> Bool {
+    sections.contains { $0.id == id }
+  }
+
+  func toggleSection(_ id: String) {
+    if collapsed.contains(id) {
+      collapsed.remove(id)
+    } else {
+      collapsed.insert(id)
+    }
+    syncSections()
+  }
+
+  // MARK: - Groups
+
+  /// A new group is empty and named so it is told apart from the existing ones.
+  func createGroup() async {
+    guard let app else { return }
+    await app.createGroup(title: SidebarComposition.newGroupTitle(existing: groups.map(\.title)))
+    publish()
+  }
+
+  func renameGroup(_ id: String, to title: String) async {
+    guard let app else { return }
+    await app.renameGroup(id, to: title)
+    publish()
+  }
+
+  func deleteGroup(_ id: String) async {
+    guard let app else { return }
+    await app.deleteGroup(id)
+    collapsed.remove(id)
+    publish()
+  }
+
+  /// 上移/下移 sends the whole order once; the ends are no-ops because the menu items are
+  /// disabled there.
+  func reorderGroups(moving id: String, by offset: Int) async {
+    guard let app else { return }
+    guard let order = SidebarComposition.moved(groups.map(\.id), moving: id, by: offset) else {
+      return
+    }
+    await app.reorderGroups(order)
+    publish()
+  }
+
+  /// The gateway's model list, for the per-bot menu; loaded once per launch.
+  func loadModels() async {
+    await app?.loadModelsIfNeeded()
+    publish()
+  }
+
+  /// Picks one of the bot's own agent values from the inspector menus.
+  func choose(_ row: String, value: String) async {
+    switch row {
+    case "model":
+      await app?.setAgent(model: value, thinkingLevel: nil)
+    case "thinking":
+      await app?.setAgent(model: nil, thinkingLevel: value)
+    default:
+      break
+    }
+    publish()
+  }
+
+  /// Runs one parked task again; the task list follows the daemon.
+  func retryTask(_ taskId: String) async {
+    await app?.retryTask(taskId)
+    publish()
+  }
+
+  /// Stops one live task.
+  func stopTask(_ taskId: String) async {
+    await app?.stopTask(taskId)
+    publish()
+  }
+
+  /// Files a bot; nil unfiles it. The bot's place inside a group is the catalog's, never
+  /// something the drop changes (the daemon keeps no order of its own).
+  func moveBot(_ id: String, toGroup groupId: String?) async {
+    guard let app, app.bots.contains(where: { $0.id == id }) else { return }
+    if let groupId, !groups.contains(where: { $0.id == groupId }) { return }
+    await app.moveBot(id, toGroup: groupId)
+    publish()
   }
 
   /// Connects once. A failure is shown in the sidebar's subtitle, not as a new surface.
@@ -142,8 +253,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
     do {
       let model = try await makeApp(settings)
       app = model
-      bind(model)
       await model.refresh()
+      bind(model)
       publish()
       // The shell keeps its own landing selection (the demo workspace) unless a
       // development shell asks to open Bots directly.
@@ -239,7 +350,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
     if composer.text != value { composer.text = value }
   }
 
-  func send() {
+  func send(inserting: Bool = false) {
     guard let app else { return }
     // Only a known-missing gateway blocks; an unreachable settings endpoint must not turn
     // a working bot into a dead composer.
@@ -247,7 +358,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       needsModelSetup = true
       return
     }
-    app.conversation.send()
+    app.conversation.send(inserting: inserting)
     mirrorConversationDraftIntoComposer()
     publish()
   }
@@ -297,7 +408,13 @@ final class BotsWorkspaceViewModel: ObservableObject {
   private func publish() {
     guard let app else {
       if !items.isEmpty { items = [] }
+      if !groups.isEmpty { groups = [] }
+      if !sections.isEmpty { sections = [] }
+      rows = []
       transcript.clear()
+      if !tasks.isEmpty { tasks = [] }
+      if !usage.isEmpty { usage = [] }
+      if !choices.isEmpty { choices = [] }
       return
     }
     let conversation = app.conversation
@@ -310,10 +427,17 @@ final class BotsWorkspaceViewModel: ObservableObject {
     }
     let ids = Set(app.bots.map(\.id))
     previews = previews.filter { ids.contains($0.key) }
-    let nextItems = app.bots.map { bot in
-      presenter.sidebarItem(for: bot, preview: previews[bot.id]?.text ?? "")
+    if groups != app.groups { groups = app.groups }
+    let nextRows = app.bots.map { bot in
+      SidebarBotRow(
+        groupId: bot.groupId,
+        item: presenter.sidebarItem(for: bot, preview: previews[bot.id]?.text ?? "")
+      )
     }
+    if rows != nextRows { rows = nextRows }
+    let nextItems = nextRows.map(\.item)
     if items != nextItems { items = nextItems }
+    syncSections()
     if app.selection != selectedId, let next = app.selection {
       selectedId = next
       onSelect?(next)
@@ -326,7 +450,11 @@ final class BotsWorkspaceViewModel: ObservableObject {
       canRecover = false
       running = false
       error = nil
-      connection = .stopped
+      // Keep the socket state visible while the catalog still lists bots to choose from.
+      connection = app.bots.isEmpty ? .stopped : conversation.connection
+      if !tasks.isEmpty { tasks = [] }
+      if !usage.isEmpty { usage = [] }
+      if !choices.isEmpty { choices = [] }
       return
     }
     if title != selected.title { title = selected.title }
@@ -336,6 +464,13 @@ final class BotsWorkspaceViewModel: ObservableObject {
       for: conversation.state, connection: conversation.connection)
     if subtitle != nextSubtitle { subtitle = nextSubtitle }
     transcript.update(conversation.state)
+    let nextTasks = presenter.inspectorTasks(for: conversation.state.tasks)
+    if tasks != nextTasks { tasks = nextTasks }
+    let nextUsage = presenter.inspectorUsage(for: conversation.state.usage)
+    if usage != nextUsage { usage = nextUsage }
+    let nextChoices = presenter.agentChoices(
+      for: selected, agent: conversation.state.agent, models: app.models)
+    if choices != nextChoices { choices = nextChoices }
     if running != conversation.state.running { running = conversation.state.running }
     if connection != conversation.connection { connection = conversation.connection }
     let nextRecover = conversation.state.unavailable != nil || conversation.parked
@@ -345,6 +480,17 @@ final class BotsWorkspaceViewModel: ObservableObject {
       error = nextError
       mirrorConversationDraftIntoComposer()
     }
+  }
+
+  /// The sidebar is rebuilt only when its sections actually change: a delta repaint must
+  /// not invalidate it.
+  private func syncSections() {
+    let next = SidebarComposition.groupSections(
+      rows: rows,
+      groups: groups.map { SidebarItemGroup(id: $0.id, title: $0.title) },
+      collapsed: collapsed
+    )
+    if sections != next { sections = next }
   }
 
   private func mirrorConversationDraftIntoComposer() {
@@ -727,6 +873,190 @@ struct BotsPresenter {
     BotFace.Style(
       shape: BotFace.Shape(rawValue: bot.face.shape.rawValue) ?? .blob,
       tint: Theme.Palette.BotTint(rawValue: bot.face.tint.rawValue) ?? .green
+    )
+  }
+
+  // MARK: - Inspector tasks
+
+  /// The task kind in the person's words. A kind the client does not know keeps its wire
+  /// name, which is still more useful than a guess.
+  func taskTitle(for kind: String) -> String {
+    switch kind {
+    case "pi.generation": return "生成回答"
+    case "pi.tool": return "工具调用"
+    case "pi.compaction": return "上下文压缩"
+    default: return Self.isSubAgent(kind) ? "子 Agent" : kind
+    }
+  }
+
+  func taskSymbol(for kind: String) -> String {
+    switch kind {
+    case "pi.generation": return "sparkles"
+    case "pi.tool": return "wrench.and.screwdriver"
+    case "pi.compaction": return "rectangle.compress.vertical"
+    default: return Self.isSubAgent(kind) ? "person.2" : "circle.dashed"
+    }
+  }
+
+  /// A task that cannot run here says why, because "等待" would hide a task that never moves.
+  func taskStatusLabel(_ status: TaskStatus, blocked: String?) -> String {
+    if let blocked { return "已停放：\(Self.blockedReason(blocked))" }
+    switch status {
+    case .pending: return "排队"
+    case .running: return "运行中"
+    case .waiting: return "等待"
+    case .sleeping: return "休眠"
+    case .completing: return "收尾"
+    default: return status.rawValue
+    }
+  }
+
+  /// The inspector's 模型 rows: the bot's own model and reasoning level, each a menu of the
+  /// values the daemon accepts.
+  func agentChoices(
+    for bot: BotSummary, agent: AgentView?, models: [String]
+  ) -> [InspectorChoiceRow] {
+    let modelChoices =
+      models.contains(bot.model.modelId) || models.isEmpty
+      ? models
+      : [bot.model.modelId] + models
+    return [
+      InspectorChoiceRow(
+        id: "model",
+        label: "模型",
+        value: bot.model.modelId,
+        selected: bot.model.modelId,
+        choices: modelChoices.map { InspectorChoiceRow.Choice(id: $0, title: $0) }
+      ),
+      InspectorChoiceRow(
+        id: "thinking",
+        label: "思考等级",
+        value: Self.thinkingLabel(agent?.thinkingLevel ?? "medium"),
+        selected: agent?.thinkingLevel ?? "medium",
+        choices: Self.thinkingLevels.map {
+          InspectorChoiceRow.Choice(id: $0, title: $0)
+        }
+      ),
+    ]
+  }
+
+  static let thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+
+  static func thinkingLabel(_ level: String) -> String {
+    switch level {
+    case "off": return "关闭"
+    case "minimal": return "极低"
+    case "low": return "低"
+    case "medium": return "中"
+    case "high": return "高"
+    case "xhigh": return "极高"
+    case "max": return "最高"
+    default: return level
+    }
+  }
+
+  /// The inspector's 用量 rows. Absent usage is an empty list, so the section shows its own
+  /// empty state instead of three zeros.
+  func inspectorUsage(for usage: Usage?) -> [InspectorUsageRow] {
+    guard let usage else { return [] }
+    var rows = [
+      InspectorUsageRow(id: "input", label: "输入", value: UsageFormat.tokens(usage.inputTokens)),
+      InspectorUsageRow(id: "output", label: "输出", value: UsageFormat.tokens(usage.outputTokens)),
+      InspectorUsageRow(id: "total", label: "合计", value: UsageFormat.tokens(usage.totalTokens)),
+    ]
+    if let cost = usage.costUsd {
+      rows.append(
+        InspectorUsageRow(id: "cost", label: "花费", value: UsageFormat.cost(cost) ?? "$0"))
+    }
+    return rows
+  }
+
+  /// The inspector's 任务 rows: parents before children, a child indented under its owner.
+  /// A task whose owner is missing — or that sits in a cycle — stays a root instead of
+  /// disappearing or nesting forever.
+  func inspectorTasks(for tasks: [TaskSummary]) -> [InspectorTaskRow] {
+    let depths = taskDepths(tasks)
+    var children: [String: [TaskSummary]] = [:]
+    var roots: [TaskSummary] = []
+    for task in tasks {
+      let depth = depths[task.id] ?? 0
+      if depth == 0 {
+        roots.append(task)
+      } else if let owner = task.owner {
+        children[owner, default: []].append(task)
+      }
+    }
+    var rows: [InspectorTaskRow] = []
+    var emitted: Set<String> = []
+    func emit(_ task: TaskSummary, _ depth: Int) {
+      guard emitted.insert(task.id).inserted else { return }
+      rows.append(row(for: task, depth: min(depth, Self.maxTaskDepth)))
+      for child in children[task.id] ?? [] {
+        emit(child, depth + 1)
+      }
+    }
+    for root in roots {
+      emit(root, 0)
+    }
+    // Anything a cycle kept out of the tree is still shown, flat, rather than dropped.
+    for task in tasks {
+      emit(task, depths[task.id] ?? 0)
+    }
+    return rows
+  }
+
+  /// How many owners a task has above it; a cycle has no root, so it reads as a root, and an
+  /// owner the frame no longer lists is not an owner at all.
+  func taskDepths(_ tasks: [TaskSummary]) -> [String: Int] {
+    let known = Set(tasks.map(\.id))
+    var owners: [String: String] = [:]
+    for task in tasks {
+      guard let owner = task.owner, known.contains(owner) else { continue }
+      owners[task.id] = owner
+    }
+    var depths: [String: Int] = [:]
+    for task in tasks {
+      var depth = 0
+      var visited: Set<String> = [task.id]
+      var owner = owners[task.id]
+      while let current = owner {
+        guard visited.insert(current).inserted else {
+          depth = 0
+          break
+        }
+        depth += 1
+        owner = owners[current]
+      }
+      depths[task.id] = min(depth, Self.maxTaskDepth)
+    }
+    return depths
+  }
+
+  private static let maxTaskDepth = 3
+
+  private static func isSubAgent(_ kind: String) -> Bool {
+    kind == "bots.agents" || kind.hasPrefix("bots.agents.")
+  }
+
+  private static func blockedReason(_ code: String) -> String {
+    switch code {
+    case "restart_limit": return "重试次数过多"
+    case "missing_task": return "任务定义缺失"
+    case "task_too_old": return "任务过旧"
+    case "migration_failed": return "迁移失败"
+    default: return code
+    }
+  }
+
+  private func row(for task: TaskSummary, depth: Int) -> InspectorTaskRow {
+    InspectorTaskRow(
+      id: task.id,
+      title: taskTitle(for: task.kind),
+      symbolName: taskSymbol(for: task.kind),
+      status: taskStatusLabel(task.status, blocked: task.blocked),
+      depth: depth,
+      isRunning: task.status == .running,
+      isBlocked: task.blocked != nil
     )
   }
 

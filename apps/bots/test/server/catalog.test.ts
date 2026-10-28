@@ -315,3 +315,106 @@ test("a label and face survive a restart", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("groups are created, renamed, reordered and deleted only when empty", async () => {
+  const stack = await startStack();
+  const headers = { authorization: `Bearer ${stack.token}`, "content-type": "application/json" };
+  const call = (path: string, method: string, body?: unknown) =>
+    fetch(`http://127.0.0.1:${stack.port}${path}`, {
+      method,
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  try {
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+
+    const created = await call("/v1/groups", "POST", { title: " 工作 " });
+    assert.equal(created.status, 201);
+    const work = ((await created.json()) as { group: { id: string; title: string } }).group;
+    assert.equal(work.title, "工作", "the title is trimmed");
+    assert.deepEqual(
+      ((await frames.next()).groups as { id: string }[]).map((group) => group.id),
+      [work.id],
+      "an empty catalog still carries the new group",
+    );
+
+    const life = (
+      (await (await call("/v1/groups", "POST", { title: "生活" })).json()) as {
+        group: { id: string };
+      }
+    ).group;
+    await frames.next();
+
+    const renamed = await call(`/v1/groups/${work.id}`, "PATCH", { title: "项目" });
+    assert.equal(renamed.status, 200);
+    assert.equal(((await renamed.json()) as { group: { title: string } }).group.title, "项目");
+    await frames.next();
+
+    const reordered = await call("/v1/groups/order", "PUT", { ids: [life.id, work.id] });
+    assert.equal(reordered.status, 200);
+    assert.deepEqual(
+      ((await reordered.json()) as { groups: { id: string }[] }).groups.map((group) => group.id),
+      [life.id, work.id],
+    );
+    await frames.next();
+
+    const bot = (
+      (await (await call("/v1/bots", "POST", { title: "研究员" })).json()) as {
+        bot: { id: string };
+      }
+    ).bot;
+    await frames.next();
+    const moved = await call(`/v1/bots/${bot.id}`, "PATCH", { groupId: life.id });
+    assert.equal(moved.status, 200);
+    assert.equal(
+      ((await moved.json()) as { bot: { groupId: string } }).bot.groupId,
+      life.id,
+      "the summary carries the group",
+    );
+    await frames.next();
+
+    const refused = await call(`/v1/groups/${life.id}`, "DELETE");
+    assert.equal(refused.status, 409, "a group that still holds a bot cannot be deleted");
+    assert.match(
+      ((await refused.json()) as { error: { message: string } }).error.message,
+      /holds bots|still holds/,
+    );
+
+    const removed = await call(`/v1/groups/${work.id}`, "DELETE");
+    assert.equal(removed.status, 204, "an empty group can be deleted");
+    await frames.next();
+
+    const listed = (await (await call("/v1/bots", "GET")).json()) as {
+      groups: { id: string }[];
+      bots: { groupId?: string }[];
+    };
+    assert.deepEqual(
+      listed.groups.map((group) => group.id),
+      [life.id],
+    );
+    assert.equal(listed.bots[0]?.groupId, life.id, "the catalog keeps the membership");
+
+    assert.equal((await call("/v1/groups/order", "PUT", { ids: [] })).status, 400);
+    assert.equal((await call("/v1/groups", "POST", { title: "  " })).status, 400);
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});
+
+test("task actions answer 404 for an unknown bot and refuse a bot that cannot stop tasks", async () => {
+  const stack = await startStack();
+  const headers = { authorization: `Bearer ${stack.token}`, "content-type": "application/json" };
+  try {
+    const unknown = await fetch(
+      `http://127.0.0.1:${stack.port}/v1/bots/b_missing/tasks/t_1/abort`,
+      { method: "POST", headers },
+    );
+    assert.equal(unknown.status, 404, "an unknown bot is not a task action");
+  } finally {
+    await stack.close();
+  }
+});

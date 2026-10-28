@@ -8,6 +8,8 @@ import type {
   ErrorKind,
   Message,
   Submission,
+  TaskSummary,
+  Usage,
 } from "./domain.ts";
 
 export type RuntimeEvent = { readonly trace: string } & (
@@ -23,6 +25,8 @@ export type RuntimeEvent = { readonly trace: string } & (
       }[];
     }
   | { readonly type: "submission"; readonly record: Submission }
+  | { readonly type: "tasks"; readonly tasks: readonly TaskSummary[] }
+  | { readonly type: "usage"; readonly usage: Usage }
   | { readonly type: "snapshot"; readonly value: ConversationSnapshot }
   | {
       readonly type: "error";
@@ -42,6 +46,8 @@ export type RuntimeBotSpec = {
   readonly model: { readonly provider: string; readonly modelId: string };
   /** A bot's stored reasoning level, when it has one; the runtime applies it per bot. */
   readonly thinkingLevel?: string;
+  /** The tool groups this bot was given; `core` and `coding` are always included. */
+  readonly toolGroups?: readonly string[];
   readonly trace: string;
 };
 
@@ -63,6 +69,7 @@ export type RuntimeHistory = {
 };
 
 export interface RuntimeHandle {
+  refreshTools(trace: string): Promise<void>;
   /** Atomic: the view at attachment plus every later commit, with nothing lost between. */
   subscribe(trace: string, sink: (event: RuntimeEvent) => void): Promise<RuntimeSubscription>;
   /** Idempotent by requestId; returns the submission's current record. */
@@ -79,12 +86,20 @@ export interface RuntimeHandle {
   abort(trace: string): Promise<void>;
   /** Retries parked work; never aborts a running answer. */
   recover(trace: string): Promise<void>;
+  /** Runs one parked task again, by its wire id (`t_<n>`). */
+  retryTask?(taskId: string, trace: string): Promise<void>;
+  /** Stops one live task, by its wire id; the conversation keeps everything it committed. */
+  abortTask?(taskId: string, trace: string): Promise<void>;
   busy(): Promise<{ run: boolean; tasks: boolean }>;
   /** Gateway settings changed: move a live conversation to the new model in place. */
   configureModel?(
     model: { readonly provider: string; readonly modelId: string },
     trace: string,
   ): Promise<void>;
+  /** Gateway settings changed: move a live conversation to the new reasoning level. */
+  configureThinkingLevel?(thinkingLevel: string, trace: string): Promise<void>;
+  /** Gateway settings changed: keep only the chosen tool groups' extensions. */
+  configureToolGroups?(toolGroups: readonly string[], trace: string): Promise<void>;
   close(trace: string, deadlineMs: number): Promise<"closed" | "timeout">;
 }
 

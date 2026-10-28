@@ -336,6 +336,15 @@
         "entryId": "e_7",
         "answerEntryId": "e_10"
       }
+    },
+    {
+      "type": "usage",
+      "trace": "tr_golden",
+      "usage": {
+        "inputTokens": 3,
+        "outputTokens": 3,
+        "totalTokens": 9
+      }
     }
   ]
 }

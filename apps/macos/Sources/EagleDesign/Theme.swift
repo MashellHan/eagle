@@ -13,6 +13,7 @@ public enum Theme {
     public static let textPrimary = Color(light: 0x141416, dark: 0xF5F5F7)
     public static let textSecondary = Color(light: 0x6C6C72, dark: 0xA6A6AE)
     public static let textMuted = Color(light: 0x9A9AA2, dark: 0x75757D)
+    public static let taskGuide = textMuted.opacity(0.55)
     public static let accent = Color(light: 0x0B84C4, dark: 0x4FC3F7)
     public static let accentFill = Color(light: 0x2FB457, dark: 0x2FB457)
     public static let accentStrong = Color(light: 0x2FB457, dark: 0x3DD068)
@@ -85,6 +86,23 @@ public enum Theme {
     public static let footerBottom: CGFloat = 7
 
     public static let panelInset: CGFloat = 16
+    /// Inspector sections: a small glyph, a label, a hairline, then rows. The gap is tighter
+    /// than the sidebar's because three sections share one narrow column.
+    public static let panelSectionGap: CGFloat = 14
+    public static let panelSectionGlyph: CGFloat = 11
+    public static let panelSectionGlyphWidth: CGFloat = 15
+    public static let panelSectionBodyGap: CGFloat = 6
+    /// Glyph-to-label gap inside one section header and one empty state.
+    public static let panelSectionRowGap: CGFloat = 6
+    public static let panelTaskRowGap: CGFloat = 2
+    public static let panelTaskRowHeight: CGFloat = 28
+    public static let panelTaskIndent: CGFloat = 16
+    public static let panelTaskGuideClearance: CGFloat = 3
+    public static let panelTaskGuideRadius: CGFloat = 3
+    public static let panelTaskGuideDash: [CGFloat] = [2, 3]
+    public static let panelTaskSpinner: CGFloat = 10
+    public static let panelEmptyGlyph: CGFloat = 15
+    public static let panelEmptyVertical: CGFloat = 8
     public static let conversationInset: CGFloat = 24
     public static let turnGap: CGFloat = 24
     public static let inspectorRowHeight: CGFloat = 40

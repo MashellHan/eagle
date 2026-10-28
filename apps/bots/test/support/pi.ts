@@ -20,6 +20,8 @@ import {
   type PiRuntimeOptions,
   type PiSettings,
 } from "../../src/runtime/pi/PiDurableRuntime.ts";
+import type { SearchClient } from "../../src/tools/search/deepseek.ts";
+import type { UsageMeter } from "../../src/tools/usage.ts";
 
 export const trace = "tr_runtime_1";
 export const requestId = "r_runtime_1";
@@ -39,6 +41,8 @@ export type BenchOptions = {
   readonly storage?: (path: string) => Promise<Storage>;
   readonly windowMessages?: number;
   readonly maxMessageBytes?: number;
+  readonly search?: (spec: RuntimeBotSpec) => SearchClient | undefined;
+  readonly usage?: UsageMeter;
 };
 
 export const createBench = async (options: BenchOptions = {}): Promise<Bench> => {
@@ -54,6 +58,8 @@ export const createBench = async (options: BenchOptions = {}): Promise<Bench> =>
     ...(options.storage === undefined ? {} : { storage: options.storage }),
     ...(options.windowMessages === undefined ? {} : { windowMessages: options.windowMessages }),
     ...(options.maxMessageBytes === undefined ? {} : { maxMessageBytes: options.maxMessageBytes }),
+    ...(options.search === undefined ? {} : { search: options.search }),
+    ...(options.usage === undefined ? {} : { usage: options.usage }),
   };
   return {
     runtime: new PiDurableRuntime(runtimeOptions),

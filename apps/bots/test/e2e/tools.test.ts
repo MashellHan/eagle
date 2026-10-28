@@ -5,9 +5,83 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Message } from "../../src/core/domain.ts";
 import { assistant, text, toolCall } from "../support/pi.ts";
-import { frameQueue, hello, send, startStack } from "../support/server.ts";
+import { closeCode, frameQueue, hello, send, startStack } from "../support/server.ts";
 
 const tr = (name: string) => `tr_${name}_0123456`;
+
+test("a failed refresh closes with the client's retry code and reconnect gets a baseline", async () => {
+  const stack = await startStack({ real: true });
+  try {
+    const botId = await stack.createBot("retry refresh");
+    const handle = await stack.registry.open(botId, tr("warm_retry"));
+    const refresh = handle.refreshTools.bind(handle);
+    let first = true;
+    handle.refreshTools = async (trace) => {
+      if (first) {
+        first = false;
+        throw new Error("temporary refresh failure");
+      }
+      await refresh(trace);
+    };
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    const closed = closeCode(socket);
+    await send(socket, { type: "subscribe", botId, trace: tr("refresh_fail") });
+    assert.equal((await frames.next()).type, "error");
+    assert.equal(await closed, 1011);
+    const retry = stack.connect();
+    const retried = frameQueue(retry);
+    await send(retry, hello);
+    await retried.next();
+    await send(retry, { type: "subscribe", botId, trace: tr("refresh_retry") });
+    assert.equal((await retried.next()).type, "snapshot");
+    assert.equal(stack.faux?.state.callCount, 0);
+    retry.close();
+  } finally {
+    await stack.close();
+  }
+});
+
+test("real socket bot switches refresh cached tools without extra runtimes or model calls", async () => {
+  const stack = await startStack({ real: true });
+  try {
+    const first = await stack.createBot("first");
+    const second = await stack.createBot("second");
+    await stack.registry.open(first, tr("warm_first"));
+    await stack.registry.open(second, tr("warm_second"));
+    const opens = stack.opens();
+    for (const [index, botId] of [first, second, first].entries()) {
+      const socket = stack.connect();
+      const frames = frameQueue(socket);
+      await send(socket, hello);
+      assert.equal((await frames.next()).type, "welcome");
+      await send(socket, { type: "subscribe", botId, trace: tr(`switch_${index}`) });
+      const frame = await frames.next();
+      assert.equal(frame.type, "snapshot");
+      assert.equal((frame.value as { botId: string }).botId, botId);
+      socket.close();
+    }
+    const refreshes = stack.records.filter((record) => record.evt === "runtime.tools.refresh.ok");
+    assert.deepEqual(
+      refreshes.map((record) => record.botId),
+      [first, second, first],
+    );
+    assert.deepEqual(
+      refreshes.map((record) => record.trace),
+      [tr("switch_0"), tr("switch_1"), tr("switch_2")],
+    );
+    assert.equal(stack.opens(), opens);
+    assert.equal(
+      stack.records.filter((record) => record.evt === "runtime.subscribe.start").length,
+      2,
+    );
+    assert.equal(stack.faux?.state.callCount, 0);
+  } finally {
+    await stack.close();
+  }
+});
 
 test("a tool round is live in the transcript and in a later snapshot", async () => {
   const stack = await startStack({ real: true });
@@ -15,7 +89,7 @@ test("a tool round is live in the transcript and in a later snapshot", async () 
     const faux = stack.faux;
     assert.ok(faux !== undefined, "a real stack scripts the model network");
     faux.setResponses([
-      assistant([toolCall("list_files", { path: "." })], { stopReason: "toolUse" }),
+      assistant([toolCall("list", { path: "." })], { stopReason: "toolUse" }),
       text("工作区里没有别的文件。"),
     ]);
     const botId = await stack.createBot("工具行");
@@ -47,18 +121,15 @@ test("a tool round is live in the transcript and in a later snapshot", async () 
     );
     assert.equal(call?.role, "assistant", "the call rides in the assistant entry");
     const callBlock = call?.blocks.find((block) => block.type === "toolCall");
-    assert.equal(callBlock?.type === "toolCall" ? callBlock.name : "", "list_files");
+    assert.equal(callBlock?.type === "toolCall" ? callBlock.name : "", "list");
 
     const result = appends.find((message) => message.role === "tool");
     assert.ok(result !== undefined, "the tool result is appended as its own row");
     const resultBlock = result.blocks[0];
     assert.equal(resultBlock?.type, "toolResult");
-    assert.equal(resultBlock?.type === "toolResult" ? resultBlock.name : "", "list_files");
+    assert.equal(resultBlock?.type === "toolResult" ? resultBlock.name : "", "list");
     assert.equal(resultBlock?.type === "toolResult" ? resultBlock.isError : true, false);
-    assert.match(
-      resultBlock?.type === "toolResult" ? resultBlock.text : "",
-      /\(the workspace is empty\)/,
-    );
+    assert.match(resultBlock?.type === "toolResult" ? resultBlock.text : "", /\(empty directory\)/);
 
     // A late join after the run: the snapshot carries the same rows, in order.
     const again = stack.connect();
@@ -91,7 +162,7 @@ test("a hostile tool output is clamped by its encoded size and the socket stays 
     assert.ok(faux !== undefined);
     faux.setResponses([
       assistant(
-        [toolCall("run_command", { command: "head -c 65536 /dev/zero | LC_ALL=C tr '\\0' '\"'" })],
+        [toolCall("bash", { command: "head -c 65536 /dev/zero | LC_ALL=C tr '\\0' '\"'" })],
         { stopReason: "toolUse" },
       ),
       text("输出已经被裁剪。"),

@@ -471,3 +471,68 @@ an untracked legacy `agent/dist` directory. Git already ignores `dist/` at every
 depth, but Biome excluded only three named build locations. Replace those location
 exceptions with `!**/dist`; do not format generated JavaScript, remove local user
 artifacts or bypass the hook. Source lint rules and all push gates remain unchanged.
+
+## 2026-10-28 - Match edit paths to the selected working directory
+
+During native-tool consolidation, an edit command used a repository-relative path while
+its shell was already in `apps/bots`. The edit failed before writing anything, but the
+following test command still ran against the old registry. The nonzero result was not
+mistaken for success. The command was corrected to a package-relative path and rerun with
+`set -e`. Compound edit-and-check commands must use one explicit directory convention and
+stop when preparation fails; a test result after a failed edit is not implementation
+evidence.
+
+## 2026-10-28 - Refresh failures need a transport recovery path
+
+The first tool-refresh implementation handled the successful subscription path but left
+a failed client connected without a subscription. A service-level retry test passed even
+though the real client only subscribes after a welcome. Review exposed that dead end;
+the real-socket regression failed with `socket stayed open` before the fix. Runtime
+subscription failures now send their error and close with the existing retryable `1011`.
+
+The refresh catch also minted a separate failure identity after the SDK had already
+reported the storage failure. A real SQLite commit-fault test demonstrated two identities.
+Refresh and submit now share the classifier's operation/session path, and the regression
+requires one identity and one origin error. Test failure propagation across SDK, service
+and transport together; calling a service twice is not proof that the actual client can
+recover. The new tests use pi-ai's `getCurrentTools` for normalized transcript declarations
+and the wire snapshot's `value.botId`, rather than assuming raw context/envelope fields.
+
+## 2026-10-28 - Native path visitors and the formatter
+
+The task-guide raster and geometry tests passed, but pre-commit rejected `Path.forEach`
+under `ReplaceForEachWithForLoop`. That API visits path elements rather than iterating a
+Sequence, so the suggested collection rewrite was not appropriate. The test now uses
+CoreGraphics' native `applyWithBlock` visitor without disabling the rule. Strict formatting
+must run alongside rendering tests before staging; a passing Swift compiler does not prove
+the project's formatter accepts a native API idiom.
+
+## 2026-10-28 - A declared option that nothing reads is not wired
+
+The search-provider slice stopped mid-flight with `PiRuntimeOptions.search` and `.usage`
+declared, `main.ts` passing both, and `PiDurableRuntime.open` never reading them. Every
+existing gate was green: TypeScript accepts an unused optional property, Biome does not flag
+an options field, and the 492 tests never selected the new `search` group against the real
+runtime. The half-wiring was invisible until a test drove a faux model to call `web_search`
+and read `Tool web_search is not available`.
+
+Pass a new collaborator through the seam it is declared for and test that seam, not only its
+sides. A thread of `options.x` from composition root to consumer is one behaviour and needs
+one end-to-end test; a test of the consumer in isolation would have accepted the dead handoff.
+The same review found the sibling leak: selecting an unavailable group still offered its
+loader, because selection matched extension names without asking which were installed.
+
+## 2026-10-28 - A truncated wire id is not a selector
+
+Verifying the search tool end to end created two throwaway bots, then cleaned their usage rows
+with `delete from usage_daily where bot_id like 'b_01a18114%'`. Wire ids are ULID-shaped, so
+a bot the person had just created shared that prefix; the predicate deleted their bot's day
+of usage too (30,871 tokens, 2 search calls). The damage was noticed because the next
+`/v1/usage` lost a bot that the catalog still listed, and it was repaired from the numbers
+printed before the delete (same day, model tokens and search calls, plus `last_seen` so the
+next cumulative report cannot book the total twice) and confirmed through the API.
+
+Always list the rows first and delete by exact id, one id at a time. A prefix match against a
+time-ordered id selects more than the artifact just created, and deleting rows is not a
+reversible cleanup step. Cleanup of verification artifacts must be scoped to ids the command
+itself created and printed.

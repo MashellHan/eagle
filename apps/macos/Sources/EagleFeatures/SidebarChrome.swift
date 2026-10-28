@@ -57,7 +57,8 @@ final class SidebarChromeViewModel: ObservableObject {
       id: section.id,
       title: section.title,
       isExpanded: section.isExpanded,
-      items: ordered
+      items: ordered,
+      role: section.role
     )
   }
 }

@@ -3,10 +3,17 @@
 // behaviour lives in the modules it wires.
 import { readFileSync } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
+import { join } from "node:path";
 import type { DaemonConfig } from "./config.ts";
 import { BotDirectory, nodeDirectoryFs } from "./core/BotDirectory.ts";
 import { BotRegistry } from "./core/BotRegistry.ts";
 import { ConversationService } from "./core/ConversationService.ts";
+import {
+  DEFAULT_THINKING_LEVEL,
+  isThinkingLevel,
+  isToolGroup,
+  resolveToolGroups,
+} from "./core/domain.ts";
 import { newFailure } from "./core/failures.ts";
 import type { RuntimeEvent } from "./core/RuntimePort.ts";
 import { declareEvent } from "./log/events.ts";
@@ -14,12 +21,13 @@ import { Log } from "./log/log.ts";
 import { FileLogSink } from "./log/sink.ts";
 import { encodeServerEvent } from "./protocol/encode.ts";
 import { createDaemonModels } from "./runtime/pi/models.ts";
-import { PiDurableRuntime } from "./runtime/pi/PiDurableRuntime.ts";
+import { PiDurableRuntime, type PiSettings } from "./runtime/pi/PiDurableRuntime.ts";
 import { loadToken } from "./server/auth.ts";
 import {
   type GatewayApi,
   type GatewayConfig,
   gatewayFromEnv,
+  listGatewayModels,
   normalizeBaseUrl,
   publicGateway,
   readGateway,
@@ -27,8 +35,17 @@ import {
   writeGateway,
 } from "./server/gateway.ts";
 import { type Daemon, startServer } from "./server/http.ts";
+import {
+  PROVIDERS,
+  providerDefinition,
+  publicProviders,
+  readProviders,
+  writeProviders,
+} from "./server/providers.ts";
 import { acquireLock, LockError } from "./server/singleton.ts";
 import { toServerEvent } from "./server/socket.ts";
+import { UsageStore } from "./server/usage.ts";
+import { createDeepSeekSearch, type SearchClient } from "./tools/search/deepseek.ts";
 
 export type DaemonHandle = {
   readonly config: DaemonConfig;
@@ -58,6 +75,35 @@ const StartupEvents = {
 
 export const measureEvent = (event: RuntimeEvent): number =>
   Buffer.byteLength(JSON.stringify(encodeServerEvent(toServerEvent({ ...event, rev: 0 }))));
+
+/** A positive integer from the environment, else the default. */
+const positiveNumber = (raw: string | undefined, fallback: number): number => {
+  const parsed = Number(raw);
+  return raw !== undefined && Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+};
+
+/**
+ * The compaction policy the daemon runs with: on by default, with thresholds expressed in
+ * tokens of the declared window, so a small window compacts early and a large one late.
+ */
+export const compactionFromEnv = (
+  env: Readonly<Record<string, string | undefined>>,
+  windowTokens: number,
+): PiSettings["compaction"] => {
+  if (env.BOTS_COMPACTION === "off") return { enabled: false };
+  return {
+    enabled: true,
+    reserveTokens: Math.min(
+      positiveNumber(env.BOTS_COMPACTION_RESERVE_TOKENS, 16_384),
+      windowTokens / 2,
+    ),
+    keepRecentTokens: positiveNumber(env.BOTS_COMPACTION_KEEP_RECENT_TOKENS, 8_192),
+    backgroundTokens: Math.min(
+      positiveNumber(env.BOTS_COMPACTION_BACKGROUND_TOKENS, 32_768),
+      windowTokens / 4,
+    ),
+  };
+};
 
 export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> => {
   // The lock port is derived from the canonical root, so the root has to exist before the
@@ -101,6 +147,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   // The stored gateway wins over the dotenv; without either, the registry is empty and a
   // run settles `no_model` until a person configures it in the app.
   gateway = (await readGateway(root)) ?? gatewayFromEnv(process.env);
+  const windowTokens = positiveNumber(process.env.BOTS_CONTEXT_WINDOW, 200_000);
   let models = createDaemonModels(
     gateway === undefined
       ? undefined
@@ -109,9 +156,21 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
           apiKey: gateway.apiKey,
           provider: gateway.provider,
           modelId: gateway.model,
+          contextWindow: windowTokens,
+          ...(process.env.BOTS_MAX_TOKENS === undefined
+            ? {}
+            : { maxTokens: positiveNumber(process.env.BOTS_MAX_TOKENS, 8_192) }),
         },
   );
-  const runtime = new PiDurableRuntime({ models: () => models, log });
+  const compaction = compactionFromEnv(process.env, windowTokens);
+  const usageStore = new UsageStore(join(root, "usage.sqlite"));
+  const runtime = new PiDurableRuntime({
+    models: () => models,
+    log,
+    compaction,
+    usage: usageStore,
+    search: () => searchClient(),
+  });
   const defaultModel =
     gateway === undefined
       ? canonical.model
@@ -120,6 +179,9 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     directory,
     openRuntime: (spec) => runtime.open(spec),
     model: defaultModel,
+    ...(gateway === undefined
+      ? {}
+      : { thinkingLevel: gateway.thinkingLevel, toolGroups: gateway.toolGroups }),
     log,
     idleCloseMs: canonical.idleCloseMs,
     quarantineRetryMs: canonical.quarantineRetryMs,
@@ -128,6 +190,17 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   await registry.start();
   // The daemon exists after the service that has to broadcast through it.
   let broadcast: (() => void) | undefined;
+  let providers = await readProviders();
+  const searchClient = (): SearchClient | undefined => {
+    for (const definition of PROVIDERS) {
+      const config = providers[definition.id];
+      if (config === undefined || !config.enabled || config.apiKey.length === 0) continue;
+      if (definition.kind === "deepseek-search") {
+        return createDeepSeekSearch({ apiKey: config.apiKey, baseUrl: definition.baseUrl });
+      }
+    }
+    return undefined;
+  };
   const service = new ConversationService({
     open: (botId, trace) => registry.open(botId, trace),
     handleOf: (botId) => registry.handleOf(botId),
@@ -140,6 +213,13 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     onSessionFailed: (botId, reason, message, dropHandle) => {
       if (registry.markUnavailable(botId, reason, message, { dropHandle })) broadcast?.();
     },
+    onUsage: (botId, usage) => {
+      try {
+        usageStore.recordModelUsage(botId, usage);
+      } catch {
+        // Statistics are a side channel: a full disk must not fail the conversation.
+      }
+    },
     onRecovered: (botId, running) => {
       // Always push: the client that showed `unavailable` has to see the recovery even
       // when the registry's own state already moved on.
@@ -148,13 +228,14 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     },
   });
   const capabilities = {
-    agent: false,
+    agent: true,
     tools: true,
-    tasks: false,
+    tasks: true,
     entries: false,
-    usage: false,
+    usage: true,
     peers: false,
   };
+  let modelCache: { at: number; ids: readonly string[] } | undefined;
   const settings: GatewayApi = {
     public: () => publicGateway(gateway),
     save: async (input) => {
@@ -168,6 +249,16 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
           ? input.apiKey.trim()
           : (gateway?.apiKey ?? "");
       const provider = (input.provider ?? gateway?.provider ?? "magpie").trim() || "magpie";
+      const thinkingLevel =
+        input.thinkingLevel === undefined
+          ? (gateway?.thinkingLevel ?? DEFAULT_THINKING_LEVEL)
+          : input.thinkingLevel.trim();
+      if (!isThinkingLevel(thinkingLevel)) {
+        return {
+          settings: publicGateway(gateway),
+          error: "思考等级必须是 off、minimal、low、medium、high、xhigh 或 max",
+        };
+      }
       if (baseUrl.length === 0) {
         return { settings: publicGateway(gateway), error: "网关地址必须是 http(s) URL" };
       }
@@ -177,7 +268,18 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       if (apiKey.length === 0) {
         return { settings: publicGateway(gateway), error: "API Key 不能为空" };
       }
-      const next: GatewayConfig = { provider, baseUrl, model, apiKey };
+      const requestedGroups = input.toolGroups;
+      if (requestedGroups !== undefined) {
+        const unknown = requestedGroups.filter((name) => !isToolGroup(name));
+        if (unknown.length > 0) {
+          return {
+            settings: publicGateway(gateway),
+            error: `未知的工具组：${unknown.join("、")}`,
+          };
+        }
+      }
+      const toolGroups = resolveToolGroups(requestedGroups ?? gateway?.toolGroups);
+      const next: GatewayConfig = { provider, baseUrl, model, apiKey, thinkingLevel, toolGroups };
       await writeGateway(root, next);
       gateway = next;
       models = createDaemonModels({
@@ -187,6 +289,8 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
         modelId: model,
       });
       await registry.applyModel({ provider, modelId: model }, "tr_http_settings");
+      await registry.applyThinkingLevel(thinkingLevel, "tr_http_settings");
+      await registry.applyToolGroups(toolGroups, "tr_http_settings");
       return { settings: publicGateway(next) };
     },
     test: async (input) => {
@@ -219,6 +323,75 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     instance: `i_${process.pid}`,
     capabilities,
     port: canonical.port,
+    gatewayProvider: () => gateway?.provider ?? "magpie",
+    providers: {
+      public: () => publicProviders(providers),
+      save: async (id, input) => {
+        const definition = providerDefinition(id);
+        if (definition === undefined) {
+          return { error: `未知的服务：${id}` };
+        }
+        const current = providers[id] ?? { apiKey: "", enabled: false };
+        const apiKey = input.apiKey === undefined ? current.apiKey : input.apiKey.trim();
+        if (input.apiKey !== undefined && apiKey.length === 0) {
+          return { error: "API Key 不能为空" };
+        }
+        const next = {
+          apiKey,
+          enabled: input.enabled === undefined ? current.enabled : input.enabled,
+        };
+        const all = { ...providers, [id]: next };
+        await writeProviders(all);
+        providers = all;
+        const saved = publicProviders(all).find((provider) => provider.id === id);
+        return saved === undefined ? { error: `未知的服务：${id}` } : { provider: saved };
+      },
+      test: async (id) => {
+        const definition = providerDefinition(id);
+        const config = providers[id];
+        if (definition === undefined || config === undefined || config.apiKey.length === 0) {
+          return { ok: false, message: "还没有保存这个服务的 API Key", latencyMs: 0 };
+        }
+        if (definition.kind !== "deepseek-search") {
+          return { ok: false, message: "这个服务还不支持测试", latencyMs: 0 };
+        }
+        const started = performance.now();
+        try {
+          const results = await createDeepSeekSearch({
+            apiKey: config.apiKey,
+            baseUrl: definition.baseUrl,
+          }).search({ query: "DeepSeek", count: 1 });
+          return {
+            ok: true,
+            message: `连接成功，返回 ${results.length} 条结果`,
+            latencyMs: Math.round(performance.now() - started),
+            results: results.length,
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            message: error instanceof Error ? error.message : "搜索服务不可用",
+            latencyMs: Math.round(performance.now() - started),
+          };
+        }
+      },
+    },
+    usage: async (days: number) => {
+      const report = usageStore.report(days);
+      const titles = new Map(registry.summaries().map((bot) => [bot.id, bot.title]));
+      return {
+        ...report,
+        bots: report.bots.map((bot) => ({ ...bot, title: titles.get(bot.botId) ?? bot.botId })),
+      };
+    },
+    models: async () => {
+      if (gateway === undefined) return [];
+      const now = Date.now();
+      if (modelCache !== undefined && now - modelCache.at < 60_000) return modelCache.ids;
+      const ids = await listGatewayModels(gateway);
+      modelCache = { at: now, ids };
+      return ids;
+    },
   });
   broadcast = daemon.broadcastCatalog;
   const close = async (): Promise<void> => {

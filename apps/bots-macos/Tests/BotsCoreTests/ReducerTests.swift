@@ -93,6 +93,41 @@ final class ReducerTests: XCTestCase {
     )
   }
 
+  private func task(_ id: String, owner: String? = nil) -> TaskSummary {
+    TaskSummary(
+      id: id,
+      kind: "pi.tool",
+      status: .running,
+      phase: "run",
+      owner: owner,
+      conversationId: "c_1"
+    )
+  }
+
+  func testTasksAreAWholeListReplacement() {
+    var state = ConversationState(botId: botId)
+    state = Reducer.apply(
+      .snapshot(
+        ConversationSnapshot(
+          botId: botId,
+          tasks: [task("t_1"), task("t_2", owner: "t_1")]
+        )),
+      to: state
+    )
+    XCTAssertEqual(state.tasks.map(\.id), ["t_1", "t_2"])
+
+    state = Reducer.apply(.tasks([task("t_3")]), to: state)
+    XCTAssertEqual(state.tasks.map(\.id), ["t_3"], "the event replaces the list, never merges it")
+
+    state = Reducer.apply(.tasks([]), to: state)
+    XCTAssertEqual(state.tasks, [], "an empty list means nothing runs")
+
+    // A snapshot without the field is the same statement as an empty list.
+    state = Reducer.apply(.tasks([task("t_4")]), to: state)
+    state = Reducer.apply(.snapshot(ConversationSnapshot(botId: botId)), to: state)
+    XCTAssertEqual(state.tasks, [])
+  }
+
   func testASnapshotReplacesStateAndResetsTheBaseline() {
     var state = ConversationState(botId: botId)
     state = Reducer.apply(.append(message: message("e_1", text: "旧的"), replaces: nil), to: state)

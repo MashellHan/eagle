@@ -7,8 +7,10 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import type { GatewayConfig } from "../../src/server/gateway.ts";
 import {
   gatewayFromEnv,
+  listGatewayModels,
   normalizeBaseUrl,
   publicGateway,
   readGateway,
@@ -25,11 +27,13 @@ test("settings round-trip, stay 0600 and never expose the key", async () => {
   const bench_ = await bench();
   try {
     assert.equal(await readGateway(bench_.root), undefined);
-    const config = {
+    const config: GatewayConfig = {
       provider: "magpie",
       baseUrl: "http://127.0.0.1:3425/v1",
       model: "auto/gpt-6-astra",
       apiKey: "sk-secret-0123456789",
+      thinkingLevel: "medium",
+      toolGroups: ["core", "coding", "herdr", "agents"],
     };
     await writeGateway(bench_.root, config);
     assert.deepEqual(await readGateway(bench_.root), config);
@@ -40,6 +44,8 @@ test("settings round-trip, stay 0600 and never expose the key", async () => {
     assert.deepEqual(shown, {
       configured: true,
       provider: "magpie",
+      thinkingLevel: "medium",
+      toolGroups: ["core", "coding", "herdr", "agents"],
       baseUrl: "http://127.0.0.1:3425/v1",
       model: "auto/gpt-6-astra",
       hasApiKey: true,
@@ -58,8 +64,18 @@ test("dotenv values are the fallback, and a broken file is not configured", asyn
       BOTS_MODEL: " m ",
       BOTS_PROVIDER: "",
     }),
-    { provider: "magpie", baseUrl: "http://x/v1", model: "m", apiKey: "k" },
+    {
+      provider: "magpie",
+      baseUrl: "http://x/v1",
+      model: "m",
+      apiKey: "k",
+      thinkingLevel: "medium",
+      toolGroups: ["core", "coding", "herdr", "agents"],
+    },
   );
+  const env = { BOTS_BASE_URL: "http://x/v1", BOTS_API_KEY: "k", BOTS_MODEL: "m" };
+  assert.equal(gatewayFromEnv({ ...env, BOTS_THINKING_LEVEL: "xhigh" })?.thinkingLevel, "xhigh");
+  assert.equal(gatewayFromEnv({ ...env, BOTS_THINKING_LEVEL: "loud" })?.thinkingLevel, "medium");
   assert.equal(gatewayFromEnv({ BOTS_BASE_URL: "http://x" }), undefined);
   const bench_ = await bench();
   try {
@@ -114,5 +130,43 @@ test("the probe reports reachability, auth and model count", async () => {
     assert.match(refused.message, /API Key/);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("the gateway's model list is read for a per-bot picker and never throws", async () => {
+  const server = createServer((request, response) => {
+    if (request.headers.authorization !== "Bearer key") {
+      response.writeHead(401).end();
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({ data: [{ id: "auto/gpt-6-luna" }, { id: "auto/gpt-6-sol" }, {}] }),
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address !== null && typeof address !== "string");
+  try {
+    const baseUrl = `http://127.0.0.1:${address.port}/v1`;
+    assert.deepEqual(await listGatewayModels({ baseUrl, apiKey: "key" }), [
+      "auto/gpt-6-luna",
+      "auto/gpt-6-sol",
+    ]);
+    assert.deepEqual(
+      await listGatewayModels({ baseUrl, apiKey: "wrong" }),
+      [],
+      "a 401 lists nothing",
+    );
+    assert.deepEqual(
+      await listGatewayModels({ baseUrl: "http://127.0.0.1:9/v1", apiKey: "key" }),
+      [],
+      "an unreachable gateway lists nothing",
+    );
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      server.closeAllConnections();
+    });
   }
 });

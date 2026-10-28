@@ -29,6 +29,22 @@ final class ConversationTests: XCTestCase {
     model.select(botId: "b_1")
   }
 
+  func testInsertingSendsASteerAndAPlainSendQueues() async throws {
+    let (model, fake, _) = makeModel()
+    ready(model)
+    fake.emit(.connection(.ready))
+    fake.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await Task.sleep(for: .milliseconds(30))
+
+    model.draft = "先排队"
+    model.send()
+    model.draft = "改方向"
+    model.send(inserting: true)
+    try await Task.sleep(for: .milliseconds(60))
+
+    XCTAssertEqual(fake.busyModes, [.followUp, .steer])
+  }
+
   func testSnapshotReadinessResetsAcrossReconnectSelectionAndDisconnect() async throws {
     let (model, fake, _) = makeModel()
     ready(model)
@@ -218,6 +234,8 @@ final class FakeConversation: ConversationPort {
   var historyRequests: [String] = []
   private var continuation: AsyncStream<ConversationEvent>.Continuation?
 
+  var busyModes: [BusyMode] = []
+
   func open(botId: String) -> AsyncStream<ConversationEvent> {
     AsyncStream { continuation in
       self.continuation = continuation
@@ -235,6 +253,7 @@ final class FakeConversation: ConversationPort {
     botId: String
   ) async throws {
     sent.append(Sent(text: text, requestId: context.requestId ?? ""))
+    busyModes.append(whenBusy)
     lastBotId = botId
   }
 
@@ -354,22 +373,47 @@ final class ConversationLifecycleTests: XCTestCase {
     XCTAssertEqual(model.state.messages.first?.text, "巴黎")
   }
 
+  func testTasksFollowTheSelectedBotAndAreClearedByASelection() async throws {
+    let (model, fake) = make()
+    model.select(botId: "b_1")
+    fake.emit(.connection(.ready))
+    fake.emit(
+      .snapshot(
+        ConversationSnapshot(
+          botId: "b_1",
+          tasks: [TaskSummary(id: "t_1", kind: "pi.generation", status: .running)]
+        ))
+    )
+    try await Task.sleep(nanoseconds: 40_000_000)
+    XCTAssertEqual(model.tasks.map(\.id), ["t_1"])
+
+    fake.emit(.tasks([TaskSummary(id: "t_2", kind: "pi.tool", status: .waiting)]))
+    try await Task.sleep(nanoseconds: 40_000_000)
+    XCTAssertEqual(model.tasks.map(\.id), ["t_2"], "the event replaces the list")
+
+    model.select(botId: "b_2")
+    XCTAssertEqual(model.tasks, [], "another bot starts without the previous bot's tasks")
+  }
+
   func testACatalogEventIsForwardedAndAnErrorCanBeDismissed() async throws {
     let (model, fake) = make()
-    var forwarded: [BotSummary]?
+    var forwarded: BotCatalog?
     model.onCatalog = { forwarded = $0 }
     model.select(botId: "b_1")
     fake.emit(
-      .catalog([
-        BotSummary(
-          id: "b_1",
-          title: "一",
-          createdAt: "x",
-          updatedAt: "x",
-          model: ModelRef(provider: "p", modelId: "m"),
-          state: .idle
-        )
-      ])
+      .catalog(
+        BotCatalog(
+          bots: [
+            BotSummary(
+              id: "b_1",
+              title: "一",
+              createdAt: "x",
+              updatedAt: "x",
+              model: ModelRef(provider: "p", modelId: "m"),
+              state: .idle
+            )
+          ]
+        ))
     )
     fake.emit(
       .error(
@@ -381,7 +425,7 @@ final class ConversationLifecycleTests: XCTestCase {
       )
     )
     try await Task.sleep(nanoseconds: 40_000_000)
-    XCTAssertEqual(forwarded?.map(\.id), ["b_1"])
+    XCTAssertEqual(forwarded?.bots.map(\.id), ["b_1"])
     XCTAssertEqual(model.errorBanner, "refused")
     model.dismissError()
     XCTAssertNil(model.errorBanner)

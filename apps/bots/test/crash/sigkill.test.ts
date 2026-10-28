@@ -80,6 +80,30 @@ const api = async <T>(daemon: Daemon, path: string, method: string, body?: unkno
   return (await response.json()) as T;
 };
 
+// Recovery is live work: the initial snapshot may precede the provider's reply.
+// Keep the same deadline and final assertions, using committed completion as the barrier.
+const recoveredMessages = async (
+  socket: WebSocket,
+  frames: ReturnType<typeof frameQueue>,
+): Promise<Message[]> => {
+  const deadline = Date.now() + 20_000;
+  for (;;) {
+    const frame = await frames.next(Math.max(1, deadline - Date.now()));
+    assert.ok(Date.now() < deadline, "the interrupted run completes within the recovery deadline");
+    if (frame.type === "snapshot") {
+      const messages = (frame.value as { messages: Message[] }).messages;
+      if (messages.some((message) => message.role === "assistant" && message.state === "complete"))
+        return messages;
+    }
+    if (
+      frame.type === "append" &&
+      (frame.message as Message).role === "assistant" &&
+      (frame.message as Message).state === "complete"
+    )
+      await send(socket, { type: "resync", trace: "tr_crash_completed" });
+  }
+};
+
 test("killing the daemon right after admission loses no message and duplicates none", async () => {
   // No streamed chunk: the kill lands after the input is admitted and before any
   // assistant provisional exists, so recovery must not require an aborted entry.
@@ -128,13 +152,7 @@ test("killing the daemon right after admission loses no message and duplicates n
     await send(after, hello);
     await renewed.next();
     await send(after, { type: "subscribe", botId, trace: "tr_crash_sub_1" });
-    let messages: Message[] = [];
-    for (;;) {
-      const frame = await renewed.next(20_000);
-      if (frame.type !== "snapshot") continue;
-      messages = (frame.value as { messages: Message[] }).messages;
-      break;
-    }
+    const messages = await recoveredMessages(after, renewed);
     assert.equal(
       messages.filter((message) => message.role === "user").length,
       1,
@@ -217,8 +235,7 @@ test("killing the daemon mid-answer loses no message and duplicates none", async
     await send(after, hello);
     await renewed.next();
     await send(after, { type: "subscribe", botId, trace: "tr_crash_sub_2" });
-    const baseline = await renewed.next();
-    const messages = (baseline.value as { messages: Message[] }).messages;
+    const messages = await recoveredMessages(after, renewed);
     assert.deepEqual(
       messages.map((message) => [message.role, message.state]),
       [

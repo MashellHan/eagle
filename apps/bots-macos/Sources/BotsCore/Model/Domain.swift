@@ -191,7 +191,32 @@ public enum BotState: String, Codable, Sendable {
   case catalogued, opening, idle, running, unavailable, quarantined
 }
 
-public struct ModelRef: Codable, Sendable, Equatable {
+/// A sidebar group the person owns (docs/bots/PROTOCOL.md, "Group rules"). The id is the
+/// daemon's; the title is what the sidebar shows.
+public struct BotGroup: Codable, Sendable, Equatable, Identifiable, Hashable {
+  public var id: String
+  public var title: String
+
+  public init(id: String, title: String) {
+    self.id = id
+    self.title = title
+  }
+}
+
+/// What a catalog read or a pushed catalog carries: the bots and the groups in display
+/// order. The two travel together because a membership only means something with the
+/// groups beside it.
+public struct BotCatalog: Sendable, Equatable {
+  public var bots: [BotSummary]
+  public var groups: [BotGroup]
+
+  public init(bots: [BotSummary] = [], groups: [BotGroup] = []) {
+    self.bots = bots
+    self.groups = groups
+  }
+}
+
+public struct ModelRef: Codable, Hashable, Sendable {
   public var provider: String
   public var modelId: String
 
@@ -243,6 +268,8 @@ public struct BotSummary: Codable, Sendable, Equatable, Identifiable {
   public var model: ModelRef
   public var state: BotState
   public var unavailable: BotUnavailable?
+  /// The sidebar group this bot is filed under; absent means ungrouped.
+  public var groupId: String?
 
   public init(
     id: String,
@@ -253,7 +280,8 @@ public struct BotSummary: Codable, Sendable, Equatable, Identifiable {
     updatedAt: String,
     model: ModelRef,
     state: BotState,
-    unavailable: BotUnavailable? = nil
+    unavailable: BotUnavailable? = nil,
+    groupId: String? = nil
   ) {
     self.id = id
     self.title = title
@@ -264,6 +292,7 @@ public struct BotSummary: Codable, Sendable, Equatable, Identifiable {
     self.model = model
     self.state = state
     self.unavailable = unavailable
+    self.groupId = groupId
   }
 
   /// The face to draw, with the default for a bot written before appearance existed.
@@ -350,6 +379,235 @@ public struct InboxItem: Codable, Sendable, Equatable, Identifiable {
   }
 }
 
+/// One live task of a bot: the work its conversations are running right now
+/// (PROTOCOL.md, "Live tasks"). The status is a raw string, so a status the daemon adds
+/// later is shown as it arrives instead of making the whole frame unreadable.
+public struct TaskStatus: RawRepresentable, Codable, Sendable, Hashable {
+  public var rawValue: String
+
+  public init(rawValue: String) {
+    self.rawValue = rawValue
+  }
+
+  public static let pending = TaskStatus(rawValue: "pending")
+  public static let running = TaskStatus(rawValue: "running")
+  public static let waiting = TaskStatus(rawValue: "waiting")
+  public static let sleeping = TaskStatus(rawValue: "sleeping")
+  public static let completing = TaskStatus(rawValue: "completing")
+}
+
+public struct TaskSummary: Codable, Sendable, Equatable, Identifiable {
+  public var id: String
+  /// The task definition's own name (`pi.generation`, an extension's kind, …).
+  public var kind: String
+  public var status: TaskStatus
+  public var phase: String?
+  public var background: Bool
+  /// Why it cannot run here; absent means it can.
+  public var blocked: String?
+  /// The parent task, when this one is a child.
+  public var owner: String?
+  public var conversationId: String?
+
+  public init(
+    id: String,
+    kind: String,
+    status: TaskStatus,
+    phase: String? = nil,
+    background: Bool = false,
+    blocked: String? = nil,
+    owner: String? = nil,
+    conversationId: String? = nil
+  ) {
+    self.id = id
+    self.kind = kind
+    self.status = status
+    self.phase = phase
+    self.background = background
+    self.blocked = blocked
+    self.owner = owner
+    self.conversationId = conversationId
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, kind, status, phase, background, blocked, owner, conversationId
+  }
+
+  /// Only `id`, `kind` and `status` are always on the wire; the rest is optional, and a
+  /// missing `background` reads as `false`.
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(String.self, forKey: .id)
+    kind = try container.decode(String.self, forKey: .kind)
+    status = try container.decode(TaskStatus.self, forKey: .status)
+    phase = try container.decodeIfPresent(String.self, forKey: .phase)
+    background = try container.decodeIfPresent(Bool.self, forKey: .background) ?? false
+    blocked = try container.decodeIfPresent(String.self, forKey: .blocked)
+    owner = try container.decodeIfPresent(String.self, forKey: .owner)
+    conversationId = try container.decodeIfPresent(String.self, forKey: .conversationId)
+  }
+}
+
+/// What one conversation has spent, as the daemon sums it from `pi.usage`.
+public struct Usage: Codable, Hashable, Sendable {
+  public var inputTokens: Int
+  public var outputTokens: Int
+  public var totalTokens: Int
+  /// Absent when the provider reports no cost (a local gateway usually does).
+  public var costUsd: Double?
+
+  public init(inputTokens: Int, outputTokens: Int, totalTokens: Int, costUsd: Double? = nil) {
+    self.inputTokens = inputTokens
+    self.outputTokens = outputTokens
+    self.totalTokens = totalTokens
+    self.costUsd = costUsd
+  }
+}
+
+/// A third-party service a bot's tools may call (docs/bots/PROTOCOL.md, "Providers").
+public struct ProviderSettings: Codable, Sendable, Equatable, Identifiable {
+  public var id: String
+  public var title: String
+  public var kind: String
+  public var baseUrl: String
+  public var docsUrl: String
+  public var keyLabel: String
+  public var hasApiKey: Bool
+  public var enabled: Bool
+
+  public init(
+    id: String, title: String, kind: String, baseUrl: String, docsUrl: String,
+    keyLabel: String, hasApiKey: Bool, enabled: Bool
+  ) {
+    self.id = id
+    self.title = title
+    self.kind = kind
+    self.baseUrl = baseUrl
+    self.docsUrl = docsUrl
+    self.keyLabel = keyLabel
+    self.hasApiKey = hasApiKey
+    self.enabled = enabled
+  }
+}
+
+/// The daemon's probe of one provider: reachable, accepted and how long it took.
+public struct ProviderProbe: Codable, Sendable, Equatable {
+  public var ok: Bool
+  public var message: String
+  public var latencyMs: Int
+  public var results: Int?
+
+  public init(ok: Bool, message: String, latencyMs: Int, results: Int? = nil) {
+    self.ok = ok
+    self.message = message
+    self.latencyMs = latencyMs
+    self.results = results
+  }
+}
+
+/// Usage statistics over the daemon's retained window (docs/bots/PROTOCOL.md).
+public struct UsageReport: Codable, Sendable, Equatable {
+  public struct Totals: Codable, Sendable, Equatable {
+    public var totalTokens: Int
+    public var calls: Int?
+    public var costUsd: Double
+
+    public init(totalTokens: Int, calls: Int? = nil, costUsd: Double) {
+      self.totalTokens = totalTokens
+      self.calls = calls
+      self.costUsd = costUsd
+    }
+  }
+
+  /// One source's share of the work: models spend tokens, search spends calls.
+  public struct SourceTotals: Codable, Sendable, Equatable, Identifiable {
+    public var source: String
+    public var totalTokens: Int
+    public var calls: Int
+    public var costUsd: Double
+    public var id: String { source }
+
+    public init(source: String, totalTokens: Int, calls: Int, costUsd: Double) {
+      self.source = source
+      self.totalTokens = totalTokens
+      self.calls = calls
+      self.costUsd = costUsd
+    }
+  }
+
+  public struct Day: Codable, Sendable, Equatable, Identifiable {
+    public var day: String
+    public var totalTokens: Int
+    public var costUsd: Double
+    public var id: String { day }
+
+    public init(day: String, totalTokens: Int, costUsd: Double) {
+      self.day = day
+      self.totalTokens = totalTokens
+      self.costUsd = costUsd
+    }
+  }
+
+  public struct Bot: Codable, Sendable, Equatable, Identifiable {
+    public var botId: String
+    public var title: String
+    public var totalTokens: Int
+    /// Search spends calls instead of tokens; absent from a daemon that predates the split.
+    public var calls: Int?
+    public var costUsd: Double
+    public var id: String { botId }
+
+    public init(botId: String, title: String, totalTokens: Int, calls: Int? = nil, costUsd: Double)
+    {
+      self.botId = botId
+      self.title = title
+      self.totalTokens = totalTokens
+      self.calls = calls
+      self.costUsd = costUsd
+    }
+  }
+
+  public var retentionDays: Int
+  public var today: Totals
+  public var week: Totals
+  public var month: Totals
+  public var days: [Day]
+  public var bots: [Bot]
+  /// Absent from a daemon that predates the source split.
+  public var sources: [SourceTotals]?
+
+  public init(
+    retentionDays: Int,
+    today: Totals,
+    week: Totals,
+    month: Totals,
+    days: [Day],
+    bots: [Bot],
+    sources: [SourceTotals]? = nil
+  ) {
+    self.retentionDays = retentionDays
+    self.today = today
+    self.week = week
+    self.month = month
+    self.days = days
+    self.bots = bots
+    self.sources = sources
+  }
+}
+
+/// What a bot runs with, as the snapshot reports it (`agent` capability).
+public struct AgentView: Codable, Hashable, Sendable {
+  public var model: ModelRef
+  public var thinkingLevel: String
+  public var instructions: String
+
+  public init(model: ModelRef, thinkingLevel: String, instructions: String) {
+    self.model = model
+    self.thinkingLevel = thinkingLevel
+    self.instructions = instructions
+  }
+}
+
 public struct ConversationSnapshot: Codable, Sendable, Equatable {
   public var botId: String
   public var messages: [Message]
@@ -361,6 +619,12 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
   public var unavailable: BotUnavailable?
   /// A parked task keeps `recover` meaningful across clients; absent means healthy.
   public var parked: Bool?
+  /// Live work of every conversation this bot owns; absent means nothing runs.
+  public var tasks: [TaskSummary]
+  /// Tokens and cost so far; absent until the first answered turn.
+  public var usage: Usage?
+  /// What the bot runs with, when the daemon reports it.
+  public var agent: AgentView?
 
   public init(
     botId: String,
@@ -371,7 +635,10 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     inbox: [InboxItem] = [],
     running: Bool = false,
     unavailable: BotUnavailable? = nil,
-    parked: Bool? = nil
+    parked: Bool? = nil,
+    tasks: [TaskSummary] = [],
+    usage: Usage? = nil,
+    agent: AgentView? = nil
   ) {
     self.botId = botId
     self.messages = messages
@@ -382,11 +649,14 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     self.running = running
     self.unavailable = unavailable
     self.parked = parked
+    self.tasks = tasks
+    self.usage = usage
+    self.agent = agent
   }
 
   private enum CodingKeys: String, CodingKey {
     case botId, messages, truncatedBefore, streaming, pending, inbox, running, unavailable, parked
-    case agent, usage
+    case tasks, agent, usage
   }
 
   /// `streaming` is `{ "messageId": "p_a1" }` on the wire and `null` when no attempt is in
@@ -401,6 +671,9 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     running = try container.decodeIfPresent(Bool.self, forKey: .running) ?? false
     unavailable = try container.decodeIfPresent(BotUnavailable.self, forKey: .unavailable)
     parked = try container.decodeIfPresent(Bool.self, forKey: .parked)
+    tasks = try container.decodeIfPresent([TaskSummary].self, forKey: .tasks) ?? []
+    usage = try container.decodeIfPresent(Usage.self, forKey: .usage)
+    agent = try container.decodeIfPresent(AgentView.self, forKey: .agent)
     if let pointer = try container.decodeIfPresent(StreamingPointer.self, forKey: .streaming) {
       streaming = pointer.messageId
     } else {
@@ -418,6 +691,9 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     try container.encode(running, forKey: .running)
     try container.encodeIfPresent(unavailable, forKey: .unavailable)
     try container.encodeIfPresent(parked, forKey: .parked)
+    try container.encode(tasks, forKey: .tasks)
+    try container.encodeIfPresent(usage, forKey: .usage)
+    try container.encodeIfPresent(agent, forKey: .agent)
     if let streaming {
       try container.encode(StreamingPointer(messageId: streaming), forKey: .streaming)
     } else {

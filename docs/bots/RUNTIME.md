@@ -5,6 +5,9 @@ evidence that established them. Protocol shape is in
 [PROTOCOL.md](PROTOCOL.md), layers in [ARCHITECTURE.md](ARCHITECTURE.md), logs in
 [OBSERVABILITY.md](OBSERVABILITY.md).
 
+For the current inventory, extension-development rules and explicitly planned
+tool families, see [Extensions and tools](EXTENSIONS-AND-TOOLS.md).
+
 The adapter owns a Harness per bot, translates its behaviour into `RuntimeEvent`,
 classifies failures, and owns the submission ledger. It owns no catalog, no
 transport and no `rev`.
@@ -45,12 +48,17 @@ evidence says upstream source. Probe scripts and inputs are listed in
 
 ## Harness construction (per bot)
 
+The snippet below records the original phase-1 chat-only baseline. Current
+construction creates a Registry per Bot, installs built-in extensions, supplies
+`NodeExecutionEnv`, and configures selected extensions before resume; see
+[Tools](#tools-phase-2) and the extension guide.
+
 ```ts
 const harness = await Harness.open(
   await openNodeSqliteStorage(join(spec.dir, "session.sqlite")),
   {
     models,                   // one shared Models for the process
-    registry,                 // empty in phase 1 (see "No tools")
+    registry,                 // empty in this phase-1 baseline
     settings: perBotSettings(),  // fresh object per bot, never shared
     onReport: (error, info) => classifyReport(info),   // F15
   },
@@ -63,11 +71,12 @@ harness.resume();                                      // recovery, before servi
 
 - `open()` performs recovery. The registry never calls `resume()` separately, so a
   run interrupted by a crash continues without an extra port operation.
-- One `Models` and one `Registry` are shared process-wide (constructed once, no
-  conversation state); everything else is per bot (F19).
+- `Models` is shared process-wide. The phase-1 empty Registry could be shared;
+  the current Registry is per Bot because tools bind Bot-specific dependencies.
+  Settings and storage remain per Bot (F19).
 - `root()` is idempotent: conversation `1` for a new storage, the same root after
   reopen.
-- Phase 1 keeps exactly one conversation per bot and never calls
+- Phase 1 kept exactly one conversation per bot and never called
   `createConversation`, `fork` or subagent APIs.
 
 ## Event mapping
@@ -286,88 +295,118 @@ Projection, which is also part of the mapping contract:
 | --- | --- | --- |
 | `stream.timeoutMs` | 120 000 | A stalled provider must eventually fail the run |
 | `retry.maxRetries` | 3 | 429/5xx are transient |
-| `compaction.enabled` | **false** | F16: compaction is a conversation-owned background task. Phase 1 closes a bot on "no run, no task" and would close a compacting bot out from under itself. Long chats fail with `model_error` and stay readable. Enabling it later needs no close-condition change (it already reads `busy().tasks`) but does need the `tasks` capability so the UI can show a background compaction |
+| `compaction.enabled` | **true** | F16: compaction is a conversation-owned background task. The close condition reads `busy().tasks`, so a compacting bot stays warm instead of being closed mid-summary. Thresholds: `reserveTokens` 16 384, `keepRecentTokens` 8 192, `backgroundTokens` 32 768, each capped to the declared window (`BOTS_CONTEXT_WINDOW`, default 200 000) and overridable per `BOTS_COMPACTION_*`; `BOTS_COMPACTION=off` disables it. `test/e2e/compaction.test.ts` is the acceptance on a 1 200-token window: four `pi.compaction` entries, the request context stops growing at ~2 095 characters while five turns stay readable. The `tasks` capability stays false, so the UI does not show a running compaction yet |
 | `progress.partialIntervalMs` | 100 | Matches the protocol's 50 ms coalescing; local storage makes 100 cheap |
 | `progress.outputIntervalMs` | 100 | Reserved (tool output) |
 | `afterFailedRun` | `"continue"` | A failed run must not strand queued follow-ups |
 | `restartLimit` | 5 (default) | Parked tasks surface as `task_parked` and are cleared by `recover` |
-| `thinkingLevel` (per bot) | from `bot.json`, absent = the provider's default | Applied when the Harness opens; the gateway model omits an explicit reasoning effort for the default/`off` setting instead of sending `none`, which reasoning-only models can reject. A stored non-off level remains the bot's own reasoning effort |
+| `toolGroups` (per bot) | from stored config, default `["core", "coding", "herdr", "agents"]` | `core` and `coding` are mandatory. The former adds `list`; the latter is native `CodingTools`. Herdr and child-agent extensions are optional. See "Tool groups" below |
+| `thinkingLevel` (per bot) | from `bot.json`, product default `medium` | Written by the settings page for every bot; applied when the Harness opens and moved in place on a live conversation (`root.configure`). One value for the whole daemon, because a bot cannot yet choose its own. The gateway maps an explicit `off` to omitted reasoning effort, preserving the provider default rather than sending unsupported `none`; other stored levels remain explicit |
+| Search provider | `<XDG_CONFIG_HOME or ~/.config>/eagle-bots/providers.json` (0600) | One entry per provider (`deepseek-search` today). The `search` tool group is off by default; when selected and enabled, `web_search`/`web_fetch` load on demand and each call books one `search` call in the usage statistics. The client is resolved when a bot opens, so a key saved later applies to that bot's next open |
+| Usage statistics | `<root>/usage.sqlite`, 90 days | `usage_daily(bot_id, day, source, tokens, calls, cost_usd)` plus `last_seen(bot_id, total_tokens, cost_usd)` so a cumulative model report becomes a delta. A source is a string (`model`, `search`), so a new spender needs no schema change; the first token-only `daily` table is migrated into the `model` source on open. Kept outside a bot's session, so deleting a bot keeps its history; pruned on boot and on write |
 | Model gateway | `<root>/gateway.json` (0600), dotenv fallback | The daemon registers one provider from the stored `{provider, baseUrl, model, apiKey}`. `PUT /v1/settings` rewrites the file, swaps the process-wide `Models` (the Harness reads it through a getter), binds the saved key directly to the provider auth resolver (the same path used on startup, without mutating process environment), and moves every bot to the new model in place with `conversation.configure({model})`; a closed bot opens with the catalog's new model. A bot naming another id before that settles `no_model` |
 | `contextRetentionMs`, `documentRetentionMs` | 600 000 (default) | Idle close frees memory; defaults keep reopen cheap |
 
 Each bot owns its settings object so one bot's policy cannot affect another
 (F19).
 
-## Tools (phase 2, slice 1)
+## Tools (phase 2)
 
-A bot is born with four tools, installed as the `bots-tools` extension in its Harness
-registry and bound to that bot's workspace:
+The mandatory `coding` group installs pi-durable's native `CodingTools` extension.
+The mandatory `core` group installs `bots-tools`, containing the native-style `list` tool.
+There is one implementation per capability and no aliases for the old tool names.
 
 | Tool | Behaviour |
 | --- | --- |
-| `read_file` | A text page (`offset`, `limit`): at most 2 000 lines and 64 KiB, streamed from the file and with a note naming the lines it showed and the total; a line that alone exceeds the page budget, or a scan that passes 64 MiB, is a named refusal rather than a false "no such line" |
-| `write_file` | Writes one UTF-8 file (at most 512 KiB), creating parent directories, mode 0600 |
-| `list_files` | A bounded recursive walk (2 000 entries) that skips `.git`, `node_modules`, `.venv`, `dist` and `.build`; directories end with `/` |
-| `run_command` | `/bin/sh -c` in the workspace: stdout, stderr and the exit code, killed at the deadline (default 30 s, max 120 s) with the output capped at 64 KiB |
+| `read` | Native text paging and supported image input, with the SDK's output limits and diagnostics |
+| `write` | Native whole-file UTF-8 write, creating parent directories |
+| `edit` | Native unique, non-overlapping exact-text replacements, serialized with writes to the same file |
+| `bash` | Native shell execution, streamed output, cancellation, retained output and spill-file diagnostics; optional `timeout` is in seconds and has no default |
+| `list` | A recursive directory listing, defaulting to the conversation's working directory; at most 2 000 entries and 50 KiB, sorted within each directory, without traversing symlinks or common build/dependency directories |
 
-Rules:
+The Harness supplies a `NodeExecutionEnv` from the conversation's `cwd`; tools use that
+SDK environment instead of their own filesystem or process adapters. The workspace is
+`<bot dir>/workspace`, a default working directory rather than a security boundary.
+Absolute paths and normal local file access are supported. Execution sandboxes and
+third-party plugins are explicitly outside the product scope.
 
-- **Auto-execute.** There is no approval gate and no hook that asks the user; execution
-  is the product. Tools do not receive a separate switch per call.
-- **Workspace confinement.** The workspace is `<bot dir>/workspace`, created 0700 on open
-  and the agent's `cwd`; it is refused if it is itself a symlink, and its `dev`/`ino` are
-  captured at open. Every call first re-checks that identity, so a root replaced by a link
-  or a different directory after open is refused, never re-trusted. Every file tool path is
-  resolved inside the canonical root lexically **and** component by component; a symlink
-  anywhere at or below the root — including a dangling one — is refused rather than
-  followed. The final component is opened with `O_NOFOLLOW`, only a regular file is read or
-  written (`O_NONBLOCK` so a FIFO or device can neither block nor be redirected), and an
-  overwrite is tightened to 0600. An escape is a tool result the model reads, never an
-  exception.
-- **The daemon root is out of reach.** A command runs under a macOS Seatbelt profile
-  (`/usr/bin/sandbox-exec`) that denies reading and writing everything under the daemon
-  root — the token, the catalog, every other bot — while allowing the bot's own
-  workspace. Outside that root the shell is the agent's own machine, by design: a coding
-  agent needs to run toolchains, and there is no approval gate. On a platform without
-  `sandbox-exec` the command runs unsandboxed; on a machine that has it but cannot stat it,
-  the command fails instead of silently dropping the sandbox.
-- **No daemon secrets.** A command's environment is an allowlist (`PATH`, `HOME`, `LANG`,
-  `LC_ALL`, `TMPDIR`, `SHELL`, plus `TERM=dumb` and `PWD`). The child is `detached` in its
-  own process group, and a timeout or an abort walks the `ps` tree before killing, so a
-  descendant that left the group with `setsid` dies too while its parent is still alive.
-  A daemon whose parent has already exited is reparented to pid 1 and cannot be attributed
-  by any tree walk; the deadline still returns on time and the survivor stays confined by
-  the sandbox, but it is recorded as a known limit rather than promised otherwise.
-- **Bounded output.** Both streams share one 64 KiB budget counted in the bytes the model
-  reads (a lossy decode that expands one byte into three is still capped), decoded as UTF-8
-  across chunk boundaries; `[stderr]` marks the first stderr byte once (not every chunk),
-  the exit code is always the last line, and each tool's SDK `outputLimits` is set above
-  the tool's own cap so the SDK never cuts the result, its note or a command's exit status
-  — a timed-out command still carries the stderr and the reason, and a command killed at
-  the deadline returns then rather than waiting for its pipes to close.
-- **Cancellation.** `run_command` follows the run's abort signal: an aborted run kills the
-  process group and the model sees an aborted result instead of a live command.
-- **Residual race.** A process that can already write inside the workspace could swap an
-  intermediate directory for a link between the component check and the open. The final
-  component is protected by `O_NOFOLLOW`, the root identity is checked on every call, every
-  directory is re-checked before it is listed, and commands are additionally confined by
-  the sandbox; closing the intermediate window fully would need `openat` chains the Node
-  API does not expose, and is recorded as a known limit rather than claimed fixed.
-- **Hard kill of the daemon.** A deadline or an abort kills the command's process group,
-  but `SIGKILL` of the daemon itself orphans whatever is already running: the restart marks
-  the run interrupted and cannot stop the orphan. A persisted process-group id would let a
-  restart kill it, at the price of killing an unrelated group once the id is reused, so the
-  limit stays documented instead of guessed.
-- **Failures are results.** A refusal, a missing file, a timeout and a non-zero exit are
-  returned to the model as text; a run never crashes because a tool failed.
-- **Replay.** `read_file` and `list_files` are `replay: "safe"`; `write_file` and
-  `run_command` stay unsafe, so an interrupted call is not rerun after a restart.
-- **What the client sees.** A tool run is transcript content: the assistant entry carries
-  `toolCall` blocks (grown by `toolcall` deltas) and the durable result is its own
-  `role:"tool"` message with one `toolResult` block. Both are in the live frames, the
-  snapshot and history, and the client pairs them by `callId` into one row (PROTOCOL.md,
-  "Tool rows"). A result above the message budget is clamped with a
-  `[tool output truncated]` tail instead of the answer's oversized notice.
+- Calls execute without a separate approval dialog. Schema validation, cancellation,
+  output bounds and model-visible failures are still required.
+- The native coding tools retain their SDK replay policy (default `unsafe` in 1.4.0).
+  `list` is replay-safe. No side-effecting command is silently repeated after interruption.
+- Shell calls must not inherit daemon credentials. This policy uses the SDK's native
+  shell preparation hook, not another command runner or a sandbox.
+- The native timeout and output semantics replace the old `run_command` contract. Tests
+  cover timeout, abort, UTF-8 output, nonzero exits and the full model-facing result.
+- Tool calls and results use the existing wire blocks and generic macOS tool rows.
+  Text and diagnostics are rendered; image attachment rendering is not added by this
+  change and remains outside the client's current text-only tool-result shape.
+- A hard kill of the daemon can orphan an external process. Durable recovery records an
+  interrupted unsafe call; it does not promise to undo effects or kill arbitrary old pids.
+
+### Tool groups
+
+`core/domain.ts` owns the product vocabulary: `core`, `coding`, `herdr`, `agents`.
+`core` and `coding` are always selected, including when settings request an empty list.
+`core` maps to `bots-tools`, `coding` to native `coding-tools`, `herdr` to `bots-herdr`
+and the native `tool-search` loader, and `agents` to `bots-agents`. Both required groups
+are shown enabled and disabled for editing in the settings UI.
+
+### Hot registry refresh
+
+Each Harness registers the built-in extensions once. Group selection is a separate native
+agent configuration, resolved from the live Registry snapshot rather than a startup cache.
+Every accepted client subscription, including a cached A -> B -> A switch, refreshes that
+selection before its baseline snapshot. No new wire command, loading UI, Harness, runtime
+watch or model request is needed. The refresh carries the subscription trace.
+
+Enabling a previously disabled group immediately makes its registered tools available;
+disabling Herdr also removes its loader and prompt section from the selected agent.
+Already executing calls retain their SDK execution phase, while later requests use the
+new selection. Existing child conversations keep their own stored agent choices; this is
+configuration, not a permission-revocation or sandbox system.
+
+The host may replace an extension through native `Registry.install`; refresh reads the
+current registry objects. There is no filesystem watcher, dynamic source import or
+third-party plugin discovery. A failed refresh is logged once at the runtime origin and
+refuses that subscription; retrying the same selection or subscription must remain possible.
+The failed subscription closes with `1011` after its error frame, reusing the client's
+existing automatic reconnect policy. Storage failures reuse the Harness episode identity
+across refresh, reports and watch/session termination instead of logging another origin.
+
+### Subagents (phase 2, slice 3)
+
+`bots-agents` lets a bot delegate a self-contained task to a child conversation instead of
+doing everything in one context.
+
+| Tool | Behaviour |
+| --- | --- |
+| `agent_spawn` | Creates an ownerless conversation in the same Harness, configured from the caller's agent (model, reasoning level, extensions, tool list, `cwd`, instructions) minus these three tools — one level of delegation, never a tree. Appends a `bots.agent` marker entry (no `model`, so the child never sees it) and answers the child id |
+| `agent_send` | Submits to the child with a request id derived from the call, waits for settlement, and answers the child's final text; a run that ends `unanswered` is an error result naming the reason |
+| `agent_stop` | Aborts the child: queued work is withdrawn and the transcript stays readable |
+
+The child is not a second product: it lives in the same sqlite file, so the daemon's one
+`busy()` and idle close cover it while a tool waits on it. There is no child-conversation
+listing in the client protocol; the parent transcript contains the tool results, while
+the SDK can inspect the child by conversation id. The generic task graph is separate
+from a child-conversation UI. The `peers` capability stays false.
+
+Current `agent_send` and `agent_stop` look up a conversation in this Harness without
+checking its parent marker. Their documented child-targeting intent is not yet fully
+enforced; the extension guide plans `agent_list` and direct-parent validation with
+negative tests. Independent catalog Bot communication belongs to planned `peer_*`
+tools, not a reinterpretation of these same-Harness `agent_*` operations.
+
+### Deferred tools
+
+The eight `herdr` tools are declared `deferred: true`, so they are installed and callable
+but **not offered** in each request; `createToolSearchExtension()` is installed with them
+and `tool_search` loads the matches into the conversation's `modelTools`, after which they
+stay offered (also across a compaction). The core tools and the subagent tools are always
+offered: they are what every turn needs. The herdr prompt section says the tools are loaded
+on demand, because a model that never searches would never see them.
+`test/runtime/deferred-tools.test.ts` proves the fallback works: the model searches, then
+calls `herdr_list`, and the call runs.
 
 ## Herdr tools (phase 2, slice 2)
 
@@ -423,16 +462,17 @@ Rules:
   and is decoded across chunk boundaries. A herdr JSON error becomes the tool result with
   its own code and message (`agent_blocked: ...`); a non-zero exit without JSON keeps the
   exit and the detail.
-- **The bot's own sandbox does not apply to the CLI.** `herdr` is a host tool (it needs the
-  session socket), so it is not run through the workspace sandbox; what it may touch is
-  bounded by the space rule above, not by the file system profile.
+- **The CLI is a host tool, not a sandboxed process.** `herdr` needs the session socket;
+  these tools constrain their targets by the Space rule above. There is no workspace
+  sandbox or filesystem profile, and native coding tools retain normal local access.
 - **A label is not an ownership credential.** The nonce makes a collision with a user
   workspace implausible, but a user who copies the exact label of a bot's space can be
   adopted when that bot has lost both its state file and its tombstone list. That trade-off
   keeps a lost state from leaking a second space; several candidates are refused instead of
   guessed, and a state file that is present but fails verification is never adopted. Both
-  files live in the bot's own directory, which the model cannot write; removing them is a
-  person's deliberate act, and adoption then resumes as described above.
+  files live in the bot's own directory, outside its default workspace. That location
+  is not a security boundary: native coding tools can access it. Removing both records
+  discards the targeting evidence, and adoption then resumes as described above.
 - **Reading is evidence, not proof.** `idle`/`done` mean herdr saw a settled agent, not
   that its work finished; `blocked` is a dialog the controller raised, and the bot may
   inspect it with `herdr_read` and answer it with `herdr_keys`.
@@ -448,12 +488,12 @@ own change set:
 
 | Capability | Work required when enabling |
 | --- | --- |
-| `tools` | Enabled in phase 2: the four workspace tools (slice 1) and the herdr tools (slice 2), all auto-executed; rendering tool calls and results in the client is the next slice |
+| `tools` | Enabled: native coding, core list, Herdr, child-agent tools and deferred discovery; calls/results render through the existing generic client rows. The extension guide maps the current inventory and tests |
 | `agent` | Add a `configure` command and a model catalog endpoint; add `configure` to the port; render the settings panel |
 | `tasks` | Emit `task` events from `watchTaskGraph`; add a `retry` command; make the close condition task-aware |
 | `entries` | Serve raw entries from `conversation.entries()` behind a paging command |
 | `usage` | Already populated in phase 1: `snapshot.usage` comes from `pi.usage`; the panel is what phase 2 adds |
-| `peers` | Bot-to-bot delivery as a tool or background task; a `peers` policy document |
+| `peers` | Planned independent Bot discovery/delivery via `peer_list`, `peer_send`, `peer_read`; the extension guide defines boundaries and acceptance before capability enablement |
 
 None of them may change v1 semantics for existing fields.
 

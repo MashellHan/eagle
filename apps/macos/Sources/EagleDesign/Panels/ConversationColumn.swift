@@ -25,6 +25,21 @@ public enum TranscriptEntry: Identifiable, Hashable, Sendable {
     if case .streamingAssistant = self { return true }
     return false
   }
+
+  public var isToolCall: Bool {
+    switch self {
+    case .tool, .toolRun: return true
+    default: return false
+    }
+  }
+}
+
+extension [TranscriptEntry] {
+  /// Settings → 通用 hides tool traffic without touching the stored conversation.
+  public func hidingToolCalls(_ hidden: Bool) -> [TranscriptEntry] {
+    guard hidden else { return self }
+    return filter { !$0.isToolCall }
+  }
 }
 
 /// Middle column: a slim control strip, scrollable transcript, composer.
@@ -33,6 +48,7 @@ public struct ConversationColumn: View {
   private let subtitle: String
   private let tintIndex: Int
   private let entries: [TranscriptEntry]
+  private let showsToolCalls: Bool
   private let preparedMarkdown: [String: [RenderedMarkdownBlock]]
   @Binding private var draft: String
   private let onSend: () -> Void
@@ -42,16 +58,17 @@ public struct ConversationColumn: View {
   private let showsInspector: Bool
   private let participantStatus: ParticipantStatus?
   private let onStop: () -> Void
+  private let onInsert: (() -> Void)?
   private let onRecover: () -> Void
   private let onDismissError: () -> Void
-  @State private var scrollState = TranscriptScrollState()
-  @State private var userIsScrolling = false
+  @State private var scroller = TranscriptScroller()
 
   public init(
     title: String,
     subtitle: String,
     tintIndex: Int,
     entries: [TranscriptEntry],
+    showsToolCalls: Bool = true,
     preparedMarkdown: [String: [RenderedMarkdownBlock]] = [:],
     draft: Binding<String>,
     onSend: @escaping () -> Void,
@@ -59,6 +76,7 @@ public struct ConversationColumn: View {
     showsInspector: Bool = true,
     participantStatus: ParticipantStatus? = nil,
     onStop: @escaping () -> Void = {},
+    onInsert: (() -> Void)? = nil,
     onRecover: @escaping () -> Void = {},
     onDismissError: @escaping () -> Void = {},
     onShowSidebar: @escaping () -> Void = {},
@@ -68,6 +86,7 @@ public struct ConversationColumn: View {
     self.subtitle = subtitle
     self.tintIndex = tintIndex
     self.entries = entries
+    self.showsToolCalls = showsToolCalls
     self.preparedMarkdown = preparedMarkdown
     self._draft = draft
     self.onSend = onSend
@@ -75,6 +94,7 @@ public struct ConversationColumn: View {
     self.showsInspector = showsInspector
     self.participantStatus = participantStatus
     self.onStop = onStop
+    self.onInsert = onInsert
     self.onRecover = onRecover
     self.onDismissError = onDismissError
     self.onShowSidebar = onShowSidebar
@@ -88,10 +108,19 @@ public struct ConversationColumn: View {
       transcript
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+      if onInsert != nil {
+        Text("⌘↩ 插入当前回答")
+          .font(Theme.TypeScale.pill)
+          .foregroundStyle(Theme.Palette.textMuted)
+          .frame(maxWidth: .infinity, alignment: .trailing)
+          .padding(.horizontal, Theme.Metric.conversationInset)
+          .accessibilityHidden(true)
+      }
       Composer(
         placeholder: "给 \(title) 发消息",
         text: $draft,
-        onSend: onSend
+        onSend: onSend,
+        onInsert: onInsert
       )
       .fixedSize(horizontal: false, vertical: true)
       .padding(.horizontal, Theme.Metric.conversationInset)
@@ -143,7 +172,7 @@ public struct ConversationColumn: View {
     ScrollViewReader { proxy in
       ScrollView {
         LazyVStack(alignment: .leading, spacing: Theme.Metric.turnGap) {
-          ForEach(entries) { entry in
+          ForEach(entries.hidingToolCalls(!showsToolCalls)) { entry in
             row(entry).id(entry.id)
           }
           Color.clear.frame(height: 1).id("bottom")
@@ -158,8 +187,9 @@ public struct ConversationColumn: View {
         Theme.Palette.surface, top: Theme.Metric.edgeFadeHeight, bottom: Theme.Metric.edgeFadeHeight
       )
       .onScrollPhaseChange { _, phase in
-        userIsScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
-        if phase == .idle, scrollState.endUserScroll() {
+        scroller.setUserScrolling(
+          phase == .tracking || phase == .interacting || phase == .decelerating)
+        if phase == .idle, scroller.endUserScroll() {
           proxy.scrollTo("bottom", anchor: .bottom)
         }
       }
@@ -168,7 +198,7 @@ public struct ConversationColumn: View {
           contentHeight: geometry.contentSize.height, visibleBottom: geometry.visibleRect.maxY
         )
       } action: { _, metrics in
-        if scrollState.update(metrics, userIsScrolling: userIsScrolling) {
+        if scroller.update(metrics) {
           proxy.scrollTo("bottom", anchor: .bottom)
         }
       }

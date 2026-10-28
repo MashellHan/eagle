@@ -95,6 +95,8 @@ export type Usage = {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly totalTokens: number;
+  /** What the provider reported as cost for these tokens, when it reports any. */
+  readonly costUsd?: number;
 };
 
 export type AgentView = {
@@ -142,6 +144,15 @@ export type BotAppearance = {
 
 export const DEFAULT_APPEARANCE: BotAppearance = { shape: "blob", tint: "green" };
 
+/** A sidebar group real bots are filed under; groups live beside the catalog. */
+export type BotGroup = {
+  readonly id: string;
+  readonly title: string;
+};
+
+export const MAX_BOT_GROUPS = 50;
+export const MAX_GROUP_TITLE_CHARS = 40;
+
 export type BotSummary = {
   readonly id: BotId;
   readonly title: string;
@@ -153,7 +164,23 @@ export type BotSummary = {
   readonly updatedAt: string;
   readonly model: { readonly provider: string; readonly modelId: string };
   readonly state: BotState;
+  /** Absent when the bot is not filed under a group. */
+  readonly groupId?: string;
   readonly unavailable?: { readonly reason: ErrorKind; readonly message: string };
+};
+
+/** One live task of a bot, as the inspector's 任务 section shows it. */
+export type TaskSummary = {
+  readonly id: string;
+  readonly kind: string;
+  readonly status: "pending" | "running" | "waiting" | "sleeping" | "completing";
+  readonly phase: string;
+  readonly background: boolean;
+  /** Why it cannot run here: a missing definition, an old version, or the restart limit. */
+  readonly blocked?: string;
+  /** The owning task, when this one is a child. */
+  readonly owner?: string;
+  readonly conversationId: string;
 };
 
 export type ConversationSnapshot = {
@@ -167,6 +194,8 @@ export type ConversationSnapshot = {
   readonly streaming: string | null;
   /** A task is parked and `recover` retries it; a new client needs this from the snapshot. */
   readonly parked?: boolean;
+  /** Live work of every conversation this bot owns, for the inspector. */
+  readonly tasks?: readonly TaskSummary[];
   readonly pending: readonly Submission[];
   readonly inbox: readonly InboxItem[];
   readonly running: boolean;
@@ -201,7 +230,7 @@ export const ALL_CAPABILITIES_OFF: Capabilities = {
   tools: false,
   tasks: false,
   entries: false,
-  usage: false,
+  usage: true,
   peers: false,
 };
 
@@ -244,4 +273,33 @@ export type BotRecord = {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly model: { readonly provider: string; readonly modelId: string };
+};
+
+/** The reasoning levels pi accepts; `medium` is the product default. */
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+
+export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
+
+export const isThinkingLevel = (value: unknown): value is ThinkingLevel =>
+  typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
+
+export const TOOL_GROUP_NAMES = ["core", "coding", "herdr", "agents", "search"] as const;
+
+export type ToolGroup = (typeof TOOL_GROUP_NAMES)[number];
+
+export const MANDATORY_TOOL_GROUPS: readonly ToolGroup[] = ["core", "coding"];
+
+/** New optional groups start unselected: a person turns them on in settings. */
+export const DEFAULT_TOOL_GROUPS: readonly ToolGroup[] = ["core", "coding", "herdr", "agents"];
+
+export const isToolGroup = (value: unknown): value is ToolGroup =>
+  typeof value === "string" && (TOOL_GROUP_NAMES as readonly string[]).includes(value);
+
+/** A stored selection, normalized: mandatory groups always present, order stable. */
+export const resolveToolGroups = (names: readonly string[] | undefined): readonly ToolGroup[] => {
+  const chosen = new Set<ToolGroup>(MANDATORY_TOOL_GROUPS);
+  for (const name of names ?? []) if (isToolGroup(name)) chosen.add(name);
+  return TOOL_GROUP_NAMES.filter((name) => chosen.has(name));
 };

@@ -3,7 +3,8 @@ import SwiftUI
 /// Sections of the settings window.
 public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
   case general = "通用"
-  case bots = "Bots 模型"
+  case bots = "模型"
+  case providers = "服务"
   case machines = "机器"
   case realtime = "实时"
   case usage = "用量与账单"
@@ -15,6 +16,7 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
     switch self {
     case .general: return "gearshape"
     case .bots: return "sparkles"
+    case .providers: return "antenna.radiowaves.left.and.right"
     case .machines: return "desktopcomputer"
     case .realtime: return "dot.radiowaves.left.and.right"
     case .usage: return "chart.bar"

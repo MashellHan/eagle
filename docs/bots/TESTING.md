@@ -251,6 +251,10 @@ killed process cannot log its own failure.
 After restart it asserts: exactly one admitted submission, the interrupted attempt
 retained as an `aborted` assistant entry (RUNTIME F22), exactly one completed
 answer for the same input, no duplicate submission and no duplicate user entry. A
+reconnecting client may first receive a recovering snapshot; the crash fixture
+waits for the actual completed assistant entry within its existing 20-second
+deadline, then resyncs before checking the final history. Task/extension refresh
+events are not completion evidence. A
 second case kills after `rename` during delete and asserts that startup
 reconciliation finished the delete; a `SIGKILL`ed process cannot log its own
 failure, so the evidence is the post-restart `core.reconcile.ok`.

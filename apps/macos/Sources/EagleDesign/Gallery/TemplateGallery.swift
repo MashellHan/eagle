@@ -304,10 +304,32 @@ public struct TemplateGallery: View {
               InspectorJob(
                 id: "j2", title: "依赖修复进度 10-24", detail: "每小时，10月24日，10:00 – 20:00", isOn: true),
             ],
+            tasks: [
+              InspectorTaskRow(
+                id: "t_12", title: "生成回答", symbolName: "sparkles", status: "运行中", depth: 0,
+                isRunning: true, isBlocked: false),
+              InspectorTaskRow(
+                id: "t_13", title: "工具调用", symbolName: "wrench.and.screwdriver", status: "等待",
+                depth: 1, isRunning: false, isBlocked: false),
+              InspectorTaskRow(
+                id: "t_14", title: "子 Agent", symbolName: "person.2", status: "已停放：重试次数过多",
+                depth: 2, isRunning: false, isBlocked: true),
+            ],
             tab: .constant(.detail)
           )
           .frame(height: 620)
           .overlay(alignment: .topTrailing) { cornerLabel("检查器") }
+
+          InspectorColumn(
+            name: "新的 Bot",
+            subtitle: "Bots",
+            tintIndex: 5,
+            artifacts: [],
+            jobs: [],
+            tab: .constant(.detail)
+          )
+          .frame(height: 620)
+          .overlay(alignment: .topTrailing) { cornerLabel("空状态") }
         }
       }
     }
