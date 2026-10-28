@@ -506,3 +506,18 @@ Sequence, so the suggested collection rewrite was not appropriate. The test now 
 CoreGraphics' native `applyWithBlock` visitor without disabling the rule. Strict formatting
 must run alongside rendering tests before staging; a passing Swift compiler does not prove
 the project's formatter accepts a native API idiom.
+
+## 2026-10-28 - A declared option that nothing reads is not wired
+
+The search-provider slice stopped mid-flight with `PiRuntimeOptions.search` and `.usage`
+declared, `main.ts` passing both, and `PiDurableRuntime.open` never reading them. Every
+existing gate was green: TypeScript accepts an unused optional property, Biome does not flag
+an options field, and the 492 tests never selected the new `search` group against the real
+runtime. The half-wiring was invisible until a test drove a faux model to call `web_search`
+and read `Tool web_search is not available`.
+
+Pass a new collaborator through the seam it is declared for and test that seam, not only its
+sides. A thread of `options.x` from composition root to consumer is one behaviour and needs
+one end-to-end test; a test of the consumer in isolation would have accepted the dead handoff.
+The same review found the sibling leak: selecting an unavailable group still offered its
+loader, because selection matched extension names without asking which were installed.
