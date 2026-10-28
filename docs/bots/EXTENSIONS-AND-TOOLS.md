@@ -252,14 +252,15 @@ uses the existing reconnect path; errors retain their single origin identity.
 
 ## 6. Planned optional groups
 
-All tools in this section are **planned**. `memory` and `peers` are new optional groups;
-neither enters the mandatory pair. (`search` has since shipped, see the inventory above.) Introduce them unselected by
-default. Do not accidentally enable them for everyone by extending the current
-`DEFAULT_TOOL_GROUPS = [...TOOL_GROUP_NAMES]` expression.
+All tools in this section are **planned**. `memory`, `peers` and `trigger` are new optional
+groups; none enters the mandatory pair. (`search` has since shipped, see the inventory above.)
+Introduce them unselected by default. Do not accidentally enable them for everyone by extending
+the current `DEFAULT_TOOL_GROUPS = [...TOOL_GROUP_NAMES]` expression.
 
 | Group | Extension | Planned tool names | Offering policy |
 | --- | --- | --- | --- |
 | `memory` | `bots-memory` | `memory_list`, `memory_search`, `memory_read`, `memory_write`, `memory_delete` | Deferred |
+| `trigger` | `bots-trigger` | `trigger_create`, `trigger_list`, `trigger_update`, `trigger_enable`, `trigger_delete` | Deferred |
 | `peers` | `bots-peers` | `peer_list`, `peer_send`, `peer_read` | Deferred |
 | Existing `agents` | `bots-agents` | Add `agent_list`; retain the existing three names/semantics | Eager when selected |
 
@@ -323,7 +324,28 @@ Adding a provider means adding its adapter/catalog entry and the same contract
 tests, not adding a new Bot tool or extending the model's schema with vendor
 options. Actual provider acceptance is separate from deterministic local tests.
 
-### 6.3 Agents and peers: discovery, listing and communication
+### 6.3 Schedule and webhook triggers
+
+Trigger semantics, the invocation port they use, their storage, queue and batching
+rules, the transcript origin field and the read-only app surface are owned by
+[Triggers, invocation and peers](TRIGGERS.md). This guide owns only the tool faces:
+
+| Tool | Planned input | Result and single responsibility | Replay |
+| --- | --- | --- | --- |
+| `trigger_create` | `kind, name, prompt, cron?, timezone?` | Creates one trigger owned by the calling Bot; returns its summary and a credential-free endpoint path | Safe by `opId` (§4 and §7 of TRIGGERS.md) |
+| `trigger_list` | `{}` | Lists the calling Bot's triggers with `enabled`, counters and the last fired/skipped instant | Safe |
+| `trigger_update` | `triggerId, name?, prompt?` | Replaces name or prompt only; a payload that changes the schedule is a separate operation | Safe by `opId` |
+| `trigger_enable` | `triggerId, enabled` | Switches one trigger without touching its queue or its cursor | Safe by `opId` |
+| `trigger_delete` | `triggerId` | Removes the definition, its secret and its queue | Safe by `opId` |
+
+A Bot creates and manages its own triggers; the app lists them read-only with one
+enable switch. No user-facing creation, editing or deletion exists. The model never
+receives a webhook secret: the endpoint path it is given has no credential, and the
+per-trigger bearer token is shown only in the app. No trigger mutation tool may be
+marked replay-safe before the journal's `opId` record exists, because SDK `safe`
+re-executes the handler rather than caching its result.
+
+### 6.4 Agents and peers: discovery, listing and communication
 
 Add **`agent_list({})`** to the existing `agents` group: list the caller's direct
 child conversations from `bots.agent` markers, returning `agentId`, name,
@@ -381,10 +403,13 @@ synchronously for peers from within a peer send. Test A -> B -> A and longer
 cycles so communication cannot silently turn into an unbounded model loop.
 This is product routing/cost control, not an execution sandbox.
 
-The existing `peers: false` wire flag remains false until its documented enable
-slice lands. Tool selection and a future peer UI capability are separate. Any
-new sender/delivery wire fields require additive protocol definitions and shared
-fixtures; neither registering tools nor this guide enables a peer UI.
+`peer_send` is not registered until the route-enforcement spike in
+[TRIGGERS.md](TRIGGERS.md) §9 decides its mechanism: a numeric-only release would
+contradict the durable visited-path requirement above, and `peers: false` does not
+prevent an already-selected tool from being called. The wire flag stays false until
+the documented enable slice lands; tool selection and a future peer UI capability
+are separate, and any new sender/delivery wire field needs an additive protocol
+definition plus shared fixtures.
 
 ## 7. Development and acceptance recipe
 

@@ -3,8 +3,9 @@
 Status snapshot. The contracts live in
 [PRODUCT.md](PRODUCT.md), [ARCHITECTURE.md](ARCHITECTURE.md),
 [PROTOCOL.md](PROTOCOL.md), [RUNTIME.md](RUNTIME.md),
-[OBSERVABILITY.md](OBSERVABILITY.md) and [TESTING.md](TESTING.md). This file says
-what exists, what is next, and where it lives. Update it whenever a stage closes.
+[OBSERVABILITY.md](OBSERVABILITY.md), [TRIGGERS.md](TRIGGERS.md) and
+[TESTING.md](TESTING.md). This file says what exists, what is next, and where it
+lives. Update it whenever a stage closes.
 
 The current tool taxonomy, native extension integration and test-evidence map are
 in [Extensions and tools](EXTENSIONS-AND-TOOLS.md). That guide also
@@ -466,10 +467,43 @@ daemon nor a key. Not verified in this pass: a real
 DeepSeek key and a live `web_search` call, and a bot switching the `search` group on against
 a running daemon (the runtime path is covered by the deterministic faux-model test).
 
+## Triggers and peers (contract written 2026-10-28, nothing implemented)
+
+[TRIGGERS.md](TRIGGERS.md) defines the bot-side invocation port and the three
+callers that will use it. Design decisions frozen with the owner:
+
+- One port (`core/Invocation.ts`: `invoke`/`submission`/`observe`) is the only way
+  a non-connection caller admits work. Queueing, batching and timing stay caller
+  policy, so a caller can be replaced without touching core. Stage 0 also fixes two
+  existing holes it depends on: a settled record is invisible after a restart until
+  the adapter uses the durable `submissionByRequest` lookup, and an idle close can
+  race an admission until the registry tracks activity generations.
+- Each trigger owns a 32-item FIFO queue, evicting the oldest, and delivers to an
+  idle Bot only: one frozen, merged submission per idle window, cut by the
+  `MAX_SEND_TEXT` budget rather than truncated, driven by a drain pump because a run
+  can finish before `submit` returns.
+- `trigger` (schedule + webhook) and `peers` are two optional tool groups registered
+  like every other group and deferred behind `tool_search`. The Bot's own model
+  creates and manages its triggers; the app lists them read-only with a single
+  enable switch. No user-facing trigger creation exists.
+- Transcript messages gain an additive `origin` field backed by a per-Bot
+  `origins.jsonl` sidecar, written before admission and applied on all four render
+  paths, so a label survives a restart and absence means `unknown`, never `human`.
+- Scheduling is Bot-owned and fires only while the daemon runs: no catch-up, no
+  user-registered cron jobs. External cron uses a webhook endpoint authenticated by
+  a per-trigger bearer token in a header, and the daemon stays loopback-only.
+
+Stage order: 0 interface and its contract tests (including the two adapter/registry
+fixes it needs), 1 `trigger` group with schedule plus origin field and app surface,
+2 webhook ingress, 3 `peers`. Each stage states its exit criteria in TRIGGERS.md §11.
+
 ## Next work, in order
 
 1. Finish the client surface: history paging, bot settings behind the `agent`
    capability, and an inspector that renders a bot's own state.
+2. Deliver the trigger stages in [TRIGGERS.md](TRIGGERS.md) §11, starting with the
+   invocation port, because every later caller depends on it and none of them
+   changes it.
 
 The extension/tool track has its own proposed sequence in
 [Extensions and tools](EXTENSIONS-AND-TOOLS.md#6-planned-optional-groups):
