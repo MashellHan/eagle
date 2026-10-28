@@ -285,13 +285,14 @@ export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 export const isThinkingLevel = (value: unknown): value is ThinkingLevel =>
   typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
 
-export const TOOL_GROUP_NAMES = ["core", "coding", "herdr", "agents"] as const;
+export const TOOL_GROUP_NAMES = ["core", "coding", "herdr", "agents", "search"] as const;
 
 export type ToolGroup = (typeof TOOL_GROUP_NAMES)[number];
 
 export const MANDATORY_TOOL_GROUPS: readonly ToolGroup[] = ["core", "coding"];
 
-export const DEFAULT_TOOL_GROUPS: readonly ToolGroup[] = [...TOOL_GROUP_NAMES];
+/** New optional groups start unselected: a person turns them on in settings. */
+export const DEFAULT_TOOL_GROUPS: readonly ToolGroup[] = ["core", "coding", "herdr", "agents"];
 
 export const isToolGroup = (value: unknown): value is ToolGroup =>
   typeof value === "string" && (TOOL_GROUP_NAMES as readonly string[]).includes(value);

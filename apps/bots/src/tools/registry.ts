@@ -16,6 +16,7 @@ import {
   herdrSection,
 } from "./herdr/tools.ts";
 import { createListTool } from "./list.ts";
+import { SEARCH_TOOLS_EXTENSION, searchExtension } from "./search/tools.ts";
 import type { BotWorkspace } from "./types.ts";
 
 export const BOTS_TOOLS_EXTENSION = "bots-tools";
@@ -25,10 +26,25 @@ const GROUP_EXTENSIONS: Record<ToolGroup, readonly string[]> = {
   coding: [CodingTools.name],
   herdr: [HERDR_TOOLS_EXTENSION, toolSearch.name],
   agents: [AGENTS_TOOLS_EXTENSION],
+  search: [SEARCH_TOOLS_EXTENSION, toolSearch.name],
 };
 
 export const selectToolExtensions = (registry: RegistryReader, groups: readonly string[]) => {
-  const names = new Set(resolveToolGroups(groups).flatMap((group) => GROUP_EXTENSIONS[group]));
+  const installed = new Set(
+    registry
+      .snapshot()
+      .installed()
+      .map((extension) => extension.name),
+  );
+  const names = new Set<string>();
+  for (const group of resolveToolGroups(groups)) {
+    const [owner, ...rest] = GROUP_EXTENSIONS[group];
+    // A group whose own tools are not installed contributes nothing, not even its loader:
+    // selecting an unavailable group must not offer a tool_search that can load nothing.
+    if (owner === undefined || !installed.has(owner)) continue;
+    names.add(owner);
+    for (const name of rest) if (installed.has(name)) names.add(name);
+  }
   return registry
     .snapshot()
     .installed()
@@ -51,6 +67,10 @@ const bash = createBashTool({
 export type ToolRegistryOptions = {
   /** Herdr tools need the CLI client and this bot's state directory. */
   readonly herdr?: Omit<HerdrToolOptions, "workspace">;
+  /** Web search needs a provider client; absent when no key is configured. */
+  readonly search?: Omit<Parameters<typeof searchExtension>[0], "botId"> & {
+    readonly botId: string;
+  };
 };
 
 export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistryOptions = {}) => {
@@ -74,8 +94,9 @@ export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistr
   );
   registry.install(CodingTools);
   registry.install(agentsExtension());
+  if (options.search !== undefined) registry.install(searchExtension(options.search));
   // Deferred tools need their loader; without one the model would never see them.
-  if (herdr !== undefined) registry.install(toolSearch);
+  if (herdr !== undefined || options.search !== undefined) registry.install(toolSearch);
   if (herdr !== undefined) {
     registry.install(
       defineExtension({

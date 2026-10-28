@@ -86,16 +86,24 @@ because extensions can capture Bot-specific services and directories.
 | `coding` | `coding-tools` (`CodingTools`) | Mandatory | `read`, `write`, `edit`, `bash` |
 | `agents` | `bots-agents` | Optional | All three child-agent tools when selected |
 | `herdr` | `bots-herdr`, `tool-search` | Optional | `tool_search`; the eight Herdr tools are deferred |
+| `search` | `bots-search`, `tool-search` | Optional, **off by default** | `tool_search` is offered; `web_search` and `web_fetch` are deferred |
 
-Current defaults select all four groups. Settings are daemon-wide and applied to
+Current defaults select `core`, `coding`, `herdr` and `agents`; `search` stays off
+until a person turns it on. Settings are daemon-wide and applied to
 existing/new Bots, not independently editable group policies for each sidebar
 Bot. `core` and `coding` are normalized back in even for an empty selection;
 their settings switches stay on and cannot be disabled. Herdr registrations
-require an injected CLI client, which the normal daemon runtime supplies.
+require an injected CLI client, which the normal daemon runtime supplies. The
+search registrations require a saved provider key.
 
-There are **17 tool names** with all current groups registered: five filesystem/
-coding tools, three child-agent tools, eight Herdr tools and one SDK loader.
-Nine are initially offered when all groups are selected; eight are deferred.
+A group whose own extension is not installed contributes nothing, not even its
+loader: selecting `search` without a provider key offers no `tool_search`, because
+a loader that can load nothing is a lie to the model.
+
+There are **19 tool names** with all current groups registered: five filesystem/
+coding tools, three child-agent tools, eight Herdr tools, two search tools and one
+SDK loader. With the default selection (no `search`) nine are initially offered and
+eight are deferred; selecting `search` adds `tool_search` and defers the two.
 
 ### Filesystem and coding
 
@@ -113,6 +121,17 @@ types/source remain authoritative for native argument details and output limits.
 Do not restore `read_file`, `write_file`, `run_command` or `list_files` aliases.
 Do not add custom paging, edit matching or process execution already provided by
 `CodingTools`. Only genuinely missing operations belong in `core`.
+
+### Search
+
+| Group / tool | Input | Behavior | Replay |
+| --- | --- | --- | --- |
+| `search` / `web_search` | `query, count?, needContent?` | DeepSeek search: ranked title, URL, snippet and summary; content on request; the provider's operators (`site:`, `lang:`, `after:`, quoted phrases) pass through | Unsafe |
+| `search` / `web_fetch` | `url` | DeepSeek fetch: one page as Markdown, at most 50 KiB of model-facing text with an explicit truncation notice | Safe |
+
+Both are deferred and need a provider key (`GET /v1/providers`, PROTOCOL.md "Providers").
+Each performed call books one `search` call in the usage statistics, so the Settings page
+shows search next to model spend.
 
 ### Child conversations and terminal agents
 
@@ -155,6 +174,7 @@ Paths in this table are relative to `apps/bots/`.
 | Herdr tools | `test/tools/herdr.test.ts` | All eight operations with a fake client; resource targeting, state loss, replacement/refusal, failed rollback and cancellation |
 | Herdr CLI adapter | `test/tools/herdr-client.test.ts` | Executable fixture responses, argv/result handling, deadlines, cancellation, large/split output; not acceptance of every installed live agent kind |
 | Child agents | `test/tools/agents.test.ts` | Real Harness/SQLite spawn -> send -> answer with a deterministic model; dedicated stop, invalid-target, interrupted-send and one-level negative tests are still needed |
+| Search | `test/tools/search.test.ts`, `test/runtime/search-tools.test.ts`, `test/server/providers.test.ts`, `test/main.test.ts` | Documented request/response shape, refused key, deferred flags, one booked call per search, blank query refused; provider store is 0600, write-only and never returned; HTTP round trip behind the bearer |
 | Deferred discovery | `test/runtime/deferred-tools.test.ts` | Model calls `tool_search`, then the discovered `herdr_list`; persistence across compaction is an SDK-source fact, not a separate regression established here |
 | Hot refresh | `test/runtime/tool-groups.test.ts`, `test/core/registry.test.ts`, `test/core/service.test.ts` | Warm enable/disable, cached switching, no interrupted answer, same-value retry, failed refresh and single failure identity |
 | Wire round trip | `test/e2e/tools.test.ts` | Real socket tool rows and later snapshot, encoded-size clamp, A -> B -> A refresh without extra model calls/watches, `1011` reconnect recovery |
@@ -217,15 +237,14 @@ uses the existing reconnect path; errors retain their single origin identity.
 
 ## 6. Planned optional groups
 
-All tools in this section are **planned**. `memory`, `search` and `peers` are new
-optional groups; none enters the mandatory pair. Introduce them unselected by
+All tools in this section are **planned**. `memory` and `peers` are new optional groups;
+neither enters the mandatory pair. (`search` has since shipped, see the inventory above.) Introduce them unselected by
 default. Do not accidentally enable them for everyone by extending the current
 `DEFAULT_TOOL_GROUPS = [...TOOL_GROUP_NAMES]` expression.
 
 | Group | Extension | Planned tool names | Offering policy |
 | --- | --- | --- | --- |
 | `memory` | `bots-memory` | `memory_list`, `memory_search`, `memory_read`, `memory_write`, `memory_delete` | Deferred |
-| `search` | `bots-search` | `web_search`, `web_fetch` | Deferred |
 | `peers` | `bots-peers` | `peer_list`, `peer_send`, `peer_read` | Deferred |
 | Existing `agents` | `bots-agents` | Add `agent_list`; retain the existing three names/semantics | Eager when selected |
 

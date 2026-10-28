@@ -35,9 +35,17 @@ import {
   writeGateway,
 } from "./server/gateway.ts";
 import { type Daemon, startServer } from "./server/http.ts";
+import {
+  PROVIDERS,
+  providerDefinition,
+  publicProviders,
+  readProviders,
+  writeProviders,
+} from "./server/providers.ts";
 import { acquireLock, LockError } from "./server/singleton.ts";
 import { toServerEvent } from "./server/socket.ts";
 import { UsageStore } from "./server/usage.ts";
+import { createDeepSeekSearch, type SearchClient } from "./tools/search/deepseek.ts";
 
 export type DaemonHandle = {
   readonly config: DaemonConfig;
@@ -155,7 +163,14 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
         },
   );
   const compaction = compactionFromEnv(process.env, windowTokens);
-  const runtime = new PiDurableRuntime({ models: () => models, log, compaction });
+  const usageStore = new UsageStore(join(root, "usage.sqlite"));
+  const runtime = new PiDurableRuntime({
+    models: () => models,
+    log,
+    compaction,
+    usage: usageStore,
+    search: () => searchClient(),
+  });
   const defaultModel =
     gateway === undefined
       ? canonical.model
@@ -175,7 +190,17 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   await registry.start();
   // The daemon exists after the service that has to broadcast through it.
   let broadcast: (() => void) | undefined;
-  const usageStore = new UsageStore(join(root, "usage.sqlite"));
+  let providers = await readProviders();
+  const searchClient = (): SearchClient | undefined => {
+    for (const definition of PROVIDERS) {
+      const config = providers[definition.id];
+      if (config === undefined || !config.enabled || config.apiKey.length === 0) continue;
+      if (definition.kind === "deepseek-search") {
+        return createDeepSeekSearch({ apiKey: config.apiKey, baseUrl: definition.baseUrl });
+      }
+    }
+    return undefined;
+  };
   const service = new ConversationService({
     open: (botId, trace) => registry.open(botId, trace),
     handleOf: (botId) => registry.handleOf(botId),
@@ -190,7 +215,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     },
     onUsage: (botId, usage) => {
       try {
-        usageStore.record(botId, usage);
+        usageStore.recordModelUsage(botId, usage);
       } catch {
         // Statistics are a side channel: a full disk must not fail the conversation.
       }
@@ -299,6 +324,58 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     capabilities,
     port: canonical.port,
     gatewayProvider: () => gateway?.provider ?? "magpie",
+    providers: {
+      public: () => publicProviders(providers),
+      save: async (id, input) => {
+        const definition = providerDefinition(id);
+        if (definition === undefined) {
+          return { error: `未知的服务：${id}` };
+        }
+        const current = providers[id] ?? { apiKey: "", enabled: false };
+        const apiKey = input.apiKey === undefined ? current.apiKey : input.apiKey.trim();
+        if (input.apiKey !== undefined && apiKey.length === 0) {
+          return { error: "API Key 不能为空" };
+        }
+        const next = {
+          apiKey,
+          enabled: input.enabled === undefined ? current.enabled : input.enabled,
+        };
+        const all = { ...providers, [id]: next };
+        await writeProviders(all);
+        providers = all;
+        const saved = publicProviders(all).find((provider) => provider.id === id);
+        return saved === undefined ? { error: `未知的服务：${id}` } : { provider: saved };
+      },
+      test: async (id) => {
+        const definition = providerDefinition(id);
+        const config = providers[id];
+        if (definition === undefined || config === undefined || config.apiKey.length === 0) {
+          return { ok: false, message: "还没有保存这个服务的 API Key", latencyMs: 0 };
+        }
+        if (definition.kind !== "deepseek-search") {
+          return { ok: false, message: "这个服务还不支持测试", latencyMs: 0 };
+        }
+        const started = performance.now();
+        try {
+          const results = await createDeepSeekSearch({
+            apiKey: config.apiKey,
+            baseUrl: definition.baseUrl,
+          }).search({ query: "DeepSeek", count: 1 });
+          return {
+            ok: true,
+            message: `连接成功，返回 ${results.length} 条结果`,
+            latencyMs: Math.round(performance.now() - started),
+            results: results.length,
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            message: error instanceof Error ? error.message : "搜索服务不可用",
+            latencyMs: Math.round(performance.now() - started),
+          };
+        }
+      },
+    },
     usage: async (days: number) => {
       const report = usageStore.report(days);
       const titles = new Map(registry.summaries().map((bot) => [bot.id, bot.title]));

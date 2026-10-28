@@ -305,3 +305,59 @@ test("the usage endpoint reports an empty window before anything runs", async ()
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("provider keys are saved behind the bearer and never returned", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-providers-http-"));
+  const configHome = await mkdtemp(join(tmpdir(), "bots-providers-home-"));
+  const previous = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = configHome;
+  try {
+    const daemon = await startDaemon(
+      readConfig({ argv: ["--root", root, "--port", "0"], env: {} }),
+    );
+    const headers = { authorization: `Bearer ${daemon.token}`, "content-type": "application/json" };
+    try {
+      const initial = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers`, { headers });
+      const listed = (await initial.json()) as {
+        providers: { id: string; hasApiKey: boolean; enabled: boolean }[];
+      };
+      assert.equal(listed.providers[0]?.id, "deepseek-search");
+      assert.equal(listed.providers[0]?.hasApiKey, false);
+
+      const saved = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers/deepseek-search`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ apiKey: "sk-http-secret", enabled: true }),
+      });
+      assert.equal(saved.status, 200);
+      const body = (await saved.json()) as {
+        provider: { hasApiKey: boolean; enabled: boolean; title: string };
+      };
+      assert.equal(body.provider.hasApiKey, true);
+      assert.equal(body.provider.enabled, true);
+      assert.equal(JSON.stringify(body).includes("sk-http-secret"), false, "the key stays stored");
+
+      const unknown = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers/nope`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ apiKey: "k" }),
+      });
+      assert.equal(unknown.status, 400);
+      const blank = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers/deepseek-search`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ apiKey: "   " }),
+      });
+      assert.equal(blank.status, 400, "a blank key is refused rather than clearing the stored one");
+      const unauthenticated = await fetch(`http://127.0.0.1:${daemon.port}/v1/providers`);
+      assert.equal(unauthenticated.status, 401);
+    } finally {
+      await daemon.close();
+    }
+  } finally {
+    if (previous === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previous;
+    await rm(root, { recursive: true, force: true });
+    await rm(configHome, { recursive: true, force: true });
+  }
+});

@@ -39,6 +39,8 @@ import { type DeclaredEvent, declareEvent } from "../../log/events.ts";
 import type { Log } from "../../log/log.ts";
 import { createHerdrClient } from "../../tools/herdr/client.ts";
 import { createToolRegistry, selectToolExtensions } from "../../tools/registry.ts";
+import type { SearchClient } from "../../tools/search/deepseek.ts";
+import type { UsageMeter } from "../../tools/usage.ts";
 import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
 import { entryMessageId } from "./convert.ts";
@@ -139,6 +141,10 @@ export type PiRuntimeOptions = {
   readonly maxMessageBytes?: number;
   /** Where the bot's tools work; defaults to `<bot dir>/workspace`. */
   readonly workspaceRoot?: (spec: RuntimeBotSpec) => string;
+  /** The web-search client for a bot, absent when no provider key is configured. */
+  readonly search?: (spec: RuntimeBotSpec) => SearchClient | undefined;
+  /** Where a tool that costs something books it (docs/bots/PROTOCOL.md, "Usage statistics"). */
+  readonly usage?: UsageMeter;
 };
 
 export class PiDurableRuntime implements RuntimePort {
@@ -165,8 +171,18 @@ export class PiDurableRuntime implements RuntimePort {
         join(spec.dir, "session.sqlite"),
       );
       const groups = resolveToolGroups(spec.toolGroups);
+      const search = this.#options.search?.(spec);
       const registry = createToolRegistry(workspace, {
         herdr: { client: createHerdrClient(), stateDir: spec.dir, botId: spec.id },
+        ...(search === undefined
+          ? {}
+          : {
+              search: {
+                client: search,
+                botId: spec.id,
+                ...(this.#options.usage === undefined ? {} : { meter: this.#options.usage }),
+              },
+            }),
       });
       const installed = selectToolExtensions(registry, groups);
       const harness = await HarnessFactory.open(

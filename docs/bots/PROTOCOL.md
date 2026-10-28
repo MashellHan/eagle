@@ -96,6 +96,9 @@ version, the instance id, the pid and a bot count, never bot content.
 | `PATCH` | `/v1/groups/:id` | `{ "title" }` | `{ "group": BotGroup }` |
 | `PUT` | `/v1/groups/order` | `{ "ids": [string] }` — every group once, in display order | `{ "groups": [BotGroup] }` |
 | `DELETE` | `/v1/groups/:id` | — | `204`, or `409` while a bot is filed under it |
+| `GET` | `/v1/providers` | — | `{ "providers": [Provider] }` |
+| `PUT` | `/v1/providers/:id` | `{ "apiKey"?, "enabled"? }` | `{ "provider": Provider }` |
+| `POST` | `/v1/providers/:id/test` | — | `{ "result": { "ok", "message", "latencyMs", "results"? } }` |
 | `GET` | `/v1/usage?days=` | — | `{ "usage": UsageReport }` — statistics over the daemon's retained days |
 | `GET` | `/v1/models` | — | `{ "models": [string] }` — the gateway's ids, empty when it cannot be asked |
 | `GET` | `/v1/settings` | — | `{ "settings": GatewaySettings }` |
@@ -197,23 +200,53 @@ conversation moves in place. `GET /v1/models` is a read-only proxy of the gatewa
 list (cached for a minute), so a picker never has to know the gateway itself. The `agent`
 capability is `true`.
 
+## Providers
+
+Third-party services a bot's tools may call. The catalogue is code (`id`, `title`,
+`kind`, `baseUrl`, `docsUrl`, `keyLabel`); the first entry is `deepseek-search`, whose
+search and fetch APIs back the `web_search`/`web_fetch` tools.
+
+```json
+{ "id": "deepseek-search", "title": "DeepSeek 搜索", "kind": "deepseek-search",
+  "baseUrl": "https://api.deepseek.com",
+  "docsUrl": "https://api-docs.deepseek.com/guides/search/",
+  "keyLabel": "DeepSeek API Key", "hasApiKey": true, "enabled": true }
+```
+
+- **The key is write-only and lives in the user's config**, not in the daemon root or a
+  bot's directory: `<XDG_CONFIG_HOME or ~/.config>/eagle-bots/providers.json`, mode 0600. A
+  `PUT` with an omitted key keeps the stored one; an empty key is a `400` and writes nothing.
+  The public shape only says whether a key is set.
+- **`enabled` decides whether bots get the tools.** The `search` tool group also has to be
+  selected; with no key or a disabled provider the group installs nothing callable.
+- **`test` spends one search**: it asks the provider for a single result and reports
+  reachability, the message and the latency. It saves nothing.
+- An unknown provider is a `400`; a refused key reads as "the provider refused the API key".
+
 ## Usage statistics
 
 `GET /v1/usage?days=30` answers the settings page from one table the daemon keeps for every
-bot and **local** day (a day is what the person experienced, not UTC): day, tokens and what
-the provider said it cost. Ninety days are retained; older rows are pruned on boot and on
-every write.
+bot, **local** day (a day is what the person experienced, not UTC) and source: tokens, calls
+and what the provider said it cost. Ninety days are retained; older rows are pruned on boot
+and on every write.
 
 ```json
 { "usage": {
   "retentionDays": 90,
-  "today": { "totalTokens": 120, "costUsd": 0.01 },
-  "week":  { "totalTokens": 900, "costUsd": 0.05 },
-  "month": { "totalTokens": 5000, "costUsd": 0.3 },
-  "days": [ { "day": "2026-10-20", "totalTokens": 0, "costUsd": 0 }, … ],
-  "bots": [ { "botId": "b_1", "title": "研究员", "totalTokens": 5000, "costUsd": 0.3 } ] } }
+  "today": { "totalTokens": 120, "calls": 3, "costUsd": 0.01 },
+  "week":  { "totalTokens": 900, "calls": 12, "costUsd": 0.05 },
+  "month": { "totalTokens": 5000, "calls": 40, "costUsd": 0.3 },
+  "days": [ { "day": "2026-10-20", "totalTokens": 0, "calls": 0, "costUsd": 0 }, … ],
+  "bots": [ { "botId": "b_1", "title": "研究员", "totalTokens": 5000, "calls": 40, "costUsd": 0.3 } ],
+  "sources": [ { "source": "model", "totalTokens": 4990, "calls": 0, "costUsd": 0.3 },
+               { "source": "search", "totalTokens": 0, "calls": 40, "costUsd": 0 } ] } }
 ```
 
+- Sources: `model` spends tokens, `search` spends calls (one per search or fetch); `sources`
+  lists each one's share, busiest first, so a client shows where the work went. `model` and
+  `search` are today's set; the store keys on a string, so the next spender needs no migration.
+- The first schema counted tokens only; the daemon migrates that day table into the `model`
+  source when it opens the store.
 - `days` is the requested window (1–90, default 30), oldest first, with a zero row for a day
   nothing ran, so a chart needs no gap handling.
 - `bots` lists the ten busiest in the retention window, busiest first; the daemon joins the

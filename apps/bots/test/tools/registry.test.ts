@@ -139,6 +139,35 @@ test("herdr tools are deferred and the loader is installed with them", async () 
   await rm(daemonRoot, { recursive: true, force: true });
 });
 
+test("a group whose tools are not installed contributes nothing, not even its loader", async () => {
+  const daemonRoot = await mkdtemp(join(tmpdir(), "bots-registry-"));
+  try {
+    const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"));
+    // Herdr is installed but no search client is, so selecting `search` must not offer the
+    // loader: a tool_search that can load nothing is a lie to the model.
+    const herdr = {
+      client: {} as HerdrClient,
+      stateDir: join(daemonRoot, "bots", "a"),
+      botId: "a",
+    };
+    const bare = createToolRegistry(workspace, { herdr });
+    const selected = selectToolExtensions(bare, ["search"])
+      .flatMap((extension) =>
+        (extension.tools ?? []).map((tool) => `${extension.name}:${tool.name}`),
+      )
+      .sort();
+    assert.deepEqual(selected, [
+      "bots-tools:list",
+      "coding-tools:bash",
+      "coding-tools:edit",
+      "coding-tools:read",
+      "coding-tools:write",
+    ]);
+  } finally {
+    await rm(daemonRoot, { recursive: true, force: true });
+  }
+});
+
 test("selection reads native registry replacement and removal rather than a startup snapshot", async () => {
   const root = await mkdtemp(join(tmpdir(), "bots-live-registry-"));
   try {

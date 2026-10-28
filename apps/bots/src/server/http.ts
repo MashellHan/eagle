@@ -21,6 +21,7 @@ import { PROTOCOL_VERSION } from "../protocol/version.ts";
 import { parseBearer, tokenMatches } from "./auth.ts";
 import { serverFailure } from "./failures.ts";
 import type { GatewayApi, GatewayInput } from "./gateway.ts";
+import type { ProviderApi } from "./providers.ts";
 import { attachConnection, CLOSE, MAX_CONNECTIONS, refuseUpgrade } from "./socket.ts";
 
 const Events = {
@@ -42,6 +43,8 @@ export type ServerOptions = {
   readonly gatewayProvider?: () => string;
   /** Usage statistics for the Settings page; `days` is the requested window. */
   readonly usage?: (days: number) => Promise<unknown>;
+  /** Third-party provider keys (search today, others later). */
+  readonly providers?: ProviderApi;
   /** Model gateway settings, when the daemon was configured with a store. */
   readonly settings?: GatewayApi;
   readonly pid?: number;
@@ -366,6 +369,64 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
         }
         json(response, 200, { result: await options.settings.test(input) });
         return;
+      }
+      if (path === "/v1/providers" && request.method === "GET") {
+        json(response, 200, { providers: options.providers?.public() ?? [] });
+        return;
+      }
+      const providerMatch = /^\/v1\/providers\/([A-Za-z0-9_-]+)(?:\/(test))?$/.exec(path);
+      if (providerMatch !== null) {
+        const id = providerMatch[1] as string;
+        const probe = providerMatch[2] === "test";
+        if (options.providers === undefined) {
+          json(response, 404, { error: { kind: "unknown_bot", message: "no such endpoint" } });
+          return;
+        }
+        if (probe && request.method === "POST") {
+          json(response, 200, { result: await options.providers.test(id) });
+          return;
+        }
+        if (!probe && request.method === "PUT") {
+          const body = await readBody(request);
+          if (
+            !isObject(body) ||
+            Object.keys(body).some((key) => !["apiKey", "enabled"].includes(key))
+          ) {
+            json(response, 400, {
+              error: {
+                kind: "invalid_command",
+                message: "send an apiKey, an enabled flag, or both",
+              },
+            });
+            return;
+          }
+          const input: { apiKey?: string; enabled?: boolean } = {};
+          if (body.apiKey !== undefined) {
+            if (typeof body.apiKey !== "string") {
+              json(response, 400, {
+                error: { kind: "invalid_command", message: "apiKey must be a string" },
+              });
+              return;
+            }
+            input.apiKey = body.apiKey;
+          }
+          if (body.enabled !== undefined) {
+            if (typeof body.enabled !== "boolean") {
+              json(response, 400, {
+                error: { kind: "invalid_command", message: "enabled must be a boolean" },
+              });
+              return;
+            }
+            input.enabled = body.enabled;
+          }
+          const saved = await options.providers.save(id, input);
+          if (saved.error !== undefined) {
+            json(response, 400, { error: { kind: "invalid_command", message: saved.error } });
+            return;
+          }
+          json(response, 200, { provider: saved.provider });
+          return;
+        }
       }
       if (path === "/v1/usage" && request.method === "GET") {
         const requested = Number(new URL(request.url ?? "/", "http://x").searchParams.get("days"));
