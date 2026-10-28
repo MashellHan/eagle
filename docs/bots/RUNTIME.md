@@ -6,7 +6,7 @@ evidence that established them. Protocol shape is in
 [OBSERVABILITY.md](OBSERVABILITY.md).
 
 For the current inventory, extension-development rules and explicitly planned
-tool families, see [001 - Extensions and tools](001-EXTENSIONS-AND-TOOLS.md).
+tool families, see [Extensions and tools](EXTENSIONS-AND-TOOLS.md).
 
 The adapter owns a Harness per bot, translates its behaviour into `RuntimeEvent`,
 classifies failures, and owns the submission ledger. It owns no catalog, no

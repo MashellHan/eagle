@@ -1,4 +1,4 @@
-# 001 - Bot extensions and tools
+# Bot extensions and tools
 
 Status: **development guide and proposed tool roadmap**, 2026-10-28.
 The implemented inventory is checked against `541f1d4`, including native-tool

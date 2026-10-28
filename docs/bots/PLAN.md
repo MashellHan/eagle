@@ -7,7 +7,7 @@ Status snapshot. The contracts live in
 what exists, what is next, and where it lives. Update it whenever a stage closes.
 
 The current tool taxonomy, native extension integration and test-evidence map are
-in [001 - Extensions and tools](001-EXTENSIONS-AND-TOOLS.md). That guide also
+in [Extensions and tools](EXTENSIONS-AND-TOOLS.md). That guide also
 specifies planned optional `memory`, `search` and `peers` groups and child-agent
 discovery. Those additions are not implemented or enabled by this plan update.
 
@@ -417,7 +417,7 @@ five busiest bots — with an empty state instead of zeros before anything runs.
    capability, and an inspector that renders a bot's own state.
 
 The extension/tool track has its own proposed sequence in
-[001 - Extensions and tools](001-EXTENSIONS-AND-TOOLS.md#6-planned-optional-groups):
+[Extensions and tools](EXTENSIONS-AND-TOOLS.md#6-planned-optional-groups):
 
 1. Add child discovery with `agent_list`, direct-parent target validation and the
    missing negative/stop/recovery tests for existing delegation tools.

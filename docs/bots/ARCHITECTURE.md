@@ -7,7 +7,7 @@ runtime mapping in [RUNTIME.md](RUNTIME.md), logging in
 [OBSERVABILITY.md](OBSERVABILITY.md), tests in [TESTING.md](TESTING.md).
 
 The current extension/tool structure, native SDK integration and planned tool
-families are in [001 - Extensions and tools](001-EXTENSIONS-AND-TOOLS.md).
+families are in [Extensions and tools](EXTENSIONS-AND-TOOLS.md).
 Tool groups select native extensions; they do not replace the application core
 or introduce another execution engine.
 
