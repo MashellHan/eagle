@@ -178,13 +178,13 @@ export class FailureClassifier {
     return this.classify("submit:busy", "limit_exceeded", "runtime");
   }
 
-  /** Storage or session trouble inside one submit. */
-  submitFailed(cause: unknown): Minted {
+  /** Adapter operations share session failures with reports and watch termination. */
+  operationFailed(operation: "submit" | "tools", cause: unknown): Minted {
     // A failed session is one episode key, whichever channel reports it first. Whichever
     // gets there first owns the record, so the layer of the identity is that channel's.
     if (isSessionFailure(cause))
       return this.classify(`harness:${this.#generation}`, "storage_failed", "runtime");
-    return this.classify(`submit:${this.#generation}`, "internal", "runtime");
+    return this.classify(`${operation}:${this.#generation}`, "internal", "runtime");
   }
 
   #sessionFailed(): Minted {

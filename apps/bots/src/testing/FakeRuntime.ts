@@ -26,6 +26,7 @@ export type FakeScript = {
 };
 
 export class FakeHandle implements RuntimeHandle {
+  readonly refreshes: string[] = [];
   readonly spec: RuntimeBotSpec;
   readonly opens: string[] = [];
   readonly closes: { trace: string; deadlineMs: number }[] = [];
@@ -60,6 +61,10 @@ export class FakeHandle implements RuntimeHandle {
 
   get snapshot(): ConversationSnapshot {
     return this.#snapshot;
+  }
+
+  async refreshTools(trace: string): Promise<void> {
+    this.refreshes.push(trace);
   }
 
   subscribe(trace: string, sink: (event: RuntimeEvent) => void): Promise<RuntimeSubscription> {

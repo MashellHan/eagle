@@ -5,9 +5,83 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Message } from "../../src/core/domain.ts";
 import { assistant, text, toolCall } from "../support/pi.ts";
-import { frameQueue, hello, send, startStack } from "../support/server.ts";
+import { closeCode, frameQueue, hello, send, startStack } from "../support/server.ts";
 
 const tr = (name: string) => `tr_${name}_0123456`;
+
+test("a failed refresh closes with the client's retry code and reconnect gets a baseline", async () => {
+  const stack = await startStack({ real: true });
+  try {
+    const botId = await stack.createBot("retry refresh");
+    const handle = await stack.registry.open(botId, tr("warm_retry"));
+    const refresh = handle.refreshTools.bind(handle);
+    let first = true;
+    handle.refreshTools = async (trace) => {
+      if (first) {
+        first = false;
+        throw new Error("temporary refresh failure");
+      }
+      await refresh(trace);
+    };
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    const closed = closeCode(socket);
+    await send(socket, { type: "subscribe", botId, trace: tr("refresh_fail") });
+    assert.equal((await frames.next()).type, "error");
+    assert.equal(await closed, 1011);
+    const retry = stack.connect();
+    const retried = frameQueue(retry);
+    await send(retry, hello);
+    await retried.next();
+    await send(retry, { type: "subscribe", botId, trace: tr("refresh_retry") });
+    assert.equal((await retried.next()).type, "snapshot");
+    assert.equal(stack.faux?.state.callCount, 0);
+    retry.close();
+  } finally {
+    await stack.close();
+  }
+});
+
+test("real socket bot switches refresh cached tools without extra runtimes or model calls", async () => {
+  const stack = await startStack({ real: true });
+  try {
+    const first = await stack.createBot("first");
+    const second = await stack.createBot("second");
+    await stack.registry.open(first, tr("warm_first"));
+    await stack.registry.open(second, tr("warm_second"));
+    const opens = stack.opens();
+    for (const [index, botId] of [first, second, first].entries()) {
+      const socket = stack.connect();
+      const frames = frameQueue(socket);
+      await send(socket, hello);
+      assert.equal((await frames.next()).type, "welcome");
+      await send(socket, { type: "subscribe", botId, trace: tr(`switch_${index}`) });
+      const frame = await frames.next();
+      assert.equal(frame.type, "snapshot");
+      assert.equal((frame.value as { botId: string }).botId, botId);
+      socket.close();
+    }
+    const refreshes = stack.records.filter((record) => record.evt === "runtime.tools.refresh.ok");
+    assert.deepEqual(
+      refreshes.map((record) => record.botId),
+      [first, second, first],
+    );
+    assert.deepEqual(
+      refreshes.map((record) => record.trace),
+      [tr("switch_0"), tr("switch_1"), tr("switch_2")],
+    );
+    assert.equal(stack.opens(), opens);
+    assert.equal(
+      stack.records.filter((record) => record.evt === "runtime.subscribe.start").length,
+      2,
+    );
+    assert.equal(stack.faux?.state.callCount, 0);
+  } finally {
+    await stack.close();
+  }
+});
 
 test("a tool round is live in the transcript and in a later snapshot", async () => {
   const stack = await startStack({ real: true });

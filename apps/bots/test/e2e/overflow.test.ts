@@ -165,6 +165,7 @@ test("a client that joins inside the withdrawal window sees no partial", async (
   const runtime = {
     async open() {
       return {
+        refreshTools: async () => {},
         subscribe: async (
           _trace: string,
           next: (event: import("../../src/core/RuntimePort.ts").RuntimeEvent) => void,

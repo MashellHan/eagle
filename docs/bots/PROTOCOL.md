@@ -67,6 +67,13 @@ Runtime details live in [RUNTIME.md](RUNTIME.md), layers in
 
 ## One bot per connection
 
+Selecting a bot uses the existing subscription flow. Before answering its baseline, the
+daemon refreshes the selected bot's native tool registry configuration, even when its
+conversation view is cached. This adds no frame, request or UI loading state and does not
+restart the bot's Harness or interrupt an answer already running.
+A runtime failure before the subscription baseline sends its error and closes `1011`,
+so the existing client reconnect policy retries instead of leaving an open, unsubscribed socket.
+
 A connection subscribes exactly once and lives as long as that bot's chat. There
 is no `unsubscribe`: switching bots closes the socket and opens a new one. This
 removes an entire class of leak (late frames from the previous bot) instead of

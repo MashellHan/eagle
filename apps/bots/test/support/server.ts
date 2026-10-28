@@ -110,6 +110,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
       const handle = await base(spec);
       // A delegating wrapper: spreading a class instance would lose its methods.
       return {
+        refreshTools: (trace) => handle.refreshTools(trace),
         subscribe: (trace, sink) => handle.subscribe(trace, sink),
         submit: (input) => handle.submit(input),
         submission: (key) => handle.submission(key),

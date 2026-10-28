@@ -262,6 +262,29 @@ test("a bot that never stored tool groups gets them written on the first save", 
   }
 });
 
+test("a failed live tool refresh is reported and an identical save retries it", async () => {
+  const setup = await bench({ bots: ["a"] });
+  try {
+    await setup.registry.start();
+    const handle = await setup.registry.open("b_bot0", "tr_tools_retry");
+    let attempts = 0;
+    handle.configureToolGroups = async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("tool refresh failed");
+    };
+    await assert.rejects(
+      setup.registry.applyToolGroups([], "tr_tools_retry"),
+      /tool refresh failed/,
+    );
+    assert.deepEqual((await setup.directory.load())[0]?.toolGroups, ["core", "coding"]);
+    await setup.registry.applyToolGroups([], "tr_tools_retry");
+    assert.equal(attempts, 2);
+  } finally {
+    await setup.registry.shutdown();
+    await setup.cleanup();
+  }
+});
+
 test("a gateway thinking-level change reaches existing bots and new ones", async () => {
   const setup = await bench({ bots: ["a"] });
   try {

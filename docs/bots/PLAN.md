@@ -20,8 +20,26 @@ tests with 95.08% lines, 87.55% branches and 90.65% functions; `list` is 100% in
 The macOS app passes 119 feature and 46 design tests with 95.8% configured logic coverage.
 The Bots client passes 121 tests with 90.6% configured logic coverage after meaningful
 selected-bot and transport tests raised the observed 88.1% shortfall. The app bundle builds.
-The requested registry refresh on Bot switching and rebuilt-app acceptance follow next;
-disk-source reloading is not included without clarification.
+The rebuilt app shows both mandatory groups enabled with disabled switches. Disk-source
+reloading is not part of the native Registry refresh described below.
+
+### Native Registry refresh (2026-10-28)
+
+All built-ins register once per Harness, while one explicit group-to-extension mapping
+selects the agent's capabilities from the current native Registry snapshot. Every client
+subscription refreshes that selection, including cached A -> B -> A switches, without a
+new wire request, runtime watch or model call. Existing answers continue running. A failed
+runtime subscription closes `1011` for the existing client retry policy; a storage fault
+shares one Harness failure identity across the refresh and SDK notification channels.
+Same-value settings saves retry an earlier application failure instead of silently skipping it.
+
+The final daemon gate passes 482 tests, with 95.10% lines, 87.96% branches and 90.81%
+functions. `list` and the retained workspace helpers are 100% in all three measured metrics.
+The Bots client gate passes 121 tests at 90.6% logic coverage; the unchanged native app lane
+passed 165 tests at 95.8%. The review's two failure-path findings were reproduced by real
+WebSocket/SQLite tests, fixed, and accepted on follow-up static review. Original thresholds
+and exclusions remain unchanged. Third-party plugins, filesystem watchers and source-module
+hot loading were not added.
 
 ```
 docs/bots/                 contracts and this plan

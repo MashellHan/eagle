@@ -481,3 +481,19 @@ mistaken for success. The command was corrected to a package-relative path and r
 `set -e`. Compound edit-and-check commands must use one explicit directory convention and
 stop when preparation fails; a test result after a failed edit is not implementation
 evidence.
+
+## 2026-10-28 - Refresh failures need a transport recovery path
+
+The first tool-refresh implementation handled the successful subscription path but left
+a failed client connected without a subscription. A service-level retry test passed even
+though the real client only subscribes after a welcome. Review exposed that dead end;
+the real-socket regression failed with `socket stayed open` before the fix. Runtime
+subscription failures now send their error and close with the existing retryable `1011`.
+
+The refresh catch also minted a separate failure identity after the SDK had already
+reported the storage failure. A real SQLite commit-fault test demonstrated two identities.
+Refresh and submit now share the classifier's operation/session path, and the regression
+requires one identity and one origin error. Test failure propagation across SDK, service
+and transport together; calling a service twice is not proof that the actual client can
+recover. The new tests use pi-ai's `getCurrentTools` for normalized transcript declarations
+and the wire snapshot's `value.botId`, rather than assuming raw context/envelope fields.

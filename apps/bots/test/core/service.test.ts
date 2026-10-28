@@ -58,6 +58,7 @@ const scriptedHandle = (options: {
 }): { handle: RuntimeHandle; emit: (event: RuntimeEvent) => void } => {
   let sink: ((event: RuntimeEvent) => void) | undefined;
   const handle: RuntimeHandle = {
+    refreshTools: async () => {},
     subscribe: async (_trace, next) => {
       sink = next;
       return {
@@ -86,6 +87,7 @@ const proxyHandle = (
   handle: RuntimeHandle,
   overrides: Partial<RuntimeHandle> = {},
 ): RuntimeHandle => ({
+  refreshTools: (trace) => handle.refreshTools(trace),
   subscribe: (subscribeTrace, sink) => handle.subscribe(subscribeTrace, sink),
   submit: (input) => handle.submit(input),
   submission: (key) => handle.submission(key),
@@ -130,6 +132,69 @@ test("send requires a subscription and answers a connection-scoped record", asyn
   });
   assert.deepEqual(record, { id: "s_1", requestId, status: "queued" });
   assert.equal("rev" in record, false, "a connection-scoped reply carries no revision");
+});
+
+test("switching A to B to cached A refreshes tools without replacing the runtime watch", async () => {
+  const runtime = new FakeRuntime();
+  const refreshes: string[] = [];
+  const watches: string[] = [];
+  const service = new ConversationService({
+    measure: utf8,
+    open: async (id, openTrace) => {
+      const handle = await runtime.open({
+        id,
+        dir: `/tmp/${id}`,
+        model: { provider: "faux", modelId: "faux-1" },
+        trace: openTrace,
+      });
+      return proxyHandle(handle, {
+        refreshTools: async (refreshTrace) => {
+          refreshes.push(`${id}:${refreshTrace}`);
+        },
+        subscribe: (subscribeTrace, sink) => {
+          watches.push(id);
+          return handle.subscribe(subscribeTrace, sink);
+        },
+      });
+    },
+  });
+  for (const id of ["b_a", "b_b", "b_a"]) {
+    const frames: HubEvent[] = [];
+    await service.subscribe("c_switch", id, trace, (event) => frames.push(event));
+    assert.equal(frames[0]?.type, "snapshot");
+    service.unsubscribe("c_switch");
+  }
+  assert.deepEqual(refreshes, [`b_a:${trace}`, `b_b:${trace}`, `b_a:${trace}`]);
+  assert.deepEqual(watches, ["b_a", "b_b"]);
+});
+
+test("a failed tool refresh sends no baseline and permits retrying the same connection", async () => {
+  const runtime = new FakeRuntime();
+  let fail = true;
+  const service = new ConversationService({
+    measure: utf8,
+    open: async (id, openTrace) =>
+      proxyHandle(
+        await runtime.open({
+          id,
+          dir: `/tmp/${id}`,
+          model: { provider: "faux", modelId: "faux-1" },
+          trace: openTrace,
+        }),
+        {
+          refreshTools: async () => {
+            if (fail) throw new Error("refresh refused");
+          },
+        },
+      ),
+  });
+  const frames: HubEvent[] = [];
+  await assert.rejects(subscribe(service, frames), /refresh refused/);
+  assert.equal(frames.length, 0);
+  fail = false;
+  await subscribe(service, frames);
+  assert.equal(frames[0]?.type, "snapshot");
+  service.unsubscribe("c_1");
 });
 
 test("a repeated send with the same requestId returns the stored record and emits nothing", async () => {
@@ -239,8 +304,7 @@ test("an event delivered while subscribing is published after the first snapshot
         model: { provider: "faux", modelId: "faux-1" },
         trace: openTrace,
       });
-      return {
-        ...handle,
+      return proxyHandle(handle, {
         subscribe: async (subscribeTrace, sink) => {
           const subscription = await handle.subscribe(subscribeTrace, sink);
           sink({
@@ -252,7 +316,7 @@ test("an event delivered while subscribing is published after the first snapshot
           });
           return subscription;
         },
-      };
+      });
     },
     measure: utf8,
   });
@@ -1193,6 +1257,7 @@ const gatedHandle = (options: {
 }) => {
   let sink: ((event: RuntimeEvent) => void) | undefined;
   const handle: RuntimeHandle = {
+    refreshTools: async () => {},
     subscribe: async (_trace, next) => {
       sink = next;
       return {
@@ -1523,6 +1588,7 @@ test("a bot that becomes unavailable during the lookup refuses the admission", a
   let submitCalls = 0;
   let sink: ((event: RuntimeEvent) => void) | undefined;
   const handle: RuntimeHandle = {
+    refreshTools: async () => {},
     subscribe: async (_trace, next) => {
       sink = next;
       return { snapshot, detach: () => undefined };
@@ -1579,6 +1645,7 @@ test("two subscriptions after an eviction share one view and one runtime watch",
     release = resolve;
   });
   const handle = (): RuntimeHandle => ({
+    refreshTools: async () => {},
     subscribe: async (_trace, next) => {
       watches += 1;
       if (watches > 1) await gate;
@@ -1644,6 +1711,7 @@ test("recover keeps the admissions that were already in flight", async () => {
   let sink: ((event: RuntimeEvent) => void) | undefined;
   let submits = 0;
   const handle: RuntimeHandle = {
+    refreshTools: async () => {},
     subscribe: async (_trace, next) => {
       sink = next;
       return { snapshot, detach: () => undefined };

@@ -69,6 +69,7 @@ export type RuntimeHistory = {
 };
 
 export interface RuntimeHandle {
+  refreshTools(trace: string): Promise<void>;
   /** Atomic: the view at attachment plus every later commit, with nothing lost between. */
   subscribe(trace: string, sink: (event: RuntimeEvent) => void): Promise<RuntimeSubscription>;
   /** Idempotent by requestId; returns the submission's current record. */

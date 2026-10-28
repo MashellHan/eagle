@@ -421,26 +421,26 @@ export class BotRegistry {
   async applyToolGroups(toolGroups: readonly string[], trace: string): Promise<void> {
     const resolved = resolveToolGroups(toolGroups);
     this.#defaultToolGroups = resolved;
+    const failures: unknown[] = [];
     for (const entry of this.#entries.values()) {
       // A bot that never stored a selection has to store one, even when the default happens
       // to match: the catalog, not the daemon's default, is what a later run reads.
       const stored = entry.config.toolGroups;
-      if (stored !== undefined && resolveToolGroups(stored).join(",") === resolved.join(",")) {
-        continue;
-      }
-      const at = (this.#options.now?.() ?? new Date()).toISOString();
       try {
-        const config = await this.#write(trace, entry.config.id, () =>
-          this.#options.directory.setToolGroups(entry.config.id, resolved, at),
-        );
-        entry.config = config;
+        if (stored === undefined || resolveToolGroups(stored).join(",") !== resolved.join(",")) {
+          const at = (this.#options.now?.() ?? new Date()).toISOString();
+          entry.config = await this.#write(trace, entry.config.id, () =>
+            this.#options.directory.setToolGroups(entry.config.id, resolved, at),
+          );
+        }
         if (entry.handle?.configureToolGroups !== undefined) {
           await entry.handle.configureToolGroups(resolved, trace);
         }
-      } catch {
-        // One bot that cannot be written must not stop the others.
+      } catch (error) {
+        failures.push(error);
       }
     }
+    if (failures.length > 0) throw failures[0];
   }
 
   async create(

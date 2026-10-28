@@ -1769,3 +1769,34 @@ was removed. The separate Bots client tests pass but their existing logic covera
 88.1%, below 90%; selected-bot action and transport contract tests are being added rather
 than weakening the gate. No live model requests, Herdr collection, authentication or D1
 changes have occurred. Rebuilt app acceptance and Bot-switch registry refresh remain next.
+
+### 08:36 CST - Registry refresh regressions
+
+Native tool consolidation is committed as `cd8971c`. The app bundle builds, all configured
+coverage gates passed, and no source changes outside Bots and its hosted UI were made.
+The hot-refresh regressions first reproduced all three defects: a warm bot could not enable
+an initially absent group, disabling optional groups retained agent tools/the loader, and
+cached A -> B -> A subscriptions performed no refresh. The native Registry implementation
+now passes those focused tests. A separate regression demonstrated that an application
+failure was swallowed and the same saved selection could not retry; that path now reports
+the failure and retries. In-flight-answer, trace attribution and real-socket switch tests
+are being completed before the full gate. No disk-source loader or filesystem watcher was
+introduced; current Registry refresh is independent of that unconfirmed extra scope.
+
+### 08:54 CST - Final gates and native acceptance
+
+The daemon gate passes all 482 tests with 95.10% lines, 87.96% branches and 90.81%
+functions; the client rerun passes 121 tests at 90.6% configured logic coverage. The app's
+unchanged Swift lane passed 165 tests at 95.8%. A review identified a trapped unsubscribed
+socket and duplicate storage-failure identities; both were reproduced, fixed and accepted
+on follow-up review. The real-socket switch test proves three refreshes, two runtime watches,
+no extra Harness open and zero model requests. Review panes and the baseline worktree were
+removed. Earlier lock-port collisions and row-cost failures remain recorded, not claimed fixed.
+
+Native UI inspection of the rebuilt App shows Core and Coding both on with disabled
+switches; the existing bot's history loads and it remains connected with no running tasks.
+No settings were saved and no real model message was sent. The UI observation after Quit
+reactivated the new app process, so the app was not assumed stopped during testing. The
+final daemon restart follows the commit. Herdr ingestion, dashboard auth, D1 and public
+deployment remain outside this change. Extra full-package Swift formatting inspection found
+pre-existing issues in untouched Bots files; edited Swift files pass strict formatting.

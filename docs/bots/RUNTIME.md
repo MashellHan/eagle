@@ -342,6 +342,28 @@ third-party plugins are explicitly outside the product scope.
 and the native `tool-search` loader, and `agents` to `bots-agents`. Both required groups
 are shown enabled and disabled for editing in the settings UI.
 
+### Hot registry refresh
+
+Each Harness registers the built-in extensions once. Group selection is a separate native
+agent configuration, resolved from the live Registry snapshot rather than a startup cache.
+Every accepted client subscription, including a cached A -> B -> A switch, refreshes that
+selection before its baseline snapshot. No new wire command, loading UI, Harness, runtime
+watch or model request is needed. The refresh carries the subscription trace.
+
+Enabling a previously disabled group immediately makes its registered tools available;
+disabling Herdr also removes its loader and prompt section from the selected agent.
+Already executing calls retain their SDK execution phase, while later requests use the
+new selection. Existing child conversations keep their own stored agent choices; this is
+configuration, not a permission-revocation or sandbox system.
+
+The host may replace an extension through native `Registry.install`; refresh reads the
+current registry objects. There is no filesystem watcher, dynamic source import or
+third-party plugin discovery. A failed refresh is logged once at the runtime origin and
+refuses that subscription; retrying the same selection or subscription must remain possible.
+The failed subscription closes with `1011` after its error frame, reusing the client's
+existing automatic reconnect policy. Storage failures reuse the Harness episode identity
+across refresh, reports and watch/session termination instead of logging another origin.
+
 ### Subagents (phase 2, slice 3)
 
 `bots-agents` lets a bot delegate a self-contained task to a child conversation instead of

@@ -193,7 +193,11 @@ export class ConversationService {
     this.#connections.set(connectionId, connection);
     let bot: Bot;
     try {
-      bot = await this.#serializeView(botId, () => this.#bot(botId, trace));
+      bot = await this.#serializeView(botId, async () => {
+        const current = await this.#bot(botId, trace);
+        await current.handle?.refreshTools(trace);
+        return current;
+      });
     } catch (error) {
       if (this.#connections.get(connectionId) === connection)
         this.#connections.delete(connectionId);

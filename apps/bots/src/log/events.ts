@@ -87,6 +87,8 @@ export const EVENTS = {
   "runtime.recover.start": true,
   "runtime.recover.ok": true,
   "runtime.recover.fail": true,
+  "runtime.tools.refresh.ok": true,
+  "runtime.tools.refresh.fail": true,
   "runtime.close.start": true,
   "runtime.close.ok": true,
   "runtime.close.fail": true,

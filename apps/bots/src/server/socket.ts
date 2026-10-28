@@ -522,6 +522,9 @@ export const attachConnection = (
       message: safeMessage(classified.message),
       ...(requestId === undefined ? {} : { requestId }),
     });
+    if (command.type === "subscribe" && disposition === "runtime") {
+      close(CLOSE.internal, "subscription failed");
+    }
   };
 
   armIdle();

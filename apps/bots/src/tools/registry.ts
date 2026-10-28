@@ -1,8 +1,14 @@
-import { createRegistry, defineExtension, section, wrapTool } from "@earendil-works/pi-durable";
+import {
+  createRegistry,
+  defineExtension,
+  type RegistryReader,
+  section,
+  wrapTool,
+} from "@earendil-works/pi-durable";
 import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search";
 import { CodingTools, createBashTool } from "@earendil-works/pi-durable/tools";
-import { DEFAULT_TOOL_GROUPS, resolveToolGroups, type ToolGroup } from "../core/domain.ts";
-import { agentsExtension } from "./agents/tools.ts";
+import { resolveToolGroups, type ToolGroup } from "../core/domain.ts";
+import { AGENTS_TOOLS_EXTENSION, agentsExtension } from "./agents/tools.ts";
 import {
   createHerdrTools,
   HERDR_TOOLS_EXTENSION,
@@ -13,6 +19,21 @@ import { createListTool } from "./list.ts";
 import type { BotWorkspace } from "./types.ts";
 
 export const BOTS_TOOLS_EXTENSION = "bots-tools";
+const toolSearch = createToolSearchExtension();
+const GROUP_EXTENSIONS: Record<ToolGroup, readonly string[]> = {
+  core: [BOTS_TOOLS_EXTENSION],
+  coding: [CodingTools.name],
+  herdr: [HERDR_TOOLS_EXTENSION, toolSearch.name],
+  agents: [AGENTS_TOOLS_EXTENSION],
+};
+
+export const selectToolExtensions = (registry: RegistryReader, groups: readonly string[]) => {
+  const names = new Set(resolveToolGroups(groups).flatMap((group) => GROUP_EXTENSIONS[group]));
+  return registry
+    .snapshot()
+    .installed()
+    .filter((extension) => names.has(extension.name));
+};
 
 const bash = createBashTool({
   prepare(execution) {
@@ -28,15 +49,12 @@ const bash = createBashTool({
 });
 
 export type ToolRegistryOptions = {
-  /** The groups this bot was given; `core` and `coding` are always included. */
-  readonly groups?: readonly ToolGroup[];
   /** Herdr tools need the CLI client and this bot's state directory. */
   readonly herdr?: Omit<HerdrToolOptions, "workspace">;
 };
 
 export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistryOptions = {}) => {
-  const groups = resolveToolGroups(options.groups ?? DEFAULT_TOOL_GROUPS);
-  const herdr = groups.includes("herdr") ? options.herdr : undefined;
+  const herdr = options.herdr;
   const registry = createRegistry();
   registry.install(
     defineExtension({
@@ -55,9 +73,9 @@ export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistr
     }),
   );
   registry.install(CodingTools);
-  if (groups.includes("agents")) registry.install(agentsExtension());
+  registry.install(agentsExtension());
   // Deferred tools need their loader; without one the model would never see them.
-  if (herdr !== undefined) registry.install(createToolSearchExtension());
+  if (herdr !== undefined) registry.install(toolSearch);
   if (herdr !== undefined) {
     registry.install(
       defineExtension({

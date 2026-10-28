@@ -13,9 +13,9 @@ import {
   type ConversationId,
   type Cursor,
   type EntryId,
-  type Extension,
   type Harness,
   Harness as HarnessFactory,
+  type Registry,
   type ReportInfo,
   type SessionEnd,
   type Storage,
@@ -38,8 +38,7 @@ import type {
 import { type DeclaredEvent, declareEvent } from "../../log/events.ts";
 import type { Log } from "../../log/log.ts";
 import { createHerdrClient } from "../../tools/herdr/client.ts";
-import { HERDR_TOOLS_EXTENSION } from "../../tools/herdr/tools.ts";
-import { createToolRegistry } from "../../tools/registry.ts";
+import { createToolRegistry, selectToolExtensions } from "../../tools/registry.ts";
 import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
 import { entryMessageId } from "./convert.ts";
@@ -70,6 +69,8 @@ const Events = {
   classify: declareEvent("runtime.failure.classify"),
   piReport: declareEvent("pi.report"),
   piSessionClosed: declareEvent("pi.session.closed"),
+  toolsRefreshOk: declareEvent("runtime.tools.refresh.ok"),
+  toolsRefreshFail: declareEvent("runtime.tools.refresh.fail"),
 } as const;
 
 /** The subset of `HarnessSettings` the adapter decides; pi fills in the rest. */
@@ -165,10 +166,9 @@ export class PiDurableRuntime implements RuntimePort {
       );
       const groups = resolveToolGroups(spec.toolGroups);
       const registry = createToolRegistry(workspace, {
-        groups,
         herdr: { client: createHerdrClient(), stateDir: spec.dir, botId: spec.id },
       });
-      const installed = registry.snapshot().installed();
+      const installed = selectToolExtensions(registry, groups);
       const harness = await HarnessFactory.open(
         storage,
         {
@@ -206,7 +206,7 @@ export class PiDurableRuntime implements RuntimePort {
         rootId: root.id,
         classifier,
         options: this.#options,
-        installed,
+        registry,
       });
       handle.attachTaskGraph(await harness.taskGraph(BACKGROUND_CONTEXT));
       harness.closed.then((end) => handle?.sessionEnd(end));
@@ -255,13 +255,12 @@ type HandleOptions = {
   readonly rootId: ConversationId;
   readonly classifier: FailureClassifier;
   readonly options: PiRuntimeOptions;
-  /** Extensions the registry installed for this bot's groups. */
-  readonly installed: readonly Extension[];
+  readonly registry: Registry;
 };
 
 class PiRuntimeHandle implements RuntimeHandle {
-  /** Extensions this handle installed, so a settings change can select among them. */
-  readonly #installed: readonly Extension[];
+  readonly #registry: Registry;
+  #toolGroups: readonly string[];
 
   readonly #spec: RuntimeBotSpec;
   readonly #harness: Harness;
@@ -301,7 +300,8 @@ class PiRuntimeHandle implements RuntimeHandle {
     this.#rootId = options.rootId;
     this.#classifier = options.classifier;
     this.#options = options.options;
-    this.#installed = options.installed;
+    this.#registry = options.registry;
+    this.#toolGroups = resolveToolGroups(options.spec.toolGroups);
     this.#mapper = new EventMapper({
       botId: options.spec.id,
       now: options.options.clock ?? (() => new Date()),
@@ -426,7 +426,7 @@ class PiRuntimeHandle implements RuntimeHandle {
       const busy = cause instanceof Error && cause.name === "ConversationBusy";
       const minted = busy
         ? this.#classifier.refusedBusy()
-        : (this.#classifier.sessionEpisode() ?? this.#classifier.submitFailed(cause));
+        : (this.#classifier.sessionEpisode() ?? this.#classifier.operationFailed("submit", cause));
       this.#logFailure(minted, input.trace, Events.submitFail, "runtime");
       throw new ClassifiedFailure(
         minted.classification.failure,
@@ -626,13 +626,31 @@ class PiRuntimeHandle implements RuntimeHandle {
   }
 
   /** Settings changed the tool groups: the conversation keeps only the chosen extensions. */
-  async configureToolGroups(toolGroups: readonly string[], _trace: string): Promise<void> {
-    const chosen = new Set(resolveToolGroups(toolGroups));
-    const keep = this.#installed.filter((extension) =>
-      chosen.has(extension.name === HERDR_TOOLS_EXTENSION ? "herdr" : "core"),
-    );
-    const root = await this.#harness.root(BACKGROUND_CONTEXT);
-    await root.configure({ extensions: keep }, BACKGROUND_CONTEXT);
+  async configureToolGroups(toolGroups: readonly string[], trace: string): Promise<void> {
+    this.#toolGroups = resolveToolGroups(toolGroups);
+    await this.refreshTools(trace);
+  }
+
+  async refreshTools(trace: string): Promise<void> {
+    try {
+      const extensions = selectToolExtensions(this.#registry, this.#toolGroups);
+      const root = await this.#harness.root(BACKGROUND_CONTEXT);
+      await root.configure({ extensions }, BACKGROUND_CONTEXT);
+      this.#options.log.emit("info", "runtime", Events.toolsRefreshOk, {
+        trace,
+        botId: this.#spec.id,
+      });
+    } catch (cause) {
+      const minted =
+        this.#classifier.sessionEpisode() ?? this.#classifier.operationFailed("tools", cause);
+      this.#logFailure(minted, trace, Events.toolsRefreshFail, "runtime");
+      throw new ClassifiedFailure(
+        minted.classification.failure,
+        "runtime",
+        minted.classification.message,
+        { cause },
+      );
+    }
   }
 
   /** Settings changed the reasoning level: the conversation follows without a reopen. */
