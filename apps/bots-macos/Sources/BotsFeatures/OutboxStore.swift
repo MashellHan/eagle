@@ -99,10 +99,12 @@ public final class OutboxStore {
   private var settled: [SettledRequest] = []
   private var refused: [String] = []
 
-  public init(directory: URL = AppPaths.supportDirectory) {
+  public init(directory: URL = AppPaths.supportDirectory, refusalFallback: URL? = nil) {
     self.directory = directory
     self.fileURL = directory.appendingPathComponent("outbox.json")
-    self.refusalFallback = FileManager.default.temporaryDirectory
+    self.refusalFallback =
+      refusalFallback
+      ?? FileManager.default.temporaryDirectory
       .appendingPathComponent("ai.hexly.bots-refused", isDirectory: true)
     if let document = try? Self.read(fileURL) {
       cache = document.entries

@@ -32,6 +32,12 @@ logic package stays free of Eagle so it keeps its own tests and gates, and the
 dependency direction is fixed: Eagle imports Bots, Bots never imports Eagle (and
 `EagleDesign` stays dependency-free).
 
+The host can supply both an outbox directory and a refusal-fallback directory to
+`OutboxStore`. This keeps an isolated client's durable refusal markers with its
+own state even when its main outbox cannot be written. Omitting the fallback
+argument preserves the existing user-private temporary location; the Bots
+package does not interpret Eagle launch settings.
+
 ## Layers
 
 Five layers. Calls go one way; every crossing logs one `trace` (see

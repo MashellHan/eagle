@@ -564,6 +564,35 @@ final class ConversationLifecycleTests: XCTestCase {
     XCTAssertEqual(restarted.sent.count, 0, "a restarted client never replays a refused request")
   }
 
+  func testTheHostCanIsolateDurableRefusalsWhenTheOutboxIsUnwritable() throws {
+    let files = FileManager.default
+    let outboxDirectory = files.temporaryDirectory.appendingPathComponent(
+      "bots-private-refusal-\(UUID().uuidString)")
+    try files.createDirectory(at: outboxDirectory, withIntermediateDirectories: true)
+    defer { try? files.removeItem(at: outboxDirectory) }
+    let blocked = outboxDirectory.appendingPathComponent("blocked")
+    let fallback = outboxDirectory.appendingPathComponent("refusals")
+    let request = "r_isolated_\(UUID().uuidString)"
+    // A regression might use the default fallback; remove only this fixture's marker.
+    defer {
+      try? files.removeItem(
+        at: files.temporaryDirectory.appendingPathComponent("ai.hexly.bots-refused")
+          .appendingPathComponent(request))
+    }
+    try Data("not a directory".utf8).write(to: blocked)
+    let store = OutboxStore(directory: blocked, refusalFallback: fallback)
+    try store.refuse(requestId: request)
+    XCTAssertTrue(files.fileExists(atPath: fallback.appendingPathComponent(request).path))
+
+    try files.removeItem(at: blocked)
+    let reopened = OutboxStore(directory: blocked, refusalFallback: fallback)
+    XCTAssertTrue(try reopened.refusedRequests().contains(request))
+    let sibling = OutboxStore(
+      directory: outboxDirectory.appendingPathComponent("sibling"),
+      refusalFallback: outboxDirectory.appendingPathComponent("sibling-refusals"))
+    XCTAssertFalse(try sibling.refusedRequests().contains(request))
+  }
+
   func testAFailedRecoverKeepsTheParkedAffordance() async throws {
     let (model, fake) = make()
     model.select(botId: "b_1")
