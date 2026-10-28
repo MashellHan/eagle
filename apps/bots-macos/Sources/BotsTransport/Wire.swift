@@ -228,11 +228,11 @@ public enum Wire {
   }
 
   struct UsageFrame: Decodable {
-  let rev: Int
-  let usage: Usage
-}
+    let rev: Int
+    let usage: Usage
+  }
 
-struct TasksFrame: Decodable {
+  struct TasksFrame: Decodable {
     let rev: Int
     let tasks: [TaskSummary]
   }
