@@ -38,6 +38,26 @@ own state even when its main outbox cannot be written. Omitting the fallback
 argument preserves the existing user-private temporary location; the Bots
 package does not interpret Eagle launch settings.
 
+## Host daemon lifecycle
+
+The host's Bots supervisor accepts explicit preferences and environment. It resolves
+an explicit daemon directory before bundled `Contents/Resources/Bots` or a checkout,
+re-reads the selected Node executable at start and validates Node 24+. The discovered
+helper's non-secret absolute path is passed only to a child it starts. The host can
+disable development `.env` loading; ordinary startup retains the existing default.
+These source capabilities do not certify that a complete App has been assembled.
+
+Only live `Process` handles registered by the current App prove daemon ownership.
+Health from a different PID does not identify a newly started child. Windows using
+the same preferences and canonical root/port share control generation and lifecycle
+state: a later Stop supersedes Restart, including during startup, and process exit
+updates all observers. Root identity resolves the longest existing ancestor before
+appending missing components, so first creation and a symlink alias keep that identity.
+An old PID preference cannot recreate ownership after App restart; that daemon is
+external and Stop/Restart do not signal it. App-exit cleanup applies only to its
+registered processes in the selected preferences scope. The independent Agent's
+launchd lifetime is separate.
+
 ## Layers
 
 Five layers. Calls go one way; every crossing logs one `trace` (see

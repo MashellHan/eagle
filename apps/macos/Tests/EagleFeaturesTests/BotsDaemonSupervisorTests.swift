@@ -64,4 +64,38 @@ struct BotsDaemonSupervisorTests {
     // PATH has an actual fixture executable even on hosts without Homebrew Node.
     #expect(BotsDaemonSupervisor.resolveNode(environment: ["PATH": root.path]) != nil)
   }
+
+  @Test func anInstalledAppFindsItsOwnDaemonBeforeRepositoryAncestry() throws {
+    let root = try tree()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let app = root.appendingPathComponent("Eagle.app")
+    let bundled = app.appendingPathComponent("Contents/Resources/Bots")
+    try FileManager.default.createDirectory(
+      at: bundled.appendingPathComponent("scripts"), withIntermediateDirectories: true)
+    try Data().write(to: bundled.appendingPathComponent("scripts/serve.ts"))
+    let found = BotsDaemonSupervisor.resolveDaemonDirectory(
+      explicit: nil,
+      executable: app.appendingPathComponent("Contents/MacOS/EagleApp"))
+    #expect(found?.standardizedFileURL == bundled.standardizedFileURL)
+  }
+
+  @Test func savedNodeSelectionWorksWithFinderPathAndExplicitOverrideStillWins() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let node = root.appendingPathComponent("chosen-node")
+    try "#!/bin/sh\nexit 0\n".write(to: node, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: node.path)
+    let finder = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
+    #expect(
+      BotsDaemonSupervisor.resolveNode(environment: finder, preference: node.path) == node.path)
+    #expect(
+      BotsDaemonSupervisor.resolveNode(environment: finder, preference: "/missing-node") == nil)
+    #expect(
+      BotsDaemonSupervisor.resolveNode(environment: ["BOTS_NODE": "/bin/sh"], preference: node.path)
+        == "/bin/sh")
+    #expect(
+      BotsDaemonSupervisor.resolveNode(
+        environment: ["BOTS_NODE": "relative-node"], preference: node.path) == nil)
+  }
 }
