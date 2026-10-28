@@ -1738,3 +1738,34 @@ to the restarted process, wheel scrolling also worked: history reached the top,
 then advanced through the middle back to the newest answer with prepared content.
 The composer remained empty and no messages were sent. These are layout and
 interaction checks, not a measured frame-time improvement or a live streaming test.
+
+## 2026-10-28 08:05 CST - Native tools and mandatory groups
+
+- The daemon baseline passed all 475 tests and its configured coverage gate: 94.97%
+  lines, 87.22% branches, 90.44% functions. No thresholds or exclusions were changed.
+- Native `CodingTools` now supplies read/write/edit/bash; `core` supplies `list`. Tests
+  first demonstrated missing mandatory `coding` in TypeScript and Swift. Native tool
+  execution, filesystem effects and WebSocket result rendering pass targeted checks.
+- The full daemon suite most recently ran 465 tests with one stale mandatory-group
+  expectation; that expectation is being updated to the requested two mandatory groups.
+  Final coverage and rebuilt-app acceptance have not run yet.
+- Herdr collection, dashboard authentication and D1 are outside this Bots-only change;
+  no collection, credential changes or remote calls were made. The existing app remains
+  on its earlier build. The next unverified hop is new code -> full gates -> native UI.
+- Bot-switch hot refresh remains pending scope confirmation; no source watcher or
+  third-party plugin loader has been added.
+
+### 08:21 CST - Coverage and existing-session verification
+
+The reopened-session regression first returned `coding missing`; explicit native agent
+configuration before resume fixes it. The daemon gate passed with 94.87% lines, 87.30%
+branches and 90.53% functions before the additional retained Herdr-path tests. `list`
+has 100% of all three measured metrics. No gate settings or exclusions changed.
+
+The macOS app gate now passes all 119 feature and 46 design tests, with 95.8% configured
+logic-line coverage. Two earlier runs failed the existing row-cost benchmark; a clean
+detached baseline and the subsequent working-tree run both passed. The temporary worktree
+was removed. The separate Bots client tests pass but their existing logic coverage is
+88.1%, below 90%; selected-bot action and transport contract tests are being added rather
+than weakening the gate. No live model requests, Herdr collection, authentication or D1
+changes have occurred. Rebuilt app acceptance and Bot-switch registry refresh remain next.

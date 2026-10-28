@@ -126,7 +126,95 @@ final class CatalogTests: XCTestCase {
   }
 }
 
+@MainActor
+final class CatalogActionTests: XCTestCase {
+  private var directory: URL!
+
+  override func setUp() async throws {
+    directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bots-actions-\(UUID().uuidString)")
+  }
+
+  override func tearDown() async throws {
+    try? FileManager.default.removeItem(at: directory)
+  }
+
+  private func fixture() -> (AppViewModel, FakeCatalog) {
+    let catalog = FakeCatalog()
+    let outbox = OutboxStore(directory: directory)
+    return (
+      AppViewModel(
+        catalog: catalog,
+        conversation: ConversationViewModel(
+          botId: "", conversation: FakeConversation(), outbox: outbox),
+        outbox: outbox), catalog
+    )
+  }
+
+  func testActionsUseTheSelectedBotAndNoSelectionMakesNoCalls() async throws {
+    let (model, catalog) = fixture()
+    await model.retryTask("t_1")
+    await model.stopTask("t_2")
+    await model.setAgent(model: "m2", thinkingLevel: "high")
+    XCTAssertTrue(catalog.taskActions.isEmpty)
+    XCTAssertTrue(catalog.agentChanges.isEmpty)
+    await model.createBot(title: "first")
+    let first = try XCTUnwrap(model.selection)
+    await model.createBot(title: "second")
+    let second = try XCTUnwrap(model.selection)
+    model.select(first)
+    await model.retryTask("t_1")
+    await model.setAgent(model: "m2", thinkingLevel: "high")
+    model.select(second)
+    await model.stopTask("t_2")
+    XCTAssertEqual(catalog.taskActions.map { $0.0 }, [first, second])
+    XCTAssertEqual(catalog.taskActions.map { $0.1 }, ["retry:t_1", "abort:t_2"])
+    XCTAssertEqual(catalog.agentChanges.first?.0, first)
+    XCTAssertEqual(catalog.agentChanges.first?.1, "m2")
+    XCTAssertEqual(catalog.agentChanges.first?.2, "high")
+    XCTAssertEqual(model.selection, second)
+    XCTAssertNil(model.error)
+  }
+
+  func testActionFailuresAreVisibleAndTheNextSuccessClearsThem() async {
+    let (model, catalog) = fixture()
+    await model.createBot(title: "first")
+    catalog.actionError = ClientError("retry refused")
+    await model.retryTask("t_1")
+    XCTAssertEqual(model.error, "retry refused")
+    catalog.actionError = ClientError("stop refused")
+    await model.stopTask("t_1")
+    XCTAssertEqual(model.error, "stop refused")
+    catalog.actionError = ClientError("agent refused")
+    await model.setAgent(model: "m2", thinkingLevel: nil)
+    XCTAssertEqual(model.error, "agent refused")
+    catalog.actionError = nil
+    await model.retryTask("t_1")
+    XCTAssertNil(model.error)
+    await model.setAgent(model: nil, thinkingLevel: "low")
+    XCTAssertNil(model.error)
+  }
+
+  func testModelDiscoveryRetriesFailureAndCachesASuccessfulCatalog() async {
+    let (model, catalog) = fixture()
+    catalog.actionError = ClientError("temporarily unavailable")
+    await model.loadModelsIfNeeded()
+    XCTAssertEqual(model.models, [])
+    catalog.actionError = nil
+    catalog.modelNames = ["m1", "m2"]
+    await model.loadModelsIfNeeded()
+    await model.loadModelsIfNeeded()
+    XCTAssertEqual(model.models, ["m1", "m2"])
+    XCTAssertEqual(catalog.modelLoads, 2)
+  }
+}
+
 final class FakeCatalog: CatalogPort {
+  var actionError: Error?
+  var modelNames: [String] = []
+  var modelLoads = 0
+  var agentChanges: [(String, String?, String?)] = []
+  var taskActions: [(String, String)] = []
   func loadUsage(days: Int) async throws -> UsageReport {
     UsageReport(
       retentionDays: 90,
@@ -138,12 +226,25 @@ final class FakeCatalog: CatalogPort {
     )
   }
 
-  func loadModels() async throws -> [String] { [] }
-  func setAgent(id: String, model: String?, thinkingLevel: String?) async throws -> BotSummary {
-    throw ClientError("not used")
+  func loadModels() async throws -> [String] {
+    modelLoads += 1
+    if let actionError { throw actionError }
+    return modelNames
   }
-  func retryTask(bot: String, task: String) async throws {}
-  func abortTask(bot: String, task: String) async throws {}
+  func setAgent(id: String, model: String?, thinkingLevel: String?) async throws -> BotSummary {
+    if let actionError { throw actionError }
+    agentChanges.append((id, model, thinkingLevel))
+    guard let bot = bots.first(where: { $0.id == id }) else { throw ClientError("unknown bot") }
+    return bot
+  }
+  func retryTask(bot: String, task: String) async throws {
+    if let actionError { throw actionError }
+    taskActions.append((bot, "retry:\(task)"))
+  }
+  func abortTask(bot: String, task: String) async throws {
+    if let actionError { throw actionError }
+    taskActions.append((bot, "abort:\(task)"))
+  }
 
   var bots: [BotSummary] = []
   var groups: [BotGroup] = []

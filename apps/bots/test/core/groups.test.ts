@@ -4,12 +4,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_TOOL_GROUPS, resolveToolGroups } from "../../src/core/domain.ts";
 
-test("the core group cannot be turned off and unknown names are dropped", () => {
-  assert.deepEqual(resolveToolGroups([]), ["core"]);
-  assert.deepEqual(resolveToolGroups(["herdr"]), ["core", "herdr"]);
-  assert.deepEqual(resolveToolGroups(["core"]), ["core"]);
-  assert.deepEqual(resolveToolGroups(["herdr", "web"]), ["core", "herdr"]);
-  assert.deepEqual(resolveToolGroups(["agents"]), ["core", "agents"]);
-  assert.deepEqual(resolveToolGroups(undefined), ["core"]);
-  assert.deepEqual(DEFAULT_TOOL_GROUPS, ["core", "herdr", "agents"]);
+test("core and coding cannot be turned off and unknown names are dropped", () => {
+  assert.deepEqual(resolveToolGroups([]), ["core", "coding"]);
+  assert.deepEqual(resolveToolGroups(["herdr"]), ["core", "coding", "herdr"]);
+  assert.deepEqual(resolveToolGroups(["core"]), ["core", "coding"]);
+  assert.deepEqual(resolveToolGroups(["coding"]), ["core", "coding"]);
+  assert.deepEqual(resolveToolGroups(["herdr", "web"]), ["core", "coding", "herdr"]);
+  assert.deepEqual(resolveToolGroups(["agents"]), ["core", "coding", "agents"]);
+  assert.deepEqual(resolveToolGroups(undefined), ["core", "coding"]);
+  assert.deepEqual(DEFAULT_TOOL_GROUPS, ["core", "coding", "herdr", "agents"]);
 });

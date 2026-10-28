@@ -3,7 +3,7 @@
 // catalog, no transport and no revision.
 
 import { randomUUID } from "node:crypto";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { TaskGraph, TaskId } from "@earendil-works/pi-durable";
@@ -22,6 +22,7 @@ import {
   type WatchEnd,
   watchEvents,
 } from "@earendil-works/pi-durable";
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import type { ConversationSnapshot, Message, Submission, TaskSummary } from "../../core/domain.ts";
 import { ClassifiedFailure, resolveToolGroups } from "../../core/domain.ts";
@@ -158,8 +159,6 @@ export class PiDurableRuntime implements RuntimePort {
     try {
       const workspace = await openWorkspace(
         this.#options.workspaceRoot?.(spec) ?? join(spec.dir, "workspace"),
-        // The daemon's root: the token, the catalog and every other bot's files.
-        resolve(spec.dir, "..", ".."),
       );
       const storage = await (this.#options.storage ?? defaultStorage)(
         join(spec.dir, "session.sqlite"),
@@ -175,6 +174,7 @@ export class PiDurableRuntime implements RuntimePort {
         {
           models: this.#options.models,
           registry,
+          env: ({ cwd }) => new NodeExecutionEnv({ cwd: cwd ?? workspace.root }),
           settings: {
             ...DEFAULT_SETTINGS,
             ...(this.#options.compaction === undefined
@@ -199,6 +199,7 @@ export class PiDurableRuntime implements RuntimePort {
             : { thinkingLevel: spec.thinkingLevel as ModelThinkingLevel }),
         },
       });
+      await root.configure({ extensions: installed }, BACKGROUND_CONTEXT);
       handle = new PiRuntimeHandle({
         spec,
         harness,

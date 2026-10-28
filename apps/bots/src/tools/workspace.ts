@@ -1,59 +1,17 @@
-// Workspace confinement (docs/bots/RUNTIME.md, "Tools"): every path a tool touches is
-// resolved inside the bot's workspace, and a symlink is refused anywhere below it, so an
-// auto-executed tool cannot reach the daemon's root or another bot through the file
-// system. The root's identity is fixed when it is opened: a root that is later replaced
-// by a link or a different directory is refused instead of being re-trusted.
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { MAX_PATH_CHARS } from "./limits.ts";
 import { type BotWorkspace, ToolError } from "./types.ts";
 
-/** Creates the workspace and refuses a pre-existing symlink or non-directory. */
-export const ensureWorkspace = async (root: string): Promise<void> => {
-  const existing = await lstat(root).catch(() => undefined);
-  if (existing !== undefined) {
-    if (existing.isSymbolicLink()) throw new ToolError(`the workspace is a link: ${root}`);
-    if (!existing.isDirectory()) throw new ToolError(`the workspace is not a directory: ${root}`);
-    return;
-  }
+export const openWorkspace = async (root: string): Promise<BotWorkspace> => {
   await mkdir(root, { recursive: true, mode: 0o700 });
-};
-
-/** The root every tool resolves against: its real path, so paths above it may be links. */
-export const canonicalWorkspace = (root: string): Promise<string> => realpath(root);
-
-/** Opens the workspace once: the returned root is canonical and carries its identity. */
-export const openWorkspace = async (root: string, daemonRoot: string): Promise<BotWorkspace> => {
-  await ensureWorkspace(root);
-  const canonical = await canonicalWorkspace(root);
-  const info = await lstat(canonical);
-  if (info.isSymbolicLink() || !info.isDirectory()) {
-    throw new ToolError(`the workspace is not a directory: ${canonical}`);
-  }
-  return {
-    root: canonical,
-    daemonRoot: await canonicalWorkspace(daemonRoot),
-    identity: { dev: info.dev, ino: info.ino },
-  };
-};
-
-/** Refuses a root that is no longer the directory opened: a swap is never re-trusted. */
-export const assertWorkspaceIdentity = async (workspace: BotWorkspace): Promise<void> => {
-  const info = await lstat(workspace.root).catch(() => undefined);
-  if (info === undefined) throw new ToolError("the workspace is gone");
-  if (info.isSymbolicLink() || !info.isDirectory()) {
-    throw new ToolError("the workspace root was replaced");
-  }
-  if (info.dev !== workspace.identity.dev || info.ino !== workspace.identity.ino) {
-    throw new ToolError("the workspace root was replaced");
-  }
+  return { root: await realpath(root) };
 };
 
 const isInside = (root: string, candidate: string): boolean =>
   candidate === root || candidate.startsWith(`${root}${sep}`);
 
 /** Rejects a symlink at or below the workspace root, including a dangling one. */
-export const assertNoLinks = async (root: string, path: string): Promise<void> => {
+const assertNoLinks = async (root: string, path: string): Promise<void> => {
   const rest = relative(root, path);
   if (rest.length === 0) return;
   let current = root;
@@ -68,14 +26,11 @@ export const assertNoLinks = async (root: string, path: string): Promise<void> =
 };
 
 /**
- * Resolves `path` inside the canonical workspace. Absolute paths are accepted only when
- * they land inside it; `..`, a symlink and a non-directory component are refused. The
- * caller still opens the final component with `O_NOFOLLOW`, so a link swapped in after
- * this check is not followed.
+ * Resolves the working directory of a bot-owned Herdr space, not native coding-tool paths.
  */
 export const resolveInside = async (root: string, path: string): Promise<string> => {
   if (path.length === 0) throw new ToolError("a path is required");
-  if (path.length > MAX_PATH_CHARS) throw new ToolError("the path is too long");
+  if (path.length > 4_096) throw new ToolError("the path is too long");
   if (path.includes("\0")) throw new ToolError("the path contains a null byte");
   const candidate = isAbsolute(path) ? resolve(path) : resolve(root, path);
   if (!isInside(root, candidate)) {
@@ -83,10 +38,4 @@ export const resolveInside = async (root: string, path: string): Promise<string>
   }
   await assertNoLinks(root, candidate);
   return candidate;
-};
-
-/** The workspace-relative form of a path, for display and for the model. */
-export const relativeTo = (root: string, path: string): string => {
-  const prefix = `${root}${sep}`;
-  return path.startsWith(prefix) ? path.slice(prefix.length) : path;
 };

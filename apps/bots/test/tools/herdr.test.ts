@@ -132,7 +132,7 @@ class FakeHerdr implements HerdrClient {
 
 const bench = async () => {
   const daemonRoot = await mkdtemp(join(tmpdir(), "bots-herdr-"));
-  const workspace = await openWorkspace(join(daemonRoot, "bots", "a-bot", "workspace"), daemonRoot);
+  const workspace = await openWorkspace(join(daemonRoot, "bots", "a-bot", "workspace"));
   const stateDir = join(daemonRoot, "bots", "a-bot");
   const client = new FakeHerdr();
   const tools = createHerdrTools({ client, workspace, stateDir, botId: "a-bot" });

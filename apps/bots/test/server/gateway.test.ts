@@ -33,7 +33,7 @@ test("settings round-trip, stay 0600 and never expose the key", async () => {
       model: "auto/gpt-6-astra",
       apiKey: "sk-secret-0123456789",
       thinkingLevel: "medium",
-      toolGroups: ["core", "herdr", "agents"],
+      toolGroups: ["core", "coding", "herdr", "agents"],
     };
     await writeGateway(bench_.root, config);
     assert.deepEqual(await readGateway(bench_.root), config);
@@ -45,7 +45,7 @@ test("settings round-trip, stay 0600 and never expose the key", async () => {
       configured: true,
       provider: "magpie",
       thinkingLevel: "medium",
-      toolGroups: ["core", "herdr", "agents"],
+      toolGroups: ["core", "coding", "herdr", "agents"],
       baseUrl: "http://127.0.0.1:3425/v1",
       model: "auto/gpt-6-astra",
       hasApiKey: true,
@@ -70,7 +70,7 @@ test("dotenv values are the fallback, and a broken file is not configured", asyn
       model: "m",
       apiKey: "k",
       thinkingLevel: "medium",
-      toolGroups: ["core", "herdr", "agents"],
+      toolGroups: ["core", "coding", "herdr", "agents"],
     },
   );
   const env = { BOTS_BASE_URL: "http://x/v1", BOTS_API_KEY: "k", BOTS_MODEL: "m" };

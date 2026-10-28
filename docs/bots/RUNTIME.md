@@ -291,7 +291,7 @@ Projection, which is also part of the mapping contract:
 | `progress.outputIntervalMs` | 100 | Reserved (tool output) |
 | `afterFailedRun` | `"continue"` | A failed run must not strand queued follow-ups |
 | `restartLimit` | 5 (default) | Parked tasks surface as `task_parked` and are cleared by `recover` |
-| `toolGroups` (per bot) | from the bot's stored config, default `["core", "herdr"]` | The registry installs only the selected groups: `core` is the four workspace tools and cannot be turned off; `herdr` adds the eight terminal tools. The conversation's agent stores the same selection, so a settings change selects among the installed extensions in place (`root.configure({ extensions })`); `resolveToolGroups` drops unknown names and always keeps `core` |
+| `toolGroups` (per bot) | from stored config, default `["core", "coding", "herdr", "agents"]` | `core` and `coding` are mandatory. The former adds `list`; the latter is native `CodingTools`. Herdr and child-agent extensions are optional. See "Tool groups" below |
 | `thinkingLevel` (per bot) | from `bot.json`, default `medium` | Written by the settings page for every bot; applied when the Harness opens and moved in place on a live conversation (`root.configure`). One value for the whole daemon, because a bot cannot yet choose its own |
 | Usage statistics | `<root>/usage.sqlite`, 90 days | `daily(bot_id, day, total_tokens, cost_usd)` plus `last_seen(bot_id, total_tokens, cost_usd)` so a cumulative report becomes a delta. Kept outside a bot's session, so deleting a bot keeps its history; pruned on boot and on write |
 | Model gateway | `<root>/gateway.json` (0600), dotenv fallback | The daemon registers one provider from the stored `{provider, baseUrl, model, apiKey}`. `PUT /v1/settings` rewrites the file, swaps the process-wide `Models` (the Harness reads it through a getter), binds the saved key directly to the provider auth resolver (the same path used on startup, without mutating process environment), and moves every bot to the new model in place with `conversation.configure({model})`; a closed bot opens with the catalog's new model. A bot naming another id before that settles `no_model` |
@@ -300,89 +300,47 @@ Projection, which is also part of the mapping contract:
 Each bot owns its settings object so one bot's policy cannot affect another
 (F19).
 
-## Tools (phase 2, slice 1)
+## Tools (phase 2)
 
-A bot is born with four tools, installed as the `bots-tools` extension in its Harness
-registry and bound to that bot's workspace:
+The mandatory `coding` group installs pi-durable's native `CodingTools` extension.
+The mandatory `core` group installs `bots-tools`, containing the native-style `list` tool.
+There is one implementation per capability and no aliases for the old tool names.
 
 | Tool | Behaviour |
 | --- | --- |
-| `read_file` | A text page (`offset`, `limit`): at most 2 000 lines and 64 KiB, streamed from the file and with a note naming the lines it showed and the total; a line that alone exceeds the page budget, or a scan that passes 64 MiB, is a named refusal rather than a false "no such line" |
-| `write_file` | Writes one UTF-8 file (at most 512 KiB), creating parent directories, mode 0600 |
-| `list_files` | A bounded recursive walk (2 000 entries) that skips `.git`, `node_modules`, `.venv`, `dist` and `.build`; directories end with `/` |
-| `run_command` | `/bin/sh -c` in the workspace: stdout, stderr and the exit code, killed at the deadline (default 30 s, max 120 s) with the output capped at 64 KiB |
+| `read` | Native text paging and supported image input, with the SDK's output limits and diagnostics |
+| `write` | Native whole-file UTF-8 write, creating parent directories |
+| `edit` | Native unique, non-overlapping exact-text replacements, serialized with writes to the same file |
+| `bash` | Native shell execution, streamed output, cancellation, retained output and spill-file diagnostics; optional `timeout` is in seconds and has no default |
+| `list` | A recursive directory listing, defaulting to the conversation's working directory; at most 2 000 entries and 50 KiB, sorted within each directory, without traversing symlinks or common build/dependency directories |
 
-Rules:
+The Harness supplies a `NodeExecutionEnv` from the conversation's `cwd`; tools use that
+SDK environment instead of their own filesystem or process adapters. The workspace is
+`<bot dir>/workspace`, a default working directory rather than a security boundary.
+Absolute paths and normal local file access are supported. Execution sandboxes and
+third-party plugins are explicitly outside the product scope.
 
-- **Auto-execute.** There is no approval gate and no hook that asks the user; execution
-  is the product. Tools do not receive a separate switch per call.
-- **Workspace confinement.** The workspace is `<bot dir>/workspace`, created 0700 on open
-  and the agent's `cwd`; it is refused if it is itself a symlink, and its `dev`/`ino` are
-  captured at open. Every call first re-checks that identity, so a root replaced by a link
-  or a different directory after open is refused, never re-trusted. Every file tool path is
-  resolved inside the canonical root lexically **and** component by component; a symlink
-  anywhere at or below the root — including a dangling one — is refused rather than
-  followed. The final component is opened with `O_NOFOLLOW`, only a regular file is read or
-  written (`O_NONBLOCK` so a FIFO or device can neither block nor be redirected), and an
-  overwrite is tightened to 0600. An escape is a tool result the model reads, never an
-  exception.
-- **The daemon root is out of reach.** A command runs under a macOS Seatbelt profile
-  (`/usr/bin/sandbox-exec`) that denies reading and writing everything under the daemon
-  root — the token, the catalog, every other bot — while allowing the bot's own
-  workspace. Outside that root the shell is the agent's own machine, by design: a coding
-  agent needs to run toolchains, and there is no approval gate. On a platform without
-  `sandbox-exec` the command runs unsandboxed; on a machine that has it but cannot stat it,
-  the command fails instead of silently dropping the sandbox.
-- **No daemon secrets.** A command's environment is an allowlist (`PATH`, `HOME`, `LANG`,
-  `LC_ALL`, `TMPDIR`, `SHELL`, plus `TERM=dumb` and `PWD`). The child is `detached` in its
-  own process group, and a timeout or an abort walks the `ps` tree before killing, so a
-  descendant that left the group with `setsid` dies too while its parent is still alive.
-  A daemon whose parent has already exited is reparented to pid 1 and cannot be attributed
-  by any tree walk; the deadline still returns on time and the survivor stays confined by
-  the sandbox, but it is recorded as a known limit rather than promised otherwise.
-- **Bounded output.** Both streams share one 64 KiB budget counted in the bytes the model
-  reads (a lossy decode that expands one byte into three is still capped), decoded as UTF-8
-  across chunk boundaries; `[stderr]` marks the first stderr byte once (not every chunk),
-  the exit code is always the last line, and each tool's SDK `outputLimits` is set above
-  the tool's own cap so the SDK never cuts the result, its note or a command's exit status
-  — a timed-out command still carries the stderr and the reason, and a command killed at
-  the deadline returns then rather than waiting for its pipes to close.
-- **Cancellation.** `run_command` follows the run's abort signal: an aborted run kills the
-  process group and the model sees an aborted result instead of a live command.
-- **Residual race.** A process that can already write inside the workspace could swap an
-  intermediate directory for a link between the component check and the open. The final
-  component is protected by `O_NOFOLLOW`, the root identity is checked on every call, every
-  directory is re-checked before it is listed, and commands are additionally confined by
-  the sandbox; closing the intermediate window fully would need `openat` chains the Node
-  API does not expose, and is recorded as a known limit rather than claimed fixed.
-- **Hard kill of the daemon.** A deadline or an abort kills the command's process group,
-  but `SIGKILL` of the daemon itself orphans whatever is already running: the restart marks
-  the run interrupted and cannot stop the orphan. A persisted process-group id would let a
-  restart kill it, at the price of killing an unrelated group once the id is reused, so the
-  limit stays documented instead of guessed.
-- **Failures are results.** A refusal, a missing file, a timeout and a non-zero exit are
-  returned to the model as text; a run never crashes because a tool failed.
-- **Replay.** `read_file` and `list_files` are `replay: "safe"`; `write_file` and
-  `run_command` stay unsafe, so an interrupted call is not rerun after a restart.
-- **What the client sees.** A tool run is transcript content: the assistant entry carries
-  `toolCall` blocks (grown by `toolcall` deltas) and the durable result is its own
-  `role:"tool"` message with one `toolResult` block. Both are in the live frames, the
-  snapshot and history, and the client pairs them by `callId` into one row (PROTOCOL.md,
-  "Tool rows"). A result above the message budget is clamped with a
-  `[tool output truncated]` tail instead of the answer's oversized notice.
+- Calls execute without a separate approval dialog. Schema validation, cancellation,
+  output bounds and model-visible failures are still required.
+- The native coding tools retain their SDK replay policy (default `unsafe` in 1.4.0).
+  `list` is replay-safe. No side-effecting command is silently repeated after interruption.
+- Shell calls must not inherit daemon credentials. This policy uses the SDK's native
+  shell preparation hook, not another command runner or a sandbox.
+- The native timeout and output semantics replace the old `run_command` contract. Tests
+  cover timeout, abort, UTF-8 output, nonzero exits and the full model-facing result.
+- Tool calls and results use the existing wire blocks and generic macOS tool rows.
+  Text and diagnostics are rendered; image attachment rendering is not added by this
+  change and remains outside the client's current text-only tool-result shape.
+- A hard kill of the daemon can orphan an external process. Durable recovery records an
+  interrupted unsafe call; it does not promise to undo effects or kill arbitrary old pids.
 
 ### Tool groups
 
-The tools are installed as three pi-durable extensions, chosen per bot: `bots-tools`
-(`core`: `read_file`, `write_file`, `list_files`, `run_command`), `bots-herdr`
-(`herdr`: the eight terminal tools) and `bots-agents` (`agents`: `agent_spawn`,
-`agent_send`, `agent_stop`). A bot's stored group selection decides which
-extensions the registry installs, and the conversation's agent stores the same names, so
-the model is offered exactly those tools. `core` is mandatory: a selection without it is
-normalized to include it, and the group table lives in `core/domain.ts` so the daemon, the
-settings API and the registry share one vocabulary. Preferences and limits are unchanged
-per group; turning `herdr` off removes its prompt section and its eight tools from every
-request.
+`core/domain.ts` owns the product vocabulary: `core`, `coding`, `herdr`, `agents`.
+`core` and `coding` are always selected, including when settings request an empty list.
+`core` maps to `bots-tools`, `coding` to native `coding-tools`, `herdr` to `bots-herdr`
+and the native `tool-search` loader, and `agents` to `bots-agents`. Both required groups
+are shown enabled and disabled for editing in the settings UI.
 
 ### Subagents (phase 2, slice 3)
 

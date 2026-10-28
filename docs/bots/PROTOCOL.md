@@ -99,7 +99,7 @@ version, the instance id, the pid and a bot count, never bot content.
 // GatewaySettings: the key is never returned, only whether one is stored.
 { "configured": true, "provider": "magpie", "baseUrl": "http://127.0.0.1:3425/v1",
   "model": "auto/gpt-6-luna", "hasApiKey": true, "thinkingLevel": "medium",
-  "toolGroups": ["core", "herdr"] }
+  "toolGroups": ["core", "coding", "herdr", "agents"] }
 
 // GatewayProbe: the test asks the gateway for its model list.
 { "ok": true, "status": 200, "message": "连接成功，网关报告 17 个模型",
@@ -123,10 +123,11 @@ Gateway rules:
   live conversation to the new level in place; an unknown value is a `400` and nothing is
   written.
 - **Tool groups are chosen per daemon.** `toolGroups` lists the groups every bot is given:
-  `core` (the workspace tools: read, write, list and run) and `herdr` (the terminal
-  collaborator). An empty array means `core` alone, because the core group cannot be turned
-  off; an unknown name is a `400` and nothing is written. Saving it records the selection on
-  every bot and changes what a live conversation offers in place.
+  `core` (the `list` tool), `coding` (pi-durable's `read`, `write`, `edit`, `bash`),
+  `herdr` (the terminal collaborator), and `agents` (child conversations). Both `core`
+  and `coding` are mandatory: an empty array selects those two groups. An unknown name
+  is a `400` and nothing is written. Saving records the selection on every bot and changes
+  what a live conversation offers in place. There are no aliases for the old tool names.
 - **Testing is separate.** `POST /v1/settings/test` probes `GET {baseUrl}/models` with the
   key; a `401` is reported as a refused key, a timeout as an unreachable gateway. It does
   not save and does not spend a generation.

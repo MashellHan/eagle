@@ -46,7 +46,7 @@ export type RuntimeBotSpec = {
   readonly model: { readonly provider: string; readonly modelId: string };
   /** A bot's stored reasoning level, when it has one; the runtime applies it per bot. */
   readonly thinkingLevel?: string;
-  /** The tool groups this bot was given; `core` is always included. */
+  /** The tool groups this bot was given; `core` and `coding` are always included. */
   readonly toolGroups?: readonly string[];
   readonly trace: string;
 };

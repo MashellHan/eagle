@@ -471,3 +471,13 @@ an untracked legacy `agent/dist` directory. Git already ignores `dist/` at every
 depth, but Biome excluded only three named build locations. Replace those location
 exceptions with `!**/dist`; do not format generated JavaScript, remove local user
 artifacts or bypass the hook. Source lint rules and all push gates remain unchanged.
+
+## 2026-10-28 - Match edit paths to the selected working directory
+
+During native-tool consolidation, an edit command used a repository-relative path while
+its shell was already in `apps/bots`. The edit failed before writing anything, but the
+following test command still ran against the old registry. The nonzero result was not
+mistaken for success. The command was corrected to a package-relative path and rerun with
+`set -e`. Compound edit-and-check commands must use one explicit directory convention and
+stop when preparation fails; a test result after a failed edit is not implementation
+evidence.

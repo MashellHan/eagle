@@ -210,7 +210,7 @@ test("settings store the thinking level, refuse an unknown one and apply it to b
   }
 });
 
-test("settings store the tool groups, refuse an unknown group and keep core mandatory", async () => {
+test("settings store tool groups, reject unknown names and keep core and coding mandatory", async () => {
   const root = await mkdtemp(join(tmpdir(), "bots-groups-"));
   try {
     const config = readConfig({ argv: ["--root", root, "--port", "0"], env: {} });
@@ -238,12 +238,20 @@ test("settings store the tool groups, refuse an unknown group and keep core mand
       const saved = await put({ ...settings, toolGroups: ["herdr"] });
       assert.equal(saved.status, 200);
       const shown = (await saved.json()) as { settings: { toolGroups: string[] } };
-      assert.deepEqual(shown.settings.toolGroups, ["core", "herdr"], "core is implied");
-      assert.deepEqual((await readGateway(root))?.toolGroups, ["core", "herdr"]);
+      assert.deepEqual(
+        shown.settings.toolGroups,
+        ["core", "coding", "herdr"],
+        "both required groups are implied",
+      );
+      assert.deepEqual((await readGateway(root))?.toolGroups, ["core", "coding", "herdr"]);
 
       const trimmed = await put({ ...settings, toolGroups: [] });
       assert.equal(trimmed.status, 200);
-      assert.deepEqual((await readGateway(root))?.toolGroups, ["core"], "core alone remains");
+      assert.deepEqual(
+        (await readGateway(root))?.toolGroups,
+        ["core", "coding"],
+        "neither required group can be disabled",
+      );
     } finally {
       await daemon.close();
     }

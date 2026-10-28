@@ -145,8 +145,16 @@ public struct SettingsView: View {
       SettingsCard {
         VStack(spacing: 0) {
           SettingsRow(
-            "文件与命令", detail: "读写文件、列目录、执行命令；核心工具，不能关闭"
+            "Core 基础工具", detail: "列出文件与目录；始终启用"
           ) {
+            Toggle("", isOn: .constant(true))
+              .labelsHidden()
+              .toggleStyle(.switch)
+              .tint(Theme.Palette.accentStrong)
+              .disabled(true)
+          }
+          Divider().overlay(Theme.Palette.line)
+          SettingsRow("Coding 编码工具", detail: "原生读取、写入、编辑与命令执行；始终启用") {
             Toggle("", isOn: .constant(true))
               .labelsHidden()
               .toggleStyle(.switch)

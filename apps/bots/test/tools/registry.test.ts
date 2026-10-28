@@ -1,18 +1,39 @@
-// The tools a bot is born with (docs/bots/RUNTIME.md, "Tools"): one extension, four tools,
-// bound to the bot's workspace and offered without an approval hook.
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { CodingTools } from "@earendil-works/pi-durable/tools";
 import type { HerdrClient } from "../../src/tools/herdr/client.ts";
 import { HERDR_TOOLS_EXTENSION } from "../../src/tools/herdr/tools.ts";
 import { BOTS_TOOLS_EXTENSION, createToolRegistry } from "../../src/tools/registry.ts";
 import { openWorkspace } from "../../src/tools/workspace.ts";
 
-test("the bots-tools extension installs the four tools and a workspace section", async () => {
+test("core supplies list and coding installs the original native extension without aliases", async () => {
+  const daemonRoot = await mkdtemp(join(tmpdir(), "bots-native-registry-"));
+  try {
+    const workspace = await openWorkspace(join(daemonRoot, "workspace"));
+    const snapshot = createToolRegistry(workspace, { groups: [] }).snapshot();
+    assert.equal(snapshot.extension("coding-tools"), CodingTools);
+    assert.deepEqual(
+      snapshot
+        .tools()
+        .map(({ tool }) => tool.name)
+        .sort(),
+      ["bash", "edit", "list", "read", "write"],
+    );
+    assert.deepEqual(
+      snapshot.extension(BOTS_TOOLS_EXTENSION)?.tools?.map((tool) => tool.name),
+      ["list"],
+    );
+  } finally {
+    await rm(daemonRoot, { recursive: true, force: true });
+  }
+});
+
+test("core and coding install five tools and a working-directory section", async () => {
   const daemonRoot = await mkdtemp(join(tmpdir(), "bots-registry-"));
-  const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"), daemonRoot);
+  const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"));
   const registry = createToolRegistry(workspace, { groups: ["core"] });
   const snapshot = registry.snapshot();
   assert.deepEqual(
@@ -21,29 +42,25 @@ test("the bots-tools extension installs the four tools and a workspace section",
       .map(({ extension, tool }) => [extension.name, tool.name])
       .sort(),
     [
-      [BOTS_TOOLS_EXTENSION, "list_files"],
-      [BOTS_TOOLS_EXTENSION, "read_file"],
-      [BOTS_TOOLS_EXTENSION, "run_command"],
-      [BOTS_TOOLS_EXTENSION, "write_file"],
+      [BOTS_TOOLS_EXTENSION, "list"],
+      ["coding-tools", "bash"],
+      ["coding-tools", "edit"],
+      ["coding-tools", "read"],
+      ["coding-tools", "write"],
     ],
   );
   assert.equal(snapshot.extension(BOTS_TOOLS_EXTENSION)?.hooks, undefined);
   const section = snapshot.sections().find(({ section }) => section.key === "bots-tools");
   assert.ok(section, "the model is told where its workspace is");
 
-  // Each tool's SDK budget matches the cap the tool already enforces, so the SDK never
-  // cuts a result (and never a command's exit code) behind the tool's back.
-  for (const { tool } of snapshot.tools()) {
-    assert.ok(tool.outputLimits, `${tool.name} declares output limits`);
-  }
-  const command = snapshot.tools().find(({ tool }) => tool.name === "run_command");
+  const command = snapshot.tools().find(({ tool }) => tool.name === "bash");
   assert.equal(command?.tool.outputLimits?.retain, "tail");
   await rm(daemonRoot, { recursive: true, force: true });
 });
 
 test("a bot's tool groups decide which extensions are installed", async () => {
   const daemonRoot = await mkdtemp(join(tmpdir(), "bots-registry-"));
-  const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"), daemonRoot);
+  const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"));
   const herdr = { client: {} as HerdrClient, stateDir: join(daemonRoot, "bots", "a"), botId: "a" };
   const coreOnly = createToolRegistry(workspace, { groups: ["core"], herdr }).snapshot();
   assert.equal(
@@ -51,7 +68,7 @@ test("a bot's tool groups decide which extensions are installed", async () => {
     undefined,
     "core alone installs no herdr",
   );
-  assert.equal(coreOnly.tools().length, 4, "the core extension keeps its four workspace tools");
+  assert.equal(coreOnly.tools().length, 5, "core and coding are mandatory");
   const both = createToolRegistry(workspace, { groups: ["core", "herdr"], herdr }).snapshot();
   assert.ok(both.extension(HERDR_TOOLS_EXTENSION), "the herdr group adds its extension");
   await rm(daemonRoot, { recursive: true, force: true });
@@ -59,7 +76,7 @@ test("a bot's tool groups decide which extensions are installed", async () => {
 
 test("the herdr extension is installed only when a client is given", async () => {
   const daemonRoot = await mkdtemp(join(tmpdir(), "bots-registry-"));
-  const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"), daemonRoot);
+  const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"));
   const without = createToolRegistry(workspace).snapshot();
   assert.equal(without.extension(HERDR_TOOLS_EXTENSION), undefined);
 
@@ -91,7 +108,7 @@ test("the herdr extension is installed only when a client is given", async () =>
 
 test("herdr tools are deferred and the loader is installed with them", async () => {
   const daemonRoot = await mkdtemp(join(tmpdir(), "bots-registry-"));
-  const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"), daemonRoot);
+  const workspace = await openWorkspace(join(daemonRoot, "bots", "a", "workspace"));
   const herdr = { client: {} as HerdrClient, stateDir: join(daemonRoot, "bots", "a"), botId: "a" };
   const snapshot = createToolRegistry(workspace, { groups: ["core", "herdr"], herdr }).snapshot();
   const tools = snapshot.tools().map(({ tool }) => tool);

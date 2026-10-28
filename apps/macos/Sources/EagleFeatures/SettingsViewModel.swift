@@ -40,9 +40,8 @@ public final class SettingsViewModel: ObservableObject {
     ("high", "高"), ("xhigh", "极高"), ("max", "最高"),
   ]
   public static let defaultThinkingLevel = "medium"
-  /// The daemon's tool groups in the order it reports them; `core` cannot be closed.
-  public static let toolGroups = ["core", "herdr", "agents"]
-  public static let mandatoryToolGroup = "core"
+  public static let toolGroups = ["core", "coding", "herdr", "agents"]
+  public static let mandatoryToolGroups: Set<String> = ["core", "coding"]
   public static let herdrToolGroup = "herdr"
   public static let agentsToolGroup = "agents"
   private var gatewayThinkingLevelChosen = false
@@ -112,7 +111,9 @@ public final class SettingsViewModel: ObservableObject {
       if gatewayBaseURL.isEmpty { gatewayBaseURL = settings.baseUrl }
       if gatewayModel.isEmpty { gatewayModel = settings.model }
       if !gatewayThinkingLevelChosen { gatewayThinkingLevel = settings.thinkingLevel }
-      if !gatewayToolGroupsChosen { gatewayToolGroups = settings.toolGroups }
+      if !gatewayToolGroupsChosen {
+        gatewayToolGroups = Self.normalizeToolGroups(settings.toolGroups)
+      }
       gatewayMessage = settings.configured ? "已配置" : "尚未配置"
     } catch {
       gatewayMessage = "无法读取 Bots 设置：\(error.localizedDescription)"
@@ -136,13 +137,12 @@ public final class SettingsViewModel: ObservableObject {
     gatewayToolGroups.contains(name)
   }
 
-  /// `core` stays on: the daemon forces it back, so the switch must not pretend otherwise.
   public func setToolGroup(_ name: String, isOn: Bool) {
-    guard name != Self.mandatoryToolGroup else { return }
+    guard !Self.mandatoryToolGroups.contains(name) else { return }
     gatewayToolGroupsChosen = true
     var chosen = Set(gatewayToolGroups)
     if isOn { chosen.insert(name) } else { chosen.remove(name) }
-    gatewayToolGroups = Self.toolGroups.filter { chosen.contains($0) }
+    gatewayToolGroups = Self.normalizeToolGroups(Array(chosen))
   }
 
   /// Probes the typed values; an empty key field tests the one already stored.
@@ -183,11 +183,13 @@ public final class SettingsViewModel: ObservableObject {
     }
   }
 
-  /// What the daemon stores: the mandatory group is always present, in its canonical order.
   private var resolvedToolGroups: [String] {
-    var chosen = Set(gatewayToolGroups)
-    chosen.insert(Self.mandatoryToolGroup)
-    return Self.toolGroups.filter { chosen.contains($0) }
+    Self.normalizeToolGroups(gatewayToolGroups)
+  }
+
+  private static func normalizeToolGroups(_ groups: [String]) -> [String] {
+    let chosen = Set(groups).union(mandatoryToolGroups)
+    return toolGroups.filter { chosen.contains($0) }
   }
 
   private func client() throws -> CatalogHTTPClient {

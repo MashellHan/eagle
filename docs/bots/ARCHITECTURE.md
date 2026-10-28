@@ -117,11 +117,10 @@ src/
     version.ts  limits.ts     PROTOCOL_VERSION, frame and page budgets
     events.ts   commands.ts   encode/decode domain ⇄ frames, validation
   tools/                      the bot's tools, inside the adapter boundary
-    registry.ts               installs `bots-tools` and, when configured, `bots-herdr`
-    files.ts                  read_file, write_file, list_files
-    shell.ts                  run_command (deadline, output cap, minimal env, sandbox)
-    workspace.ts              confinement: every path resolves inside the workspace
-    limits.ts types.ts        budgets and the ToolOutcome shape
+    registry.ts               native CodingTools, core list, Herdr and child-agent extensions
+    list.ts                   native-style bounded directory listing through ExecutionEnv
+    workspace.ts              default directory creation and Herdr-owned cwd resolution
+    types.ts                  the Herdr workspace and business-tool outcome shapes
     herdr/client.ts           the herdr CLI as typed calls (argv, JSON, deadline, abort)
     herdr/tools.ts            the eight herdr tools and the one-space-per-bot rule
   runtime/pi/

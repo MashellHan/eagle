@@ -11,7 +11,7 @@ public struct GatewaySettings: Decodable, Sendable, Equatable {
   public var hasApiKey: Bool
   /// A daemon older than the field reports no level; the daemon itself then uses `medium`.
   public var thinkingLevel: String
-  /// The tool groups the model sees; `core` is mandatory and `herdr` is optional.
+  /// The built-in tool groups; `core` and `coding` are mandatory.
   public var toolGroups: [String]
 
   private enum CodingKeys: String, CodingKey {
@@ -28,7 +28,7 @@ public struct GatewaySettings: Decodable, Sendable, Equatable {
     thinkingLevel = try container.decodeIfPresent(String.self, forKey: .thinkingLevel) ?? "medium"
     toolGroups =
       try container.decodeIfPresent([String].self, forKey: .toolGroups)
-        ?? ["core", "herdr", "agents"]
+      ?? ["core", "coding", "herdr", "agents"]
   }
 }
 

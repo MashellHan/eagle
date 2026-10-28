@@ -285,16 +285,11 @@ export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 export const isThinkingLevel = (value: unknown): value is ThinkingLevel =>
   typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
 
-/**
- * The tools a bot can be given, as groups a person turns on in settings. `core` holds the
- * workspace tools and cannot be turned off: a bot that cannot read, write or run anything
- * is not a bot this product ships.
- */
-export const TOOL_GROUP_NAMES = ["core", "herdr", "agents"] as const;
+export const TOOL_GROUP_NAMES = ["core", "coding", "herdr", "agents"] as const;
 
 export type ToolGroup = (typeof TOOL_GROUP_NAMES)[number];
 
-export const MANDATORY_TOOL_GROUPS: readonly ToolGroup[] = ["core"];
+export const MANDATORY_TOOL_GROUPS: readonly ToolGroup[] = ["core", "coding"];
 
 export const DEFAULT_TOOL_GROUPS: readonly ToolGroup[] = [...TOOL_GROUP_NAMES];
 

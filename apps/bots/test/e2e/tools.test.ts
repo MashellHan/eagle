@@ -15,7 +15,7 @@ test("a tool round is live in the transcript and in a later snapshot", async () 
     const faux = stack.faux;
     assert.ok(faux !== undefined, "a real stack scripts the model network");
     faux.setResponses([
-      assistant([toolCall("list_files", { path: "." })], { stopReason: "toolUse" }),
+      assistant([toolCall("list", { path: "." })], { stopReason: "toolUse" }),
       text("工作区里没有别的文件。"),
     ]);
     const botId = await stack.createBot("工具行");
@@ -47,18 +47,15 @@ test("a tool round is live in the transcript and in a later snapshot", async () 
     );
     assert.equal(call?.role, "assistant", "the call rides in the assistant entry");
     const callBlock = call?.blocks.find((block) => block.type === "toolCall");
-    assert.equal(callBlock?.type === "toolCall" ? callBlock.name : "", "list_files");
+    assert.equal(callBlock?.type === "toolCall" ? callBlock.name : "", "list");
 
     const result = appends.find((message) => message.role === "tool");
     assert.ok(result !== undefined, "the tool result is appended as its own row");
     const resultBlock = result.blocks[0];
     assert.equal(resultBlock?.type, "toolResult");
-    assert.equal(resultBlock?.type === "toolResult" ? resultBlock.name : "", "list_files");
+    assert.equal(resultBlock?.type === "toolResult" ? resultBlock.name : "", "list");
     assert.equal(resultBlock?.type === "toolResult" ? resultBlock.isError : true, false);
-    assert.match(
-      resultBlock?.type === "toolResult" ? resultBlock.text : "",
-      /\(the workspace is empty\)/,
-    );
+    assert.match(resultBlock?.type === "toolResult" ? resultBlock.text : "", /\(empty directory\)/);
 
     // A late join after the run: the snapshot carries the same rows, in order.
     const again = stack.connect();
@@ -91,7 +88,7 @@ test("a hostile tool output is clamped by its encoded size and the socket stays 
     assert.ok(faux !== undefined);
     faux.setResponses([
       assistant(
-        [toolCall("run_command", { command: "head -c 65536 /dev/zero | LC_ALL=C tr '\\0' '\"'" })],
+        [toolCall("bash", { command: "head -c 65536 /dev/zero | LC_ALL=C tr '\\0' '\"'" })],
         { stopReason: "toolUse" },
       ),
       text("输出已经被裁剪。"),

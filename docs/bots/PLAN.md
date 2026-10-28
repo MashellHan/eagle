@@ -8,6 +8,21 @@ what exists, what is next, and where it lives. Update it whenever a stage closes
 
 ## Where the code lives
 
+### Native tool consolidation (2026-10-28)
+
+The owner requires separate mandatory `core` and `coding` groups. `coding` is the native
+pi-durable `CodingTools`; `core` adds a native-style `list` tool. The previous custom
+read/write/command implementations and their aliases are removed, together with their
+obsolete sandbox contract. Native tool integration tests replace implementation-specific
+tests; the existing coverage scope and thresholds are unchanged. Missing-group and
+existing-session regressions failed before implementation. The daemon gate passes 471
+tests with 95.08% lines, 87.55% branches and 90.65% functions; `list` is 100% in all three.
+The macOS app passes 119 feature and 46 design tests with 95.8% configured logic coverage.
+The Bots client passes 121 tests with 90.6% configured logic coverage after meaningful
+selected-bot and transport tests raised the observed 88.1% shortfall. The app bundle builds.
+The requested registry refresh on Bot switching and rebuilt-app acceptance follow next;
+disk-source reloading is not included without clarification.
+
 ```
 docs/bots/                 contracts and this plan
 fixtures/bots-protocol/    normative wire samples, shared by daemon and client

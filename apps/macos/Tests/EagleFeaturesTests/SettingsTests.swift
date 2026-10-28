@@ -164,7 +164,7 @@ struct SettingsGatewayTests {
     await model.loadGateway()
     #expect(model.gatewayBaseURL == "http://typed/v1")
     #expect(model.gatewayModel == "typed-model")
-    #expect(model.gatewayToolGroups == ["core", "agents"])
+    #expect(model.gatewayToolGroups == ["core", "coding", "agents"])
     GatewayHTTPStub.handler = nil
   }
 
@@ -224,14 +224,14 @@ struct SettingsGatewayTests {
       (
         200,
         Data(
-          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"thinkingLevel":"medium","toolGroups":["core"]}}"#
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"thinkingLevel":"medium","toolGroups":["core", "coding"]}}"#
             .utf8)
       )
     }
     let model = SettingsViewModel(botsSettings: settings, urlSession: session)
     await model.loadGateway()
-    #expect(model.gateway?.toolGroups == ["core"])
-    #expect(model.gatewayToolGroups == ["core"])
+    #expect(model.gateway?.toolGroups == ["core", "coding"])
+    #expect(model.gatewayToolGroups == ["core", "coding"])
     #expect(model.isToolGroupEnabled("core"))
     #expect(model.isToolGroupEnabled("herdr") == false)
     GatewayHTTPStub.handler = nil
@@ -250,21 +250,23 @@ struct SettingsGatewayTests {
     }
     let model = SettingsViewModel(botsSettings: settings, urlSession: session)
     await model.loadGateway()
-    #expect(model.gateway?.toolGroups == ["core", "herdr", "agents"])
-    #expect(model.gatewayToolGroups == ["core", "herdr", "agents"])
+    #expect(model.gateway?.toolGroups == ["core", "coding", "herdr", "agents"])
+    #expect(model.gatewayToolGroups == ["core", "coding", "herdr", "agents"])
     GatewayHTTPStub.handler = nil
   }
 
-  @Test("the core group cannot be switched off or dropped")
+  @Test("core and coding cannot be switched off or dropped")
   func toolGroupCoreIsMandatory() {
     let model = SettingsViewModel()
     model.setToolGroup("core", isOn: false)
     #expect(model.isToolGroupEnabled("core"))
+    model.setToolGroup("coding", isOn: false)
+    #expect(model.isToolGroupEnabled("coding"))
     #expect(model.isToolGroupEnabled("herdr"))
     model.setToolGroup("herdr", isOn: false)
     #expect(model.isToolGroupEnabled("herdr") == false)
     model.setToolGroup("herdr", isOn: true)
-    #expect(model.gatewayToolGroups == ["core", "herdr", "agents"])
+    #expect(model.gatewayToolGroups == ["core", "coding", "herdr", "agents"])
   }
 
   @Test("loadGatewayIfNeeded fetches only once")
@@ -411,11 +413,11 @@ struct SettingsGatewayTests {
     GatewayHTTPStub.handler = { request in
       let body = gatewayHTTPBody(request)
       let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
-      #expect(parsed?["toolGroups"] as? [String] == ["core", "herdr", "agents"])
+      #expect(parsed?["toolGroups"] as? [String] == ["core", "coding", "herdr", "agents"])
       return (
         200,
         Data(
-          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","herdr","agents"]}}"#
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","coding","herdr","agents"]}}"#
             .utf8)
       )
     }
@@ -433,11 +435,11 @@ struct SettingsGatewayTests {
     GatewayHTTPStub.handler = { request in
       let body = gatewayHTTPBody(request)
       let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
-      #expect(parsed?["toolGroups"] as? [String] == ["core", "agents"])
+      #expect(parsed?["toolGroups"] as? [String] == ["core", "coding", "agents"])
       return (
         200,
         Data(
-          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","agents"]}}"#
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","coding","agents"]}}"#
             .utf8)
       )
     }

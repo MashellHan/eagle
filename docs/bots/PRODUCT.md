@@ -217,6 +217,17 @@ client that receives it while the flag is off must ignore it. It does **not**
 mean a hidden implementation exists. Each enable path is a change set of its own,
 listed in [RUNTIME.md](RUNTIME.md#reserved-capability-enable-paths).
 
+## Built-in tools (phase 2)
+
+Tools are trusted, built-in pi-durable extensions, not third-party plugins. The mandatory
+`coding` group uses the native `CodingTools` extension (`read`, `write`, `edit`, `bash`).
+The mandatory `core` group supplies missing native functionality, starting with `list`.
+Herdr and child-agent groups remain optional. Tool execution has no approval dialog.
+The bot's workspace is its default working directory, not a security boundary. A plugin
+marketplace, third-party module discovery and an execution sandbox are not product goals.
+Argument validation, cancellation, bounded output and keeping credentials out of logs and
+inherited command environments remain correctness requirements.
+
 ## Non-goals (phase 1)
 
 - Tools, file access, shell, code execution.
