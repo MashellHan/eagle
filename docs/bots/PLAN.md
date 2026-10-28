@@ -310,11 +310,11 @@ inspector feature. The proposed delivery order is:
 | Milestone | Bot core lane — nocoli | Cloud and machine lane — project owner | Exit evidence |
 | --- | --- | --- | --- |
 | M0 — shared contracts | Bot vs conversation identity, plugin/context boundaries | Host and machine routing, owner-token/session and execution contract | Agreed interfaces, file ownership and compatibility fixtures; no deployment implied |
-| M1 — one Bot from two devices | Standalone daemon lifecycle, existing chat/history/recovery | Real machine settings, authenticated outbound relay, Web chat and remote native transport | A second computer uses Web without a Bot install; both clients reach the same host state; quitting UI keeps the daemon running |
+| M1 — Mac machine management and plugins | Minimal remote-tool extension wiring in the existing local Bot | Real macOS machine settings, authenticated routing, Herdr-independent execution and optional machine plugins | A Bot operates on B without Herdr; manual and Bot-assisted Herdr setup share verification; quitting UI keeps the execution service running |
 | M2 — useful persistent assistant | Per-bot instructions, scoped memory, plugin selection, durable reminders and bounded loops | Required task/status presentation and notification/host status wiring | Role and explicit memory survive a new chat; a reminder survives daemon restart, fires once under its documented host conditions and can be cancelled |
 | M3 — bot collaboration | Restricted Bot creation, shared room timeline, explicit turn routing and stop/budget limits | Forward and render the compatible room protocol | Parent creates a Bot without duplicate creation on retry; an @mention selects the recipient; room work stops and does not inherit unrelated private context |
 | M4 — one complete external workflow | A connector and browser plugin used for sourced information collection | Required target capabilities and secure connector configuration | One real authorized X-information workflow produces source links/times; capability and upstream failures are visible |
-| M5 — wider access and execution | Computer-use plugin and further connectors as required | Responsive/mobile Web improvements; assess PWA/native push and cloud-hosted runtime only when needed | Capability-specific journeys and measured operational requirements, rather than a new mobile app as a prerequisite |
+| M5 — wider access and execution | Computer-use plugin and further connectors as required | Future shared Bot chat across Macs, Web/mobile access; assess PWA/native push and cloud-hosted runtime only when needed | Separately scoped after machine management/plugins; no shared chat view or Web UI requirement in M0–M1 |
 
 M0 allows both lanes to proceed in parallel; the table orders integrated
 acceptance, not every implementation task. Core work in M2 can proceed while
@@ -324,6 +324,35 @@ access. Exact dates are not agreed. Current per-bot storage remains authoritativ
 on one host; the first remote slice adds neither cross-host replication nor
 cloud persistence of chat bodies. Current Agent terminal input is not a generic
 remote-command task API; that extension requires its own compatible release.
+
+#### M0–M1 执行计划更新（2026-10-28）
+
+本轮实施范围是“macOS 多机器管理、基础跨机器执行、按机器安装可选 Herdr 能力”。
+产品和安装边界见 [REMOTE-ACCESS.md](REMOTE-ACCESS.md)。以下是唯一阶段进度表；
+2026-10-28 用户已恢复实施。Web UI 和跨 Mac 共享 Bot 聊天视图均延期，不作为本轮
+前置条件；云端认证、机器目录和执行转发继续服务原生客户端。原有本地 Bot 增加
+最小 remote-tool extension，真正打通执行和 setup，不扩展人格、记忆、群聊或业务调度。
+
+| 阶段 | 状态 | 交付与依赖 | 验收证据 |
+| --- | --- | --- | --- |
+| R0 — 上游对齐与接口/设计 | in progress | 对照上游和本地已有改动，明确 Bot/机器插件接缝；专用 Designer/Reviewer 已启动并完成首次静态建议；落地每 4 小时检查、每 8 小时隔离合并 | 固定双方 commit 的采用建议；真实首跑、合并候选、门禁结果、下次触发和失败记录；当前调度尚未安装 |
+| R1 — 基础 Agent 与真实机器页 | planned | 部署级认证、机器独立身份、出站连接；App 启用本机执行与后台服务；机器页接真实状态；基础通路不依赖 Herdr | 未安装 Herdr 的 B 可接入；凭据错误拒绝；退出 UI 后服务继续；失联显示离线，安装不冒充就绪 |
+| R2 — 通用机器执行 | in progress | 独立操作 journal 首片 6 个测试红转绿；文件/命令 runner、云端路由及 Bot 接线继续实现 | 最终须 A 的 Bot 在 B 完成真实操作并返回结果/退出状态；不误投机器；去重、取消和 unknown 有证据。journal 通过不代表端到端已完成 |
+| R3 — 可配置机器插件与 Herdr | planned | 静态 provider/installer 注册；机器页按设备安装/配置/启用；用户本地与 Bot 辅助 setup 共用流程；依赖 R1/R2 | B 无 Herdr 时基础能力正常；两条 setup 路径均经探测变为就绪；Herdr 工具限定所选机器/会话；安装失败/需本地操作可见 |
+| R4 — 多台 Mac 访问同一 Bot（后续独立交付） | planned | 本轮不实现跨 Mac 聊天视图；后续复用 v1 HTTP/WS 和原生 transport | 两客户端共享历史/实时消息及独立 Bot 主机生命周期的验收留后续；不阻塞本轮机器管理与插件交付 |
+| R5 — 审查与跨机器交付 | planned | 关闭 Reviewer 发现，跑相关 root/Bots/Swift 门禁；Agent candidate 版本/安装包；自己的 fork 分支和冷启动指南 | 各门禁实际结果、干净安装路径与未验证项；推送后的 commit/分支可查；无 PR、无生产部署或 npm 发布 |
+
+R1/R2/R3/R5 是本轮功能交付范围，不能退化为只操作已有 Herdr 终端；R4 和 Web UI 留后续。
+按可独立审查的原子提交集成到本地 main，保留先前三个提交和父对话计划；只推送
+MashellHan/eagle 的工作分支，不开 PR、不推 main、不发布 npm 或部署生产。
+上游检查频率为每 4 小时（每天 6 次），替代此前“每天 4 次”的未启用设想。
+另每 8 小时尝试合并上游；隔离 checkout 跑门禁后才正常快进推送自己的明确工作分支。
+冲突、检查失败或远端并发前进时保留候选，禁止覆盖主工作区、force push 或绕过 hooks。
+具体比较标准、调度验收和持久任务 prompt 见 [上游比较](REMOTE-ACCESS.md#每四小时比较上游)。
+
+本轮我们负责云端、机器执行、安装管理与远程适配；nocoli 的人格、记忆、调度和
+群聊仍是核心侧后续主线。需要的 Bot extension 接线应最小且可验证，不能留为 stub。
+现有上游工具组和延迟加载优先评估复用，不另做竞争的 Bot 插件框架。
 
 ### What the adapter can do today (rows 23-36, signed off)
 
