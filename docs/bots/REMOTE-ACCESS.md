@@ -97,6 +97,18 @@ Bots 与 Worker/Agent 保持独立构建和领域边界，通过版本化网络�
 Agent 新行为需要 candidate 版本和安装包验证；网站 onboarding 继续指向经验证的已发布
 版本。分支测试可使用 candidate 安装包，不把代码完成、npm 发布和线上部署混为一谈。
 
+## 原生 Bot 授权 HTTP 客户端
+
+`BotsCore.RemoteToolsPort` 和 `BotsTransport.RemoteToolsHTTPClient` 管理本机 daemon
+的 Bot 目录及每 Bot 授权元数据，沿用 [PROTOCOL](PROTOCOL.md#per-bot-remote-machine-grants)
+的 GET/PUT 契约。DTO 只含非敏感授权字段；此组件不负责机器执行、私有凭据复制或授权面板。
+客户端仅接受 HTTP loopback 地址，拒绝重定向，daemon token 只进入 Authorization
+header。出站路径、解码后的请求字段或响应元数据含该已知 token 时整次拒绝；出站拒绝发生
+在发请求前。401/403、409 分别保留认证失败和版本冲突，不转换成空目录或成功写入。
+PUT 限 8 KiB，授权响应限 64 KiB，Bot 目录限 256 KiB 与 200 个不同 ID；请求和资源
+超时均为 15 秒，响应逐字节计数。格式或超限错误不返回部分结果。
+Settings 词表承认 `remote` 工具组且默认关闭；工具组开关与每 Bot 的机器授权是独立控制。
+
 ## 每四小时比较上游
 
 上游是 [nocoo/eagle](https://github.com/nocoo/eagle)，交付 fork 是
