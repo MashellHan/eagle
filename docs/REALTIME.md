@@ -223,7 +223,7 @@ environment.
 
 ## Transport and lifecycle
 
-- Browser: same-origin `/api/v1/realtime?machine=M&space=S`, authenticated by the verified Access JWT. Upgrade requires the exact Origin. No machine token enters the browser or a URL.
+- Browser: same-origin `/api/v1/realtime?machine=M&space=S`, authenticated by the verified Access JWT. Upgrade requires the exact Origin. [Native owner access](NATIVE-ACCESS.md) uses the same route with its own Bearer identity and may omit Origin. Both use the expiry from the verified identity; a supplied Origin must match. No machine token enters the browser or a URL.
 - Bridge: outbound `/api/v1/realtime-agent`, authenticated with the machine Bearer in the handshake header. The configured `X-Eagle-Machine` must match the token identity before upgrade. Each machine's existing DO relays between the connections. No inbound machine port is exposed.
 - The bridge resolves the session's local socket using `herdr session list --json`. Requests are bounded newline-delimited JSON. Screen collection uses `session.snapshot` and `pane.read`. Input uses the same session’s native client socket, protocol 22 (Herdr 0.9.1), with strict `AttachTerminal` by terminal ID and no takeover or name/pane fallback. Unsupported protocol versions fail closed.
 - One polling loop per subscribed Space samples at 350 ms after the previous cycle. Herdr can return revision zero, so the bridge compares redacted screen content; up to four pane reads run together. Each read validates its returned workspace/tab and rechecks terminal identity after capture. Every subscription change refreshes initial topology/screens. Actual latency includes socket work and network round trips.

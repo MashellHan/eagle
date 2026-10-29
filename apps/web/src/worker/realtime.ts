@@ -4,7 +4,7 @@ import {
   type Subscription,
   ViewerMessageSchema,
 } from "../../../../packages/contracts/src/realtime.ts";
-import { containsCredential } from "./auth.ts";
+import { containsCredential, payloadContainsCredential } from "./auth.ts";
 
 type Attachment = {
   role: "agent" | "viewer";
@@ -226,7 +226,7 @@ export class LiveRelay {
     const parsed = (
       a.role === "agent" ? AgentMessageSchema : ViewerMessageSchema
     ).safeParse(value);
-    if (!parsed.success) {
+    if (!parsed.success || payloadContainsCredential(parsed.data, this.env)) {
       socket.close(1008, "Invalid message");
       return;
     }

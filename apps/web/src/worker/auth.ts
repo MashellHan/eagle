@@ -30,11 +30,38 @@ export function containsCredential(value: string, env: Env): boolean {
   return (
     /eag1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(value) ||
     [
+      env.OWNER_TOKEN,
       env.AGENT_SIGNING_KEY,
       env.AI_API_KEY,
       env.AI_ENCRYPTION_KEY,
       ...Object.values(agentTokens(env)),
     ].some((secret) => !!secret && value.includes(secret))
+  );
+}
+export function payloadContainsCredential(value: unknown, env: Env): boolean {
+  const pending = [value];
+  while (pending.length) {
+    const item = pending.pop();
+    if (typeof item === "string" && containsCredential(item, env)) return true;
+    if (item && typeof item === "object") {
+      for (const [key, child] of Object.entries(item)) {
+        if (containsCredential(key, env)) return true;
+        pending.push(child);
+      }
+    }
+  }
+  return false;
+}
+export function safeAiConfiguration(
+  settings: unknown,
+  apiKey: string | null | undefined,
+  env: Env,
+): boolean {
+  return (
+    !payloadContainsCredential(settings, env) &&
+    (!apiKey ||
+      (!containsCredential(apiKey, { ...env, AI_API_KEY: undefined }) &&
+        !payloadContainsCredential(settings, { ...env, AI_API_KEY: apiKey })))
   );
 }
 export async function agentIdentity(request: Request, env: Env) {
@@ -94,20 +121,62 @@ export async function issueToken(machine: Registration, env: Env) {
 }
 // Public key caches contain no user credentials and follow Access key rotation.
 const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
-export async function viewerIdentity(
+export type ViewerAuthentication = {
+  kind: "owner" | "access" | "local";
+  viewer: Viewer;
+  expiresAt: number;
+};
+export async function authenticateViewer(
   request: Request,
   env: Env,
-): Promise<Viewer | null> {
-  const host = new URL(request.url).hostname;
+): Promise<ViewerAuthentication | null> {
+  const url = new URL(request.url);
+  const host = url.hostname;
+  const expiresAt = Date.now() + 15 * 60_000;
+  if (request.headers.has("authorization")) {
+    const token = bearer(request);
+    const secret = env.OWNER_TOKEN;
+    if (
+      !secret ||
+      secret.length < 32 ||
+      secret.length > 4096 ||
+      /\s/.test(secret) ||
+      secret.startsWith("eag1.") ||
+      !token ||
+      token.length > 4096 ||
+      (url.protocol !== "https:" &&
+        !(
+          url.protocol === "http:" &&
+          ["localhost", "127.0.0.1", "[::1]"].includes(host)
+        )) ||
+      [
+        env.AGENT_SIGNING_KEY,
+        env.AI_API_KEY,
+        env.AI_ENCRYPTION_KEY,
+        ...Object.values(agentTokens(env)),
+      ].includes(secret) ||
+      !(await equalSecret(token, secret))
+    )
+      return null;
+    return {
+      kind: "owner",
+      expiresAt,
+      viewer: { email: "", name: "部署所有者", avatar: null, local: false },
+    };
+  }
   if (
     env.LOCAL_DEV === "true" &&
     ["localhost", "127.0.0.1", "[::1]", "eagle.dev.hexly.ai"].includes(host)
   )
     return {
-      email: env.LOCAL_USER_EMAIL?.trim().toLowerCase() || "",
-      name: "本地开发",
-      avatar: null,
-      local: true,
+      kind: "local",
+      expiresAt,
+      viewer: {
+        email: env.LOCAL_USER_EMAIL?.trim().toLowerCase() || "",
+        name: "本地开发",
+        avatar: null,
+        local: true,
+      },
     };
   const token = request.headers.get("cf-access-jwt-assertion");
   if (!token || !env.ACCESS_TEAM_URL || !env.ACCESS_AUD) return null;
@@ -131,15 +200,26 @@ export async function viewerIdentity(
       typeof payload.email === "string"
         ? payload.email.trim().toLowerCase()
         : "";
+    if (!email || !Number.isFinite(payload.exp)) return null;
     return {
-      email,
-      name: email.split("@")[0] || "Access 用户",
-      avatar: null,
-      local: false,
+      kind: "access",
+      expiresAt: Math.min(expiresAt, Number(payload.exp) * 1000),
+      viewer: {
+        email,
+        name: email.split("@")[0] || "Access 用户",
+        avatar: null,
+        local: false,
+      },
     };
   } catch {
     return null;
   }
+}
+export async function viewerIdentity(
+  request: Request,
+  env: Env,
+): Promise<Viewer | null> {
+  return (await authenticateViewer(request, env))?.viewer ?? null;
 }
 export async function viewerAuthorized(request: Request, env: Env) {
   return (await viewerIdentity(request, env)) !== null;

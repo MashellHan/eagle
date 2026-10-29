@@ -1,4 +1,3 @@
-import { decodeJwt } from "jose";
 import pkg from "../../../../package.json" with { type: "json" };
 import { changesBetween } from "../../../../packages/contracts/src/assessment.ts";
 import {
@@ -24,9 +23,10 @@ import {
 import {
   agentIdentity,
   agentTokens,
-  containsCredential,
+  authenticateViewer,
   issueToken,
-  viewerIdentity,
+  payloadContainsCredential,
+  safeAiConfiguration,
 } from "./auth.ts";
 
 export { MachineDirectory } from "./directory.ts";
@@ -100,9 +100,19 @@ function timely(value: string) {
   if (Date.parse(value) > Date.now() + 300_000)
     throw new HttpError(400, "Timestamp too far in future");
 }
-async function noSecrets(value: string, env: Env) {
-  if (containsCredential(value, await withAiKey(env)))
+async function noSecrets(value: unknown, env: Env) {
+  if (payloadContainsCredential(value, await withAiKey(env)))
     throw new HttpError(400, "Credential found in report");
+}
+async function validateSettingsSecrets(
+  input: { settings: DailySettings; apiKey: string | null | undefined },
+  env: Env,
+) {
+  if (!safeAiConfiguration(input.settings, input.apiKey, await withAiKey(env)))
+    throw new HttpError(
+      400,
+      "Credential must only appear in the API key field",
+    );
 }
 function settingsInput(input: unknown, previous: DailySettings) {
   if (!input || typeof input !== "object" || Array.isArray(input))
@@ -168,7 +178,7 @@ async function ingest(
       throw new HttpError(400, "Resource timestamp exceeds sample time");
   }
   const payload = canonical(report);
-  await noSecrets(payload, env);
+  await noSecrets(report, env);
   const digest = Array.from(
     new Uint8Array(
       await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload)),
@@ -259,9 +269,13 @@ async function route(request: Request, env: Env): Promise<Response> {
         }),
       );
     }
-    const viewer = await viewerIdentity(request, env);
-    if (!viewer) throw new HttpError(401, "Sign in required");
-    if (request.headers.get("origin") !== url.origin)
+    const authentication = await authenticateViewer(request, env);
+    if (!authentication) throw new HttpError(401, "Sign in required");
+    const origin = request.headers.get("origin");
+    if (
+      (origin !== null && origin !== url.origin) ||
+      (origin === null && authentication.kind !== "owner")
+    )
       throw new HttpError(403, "Origin not allowed");
     const machine = url.searchParams.get("machine");
     const space = url.searchParams.get("space");
@@ -277,17 +291,15 @@ async function route(request: Request, env: Env): Promise<Response> {
       )
     )
       throw new HttpError(400, "Invalid subscription");
-    const expiry = viewer.local
-      ? expires
-      : Number(
-          decodeJwt(request.headers.get("cf-access-jwt-assertion") ?? "").exp,
-        ) * 1000;
+    const expiry = Math.min(expires, authentication.expiresAt);
+    if (!Number.isFinite(expiry) || expiry <= Date.now())
+      throw new HttpError(401, "Authentication expired");
     return env.MACHINES.getByName(machine).fetch(
       new Request("https://internal/realtime", {
         headers: {
           Upgrade: "websocket",
           "x-live-role": "viewer",
-          "x-live-expires": String(Math.min(expires, expiry)),
+          "x-live-expires": String(expiry),
           "x-live-space": space,
           "x-live-format": format ?? "text",
         },
@@ -331,7 +343,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (parsed.data.machineId !== identity.machineId)
       throw new HttpError(403, "Token does not authorize this machine");
     timely(parsed.data.sentAt);
-    await noSecrets(JSON.stringify(parsed.data), env);
+    await noSecrets(parsed.data, env);
     const alive = await env.MACHINES.getByName(identity.machineId).heartbeat(
       parsed.data.warning,
       identity.credentialId,
@@ -341,23 +353,20 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!alive) throw new HttpError(409, "Upload initial report first");
     return json({ alive: true });
   }
-  const viewer = await viewerIdentity(request, env);
-  if (!viewer) throw new HttpError(401, "Sign in required");
+  const authentication = await authenticateViewer(request, env);
+  if (!authentication) throw new HttpError(401, "Sign in required");
+  if (
+    request.headers.has("origin") &&
+    request.headers.get("origin") !== url.origin
+  )
+    throw new HttpError(403, "Origin not allowed");
+  const viewer = authentication.viewer;
   if (path === "/api/v1/settings") {
     const directory = env.DIRECTORY.getByName("fleet");
     let settings: DailySettings = await directory.settings();
     if (request.method === "POST") {
       const input = settingsInput(await body(request), settings);
-      await noSecrets(JSON.stringify(input.settings), env);
-      if (
-        input.apiKey &&
-        (containsCredential(input.apiKey, { ...env, AI_API_KEY: undefined }) ||
-          JSON.stringify(input.settings).includes(input.apiKey))
-      )
-        throw new HttpError(
-          400,
-          "Credential must only appear in the API key field",
-        );
+      await validateSettingsSecrets(input, env);
       settings = await directory.saveSettings(input.settings, input.apiKey);
     } else if (request.method !== "GET")
       throw new HttpError(405, "Method not allowed");
@@ -374,6 +383,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (path === "/api/v1/settings/test" && request.method === "POST") {
     const previous = await env.DIRECTORY.getByName("fleet").settings();
     const input = settingsInput(await body(request), previous);
+    await validateSettingsSecrets(input, env);
     const configuredEnv = await withAiKey(env, input.settings);
     if (input.apiKey !== undefined)
       configuredEnv.AI_API_KEY = input.apiKey ?? "";
@@ -421,7 +431,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     const parsed = MachineInput.safeParse(await body(request));
     if (!parsed.success) throw new HttpError(400, "Invalid machine name or ID");
     const { id, name, watchPorts } = parsed.data;
-    await noSecrets(JSON.stringify(parsed.data), env);
+    await noSecrets(parsed.data, env);
     if (!(await env.DIRECTORY.getByName("fleet").add(id)))
       throw new HttpError(409, "Machine limit reached");
     const machine = await env.MACHINES.getByName(id).configure(
@@ -459,7 +469,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     const parsed = MachineName.safeParse(input);
     if (action === "rename" && !parsed.success)
       throw new HttpError(400, "Invalid machine name");
-    await noSecrets(JSON.stringify(input), env);
+    await noSecrets(input, env);
     if (!(await env.MACHINES.getByName(id).registration(id)))
       throw new HttpError(404, "Machine not found");
     // Index legacy machines before migrating, so removing their old secret is safe.
@@ -484,7 +494,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (request.method === "POST") {
       const parsed = MachineGroupInput.safeParse(await body(request));
       if (!parsed.success) throw new HttpError(400, "Invalid group name");
-      await noSecrets(JSON.stringify(parsed.data), env);
+      await noSecrets(parsed.data, env);
       return json(
         { group: await directory.createGroup(parsed.data.name) },
         201,
@@ -537,7 +547,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (request.method === "PATCH") {
       const parsed = MachineGroupInput.safeParse(await body(request));
       if (!parsed.success) throw new HttpError(400, "Invalid group name");
-      await noSecrets(JSON.stringify(parsed.data), env);
+      await noSecrets(parsed.data, env);
       const group = await directory.renameGroup(groupId, parsed.data.name);
       if (!group) throw new HttpError(404, "Group not found");
       return json({ group });
