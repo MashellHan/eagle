@@ -72,6 +72,11 @@ Swift 私有进程宿主已用实际 Node 服务验证：自动 configure、本�
 回调后签名；未连接/拒绝不签。3 项宿主测试包括真实内核 boot UUID 读取，审批
 回调未接线的行为红测已保留。代码身份 XPC、后台注册和人工确认页面仍在接线。
 
+XPC 与独立 EagleDeviceHelper 可执行目标已加入：XPC 在每条消息上执行双向代码
+签名 requirement，管理方还需同 UID；发行 helper 校验 App 与自身签名团队一致。
+真实错误代码身份的管理写入先红后拒绝，4 项 pipe/XPC 测试通过。SMAppService
+注册适配器已写，尚待完整候选包启动；本地 ad-hoc 签名不作为发行身份验证证据。
+
 ## Where the code lives
 
 ### Exclusive search providers (2026-10-28)

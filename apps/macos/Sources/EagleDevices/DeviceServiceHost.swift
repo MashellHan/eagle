@@ -11,6 +11,19 @@ public final class DeviceServiceHost {
   public let stateDirectory: URL
   public var socketPath: String { stateDirectory.appendingPathComponent("access.sock").path }
   public var approver: (@MainActor @Sendable (DeviceApprovalRequest) async -> Bool)?
+  private var approverOwner: UUID?
+  public func attachApprover(
+    owner: UUID, action: @escaping @MainActor @Sendable (DeviceApprovalRequest) async -> Bool
+  ) {
+    approverOwner = owner
+    approver = action
+  }
+  public func detachApprover(owner: UUID) {
+    if approverOwner == owner {
+      approver = nil
+      approverOwner = nil
+    }
+  }
 
   private let node: URL
   private let entry: URL

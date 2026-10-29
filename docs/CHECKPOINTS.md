@@ -1,5 +1,19 @@
 # 用户视角检查点
 
+## 2026-10-29 12:37 +08 — 私有 Swift 宿主已接真实本机执行
+
+- Herdr default/w4 仍是三人：Lead/reviewer Astra Max，service Sol xhigh；已读实际
+  工作输出。service 现独占装配脚本/Support，Lead 接 helper 与设备页。
+- 设备服务至 de65780 的作者组合为 42/42，Registry/执行 SQLite、WS、Node 进程及
+  包外 Agent 入口均有本地证据；D1/Herdr 采集/公网服务没有新的运行验收。
+- Swift 真实 Keychain 隔离测试、跨语言审批 UUID 验签及真实 kernel boot UUID 读取
+  通过。d059566 的私有管道已自动启动 Node，离线写入中文文件，Bot 管理被拒绝，
+  parent 切暂停生效；确认回调红绿已闭环。
+- Bots 输出审查修复已提交，截断秘密残片由 83d5876 整段省略；service 补了独立
+  Bot 子进程 → 实际 sanitizer/journal 回归。下一断点是受信 XPC/后台启动和设备页。
+- 内置运行时装配已用空 PATH/NODE_PATH 在仓库外运行，保留 Node 原签名；尚未运行
+  完整候选 App、SMAppService 登录项、物理第二台 Mac 或真正重启。没有发布或替换日常 App。
+
 ## 2026-10-29 12:08 +08 — 共享 port 已提交，App 身份接线中
 
 - 实际 Herdr 三人协作继续；菜单入口与原窗口路由的 `b399936` review 已关闭。

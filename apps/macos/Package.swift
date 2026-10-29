@@ -6,6 +6,7 @@ let package = Package(
   platforms: [.macOS(.v15)],
   products: [
     .executable(name: "EagleApp", targets: ["EagleApp"]),
+    .executable(name: "EagleDeviceHelper", targets: ["EagleDeviceHelper"]),
     // Tokens and primitives, dependent on nothing (docs/bots/ARCHITECTURE.md).
     .library(name: "EagleDesign", targets: ["EagleDesign"]),
   ],
@@ -15,6 +16,7 @@ let package = Package(
   targets: [
     .target(name: "EagleDesign", resources: [.process("Resources")]),
     .target(name: "EagleDevices"),
+    .executableTarget(name: "EagleDeviceHelper", dependencies: ["EagleDevices"]),
     // Bots lives in the shell: its view model and publisher are part of EagleFeatures,
     // and its logic is the separate Bots package (docs/bots/PLAN.md, stage 5).
     .target(

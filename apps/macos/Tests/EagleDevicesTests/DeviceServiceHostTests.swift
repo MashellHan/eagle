@@ -138,6 +138,40 @@ struct DeviceServiceHostTests {
     try await clean(host)
   }
 
+  @Test("real XPC rejects a same-UID process with the wrong code identity before management")
+  func codeIdentity() async throws {
+    let host = try host()
+    try await ready(host)
+    let current = try DeviceCodeIdentity.currentRequirement()
+    let listener = NSXPCListener.anonymous()
+    let server = DeviceXPCServer(
+      host: host, requiredPeer: "identifier \"ai.hexly.eagle.invalid-test\"")
+    listener.delegate = server
+    listener.resume()
+    let client = DeviceXPCClient(
+      connection: NSXPCConnection(listenerEndpoint: listener.endpoint), requiredPeer: current,
+      confirm: { _ in false })
+    await #expect(throws: DevicePortError.self) {
+      try await client.call("policy.set", params: .object(["mode": .string("paused")]))
+    }
+    #expect(try await host.call("policy.get")["mode"]?.string == "all-approve")
+    client.invalidate()
+    withExtendedLifetime(server) { listener.invalidate() }
+    let trustedListener = NSXPCListener.anonymous()
+    let trustedServer = DeviceXPCServer(host: host, requiredPeer: current)
+    trustedListener.delegate = trustedServer
+    trustedListener.resume()
+    let trustedClient = DeviceXPCClient(
+      connection: NSXPCConnection(listenerEndpoint: trustedListener.endpoint),
+      requiredPeer: current, confirm: { _ in false })
+    let policy = try await trustedClient.call(
+      "policy.set", params: .object(["mode": .string("paused")]))
+    #expect(policy["mode"]?.string == "paused")
+    trustedClient.invalidate()
+    withExtendedLifetime(trustedServer) { trustedListener.invalidate() }
+    try await clean(host)
+  }
+
   @Test(
     "the real kernel supplies a stable UUID and build configuration rejects secret-bearing URLs")
   func configuration() throws {
