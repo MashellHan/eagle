@@ -1,4 +1,5 @@
 import Combine
+import CryptoKit
 import EagleDevices
 import Foundation
 
@@ -59,7 +60,7 @@ private struct DeviceServiceState: Decodable {
   let cloudStatus: String
 }
 
-/// One App-wide control surface. Only request IDs and the disabled preference are persisted.
+/// One App-wide control surface. Pairing codes stay in memory; only their hash binds a saved request ID.
 @MainActor public final class DeviceSettingsViewModel: ObservableObject {
   public static let shared = DeviceSettingsViewModel()
   public static let disabledKey = "eagle.devices.disabled"
@@ -83,6 +84,8 @@ private struct DeviceServiceState: Decodable {
   private let defaults: UserDefaults
   private let now: @MainActor () -> Date
   private var started = false
+  private var stopping = false
+  private var pendingRedeemCodeHash: String?
   private var localDeviceId: String?
   private var startTask: Task<Void, Never>?
   private var approvalContinuation: CheckedContinuation<Bool, Never>?
@@ -96,8 +99,15 @@ private struct DeviceServiceState: Decodable {
     self.defaults = defaults
     self.now = now
     enabled = !defaults.bool(forKey: Self.disabledKey)
-    let saved = defaults.string(forKey: Self.pendingRedeemKey)
-    pendingRedeemRequestId = saved.flatMap { UUID(uuidString: $0)?.uuidString.lowercased() }
+    let record = defaults.dictionary(forKey: Self.pendingRedeemKey)
+    // Older candidate records contain an ID only: they can be queried, never blindly retried.
+    let savedID = record?["requestId"] as? String ?? defaults.string(forKey: Self.pendingRedeemKey)
+    pendingRedeemRequestId = savedID.flatMap { UUID(uuidString: $0)?.uuidString.lowercased() }
+    if let hash = record?["codeHash"] as? String,
+      hash.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil
+    {
+      pendingRedeemCodeHash = hash
+    }
   }
 
   public var needsBackgroundApproval: Bool { errorCode == "background_approval_required" }
@@ -112,10 +122,15 @@ private struct DeviceServiceState: Decodable {
     case "pairing_unavailable", "pairing_not_found": return "配对码已过期、已作废或不存在。"
     case "pairing_consumed": return "这个配对码已被另一台设备使用。"
     case "pairing_result_expired": return "配对结果已超过保留期限，请刷新设备目录。"
-    case "result_not_found": return "还没有查到原请求的结果。可稍后重试查询。"
+    case "result_not_found": return "还没有查到原请求的结果。可继续查询，或重新输入原配对码以原请求重试。"
     case "rate_limited": return "请求过于频繁，请稍后再试。"
     case "invalid_pairing_ttl": return "配对码有效期必须在 1 秒至 24 小时之间。"
     case "empty_pairing_code": return "请输入另一台设备的配对码。"
+    case "invalid_pairing_code": return "配对码格式不正确，请完整复制另一台设备生成的配对码。"
+    case "self_pairing": return "不能用本机配对码与本机配对，请输入另一台设备的配对码。"
+    case "request_conflict": return "此请求已绑定另一个配对码，请输入原配对码或查询原请求。"
+    case "pairing_binding_unavailable": return "原请求缺少配对码校验信息，只能继续查询原结果。"
+    case "invalid_session", "revoked_session", "unknown_device": return "设备身份会话已失效，请重新连接设备服务。"
     case "device_service_timeout": return "服务响应超时。配对结果不确定时，请查询原请求。"
     default: return "设备服务暂时不可用，请重试。"
     }
@@ -151,25 +166,38 @@ private struct DeviceServiceState: Decodable {
 
   public func setEnabled(_ value: Bool) async {
     guard !isBusy else { return }
-    enabled = value
-    defaults.set(!value, forKey: Self.disabledKey)
     if value {
+      enabled = true
+      defaults.set(false, forKey: Self.disabledKey)
       await startIfNeeded()
       return
     }
-    respondToApproval(false)
-    invitation = nil
-    if let startTask { await startTask.value }
     isBusy = true
-    defer { isBusy = false }
+    stopping = true
+    denyPendingApproval()
+    defer {
+      isBusy = false
+      stopping = false
+    }
+    if let startTask { await startTask.value }
     do {
       try await control.stop()
+      enabled = false
+      defaults.set(true, forKey: Self.disabledKey)
+      invitation = nil
       started = false
       localReady = false
       cloudStatus = "unknown"
       directoryIsStale = true
       errorCode = nil
-    } catch { record(error) }
+    } catch {
+      // A failed unregister is not a disabled service. Reconnect and retry remain available.
+      started = false
+      localReady = false
+      cloudStatus = "unknown"
+      directoryIsStale = true
+      record(error)
+    }
   }
 
   public func openSystemSettings() { control.openSystemSettings() }
@@ -198,9 +226,10 @@ private struct DeviceServiceState: Decodable {
       errorCode = nil
     } catch {
       if !observedStatus {
+        started = false
         localReady = false
         cloudStatus = "unknown"
-        respondToApproval(false)
+        denyPendingApproval()
       }
       directoryIsStale = true
       record(error)
@@ -212,7 +241,7 @@ private struct DeviceServiceState: Decodable {
       let result = try await self.control.call(
         "policy.set", params: .object(["mode": .string(mode.rawValue)]))
       self.policy = try result.decoded(DevicePolicyState.self)
-      self.respondToApproval(false)
+      self.denyPendingApproval()
       await self.refresh()
     }
   }
@@ -244,34 +273,63 @@ private struct DeviceServiceState: Decodable {
       errorCode = "empty_pairing_code"
       return
     }
-    // Never switch to a different request ID while the previous outcome is uncertain.
-    if pendingRedeemRequestId != nil {
-      await recoverPairing()
+    guard code.range(of: "^[A-Za-z0-9_-]{43}$", options: .regularExpression) != nil else {
+      errorCode = "invalid_pairing_code"
       return
     }
     await perform {
-      let requestId = UUID().uuidString.lowercased()
-      self.defaults.set(requestId, forKey: Self.pendingRedeemKey)
-      guard self.defaults.synchronize() else { throw DeviceHostError.failed }
-      self.pendingRedeemRequestId = requestId
-      do {
-        let result = try await self.control.call(
-          "pairing.redeem",
-          params: .object(["requestId": .string(requestId), "code": .string(code)]))
-        try self.acceptPairingResult(result, requestId: requestId)
-        await self.refresh()
-      } catch {
-        // These are definitive rejections; transport/host failures retain the original ID.
-        if let port = error as? DevicePortError,
-          [
-            "group_conflict", "pairing_unavailable", "pairing_consumed", "pairing_result_expired",
-            "request_conflict", "rate_limited", "invalid_request",
-          ].contains(port.code)
-        {
-          self.clearPendingRedemption()
+      let hash = SHA256.hash(data: Data(code.utf8)).map { String(format: "%02x", $0) }.joined()
+      if let requestId = self.pendingRedeemRequestId {
+        if let original = self.pendingRedeemCodeHash, original != hash {
+          throw DevicePortError("request_conflict")
         }
-        throw error
+        do {
+          let result = try await self.control.call(
+            "pairing.result", params: .object(["requestId": .string(requestId)]))
+          try self.acceptPairingResult(result, requestId: requestId)
+          await self.refresh()
+        } catch let error as DevicePortError where error.code == "result_not_found" {
+          guard self.pendingRedeemCodeHash == hash else {
+            throw DevicePortError("pairing_binding_unavailable")
+          }
+          // Explicit re-entry of the same code can recover a pre-send loss. The ID never changes.
+          try await self.sendRedemption(requestId: requestId, code: code, firstAttempt: false)
+        }
+      } else {
+        let requestId = UUID().uuidString.lowercased()
+        self.defaults.set(
+          ["requestId": requestId, "codeHash": hash], forKey: Self.pendingRedeemKey)
+        guard self.defaults.synchronize() else {
+          self.defaults.removeObject(forKey: Self.pendingRedeemKey)
+          throw DeviceHostError.failed
+        }
+        self.pendingRedeemRequestId = requestId
+        self.pendingRedeemCodeHash = hash
+        try await self.sendRedemption(requestId: requestId, code: code, firstAttempt: true)
       }
+    }
+  }
+
+  private func sendRedemption(requestId: String, code: String, firstAttempt: Bool) async throws {
+    do {
+      let result = try await control.call(
+        "pairing.redeem", params: .object(["requestId": .string(requestId), "code": .string(code)]))
+      try acceptPairingResult(result, requestId: requestId)
+      await refresh()
+    } catch {
+      // Self-pairing can never have committed. Other retry failures retain the uncertain original ID.
+      if let port = error as? DevicePortError,
+        port.code == "self_pairing"
+          || (firstAttempt
+            && [
+              "group_conflict", "pairing_unavailable", "pairing_consumed", "pairing_result_expired",
+              "request_conflict", "rate_limited", "invalid_request", "invalid_session",
+              "revoked_session", "unknown_device",
+            ].contains(port.code))
+      {
+        clearPendingRedemption()
+      }
+      throw error
     }
   }
 
@@ -328,6 +386,7 @@ private struct DeviceServiceState: Decodable {
   private func clearPendingRedemption() {
     defaults.removeObject(forKey: Self.pendingRedeemKey)
     pendingRedeemRequestId = nil
+    pendingRedeemCodeHash = nil
   }
 
   private func record(_ error: any Error) {
@@ -337,7 +396,7 @@ private struct DeviceServiceState: Decodable {
   }
 
   private func confirm(_ request: DeviceApprovalRequest) async -> Bool {
-    guard enabled, started, localReady, pendingApproval == nil,
+    guard enabled, started, !stopping, !Task.isCancelled, localReady, pendingApproval == nil,
       let localDeviceId,
       (try? request.validate(sourceDeviceId: localDeviceId, now: milliseconds)) != nil
     else { return false }
@@ -353,20 +412,23 @@ private struct DeviceServiceState: Decodable {
       }
     } onCancel: {
       Task { @MainActor [weak self] in
-        if self?.pendingApproval?.id == request.id { self?.respondToApproval(false) }
+        self?.respondToApproval(false, requestId: request.id)
       }
     }
   }
 
-  /// A button acts only on the operation it displayed, even if a newer request has arrived.
-  public func respondToApproval(_ allow: Bool, requestId: String) {
-    guard pendingApproval?.id == requestId else { return }
-    respondToApproval(allow)
+  /// Global dismiss can only deny. Every acceptance must carry the ID the person reviewed.
+  public func denyPendingApproval() {
+    guard let requestId = pendingApproval?.id else { return }
+    respondToApproval(false, requestId: requestId)
   }
 
-  public func respondToApproval(_ allow: Bool) {
-    guard let continuation = approvalContinuation, let request = pendingApproval else { return }
-    let accepted = allow && enabled && started && localReady && request.expiresAt > milliseconds
+  public func respondToApproval(_ allow: Bool, requestId: String) {
+    guard let continuation = approvalContinuation, let request = pendingApproval,
+      request.id == requestId
+    else { return }
+    let accepted =
+      allow && enabled && started && !stopping && localReady && request.expiresAt > milliseconds
     approvalExpiry?.cancel()
     approvalExpiry = nil
     approvalContinuation = nil

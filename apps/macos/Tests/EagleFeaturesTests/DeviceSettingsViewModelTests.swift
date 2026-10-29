@@ -117,17 +117,19 @@ struct DeviceSettingsViewModelTests {
     control.handler = { method, params in
       if method == "pairing.redeem" {
         sentID = params?["requestId"]?.string
-        #expect(defaults.string(forKey: DeviceSettingsViewModel.pendingRedeemKey) == sentID)
+        #expect(
+          defaults.dictionary(forKey: DeviceSettingsViewModel.pendingRedeemKey)?["requestId"]
+            as? String == sentID)
         throw DeviceHostError.timeout
       }
       return nil
     }
-    await model.redeem(code: "not-persisted")
+    await model.redeem(code: String(repeating: "c", count: 43))
     let originalID = try #require(sentID)
     #expect(model.pendingRedeemRequestId == originalID)
     #expect(
       !defaults.dictionaryRepresentation().values.contains {
-        String(describing: $0).contains("not-persisted")
+        String(describing: $0).contains(String(repeating: "c", count: 43))
       })
     control.handler = { method, params in
       if method == "pairing.result" {
@@ -141,7 +143,7 @@ struct DeviceSettingsViewModelTests {
     let restored = DeviceSettingsViewModel(control: control, defaults: defaults)
     await restored.startIfNeeded()
     #expect(restored.pendingRedeemRequestId == nil)
-    #expect(defaults.string(forKey: DeviceSettingsViewModel.pendingRedeemKey) == nil)
+    #expect(defaults.object(forKey: DeviceSettingsViewModel.pendingRedeemKey) == nil)
     #expect(control.calls.filter { $0.0 == "pairing.redeem" }.count == 1)
   }
 
@@ -194,12 +196,12 @@ struct DeviceSettingsViewModelTests {
     let accepted = Task { await callback(request) }
     while model.pendingApproval == nil { await Task.yield() }
     #expect(model.pendingApproval?.operation["command"]?.string == "echo hello")
-    model.respondToApproval(true)
+    model.respondToApproval(true, requestId: request.id)
     #expect(await accepted.value)
     let expired = Task { await callback(request) }
     while model.pendingApproval == nil { await Task.yield() }
     clock.date = clock.date.addingTimeInterval(61)
-    model.respondToApproval(true)
+    model.respondToApproval(true, requestId: request.id)
     #expect(await expired.value == false)
     clock.date = clock.date.addingTimeInterval(-61)
     let stopped = Task { await callback(request) }
@@ -220,6 +222,7 @@ struct DeviceSettingsViewModelTests {
   var starts = 0
   var stops = 0
   var openedSettings = 0
+  var stopError: (any Error)?
   var startError: (any Error)?
   var confirm: (@MainActor @Sendable (DeviceApprovalRequest) async -> Bool)?
   var calls: [(String, DeviceJSON?)] = []
@@ -253,7 +256,10 @@ struct DeviceSettingsViewModelTests {
     default: throw DevicePortError("result_not_found")
     }
   }
-  func stop() async throws { stops += 1 }
+  func stop() async throws {
+    stops += 1
+    if let stopError { throw stopError }
+  }
   func openSystemSettings() { openedSettings += 1 }
 }
 

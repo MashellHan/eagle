@@ -206,7 +206,7 @@ struct SnapshotRenderer {
         DeviceApprovalView(model: model).preferredColorScheme(scheme),
         size: CGSize(width: 640, height: 640), named: "devices-approval-\(name)", in: directory,
         appearance: scheme == .dark ? .darkAqua : .aqua)
-      model.respondToApproval(false)
+      model.denyPendingApproval()
       _ = await pending.value
     }
   }

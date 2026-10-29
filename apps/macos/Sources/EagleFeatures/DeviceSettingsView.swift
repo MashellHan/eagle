@@ -37,8 +37,8 @@ public struct DeviceSettingsView: View {
       directoryCard
     }
     .task {
-      await model.startIfNeeded()
       while !Task.isCancelled {
+        await model.startIfNeeded()
         await model.refresh()
         do { try await Task.sleep(for: .seconds(5)) } catch { return }
       }
@@ -214,14 +214,26 @@ public struct DeviceSettingsView: View {
             Text("上次配对尚未确认，请先查询原请求。不会自动重复兑换。")
               .font(Theme.TypeScale.note)
               .foregroundStyle(Theme.Palette.textSecondary)
-            Text(requestId)
-              .font(Theme.TypeScale.mono)
-              .foregroundStyle(Theme.Palette.textMuted)
-              .textSelection(.enabled)
+            DisclosureGroup("配对请求详情") {
+              Text(requestId)
+                .font(Theme.TypeScale.mono)
+                .textSelection(.enabled)
+            }
+            .font(Theme.TypeScale.note)
+            .foregroundStyle(Theme.Palette.textMuted)
             SettingsActionButton("查询配对结果", prominent: true) {
               Task { await model.recoverPairing() }
             }
             .disabled(model.controlsBusy)
+            HStack(spacing: 10) {
+              SettingsTextField("重新输入原配对码", text: $pairingCode)
+                .accessibilityLabel("原请求的配对码")
+                .onSubmit { redeem() }
+              SettingsActionButton("用原请求重试", action: redeem)
+                .disabled(
+                  model.controlsBusy
+                    || pairingCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
           } else {
             HStack(spacing: 10) {
               SettingsTextField("输入另一台设备的配对码", text: $pairingCode)
