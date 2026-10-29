@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { after, before, test } from "node:test";
@@ -23,10 +29,27 @@ const root = mkdtempSync(resolve(".local/device-api-"));
 const base = "https://devices.test/api/devices/v1";
 before(async () => {
   writeFileSync(join(root, "index.html"), "devices test");
+  const entry = join(root, "entry.ts");
+  writeFileSync(
+    entry,
+    `import worker,{DeviceRegistry as Registry,DeviceExecution,MachineState,MachineDirectory} from "../../apps/web/src/worker/index.ts";
+export {DeviceExecution,MachineState,MachineDirectory};
+export class DeviceRegistry extends Registry {
+ async check(token,targetId){const result=await super.check(token,targetId);
+  if(result.ok&&targetId&&result.source.deviceId!==targetId&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_revoke_after_check'").toArray().length){
+   const row=this.ctx.storage.sql.exec("SELECT deviceId FROM test_revoke_after_check WHERE deviceId=?",result.source.deviceId).toArray()[0];
+   if(row)this.ctx.storage.transactionSync(()=>{this.ctx.storage.sql.exec("DELETE FROM test_revoke_after_check WHERE deviceId=?",row.deviceId);this.ctx.storage.sql.exec("UPDATE devices SET groupId=NULL,membershipEpoch=membershipEpoch+1,credentialVersion=credentialVersion+1 WHERE deviceId=?",row.deviceId);});
+  }return result;
+ }
+}
+export default worker;
+`,
+  );
   execFileSync(
     "node_modules/.bin/wrangler",
     [
       "deploy",
+      entry,
       "--dry-run",
       "--config",
       "apps/web/wrangler.jsonc",
@@ -43,7 +66,7 @@ before(async () => {
         {
           name: "eagle",
           modules: true,
-          scriptPath: join(root, "worker/index.js"),
+          scriptPath: join(root, "worker/entry.js"),
           compatibilityDate: "2026-09-19",
           compatibilityFlags: ["nodejs_compat"],
           durableObjects: {
@@ -335,6 +358,44 @@ test("real outbound WebSockets execute bidirectionally with original-ID dedup an
       (await cloudA.execute({ ...input, requestId: randomUUID() })).output,
       "from-b",
     );
+    const registry = await mf.unsafeGetDurableObjectStorage(
+      "eagle",
+      "DeviceRegistry",
+      { name: "registry" },
+    );
+    await registry.exec(
+      "UPDATE sessions SET expires=0 WHERE deviceId=?",
+      b.deviceId,
+    );
+    await assert.rejects(cloudB.directory());
+    await registry.exec(
+      `CREATE TRIGGER transient_registration_failure BEFORE INSERT ON challenges WHEN json_extract(NEW.registration,'$.deviceId')='${b.deviceId}' BEGIN SELECT RAISE(ABORT,'transient fixture failure'); END`,
+    );
+    try {
+      cloudB.publishPolicy();
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      assert.equal(cloudB.status, "offline");
+    } finally {
+      await registry.exec("DROP TRIGGER transient_registration_failure");
+    }
+    const reconnectDeadline = Date.now() + 5000;
+    while (String(cloudB.status) !== "online" && Date.now() < reconnectDeadline)
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(
+      cloudB.status,
+      "online",
+      "agent must continue retrying after refresh temporarily fails",
+    );
+    assert.equal(
+      (
+        await cloudA.execute({
+          ...input,
+          requestId: randomUUID(),
+          action: "get",
+        })
+      ).output,
+      "from-b",
+    );
     const removal = await cloudA.manage("/members/remove", {
       deviceId: b.deviceId,
     });
@@ -539,4 +600,184 @@ test("pairing aliases retain original commit deadline and expired unused invitat
     )[0].n,
     0,
   );
+});
+
+test("pairing transaction rollback preserves invitation and every membership/result", async () => {
+  const [a, b] = await Promise.all([
+    identity("rollback-a"),
+    identity("rollback-b"),
+  ]);
+  const invitation = await code(b.token);
+  const requestId = randomUUID();
+  const storage = await mf.unsafeGetDurableObjectStorage(
+    "eagle",
+    "DeviceRegistry",
+    { name: "registry" },
+  );
+  await storage.exec(
+    `CREATE TRIGGER pairing_commit_failure BEFORE INSERT ON pairing_results WHEN NEW.deviceId='${a.deviceId}' BEGIN SELECT RAISE(ABORT,'transaction fixture failure'); END`,
+  );
+  try {
+    assert.equal((await pair(a.token, invitation, requestId)).status, 500);
+    assert.equal((await call("/directory", a.token)).body.groupId, null);
+    assert.equal((await call("/directory", b.token)).body.groupId, null);
+    assert.equal(
+      (await call(`/pairings/results/${requestId}`, a.token)).status,
+      404,
+    );
+  } finally {
+    await storage.exec("DROP TRIGGER pairing_commit_failure");
+  }
+  assert.equal((await pair(a.token, invitation, requestId)).status, 200);
+});
+
+test("different invitation groups racing one device commit exactly one membership", async () => {
+  const [a, b, c, d, e] = await Promise.all(
+    ["race-a", "race-b", "race-c", "race-d", "race-e"].map(identity),
+  );
+  await pair(b.token, await code(c.token));
+  await pair(d.token, await code(e.token));
+  const first = await code(b.token);
+  const second = await code(d.token);
+  const results = await Promise.all([
+    pair(a.token, first),
+    pair(a.token, second),
+  ]);
+  assert.deepEqual(results.map((x) => x.status).sort(), [200, 409]);
+  const directory = (await call("/directory", a.token)).body;
+  assert.equal(directory.devices.length, 3);
+  const lost =
+    results[0].status === 409
+      ? { token: c.token, code: first }
+      : { token: e.token, code: second };
+  assert.equal((await pair(lost.token, lost.code)).status, 200);
+});
+
+test("a removed original redeemer can recover history after key proof without rejoining", async () => {
+  const [a, b] = await Promise.all([
+    identity("removed-a"),
+    identity("removed-b"),
+  ]);
+  const invitation = await code(b.token);
+  const requestId = randomUUID();
+  const original = await pair(a.token, invitation, requestId);
+  assert.equal(original.status, 200);
+  assert.equal(
+    (await call("/members/remove", b.token, { deviceId: a.deviceId })).status,
+    200,
+  );
+  assert.equal(
+    (await call(`/pairings/results/${requestId}`, a.token)).status,
+    401,
+  );
+  const challenge = await call("/register/challenge", undefined, {
+    deviceId: a.deviceId,
+    publicKey: a.publicKey,
+    name: "removed-a",
+    platform: "darwin",
+    arch: "arm64",
+  });
+  const refreshed = await call("/register/complete", undefined, {
+    challengeId: challenge.body.challengeId,
+    signature: sign(
+      null,
+      Buffer.from(challenge.body.payload),
+      a.keys.privateKey,
+    ).toString("base64url"),
+  });
+  assert.equal(refreshed.status, 200);
+  const recovered = await pair(
+    refreshed.body.sessionToken,
+    invitation,
+    requestId,
+  );
+  assert.equal(recovered.status, 200);
+  assert.equal(recovered.body.groupId, original.body.groupId);
+  assert.equal(recovered.body.directory.devices.length, 1);
+  assert.equal(
+    (await call("/directory", refreshed.body.sessionToken)).body.groupId,
+    null,
+  );
+  assert.equal(
+    (await call(`/pairings/results/${requestId}`, b.token)).status,
+    404,
+  );
+});
+
+test("relay rechecks Registry at forwarding after a membership change during authorization", async () => {
+  const { DeviceCloud } = await import("../packages/agent/device-cloud.ts");
+  const { DeviceRuntime } = await import("../packages/agent/device-runtime.ts");
+  const { canonicalDeviceJSON, deviceDigest } = await import(
+    "../packages/contracts/src/devices.ts"
+  );
+  const [a, b] = await Promise.all([
+    identity("relay-race-a"),
+    identity("relay-race-b"),
+  ]);
+  await pair(a.token, await code(b.token));
+  const state = join(root, "relay-race");
+  mkdirSync(state, { mode: 0o700 });
+  const da = {
+    deviceId: a.deviceId,
+    publicKey: a.publicKey,
+    name: "relay-race-a",
+    platform: "darwin",
+    arch: "arm64",
+    groupId: null,
+    membershipEpoch: 0,
+    credentialVersion: 1,
+  };
+  const db = {
+    ...da,
+    deviceId: b.deviceId,
+    publicKey: b.publicKey,
+    name: "relay-race-b",
+  };
+  const ra = new DeviceRuntime(da, join(state, "a.sqlite"));
+  const rb = new DeviceRuntime(db, join(state, "b.sqlite"));
+  const ca = new DeviceCloud((await mf.ready).origin, da, ra, async (payload) =>
+    sign(null, Buffer.from(payload), a.keys.privateKey).toString("base64url"),
+  );
+  const cb = new DeviceCloud((await mf.ready).origin, db, rb, async (payload) =>
+    sign(null, Buffer.from(payload), b.keys.privateKey).toString("base64url"),
+  );
+  try {
+    await Promise.all([ca.start(), cb.start()]);
+    const storage = await mf.unsafeGetDurableObjectStorage(
+      "eagle",
+      "DeviceRegistry",
+      { name: "registry" },
+    );
+    await storage.exec(
+      "CREATE TABLE test_revoke_after_check(deviceId TEXT PRIMARY KEY)",
+    );
+    await storage.exec(
+      "INSERT INTO test_revoke_after_check VALUES(?)",
+      a.deviceId,
+    );
+    const path = join(state, "forbidden.txt");
+    const operation = {
+      kind: "file.write" as const,
+      path,
+      content: "unauthorized side effect",
+    };
+    const input = {
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+      targetDeviceId: b.deviceId,
+      action: "run" as const,
+      operation,
+      digest: await deviceDigest(canonicalDeviceJSON(operation)),
+    };
+    assert.equal((await ca.execute(input)).status, "denied");
+    assert.equal(
+      existsSync(path),
+      false,
+      "revocation before forwarding must prevent target side effects",
+    );
+    await storage.exec("DROP TABLE test_revoke_after_check");
+  } finally {
+    await Promise.all([ca.close(), cb.close()]);
+    await Promise.all([ra.close(), rb.close()]);
+  }
 });

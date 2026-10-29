@@ -40,6 +40,7 @@ type Agent = {
   token: string;
   deviceId: string;
   expires: number;
+  credentialVersion: number;
 };
 type Pending = {
   socket: WebSocket;
@@ -160,6 +161,7 @@ export class DeviceExecution extends DurableObject<Env> {
                 token: auth.sessionToken,
                 deviceId: targetId,
                 expires: Date.now() + 30000,
+                credentialVersion: checked.source.credentialVersion,
               };
               authenticated = true;
               clearTimeout(timeout);
@@ -241,6 +243,7 @@ export class DeviceExecution extends DurableObject<Env> {
             });
             return;
           }
+          const policy = this.observation().policy;
           if (operation.action === "run") {
             if (
               operation.operation?.kind === "native" ||
@@ -253,7 +256,6 @@ export class DeviceExecution extends DurableObject<Env> {
               });
               return;
             }
-            const policy = this.observation().policy;
             if (
               !policy ||
               policy.mode === "paused" ||
@@ -271,6 +273,39 @@ export class DeviceExecution extends DurableObject<Env> {
               });
               return;
             }
+          }
+          // All digest/signature awaits precede the final authority read.
+          // Revocation before forwarding must prevent target side effects.
+          const agent = this.agent;
+          const final = await this.env.DEVICE_REGISTRY.getByName(
+            "registry",
+          ).check(caller.sessionToken, targetId);
+          if (
+            !final.ok ||
+            !agent ||
+            this.agent !== agent ||
+            agent.expires <= Date.now() ||
+            final.target.credentialVersion !== agent.credentialVersion
+          ) {
+            this.respond(socket, operation, {
+              status: "denied",
+              error: "membership_or_agent_changed",
+            });
+            return;
+          }
+          if (
+            operation.action === "run" &&
+            (!policy ||
+              this.observation().policy?.version !== policy.version ||
+              (policy.mode === "always-ask" &&
+                (!operation.approval ||
+                  operation.approval.expiresAt <= Date.now())))
+          ) {
+            this.respond(socket, operation, {
+              status: "denied",
+              error: "policy_or_approval_changed",
+            });
+            return;
           }
           if (
             this.pending.size >= 64 ||
@@ -303,10 +338,10 @@ export class DeviceExecution extends DurableObject<Env> {
             token: caller.sessionToken,
             timer,
           });
-          this.send(this.agent.socket, {
+          this.send(agent.socket, {
             type: "operation",
-            sourceDeviceId: checked.source.deviceId,
-            sourcePublicKey: checked.source.publicKey,
+            sourceDeviceId: final.source.deviceId,
+            sourcePublicKey: final.source.publicKey,
             request: operation,
           });
         })

@@ -31,6 +31,9 @@ export class DeviceCloud {
   private agent?: WebSocket;
   private heartbeat?: ReturnType<typeof setInterval>;
   private reconnect?: ReturnType<typeof setTimeout>;
+  private connecting?: Promise<void>;
+  private retryDelay = 1000;
+  private shutdown = new AbortController();
   private stopped = false;
   private callers = new Set<WebSocket>();
   status: "online" | "offline" = "offline";
@@ -78,7 +81,10 @@ export class DeviceCloud {
         ...(token ? { authorization: `Bearer ${token}` } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.any([
+        AbortSignal.timeout(10000),
+        this.shutdown.signal,
+      ]),
     });
     const result = (await response.json()) as Record<string, unknown>;
     if (!response.ok) {
@@ -159,8 +165,25 @@ export class DeviceCloud {
     return url.toString();
   }
   async start(): Promise<void> {
+    if (this.agent?.readyState === WebSocket.OPEN && this.status === "online")
+      return;
+    if (this.connecting) return this.connecting;
+    const connecting = this.connect().catch((error) => {
+      this.state("offline");
+      this.scheduleReconnect();
+      throw error;
+    });
+    this.connecting = connecting;
+    try {
+      await connecting;
+    } finally {
+      if (this.connecting === connecting) this.connecting = undefined;
+    }
+  }
+  private async connect(): Promise<void> {
     if (this.stopped) throw new Error("device_cloud_stopped");
     const token = await this.authenticate();
+    if (this.stopped) throw new Error("device_cloud_stopped");
     return new Promise((resolve, reject) => {
       const socket = new WebSocket(this.wsUrl(this.device.deviceId, "agent"), {
         maxPayload: 524288,
@@ -197,6 +220,7 @@ export class DeviceCloud {
             ready = true;
             clearTimeout(deadline);
             this.state("online");
+            this.retryDelay = 1000;
             this.heartbeat = setInterval(() => {
               if (socket.readyState === WebSocket.OPEN)
                 socket.send(
@@ -240,10 +264,7 @@ export class DeviceCloud {
         if (this.agent === socket) {
           this.agent = undefined;
           this.state("offline");
-          if (!this.stopped)
-            this.reconnect = setTimeout(() => {
-              void this.start().catch(() => this.scheduleReconnect());
-            }, 1000);
+          this.scheduleReconnect();
         }
         if (!ready) reject(new Error("agent_connection_failed"));
       };
@@ -255,13 +276,17 @@ export class DeviceCloud {
   }
   private scheduleReconnect(): void {
     if (this.stopped || this.reconnect) return;
+    const delay = this.retryDelay;
+    this.retryDelay = Math.min(30000, this.retryDelay * 2);
     this.reconnect = setTimeout(() => {
       this.reconnect = undefined;
       void this.start().catch(() => this.scheduleReconnect());
-    }, 2000);
+    }, delay);
   }
   async execute(input: OperationRequest): Promise<OperationResult> {
     const request = OperationRequest.parse(input);
+    if (this.stopped)
+      return { status: "unknown", error: "device_cloud_stopped" };
     let token: string;
     try {
       token = await this.authenticate();
@@ -271,6 +296,8 @@ export class DeviceCloud {
         error: "cloud_unavailable_query_original_id",
       };
     }
+    if (this.stopped)
+      return { status: "unknown", error: "device_cloud_stopped" };
     return new Promise((resolve) => {
       const socket = new WebSocket(
         this.wsUrl(request.targetDeviceId, "request"),
@@ -347,6 +374,7 @@ export class DeviceCloud {
   }
   async close(): Promise<void> {
     this.stopped = true;
+    this.shutdown.abort();
     clearTimeout(this.reconnect);
     clearInterval(this.heartbeat);
     this.agent?.terminate();

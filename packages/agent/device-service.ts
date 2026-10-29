@@ -157,7 +157,6 @@ export async function runDeviceService(): Promise<void> {
   let configuration: z.infer<typeof configure> | undefined;
   let initializing: Promise<void> | undefined;
   let stopping = false;
-  let retry: ReturnType<typeof setTimeout> | undefined;
   const sockets = new Set<Socket>();
   const helper = (
     kind: "signature" | "approval",
@@ -179,7 +178,6 @@ export async function runDeviceService(): Promise<void> {
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
-    clearTimeout(retry);
     for (const item of pending.values()) {
       clearTimeout(item.timer);
       item.reject(new Error("helper_disconnected"));
@@ -488,16 +486,9 @@ export async function runDeviceService(): Promise<void> {
       deviceId: device.deviceId,
     });
     send({ type: "cloud", status: "offline" });
-    const connectCloud = () => {
-      if (stopping) return;
-      void cloud?.start().catch(() => {
-        if (!stopping) {
-          send({ type: "cloud", status: "offline" });
-          retry = setTimeout(connectCloud, 2000);
-        }
-      });
-    };
-    connectCloud();
+    void cloud.start().catch(() => {
+      if (!stopping) send({ type: "cloud", status: "offline" });
+    });
   };
   jsonLines(
     process.stdin,

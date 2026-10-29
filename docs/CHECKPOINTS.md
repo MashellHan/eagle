@@ -1917,3 +1917,18 @@ path; daily-dev/production data and resources were untouched. No App rendering,
 Keychain, installed runtime, Herdr collection or public endpoint was verified.
 Next broken hop: trusted helper stdin management/approval and shared local Unix
 socket are not connected yet. Lead owns App/Bots integration and full gates.
+
+## 2026-10-29 — service review corrections
+
+Registry slow-body revocation/expiry, metadata revision, completion-time quota and
+seven-day pairing recovery passed 10 real local API/SQLite tests at cde96a0.
+Native disconnect/lease loss now persists an unknown admission block across
+restart (7063a01), pending explicit original-owner completion evidence; there is
+no automatic timer unlock or trusted administrative recovery yet. Output and
+storage/approval races passed 12 affected runtime/process tests at 5f65972.
+The private Node process exposed real local command tools while cloud was down;
+Bot socket management writes were denied, helper stdin management and typed
+approval were exercised with ephemeral test keys. No real Keychain, App rendering,
+Herdr collection, D1 write, public deployment or physical second Mac was verified.
+Next broken hop: bounded cloud reconnect recovery and authorization immediately
+before relay forwarding are under fault-injection tests; Lead owns integration.
