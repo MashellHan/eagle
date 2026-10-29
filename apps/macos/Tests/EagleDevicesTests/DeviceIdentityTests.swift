@@ -1,6 +1,5 @@
 import CryptoKit
 import Foundation
-import Security
 import Testing
 
 @testable import EagleDevices
@@ -21,7 +20,7 @@ private final class MemoryVault: DeviceIdentityVault, @unchecked Sendable {
   }
 }
 
-@Suite("Device Keychain identity")
+@Suite("Device identity")
 struct DeviceIdentityTests {
   @Test("an installation reuses its persisted identity, including a concurrent creation winner")
   func persistentIdentity() throws {
@@ -41,23 +40,6 @@ struct DeviceIdentityTests {
       try DeviceIdentity.loadOrCreate(profile: "corrupt", vault: vault)
     }
     #expect(vault.inserts == 1)
-  }
-
-  @Test("the real Keychain retains an isolated installation identity")
-  func realKeychain() throws {
-    let account = "device-test-" + UUID().uuidString
-    defer {
-      SecItemDelete(
-        [
-          kSecClass as String: kSecClassGenericPassword,
-          kSecAttrService as String: "ai.hexly.eagle.device-identity.v1",
-          kSecAttrAccount as String: account,
-        ] as CFDictionary)
-    }
-    let first = try DeviceIdentity.loadOrCreate(profile: account)
-    let next = try DeviceIdentity.loadOrCreate(profile: account)
-    #expect(first.deviceId == next.deviceId)
-    #expect(first.publicKey == next.publicKey)
   }
 
   @Test("registration signs exact bound seven-field bytes, never arbitrary payloads")

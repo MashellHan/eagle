@@ -6,7 +6,23 @@ use `Cache-Control: no-store`; errors `{error: code}`. Credentials never use URL
 
 ## Identity and HTTPS
 
-Device identity is an Ed25519 key persisted only by the App Keychain helper.
+Device identity is an Ed25519 key persisted by the independent App helper in a
+local private file, without querying, unlocking or falling back to Keychain.
+The fixed directory is `~/.eagle-device-identities` (0700, current UID); each
+profile uses `<SHA-256 of profile UTF-8 bytes>.json` (0600, current UID).
+The helper alone reads the identity record. Node, Bots, argv and logs never
+receive its private key. Existing Keychain records are left untouched; no
+automatic identity migration or deletion occurs.
+
+New records are written completely to a private temporary file, fsynced and
+published atomically without replacing an existing record. Concurrent creators
+reuse the winner's identity. Directory traversal and file opens reject symlinks;
+the record must be a regular, single-link file with the exact ownership and modes
+above. Existing unsafe, empty, oversized (>4096 bytes) or corrupt records fail
+closed and are never replaced with a fresh identity. Stable errors are
+`device_identity_storage_insecure`, `device_identity_storage_unavailable` and
+`device_identity_corrupt`. The injectable `DeviceIdentityVault` remains available
+for isolated tests; production `loadOrCreate(profile:)` defaults to this file vault.
 `deviceId` is a UUID generated once by the App; `publicKey` is base64url DER SPKI.
 Signatures are base64url raw Ed25519. Node and Bots never receive the private key.
 
@@ -68,7 +84,7 @@ one `{type:"response",requestId,operationId,targetDeviceId,result}` then closes.
 Every run/get/cancel rechecks live Registry source and target membership.
 Authentication/revocation closes use code 1008 with reason `unauthorized_agent`,
 `revoked_agent` or `unauthorized_caller`. Only those reasons invalidate the
-matching cached session and require fresh Keychain proof on the next connection.
+matching cached session and require fresh helper identity proof on the next connection.
 Transport failures, lease expiry and Agent replacement retain a valid session.
 An old socket's rejection cannot invalidate a newer session. Reauthentication
 never resends an operation; an uncertain result still requires querying its ID.
@@ -111,13 +127,13 @@ platform,arch,stateDirectory,socketPath,bootSessionId?}`. stateDirectory is App-
 socketPath is an App-private Unix socket (0600), not a public TCP port. Public key
 and IDs may be persisted there; private key and session tokens may not.
 
-Node requests Keychain signatures through stdout
+Node requests identity signatures through stdout
 `{type:"sign",requestId,payload}`; App/helper replies through stdin
 `{type:"signature",requestId,signature}` or `{type:"signature",requestId,error}`.
 Only exact requested payloads are signed; helper validates identity/purpose.
 Node emits `{type:"ready",socketPath,deviceId}` after local tools/port are ready,
 and `{type:"cloud",status:"online"|"offline",error?}` separately. Cloud failure
-does not prevent local readiness. The independent Keychain helper owns the Node lifecycle (SMAppService);
+does not prevent local readiness. The independent identity helper owns the Node lifecycle (SMAppService);
 closing the App window does not end this pipe. Helper EOF stops the child cleanly.
 The App attempts registration for both `notRegistered` and the first-install
 `notFound` state, then requires `enabled` before opening XPC. A background approval
@@ -211,8 +227,8 @@ this port and never copy device secrets. `status` returns
 The local execution port accepts only operation-bound signed approval envelopes,
 not a boolean or reusable approval token; all approval creation uses typed approve.
 
-Local Node development can inject an in-memory signer; production App must use
-Keychain. No npm publication, deployment or installation is implied by this
+Local Node development can inject an in-memory signer; production App uses the
+private file vault through its trusted helper. No npm publication, deployment or installation is implied by this
 contract. Herdr is an optional provider, never needed for file/command tools.
 
 Agent authentication frame includes `capabilities:[operation kinds],policy`;

@@ -1,47 +1,16 @@
 import CryptoKit
 import Foundation
-import Security
 
-public enum DeviceIdentityError: Error {
-  case keychain(OSStatus)
-  case invalidPayload, corruptIdentity
+public enum DeviceIdentityError: String, Error {
+  case invalidPayload = "device_identity_invalid_payload"
+  case corruptIdentity = "device_identity_corrupt"
+  case insecureStorage = "device_identity_storage_insecure"
+  case storageUnavailable = "device_identity_storage_unavailable"
 }
 
 public protocol DeviceIdentityVault: Sendable {
   func read(account: String) throws -> Data?
   func insert(_ data: Data, account: String) throws -> Bool
-}
-
-public struct DeviceKeychain: DeviceIdentityVault {
-  public init() {}
-  private func query(_ account: String) -> [String: Any] {
-    [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: "ai.hexly.eagle.device-identity.v1",
-      kSecAttrAccount as String: account,
-    ]
-  }
-  public func read(account: String) throws -> Data? {
-    var request = query(account)
-    request[kSecReturnData as String] = true
-    request[kSecMatchLimit as String] = kSecMatchLimitOne
-    var result: CFTypeRef?
-    let status = SecItemCopyMatching(request as CFDictionary, &result)
-    if status == errSecItemNotFound { return nil }
-    guard status == errSecSuccess, let data = result as? Data else {
-      throw DeviceIdentityError.keychain(status)
-    }
-    return data
-  }
-  public func insert(_ data: Data, account: String) throws -> Bool {
-    var request = query(account)
-    request[kSecValueData as String] = data
-    request[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-    let status = SecItemAdd(request as CFDictionary, nil)
-    if status == errSecDuplicateItem { return false }
-    guard status == errSecSuccess else { throw DeviceIdentityError.keychain(status) }
-    return true
-  }
 }
 
 public struct DeviceIdentity: Sendable {
@@ -57,7 +26,7 @@ public struct DeviceIdentity: Sendable {
   }
 
   public static func loadOrCreate(
-    profile: String, vault: any DeviceIdentityVault = DeviceKeychain()
+    profile: String, vault: any DeviceIdentityVault = DeviceFileVault()
   ) throws -> Self {
     if let data = try vault.read(account: profile) { return try decode(data) }
     let key = Curve25519.Signing.PrivateKey()
@@ -71,12 +40,17 @@ public struct DeviceIdentity: Sendable {
     return try decode(stored)
   }
   private static func decode(_ data: Data) throws -> Self {
-    let record = try JSONDecoder().decode(Record.self, from: data)
-    guard UUID(uuidString: record.deviceId) != nil else {
+    do {
+      let record = try JSONDecoder().decode(Record.self, from: data)
+      guard UUID(uuidString: record.deviceId) != nil else {
+        throw DeviceIdentityError.corruptIdentity
+      }
+      return Self(
+        deviceId: record.deviceId.lowercased(), key: try .init(rawRepresentation: record.privateKey)
+      )
+    } catch {
       throw DeviceIdentityError.corruptIdentity
     }
-    return Self(
-      deviceId: record.deviceId.lowercased(), key: try .init(rawRepresentation: record.privateKey))
   }
 
   public func signRegistration(
