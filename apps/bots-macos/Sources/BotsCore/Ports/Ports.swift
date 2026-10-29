@@ -33,6 +33,13 @@ public enum ConnectionState: Sendable, Equatable {
   case reconnecting(attempt: Int)
   case failed(reason: String)
   case stopped
+
+  /// The connection is over and the socket will not retry it: the person must act (start
+  /// the daemon) and ask again. `reconnecting` is not this.
+  public var isFailed: Bool {
+    if case .failed = self { return true }
+    return false
+  }
 }
 
 /// Command context is created by the view model, so the call site and the daemon share one

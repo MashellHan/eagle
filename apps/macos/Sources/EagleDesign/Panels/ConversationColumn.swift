@@ -48,6 +48,8 @@ public struct ConversationColumn: View {
   private let title: String
   private let subtitle: String
   private let tintIndex: Int
+  /// The bot's own face, shared with its sidebar row and the inspector.
+  private let face: BotFace.Style?
   private let entries: [TranscriptEntry]
   private let showsToolCalls: Bool
   private let preparedMarkdown: [String: [RenderedMarkdownBlock]]
@@ -61,6 +63,7 @@ public struct ConversationColumn: View {
   private let onStop: () -> Void
   private let onInsert: (() -> Void)?
   private let onRecover: () -> Void
+  private let onRetryConnection: () -> Void
   private let onDismissError: () -> Void
   @State private var scroller = TranscriptScroller()
 
@@ -68,6 +71,7 @@ public struct ConversationColumn: View {
     title: String,
     subtitle: String,
     tintIndex: Int,
+    face: BotFace.Style? = nil,
     entries: [TranscriptEntry],
     showsToolCalls: Bool = true,
     preparedMarkdown: [String: [RenderedMarkdownBlock]] = [:],
@@ -79,6 +83,7 @@ public struct ConversationColumn: View {
     onStop: @escaping () -> Void = {},
     onInsert: (() -> Void)? = nil,
     onRecover: @escaping () -> Void = {},
+    onRetryConnection: @escaping () -> Void = {},
     onDismissError: @escaping () -> Void = {},
     onShowSidebar: @escaping () -> Void = {},
     onToggleInspector: @escaping () -> Void = {}
@@ -86,6 +91,7 @@ public struct ConversationColumn: View {
     self.title = title
     self.subtitle = subtitle
     self.tintIndex = tintIndex
+    self.face = face
     self.entries = entries
     self.showsToolCalls = showsToolCalls
     self.preparedMarkdown = preparedMarkdown
@@ -97,6 +103,7 @@ public struct ConversationColumn: View {
     self.onStop = onStop
     self.onInsert = onInsert
     self.onRecover = onRecover
+    self.onRetryConnection = onRetryConnection
     self.onDismissError = onDismissError
     self.onShowSidebar = onShowSidebar
     self.onToggleInspector = onToggleInspector
@@ -137,9 +144,11 @@ public struct ConversationColumn: View {
         ParticipantBubble(
           name: title,
           tintIndex: tintIndex,
+          face: face,
           status: participantStatus,
           onStop: onStop,
           onRecover: onRecover,
+          onRetry: onRetryConnection,
           onDismissError: onDismissError,
           action: onToggleInspector
         )

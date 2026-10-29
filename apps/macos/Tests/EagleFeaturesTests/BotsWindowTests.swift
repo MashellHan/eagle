@@ -574,10 +574,13 @@ final class StubConversation: ConversationPort {
   var sent: [Sent] = []
   var aborted = 0
   var lastBotId: String?
+  /// Every `open`, so a reconnect is observable.
+  var opens = 0
   private var continuation: AsyncStream<ConversationEvent>.Continuation?
   private var pending: [ConversationEvent] = []
 
   func open(botId: String) -> AsyncStream<ConversationEvent> {
+    opens += 1
     continuation?.finish()
     continuation = nil
     return AsyncStream { continuation in
@@ -766,5 +769,54 @@ struct BotsTriggerTests {
     try await waitUntil { !bots.triggerRows.isEmpty }
     #expect(bots.triggerRows.contains { $0.label == "计划" && $0.value == "0 9 * * *" })
     #expect(bots.triggerRows.contains { $0.label == "指令" && $0.value == "triage the queue" })
+  }
+}
+
+@MainActor
+@Suite("Bots daemon reconnect", .serialized)
+struct BotsDaemonReconnectTests {
+  private func window() async throws -> (BotsWorkspaceViewModel, StubConversation, AppViewModel) {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bots-reconnect-\(UUID().uuidString)", isDirectory: true)
+    let catalog = StubCatalog()
+    catalog.bots = [
+      BotSummary(
+        id: "b_1", title: "研究员", createdAt: "x", updatedAt: "x",
+        model: ModelRef(provider: "p", modelId: "m"), state: .idle)
+    ]
+    let port = StubConversation()
+    let outbox = OutboxStore(directory: directory)
+    let conversation = ConversationViewModel(botId: "", conversation: port, outbox: outbox)
+    let app = AppViewModel(catalog: catalog, conversation: conversation, outbox: outbox)
+    let bots = BotsWorkspaceViewModel(
+      settings: BotsSettings(environment: [:]), makeApp: { _ in app },
+      gatewayProbe: { true })
+    await bots.start()
+    await bots.awaitScheduledPublishDrain()
+    bots.select("b_1")
+    port.emit(.connection(.ready))
+    port.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    await bots.awaitScheduledPublishDrain()
+    return (bots, port, app)
+  }
+
+  @Test("a dead connection offers one retry and does not retry by itself")
+  func retryAffordance() async throws {
+    let (bots, port, _) = try await window()
+    #expect(bots.participantStatus.canRetry == false)
+
+    port.emit(.connection(.failed(reason: ConversationSocket.daemonDownMessage)))
+    let deadline = Date().addingTimeInterval(2)
+    while !bots.participantStatus.canRetry, Date() < deadline {
+      try await Task.sleep(nanoseconds: 20_000_000)
+      await bots.awaitScheduledPublishDrain()
+    }
+
+    #expect(bots.participantStatus.canRetry, "the person is offered a retry")
+    #expect(bots.subtitle == ConversationSocket.daemonDownMessage, "and told to start it")
+
+    let opens = port.opens
+    bots.retryConnection()
+    #expect(port.opens == opens + 1, "the retry opens one fresh connection")
   }
 }

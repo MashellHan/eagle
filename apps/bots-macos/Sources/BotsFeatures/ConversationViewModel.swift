@@ -93,6 +93,15 @@ public final class ConversationViewModel: ObservableObject {
     }
   }
 
+  /// A connection that ended for good (the daemon is not running): open it again instead
+  /// of hoping the socket retries, and keep the transcript that is already on screen.
+  public func reconnect() {
+    guard let botId = selectedBotId else { return }
+    eventsTask?.cancel()
+    eventsTask = nil
+    select(botId: botId)
+  }
+
   public func disconnect() {
     eventsTask?.cancel()
     eventsTask = nil

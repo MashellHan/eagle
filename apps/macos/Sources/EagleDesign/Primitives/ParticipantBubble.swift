@@ -3,25 +3,31 @@ import SwiftUI
 public struct ParticipantBubble: View {
   private let name: String
   private let tintIndex: Int
+  /// The bot's own face, the same one its sidebar row draws; nil for a plain avatar.
+  private let face: BotFace.Style?
   private let status: ParticipantStatus?
   private let action: () -> Void
   private let onStop: () -> Void
   private let onRecover: () -> Void
+  private let onRetry: () -> Void
   private let onDismissError: () -> Void
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var hovering = false
   @State private var showsError = false
 
   public init(
-    name: String, tintIndex: Int, status: ParticipantStatus? = nil,
+    name: String, tintIndex: Int, face: BotFace.Style? = nil, status: ParticipantStatus? = nil,
     onStop: @escaping () -> Void = {}, onRecover: @escaping () -> Void = {},
+    onRetry: @escaping () -> Void = {},
     onDismissError: @escaping () -> Void = {}, action: @escaping () -> Void
   ) {
     self.name = name
     self.tintIndex = tintIndex
+    self.face = face
     self.status = status
     self.onStop = onStop
     self.onRecover = onRecover
+    self.onRetry = onRetry
     self.onDismissError = onDismissError
     self.action = action
   }
@@ -73,7 +79,15 @@ public struct ParticipantBubble: View {
           .frame(maxWidth: 320)
         }
       }
-      if status?.canRecover == true {
+      if status?.canRetry == true {
+        Button(action: onRetry) {
+          Image(systemName: "arrow.clockwise")
+            .frame(width: Theme.Metric.hitTarget, height: Theme.Metric.hitTarget)
+        }
+        .foregroundStyle(Theme.Palette.info)
+        .help("重新连接")
+        .accessibilityLabel("重新连接")
+      } else if status?.canRecover == true {
         Button(action: onRecover) {
           Image(systemName: "arrow.clockwise")
             .frame(width: Theme.Metric.hitTarget, height: Theme.Metric.hitTarget)
@@ -138,10 +152,16 @@ public struct ParticipantBubble: View {
   }
 
   private var avatar: some View {
-    Avatar(
-      initial: String(name.prefix(1)), tint: Theme.Palette.avatarTint(tintIndex),
-      size: Theme.Metric.participantAvatar, shape: .blob
-    )
+    Group {
+      if let face {
+        BotFace(style: face, size: Theme.Metric.participantAvatar)
+      } else {
+        Avatar(
+          initial: String(name.prefix(1)), tint: Theme.Palette.avatarTint(tintIndex),
+          size: Theme.Metric.participantAvatar, shape: .blob
+        )
+      }
+    }
   }
 
   private var tint: Color {

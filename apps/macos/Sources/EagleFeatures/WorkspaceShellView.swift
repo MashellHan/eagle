@@ -218,7 +218,9 @@ public struct WorkspaceShellView: View {
             NoConversationPlaceholder(
               onCreate: { showsBotCreate = true },
               onShowSidebar: { layout.toggleSidebar() },
-              showsSidebar: layout.showsSidebar
+              showsSidebar: layout.showsSidebar,
+              daemonMessage: bots.error,
+              onRetry: bots.error == nil ? nil : { Task { await bots.retryConnectionAsync() } }
             )
           }
         }

@@ -18,6 +18,7 @@ struct BotsConversationContent: View {
   var body: some View {
     ConversationColumn(
       title: bots.title, subtitle: bots.subtitle, tintIndex: bots.tintIndex,
+      face: bots.selectedFace,
       entries: transcript.entries,
       showsToolCalls: !hideToolCalls,
       preparedMarkdown: transcript.markdown,
@@ -28,6 +29,7 @@ struct BotsConversationContent: View {
       onStop: { bots.abort() },
       onInsert: bots.running ? { bots.send(inserting: true) } : nil,
       onRecover: { bots.recover() },
+      onRetryConnection: { bots.retryConnection() },
       onDismissError: { bots.dismissError() },
       onShowSidebar: { layout.toggleSidebar() },
       onToggleInspector: { layout.toggleInspector() }

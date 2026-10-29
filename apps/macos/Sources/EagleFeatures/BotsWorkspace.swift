@@ -60,6 +60,27 @@ final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var triggerRows: [InspectorUsageRow] = []
   @Published private(set) var connection: ConnectionState = .connecting
 
+  /// The placeholder's retry runs in a task: `start()` is async, the button is not.
+  func retryConnectionAsync() async {
+    guard app == nil else {
+      retryConnection()
+      return
+    }
+    subtitle = "正在连接…"
+    await start()
+  }
+
+  /// The connection ended for good (no daemon): the person restarts it and asks again.
+  func retryConnection() {
+    guard app != nil else {
+      Task { await start() }
+      return
+    }
+    if error != nil { error = nil }
+    app?.conversation.reconnect()
+    publish()
+  }
+
   var participantStatus: ParticipantStatus {
     let ready = connection == .ready && app?.conversation.hasSnapshot == true
     let phase: ParticipantStatus.Phase
@@ -70,16 +91,20 @@ final class BotsWorkspaceViewModel: ObservableObject {
       default: phase = .offline
       }
       label = connection == .ready ? "正在同步…" : subtitle
-    } else if canRecover || (error != nil && !running) {
+    } else if canRecover || connection.isFailed
+      || (error != nil && !running)
+    {
       phase = .attention
-      label = canRecover ? "等待恢复" : "遇到问题"
+      label = canRecover ? "等待恢复" : (connection.isFailed ? subtitle : "遇到问题")
     } else {
       phase = running ? .working : .idle
       label = subtitle
     }
     return ParticipantStatus(
       label: label, phase: phase, canStop: ready && running,
-      canRecover: ready && canRecover, error: error
+      canRecover: ready && canRecover,
+      canRetry: connection.isFailed,
+      error: error
     )
   }
   /// Set only after a send was refused for a missing gateway: progressive, never a nag.
