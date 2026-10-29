@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import ServiceManagement
 
 @MainActor public protocol DeviceControl: AnyObject {
@@ -15,6 +16,7 @@ import ServiceManagement
   private let bundle: URL
   private let configuration: DeviceHostConfiguration?
   private var client: DeviceXPCClient?
+  private let log = Logger(subsystem: "ai.hexly.eagle.devices", category: "background")
   public var socketPath: String? { configuration?.socketPath }
   public init(bundle: URL = Bundle.main.bundleURL) {
     self.bundle = bundle
@@ -27,7 +29,17 @@ import ServiceManagement
     let helper = bundle.appendingPathComponent("Contents/Library/LaunchServices/EagleDeviceHelper")
     let requirement = try DeviceCodeIdentity.requirement(at: helper)
     let service = SMAppService.agent(plistName: configuration.launchAgentPlist)
-    if service.status == .notRegistered { try service.register() }
+    log.info("background status before registration: \(service.status.rawValue, privacy: .public)")
+    if service.status == .notRegistered || service.status == .notFound {
+      do { try service.register() } catch {
+        let error = error as NSError
+        log.error(
+          "background registration failed: \(error.domain, privacy: .public) \(error.code, privacy: .public)"
+        )
+        throw error
+      }
+    }
+    log.info("background status after registration: \(service.status.rawValue, privacy: .public)")
     if service.status == .requiresApproval { throw DevicePortError("background_approval_required") }
     guard service.status == .enabled else { throw DeviceHostError.unavailable }
     client?.invalidate()

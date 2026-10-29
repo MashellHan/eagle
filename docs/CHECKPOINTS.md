@@ -1,5 +1,27 @@
 # 用户视角检查点
 
+## 2026-10-29 13:36 +08 — 候选后台自动启动与本机执行
+
+- 修复首次 `notFound` 分支后，真实 ad-hoc 候选由 SMAppService 注册，launchd 自动启动
+  helper 与内置 Node；0600 socket 返回 localReady=true、All approve。本机文件写入
+  completed，原 ID 查询一致。此次证据仍为 cloud offline，不把本机成功写成云端认证成功。
+- 根门禁余下类型、lint、构建通过；浏览器 191 通过、11 个既有平台条件跳过。独立
+  Bots 全检查 530/530 已通过，App/客户端 Swift 门禁待窗口生命周期修复后集中执行。
+- Service 已按授权启动隔离 17053 API，报告自动注册 challenge 200；最终注册/WS 仍在
+  采证。Lead 继续窗口 P2、App 退出后 helper 生命周期与 Raven 安全配置复制。
+- 采集/D1/公网无新增验收；无发布、日常 App 替换、辅助功能/录屏授权或双物理 Mac 证据。
+
+## 2026-10-29 13:26 +08 — 真实候选启动暴露首次后台注册分支
+
+- 完整 Swift 候选已装配并通过嵌套签名验证；实际启动独立 candidate App 后，内置
+  Bots health 200、设备配置摘要一致。helper 尚未注册，socket ENOENT，没有假报本机就绪。
+- 真实 App 的系统诊断给出 SMAppService status=3（notFound）；原代码未调用 register。
+  Lead 已修注册分支，正重新签名/启动验证。辅助功能和窗口录屏不可用，未完成真实 UI 点击。
+- 集成 `test:devices` 已运行 7/7；根检查在移开 Bots node_modules 后 215/215，通过的
+  范围确实不依赖 Bots。随后全局类型声明触发新测试 TS2740，原写入者正做白名单环境兼容。
+- Herdr 三人仍按当前范围协作；采集/D1/公网没有新增验收。物理多 Mac、分发签名未验证，
+  没有部署、发布或替换日常 App。Raven 网关偏好待整包/必要检查完成后安全复制。
+
 ## 2026-10-29 13:09 +08 — 内置 Bots 启动与共享设备 UI 已集成
 
 - Herdr 三名成员继续原分工；helper origin/retry review 已关闭。UI/model 至 c308033

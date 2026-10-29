@@ -119,6 +119,9 @@ Node emits `{type:"ready",socketPath,deviceId}` after local tools/port are ready
 and `{type:"cloud",status:"online"|"offline",error?}` separately. Cloud failure
 does not prevent local readiness. The independent Keychain helper owns the Node lifecycle (SMAppService);
 closing the App window does not end this pipe. Helper EOF stops the child cleanly.
+The App attempts registration for both `notRegistered` and the first-install
+`notFound` state, then requires `enabled` before opening XPC. A background approval
+request stays pending until macOS authorizes it; registration alone is not readiness.
 
 Unix socket is JSONL request/response, one response per request:
 `{requestId,method,params?}` → `{requestId,result}` or `{requestId,error}`.
