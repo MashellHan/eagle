@@ -1,5 +1,19 @@
 # 用户视角检查点
 
+## 2026-10-29 12:08 +08 — 共享 port 已提交，App 身份接线中
+
+- 实际 Herdr 三人协作继续；菜单入口与原窗口路由的 `b399936` review 已关闭。
+  本轮未启动真实 Herdr 采集、未操作旧工作树，也未访问公网部署资源。
+- 服务认证、Registry/DeviceExecution 本地 SQLite 已集成至 `bb707bc`；四成员、
+  WS 关联/撤销、原 ID 目标持久绑定有作者本地运行证据，最终集成门禁尚未执行。
+  现有 D1 报表未因此取得新的运行验收结论。
+- Bots 共享工具 `3365c64` 已提交 review，30 项相关测试及类型/严格 lint 通过。
+  覆盖真实 Unix socket、native 文件副作用前的接纳、失败后查询原 ID；尚不等同于
+  实际 App 启动两个 Bot 通过 helper 的端到端证据。
+- 当前断点：Swift 身份与审批核心已写，完整参数缺失时仍会签名的行为红测已复现，
+  正收紧校验；随后接独立宿主、设备页与应用装配。私钥真实 Keychain/SMAppService
+  启动、实际打包 UI、第二台物理 Mac 和分发签名尚未验证。
+
 ## 2026-10-29 11:43 +08 — device-groups 本地候选
 
 - Herdr：default/w4 的 Lead、service、reviewer 已读实际输出并协调提交；本轮没有运行
