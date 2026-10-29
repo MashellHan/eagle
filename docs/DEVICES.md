@@ -105,11 +105,11 @@ closing the App window does not end this pipe. Helper EOF stops the child cleanl
 
 Unix socket is JSONL request/response, one response per request:
 `{requestId,method,params?}` → `{requestId,result}` or `{requestId,error}`.
-Methods: `status`, `directory`, `pairing.create` (`ttlSeconds?`),
-`pairing.revoke` (`code`), `pairing.redeem` (`requestId,code`),
-`pairing.result` (`requestId`), `member.remove` (`deviceId`), `policy.get`,
-`policy.set` (`mode`), `execute` (OperationRequest), `operation.get`
-and `operation.cancel` (OperationRequest).
+Bot port read/execute methods: `status`, `directory`, `execute` (OperationRequest),
+`operation.get`, `operation.cancel` (OperationRequest), `local.begin` and
+`local.complete`. It rejects all management writes, including `policy.set`,
+`pairing.create/revoke/redeem` and `member.remove`; 0600 alone does not distinguish
+same-UID Bots from the App. `pairing.result` is App management only as well.
 `local.begin` takes OperationRequest with `operation:{kind:"native",tool,args,cwd?}`
 (native CodingTools only); it returns `{accepted:boolean,result}`. Only accepted
 true permits invoking the native tool. Duplicate begin always accepted false,
@@ -118,12 +118,33 @@ including a running prior admission. `local.complete` takes
 Only the initiating local device may complete its native admission. Native and
 remote tools share policy/journal/serial admission; interrupted native operations
 recover unknown. Native is rejected by remote execute/relay. args is a JSON object;
-the complete native operation participates in the same canonical parameter digest. Local directory always includes self;
+the complete native operation participates in the same canonical parameter digest.
+
+Management uses only the trusted helper's parent stdin:
+`{type:"manage",requestId,method,params?}` → stdout
+`{type:"managed",requestId,result}` or `{type:"managed",requestId,error}`.
+Methods: `pairing.create` (`ttlSeconds?`), `pairing.revoke` (`code`),
+`pairing.redeem` (`requestId,code`), `pairing.result` (`requestId`),
+`member.remove` (`deviceId`), `policy.get`, `policy.set` (`mode`).
+The Swift helper verifies its App requester code identity; it never exposes a
+management credential or stdin handle to a Bot.
+
+Approval is a distinct typed message, never an arbitrary `sign` payload.
+Node stdout: `{type:"approve",requestId,operationId,sourceDeviceId,targetDeviceId,
+operation,digest,policyVersion,expiresAt}`. Helper recomputes canonical digest,
+checks its configured source identity and all bindings, asks the initiating App
+to show the complete operation/target and confirm, then replies stdin
+`{type:"approval",requestId,approval:<signed envelope>}` or
+`{type:"approval",requestId,error}`. A Bot can only propose an approval through
+`approval.request` (OperationRequest plus policyVersion/expiry), never approve.
+No unattended/timeout fallback. The `sign` bridge accepts registration purpose
+only; it rejects approval payloads and all other purposes.
+ Local directory always includes self;
 remote entries are fetched live before remote execution. Multiple Bots share
 this port and never copy device secrets. `status` returns
 `{deviceId,localReady,cloudStatus,policy}`. App may open the same port for settings.
-The parent signing bridge also serves operation-bound approvals; the local port
-accepts only signed approval envelopes, not a boolean or reusable approval token.
+The local execution port accepts only operation-bound signed approval envelopes,
+not a boolean or reusable approval token; all approval creation uses typed approve.
 
 Local Node development can inject an in-memory signer; production App must use
 Keychain. No npm publication, deployment or installation is implied by this
