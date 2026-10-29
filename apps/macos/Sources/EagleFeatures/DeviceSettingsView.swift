@@ -76,7 +76,7 @@ public struct DeviceSettingsView: View {
         .font(Theme.TypeScale.note)
         Text(
           model.enabled
-            ? "本机操作不依赖云端，关闭窗口后服务仍在后台运行。"
+            ? "关闭窗口后服务仍在后台运行。"
             : "启用后可执行本机工具，并与其他设备配对。"
         )
         .font(Theme.TypeScale.note)
