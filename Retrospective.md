@@ -560,3 +560,22 @@ optional artifacts for other platforms. A task-private cache then completed
 normal offline `npm ci`, including prepare/hook installation. The lock remained
 unchanged. This is local dependency recovery evidence, not release validation or
 a permanent registry exception. Receipts stay in ignored `.local/device-npm/`.
+
+## 2026-10-29 — Re-signing a candidate does not update its registered helper
+
+The first signed device candidate registered through SMAppService and worked locally
+and against the isolated API. Quitting the App left the same helper and socket alive;
+a fresh write and original-ID query both completed. After staging and replacing that
+candidate with the final window fix, deep/strict verification still passed, but killing
+the old helper did not refresh its registration. launchd rejected the replacement with
+`OS_REASON_CODESIGNING / Launch Constraint Violation` and then reported `EX_CONFIG`.
+
+The ServiceManagement SDK requires re-registering an updated LaunchAgent executable
+and recommends unregistering it first. The existing App device switch already awaits
+unregister before committing the disabled state; enabling it then registers the signed
+bundle again. An external `swift -e` process has the wrong calling bundle context.
+The pending local recovery uses that existing App switch, not a global BTM reset,
+weaker signature requirement, identity deletion or repeated helper kills. Future
+candidate updates must account for this registration boundary as well as file signing.
+Logs remain under `.local/device-evidence/candidate-update-system.log`; this is an
+observed local ad-hoc update failure, not evidence of a distribution-signed update.

@@ -1,5 +1,21 @@
 # 用户视角检查点
 
+## 2026-10-29 13:47 +08 — 本阶段候选收尾与后台注册更新待办
+
+- 已报源码问题全部增量 review 关闭，功能构建 SHA 为 `259614a`。最终独立候选通过
+  deep/strict 签名，内置 Node 原签名及字节保留，Agent 1.1.0、onboarding 仍为 1.0.0。
+- 根 215 项、类型/lint/build、显式设备集成 7 项、独立 Bots 530 项已通过；浏览器
+  191 通过、11 个既有平台条件跳过。App 224 项与 93.4% 逻辑覆盖率、Bots 客户端
+  126 项与 91.5% 覆盖率通过，原阈值均未变。Swift 依赖的既有编译警告未宣称消失。
+- 原候选已自动经 Keychain/helper 注册本地 API 并 online；退出 App 后同 helper PID
+  与 socket inode 仍可完成新写入和原 ID get。随后更新候选产生 macOS Launch Constraint
+  Violation，当前 helper 未恢复；新包签名有效并不自动刷新旧 SMAppService 注册。
+- App 与 Bots 已重新打开，隔离 17053 API 与 Raven 网关可用（gpt-6.1-sol / medium、
+  私有配置 0600）。用户通过已有设备服务开关先关闭、待完成后开启即可由真实 App
+  注销/重新注册；正在等待此手动操作，不重置身份或全局后台数据库。
+- 本阶段在用户试用处停下，不扩展新功能。采集/D1/公网、实际多窗口点击、物理双 Mac、
+  发行签名/公证仍无新增验收；不替换日常 App。具体更新事故保留在根 Retrospective。
+
 ## 2026-10-29 13:36 +08 — 候选后台自动启动与本机执行
 
 - 修复首次 `notFound` 分支后，真实 ad-hoc 候选由 SMAppService 注册，launchd 自动启动

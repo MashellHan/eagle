@@ -97,6 +97,14 @@ App 监督器已从 bundle 解析 Node/Bots 并固定注入 v1 设备 socket；�
 迟到的工厂/目录结果不能复活已关闭窗口或覆盖新连接。局部模型回归先复现重复连接、
 关闭后复活和旧连接覆盖，再验证修复；此证据不替代实际多窗口点击验收。
 
+本阶段交用户试用的功能构建为 `259614a`，独立候选在
+`apps/macos/.build/device-candidate/Eagle Device Candidate.app`。真实首次启动、本机
+离线执行、本地 API 自动认证和退出 App 后 helper 持续执行已有证据，必要门禁通过。
+最终 ad-hoc 包更新后遇到旧 SMAppService 启动约束，需通过现有设备开关完成关闭后
+重新开启来刷新注册；此恢复尚待用户操作，不能把此前 online 证据当作当前就绪。
+隔离本地 API 与 Raven 偏好保留；本阶段停在用户试用，下一功能只在收到反馈后推进。
+物理多 Mac、真实 UI 点击及发行签名/公证仍为未完成边界。
+
 ## Where the code lives
 
 ### Exclusive search providers (2026-10-28)
