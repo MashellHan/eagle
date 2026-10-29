@@ -30,6 +30,10 @@ public struct DeviceSettingsView: View {
           }
         }
       }
+      if model.canRetryService {
+        SettingsActionButton("重启设备服务") { Task { await model.retryService() } }
+          .disabled(model.controlsBusy)
+      }
       if model.localReady && model.enabled {
         policyCard
         pairingCard

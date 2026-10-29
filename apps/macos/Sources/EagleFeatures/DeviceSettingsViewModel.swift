@@ -58,6 +58,7 @@ private struct DeviceServiceState: Decodable {
   let deviceId: String?
   let localReady: Bool
   let cloudStatus: String
+  let error: String?
 }
 
 /// One App-wide control surface. Pairing codes stay in memory; only their hash binds a saved request ID.
@@ -113,6 +114,7 @@ private struct DeviceServiceState: Decodable {
   public var needsBackgroundApproval: Bool { errorCode == "background_approval_required" }
   public var socketPath: String? { enabled && localReady ? control.socketPath : nil }
   public var controlsBusy: Bool { isStarting || isRefreshing || isBusy }
+  public var canRetryService: Bool { enabled && started && !localReady && !isStarting }
   public var errorMessage: String? {
     guard let errorCode else { return nil }
     switch errorCode {
@@ -137,7 +139,7 @@ private struct DeviceServiceState: Decodable {
   }
 
   public func startIfNeeded() async {
-    guard enabled else { return }
+    guard enabled, !stopping, !isBusy else { return }
     if let startTask {
       await startTask.value
       return
@@ -203,19 +205,21 @@ private struct DeviceServiceState: Decodable {
   public func openSystemSettings() { control.openSystemSettings() }
 
   public func refresh() async {
-    guard enabled, started, !isRefreshing else { return }
+    guard enabled, started, !stopping, !isRefreshing else { return }
     isRefreshing = true
     defer { isRefreshing = false }
     var observedStatus = false
     do {
       let status = try await control.call("service.status", params: nil).decoded(
         DeviceServiceState.self)
-      guard enabled else { return }
+      guard enabled, !stopping else { return }
       observedStatus = true
       localReady = status.localReady
       localDeviceId = status.deviceId
       cloudStatus = status.cloudStatus
       guard localReady else {
+        errorCode = status.error.map { DevicePortError($0).code }
+        denyPendingApproval()
         directoryIsStale = true
         return
       }
@@ -234,6 +238,29 @@ private struct DeviceServiceState: Decodable {
       directoryIsStale = true
       record(error)
     }
+  }
+
+  /// Retry the Node child through the already authenticated helper; registration is unchanged.
+  public func retryService() async {
+    guard enabled, started, !stopping, !controlsBusy else { return }
+    isBusy = true
+    denyPendingApproval()
+    defer { isBusy = false }
+    do {
+      _ = try await control.call("service.retry", params: nil)
+      localReady = false
+      cloudStatus = "unknown"
+      directoryIsStale = true
+      errorCode = nil
+      let clock = ContinuousClock()
+      let deadline = clock.now.advanced(by: .seconds(5))
+      while enabled && !stopping && clock.now < deadline {
+        await refresh()
+        if localReady || errorCode != nil { return }
+        try await Task.sleep(for: .milliseconds(100))
+      }
+      if enabled && !stopping { throw DeviceHostError.timeout }
+    } catch { record(error) }
   }
 
   public func setPolicy(_ mode: DevicePolicyState.Mode) async {
@@ -317,7 +344,16 @@ private struct DeviceServiceState: Decodable {
       try acceptPairingResult(result, requestId: requestId)
       await refresh()
     } catch {
-      // Self-pairing can never have committed. Other retry failures retain the uncertain original ID.
+      if !firstAttempt, let port = error as? DevicePortError,
+        ["pairing_unavailable", "pairing_consumed", "pairing_result_expired"].contains(port.code)
+      {
+        let current = try await control.call("directory", params: nil)
+        // The Agent's offline local fallback cannot confirm current Registry membership.
+        guard current["cloudStatus"]?.string != "offline" else { throw DeviceHostError.unavailable }
+        try applyDirectory(current)
+        clearPendingRedemption()
+      }
+      // Self-pairing can never have committed. Network/rate/session uncertainty keeps the ID.
       if let port = error as? DevicePortError,
         port.code == "self_pairing"
           || (firstAttempt
