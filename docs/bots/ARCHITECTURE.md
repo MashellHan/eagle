@@ -48,6 +48,13 @@ selection to all its client factories. They do not re-read the process environme
 after the host has selected an isolated profile; the independent TokenStore still
 accepts an explicit environment without knowing about Eagle profiles.
 
+A host App can assemble the daemon with `node scripts/bundle.ts <destination>`
+from this package. The bundle includes the daemon source/entry and production
+dependencies from its own lock, using npm's approved offline cache after `npm ci`.
+It excludes development configuration, tests and development dependencies. The
+destination must be absent; an unsuccessful assembly removes only the directory
+it created.
+
 ## Host daemon lifecycle
 
 The host's Bots supervisor accepts explicit preferences and environment. It resolves
