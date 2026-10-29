@@ -644,3 +644,29 @@ Verified:
 Next broken hop: `peers` (stage 3). A case cannot prove a real provider — the model is
 scripted — and a case runs with a temporary `XDG_CONFIG_HOME`, so keyed search is
 exercised only by the unit suite. Nothing here runs Herdr.
+
+## 2026-10-29 11:55 — the window drives a real daemon
+
+Observed: the macOS client logic, pointed at a running daemon, sees a Bot's triggers in
+the sidebar with a switch each, toggles one (and the daemon's own event moves the row),
+receives a webhook delivery as a transcript row labelled `Webhook`, and receives a
+schedule fire as a row labelled `定时` — all without a stub.
+
+Verified:
+
+- `Tests/EagleFeaturesTests/LiveDaemonTests.swift`, gated by `BOTS_LIVE_ROOT` and
+  `BOTS_LIVE_PORT`, against a real daemon on `/tmp/live-mac` (a `* * * * *` schedule and
+  a webhook trigger, faux model endpoint): one run passed in 41 s. It asserts the
+  `触发器` section holds both rows with `toggle.isOn == true`, a one-click toggle flips
+  the row to `false` and back (the daemon's `triggers` event is what moves it), a
+  `POST /v1/triggers/<bot>/<trigger>` with the trigger's own token returns 202 and
+  produces a `Webhook` row, and a schedule fire produces a `定时` row.
+- `apps/macos`: 136 + 49 tests green, coverage 95.7%, `build-app.sh` builds.
+  (One performance test flaked while a daemon and a model server were running in the
+  background; it passed once they were stopped.)
+- Before that, the same daemon paths were driven by `npm --prefix apps/bots run eval`
+  (8/8) and by `curl`/a raw WebSocket client.
+
+Next broken hop: nobody has looked at the rendered window — the inline switch and the
+section position are covered by unit tests and this live drive, not by an image review.
+`peers` (stage 3) remains untouched.
