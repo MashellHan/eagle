@@ -68,6 +68,7 @@ type DeviceRow = {
   groupId: string | null;
   membershipEpoch: number;
   credentialVersion: number;
+  localRevision: number;
 };
 type Challenge = {
   id: string;
@@ -83,19 +84,34 @@ type Pairing = {
   revoked: number;
   redeemer: string | null;
   result: string | null;
+  committed: number | null;
 };
 export class DeviceRegistry extends DurableObject {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ctx.storage.sql.exec(`
-    CREATE TABLE IF NOT EXISTS devices(deviceId TEXT PRIMARY KEY,publicKey TEXT NOT NULL,name TEXT NOT NULL,platform TEXT NOT NULL,arch TEXT NOT NULL,groupId TEXT,membershipEpoch INTEGER NOT NULL DEFAULT 0,credentialVersion INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS devices(deviceId TEXT PRIMARY KEY,publicKey TEXT NOT NULL,name TEXT NOT NULL,platform TEXT NOT NULL,arch TEXT NOT NULL,groupId TEXT,membershipEpoch INTEGER NOT NULL DEFAULT 0,credentialVersion INTEGER NOT NULL DEFAULT 1,localRevision INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS groups(groupId TEXT PRIMARY KEY,revision INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS challenges(id TEXT PRIMARY KEY,payload TEXT NOT NULL,registration TEXT NOT NULL,expires INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,deviceId TEXT NOT NULL,version INTEGER NOT NULL,expires INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS pairings(hash TEXT PRIMARY KEY,issuer TEXT NOT NULL,epoch INTEGER NOT NULL,expires INTEGER NOT NULL,revoked INTEGER NOT NULL DEFAULT 0,redeemer TEXT,result TEXT);
+    CREATE TABLE IF NOT EXISTS pairings(hash TEXT PRIMARY KEY,issuer TEXT NOT NULL,epoch INTEGER NOT NULL,expires INTEGER NOT NULL,revoked INTEGER NOT NULL DEFAULT 0,redeemer TEXT,result TEXT,committed INTEGER);
     CREATE TABLE IF NOT EXISTS pairing_results(deviceId TEXT NOT NULL,requestId TEXT NOT NULL,hash TEXT NOT NULL,result TEXT NOT NULL,created INTEGER NOT NULL,PRIMARY KEY(deviceId,requestId));
     CREATE TABLE IF NOT EXISTS rates(key TEXT PRIMARY KEY,count INTEGER NOT NULL,until INTEGER NOT NULL);
   `);
+    for (const [table, column, definition] of [
+      ["devices", "localRevision", "INTEGER NOT NULL DEFAULT 0"],
+      ["pairings", "committed", "INTEGER"],
+    ]) {
+      if (
+        !ctx.storage.sql
+          .exec(`PRAGMA table_info(${table})`)
+          .toArray()
+          .some((row) => row.name === column)
+      )
+        ctx.storage.sql.exec(
+          `ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`,
+        );
+    }
   }
   private one<T extends Record<string, SqlStorageValue>>(
     query: string,
@@ -128,7 +144,9 @@ export class DeviceRegistry extends DurableObject {
   }
   async authenticate(token: string): Promise<Device> {
     if (token.length > 200) throw new DeviceHttpError(401, "invalid_session");
-    const hash = await deviceDigest(token);
+    return this.sessionDevice(await deviceDigest(token));
+  }
+  private sessionDevice(hash: string): DeviceRow {
     const session = this.one<{
       deviceId: string;
       version: number;
@@ -140,6 +158,21 @@ export class DeviceRegistry extends DurableObject {
     if (device.credentialVersion !== session.version)
       throw new DeviceHttpError(401, "revoked_session");
     return device;
+  }
+  private sweep(): void {
+    const now = Date.now();
+    this.ctx.storage.sql.exec(
+      "DELETE FROM pairing_results WHERE created<=?",
+      now - 604800000,
+    );
+    this.ctx.storage.sql.exec(
+      "DELETE FROM pairings WHERE (redeemer IS NULL AND expires<=?) OR (redeemer IS NOT NULL AND (committed IS NULL OR committed<=?))",
+      now,
+      now - 604800000,
+    );
+    this.ctx.storage.sql.exec("DELETE FROM rates WHERE until<=?", now);
+    this.ctx.storage.sql.exec("DELETE FROM sessions WHERE expires<=?", now);
+    this.ctx.storage.sql.exec("DELETE FROM challenges WHERE expires<=?", now);
   }
   async authorize(
     token: string,
@@ -208,12 +241,12 @@ export class DeviceRegistry extends DurableObject {
           "SELECT revision FROM groups WHERE groupId=?",
           self.groupId,
         )?.revision ?? 0)
-      : self.membershipEpoch;
+      : self.localRevision;
     return {
       localDeviceId: id,
       groupId: self.groupId,
       revision,
-      devices: devices.map((device) => ({
+      devices: devices.map(({ localRevision: _revision, ...device }) => ({
         ...device,
         online: null,
         lastSeenAt: null,
@@ -320,6 +353,12 @@ export class DeviceRegistry extends DurableObject {
         );
         if (previous && previous.publicKey !== registration.publicKey)
           throw new DeviceHttpError(409, "identity_conflict");
+        if (
+          !previous &&
+          (this.one<{ count: number }>("SELECT count(*) AS count FROM devices")
+            ?.count ?? 0) >= 10000
+        )
+          throw new DeviceHttpError(429, "device_quota");
         this.ctx.storage.sql.exec(
           "INSERT INTO devices(deviceId,publicKey,name,platform,arch) VALUES(?,?,?,?,?) ON CONFLICT(deviceId) DO UPDATE SET name=excluded.name,platform=excluded.platform,arch=excluded.arch",
           registration.deviceId,
@@ -328,6 +367,22 @@ export class DeviceRegistry extends DurableObject {
           registration.platform,
           registration.arch,
         );
+        if (
+          previous &&
+          (previous.name !== registration.name ||
+            previous.platform !== registration.platform ||
+            previous.arch !== registration.arch)
+        ) {
+          this.ctx.storage.sql.exec(
+            "UPDATE devices SET localRevision=localRevision+1 WHERE deviceId=?",
+            registration.deviceId,
+          );
+          if (previous.groupId)
+            this.ctx.storage.sql.exec(
+              "UPDATE groups SET revision=revision+1 WHERE groupId=?",
+              previous.groupId,
+            );
+        }
         this.ctx.storage.sql.exec(
           "DELETE FROM challenges WHERE id=?",
           input.challengeId,
@@ -346,13 +401,22 @@ export class DeviceRegistry extends DurableObject {
         );
         return device;
       });
-      return deviceJSON({ device, sessionToken, expiresAt });
+      const { localRevision: _revision, ...identity } = device;
+      return deviceJSON({ device: identity, sessionToken, expiresAt });
     }
     const token = request.headers
       .get("authorization")
       ?.match(/^Bearer (.+)$/)?.[1];
     if (!token) throw new DeviceHttpError(401, "session_required");
-    const self = await this.authenticate(token);
+    if (token.length > 200) throw new DeviceHttpError(401, "invalid_session");
+    const sessionHash = await deviceDigest(token);
+    const self = this.sessionDevice(sessionHash);
+    const write = <T>(action: (current: DeviceRow) => T): T =>
+      this.ctx.storage.transactionSync(() => {
+        const current = this.sessionDevice(sessionHash);
+        this.sweep();
+        return action(current);
+      });
     if (path === "/directory" && request.method === "GET")
       return deviceJSON(await this.observedDirectory(self.deviceId));
     if (path === "/pairings" && post) {
@@ -360,15 +424,16 @@ export class DeviceRegistry extends DurableObject {
       const code = deviceBase64(crypto.getRandomValues(new Uint8Array(32)));
       const hash = await deviceDigest(code);
       const expiresAt = Date.now() + ttlSeconds * 1000;
-      this.limit(`invite:${self.deviceId}`, 20);
-      const current = this.device(self.deviceId);
-      this.ctx.storage.sql.exec(
-        "INSERT INTO pairings(hash,issuer,epoch,expires) VALUES(?,?,?,?)",
-        hash,
-        self.deviceId,
-        current.membershipEpoch,
-        expiresAt,
-      );
+      write((current) => {
+        this.limit(`invite:${current.deviceId}`, 20);
+        this.ctx.storage.sql.exec(
+          "INSERT INTO pairings(hash,issuer,epoch,expires) VALUES(?,?,?,?)",
+          hash,
+          self.deviceId,
+          current.membershipEpoch,
+          expiresAt,
+        );
+      });
       return deviceJSON({ code, expiresAt });
     }
     if (path === "/pairings/revoke" && post) {
@@ -376,16 +441,18 @@ export class DeviceRegistry extends DurableObject {
         .strictObject({ code: PairingCode })
         .parse(await deviceBody(request));
       const hash = await deviceDigest(code);
-      const pairing = this.one<Pairing>(
-        "SELECT * FROM pairings WHERE hash=?",
-        hash,
-      );
-      if (!pairing || pairing.issuer !== self.deviceId)
-        throw new DeviceHttpError(404, "pairing_not_found");
-      this.ctx.storage.sql.exec(
-        "UPDATE pairings SET revoked=1 WHERE hash=?",
-        hash,
-      );
+      write(() => {
+        const pairing = this.one<Pairing>(
+          "SELECT * FROM pairings WHERE hash=?",
+          hash,
+        );
+        if (!pairing || pairing.issuer !== self.deviceId)
+          throw new DeviceHttpError(404, "pairing_not_found");
+        this.ctx.storage.sql.exec(
+          "UPDATE pairings SET revoked=1 WHERE hash=?",
+          hash,
+        );
+      });
       return deviceJSON({ revoked: true });
     }
     if (path === "/pairings/redeem" && post) {
@@ -393,12 +460,8 @@ export class DeviceRegistry extends DurableObject {
         await deviceBody(request),
       );
       const hash = await deviceDigest(code);
-      this.limit(`redeem:${self.deviceId}`, 30);
-      const result = this.ctx.storage.transactionSync(() => {
-        this.ctx.storage.sql.exec(
-          "DELETE FROM pairing_results WHERE created<?",
-          Date.now() - 604800000,
-        );
+      const result = write(() => {
+        this.limit(`redeem:${self.deviceId}`, 30);
         const previous = this.one<{ hash: string; result: string }>(
           "SELECT hash,result FROM pairing_results WHERE deviceId=? AND requestId=?",
           self.deviceId,
@@ -417,6 +480,8 @@ export class DeviceRegistry extends DurableObject {
         if (pairing.redeemer) {
           if (pairing.redeemer !== self.deviceId || !pairing.result)
             throw new DeviceHttpError(409, "pairing_consumed");
+          if (!pairing.committed || pairing.committed <= Date.now() - 604800000)
+            throw new DeviceHttpError(410, "pairing_result_expired");
           const recovered = JSON.stringify({
             ...JSON.parse(pairing.result),
             requestId,
@@ -427,7 +492,7 @@ export class DeviceRegistry extends DurableObject {
             requestId,
             hash,
             recovered,
-            Date.now(),
+            pairing.committed,
           );
           return recovered;
         }
@@ -457,7 +522,7 @@ export class DeviceRegistry extends DurableObject {
         for (const device of [issuer, redeemer])
           if (device.groupId !== groupId) {
             this.ctx.storage.sql.exec(
-              "UPDATE devices SET groupId=?,membershipEpoch=membershipEpoch+1 WHERE deviceId=?",
+              "UPDATE devices SET groupId=?,membershipEpoch=membershipEpoch+1,localRevision=localRevision+1 WHERE deviceId=?",
               groupId,
               device.deviceId,
             );
@@ -468,11 +533,13 @@ export class DeviceRegistry extends DurableObject {
             "UPDATE groups SET revision=revision+1 WHERE groupId=?",
             groupId,
           );
+        const committed = Date.now();
         const result = JSON.stringify({ requestId, groupId });
         this.ctx.storage.sql.exec(
-          "UPDATE pairings SET redeemer=?,result=? WHERE hash=?",
+          "UPDATE pairings SET redeemer=?,result=?,committed=? WHERE hash=?",
           self.deviceId,
           result,
+          committed,
           hash,
         );
         this.ctx.storage.sql.exec(
@@ -481,7 +548,7 @@ export class DeviceRegistry extends DurableObject {
           requestId,
           hash,
           result,
-          Date.now(),
+          committed,
         );
         return result;
       });
@@ -494,7 +561,7 @@ export class DeviceRegistry extends DurableObject {
         self.deviceId,
         requestId,
       );
-      if (!result || result.created < Date.now() - 604800000)
+      if (!result || result.created <= Date.now() - 604800000)
         throw new DeviceHttpError(404, "result_not_found");
       return deviceJSON(this.result(self.deviceId, result.result));
     }
@@ -502,8 +569,7 @@ export class DeviceRegistry extends DurableObject {
       const { deviceId } = z
         .strictObject({ deviceId: DeviceId })
         .parse(await deviceBody(request));
-      this.ctx.storage.transactionSync(() => {
-        const source = this.device(self.deviceId);
+      write((source) => {
         const target = this.device(deviceId);
         if (!source.groupId || source.groupId !== target.groupId)
           throw new DeviceHttpError(403, "different_group");
@@ -512,7 +578,7 @@ export class DeviceRegistry extends DurableObject {
           target.groupId,
         );
         this.ctx.storage.sql.exec(
-          "UPDATE devices SET groupId=NULL,membershipEpoch=membershipEpoch+1,credentialVersion=credentialVersion+1 WHERE deviceId=?",
+          "UPDATE devices SET groupId=NULL,membershipEpoch=membershipEpoch+1,credentialVersion=credentialVersion+1,localRevision=localRevision+1 WHERE deviceId=?",
           deviceId,
         );
       });

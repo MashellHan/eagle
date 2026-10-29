@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
@@ -12,6 +13,7 @@ type ApiBody = {
   sessionToken: string;
   code: string;
   groupId: string | null;
+  revision: number;
   devices: { deviceId: string; online: boolean | null; policy: unknown }[];
   directory: { devices: { deviceId: string }[] };
 };
@@ -35,8 +37,8 @@ before(async () => {
     ],
     { stdio: "pipe" },
   );
-  mf = new Miniflare(
-    convertV4MiniflareOptions({
+  mf = new Miniflare({
+    ...convertV4MiniflareOptions({
       workers: [
         {
           name: "eagle",
@@ -54,7 +56,8 @@ before(async () => {
         },
       ],
     }),
-  );
+    unsafeInspectDurableObjects: true,
+  });
   await mf.ready;
 });
 after(async () => {
@@ -350,4 +353,190 @@ test("real outbound WebSockets execute bidirectionally with original-ID dedup an
     await Promise.all([cloudA.close(), cloudB.close()]);
     await Promise.all([runtimeA.close(), runtimeB.close()]);
   }
+});
+
+test("slow management body cannot outlive session revocation or expiry", async () => {
+  for (const expire of [false, true]) {
+    const [a, b] = await Promise.all([
+      identity(`slow-a-${expire}`),
+      identity(`slow-b-${expire}`),
+    ]);
+    await pair(a.token, await code(b.token));
+    const storage = await mf.unsafeGetDurableObjectStorage(
+      "eagle",
+      "DeviceRegistry",
+      { name: "registry" },
+    );
+    const before = await storage.exec("SELECT count(*) n FROM pairings");
+    const response = new Promise<{ status: number; body: string }>(
+      (resolveResponse, reject) => {
+        const req = httpRequest(
+          new URL("/api/devices/v1/pairings", awaitOrigin),
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${a.token}`,
+              "content-type": "application/json",
+            },
+          },
+          (res) => {
+            let body = "";
+            res.on("data", (data) => (body += data.toString()));
+            res.on("end", () =>
+              resolveResponse({ status: res.statusCode ?? 0, body }),
+            );
+          },
+        );
+        req.on("error", reject);
+        req.write('{"ttlSeconds":');
+        void (async () => {
+          await new Promise((resolve) => setTimeout(resolve, 70));
+          if (expire)
+            await storage.exec(
+              "UPDATE sessions SET expires=0 WHERE deviceId=?",
+              a.deviceId,
+            );
+          else
+            assert.equal(
+              (await call("/members/remove", b.token, { deviceId: a.deviceId }))
+                .status,
+              200,
+            );
+          req.end("3600}");
+        })().catch(reject);
+      },
+    );
+    const result = await response;
+    assert.equal(result.status, 401, result.body);
+    const after = await storage.exec("SELECT count(*) n FROM pairings");
+    assert.equal(after[0].n, before[0].n);
+  }
+});
+let awaitOrigin: string;
+before(async () => {
+  awaitOrigin = (await mf.ready).origin;
+});
+
+test("registration metadata changes advance grouped and ungrouped directory revision", async () => {
+  const [a, b] = await Promise.all([
+    identity("metadata-a"),
+    identity("metadata-b"),
+  ]);
+  async function rename(name: string) {
+    const challenge = await call("/register/challenge", undefined, {
+      deviceId: a.deviceId,
+      publicKey: a.publicKey,
+      name,
+      platform: "darwin",
+      arch: "arm64",
+    });
+    return call("/register/complete", undefined, {
+      challengeId: challenge.body.challengeId,
+      signature: sign(
+        null,
+        Buffer.from(challenge.body.payload),
+        a.keys.privateKey,
+      ).toString("base64url"),
+    });
+  }
+  const ungrouped = (await call("/directory", a.token)).body.revision;
+  assert.equal((await rename("renamed-alone")).status, 200);
+  assert((await call("/directory", a.token)).body.revision > ungrouped);
+  await pair(a.token, await code(b.token));
+  const grouped = (await call("/directory", b.token)).body.revision;
+  assert.equal((await rename("renamed-grouped")).status, 200);
+  assert((await call("/directory", b.token)).body.revision > grouped);
+});
+
+test("registration complete rechecks deployment quota after a challenge was issued", async () => {
+  const keys = generateKeyPairSync("ed25519");
+  const deviceId = randomUUID();
+  const publicKey = keys.publicKey
+    .export({ type: "spki", format: "der" })
+    .toString("base64url");
+  const challenge = await call("/register/challenge", undefined, {
+    deviceId,
+    publicKey,
+    name: "quota-new",
+    platform: "darwin",
+    arch: "arm64",
+  });
+  assert.equal(challenge.status, 200);
+  const storage = await mf.unsafeGetDurableObjectStorage(
+    "eagle",
+    "DeviceRegistry",
+    { name: "registry" },
+  );
+  await storage.exec(
+    "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<10000-(SELECT count(*) FROM devices)) INSERT INTO devices(deviceId,publicKey,name,platform,arch) SELECT 'quota-fixture-'||n,'unused','quota-fixture','test','test' FROM seq",
+  );
+  try {
+    const response = await call("/register/complete", undefined, {
+      challengeId: challenge.body.challengeId,
+      signature: sign(
+        null,
+        Buffer.from(challenge.body.payload),
+        keys.privateKey,
+      ).toString("base64url"),
+    });
+    assert.equal(response.status, 429);
+    assert.equal(
+      (
+        await storage.exec(
+          "SELECT count(*) n FROM devices WHERE deviceId=?",
+          deviceId,
+        )
+      )[0].n,
+      0,
+    );
+  } finally {
+    await storage.exec("DELETE FROM devices WHERE name='quota-fixture'");
+  }
+});
+
+test("pairing aliases retain original commit deadline and expired unused invitations are swept", async () => {
+  const [a, b] = await Promise.all([
+    identity("retention-a"),
+    identity("retention-b"),
+  ]);
+  const invitation = await code(b.token);
+  const firstId = randomUUID();
+  assert.equal((await pair(a.token, invitation, firstId)).status, 200);
+  const storage = await mf.unsafeGetDurableObjectStorage(
+    "eagle",
+    "DeviceRegistry",
+    { name: "registry" },
+  );
+  const old = Date.now() - 604800001;
+  const columns = await storage.exec("PRAGMA table_info(pairings)");
+  assert(
+    columns.some((column) => column.name === "committed"),
+    "consumed invitations need original commit timestamp",
+  );
+  await storage.exec(
+    "UPDATE pairings SET committed=? WHERE redeemer=?",
+    old,
+    a.deviceId,
+  );
+  await storage.exec(
+    "UPDATE pairing_results SET created=? WHERE deviceId=?",
+    old,
+    a.deviceId,
+  );
+  assert.equal((await pair(a.token, invitation)).status, 410);
+  assert.equal(
+    (await call(`/pairings/results/${firstId}`, a.token)).status,
+    404,
+  );
+  const expired = await code(a.token);
+  const { deviceDigest } = await import("../packages/contracts/src/devices.ts");
+  const hash = await deviceDigest(expired);
+  await storage.exec("UPDATE pairings SET expires=0 WHERE hash=?", hash);
+  await code(a.token);
+  assert.equal(
+    (
+      await storage.exec("SELECT count(*) n FROM pairings WHERE hash=?", hash)
+    )[0].n,
+    0,
+  );
 });
