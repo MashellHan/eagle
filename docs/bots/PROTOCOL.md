@@ -216,6 +216,7 @@ It is a whole-list replacement, never a delta; an empty list means the Bot has n
 - Order is creation order, so a re-render cannot reshuffle rows.
 - The `triggers` capability is `true`. A client that predates the field ignores it, and a
   daemon without trigger storage omits the field rather than inventing an empty list.
+- Normative sample: `triggers.server.json`.
 
 ## Per-bot agent
 

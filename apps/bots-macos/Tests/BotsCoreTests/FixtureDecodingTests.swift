@@ -32,6 +32,7 @@ final class FixtureDecodingTests: XCTestCase {
     "submission.server.json",
     "submission.connection.server.json",
     "bots.server.json",
+    "triggers.server.json",
     "error.server.json",
     "error-rejected.server.json",
     "version-mismatch.server.json",

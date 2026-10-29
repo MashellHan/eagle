@@ -13,6 +13,8 @@ public enum ConversationEvent: Sendable, Equatable {
   case history(page: HistoryPage)
   /// The whole live-task list of the bot; an empty list means nothing runs.
   case tasks([TaskSummary])
+  /// The bot's own triggers, whole-list replacement (PROTOCOL.md, "Triggers").
+  case triggers([TriggerSummary])
   /// Tokens and cost so far, whenever the daemon's totals move.
   case usage(Usage)
   case catalog(BotCatalog)
@@ -136,4 +138,28 @@ public struct ClientError: Error, Sendable, CustomStringConvertible {
   }
 
   public var description: String { message }
+}
+
+/// One trigger's read-only detail plus the person's only mutation (docs/bots/TRIGGERS.md
+/// §8.3). The daemon's bearer authenticates it; a credential never crosses this port.
+public struct TriggerDetail: Sendable, Equatable, Identifiable {
+  public var summary: TriggerSummary
+  /// The Bot's standing instruction, shown read-only.
+  public var prompt: String
+  /// Where a webhook delivers, without its credential; nil for a schedule.
+  public var endpoint: String?
+
+  public init(summary: TriggerSummary, prompt: String, endpoint: String? = nil) {
+    self.summary = summary
+    self.prompt = prompt
+    self.endpoint = endpoint
+  }
+
+  public var id: String { summary.id }
+}
+
+public protocol TriggerPort: AnyObject, Sendable {
+  func list(botId: String) async throws -> [TriggerDetail]
+  /// Switching is the only mutation a person may perform.
+  func setEnabled(botId: String, triggerId: String, enabled: Bool) async throws -> TriggerDetail
 }
