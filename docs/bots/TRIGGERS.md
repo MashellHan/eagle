@@ -436,8 +436,9 @@ records, so `Message.requestId` is not reliable after a restart (RUNTIME.md,
 | --- | --- |
 | Write-ahead | `{requestId, origin}` lands before `invoke`; a failed write refuses the admission |
 | Backfill | When the submission names `entryId`, a second record appends with it |
-| Replay | On open the file folds `entryId → origin`, last record wins; malformed lines are dropped with one log line |
+| Replay | On open the file folds `entryId → origin`, last record wins; malformed lines are dropped and reported once (`core.origin.replay.degrade`) |
 | Coverage | Every admission is recorded, including `human`; absence therefore means `unknown`, never `human` |
+| Lookup | By entry id first, then by request id: a live append is labelled before its entry id exists, and an old message is labelled after a restart |
 | Cap | 20 000 records; beyond it the oldest are trimmed and their messages render as `unknown` |
 
 No revision-based pruning: a page boundary does not prove an entry is deleted
@@ -472,8 +473,9 @@ A test asserts the four paths agree on one message.
 - `label` is the trigger's `name`, or the sender Bot's title for `peer`; clients
   must not depend on it for logic.
 - `{kind:"unknown"}` renders as a plain user message with no chip.
-- Absent `origin` in a decode normalizes to `unknown`, so fixtures recorded before
-  this lands stay valid.
+- A client that receives no `origin` renders `unknown` (a plain user message, no
+  chip). The daemon does not invent one for an older entry, so a fixture recorded
+  before this lands stays valid, and absence never reads as `human`.
 
 ### 6.3a The live user append has no identity yet
 

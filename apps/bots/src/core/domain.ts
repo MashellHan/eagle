@@ -59,6 +59,18 @@ export type ToolResultBlock = {
 export type ContentBlock = TextBlock | ThinkingBlock | ToolCallBlock | ToolResultBlock;
 
 export type MessageRole = "user" | "assistant" | "notice" | "tool" | "system";
+
+/**
+ * Who admitted the input that produced a user message (docs/bots/TRIGGERS.md §6). Absent
+ * means the daemon has no record — an older message, or one it never admitted — and the
+ * wire reports that as `unknown`, never as `human`.
+ */
+export type MessageOrigin =
+  | { readonly kind: "human"; readonly label?: string }
+  | { readonly kind: "schedule"; readonly triggerId?: string; readonly label?: string }
+  | { readonly kind: "webhook"; readonly triggerId?: string; readonly label?: string }
+  | { readonly kind: "peer"; readonly fromBotId?: string; readonly label?: string }
+  | { readonly kind: "unknown"; readonly label?: string };
 export type MessageState = "streaming" | "complete" | "aborted" | "error";
 
 export type Message = {
@@ -69,6 +81,8 @@ export type Message = {
   readonly blocks: readonly ContentBlock[];
   /** User messages only: ties the committed entry to the `send` that caused it. */
   readonly requestId?: string;
+  /** User messages only: who admitted this input, when the daemon recorded it. */
+  readonly origin?: MessageOrigin;
   readonly stopReason?: StopReason;
 };
 

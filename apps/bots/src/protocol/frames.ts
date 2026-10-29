@@ -12,6 +12,7 @@ import type {
   ErrorKind,
   InboxItem,
   Message,
+  MessageOrigin,
   MessageRole,
   MessageState,
   StopReason,
@@ -342,6 +343,17 @@ const decodeBlock = (ctx: Ctx, raw: unknown): ContentBlock => {
   return fail(ctx, `unknown block type ${type}`);
 };
 
+const ORIGIN_KINDS = ["human", "schedule", "webhook", "peer", "unknown"] as const;
+
+/** Additive (PROTOCOL.md v1): a client that predates `origin` simply never sees it. */
+const decodeOrigin = (ctx: Ctx, raw: unknown): MessageOrigin => {
+  if (!isObject(raw)) fail(ctx, "message.origin must be an object");
+  const kind = oneOf(ctx, raw.kind, ORIGIN_KINDS, "message.origin.kind");
+  const label =
+    raw.label === undefined ? undefined : anyStr(ctx, raw.label, "message.origin.label");
+  return { kind, ...(label === undefined ? {} : { label }) } as MessageOrigin;
+};
+
 const decodeMessage = (ctx: Ctx, raw: unknown): Message => {
   if (!isObject(raw)) fail(ctx, "message must be an object");
   const role = oneOf(ctx, raw.role, ROLES, "message.role");
@@ -357,6 +369,10 @@ const decodeMessage = (ctx: Ctx, raw: unknown): Message => {
     raw.stopReason === undefined
       ? undefined
       : oneOf(ctx, raw.stopReason, STOP_REASONS, "message.stopReason");
+  const origin = raw.origin === undefined ? undefined : decodeOrigin(ctx, raw.origin);
+  if (origin !== undefined && role !== "user") {
+    fail(ctx, "origin belongs to user messages only");
+  }
   return {
     id: str(ctx, raw.id, "message.id"),
     role,
@@ -365,6 +381,7 @@ const decodeMessage = (ctx: Ctx, raw: unknown): Message => {
     blocks: arr(ctx, raw.blocks, "message.blocks").map((b) => decodeBlock(ctx, b)),
     ...(requestId === undefined ? {} : { requestId }),
     ...(stopReason === undefined ? {} : { stopReason }),
+    ...(origin === undefined ? {} : { origin }),
   };
 };
 

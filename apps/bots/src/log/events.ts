@@ -61,6 +61,7 @@ export const EVENTS = {
   "core.singleton.start": true,
   "core.singleton.ok": true,
   "core.singleton.fail": true,
+  "core.origin.replay.degrade": true,
   "core.recovery.start": true,
   "core.recovery.bot.ok": true,
   "core.recovery.bot.fail": true,

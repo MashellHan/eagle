@@ -15,6 +15,7 @@ import {
   resolveToolGroups,
 } from "./core/domain.ts";
 import { newFailure } from "./core/failures.ts";
+import { OriginStore, originPath } from "./core/OriginStore.ts";
 import type { RuntimeEvent } from "./core/RuntimePort.ts";
 import { declareEvent } from "./log/events.ts";
 import { Log } from "./log/log.ts";
@@ -78,6 +79,7 @@ const StartupEvents = {
   singletonStart: declareEvent("core.singleton.start"),
   singletonOk: declareEvent("core.singleton.ok"),
   singletonFail: declareEvent("core.singleton.fail"),
+  originReplayDegrade: declareEvent("core.origin.replay.degrade"),
 } as const;
 
 export const measureEvent = (event: RuntimeEvent): number =>
@@ -209,6 +211,22 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     lease: {
       acquire: (botId) => registry.touch(botId),
       release: (botId) => registry.release(botId),
+    },
+    // Every admission is labelled, so an unlabelled message means "unknown", never
+    // "human" (TRIGGERS.md §6.2). One file per bot, under its own directory.
+    origins: {
+      store: async (botId) => {
+        const store = await OriginStore.open(originPath(directory.botDir(botId)));
+        if (store.dropped > 0) {
+          log.emit("warn", "core", StartupEvents.originReplayDegrade, {
+            trace: "tr_origin_load_0001",
+            botId,
+            failure: newFailure("internal", "core"),
+            detail: { count: store.dropped },
+          });
+        }
+        return store;
+      },
     },
     onRunning: (botId, running) => {
       if (registry.markRunning(botId, running)) broadcast?.();

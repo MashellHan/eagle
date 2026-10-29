@@ -8,6 +8,7 @@ import { WebSocket } from "ws";
 import { BotDirectory, nodeDirectoryFs } from "../../src/core/BotDirectory.ts";
 import { BotRegistry, type RegistryOptions } from "../../src/core/BotRegistry.ts";
 import { ConversationService } from "../../src/core/ConversationService.ts";
+import { OriginStore, originPath } from "../../src/core/OriginStore.ts";
 import type { RuntimePort } from "../../src/core/RuntimePort.ts";
 import { captureLog, type LogRecord } from "../../src/log/log.ts";
 import { measureEvent } from "../../src/main.ts";
@@ -167,6 +168,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
       acquire: (botId) => registry.touch(botId),
       release: (botId) => registry.release(botId),
     },
+    origins: { store: async (botId) => OriginStore.open(originPath(directory.botDir(botId))) },
     onRunning: (botId, running) => {
       if (registry.markRunning(botId, running)) broadcast?.();
     },

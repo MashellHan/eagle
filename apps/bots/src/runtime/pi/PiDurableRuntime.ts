@@ -954,6 +954,7 @@ class PiRuntimeHandle implements RuntimeHandle {
   async #consume(state: Subscription, batch: readonly AgentEvent[], trace: string): Promise<void> {
     // A user entry is published before the record that names its send, so attribute the
     // whole batch first and then map it.
+    this.#mapper.prime(batch);
     const byEntry = new Map<string, string>();
     for (const event of batch) {
       if (event.type !== "submission") continue;

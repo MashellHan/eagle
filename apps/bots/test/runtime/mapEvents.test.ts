@@ -1098,3 +1098,55 @@ const hasAbortedModel = (entry: unknown) => {
   const model = (entry as { model?: { stopReason?: string }[] }).model;
   return model?.[0]?.stopReason === "aborted";
 };
+
+test("priming a commit batch labels the user append with its request id", () => {
+  // A user entry is committed in the same batch as the record that names its send, and
+  // pi publishes the entry first. Priming the batch is what lets the published append
+  // carry the id instead of arriving blind (TRIGGERS.md §6.3a).
+  const batch = [
+    {
+      type: "message_end",
+      entry: {
+        model: [{ role: "user", content: "hello", timestamp: 1 }],
+        kind: "pi.user",
+        id: 7,
+        conversationId: 1,
+      },
+    },
+    {
+      type: "submission",
+      record: {
+        conversationId: 1,
+        requestId: "r_0000005",
+        type: "input",
+        status: "placed",
+        entry: 7,
+        id: 8,
+      },
+    },
+  ];
+  const blind = new EventMapper({ botId: "b_golden", now: fixedClock });
+  const unprimed = batch
+    .flatMap((event) => blind.map(event as never, trace))
+    .find((event) => event.type === "append");
+  assert.equal(
+    unprimed?.type === "append" ? unprimed.message.requestId : "missing",
+    undefined,
+    "without priming the append cannot know its request id",
+  );
+
+  const primed = new EventMapper({ botId: "b_golden", now: fixedClock });
+  primed.prime(batch as never);
+  const events = batch.flatMap((event) => primed.map(event as never, trace));
+  const append = events.find((event) => event.type === "append");
+  assert.equal(
+    append?.type === "append" ? append.message.requestId : undefined,
+    "r_0000005",
+    "the primed append carries the id of the send that caused it",
+  );
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["append", "submission"],
+    "the wire order stays append before submission",
+  );
+});

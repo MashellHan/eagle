@@ -44,6 +44,13 @@ export const encodeMessage = (m: Message): Wire => {
   };
   if (m.requestId !== undefined) wire.requestId = m.requestId;
   if (m.stopReason !== undefined) wire.stopReason = m.stopReason;
+  // The wire carries what a client renders. Internal ids stay in the daemon.
+  if (m.origin !== undefined) {
+    wire.origin = {
+      kind: m.origin.kind,
+      ...(m.origin.label === undefined ? {} : { label: m.origin.label }),
+    };
+  }
   return wire;
 };
 

@@ -22,6 +22,7 @@ import {
   type InvocationPort,
   MAX_INVOCATION_TEXT,
 } from "./Invocation.ts";
+import type { OriginStore } from "./OriginStore.ts";
 import type { RuntimeEvent, RuntimeHandle, RuntimeHistory, SubmitInput } from "./RuntimePort.ts";
 import { reduceView, type SubmissionRanks, seedRanks, trimWindow } from "./view.ts";
 
@@ -91,6 +92,13 @@ export type ConversationServiceOptions = {
     readonly acquire: (botId: string) => boolean;
     readonly release: (botId: string) => void;
   };
+  /**
+   * The per-bot origin record (docs/bots/TRIGGERS.md §6). Absent means the daemon does not
+   * label admissions, which is the phase-1 behavior; every caller still works.
+   */
+  readonly origins?: {
+    readonly store: (botId: string) => Promise<OriginStore | undefined>;
+  };
 };
 
 /** Only `not_admitted` lets a client drop its outbox entry (docs/bots/PROTOCOL.md). */
@@ -125,6 +133,8 @@ type Bot = {
   detach: (() => void) | undefined;
   /** Publishes what the runtime delivered while the first subscription was rendering. */
   readonly release: () => void;
+  /** Where this bot's admission origins are read and written, when the daemon records them. */
+  origins: OriginStore | undefined;
 };
 
 type Connection = {
@@ -155,6 +165,7 @@ export class ConversationService implements InvocationPort {
   readonly #onRecovered: ((botId: string, running: boolean) => void) | undefined;
   readonly #onUsage: ((botId: string, usage: Usage) => void) | undefined;
   readonly #lease: ConversationServiceOptions["lease"];
+  readonly #origins: ConversationServiceOptions["origins"];
   /** Resolved views by bot id, so `observe` can answer synchronously without opening. */
   readonly #current = new Map<string, Bot>();
   /** Invocation observers, keyed by bot id and bound to the value, not to one Bot object. */
@@ -188,6 +199,7 @@ export class ConversationService implements InvocationPort {
     this.#onRecovered = options.onRecovered;
     this.#onUsage = options.onUsage;
     this.#lease = options.lease;
+    this.#origins = options.origins;
     this.#hubOptions = {
       measure: options.measure,
       ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
@@ -395,6 +407,9 @@ export class ConversationService implements InvocationPort {
         }
         leased = true;
       }
+      // Write-ahead: the label must exist before the entry does, or a restart would leave
+      // a message whose cause is unknown forever (TRIGGERS.md §6.2).
+      await this.#recordOrigin(botId, input);
       const record = await this.#admit(botId, {
         requestId: input.requestId,
         text: input.text,
@@ -419,8 +434,57 @@ export class ConversationService implements InvocationPort {
     }
   }
 
-  /**
-   * Refuses what can never be admitted before any runtime call: the key alphabet and the
+  /** A broken sidecar must not make a bot unusable: its labels fall back to `unknown`. */
+  async #openOrigins(botId: string, trace: string): Promise<OriginStore | undefined> {
+    void trace;
+    if (this.#origins === undefined) return undefined;
+    return this.#origins.store(botId).catch(() => undefined);
+  }
+
+  /** The bot's origin record, loaded once per bot and cached on its view. */
+  async #originsFor(botId: string): Promise<OriginStore | undefined> {
+    if (this.#origins === undefined) return undefined;
+    const bot = await this.#bot(botId, "tr_origin_load_0001");
+    return bot.origins;
+  }
+
+  /** A failed origin write refuses the admission: an unlabeled entry is worse than none. */
+  async #recordOrigin(botId: string, input: Invocation): Promise<void> {
+    if (this.#origins === undefined) return;
+    const store = await this.#originsFor(botId);
+    if (store === undefined) return;
+    try {
+      await store.record({ requestId: input.requestId, origin: input.origin });
+    } catch (cause) {
+      throw new CommandError(
+        this.#mint("storage_failed"),
+        "runtime",
+        "the admission origin could not be recorded",
+        input.requestId,
+        { cause },
+      );
+    }
+  }
+
+  /** Attaches the recorded origin, by entry id and then by request id (TRIGGERS.md §6.2). */
+  #withOrigin(message: Message, store: OriginStore | undefined): Message {
+    if (store === undefined || message.role !== "user") return message;
+    const origin = store.originOf(message);
+    return origin === undefined ? message : { ...message, origin };
+  }
+
+  #withOrigins(view: ConversationSnapshot, store: OriginStore | undefined): ConversationSnapshot {
+    if (store === undefined) return view;
+    let changed = false;
+    const messages = view.messages.map((message) => {
+      const next = this.#withOrigin(message, store);
+      if (next !== message) changed = true;
+      return next;
+    });
+    return changed ? { ...view, messages } : view;
+  }
+
+  /** Refuses what can never be admitted before any runtime call: the key alphabet and the
    * send budget mirror the wire contract, and a non-human caller may not interrupt a run.
    */
   #assertInvocation(input: Invocation): void {
@@ -529,8 +593,9 @@ export class ConversationService implements InvocationPort {
       const kept: Message[] = [];
       let bytes = 0;
       for (let index = page.messages.length - 1; index >= 0; index -= 1) {
-        const message = page.messages[index];
-        if (message === undefined) break;
+        const raw = page.messages[index];
+        if (raw === undefined) break;
+        const message = this.#withOrigin(raw, this.#current.get(botId)?.origins);
         const size = this.#measureMessage(message);
         if (kept.length >= MAX_WINDOW_MESSAGES || bytes + size > MAX_PAGE_BYTES) break;
         kept.push(message);
@@ -924,6 +989,8 @@ export class ConversationService implements InvocationPort {
     try {
       const handle = await this.#open(botId, trace);
       const bot = await this.#attach(handle, hub, trace);
+      bot.origins = await this.#openOrigins(botId, trace);
+      if (bot.origins !== undefined) bot.snapshot = this.#withOrigins(bot.snapshot, bot.origins);
       // The view is live whether or not a client ever subscribes: a port caller must see
       // commits, and `subscribe` re-reads the snapshot synchronously before publishing its
       // baseline, so nothing can be lost between the two.
@@ -954,6 +1021,7 @@ export class ConversationService implements InvocationPort {
         reserved: new Map<string, number>(),
         detach: undefined,
         release: () => undefined,
+        origins: undefined,
       };
     }
   }
@@ -962,10 +1030,27 @@ export class ConversationService implements InvocationPort {
     const buffered: RuntimeEvent[] = [];
     let ready = false;
     let bot: Bot;
-    const apply = (event: RuntimeEvent): void => {
+    const enrich = (event: RuntimeEvent): RuntimeEvent => {
+      const store = bot.origins;
+      if (store === undefined) return event;
+      if (event.type === "append")
+        return { ...event, message: this.#withOrigin(event.message, store) };
+      if (event.type === "snapshot")
+        return { ...event, value: this.#withOrigins(event.value, store) };
+      return event;
+    };
+    const apply = (incoming: RuntimeEvent): void => {
+      const event = enrich(incoming);
       const wasRunning = bot.snapshot.running;
       if (event.type === "usage") this.#onUsage?.(bot.snapshot.botId, event.usage);
-      if (event.type === "submission") bot.reserved.delete(event.record.requestId);
+      if (event.type === "submission") {
+        bot.reserved.delete(event.record.requestId);
+        // The entry id is durable now, so the label becomes reachable after a restart.
+        const { requestId, entryId } = event.record;
+        if (entryId !== undefined && bot.origins !== undefined) {
+          void bot.origins.backfill({ requestId, entryId }).catch(() => undefined);
+        }
+      }
       let next = reduceView(bot.snapshot, event, bot.ranks);
       if (
         event.type === "error" &&

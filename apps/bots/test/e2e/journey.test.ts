@@ -322,3 +322,52 @@ test("a bot joining mid-answer receives the partial in the snapshot", async () =
     await stack.close();
   }
 });
+
+test("a client send is labelled human in the frame that carries it", async () => {
+  const stack = await startStack({
+    script: {
+      onSubmit: (input) => [
+        {
+          type: "append",
+          trace: input.trace,
+          message: {
+            id: "e_labelled",
+            role: "user",
+            state: "complete",
+            createdAt: "2026-10-28T00:00:00.000Z",
+            requestId: input.requestId,
+            blocks: [{ type: "text", text: input.text }],
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const botId = await stack.createBot("labelled");
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    await send(socket, { type: "subscribe", botId, trace: tr("label1") });
+    await frames.next();
+
+    await send(socket, {
+      type: "send",
+      requestId: "r_labelled_0001",
+      text: "who sent this",
+      whenBusy: "followUp",
+      trace: tr("label2"),
+    });
+    const origins: unknown[] = [];
+    for (;;) {
+      const frame = await frames.next();
+      if (frame.type !== "append") continue;
+      origins.push((frame.message as { origin?: unknown }).origin);
+      break;
+    }
+    assert.deepEqual(origins, [{ kind: "human" }], "the append names the person who sent it");
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});
