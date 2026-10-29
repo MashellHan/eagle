@@ -1,5 +1,17 @@
 # 用户视角检查点
 
+## 2026-10-29 15:50 +08 — 独立设备后端准备
+
+- 用户将配对后端选为个人账户的长期服务 `eagle-devices.mxhan.workers.dev`。
+  不再以 hexly.ai 为本轮目标，也不覆盖个人同名 `eagle/eagle-ingest`；没有远端写入。
+- c0b4942 在官方 Node 26.9.0 下完整 check 230/230、types/lint/build 通过，浏览器
+  191 通过、11 个既有 viewport skip。Root 保留两次环境/生成物失败日志，没有降门禁。
+- Service 从该基线准备两 DO 的独立入口/config 和局部红绿；Lead 负责集成、文档、
+  dry-run 与 HTTPS 候选包，现有 reviewer 仅审增量。下一跳仍是实际产品服务部署/注册。
+- 当前安装版的 Bot、历史、文件身份、journal、Raven 和本地 API 保留；本机 GUI
+  执行证据沿用已验结果。没有新增采集、D1、公网或物理双 Mac 验收。
+- 另一协作入口已收回 settings-layout UI 写入，独占其工作树；该 UI 不混入本片。
+
 ## 2026-10-29 15:08 +08 — 本机安装与真实执行闭环
 
 - Root 将 `d32ea1a` 原签名字节安装到 `~/Applications/Eagle Device Candidate.app`，

@@ -21,3 +21,7 @@ Owner: Codex integrates on main; Grok/Pi in this Space provide read-only researc
 ## Checkpoints
 
 Every 15 minutes from 2026-09-19 13:43 Asia/Shanghai, record what a user can actually see, the first broken hop and the next correction in CHECKPOINTS.md. No milestone is considered complete solely from a pane badge.
+
+Device pairing uses the independent product service `https://eagle-devices.mxhan.workers.dev`.
+Its current delivery scope and evidence live in [the device plan](bots/PLAN.md#共享设备与配对重构2026-10-29);
+it does not deploy or alter the existing website/ingest services.

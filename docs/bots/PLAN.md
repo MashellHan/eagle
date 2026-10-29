@@ -29,6 +29,13 @@ Orca 固定源码参考、认证/存储边界及旧代码处理见
 本轮只聚焦安装即执行、跨 Mac 自动注册/配对/设备群与明确目标执行。共享设备目录
 由内部自动接线提供，不新增 Bot 分享链接、Bot 互联/共享开关或额外配置流程。
 
+配对后端选为个人账户的长期独立服务 `https://eagle-devices.mxhan.workers.dev`，
+复用现有 Registry/relay，只带两个 SQLite DO 和新服务的 v1 migration，不改既有
+个人或上游网站/ingest。c0b4942 的完整 root check/browser 已通过；本片仅补独立
+入口/目标边界的红绿、审查和 dry-run，实际部署/注册由 Root 执行。之后的配对包和
+独立 UI 更新包都须显式使用此 HTTPS build origin，保持相同 candidate profile/data。
+本机真实执行已验；公网和物理 A/B 验收仍待完成，settings-layout UI 提交保持独立。
+
 2026-10-29：已从 `nocoo/eagle@7101566` 启动实施。Eagle Herdr 团队使用独立
 worktree；旧 `main@c34be59` 只作按需复用来源。当前尚未完成设备群或配对验收。
 
@@ -131,7 +138,9 @@ App/Bots 实际退出，helper PID 不变，身份摘要/0700/0600 保留、历�
 candidate 构建期 HTTPS service origin 小片已实现并增量审查通过，相关装配检查 15/15；
 显式非空值校验并规范化，未传或空值仍使用本地 origin。候选身份和数据继续隔离，
 不加用户配置表单、Bot 分享链接、Bot 互联或共享开关，不引入新的迁移框架。
-本轮新产物继续使用默认本地 origin；公网部署/验证另待具体授权。
+当时交付的 c0b4942 产物使用默认本地 origin。后续用户已选择独立
+`eagle-devices.mxhan.workers.dev` 产品服务；新配对包及之后的 UI 包改用该 HTTPS
+构建输入，部署、真实注册和物理双 Mac 验收仍待执行。
 
 ## Where the code lives
 

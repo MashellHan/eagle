@@ -4,6 +4,13 @@ Status: implementation contract, 2026-10-29. Independent of owner/v1 and Bots wi
 Base path `/api/devices/v1`; JSON UTF-8, strict objects, camelCase. All responses
 use `Cache-Control: no-store`; errors `{error: code}`. Credentials never use URLs.
 
+The selected product origin is `https://eagle-devices.mxhan.workers.dev`, served by
+the independent `eagle-devices` Worker. Both Macs use this same HTTPS/WSS origin;
+the localhost Registry remains separate. The service reuses `DeviceRegistry` and
+`DeviceExecution`, exposes read-only `/api/live` health/version/revision, and rejects
+unrelated paths. It has no website, legacy machine API, D1, assets or scheduled jobs.
+Deployment and physical-Mac acceptance are still pending; see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ## Identity and HTTPS
 
 Device identity is an Ed25519 key persisted by the independent App helper in a

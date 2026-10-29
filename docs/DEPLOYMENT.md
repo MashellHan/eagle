@@ -1,6 +1,9 @@
 # Deployment and live verification
 
-Commands run from the repository root. The workspace root delegates website and Worker scripts to `@eagle/web`; `wrangler` reads `apps/web/wrangler.jsonc`, so pass `--config apps/web/wrangler.jsonc` for direct invocations. See [local setup](../README.md#开发) before verifying the development origin.
+Commands run from the repository root. Website commands use `apps/web/wrangler.jsonc`.
+The independent device service uses `apps/web/wrangler.devices.jsonc` and the separate
+procedure below; `npm run deploy` is not its deployment command. See
+[local setup](../README.md#开发) before verifying the development origin.
 
 ## Local frontend, Local or Prod backend
 
@@ -99,19 +102,43 @@ Users save provider/model and API keys in `/settings`. The directory DO stores a
 
 Run `scripts/verify-daily.ts` with the same origin/Access settings as `verify-live.ts` to verify settings, no secret exposure, unconfigured skip, D1 query, report UI and mobile layout. The detailed generation/storage contract is in [DAILY-REPORTS.md](DAILY-REPORTS.md).
 
-## Shared device service candidate (not deployed)
+## Independent device service (prepared, not deployed)
 
 The independent `/api/devices/v1` contract is in [DEVICES.md](DEVICES.md).
-The integrated Worker configuration already includes `DEVICE_REGISTRY` → `DeviceRegistry`
-and `DEVICE_EXECUTION` → `DeviceExecution` Durable Object bindings, with both classes
-in SQLite migration `v3`. This candidate has not been deployed. Registry uses
-`getByName("registry")`; execution uses device ID. `/api/devices/v1` routes before the
-ingest-host restriction. The existing `https://eagle-ingest.hexly.ai` is the intended
-shared origin; its device API/WS availability still requires an authorized deployment
-and live verification, not a new user-facing configuration form.
-Do not route these identities through `DIRECTORY`, `MACHINES` or owner tokens.
-Device/group/pairing data belongs only to Registry SQLite, never D1. No production
-resource or npm release has been created by this implementation slice.
+The product target is `eagle-devices` in the user's Cloudflare account
+`e369b6206bd9481c027e1974c45756a2`, at `https://eagle-devices.mxhan.workers.dev`.
+This is a persistent product service, not a remote test fixture. The existing personal
+`eagle`/`eagle-ingest` deployments and upstream hexly.ai services are outside this deployment.
+
+`apps/web/wrangler.devices.jsonc` binds only `DEVICE_REGISTRY` → `DeviceRegistry` and
+`DEVICE_EXECUTION` → `DeviceExecution`, with a new service's SQLite migration `v1`.
+It reuses the existing implementations: Registry uses `getByName("registry")` and
+execution uses the normalized device ID. It has no D1, assets, cron, old machine DOs
+or custom-domain routes. The original monolith configuration and its `v3` migration
+remain unchanged. Do not route device identities through owner tokens or copy
+localhost Registry data into the product service.
+
+After confirming the account and service name, use a clean committed revision and
+portable Node on PATH. Dry-run output belongs under the root ignored `.local/`:
+
+```sh
+test -z "$(git status --porcelain)"
+node_modules/.bin/wrangler deploy --config apps/web/wrangler.devices.jsonc \
+  --var "BUILD_REVISION:$(git rev-parse HEAD)" \
+  --dry-run --outdir "$(pwd)/.local/device-worker-dry-run"
+# Only after authorization for this product deployment:
+node_modules/.bin/wrangler deploy --config apps/web/wrangler.devices.jsonc \
+  --var "BUILD_REVISION:$(git rev-parse HEAD)"
+```
+
+No D1 apply, shared-secret upload, website build or npm publication is required.
+After deployment, verify the exact `/api/live` revision and anonymous device directory
+401 response, then build the isolated candidate with
+`EAGLE_DEVICE_SERVICE_URL=https://eagle-devices.mxhan.workers.dev`. There is no address
+form in the App; both Macs must use the same origin for registration, pairing and WSS.
+Keep the current installed App until its replacement is explicitly coordinated.
+An uncertain operation is recovered by its original ID, never by resubmission with
+a new ID. New DO state is persistent; do not delete classes or migration state as a rollback shortcut.
 
 Local registry evidence uses `node --test tests/device-api.test.ts` with a unique
 ignored worker bundle and isolated real Miniflare/SQLite state. Bundles must be
