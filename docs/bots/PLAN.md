@@ -62,6 +62,11 @@ durable memo 在发送前固定 ID/目标/参数，native 工具经同设备接�
 socket 新模块缺失只算构建缺口，不作为行为红测。证据 `shared-bots-red.log`、
 `shared-tools-green.log` 位于 `.local/device-evidence/`。
 
+身份核心已实现 Ed25519 Keychain 持久化、精确七行注册验签输入和完整 typed approval
+校验；Swift/Bots 共用独立 canonical fixture。先复现缺失参数仍被签名，再通过
+7 项 Swift 身份测试（含真实隔离 Keychain 写入/读取/清理）及 9 项 Bots 适配器测试。
+这片未接 helper 代码身份验证、SMAppService 或人工确认 UI，尚不能签发实际用户审批。
+
 ## Where the code lives
 
 ### Exclusive search providers (2026-10-28)

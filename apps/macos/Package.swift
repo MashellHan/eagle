@@ -14,12 +14,14 @@ let package = Package(
   ],
   targets: [
     .target(name: "EagleDesign", resources: [.process("Resources")]),
+    .target(name: "EagleDevices"),
     // Bots lives in the shell: its view model and publisher are part of EagleFeatures,
     // and its logic is the separate Bots package (docs/bots/PLAN.md, stage 5).
     .target(
       name: "EagleFeatures",
       dependencies: [
         "EagleDesign",
+        "EagleDevices",
         .product(name: "BotsCore", package: "bots-macos"),
         .product(name: "BotsTransport", package: "bots-macos"),
         .product(name: "BotsFeatures", package: "bots-macos"),
@@ -35,5 +37,6 @@ let package = Package(
     ),
     .testTarget(name: "EagleDesignTests", dependencies: ["EagleDesign"]),
     .testTarget(name: "EagleFeaturesTests", dependencies: ["EagleFeatures"]),
+    .testTarget(name: "EagleDevicesTests", dependencies: ["EagleDevices"]),
   ]
 )

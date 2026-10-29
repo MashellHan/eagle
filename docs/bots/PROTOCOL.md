@@ -700,3 +700,13 @@ Rules enforced by `test/protocol/fixtures.test.ts`:
 2. A protocol change and the affected fixtures land in the same commit as this
    document, and the file set must match this table exactly.
 3. No real user data, tokens or paths.
+
+## External shared device port v1
+
+The optional host integration uses the independent JSONL contract in
+[DEVICES.md](../DEVICES.md); it does not change conversation v1 fields or
+capabilities. Normative cross-language canonical parameter vectors are in
+`fixtures/bots-protocol/device-access-v1/`, checked by the Bot adapter and App
+identity tests. The Keychain signer accepts registration payloads only at its
+registration seam; typed approvals require complete, validated operation data
+and a matching digest before a trusted App confirmation can be signed.

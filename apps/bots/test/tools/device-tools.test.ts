@@ -303,6 +303,20 @@ test("v1 canonical parameters use ordered keys and preserve Unicode/slashes/cont
   );
 });
 
+test("the independent adapter uses the same canonical wire vectors as the App helper", async () => {
+  const vector = JSON.parse(
+    await readFile(
+      new URL(
+        "../../../../fixtures/bots-protocol/device-access-v1/canonical.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.equal(canonicalJSON(vector.operation), vector.canonical);
+  assert.equal(operationDigest(vector.operation), vector.digest);
+});
+
 test("device crossings record one trace and origin without arguments, receipts or secrets", async () => {
   const bench = fixture();
   const records: LogRecord[] = [];
