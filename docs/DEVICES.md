@@ -9,7 +9,9 @@ the independent `eagle-devices` Worker. Both Macs use this same HTTPS/WSS origin
 the localhost Registry remains separate. The service reuses `DeviceRegistry` and
 `DeviceExecution`, exposes read-only `/api/live` health/version/revision, and rejects
 unrelated paths. It has no website, legacy machine API, D1, assets or scheduled jobs.
-Deployment and physical-Mac acceptance are still pending; see [DEPLOYMENT.md](DEPLOYMENT.md).
+Revision `28f4aef` was deployed on 2026-10-29; public health and anonymous-directory
+authentication passed. Real App registration/WSS and physical-Mac acceptance remain
+pending; see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Identity and HTTPS
 

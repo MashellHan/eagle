@@ -102,13 +102,20 @@ Users save provider/model and API keys in `/settings`. The directory DO stores a
 
 Run `scripts/verify-daily.ts` with the same origin/Access settings as `verify-live.ts` to verify settings, no secret exposure, unconfigured skip, D1 query, report UI and mobile layout. The detailed generation/storage contract is in [DAILY-REPORTS.md](DAILY-REPORTS.md).
 
-## Independent device service (prepared, not deployed)
+## Independent device service
 
 The independent `/api/devices/v1` contract is in [DEVICES.md](DEVICES.md).
 The product target is `eagle-devices` in the user's Cloudflare account
 `e369b6206bd9481c027e1974c45756a2`, at `https://eagle-devices.mxhan.workers.dev`.
 This is a persistent product service, not a remote test fixture. The existing personal
 `eagle`/`eagle-ingest` deployments and upstream hexly.ai services are outside this deployment.
+
+Root deployed `28f4aefb92106e8299d7269fb4b0e2fb7bbb289a` on 2026-10-29, after the
+235-test root check, types/lint/build, absolute-path dry-run and incremental review passed.
+Cloudflare version: `51174415-6140-4347-8f88-584ec7cff0b8`. Public Node requests verified
+`GET /api/live` 200 with that exact revision and anonymous device directory 401
+`session_required`, both `no-store`. Receipts are in `.local/device-evidence/own-device-release/`.
+This does not yet prove real App registration/WSS or physical A/B pairing.
 
 `apps/web/wrangler.devices.jsonc` binds only `DEVICE_REGISTRY` → `DeviceRegistry` and
 `DEVICE_EXECUTION` → `DeviceExecution`, with a new service's SQLite migration `v1`.
@@ -137,6 +144,10 @@ After deployment, verify the exact `/api/live` revision and anonymous device dir
 `EAGLE_DEVICE_SERVICE_URL=https://eagle-devices.mxhan.workers.dev`. There is no address
 form in the App; both Macs must use the same origin for registration, pairing and WSS.
 Keep the current installed App until its replacement is explicitly coordinated.
+The separate settings-layout installation owner must rebuild its complete signed UI
+bundle with this origin; its earlier localhost bundle is not the public pairing package.
+Coordinate via `.local/device-evidence/device-origin-handoff.md`, then report the
+installed source/origin and real registration evidence; Root observes without parallel installation.
 An uncertain operation is recovered by its original ID, never by resubmission with
 a new ID. New DO state is persistent; do not delete classes or migration state as a rollback shortcut.
 

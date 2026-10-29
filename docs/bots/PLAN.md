@@ -31,10 +31,12 @@ Orca 固定源码参考、认证/存储边界及旧代码处理见
 
 配对后端选为个人账户的长期独立服务 `https://eagle-devices.mxhan.workers.dev`，
 复用现有 Registry/relay，只带两个 SQLite DO 和新服务的 v1 migration，不改既有
-个人或上游网站/ingest。c0b4942 的完整 root check/browser 已通过；本片仅补独立
-入口/目标边界的红绿、审查和 dry-run，实际部署/注册由 Root 执行。之后的配对包和
-独立 UI 更新包都须显式使用此 HTTPS build origin，保持相同 candidate profile/data。
-本机真实执行已验；公网和物理 A/B 验收仍待完成，settings-layout UI 提交保持独立。
+个人或上游网站/ingest。c0b4942 的完整 root check/browser 已通过；独立入口 5 项
+红绿及增量审查完成，28f4aef 的最终 check 235/235、types/lint/build、绝对路径 dry-run
+通过。Root 已部署该 SHA，公网 health exact revision 与匿名目录 401 已验证。
+之后的配对包和独立 UI 更新包都须显式使用此 HTTPS build origin，保持相同 candidate
+profile/data。本机真实执行已验；真实 App 公网注册/WSS 和物理 A/B 配对仍待验，
+settings-layout UI 提交与安装由另一协作入口独占，Root 只读观察。
 
 2026-10-29：已从 `nocoo/eagle@7101566` 启动实施。Eagle Herdr 团队使用独立
 worktree；旧 `main@c34be59` 只作按需复用来源。当前尚未完成设备群或配对验收。
@@ -43,7 +45,7 @@ worktree；旧 `main@c34be59` 只作按需复用来源。当前尚未完成设�
 | --- | --- | --- |
 | D0 — 产品与契约 | in progress | 多成员群、方向无关的新增设备、单 Registry 配对事务、agent 选机和按设备串行已定；所属契约及审批位置随实现固定 |
 | D1 — 本机安装即用 | in progress | 当前 Mac 常规安装、文件身份、真实 Bot 写读及同包重开已通过；干净 Mac 和分发签名尚未验证，不要求用户 Node/部署表单 |
-| D2 — 配对与群认证 | planned | 自动注册、设备持有证明、Registry 单事务消费码/入群/记录结果、成员隔离与撤销；A/C 群加入 B/D、回包丢失重试、其他群不可访问 |
+| D2 — 配对与群认证 | in progress | Registry/relay 本地协议与独立入口已验，28f4aef 已部署个人产品服务；真实 App 公网注册和物理 A/B 配对待验，A/C 群加入 B/D、回包丢失及跨群拒绝的本地证据不替代实机 |
 | D3 — 设备设置与 agent 联动 | planned | App 内 menu → 真实设置 → 设备；配对/状态/移除；共享设备 port 与系统引导、agent 明确目标调用；既有/新 Bot 顺序操作群内设备，目标证据可核对，旧逐 Bot 授权随替换删除 |
 | D4 — 设备权限与恢复 | planned | All approve / Always ask / 暂停，设备端真实执行策略、审批绑定与过期、journal 去重及原 ID 恢复；不存在只改 UI 的权限模式 |
 | D5 — 安装与多设备交付 | planned | 完整门禁、签名安装包、真实 Mac A/B 联动与退出 UI 验收、补充 C/D 验证四成员群；真实硬件与隔离实例分别报告，部署/发布按具体操作授权执行 |
@@ -140,7 +142,8 @@ candidate 构建期 HTTPS service origin 小片已实现并增量审查通过，
 不加用户配置表单、Bot 分享链接、Bot 互联或共享开关，不引入新的迁移框架。
 当时交付的 c0b4942 产物使用默认本地 origin。后续用户已选择独立
 `eagle-devices.mxhan.workers.dev` 产品服务；新配对包及之后的 UI 包改用该 HTTPS
-构建输入，部署、真实注册和物理双 Mac 验收仍待执行。
+构建输入。28f4aef 服务现已部署并通过公网 health/匿名鉴权检查；真实 App 注册/WSS
+和物理双 Mac 验收仍待执行。
 
 ## Where the code lives
 

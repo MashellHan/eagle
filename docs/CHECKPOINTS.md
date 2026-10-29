@@ -1,5 +1,19 @@
 # 用户视角检查点
 
+## 2026-10-29 16:03 +08 — 个人设备产品服务已部署
+
+- Root 在个人账户部署独立 `eagle-devices`，源码 `28f4aef`，Cloudflare 版本
+  `51174415-6140-4347-8f88-584ec7cff0b8`。未改已有网站/ingest 或 D1。
+- 最终 check 235/235、types/lint/build、绝对路径 dry-run 通过，Astra 增量 review
+  无阻塞。Node 公网 health 200/revision 完全一致，匿名目录 401 session_required，
+  均 no-store；证据 `.local/device-evidence/own-device-release/`。
+- Lead 的同 SHA HTTPS 候选已完成正常装配/签名，Node 字节保持；Root 已提供 arm64
+  配对 ZIP。现有 Applications 和 UI 早期构建仍 localhost，安装拥有者需从独立 UI
+  分支正常重建 HTTPS 整包后更新，不能原位改签名包。交接记录为 `device-origin-handoff.md`。
+- UI 协作入口独占安装，Root 只读观察；下一跳是已安装 App 的真实公网注册/WSS，
+  然后物理第二 Mac 配对/指定目标执行。尚无这两项成功证据，不重复后端测试。
+- Bot/历史、私有文件身份、原 journal/pending、Raven 和本地 API 保留；无新增采集验收。
+
 ## 2026-10-29 15:50 +08 — 独立设备后端准备
 
 - 用户将配对后端选为个人账户的长期服务 `eagle-devices.mxhan.workers.dev`。
