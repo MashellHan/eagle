@@ -40,6 +40,15 @@ test("independent Bots capture never sends incomplete known-secret fragments int
     );
     copyFileSync(source, join(root, "capture.ts"));
     symlinkSync(dependencies, join(root, "node_modules"), "dir");
+    const childEnvironment: NodeJS.ProcessEnv = {
+      ...process.env,
+      PATH: "",
+      NODE_PATH: "",
+      NODE_OPTIONS: "",
+    };
+    for (const name of Object.keys(childEnvironment))
+      if (!["PATH", "NODE_PATH", "NODE_OPTIONS"].includes(name))
+        delete childEnvironment[name];
     const child = spawnSync(
       process.execPath,
       [
@@ -73,7 +82,7 @@ test("independent Bots capture never sends incomplete known-secret fragments int
         encoding: "utf8",
         timeout: 10000,
         maxBuffer: 1048576,
-        env: { PATH: "", NODE_PATH: "", NODE_OPTIONS: "" },
+        env: childEnvironment,
       },
     );
     assert.equal(child.status, 0, child.stderr);
