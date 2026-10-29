@@ -432,8 +432,13 @@ export class DeviceRegistry extends DurableObject {
         this.sweep();
         return action(current);
       });
-    if (path === "/directory" && request.method === "GET")
-      return deviceJSON(await this.observedDirectory(self.deviceId));
+    if (path === "/directory" && request.method === "GET") {
+      const directory = await this.observedDirectory(self.deviceId);
+      const current = this.sessionDevice(sessionHash);
+      if (current.membershipEpoch !== self.membershipEpoch)
+        throw new DeviceHttpError(409, "directory_changed_retry");
+      return deviceJSON(directory);
+    }
     if (path === "/pairings" && post) {
       const { ttlSeconds } = PairingCreate.parse(await deviceBody(request));
       const code = deviceBase64(crypto.getRandomValues(new Uint8Array(32)));

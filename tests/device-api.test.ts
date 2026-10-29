@@ -34,8 +34,14 @@ before(async () => {
   const entry = join(root, "entry.ts");
   writeFileSync(
     entry,
-    `import worker,{DeviceRegistry as Registry,DeviceExecution,MachineState,MachineDirectory} from "../../apps/web/src/worker/index.ts";
-export {DeviceExecution,MachineState,MachineDirectory};
+    `import worker,{DeviceRegistry as Registry,DeviceExecution as Execution,MachineState,MachineDirectory} from "../../apps/web/src/worker/index.ts";
+export {MachineState,MachineDirectory};
+export class DeviceExecution extends Execution {
+ observation(){const observation=super.observation();
+  if(this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_observation_delay'").toArray().length){this.ctx.storage.sql.exec("UPDATE test_observation_delay SET started=1");return new Promise(resolve=>setTimeout(()=>resolve(observation),500));}
+  return observation;
+ }
+}
 export class DeviceRegistry extends Registry {
  async check(token,targetId){const result=await super.check(token,targetId);
   if(result.ok&&targetId&&result.source.deviceId!==targetId&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_revoke_after_check'").toArray().length){
@@ -1069,5 +1075,47 @@ test("closed sockets cannot revive after Registry RPC and Agent queue admission 
     }
   } finally {
     await storage.exec("DROP TABLE test_check_delay");
+  }
+});
+
+test("directory revalidates the original session after awaited device observations", async () => {
+  const [a, b] = await Promise.all([
+    identity("directory-race-a"),
+    identity("directory-race-b"),
+  ]);
+  await pair(a.token, await code(b.token));
+  const execution = await mf.unsafeGetDurableObjectStorage(
+    "eagle",
+    "DeviceExecution",
+    { name: a.deviceId },
+  );
+  await execution.exec("CREATE TABLE test_observation_delay(started INTEGER)");
+  await execution.exec("INSERT INTO test_observation_delay VALUES(0)");
+  try {
+    const reading = call("/directory", a.token);
+    const deadline = Date.now() + 1000;
+    let started = false;
+    while (Date.now() < deadline) {
+      if (
+        (await execution.exec("SELECT started FROM test_observation_delay"))[0]
+          .started === 1
+      ) {
+        started = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(started, true);
+    assert.equal(
+      (await call("/members/remove", b.token, { deviceId: a.deviceId })).status,
+      200,
+    );
+    assert.equal(
+      (await reading).status,
+      401,
+      "a revoked caller must not receive the old group after observation awaits",
+    );
+  } finally {
+    await execution.exec("DROP TABLE test_observation_delay");
   }
 });
