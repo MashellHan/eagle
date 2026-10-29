@@ -80,6 +80,10 @@ Use the machine-approved registry. Ignored `apps/web/.dev.vars` holds `AGENT_SIG
 browsing, optional `LOCAL_USER_EMAIL`, and optional existing `AGENT_TOKENS`.
 Never copy production credentials into tests. Restart Wrangler after changes.
 
+For locked npm download, metadata or offline-cache failures, first read
+[NPM recovery](docs/NPM-RECOVERY.md); preserve locks and reuse the current task's
+source authorization without changing global defaults or bypassing hooks.
+
 ```sh
 npm ci
 npm run db:local

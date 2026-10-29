@@ -550,3 +550,23 @@ closure created in a MainActor test inherited isolation but ran inside URLProtoc
 background callback. The crash report identified the executor assertion. Replacing the
 nested callback with ordinary decoding exposed the intended red test (both providers
 remained selected). A crashed or uncompilable test is not behavioral red evidence.
+
+## 2026-10-29 — Recover exact npm bytes and carry the cache through delivery
+
+The approved proxy lacked locked packages, while the separately authorized official
+registry failed at the connection/TLS layer. The observed installation had 20 version
+differences, so its green checks could not close fresh-lock release gates. Repeating
+the same failed requests did not fix either problem. A complete inventory found 43
+missing original tarballs; the newly authorized task transport returned all 43 with
+matching lock SHA512 and package identities. With 264 verified existing blobs, normal
+cache-add and root/Bots offline ci restored exact dependencies. Both locks, staging
+and global registry configuration stayed unchanged; no SSL or hook bypass was used.
+
+Initial ci used the official logical registry offline. Later isolated pack installs
+still needed real ws/zod metadata under the task-authorized Huawei registry, and every
+pack/build/hook subprocess had to inherit that same private cache and logical registry.
+The installed scheduled job did not inherit those settings and retained its old-proxy
+failure; foreground success was not scheduler recovery. [NPM-RECOVERY](docs/NPM-RECOVERY.md)
+records the actual commands, source authorization scope and receipts. Future agents
+should diagnose the failing hop, recover original locked bytes and metadata, and run
+normal gates without turning a temporary source exception into permanent policy.
