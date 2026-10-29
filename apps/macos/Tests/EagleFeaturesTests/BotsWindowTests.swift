@@ -820,3 +820,33 @@ struct BotsDaemonReconnectTests {
     #expect(port.opens == opens + 1, "the retry opens one fresh connection")
   }
 }
+
+@MainActor
+@Suite("Bots daemon absent", .serialized)
+struct BotsDaemonAbsentTests {
+  @Test("a closed port reports the daemon as down and never reconnects on its own")
+  func deadPort() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bots-absent-\(UUID().uuidString)", isDirectory: true)
+    let outbox = OutboxStore(directory: directory)
+    // Port 9 is the discard port: nothing listens on it here, so the upgrade is refused.
+    let connection = BotsConnection(
+      baseURL: URL(string: "http://127.0.0.1:9")!, token: "unused")
+    let model = ConversationViewModel(botId: "", conversation: connection, outbox: outbox)
+    model.select(botId: "b_1")
+
+    let deadline = Date().addingTimeInterval(8)
+    while !model.connection.isFailed, Date() < deadline {
+      try await Task.sleep(nanoseconds: 50_000_000)
+    }
+    #expect(model.connection.isFailed, "the socket stops instead of retrying forever")
+    #expect(
+      model.connection == .failed(reason: ConversationSocket.daemonDownMessage),
+      "and says what to do about it")
+    #expect(model.canSend == false, "a dead connection cannot send")
+
+    // Give the old behaviour time to show up: it reconnected within a few hundred ms.
+    try await Task.sleep(nanoseconds: 1_500_000_000)
+    #expect(model.connection.isFailed, "still failed: no blind retry loop")
+  }
+}

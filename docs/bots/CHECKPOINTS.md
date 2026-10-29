@@ -670,3 +670,30 @@ Verified:
 Next broken hop: nobody has looked at the rendered window — the inline switch and the
 section position are covered by unit tests and this live drive, not by an image review.
 `peers` (stage 3) remains untouched.
+
+## 2026-10-29 12:30 — default triggers, a shared face, and an honest daemon prompt
+
+Observed: a new Bot can create its own schedule or webhook without a trip to Settings,
+because the `trigger` group is now selected by default. The conversation header draws the
+same Bot face (shape and colour) as the sidebar row and the inspector. When the daemon is
+not running the app stops trying and says so, with one explicit retry.
+
+Verified:
+
+- `npm --prefix apps/bots run eval`: 9/9 cases, including the new
+  `complex-default-trigger`, which sets no `toolGroups` and still creates a webhook
+  trigger with `trigger_create` and receives a delivery.
+- `apps/bots`: `npm run check` 612 tests at 95.12 / 88.05 / 90.21.
+- `apps/bots-macos`: 51 tests. New policy tests: a connection that never reached
+  `welcome` is stopped with the daemon message, a session that dropped still retries.
+- `apps/macos`: 138 + 49 tests, coverage 95.7%, `build-app.sh` builds. New tests: the
+  header's status offers `canRetry` (and the subtitle carries the daemon message), a
+  retry opens exactly one fresh connection, and — against a real closed port — the
+  connection ends `.failed` with the daemon message and is still failed 1.5 s later, so
+  there is no blind retry loop.
+- One performance test (`Transcript row cost`) flakes when the suite runs under load and
+  passes alone; it is recorded here rather than weakened.
+
+Next broken hop: the per-trigger hourly cap and token bucket remain planned; `peers` is
+untouched; nobody has reviewed a rendered screenshot of the new header face or the
+trigger rows.
