@@ -12,7 +12,12 @@ Signatures are base64url raw Ed25519. Node and Bots never receive the private ke
 
 - `POST /register/challenge` `{deviceId,publicKey,name,platform,arch}` returns
   `{challengeId,payload,expiresAt}`. Sign the exact UTF-8 `payload` (no JSON
-  reserialization); challenge binds purpose, device ID, key and random nonce.
+  reserialization). The exact seven newline-separated fields, without a trailing
+  newline, are `eagle-device-register-v1`, HTTPS service origin (scheme + host +
+  optional port), deviceId, publicKey, challengeId, 32 random bytes base64url,
+  expiresAt (Unix milliseconds). The helper checks all seven fields against its
+  own configured service/identity, UUIDs, nonce size and a future expiry <=60s;
+  it must never blindly sign arbitrary stdout.
 - `POST /register/complete` `{challengeId,signature}` returns
   `{device,sessionToken,expiresAt}`. The same flow refreshes a session for an
   existing key, never replaces an existing identity. Challenges expire in 60s
@@ -20,7 +25,12 @@ Signatures are base64url raw Ed25519. Node and Bots never receive the private ke
 - Other HTTPS calls use `Authorization: Bearer <sessionToken>`; credentials are
   memory only. Registration and redemption have bounded server rate limits.
 - `GET /directory` returns `{localDeviceId,groupId,revision,devices}`. Device:
-  `{deviceId,name,platform,arch,groupId,membershipEpoch,credentialVersion}`.
+  `{deviceId,publicKey,name,platform,arch,groupId,membershipEpoch,credentialVersion,
+  online,lastSeenAt,capabilities,policy}`. `online` is true/false/null (unknown);
+  lastSeenAt is Unix milliseconds/null; capabilities is an observed list of
+  operation kinds/null; policy is observed policy/null. Only an authenticated
+  Agent handshake/heartbeat supplies observations. Missing observation stays
+  unknown, never inferred from registration or pairing.
   Ungrouped devices see themselves; group members see all current members.
 - `POST /pairings` `{ttlSeconds?:3600}` returns `{code,expiresAt}`; code is 32
   random bytes base64url, maximum TTL 86400 seconds. Only its SHA-256 is stored.
@@ -52,7 +62,7 @@ one `{type:"response",requestId,operationId,targetDeviceId,result}` then closes.
 Every run/get/cancel rechecks live Registry source and target membership.
 
 OperationRequest: `{requestId,operationId,targetDeviceId,action:"run"|"get"|"cancel",
-operation?:{kind:"command",command,cwd?,timeoutMs?}|{kind:"file.read",path}|
+sourceBotId?:string,operation?:{kind:"command",command,cwd?,timeoutMs?}|{kind:"file.read",path}|
 {kind:"file.write",path,content}|{kind:"file.list",path},digest?,approval?}`.
 IDs are UUIDs. `digest` is lowercase SHA-256 of recursively key-sorted compact
 JSON of `operation` (UTF-8; omitted optional fields omitted). Target and digest
@@ -90,7 +100,8 @@ Node requests Keychain signatures through stdout
 Only exact requested payloads are signed; helper validates identity/purpose.
 Node emits `{type:"ready",socketPath,deviceId}` after local tools/port are ready,
 and `{type:"cloud",status:"online"|"offline",error?}` separately. Cloud failure
-does not prevent local readiness. App EOF stops the child cleanly.
+does not prevent local readiness. The independent Keychain helper owns the Node lifecycle (SMAppService);
+closing the App window does not end this pipe. Helper EOF stops the child cleanly.
 
 Unix socket is JSONL request/response, one response per request:
 `{requestId,method,params?}` → `{requestId,result}` or `{requestId,error}`.
@@ -98,7 +109,16 @@ Methods: `status`, `directory`, `pairing.create` (`ttlSeconds?`),
 `pairing.revoke` (`code`), `pairing.redeem` (`requestId,code`),
 `pairing.result` (`requestId`), `member.remove` (`deviceId`), `policy.get`,
 `policy.set` (`mode`), `execute` (OperationRequest), `operation.get`
-and `operation.cancel` (OperationRequest). Local directory always includes self;
+and `operation.cancel` (OperationRequest).
+`local.begin` takes OperationRequest with `operation:{kind:"native",tool,args,cwd?}`
+(native CodingTools only); it returns `{accepted:boolean,result}`. Only accepted
+true permits invoking the native tool. Duplicate begin always accepted false,
+including a running prior admission. `local.complete` takes
+`{operationId,result}` and durably finalizes/releases the same device lock.
+Only the initiating local device may complete its native admission. Native and
+remote tools share policy/journal/serial admission; interrupted native operations
+recover unknown. Native is rejected by remote execute/relay. args is a JSON object;
+the complete native operation participates in the same canonical parameter digest. Local directory always includes self;
 remote entries are fetched live before remote execution. Multiple Bots share
 this port and never copy device secrets. `status` returns
 `{deviceId,localReady,cloudStatus,policy}`. App may open the same port for settings.
@@ -108,3 +128,8 @@ accepts only signed approval envelopes, not a boolean or reusable approval token
 Local Node development can inject an in-memory signer; production App must use
 Keychain. No npm publication, deployment or installation is implied by this
 contract. Herdr is an optional provider, never needed for file/command tools.
+
+Agent authentication frame includes `capabilities:[operation kinds],policy`;
+`{type:"heartbeat",capabilities,policy}` refreshes actual observations every 10s.
+Online observations expire after 30s without a heartbeat. sourceBotId is bounded
+to 120 characters and is provenance only, never a permission boundary.
