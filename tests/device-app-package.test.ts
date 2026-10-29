@@ -107,6 +107,67 @@ test("candidate bundle fixes isolated host configuration and SMAppService helper
   }
 });
 
+test("candidate assembly honors and normalizes an explicit HTTPS origin while retaining isolation", () => {
+  const f = fixture();
+  try {
+    const result = prepare(f, ["--service-url", "https://DEVICES.TEST:443/"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      JSON.parse(
+        readFileSync(join(f.app, "Contents/Resources/DeviceHost.json"), "utf8"),
+      ),
+      {
+        version: 1,
+        profile: "device-candidate",
+        baseUrl: "https://devices.test",
+        machServiceName: "ai.hexly.eagle.devices.candidate",
+        launchAgentPlist: "ai.hexly.eagle.devices.candidate.plist",
+      },
+    );
+    assert.match(
+      readFileSync(join(f.app, "Contents/Info.plist"), "utf8"),
+      /<string>ai.hexly.eagle.macos.device-candidate<\/string>/,
+    );
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+test("candidate assembly retains localhost when the CLI service URL is empty", () => {
+  const f = fixture();
+  try {
+    const result = prepare(f, ["--service-url", ""]);
+    assert.equal(result.status, 0, result.stderr);
+    const config = JSON.parse(
+      readFileSync(join(f.app, "Contents/Resources/DeviceHost.json"), "utf8"),
+    );
+    assert.equal(config.baseUrl, "http://127.0.0.1:17053");
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+for (const [description, url] of [
+  ["HTTP", "http://127.0.0.1:17053"],
+  ["username", "https://user@devices.test"],
+  ["password", "https://:fixture-password@devices.test"],
+  ["path", "https://devices.test/path"],
+  ["query", "https://devices.test/?key=value"],
+  ["fragment", "https://devices.test/#fragment"],
+  ["malformed URL", "not-an-origin"],
+]) {
+  test(`candidate assembly rejects a ${description} override before creating the bundle`, () => {
+    const f = fixture();
+    try {
+      const result = prepare(f, ["--service-url", url]);
+      assert.notEqual(result.status, 0);
+      assert.equal(existsSync(f.app), false);
+    } finally {
+      rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+}
+
 test("release assembly requires a build-time HTTPS origin and fails before publishing an invalid bundle", () => {
   const f = fixture();
   try {

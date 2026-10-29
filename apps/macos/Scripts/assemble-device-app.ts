@@ -40,8 +40,9 @@ type PrepareOptions = {
 type Execute = (program: string, args: string[]) => unknown;
 const save = (path: string, value: unknown) =>
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
-function origin(value: string | undefined): string {
-  if (!value) throw new Error("release requires a build-time HTTPS origin");
+function origin(value: string | undefined, profile: Profile): string {
+  const requirement = `${profile === "device-release" ? "release" : "candidate"} requires a build-time HTTPS origin`;
+  if (!value) throw new Error(requirement);
   const url = new URL(value);
   if (
     url.protocol !== "https:" ||
@@ -51,7 +52,7 @@ function origin(value: string | undefined): string {
     url.hash ||
     url.pathname !== "/"
   )
-    throw new Error("release requires a build-time HTTPS origin");
+    throw new Error(requirement);
   return url.origin;
 }
 function xml(value: string) {
@@ -78,7 +79,8 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
       "utf8",
     ),
   ) as HostConfig;
-  if (profile === "device-release") config.baseUrl = origin(options.serviceUrl);
+  if (profile === "device-release" || options.serviceUrl)
+    config.baseUrl = origin(options.serviceUrl, profile);
   if (!existsSync(binary) || !existsSync(helper))
     throw new Error("EagleApp and EagleDeviceHelper binaries are required");
   const version = JSON.parse(

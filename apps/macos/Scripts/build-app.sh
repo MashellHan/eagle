@@ -8,7 +8,8 @@
 # EAGLE_AGENT_NPM_CACHE    private cache verified against the root lock
 # EAGLE_BOTS_NPM_CACHE     private cache verified against the Bots lock
 # EAGLE_DEVICE_PROFILE     device-candidate (default) or device-release
-# EAGLE_DEVICE_SERVICE_URL HTTPS origin, required for device-release
+# EAGLE_DEVICE_SERVICE_URL HTTPS origin override; candidate defaults to localhost,
+#                         required for device-release
 # EAGLE_CODESIGN_IDENTITY  '-' for local candidate, real identity for release
 set -eu
 cd "$(dirname "$0")/.."
