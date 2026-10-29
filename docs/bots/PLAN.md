@@ -519,8 +519,15 @@ Shipped so far, each with its own failing test first:
    reconciles a batch against its submission record before it cuts again, retries
    an unadmitted batch with the same key, and takes turns across one bot's triggers.
 
-Still open in stage 1: the schedule tick, the webhook endpoint, and the
-`triggers` event with the sidebar surface. No caller fires yet.
+5. The schedule tick and the producers (`src/triggers/schedule.ts`,
+   `producers.ts`): cron in the trigger's own zone through the pinned `croner`, a
+   cursor that is only armed, fired or recorded as missed, one queue record per
+   decision, and a `TriggerProducers` that owns one pump per bot plus the single
+   ticker, started after recovery and stopped before admissions drain.
+
+Still open in stage 1: the webhook endpoint and the `triggers` event with the
+sidebar surface. A schedule fires end to end through the invocation port, but no
+client can see or switch a trigger yet.
 
 ### Stage 0, as built
 

@@ -211,27 +211,24 @@ test("a replayed op id answers with what it did instead of acting again", async 
   }
 });
 
-test("disabling drops the cursor and enabling starts from the next instant", async () => {
+test("switching a trigger keeps the definition and leaves the cursor to the queue", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bots-trigger-"));
   try {
     const store = await openStore(dir);
     const { trigger } = await store.create(schedule("morning"));
-    const scheduleNow = trigger.schedule as { cron: string; timezone: string };
-    await store.patch({
-      triggerId: trigger.id,
-      patch: { schedule: { ...scheduleNow, cursor: "2026-10-29T01:00:00.000Z" } },
-    });
-    assert.equal(store.get(trigger.id)?.schedule?.cursor, "2026-10-29T01:00:00.000Z");
-
     const disabled = await store.enable({
       opId: "op_off",
       triggerId: trigger.id,
       enabled: false,
     });
-    assert.equal(disabled.schedule?.cursor, undefined, "a disabled trigger has no cursor");
+    assert.equal(disabled.enabled, false);
+    assert.deepEqual(
+      disabled.schedule,
+      { cron: "0 9 * * *", timezone: "Asia/Shanghai" },
+      "the definition survives the switch untouched",
+    );
     const enabled = await store.enable({ opId: "op_on", triggerId: trigger.id, enabled: true });
-    assert.equal(enabled.schedule?.cursor, undefined, "enabling never catches up");
-    assert.equal(enabled.schedule?.cron, "0 9 * * *", "the expression survives the switch");
+    assert.equal(enabled.enabled, true);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

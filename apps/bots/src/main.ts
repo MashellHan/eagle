@@ -56,6 +56,8 @@ import type { SearchClient } from "./tools/search/client.ts";
 import { createDeepSeekSearch } from "./tools/search/deepseek.ts";
 import { createTavilySearch } from "./tools/search/tavily.ts";
 import { triggerHost } from "./triggers/host.ts";
+import { TriggerProducers } from "./triggers/producers.ts";
+import { fileJournal, TriggerQueue } from "./triggers/queue.ts";
 
 export type DaemonHandle = {
   readonly config: DaemonConfig;
@@ -186,13 +188,32 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     opened.catch(() => triggers.delete(botId));
     return opened;
   };
+  // One queue per trigger, keyed by bot and trigger: the delivery journal is its own file,
+  // so deleting a trigger cannot touch another one's undelivered work.
+  const queues = new Map<string, Promise<TriggerQueue>>();
+  const queueFor = (botId: string, triggerId: string): Promise<TriggerQueue> => {
+    const key = `${botId}/${triggerId}`;
+    const open = queues.get(key);
+    if (open !== undefined) return open;
+    const opened = TriggerQueue.open({
+      triggerId,
+      journal: fileJournal(join(directory.botDir(botId), "triggers", `${triggerId}.jsonl`)),
+    });
+    queues.set(key, opened);
+    opened.catch(() => queues.delete(key));
+    return opened;
+  };
   const runtime = new PiDurableRuntime({
     models: () => models,
     log,
     compaction,
     usage: usageStore,
     search: () => providers.client,
-    trigger: async (spec) => triggerHost(spec.id, await triggerStoreFor(spec.id)),
+    trigger: async (spec) =>
+      triggerHost(spec.id, await triggerStoreFor(spec.id), async (triggerId) => {
+        const queue = queues.get(`${spec.id}/${triggerId}`);
+        return queue === undefined ? undefined : (await queue).cursor();
+      }),
   });
   const defaultModel =
     gateway === undefined
@@ -261,6 +282,21 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       broadcast?.();
     },
   });
+
+  // Producers: one pump per bot and one schedule ticker, stopped before admissions drain.
+  let triggerTraces = 0;
+  const producers = new TriggerProducers({
+    bots: () => registry.summaries().map((summary) => summary.id),
+    storeFor: triggerStoreFor,
+    queueFor,
+    port: service,
+    now: () => new Date(),
+    newTrace: () => {
+      triggerTraces += 1;
+      return `tr_trigger_${Date.now().toString(36)}_${triggerTraces.toString(36)}`;
+    },
+  });
+  producers.start();
   const capabilities = {
     agent: true,
     tools: true,
@@ -387,8 +423,9 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       timer.unref?.();
     });
     const stopped = (async () => {
-      // Producers stop accepting, then admissions already in flight settle, and only then
-      // may the registry close handles under them (TRIGGERS.md §3.6).
+      // Producers stop first, then admissions already in flight settle, and only then may
+      // the registry close handles under them (TRIGGERS.md §3.6).
+      producers.stop();
       await daemon.close();
       await service.drain();
       await registry.shutdown();

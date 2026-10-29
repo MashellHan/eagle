@@ -35,7 +35,10 @@ export type FrozenBatch = {
 export type QueueRecord =
   | { readonly op: "enqueue"; readonly item: QueueItem }
   | { readonly op: "cut"; readonly batch: FrozenBatch }
-  | { readonly op: "close"; readonly batchId: number };
+  | { readonly op: "close"; readonly batchId: number }
+  /** The schedule's durable decision: the fire and its next instant in one record. */
+  | { readonly op: "fire"; readonly item: QueueItem; readonly cursorAfter?: string }
+  | { readonly op: "cursor"; readonly at?: string };
 
 /** Append-only destination for the queue's decisions. */
 export type QueueJournal = {
@@ -90,6 +93,8 @@ export class TriggerQueue {
   #batch: FrozenBatch | undefined;
   #dropped = 0;
   #nextBatchId = 1;
+  /** The absolute next due instant; absent until the first tick arms it. */
+  #cursor: string | undefined;
   #queue: Promise<unknown> = Promise.resolve();
 
   private constructor(triggerId: string, journal: QueueJournal) {
@@ -121,6 +126,47 @@ export class TriggerQueue {
 
   droppedSinceCut(): number {
     return this.#dropped;
+  }
+
+  /** Delivery state, not definition state: it advances with the fire it belongs to. */
+  cursor(): string | undefined {
+    return this.#cursor;
+  }
+
+  /** Arms a schedule for the first time, or re-arms one that missed its window. */
+  setCursor(at: string | undefined): Promise<void> {
+    return this.#serial(async () => {
+      this.#cursor = at;
+      await this.#journal.append({ op: "cursor", ...(at === undefined ? {} : { at }) });
+    });
+  }
+
+  /**
+   * One journal record for one tick: the fire and the advanced cursor cannot disagree
+   * after a crash, so a tick can neither fire twice nor lose a fire (TRIGGERS.md §9.1).
+   */
+  fire(input: {
+    readonly item: QueueItem;
+    readonly cursorAfter: string | undefined;
+  }): Promise<boolean> {
+    return this.#serial(async () => {
+      const known =
+        this.#items.some((queued) => queued.itemId === input.item.itemId) ||
+        this.#batch?.items.some((member) => member.itemId === input.item.itemId) === true;
+      if (known) return false;
+      if (this.#items.length >= MAX_QUEUE_ITEMS) {
+        this.#items = this.#items.slice(1);
+        this.#dropped += 1;
+      }
+      this.#items = [...this.#items, input.item];
+      this.#cursor = input.cursorAfter;
+      await this.#journal.append({
+        op: "fire",
+        item: input.item,
+        ...(input.cursorAfter === undefined ? {} : { cursorAfter: input.cursorAfter }),
+      });
+      return true;
+    });
   }
 
   /**
@@ -201,6 +247,18 @@ export class TriggerQueue {
         return;
       case "close":
         if (this.#batch?.batchId === record.batchId) this.#batch = undefined;
+        return;
+      case "fire": {
+        if (this.#items.length >= MAX_QUEUE_ITEMS) {
+          this.#items = this.#items.slice(1);
+          this.#dropped += 1;
+        }
+        this.#items = [...this.#items, record.item];
+        this.#cursor = record.cursorAfter;
+        return;
+      }
+      case "cursor":
+        this.#cursor = record.at;
         return;
     }
   }
@@ -336,6 +394,16 @@ const parseRecord = (line: string): QueueRecord | undefined => {
     return isBatch(record.batch) ? { op: "cut", batch: record.batch } : undefined;
   if (record.op === "close" && typeof record.batchId === "number") {
     return { op: "close", batchId: record.batchId };
+  }
+  if (record.op === "fire" && isItem(record.item)) {
+    return {
+      op: "fire",
+      item: record.item,
+      ...(typeof record.cursorAfter === "string" ? { cursorAfter: record.cursorAfter } : {}),
+    };
+  }
+  if (record.op === "cursor") {
+    return typeof record.at === "string" ? { op: "cursor", at: record.at } : { op: "cursor" };
   }
   return undefined;
 };

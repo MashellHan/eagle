@@ -282,7 +282,6 @@ export type TriggerDefinition = {
   readonly schedule?: {
     readonly cron: string; // 5 fields, minute resolution
     readonly timezone: string; // IANA
-    readonly cursor?: string; // absolute next due instant; absent when disabled
   };
   readonly counters: { fired: number; dropped: number; refused: number };
   readonly lastFiredAt?: string;
@@ -636,9 +635,10 @@ success and one `limit_exceeded`.
 ### 9.1 Schedule
 
 - Five fields, minute resolution; IANA `timezone`, validated at creation.
-- `schedule.cursor` is the absolute next due instant and the only scheduling state.
-  It is absent while disabled, so enabling never catches up: enabling sets
-  `cursor = next instant after now`.
+- The **cursor** is the absolute next due instant and the only scheduling state. It is
+  delivery state, so it lives in the trigger's queue journal, not in the definition:
+  one record can then advance it together with the fire it belongs to. It is absent
+  while disabled, so enabling never catches up — the next tick arms it.
 - Parser: one pinned dependency (candidate `croner`). If it cannot be installed from
   the machine-approved registry, the fallback is `every <n>m|h` and `daily HH:MM`,
   recorded here **before** code.
@@ -647,15 +647,16 @@ Ticking, one daemon-wide scheduler with injected `now`/`setTimer`, 15 s period:
 
 ```
 for each enabled trigger:
-  if cursor is absent: cursor = next instant after now; journal; continue
+  if cursor is absent: arm it at the next instant after now; journal; continue
   if cursor > now: continue
-  if now - cursor > 90_000: journal {skipped: "missed"}; cursor = next after now; continue
+  if now - cursor > 90_000: journal {skipped: "missed"}; re-arm after now; continue
   journal ONE record {item, dueAt, cursorAfter}   ← the durable decision
-  cursor = cursorAfter
+  (the fire and the advanced cursor land in the same queue record)
 ```
 
-The single journal record makes enqueue and cursor advance atomic, so a crash can
-neither double-fire nor lose a fire. Downtime beyond the freshness window is never
+The single record makes the fire and the cursor advance atomic, so a crash can
+neither double-fire nor lose a fire. The fire's `itemId` is its due instant, which is
+what makes a retried tick the same item rather than a second one. Downtime beyond the freshness window is never
 replayed. DST follows the parser's documented rule for the stored zone and is tested
 in both directions.
 

@@ -21,8 +21,6 @@ export type TriggerSchedule = {
   readonly cron: string;
   /** IANA zone name. */
   readonly timezone: string;
-  /** The absolute next due instant; absent while the trigger is disabled. */
-  readonly cursor?: string;
 };
 
 export type TriggerDefinition = {
@@ -44,11 +42,15 @@ export type TriggerDefinition = {
 };
 
 /** The engine-owned fields a tick may change; a person and a model cannot set them. */
+/**
+ * The engine-owned fields a tick or a delivery may change. The schedule *cursor* is not
+ * here: it is delivery state and lives in the queue's journal, so one record can advance
+ * it together with the fire it belongs to (TRIGGERS.md §9.1).
+ */
 export type TriggerStatePatch = {
   readonly counters?: TriggerCounters;
   readonly lastFiredAt?: string;
   readonly lastSkipped?: TriggerDefinition["lastSkipped"];
-  readonly schedule?: TriggerSchedule;
 };
 
 /** One bot owns at most this many definitions; it bounds the sidebar and the trigger tools. */
@@ -270,8 +272,8 @@ export class TriggerStore {
   }
 
   /**
-   * Switching keeps the queue. Disabling drops the cursor, enabling starts at the next
-   * instant, so neither direction catches up on what it missed (§9.1).
+   * Switching keeps the queue and does not touch the delivery cursor: the caller owns it,
+   * so disabling drops it and enabling starts at the next instant (§9.1).
    */
   enable(input: {
     readonly opId: string;
@@ -286,17 +288,10 @@ export class TriggerStore {
         this.#remember(input.opId, { trigger: current });
         return current;
       }
-      // Disabling drops the cursor; enabling leaves it absent so the scheduler starts at
-      // the next instant instead of replaying what the disabled window missed.
-      const schedule =
-        current.schedule === undefined
-          ? undefined
-          : { cron: current.schedule.cron, timezone: current.schedule.timezone };
       const trigger: TriggerDefinition = {
         ...current,
         enabled: input.enabled,
         updatedAt: this.#now().toISOString(),
-        ...(schedule === undefined ? {} : { schedule }),
       };
       await this.#commit({ op: "enable", opId: input.opId, triggerId: current.id, trigger });
       this.#remember(input.opId, { trigger });
@@ -410,7 +405,6 @@ const applyPatch = (current: TriggerDefinition, patch: TriggerStatePatch): Trigg
   ...(patch.counters === undefined ? {} : { counters: patch.counters }),
   ...(patch.lastFiredAt === undefined ? {} : { lastFiredAt: patch.lastFiredAt }),
   ...(patch.lastSkipped === undefined ? {} : { lastSkipped: patch.lastSkipped }),
-  ...(patch.schedule === undefined ? {} : { schedule: patch.schedule }),
 });
 
 export const newTriggerId = (): string => {

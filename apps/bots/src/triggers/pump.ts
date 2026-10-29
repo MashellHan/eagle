@@ -33,7 +33,7 @@ const settled = (record: Submission | undefined): boolean =>
 
 export class BotDrainPump {
   readonly #botId: string;
-  readonly #triggers: () => readonly PumpTrigger[];
+  readonly #triggers: () => readonly PumpTrigger[] | Promise<readonly PumpTrigger[]>;
   readonly #deps: PumpDeps;
   #running = false;
   #draining: Promise<void> | undefined;
@@ -44,7 +44,7 @@ export class BotDrainPump {
 
   constructor(input: {
     readonly botId: string;
-    readonly triggers: () => readonly PumpTrigger[];
+    readonly triggers: () => readonly PumpTrigger[] | Promise<readonly PumpTrigger[]>;
     readonly deps: PumpDeps;
   }) {
     this.#botId = input.botId;
@@ -102,7 +102,7 @@ export class BotDrainPump {
   }
 
   async #evaluate(): Promise<"idle" | "cut" | "refused"> {
-    const triggers = this.#triggers();
+    const triggers = await this.#triggers();
     // 1. Reconcile every frozen batch before anything else: a record that arrived before
     //    `submit` returned still closes its batch and releases the queue.
     let closed = false;
