@@ -29,12 +29,6 @@ public struct DeviceInspectorView: View {
         .frame(maxWidth: .infinity)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .task {
-      while !Task.isCancelled {
-        await model.startIfNeeded()
-        await model.refresh()
-        do { try await Task.sleep(for: .seconds(5)) } catch { return }
-      }
-    }
+    .task { await model.observe() }
   }
 }

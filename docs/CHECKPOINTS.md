@@ -1,5 +1,22 @@
 # 用户视角检查点
 
+## 2026-10-29 16:48 +08 — 设备页刷新与点击修复集成
+
+- Root 对旧 App 做 13 秒只读 AX 采样：156 次中刷新按钮 153 次可用、3 次禁用；
+  证据 `gui/device-controls-before.json`。独立 Swift 宿主另复现展开按钮仅 85.5×16pt、
+  右侧空白无法点击，1 项红测有 4 处失败；不把测试宿主当作新版 App GUI 验收。
+- Sol 已提交无变化不发布/不闪禁用、单一 5 秒观察源、“添加设备”整行 44pt 点击，
+  并保护输入、原 pending ID 和较新用户结果。局部 38 项/5 suites 通过；review 指出的
+  前置输入错误覆盖问题另有 18 处红断言，修后 30 项/3 模型 suites 通过，P2 与增量
+  review 已关闭，无新增实质问题。
+  strict format 与正常提交 hook 通过；日志在 settings-polish worktree 的
+  `.local/settings-polish-evidence/`。Lead 合入固定 UI `1d1fd31`，不取其后的其他工作。
+- 安装仍由原 UI/思考等级入口独占；新版需要保留其已授权 thinking 改动，不能用纯设备
+  包覆盖。Root 负责最终门禁和唯一 push，代码交付不等待安装；本轮未替换或重启 App。
+- 公网设备服务仍为 `28f4aef`，未改 Worker、身份、原 journal、Bot/历史或 Raven。
+  没有新增 Herdr 采集、认证/D1/live 验证；实际 HTTPS App 注册/WSS、物理双 Mac
+  配对与指定目标执行仍待验收。
+
 ## 2026-10-29 16:16 +08 — 设备布局更新与本机目录回退
 
 - `f62095a` 已显示精简设备页。更新期间 helper 曾被 amfid -423/launch constraint

@@ -291,13 +291,7 @@ public struct WorkspaceShellView: View {
         guard !Task.isCancelled else { return }
         await bots.loadModels()
       }
-      .task {
-        await devices.startIfNeeded()
-        while !Task.isCancelled {
-          await devices.refresh()
-          do { try await Task.sleep(for: .seconds(5)) } catch { return }
-        }
-      }
+      .task { await devices.observe() }
       .onDisappear {
         // Closing the window must release the bot's connection, or its subscriber slot
         // stays taken for as long as the process lives.

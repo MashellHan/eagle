@@ -3,10 +3,11 @@
 Pure SwiftUI client that mirrors one Herdr Space as one conversation. No
 third-party dependencies: Foundation, SwiftUI, AppKit only.
 
-Status: **Bots is live, the rest is mock**. The shell connects to the local Bots
-daemon (`apps/bots`), starts it on launch when it can find it, and stops it on
-quit; the sidebar groups, inspector artifacts and settings pages other than the
-Bots ones are still demo content.
+Status: **Bots and device services are integrated**. The App connects to the local
+Bots daemon (`apps/bots`) and bundled device service, with real settings for device
+readiness, execution policy and pairing. Local command execution has been verified
+on the current test Mac; physical two-Mac pairing and execution remain unverified.
+Other overview and inspector content still includes demos.
 
 ## Build the pairing candidate on another Mac
 

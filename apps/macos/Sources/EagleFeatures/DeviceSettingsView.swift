@@ -18,13 +18,7 @@ public struct DeviceSettingsView: View {
       serviceCard
       directoryCard
     }
-    .task {
-      while !Task.isCancelled {
-        await model.startIfNeeded()
-        await model.refresh()
-        do { try await Task.sleep(for: .seconds(5)) } catch { return }
-      }
-    }
+    .task { await model.observe() }
     .alert(
       "移出设备群？",
       isPresented: Binding(
@@ -89,9 +83,10 @@ public struct DeviceSettingsView: View {
             SettingsCaption("配对待确认")
             pairingContent
           } else {
-            DisclosureGroup("配对设备") {
+            DisclosureGroup("添加设备") {
               pairingContent.padding(.top, 12)
             }
+            .disclosureGroupStyle(DeviceDisclosureStyle())
             .font(Theme.TypeScale.note)
             .foregroundStyle(Theme.Palette.textPrimary)
           }
@@ -223,6 +218,7 @@ public struct DeviceSettingsView: View {
             .font(Theme.TypeScale.mono)
             .textSelection(.enabled)
         }
+        .disclosureGroupStyle(DeviceDisclosureStyle())
         .font(Theme.TypeScale.note)
         .foregroundStyle(Theme.Palette.textMuted)
         SettingsActionButton("查询配对结果", prominent: true) {
@@ -391,6 +387,7 @@ struct DeviceSummaryView: View {
             .padding(.top, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
           }
+          .disclosureGroupStyle(DeviceDisclosureStyle())
           .font(Theme.TypeScale.pill)
           .foregroundStyle(Theme.Palette.textMuted)
         }
@@ -415,5 +412,29 @@ struct DeviceSummaryView: View {
     if isLocal && !localReady { return "本机未就绪" }
     if stale { return isLocal && localReady ? "本机可用 · 云端观察待刷新" : "观察待刷新" }
     return isLocal && localReady ? "本机可用 · \(device.connectionLabel)" : device.connectionLabel
+  }
+}
+
+/// Keep native disclosure state and Button keyboard/AX actions with a full rectangular target.
+private struct DeviceDisclosureStyle: DisclosureGroupStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Button {
+        configuration.isExpanded.toggle()
+      } label: {
+        HStack {
+          configuration.label
+          Spacer(minLength: 12)
+          Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+            .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityValue(configuration.isExpanded ? "已展开" : "已折叠")
+      if configuration.isExpanded { configuration.content }
+    }
   }
 }

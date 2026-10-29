@@ -255,6 +255,14 @@ Local directory always includes self;
 remote entries are fetched live before remote execution. Multiple Bots share
 this port and never copy device secrets. `status` returns
 `{deviceId,localReady,cloudStatus,policy}`. App may open the same port for settings.
+Settings, the device inspector and App windows share one five-second observation
+task while any of them is present. Unchanged background reads publish no UI
+changes and do not disable local controls. User mutations supersede older reads,
+including their errors; stopped services cannot be revived by delayed replies.
+Local policy remains available when the cloud directory is offline or stale,
+provided the service is enabled, locally ready and its policy is known.
+The Add device and detail disclosures use full-width, 44-point-minimum Button
+targets; expansion and unfinished pairing input survive observation updates.
 The local execution port accepts only operation-bound signed approval envelopes,
 not a boolean or reusable approval token; all approval creation uses typed approve.
 

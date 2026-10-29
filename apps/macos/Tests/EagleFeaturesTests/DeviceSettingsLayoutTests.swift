@@ -66,7 +66,7 @@ struct DeviceSettingsLayoutTests {
 
     let titles = entries(host).compactMap(title)
     #expect(titles.contains("启用设备服务"))
-    #expect(titles.contains("配对设备"))
+    #expect(titles.contains("添加设备"))
     #expect(!titles.contains("生成本机配对码"))
     #expect(!titles.contains("另一台设备的配对码"))
   }
@@ -90,6 +90,59 @@ struct DeviceSettingsLayoutTests {
     let titles = entries(host).compactMap(title)
     #expect(titles.contains("查询配对结果"))
     #expect(titles.contains("用原请求重试"))
+  }
+
+  @Test("the pairing disclosure is a full row and its trailing blank area expands it")
+  func disclosureHitArea() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    await model.startIfNeeded()
+    let (host, window) = makeHost(model)
+    defer {
+      window.orderOut(nil)
+      window.contentView = nil
+    }
+    try await Task.sleep(for: .milliseconds(50))
+    host.layoutSubtreeIfNeeded()
+    let node = try #require(entries(host).first { ["配对设备", "添加设备"].contains(title($0)) })
+    let frame = try #require(node.value(forKey: "accessibilityFrame") as? NSValue).rectValue
+    #expect(frame.height >= 44)
+    #expect(frame.width >= host.bounds.width - 80)
+    let screen = window.convertToScreen(host.convert(host.bounds, to: nil))
+    let point = window.convertPoint(fromScreen: NSPoint(x: screen.maxX - 40, y: frame.midY))
+    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+      let event = try #require(
+        NSEvent.mouseEvent(
+          with: type, location: point, modifierFlags: [], timestamp: 0,
+          windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+          clickCount: 1, pressure: 1))
+      window.sendEvent(event)
+    }
+    try await Task.sleep(for: .milliseconds(50))
+    host.layoutSubtreeIfNeeded()
+    #expect(entries(host).compactMap(title).contains("另一台设备的配对码"))
+    let input = try #require(entries(host).first { title($0) == "另一台设备的配对码" })
+    let setter = NSSelectorFromString("setAccessibilityValue:")
+    try #require(input.responds(to: setter))
+    input.perform(setter, with: "unfinished-pairing-input")
+    let textField = try #require((input as? NSCell)?.controlView as? NSTextField)
+    textField.delegate?.controlTextDidChange?(
+      Notification(name: NSControl.textDidChangeNotification, object: textField))
+    control.directory = deviceDirectory(observation: "visible-change", online: true)
+    await model.refresh()
+    try await Task.sleep(for: .milliseconds(20))
+    let refreshed = try #require(entries(host).first { title($0) == "另一台设备的配对码" })
+    #expect(attribute(refreshed, "AXValue") as? String == "unfinished-pairing-input")
+    let button = try #require(entries(host).first { title($0) == "添加设备" })
+    let press = NSSelectorFromString("accessibilityPerformPress")
+    try #require(button.responds(to: press))
+    button.perform(press)
+    try await Task.sleep(for: .milliseconds(20))
+    #expect(!entries(host).compactMap(title).contains("另一台设备的配对码"))
+    button.perform(press)
+    try await Task.sleep(for: .milliseconds(20))
+    let reopened = try #require(entries(host).first { title($0) == "另一台设备的配对码" })
+    #expect(attribute(reopened, "AXValue") as? String == "unfinished-pairing-input")
   }
 
   private func makeHost(

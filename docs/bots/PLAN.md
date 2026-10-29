@@ -35,8 +35,12 @@ Orca 固定源码参考、认证/存储边界及旧代码处理见
 红绿及增量审查完成，28f4aef 的最终 check 235/235、types/lint/build、绝对路径 dry-run
 通过。Root 已部署该 SHA，公网 health exact revision 与匿名目录 401 已验证。
 之后的配对包和独立 UI 更新包都须显式使用此 HTTPS build origin，保持相同 candidate
-profile/data。本机真实执行已验；真实 App 公网注册/WSS 和物理 A/B 配对仍待验，
-settings-layout UI 提交与安装由另一协作入口独占，Root 只读观察。
+profile/data。本机真实执行已验；真实 App 公网注册/WSS 和物理 A/B 配对仍待验。
+本轮合入已批准的 settings-layout `1d1fd31` 与设备页 polish：添加设备整行展开，
+多个视图共用一次周期观察，无变化不发布、不闪禁用，旧读取不能覆盖较新操作。
+局部 Swift 红绿及增量 review 已完成；最终门禁和唯一 push 由 Root 执行。
+当前安装仍由原 UI/思考等级入口持有；后续完整 HTTPS 包须保留它已授权的 thinking
+改动，待完整来源/安装权交接，或由原拥有者统一组装，不能以纯设备包覆盖。
 
 2026-10-29：已从 `nocoo/eagle@7101566` 启动实施。Eagle Herdr 团队使用独立
 worktree；旧 `main@c34be59` 只作按需复用来源。当前尚未完成设备群或配对验收。

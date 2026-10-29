@@ -282,6 +282,7 @@ struct DeviceSettingsViewModelTests {
   var directory = deviceDirectory()
   var policy: DeviceJSON = .object(["mode": .string("all-approve"), "version": .number(1)])
   var handler: ((String, DeviceJSON?) throws -> DeviceJSON?)?
+  var asyncHandler: ((String, DeviceJSON?) async throws -> DeviceJSON?)?
   func start(
     confirm: @escaping @MainActor @Sendable (DeviceApprovalRequest) async -> Bool
   ) async throws {
@@ -291,6 +292,7 @@ struct DeviceSettingsViewModelTests {
   }
   func call(_ method: String, params: DeviceJSON?) async throws -> DeviceJSON {
     calls.append((method, params))
+    if let result = try await asyncHandler?(method, params) { return result }
     if method == "service.status" { await statusGate?() }
     if let result = try handler?(method, params) { return result }
     switch method {

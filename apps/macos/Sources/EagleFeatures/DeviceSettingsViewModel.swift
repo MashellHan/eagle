@@ -78,27 +78,35 @@ private struct DeviceServiceState: Decodable {
   @Published public private(set) var pendingApproval: DeviceApprovalRequest?
   @Published public private(set) var errorCode: String?
   @Published public private(set) var isStarting = false
-  @Published public private(set) var isRefreshing = false
   @Published public private(set) var isBusy = false
 
   private let control: any DeviceControl
   private let defaults: UserDefaults
   private let now: @MainActor () -> Date
+  private let observationWait: @MainActor () async throws -> Void
   private var started = false
   private var stopping = false
+  private var stateGeneration: UInt64 = 0
+  private var refreshGeneration: UInt64?
   private var pendingRedeemCodeHash: String?
   private var localDeviceId: String?
   private var startTask: Task<Void, Never>?
   private var approvalContinuation: CheckedContinuation<Bool, Never>?
   private var approvalExpiry: Task<Void, Never>?
+  private var observers: [UUID: CheckedContinuation<Void, Never>] = [:]
+  private var observationTask: Task<Void, Never>?
 
   public init(
     control: any DeviceControl = DeviceSystemControl(), defaults: UserDefaults = .standard,
-    now: @escaping @MainActor () -> Date = { Date() }
+    now: @escaping @MainActor () -> Date = { Date() },
+    observationWait: @escaping @MainActor () async throws -> Void = {
+      try await Task.sleep(for: .seconds(5))
+    }
   ) {
     self.control = control
     self.defaults = defaults
     self.now = now
+    self.observationWait = observationWait
     enabled = !defaults.bool(forKey: Self.disabledKey)
     let record = defaults.dictionary(forKey: Self.pendingRedeemKey)
     // Older candidate records contain an ID only: they can be queried, never blindly retried.
@@ -113,7 +121,8 @@ private struct DeviceServiceState: Decodable {
 
   public var needsBackgroundApproval: Bool { errorCode == "background_approval_required" }
   public var socketPath: String? { enabled && localReady ? control.socketPath : nil }
-  public var controlsBusy: Bool { isStarting || isRefreshing || isBusy }
+  public var isRefreshing: Bool { refreshGeneration != nil }
+  public var controlsBusy: Bool { isStarting || isBusy }
   public var canToggleService: Bool { !isBusy && (enabled || !controlsBusy) }
   public var canRetryService: Bool { enabled && started && !localReady && !isStarting }
   public var errorMessage: String? {
@@ -172,6 +181,7 @@ private struct DeviceServiceState: Decodable {
 
   public func setEnabled(_ value: Bool) async {
     guard !isBusy else { return }
+    stateGeneration &+= 1
     if value {
       enabled = true
       defaults.set(false, forKey: Self.disabledKey)
@@ -208,38 +218,80 @@ private struct DeviceServiceState: Decodable {
 
   public func openSystemSettings() { control.openSystemSettings() }
 
+  /// Settings, inspectors and windows share one reader until the last view disappears.
+  public func observe() async {
+    let id = UUID()
+    await withTaskCancellationHandler {
+      guard !Task.isCancelled else { return }
+      await withCheckedContinuation { continuation in
+        observers[id] = continuation
+        guard observationTask == nil else { return }
+        observationTask = Task { @MainActor [weak self] in
+          while !Task.isCancelled {
+            guard let self else { return }
+            if started { await refresh() } else { await startIfNeeded() }
+            guard !Task.isCancelled else { return }
+            do { try await observationWait() } catch { return }
+          }
+        }
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in self?.endObservation(id) }
+    }
+  }
+
+  private func endObservation(_ id: UUID) {
+    let continuation = observers.removeValue(forKey: id)
+    if observers.isEmpty {
+      observationTask?.cancel()
+      observationTask = nil
+    }
+    continuation?.resume()
+  }
+
   public func refresh() async {
-    guard enabled, started, !stopping, !isRefreshing else { return }
-    isRefreshing = true
-    defer { isRefreshing = false }
-    var observedStatus = false
+    guard !isBusy else { return }
+    await readState()
+  }
+
+  private func readState() async {
+    let generation = stateGeneration
+    guard enabled, started, !stopping, refreshGeneration != generation else { return }
+    refreshGeneration = generation
+    defer { if refreshGeneration == generation { refreshGeneration = nil } }
+    var observedStatus: DeviceServiceState?
     do {
       let status = try await control.call("service.status", params: nil).decoded(
         DeviceServiceState.self)
-      guard enabled, !stopping else { return }
-      observedStatus = true
-      localReady = status.localReady
-      localDeviceId = status.deviceId
-      cloudStatus = status.cloudStatus
-      guard localReady else {
-        errorCode = status.error.map { DevicePortError($0).code }
+      guard acceptsRead(generation) else { return }
+      observedStatus = status
+      guard status.localReady else {
+        applyStatus(status)
+        publish(\.errorCode, status.error.map { DevicePortError($0).code })
         denyPendingApproval()
-        directoryIsStale = true
+        publish(\.directoryIsStale, true)
         return
       }
       let current = try await control.call("directory", params: nil)
-      guard enabled else { return }
+      guard acceptsRead(generation) else { return }
+      let currentPolicy = try await control.call("policy.get", params: nil).decoded(
+        DevicePolicyState.self)
+      guard acceptsRead(generation) else { return }
+      applyStatus(status, cloudStatus: current["cloudStatus"]?.string)
       try applyDirectory(current)
-      policy = try await control.call("policy.get", params: nil).decoded(DevicePolicyState.self)
-      errorCode = nil
+      publish(\.policy, currentPolicy)
+      publish(\.errorCode, nil)
     } catch {
-      if !observedStatus {
+      guard acceptsRead(generation) else { return }
+      if let observedStatus {
+        applyStatus(observedStatus)
+      } else {
         started = false
-        localReady = false
-        cloudStatus = "unknown"
+        publish(\.localReady, false)
+        publish(\.cloudStatus, "unknown")
         denyPendingApproval()
       }
-      directoryIsStale = true
+      publish(\.directoryIsStale, true)
       record(error)
     }
   }
@@ -247,6 +299,7 @@ private struct DeviceServiceState: Decodable {
   /// Retry the Node child through the already authenticated helper; registration is unchanged.
   public func retryService() async {
     guard enabled, started, !stopping, !controlsBusy else { return }
+    stateGeneration &+= 1
     isBusy = true
     denyPendingApproval()
     defer { isBusy = false }
@@ -259,7 +312,7 @@ private struct DeviceServiceState: Decodable {
       let clock = ContinuousClock()
       let deadline = clock.now.advanced(by: .seconds(5))
       while enabled && !stopping && clock.now < deadline {
-        await refresh()
+        await readState()
         if localReady || errorCode != nil { return }
         try await Task.sleep(for: .milliseconds(100))
       }
@@ -273,13 +326,13 @@ private struct DeviceServiceState: Decodable {
         "policy.set", params: .object(["mode": .string(mode.rawValue)]))
       self.policy = try result.decoded(DevicePolicyState.self)
       self.denyPendingApproval()
-      await self.refresh()
+      await self.readState()
     }
   }
 
   public func createPairing(ttlSeconds: Int = 3600) async {
     guard (1...86400).contains(ttlSeconds) else {
-      errorCode = "invalid_pairing_ttl"
+      rejectPreflight("invalid_pairing_ttl")
       return
     }
     await perform {
@@ -301,11 +354,11 @@ private struct DeviceServiceState: Decodable {
   public func redeem(code: String) async {
     let code = code.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !code.isEmpty else {
-      errorCode = "empty_pairing_code"
+      rejectPreflight("empty_pairing_code")
       return
     }
     guard code.range(of: "^[A-Za-z0-9_-]{43}$", options: .regularExpression) != nil else {
-      errorCode = "invalid_pairing_code"
+      rejectPreflight("invalid_pairing_code")
       return
     }
     await perform {
@@ -318,7 +371,7 @@ private struct DeviceServiceState: Decodable {
           let result = try await self.control.call(
             "pairing.result", params: .object(["requestId": .string(requestId)]))
           try self.acceptPairingResult(result, requestId: requestId)
-          await self.refresh()
+          await self.readState()
         } catch let error as DevicePortError where error.code == "result_not_found" {
           guard self.pendingRedeemCodeHash == hash else {
             throw DevicePortError("pairing_binding_unavailable")
@@ -346,7 +399,7 @@ private struct DeviceServiceState: Decodable {
       let result = try await control.call(
         "pairing.redeem", params: .object(["requestId": .string(requestId), "code": .string(code)]))
       try acceptPairingResult(result, requestId: requestId)
-      await refresh()
+      await readState()
     } catch {
       if !firstAttempt, let port = error as? DevicePortError,
         ["pairing_unavailable", "pairing_consumed", "pairing_result_expired"].contains(port.code)
@@ -379,7 +432,7 @@ private struct DeviceServiceState: Decodable {
       let result = try await self.control.call(
         "pairing.result", params: .object(["requestId": .string(requestId)]))
       try self.acceptPairingResult(result, requestId: requestId)
-      await self.refresh()
+      await self.readState()
     }
   }
 
@@ -387,16 +440,18 @@ private struct DeviceServiceState: Decodable {
     await perform {
       _ = try await self.control.call(
         "member.remove", params: .object(["deviceId": .string(deviceId)]))
-      await self.refresh()
+      await self.readState()
     }
   }
 
   private func perform(_ action: @MainActor () async throws -> Void) async {
     guard enabled, started, localReady else {
-      errorCode = "device_service_unavailable"
+      rejectPreflight("device_service_unavailable")
       return
     }
     guard !isBusy else { return }
+    // A user action supersedes every read begun before it, including delayed failures.
+    stateGeneration &+= 1
     isBusy = true
     errorCode = nil
     defer { isBusy = false }
@@ -411,8 +466,30 @@ private struct DeviceServiceState: Decodable {
     {
       directory = current
     }
-    directoryIsStale = false
-    if value["cloudStatus"]?.string == "offline" { cloudStatus = "offline" }
+    publish(\.directoryIsStale, false)
+    if value["cloudStatus"]?.string == "offline" { publish(\.cloudStatus, "offline") }
+  }
+
+  private func acceptsRead(_ generation: UInt64) -> Bool {
+    generation == stateGeneration && enabled && started && !stopping && !Task.isCancelled
+  }
+
+  private func rejectPreflight(_ code: String) {
+    // Rejected input is still a newer user result than an already pending read.
+    stateGeneration &+= 1
+    publish(\.errorCode, code)
+  }
+
+  private func applyStatus(_ status: DeviceServiceState, cloudStatus: String? = nil) {
+    publish(\.localReady, status.localReady)
+    localDeviceId = status.deviceId
+    publish(\.cloudStatus, cloudStatus ?? status.cloudStatus)
+  }
+
+  private func publish<Value: Equatable>(
+    _ keyPath: ReferenceWritableKeyPath<DeviceSettingsViewModel, Value>, _ value: Value
+  ) {
+    if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
   }
 
   private func acceptPairingResult(_ value: DeviceJSON, requestId: String) throws {
@@ -430,9 +507,10 @@ private struct DeviceServiceState: Decodable {
   }
 
   private func record(_ error: any Error) {
-    errorCode =
+    let code =
       (error as? DevicePortError)?.code ?? (error as? DeviceHostError)?.rawValue
       ?? "device_request_failed"
+    publish(\.errorCode, code)
   }
 
   private func confirm(_ request: DeviceApprovalRequest) async -> Bool {
