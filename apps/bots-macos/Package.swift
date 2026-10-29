@@ -11,11 +11,13 @@ let package = Package(
     .library(name: "BotsCore", targets: ["BotsCore"]),
     .library(name: "BotsTransport", targets: ["BotsTransport"]),
     .library(name: "BotsFeatures", targets: ["BotsFeatures"]),
+    .executable(name: "BotsCredentialHelper", targets: ["BotsCredentialHelper"]),
   ],
   targets: [
     .target(name: "BotsCore"),
     .target(name: "BotsTransport", dependencies: ["BotsCore"]),
     .target(name: "BotsFeatures", dependencies: ["BotsCore", "BotsTransport"]),
+    .executableTarget(name: "BotsCredentialHelper"),
     .testTarget(name: "BotsCoreTests", dependencies: ["BotsCore", "BotsTransport"]),
     .testTarget(name: "BotsTransportTests", dependencies: ["BotsTransport"]),
     .testTarget(name: "BotsFeaturesTests", dependencies: ["BotsFeatures"]),

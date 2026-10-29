@@ -109,6 +109,16 @@ PUT 限 8 KiB，授权响应限 64 KiB，Bot 目录限 256 KiB 与 200 个不同
 超时均为 15 秒，响应逐字节计数。格式或超限错误不返回部分结果。
 Settings 词表承认 `remote` 工具组且默认关闭；工具组开关与每 Bot 的机器授权是独立控制。
 
+## 本机凭据 helper
+
+独立 `BotsCredentialHelper` 可执行目标通过私有 stdin/stdout 接受单次有界 JSON；
+凭据不进入 argv 或环境，只有 `read` 将凭据返回同机调用者。协议支持 put/read/status/remove，
+请求最多 64 KiB；标识必须完整匹配，凭据拒绝内部空白。失败只返回 `needs_local`，不回显输入。
+Keychain account 由 daemon namespace、Bot ID 与 credentialRef 组成，内容同时绑定 origin。
+put/remove 的原子 Keychain 查询也包含 origin，旧窗口不得覆盖或删除新的 origin 绑定。
+访问不弹交互式认证窗口；缺少权限或绑定不匹配时拒绝，由用户在本机恢复。
+真实跨进程 Keychain 回归随此目标提交；它们不等同于完整 App 的签名或冷启动验收。
+
 ## 原生授权协调组件
 
 Eagle 的授权模型使用上述独立 HTTP port，以及可注入的凭据复制接口；Bots 包不依赖
