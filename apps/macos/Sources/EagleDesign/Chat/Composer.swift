@@ -10,6 +10,9 @@ public struct Composer: View {
   private let onAttach: () -> Void
   private let onMic: () -> Void
   private let onWaveform: () -> Void
+  private let autofocus: Bool
+  private let focusRequest: Int
+  @FocusState private var focused: Bool
 
   public init(
     placeholder: String,
@@ -18,7 +21,9 @@ public struct Composer: View {
     onInsert: (() -> Void)? = nil,
     onAttach: @escaping () -> Void = {},
     onMic: @escaping () -> Void = {},
-    onWaveform: @escaping () -> Void = {}
+    onWaveform: @escaping () -> Void = {},
+    autofocus: Bool = false,
+    focusRequest: Int = 0
   ) {
     self.placeholder = placeholder
     self._text = text
@@ -27,6 +32,8 @@ public struct Composer: View {
     self.onAttach = onAttach
     self.onMic = onMic
     self.onWaveform = onWaveform
+    self.autofocus = autofocus
+    self.focusRequest = focusRequest
   }
 
   public var body: some View {
@@ -42,6 +49,7 @@ public struct Composer: View {
       .textFieldStyle(.plain)
       .font(Theme.TypeScale.composer)
       .foregroundStyle(Theme.Palette.textPrimary)
+      .focused($focused)
       .lineLimit(1...3)
       .fixedSize(horizontal: false, vertical: true)
       .frame(minHeight: Theme.Metric.hitTarget)
@@ -78,10 +86,19 @@ public struct Composer: View {
     .background(
       RoundedRectangle(cornerRadius: Theme.Metric.composerHeight / 2, style: .continuous)
         .fill(Theme.Palette.card)
+        .onTapGesture { focused = true }
     )
     .overlay(
       RoundedRectangle(cornerRadius: Theme.Metric.composerHeight / 2, style: .continuous)
         .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+        .allowsHitTesting(false)
     )
+    .task {
+      guard autofocus else { return }
+      await Task.yield()
+      guard !Task.isCancelled else { return }
+      focused = true
+    }
+    .onChange(of: focusRequest) { focused = true }
   }
 }

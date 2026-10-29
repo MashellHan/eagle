@@ -66,6 +66,7 @@ public struct ConversationColumn: View {
   private let onRetryConnection: () -> Void
   private let onDismissError: () -> Void
   @State private var scroller = TranscriptScroller()
+  @State private var composerFocusRequest = 0
 
   public init(
     title: String,
@@ -128,7 +129,9 @@ public struct ConversationColumn: View {
         placeholder: "给 \(title) 发消息",
         text: $draft,
         onSend: onSend,
-        onInsert: onInsert
+        onInsert: onInsert,
+        autofocus: true,
+        focusRequest: composerFocusRequest
       )
       .fixedSize(horizontal: false, vertical: true)
       .padding(.horizontal, Theme.Metric.conversationInset)
@@ -180,36 +183,47 @@ public struct ConversationColumn: View {
 
   private var transcript: some View {
     ScrollViewReader { proxy in
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: Theme.Metric.turnGap) {
-          ForEach(entries.hidingToolCalls(!showsToolCalls)) { entry in
-            row(entry).id(entry.id)
+      GeometryReader { viewport in
+        ScrollView {
+          LazyVStack(alignment: .leading, spacing: Theme.Metric.turnGap) {
+            ForEach(entries.hidingToolCalls(!showsToolCalls)) { entry in
+              row(entry).id(entry.id)
+            }
+            Color.clear.frame(height: 1).id("bottom")
           }
-          Color.clear.frame(height: 1).id("bottom")
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, Theme.Metric.conversationInset)
+          // Clear of the top edge fade: the first row must not start under it.
+          .padding(.top, Theme.Metric.edgeFadeHeight + 10)
+          .padding(.bottom, 12)
+          .frame(minHeight: viewport.size.height, alignment: .top)
+          // The document's background catches only blank space, behind message controls.
+          .background {
+            Color.clear
+              .contentShape(Rectangle())
+              .onTapGesture { composerFocusRequest += 1 }
+              .accessibilityHidden(true)
+          }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Theme.Metric.conversationInset)
-        // Clear of the top edge fade: the first row must not start under it.
-        .padding(.top, Theme.Metric.edgeFadeHeight + 10)
-        .padding(.bottom, 12)
-      }
-      .scrollEdgeFades(
-        Theme.Palette.surface, top: Theme.Metric.edgeFadeHeight, bottom: Theme.Metric.edgeFadeHeight
-      )
-      .onScrollPhaseChange { _, phase in
-        scroller.setUserScrolling(
-          phase == .tracking || phase == .interacting || phase == .decelerating)
-        if phase == .idle, scroller.endUserScroll() {
-          proxy.scrollTo("bottom", anchor: .bottom)
-        }
-      }
-      .onScrollGeometryChange(for: TranscriptScrollMetrics.self) { geometry in
-        TranscriptScrollMetrics(
-          contentHeight: geometry.contentSize.height, visibleBottom: geometry.visibleRect.maxY
+        .scrollEdgeFades(
+          Theme.Palette.surface, top: Theme.Metric.edgeFadeHeight,
+          bottom: Theme.Metric.edgeFadeHeight
         )
-      } action: { _, metrics in
-        if scroller.update(metrics) {
-          proxy.scrollTo("bottom", anchor: .bottom)
+        .onScrollPhaseChange { _, phase in
+          scroller.setUserScrolling(
+            phase == .tracking || phase == .interacting || phase == .decelerating)
+          if phase == .idle, scroller.endUserScroll() {
+            proxy.scrollTo("bottom", anchor: .bottom)
+          }
+        }
+        .onScrollGeometryChange(for: TranscriptScrollMetrics.self) { geometry in
+          TranscriptScrollMetrics(
+            contentHeight: geometry.contentSize.height, visibleBottom: geometry.visibleRect.maxY
+          )
+        } action: { _, metrics in
+          if scroller.update(metrics) {
+            proxy.scrollTo("bottom", anchor: .bottom)
+          }
         }
       }
     }

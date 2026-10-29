@@ -87,6 +87,16 @@ the composer. Clearing or sending the draft restores its one-line height. The bo
 inset and attachment/send controls stay anchored; draft ownership and send semantics
 remain unchanged.
 
+Opening a Chat conversation or selecting another bot gives the native input focus
+once. Streaming transcript updates do not take focus back from another control.
+Clicking blank space inside the rounded composer, including its padding, focuses
+the same input without changing the draft. Native text selection, Return and
+Shift-Return handling, and the attachment/send controls keep their behavior.
+Clicking empty space in the Chat transcript also returns focus to that input,
+including the space below a short conversation and the side insets. Message text
+selection, links and buttons keep their own click targets; scrolling preserves
+the current focus.
+
 ## Conversation identity and activity
 
 Sidebar group headers show only a positive count of visible unread conversations,
