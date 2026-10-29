@@ -1,6 +1,7 @@
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { open, opendir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { z } from "zod";
 import {
   canonicalDeviceJSON,
   type Device,
@@ -12,11 +13,13 @@ import {
 } from "../contracts/src/devices.ts";
 import { runProcess } from "./device-command.ts";
 import {
+  OperationAdmissionError,
   OperationJournal,
   type OperationOutcome,
   type OperationRecord,
   type OperationScope,
 } from "./device-journal.ts";
+import { deviceOutcome } from "./device-output.ts";
 
 function result(record: OperationRecord): OperationResult {
   return {
@@ -52,6 +55,7 @@ export class DeviceRuntime {
   >();
   private native = new Set<string>();
   private closed = false;
+  private unhealthy = false;
   private secrets: () => string[];
   constructor(
     device: Device,
@@ -103,6 +107,11 @@ export class DeviceRuntime {
     native: boolean,
   ): Promise<{ accepted: boolean; result: OperationResult }> {
     const parsed = OperationRequest.safeParse(input);
+    if (this.unhealthy)
+      return {
+        accepted: false,
+        result: { status: "unknown", error: "operation_storage_unavailable" },
+      };
     if (!parsed.success || this.closed)
       return {
         accepted: false,
@@ -186,10 +195,21 @@ export class DeviceRuntime {
       if (source.deviceId !== this.device.deviceId)
         return { accepted: false, result: { status: "denied" } };
       return await this.admit(request, source, true);
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof OperationAdmissionError ||
+        error instanceof z.ZodError ||
+        (error instanceof Error &&
+          error.message === "operation_source_mismatch")
+      )
+        return {
+          accepted: false,
+          result: { status: "denied", error: "operation_conflict" },
+        };
+      this.unhealthy = true;
       return {
         accepted: false,
-        result: { status: "denied", error: "operation_conflict" },
+        result: { status: "unknown", error: "operation_storage_unavailable" },
       };
     }
   }
@@ -202,9 +222,18 @@ export class DeviceRuntime {
     )
       return { status: "denied", error: "invalid_completion" };
     const settled = parsed.status !== "unknown";
-    const stored = this.journal.finish(operationId, outcome(parsed), settled);
-    if (settled) this.native.delete(operationId);
-    return result(stored);
+    try {
+      const stored = this.journal.finish(
+        operationId,
+        deviceOutcome(outcome(parsed), this.secrets()),
+        settled,
+      );
+      if (settled) this.native.delete(operationId);
+      return result(stored);
+    } catch {
+      this.unhealthy = true;
+      return { status: "unknown", error: "operation_storage_unavailable" };
+    }
   }
   abandonNative(operationId: string): OperationResult {
     if (!this.native.has(operationId)) return { status: "unknown" };
@@ -222,6 +251,8 @@ export class DeviceRuntime {
   ): Promise<OperationResult> {
     try {
       const request = OperationRequest.parse(input);
+      if (this.unhealthy)
+        return { status: "unknown", error: "operation_storage_unavailable" };
       if (request.targetDeviceId !== this.device.deviceId)
         return { status: "denied", error: "wrong_target" };
       if (request.action !== "run") {
@@ -249,16 +280,33 @@ export class DeviceRuntime {
           };
         }
         try {
-          return result(this.journal.finish(request.operationId, value));
-        } finally {
+          const stored = this.journal.finish(
+            request.operationId,
+            deviceOutcome(value, this.secrets()),
+          );
           this.active.delete(request.operationId);
+          return result(stored);
+        } catch {
+          this.unhealthy = true;
+          return {
+            status: "unknown",
+            error: "operation_storage_unavailable",
+          } as OperationResult;
         }
       });
       this.active.set(request.operationId, { controller, promise });
       this.native.delete(request.operationId);
       return await promise;
-    } catch {
-      return { status: "denied", error: "operation_conflict" };
+    } catch (error) {
+      if (
+        error instanceof OperationAdmissionError ||
+        error instanceof z.ZodError ||
+        (error instanceof Error &&
+          error.message === "operation_source_mismatch")
+      )
+        return { status: "denied", error: "operation_conflict" };
+      this.unhealthy = true;
+      return { status: "unknown", error: "operation_storage_unavailable" };
     }
   }
   private async execute(

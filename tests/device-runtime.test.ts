@@ -391,3 +391,214 @@ test("policy changed while a real approval signature verifies cannot admit side 
     await f.close();
   }
 });
+
+test("native and file output use bounded UTF-8 bytes and the command credential redactor before journaling", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "device-output-"));
+  const { device } = local();
+  const secret = "private-session-secret-for-output-test";
+  const runtime = new DeviceRuntime(
+    device,
+    join(directory, "journal.sqlite"),
+    () => [secret],
+  );
+  try {
+    const native = await request(device.deviceId, {
+      kind: "native",
+      tool: "bash",
+      args: { command: "output" },
+    });
+    assert.equal((await runtime.beginNative(native, device)).accepted, true);
+    const large = `${secret}\n-----BEGIN PRIVATE KEY-----\nnever-store-key-material\n-----END PRIVATE KEY-----\n${"界".repeat(30000)}`;
+    const completed = runtime.completeNative(native.operationId, {
+      status: "completed",
+      output: large,
+      error: "界".repeat(3000),
+      exitCode: 0,
+    });
+    assert.equal(completed.status, "completed");
+    assert(
+      Buffer.byteLength(completed.output ?? "") +
+        Buffer.byteLength(completed.error ?? "") <=
+        65536,
+    );
+    assert(!JSON.stringify(completed).includes(secret));
+    assert(!JSON.stringify(completed).includes("never-store-key-material"));
+    assert(!(completed.output ?? "").includes("�"));
+    const file = join(directory, "output.txt");
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(
+      file,
+      `${secret}\n-----BEGIN PRIVATE KEY-----\nfile-key-material`,
+    );
+    const input = await request(device.deviceId, {
+      kind: "file.read",
+      path: file,
+    });
+    const read = await runtime.handle(input, device);
+    assert.equal(read.status, "completed");
+    assert(!JSON.stringify(read).includes(secret));
+    assert(!JSON.stringify(read).includes("file-key-material"));
+    const edge = await request(device.deviceId, {
+      kind: "native",
+      tool: "bash",
+      args: { command: "edge" },
+    });
+    await runtime.beginNative(edge, device);
+    const truncated = runtime.completeNative(edge.operationId, {
+      status: "completed",
+      output: "x".repeat(61430) + secret,
+    });
+    assert(!truncated.output?.endsWith(secret.slice(0, 10)));
+    assert(truncated.output?.includes("[REDACTED]"));
+    const newRun = await request(device.deviceId, {
+      kind: "command",
+      command: "printf free",
+    });
+    assert.equal((await runtime.handle(newRun, device)).output, "free");
+  } finally {
+    await runtime.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("real SQLite completion failure returns unknown while preserving device admission", async () => {
+  const f = fixture();
+  try {
+    const input = await request(f.device.deviceId, {
+      kind: "native",
+      tool: "write",
+      args: { path: "example" },
+    });
+    await f.runtime.beginNative(input, f.device);
+    const database = Reflect.get(
+      f.runtime.journal,
+      "database",
+    ) as import("node:sqlite").DatabaseSync;
+    database.exec(
+      "CREATE TRIGGER refuse_completion BEFORE UPDATE ON operations BEGIN SELECT RAISE(ABORT,'storage fixture failure'); END",
+    );
+    const completed = f.runtime.completeNative(input.operationId, {
+      status: "completed",
+      output: "side effect done",
+    });
+    assert.equal(completed.status, "unknown");
+    const other = await request(f.device.deviceId, {
+      kind: "command",
+      command: "printf must-not-run",
+    });
+    assert.equal((await f.runtime.handle(other, f.device)).status, "unknown");
+    database.exec("DROP TRIGGER refuse_completion");
+  } finally {
+    await f.close();
+  }
+});
+
+test("an approval that expires during signature verification cannot admit an operation", async () => {
+  const f = fixture();
+  const original = crypto.subtle.verify.bind(crypto.subtle);
+  try {
+    f.runtime.setPolicy("always-ask");
+    const input = await request(f.device.deviceId, {
+      kind: "command",
+      command: "printf expired",
+    });
+    const envelope = {
+      operationId: input.operationId,
+      sourceDeviceId: f.device.deviceId,
+      targetDeviceId: f.device.deviceId,
+      digest: input.digest as string,
+      policyVersion: f.runtime.policy.version,
+      expiresAt: Date.now() + 80,
+    };
+    input.approval = {
+      ...envelope,
+      signature: sign(
+        null,
+        Buffer.from(approvalPayload(envelope)),
+        f.keys.privateKey,
+      ).toString("base64url"),
+    };
+    crypto.subtle.verify = async (
+      ...args: Parameters<SubtleCrypto["verify"]>
+    ) => {
+      const verified = await original(...args);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return verified;
+    };
+    assert.equal((await f.runtime.handle(input, f.device)).status, "denied");
+    assert.equal(
+      (await f.runtime.handle({ ...input, action: "get" }, f.device)).status,
+      "unknown",
+    );
+  } finally {
+    crypto.subtle.verify = original;
+    await f.close();
+  }
+});
+
+test("same ID completing concurrent approval verification returns its original state before busy", async () => {
+  const f = fixture();
+  const original = crypto.subtle.verify.bind(crypto.subtle);
+  let release: (() => void) | undefined;
+  let entered: (() => void) | undefined;
+  const both = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let count = 0;
+  try {
+    f.runtime.setPolicy("always-ask");
+    const input = await request(f.device.deviceId, {
+      kind: "native",
+      tool: "bash",
+      args: { command: "sleep 20" },
+    });
+    const envelope = {
+      operationId: input.operationId,
+      sourceDeviceId: f.device.deviceId,
+      targetDeviceId: f.device.deviceId,
+      digest: input.digest as string,
+      policyVersion: f.runtime.policy.version,
+      expiresAt: Date.now() + 60000,
+    };
+    input.approval = {
+      ...envelope,
+      signature: sign(
+        null,
+        Buffer.from(approvalPayload(envelope)),
+        f.keys.privateKey,
+      ).toString("base64url"),
+    };
+    crypto.subtle.verify = async (
+      ...args: Parameters<SubtleCrypto["verify"]>
+    ) => {
+      const verified = await original(...args);
+      if (++count === 2) entered?.();
+      await blocked;
+      return verified;
+    };
+    const first = f.runtime.beginNative(input, f.device);
+    const second = f.runtime.beginNative(
+      { ...input, requestId: randomUUID() },
+      f.device,
+    );
+    await both;
+    release?.();
+    const responses = await Promise.all([first, second]);
+    assert.deepEqual(responses.map((value) => value.accepted).sort(), [
+      false,
+      true,
+    ]);
+    assert.deepEqual(
+      responses.map((value) => value.result.status),
+      ["running", "running"],
+    );
+    f.runtime.completeNative(input.operationId, { status: "completed" });
+  } finally {
+    release?.();
+    crypto.subtle.verify = original;
+    await f.close();
+  }
+});

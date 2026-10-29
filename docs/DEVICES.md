@@ -166,3 +166,11 @@ Agent authentication frame includes `capabilities:[operation kinds],policy`;
 `{type:"heartbeat",capabilities,policy}` refreshes actual observations every 10s.
 Online observations expire after 30s without a heartbeat. sourceBotId is bounded
 to 120 characters and is provenance only, never a permission boundary.
+
+All command/file/native outcomes pass the same credential/PEM redactor before
+journal persistence. stdout is bounded to 60 KiB and stderr to 4 KiB in UTF-8
+bytes, without splitting characters; truncated known-secret fragments are masked.
+A valid oversized native completion is sanitized and bounded, then committed.
+Journal/storage failure returns unknown and preserves admission; it never reports
+an admitted side effect as an unaccepted denial. Admission rechecks policy version,
+service closure and approval expiry after asynchronous signature verification.

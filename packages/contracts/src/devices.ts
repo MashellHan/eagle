@@ -198,9 +198,14 @@ export async function verifyApproval(
     approval.expiresAt > Date.now() + 300000
   )
     return false;
-  return verifyDeviceSignature(
+  const verified = await verifyDeviceSignature(
     source.publicKey,
     approvalPayload(approval),
     approval.signature,
+  );
+  return (
+    verified &&
+    approval.expiresAt > Date.now() &&
+    approval.expiresAt <= Date.now() + 300000
   );
 }
