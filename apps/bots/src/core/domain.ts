@@ -326,7 +326,13 @@ export type ToolGroup = (typeof TOOL_GROUP_NAMES)[number];
 export const MANDATORY_TOOL_GROUPS: readonly ToolGroup[] = ["core", "coding"];
 
 /** New optional groups start unselected: a person turns them on in settings. */
-export const DEFAULT_TOOL_GROUPS: readonly ToolGroup[] = ["core", "coding", "herdr", "agents"];
+export const DEFAULT_TOOL_GROUPS: readonly ToolGroup[] = [
+  "core",
+  "coding",
+  "herdr",
+  "agents",
+  "trigger",
+];
 
 export const isToolGroup = (value: unknown): value is ToolGroup =>
   typeof value === "string" && (TOOL_GROUP_NAMES as readonly string[]).includes(value);

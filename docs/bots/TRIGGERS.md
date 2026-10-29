@@ -516,13 +516,13 @@ unchanged wire order, asserted through the client reducer frame by frame.
 
 | Group | Extension | Tools | Loader | Default |
 | --- | --- | --- | --- | --- |
-| `trigger` | `bots-trigger` | `trigger_create`, `trigger_list`, `trigger_update`, `trigger_enable`, `trigger_delete` | deferred (`tool-search`) | off |
+| `trigger` | `bots-trigger` | `trigger_create`, `trigger_list`, `trigger_update`, `trigger_enable`, `trigger_delete` | deferred (`tool-search`) | **on by default** |
 | `peers` | `bots-peers` | `peer_list`, `peer_send`, `peer_read` | deferred (`tool-search`) | off |
 
 ### 7.1 Registration and injection, all of it
 
-1. `core/domain.ts`: append to `TOOL_GROUP_NAMES`; confirmed absent from
-   `DEFAULT_TOOL_GROUPS`.
+1. `core/domain.ts`: append to `TOOL_GROUP_NAMES` and to `DEFAULT_TOOL_GROUPS`, so a new
+   Bot can create its own trigger without a trip to Settings.
 2. `tools/registry.ts`: `GROUP_EXTENSIONS[group] = [EXTENSION, toolSearch.name]`,
    plus the install guarded by its host options. The loader condition
    (`tools/registry.ts:97`) currently names only Herdr and search and must include

@@ -1,0 +1,73 @@
+{
+  "id": "complex-default-trigger",
+  "title": "复杂③b：不显式开组，默认就能让模型给自己建触发器",
+  "kind": "complex",
+  "notes": "The same lifecycle as complex-self-trigger, but the case sets no toolGroups at all: the default selection must already include the trigger group, or this fails.",
+  "model": {
+    "script": [
+      {
+        "toolCall": {
+          "name": "trigger_create",
+          "args": {
+            "kind": "webhook",
+            "name": "ops hook",
+            "prompt": "运维投递；用一句话确认收到"
+          }
+        }
+      },
+      {
+        "text": "已创建 ops hook 触发器，等待投递。"
+      },
+      {
+        "text": "收到投递：磁盘 92% 已记录。"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "kind": "chat",
+      "text": "给自己建一个 ops hook 触发器，建好只回一句确认"
+    },
+    {
+      "kind": "waitFor",
+      "role": "assistant",
+      "contains": "已创建",
+      "count": 1,
+      "timeoutMs": 30000
+    },
+    {
+      "kind": "webhook",
+      "trigger": "ops hook",
+      "body": "disk usage 92%"
+    },
+    {
+      "kind": "waitFor",
+      "role": "assistant",
+      "contains": "收到投递",
+      "count": 1,
+      "timeoutMs": 30000
+    }
+  ],
+  "expect": {
+    "messages": [
+      {
+        "role": "assistant",
+        "contains": "已创建 ops hook"
+      },
+      {
+        "role": "user",
+        "origin": "webhook",
+        "contains": "disk usage 92%"
+      },
+      {
+        "role": "assistant",
+        "contains": "收到投递"
+      }
+    ],
+    "toolsCalled": ["trigger_create"],
+    "noErrors": true,
+    "modelRequests": {
+      "max": 4
+    }
+  }
+}

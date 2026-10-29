@@ -109,7 +109,7 @@ version, the instance id, the pid and a bot count, never bot content.
 // GatewaySettings: the key is never returned, only whether one is stored.
 { "configured": true, "provider": "magpie", "baseUrl": "http://127.0.0.1:3425/v1",
   "model": "auto/gpt-6-luna", "hasApiKey": true, "thinkingLevel": "medium",
-  "toolGroups": ["core", "coding", "herdr", "agents"] }
+  "toolGroups": ["core", "coding", "herdr", "agents", "trigger"] }
 
 // GatewayProbe: the test asks the gateway for its model list.
 { "ok": true, "status": 200, "message": "连接成功，网关报告 17 个模型",

@@ -12,5 +12,5 @@ test("core and coding cannot be turned off and unknown names are dropped", () =>
   assert.deepEqual(resolveToolGroups(["herdr", "web"]), ["core", "coding", "herdr"]);
   assert.deepEqual(resolveToolGroups(["agents"]), ["core", "coding", "agents"]);
   assert.deepEqual(resolveToolGroups(undefined), ["core", "coding"]);
-  assert.deepEqual(DEFAULT_TOOL_GROUPS, ["core", "coding", "herdr", "agents"]);
+  assert.deepEqual(DEFAULT_TOOL_GROUPS, ["core", "coding", "herdr", "agents", "trigger"]);
 });

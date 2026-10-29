@@ -409,7 +409,9 @@ const runCase = async (
           model: "eval-model",
           apiKey: "eval-key",
           thinkingLevel: "low",
-          toolGroups: study.toolGroups ?? ["core", "coding"],
+          // No `toolGroups` means "whatever the daemon defaults to", which is what a case
+          // without the field is testing.
+          ...(study.toolGroups === undefined ? {} : { toolGroups: study.toolGroups }),
         },
         null,
         2,
