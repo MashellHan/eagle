@@ -173,6 +173,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   const compaction = compactionFromEnv(process.env, windowTokens);
   const usageStore = new UsageStore(join(root, "usage.sqlite"));
   const runtime = new PiDurableRuntime({
+    ...(canonical.deviceSocket === undefined ? {} : { deviceSocket: canonical.deviceSocket }),
     models: () => models,
     log,
     compaction,

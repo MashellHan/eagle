@@ -14,6 +14,23 @@ import {
 } from "../../src/tools/registry.ts";
 import { openWorkspace } from "../../src/tools/workspace.ts";
 
+test("an injected shared device port is available to saved and new Bots without an opt-in group", () => {
+  const registry = createToolRegistry(
+    { root: "/tmp" },
+    {
+      devices: { socketPath: "/tmp/unused-device-test.sock", botId: "existing-bot" },
+    },
+  );
+  for (const groups of [[], ["core", "coding"], ["herdr", "agents"]]) {
+    const names = selectToolExtensions(registry, groups)
+      .flatMap((extension) => extension.tools ?? [])
+      .map((tool) => tool.name);
+    assert.ok(names.includes("remote_status"));
+    assert.ok(names.includes("remote_execute"));
+    assert.ok(names.includes("remote_operation"));
+  }
+});
+
 test("core supplies list and coding installs the original native extension without aliases", async () => {
   const daemonRoot = await mkdtemp(join(tmpdir(), "bots-native-registry-"));
   try {

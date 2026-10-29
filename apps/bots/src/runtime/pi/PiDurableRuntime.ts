@@ -126,6 +126,7 @@ const piEntryId = (domainId: string): EntryId => Number(domainId.replace(/^e_/, 
 const defaultStorage = (path: string): Promise<Storage> => openNodeSqliteStorage(path);
 
 export type PiRuntimeOptions = {
+  readonly deviceSocket?: string;
   /** One `Models` for the process; a provider swap needs no reopen (F19). */
   readonly models: Models | (() => Models);
   readonly log: Log;
@@ -173,6 +174,11 @@ export class PiDurableRuntime implements RuntimePort {
       const groups = resolveToolGroups(spec.toolGroups);
       const search = this.#options.search?.(spec);
       const registry = createToolRegistry(workspace, {
+        ...(this.#options.deviceSocket === undefined
+          ? {}
+          : {
+              devices: { socketPath: this.#options.deviceSocket, botId: spec.id, log },
+            }),
         herdr: { client: createHerdrClient(), stateDir: spec.dir, botId: spec.id },
         ...(search === undefined
           ? {}

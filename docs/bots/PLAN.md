@@ -53,6 +53,15 @@ worktree；旧 `main@c34be59` 只作按需复用来源。当前尚未完成设�
 再通过 AppKit accessibility 点击新按钮并核对宿主回调一次；尚未替代打包 App 的
 设备页点击验收。证据在本地 `.local/device-evidence/menu-{red,green}.log`。
 
+设置入口及窗口重开路由经 `b399936` 修复和只读 review 已关闭。Bots 共享 v1 socket
+与工具切片已接入 daemon 配置：新旧 Bot 自动获得目录/明确目标的执行和查询取消，
+durable memo 在发送前固定 ID/目标/参数，native 工具经同设备接纳与完成接缝。
+局部 30 项测试、类型和 Biome 检查通过；真实 Unix socket 测试与真实文件 native
+策略测试均已执行，但整 App/helper 启动及 native 租约跨实际 daemon 的贯通仍待下片。
+本次有效行为红测是已有 Registry 不给注入 port 的 Bot 提供 `remote_status`；最初
+socket 新模块缺失只算构建缺口，不作为行为红测。证据 `shared-bots-red.log`、
+`shared-tools-green.log` 位于 `.local/device-evidence/`。
+
 ## Where the code lives
 
 ### Exclusive search providers (2026-10-28)

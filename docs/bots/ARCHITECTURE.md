@@ -34,6 +34,14 @@ dependency direction is fixed: Eagle imports Bots, Bots never imports Eagle (and
 
 ## Layers
 
+Eagle may inject a version-1 shared-device access port at daemon composition.
+The adapter in `tools/devices` owns its JSONL codec and Unix socket client; it
+imports no Eagle, Worker, Agent or contracts source. Credentials remain behind
+the independently managed host helper. The same injected port serves existing
+and newly created Bots. Standalone Bots without a port retain native local tools.
+The device extension is mandatory when injected, regardless of saved tool groups.
+
+
 Five layers. Calls go one way; every crossing logs one `trace` (see
 [OBSERVABILITY.md](OBSERVABILITY.md)).
 

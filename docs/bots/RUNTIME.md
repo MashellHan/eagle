@@ -499,6 +499,18 @@ None of them may change v1 semantics for existing fields.
 
 ## Recovery semantics
 
+Shared device access uses `remote_status`, `remote_execute(deviceId, operation)`
+and `remote_operation(deviceId, operationId, action)` from the injected v1 port.
+The model reads current names, online evidence and capabilities before choosing
+a remote target; local coding tools keep the local execution environment. A
+durable tool memo records the target, full operation, digest and operation ID
+before transmission. Retries query that ID; they never resend unknown effects or
+substitute a local target. A busy response is unaccepted and creates no queue.
+All native coding tools and `list` cross the same local policy/admission seam
+when a device port is configured. Approval requests carry the complete operation;
+only the initiating App can confirm them. No port credentials enter Bot storage.
+
+
 | Situation | pi behaviour | Adapter action |
 | --- | --- | --- |
 | Process killed mid-run | Committed entries survive; the generation task is still `running` on disk; on resume the interrupted partial becomes a committed `aborted` assistant entry (F22) | `open()` resumes; the client shows the aborted attempt followed by the final answer |

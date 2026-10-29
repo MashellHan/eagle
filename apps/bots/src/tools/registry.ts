@@ -8,7 +8,15 @@ import {
 import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search";
 import { CodingTools, createBashTool } from "@earendil-works/pi-durable/tools";
 import { resolveToolGroups, type ToolGroup } from "../core/domain.ts";
+import type { Log } from "../log/log.ts";
 import { AGENTS_TOOLS_EXTENSION, agentsExtension } from "./agents/tools.ts";
+import { SocketDevicePort } from "./devices/port.ts";
+import {
+  DEVICE_EXTENSION,
+  deviceExtension,
+  guardNativeTool,
+  observeDeviceTool,
+} from "./devices/tools.ts";
 import {
   createHerdrTools,
   HERDR_TOOLS_EXTENSION,
@@ -37,6 +45,7 @@ export const selectToolExtensions = (registry: RegistryReader, groups: readonly 
       .map((extension) => extension.name),
   );
   const names = new Set<string>();
+  if (installed.has(DEVICE_EXTENSION)) names.add(DEVICE_EXTENSION);
   for (const group of resolveToolGroups(groups)) {
     const [owner, ...rest] = GROUP_EXTENSIONS[group];
     // A group whose own tools are not installed contributes nothing, not even its loader:
@@ -65,6 +74,7 @@ const bash = createBashTool({
 });
 
 export type ToolRegistryOptions = {
+  readonly devices?: { readonly socketPath: string; readonly botId: string; readonly log?: Log };
   /** Herdr tools need the CLI client and this bot's state directory. */
   readonly herdr?: Omit<HerdrToolOptions, "workspace">;
   /** Web search needs a provider client; absent when no key is configured. */
@@ -76,23 +86,47 @@ export type ToolRegistryOptions = {
 export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistryOptions = {}) => {
   const herdr = options.herdr;
   const registry = createRegistry();
+  const devices =
+    options.devices === undefined
+      ? undefined
+      : {
+          botId: options.devices.botId,
+          port: new SocketDevicePort(options.devices.socketPath),
+          ...(options.devices.log === undefined ? {} : { log: options.devices.log }),
+        };
+  const list = createListTool();
   registry.install(
     defineExtension({
       name: BOTS_TOOLS_EXTENSION,
-      tools: [createListTool()],
-      wraps: [wrapTool(bash, () => bash)],
+      tools: [list],
+      wraps: [
+        wrapTool(bash, () =>
+          devices === undefined ? bash : observeDeviceTool(guardNativeTool(bash, devices), devices),
+        ),
+        ...(devices === undefined
+          ? []
+          : [list, ...(CodingTools.tools ?? []).filter((tool) => tool.name !== "bash")].map(
+              (tool) =>
+                wrapTool(tool, (original) =>
+                  observeDeviceTool(guardNativeTool(original, devices), devices),
+                ),
+            )),
+      ],
       sections: [
         section("bots-tools", ({ agent }) =>
           [
             `Your default working directory is ${agent.cwd ?? workspace.root}.`,
             "Use list to discover files, read to inspect them, edit for targeted changes, write for whole files, and bash for commands.",
-            "Tool calls run without asking the user first.",
+            devices === undefined
+              ? "Tool calls run without asking the user first."
+              : "Local tools follow the shared device policy.",
           ].join("\n"),
         ),
       ],
     }),
   );
   registry.install(CodingTools);
+  if (devices !== undefined) registry.install(deviceExtension(devices));
   registry.install(agentsExtension());
   if (options.search !== undefined) registry.install(searchExtension(options.search));
   // Deferred tools need their loader; without one the model would never see them.
