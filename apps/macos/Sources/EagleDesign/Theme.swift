@@ -71,6 +71,10 @@ public enum Theme {
     /// Rows sit on cards inset from the panel edges; avatars keep the 20 pt line.
     public static let listCardInset: CGFloat = 12
     public static let rowContentInset: CGFloat = contentInset - listCardInset
+    /// The space a row's compact switch occupies, reserved so text truncates before it.
+    public static let rowToggleWidth: CGFloat = 26
+    /// The gap between a row's text block and its trailing switch.
+    public static let rowToggleGap: CGFloat = 8
     /// Every scrolling surface fades over the same distance.
     public static let edgeFadeHeight: CGFloat = 20
     public static let rowHeight: CGFloat = 58

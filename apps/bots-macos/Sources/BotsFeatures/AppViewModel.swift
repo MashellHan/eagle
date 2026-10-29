@@ -18,11 +18,19 @@ public final class AppViewModel: ObservableObject {
 
   public let conversation: ConversationViewModel
   private let catalog: CatalogPort
+  /// The trigger detail and switch; nil in a test that never opens the surface.
+  private let triggers: TriggerPort?
   private var outbox: OutboxStore
 
-  public init(catalog: CatalogPort, conversation: ConversationViewModel, outbox: OutboxStore) {
+  public init(
+    catalog: CatalogPort,
+    conversation: ConversationViewModel,
+    outbox: OutboxStore,
+    triggers: TriggerPort? = nil
+  ) {
     self.catalog = catalog
     self.conversation = conversation
+    self.triggers = triggers
     self.outbox = outbox
     conversation.onCatalog = { [weak self] catalog in
       self?.apply(catalog)
@@ -272,5 +280,21 @@ public final class AppViewModel: ObservableObject {
     } catch {
       self.error = describe(error)
     }
+  }
+}
+
+extension AppViewModel {
+  /// One trigger's read-only detail for the inspector.
+  public func triggerDetail(botId: String, triggerId: String) async throws -> TriggerDetail? {
+    guard let triggers else { return nil }
+    return try await triggers.list(botId: botId).first { $0.id == triggerId }
+  }
+
+  /// The person's only mutation. The daemon republishes the list, so the row follows.
+  public func setTriggerEnabled(
+    botId: String, triggerId: String, enabled: Bool
+  ) async throws -> TriggerDetail? {
+    guard let triggers else { return nil }
+    return try await triggers.setEnabled(botId: botId, triggerId: triggerId, enabled: enabled)
   }
 }

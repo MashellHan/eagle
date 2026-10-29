@@ -53,6 +53,11 @@ final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var usage: [InspectorUsageRow] = []
   /// The selected bot's model and reasoning level, as menus.
   @Published private(set) var choices: [InspectorChoiceRow] = []
+  /// The trigger a person opened from the sidebar, and its read-only detail.
+  @Published private(set) var selectedTriggerId: String?
+  @Published private(set) var triggerDetail: TriggerDetail?
+  /// The selected trigger's detail as the inspector's label/value rows.
+  @Published private(set) var triggerRows: [InspectorUsageRow] = []
   @Published private(set) var connection: ConnectionState = .connecting
 
   var participantStatus: ParticipantStatus {
@@ -132,7 +137,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
     return AppViewModel(
       catalog: catalog,
       conversation: ConversationViewModel(conversation: connection, outbox: outbox),
-      outbox: outbox
+      outbox: outbox,
+      triggers: TriggerHTTPClient(baseURL: settings.baseURL, token: token)
     )
   }
 
@@ -156,8 +162,22 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   func owns(_ id: String?) -> Bool {
     guard let id else { return false }
+    if Self.triggerId(from: id) != nil { return true }
     // Membership follows the catalog, not whether a deferred publish has projected rows yet.
     return app?.bots.contains { $0.id == id } ?? false
+  }
+
+  /// A trigger row addresses one definition of the selected bot; the prefix keeps it apart
+  /// from a bot id and from the sample workspace.
+  static func triggerRowId(botId: String, triggerId: String) -> String {
+    "tr:\(botId):\(triggerId)"
+  }
+
+  static func triggerId(from rowId: String) -> String? {
+    guard rowId.hasPrefix("tr:") else { return nil }
+    let parts = rowId.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+    guard parts.count == 3, !parts[2].isEmpty else { return nil }
+    return String(parts[2])
   }
 
   /// Whether a section id belongs to this window's groups (a daemon group or 未分组).
@@ -275,12 +295,55 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   func select(_ id: String) {
     guard let app, owns(id) else { return }
+    if let triggerId = Self.triggerId(from: id) {
+      // A trigger row never changes the open bot: it opens that definition's detail.
+      selectedTriggerId = triggerId
+      Task { await loadTriggerDetail(triggerId) }
+      onSelect?(id)
+      return
+    }
     selectedId = id
+    selectedTriggerId = nil
+    triggerDetail = nil
+    if !triggerRows.isEmpty { triggerRows = [] }
     app.select(id)
     // The sidebar's selection is the shell's, so a programmatic selection (a new bot, a
     // development shell) moves the list too.
     onSelect?(id)
     publish()
+  }
+
+  /// One click on a row's switch. The daemon republishes the list, so the row follows.
+  func toggleTrigger(_ rowId: String) {
+    guard
+      let app,
+      let triggerId = Self.triggerId(from: rowId),
+      let botId = selectedId,
+      let current = app.conversation.state.triggers.first(where: { $0.id == triggerId })
+    else { return }
+    Task {
+      do {
+        _ = try await app.setTriggerEnabled(
+          botId: botId, triggerId: triggerId, enabled: !current.enabled)
+        if selectedTriggerId == triggerId { await loadTriggerDetail(triggerId) }
+      } catch {
+        self.error = (error as? ClientError)?.message ?? error.localizedDescription
+      }
+    }
+  }
+
+  /// Read-only detail for the inspector; a fetch failure leaves the rows empty, not wrong.
+  func loadTriggerDetail(_ triggerId: String) async {
+    guard let app, let botId = selectedId else { return }
+    do {
+      let detail = try await app.triggerDetail(botId: botId, triggerId: triggerId)
+      triggerDetail = detail
+      let rows = detail.map(presenter.inspectorTrigger) ?? []
+      if triggerRows != rows { triggerRows = rows }
+    } catch {
+      triggerDetail = nil
+      if !triggerRows.isEmpty { triggerRows = [] }
+    }
   }
 
   /// The selected bot as the catalog describes it, for the inspector's profile.
@@ -485,12 +548,42 @@ final class BotsWorkspaceViewModel: ObservableObject {
   /// The sidebar is rebuilt only when its sections actually change: a delta repaint must
   /// not invalidate it.
   private func syncSections() {
-    let next = SidebarComposition.groupSections(
+    let botSections = SidebarComposition.groupSections(
       rows: rows,
       groups: groups.map { SidebarItemGroup(id: $0.id, title: $0.title) },
       collapsed: collapsed
     )
+    let next = botSections + triggerSections()
     if sections != next { sections = next }
+  }
+
+  /// The selected bot's triggers, right under the bot list: one row per definition with a
+  /// one-click switch, and no section menu because the model owns the definitions.
+  private func triggerSections() -> [SidebarSection] {
+    guard let selectedId, let state = app?.conversation.state else { return [] }
+    guard !state.triggers.isEmpty else { return [] }
+    let sectionId = "owned:\(selectedId)"
+    let items = state.triggers.map { trigger in
+      SidebarItem(
+        id: Self.triggerRowId(botId: selectedId, triggerId: trigger.id),
+        title: trigger.name,
+        subtitle: presenter.triggerSubtitle(trigger),
+        tintIndex: tintIndex,
+        toggle: SidebarToggle(
+          isOn: trigger.enabled,
+          label: "\(trigger.enabled ? "停用" : "启用") \(trigger.name)"
+        )
+      )
+    }
+    return [
+      SidebarSection(
+        id: sectionId,
+        title: "触发器",
+        isExpanded: !collapsed.contains(sectionId),
+        items: items,
+        role: .owned
+      )
+    ]
   }
 
   private func mirrorConversationDraftIntoComposer() {
@@ -696,7 +789,8 @@ struct BotsPresenter {
   ) -> [TranscriptEntry] {
     switch message.role {
     case .user:
-      return [.user(id: message.id, text: message.text)]
+      // A message whose cause was not a person typing says so above its text.
+      return [.user(id: message.id, text: message.text, origin: message.origin?.chip)]
     case .tool:
       // A result whose call is on the page was consumed by that call's row; one whose call
       // was trimmed away (or never seen) is still shown, so nothing disappears.
@@ -953,6 +1047,79 @@ struct BotsPresenter {
     case "max": return "最高"
     default: return level
     }
+  }
+
+  // MARK: - Triggers
+
+  /// One row's second line: what it is, when it is next due, and whether it lost anything.
+  func triggerSubtitle(_ trigger: TriggerSummary) -> String {
+    let kind = trigger.kind == .schedule ? "定时" : "Webhook"
+    var parts = [kind]
+    if let schedule = trigger.schedule {
+      if let next = schedule.nextDueAt, let shown = Self.dueLabel(next, zone: schedule.timezone) {
+        parts.append("下次 \(shown)")
+      } else {
+        parts.append(schedule.cron)
+      }
+    }
+    if let warning = trigger.warning { parts.append(warning) }
+    if !trigger.enabled { parts.append("已停用") }
+    return parts.joined(separator: " · ")
+  }
+
+  /// The inspector's 触发器 rows for the opened trigger: read-only, in one grid.
+  func inspectorTrigger(_ detail: TriggerDetail) -> [InspectorUsageRow] {
+    let summary = detail.summary
+    var rows = [
+      InspectorUsageRow(
+        id: "kind", label: "类型", value: summary.kind == .schedule ? "定时" : "Webhook"),
+      InspectorUsageRow(id: "enabled", label: "状态", value: summary.enabled ? "启用" : "停用"),
+    ]
+    if let schedule = summary.schedule {
+      rows.append(InspectorUsageRow(id: "cron", label: "计划", value: schedule.cron))
+      rows.append(InspectorUsageRow(id: "zone", label: "时区", value: schedule.timezone))
+      if let next = schedule.nextDueAt, let shown = Self.dueLabel(next, zone: schedule.timezone) {
+        rows.append(InspectorUsageRow(id: "next", label: "下次", value: shown))
+      }
+    }
+    if let endpoint = detail.endpoint {
+      rows.append(InspectorUsageRow(id: "endpoint", label: "端点", value: endpoint))
+    }
+    rows.append(
+      InspectorUsageRow(
+        id: "fired", label: "已触发", value: "\(summary.counters.fired) 次"))
+    if summary.counters.dropped > 0 {
+      rows.append(
+        InspectorUsageRow(
+          id: "dropped", label: "已丢弃", value: "\(summary.counters.dropped) 条"))
+    }
+    if summary.counters.refused > 0 {
+      rows.append(
+        InspectorUsageRow(
+          id: "refused", label: "被拒绝", value: "\(summary.counters.refused) 次"))
+    }
+    if let skipped = summary.lastSkipped {
+      rows.append(InspectorUsageRow(id: "skipped", label: "最近跳过", value: skipped.reason))
+    }
+    if !detail.prompt.isEmpty {
+      let prompt = detail.prompt.count > 120 ? "\(detail.prompt.prefix(120))…" : detail.prompt
+      rows.append(InspectorUsageRow(id: "prompt", label: "指令", value: prompt))
+    }
+    return rows
+  }
+
+  /// An ISO instant in the trigger's own zone, so the row and the schedule agree.
+  static func dueLabel(_ iso: String, zone: String) -> String? {
+    let parser = ISO8601DateFormatter()
+    parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    guard let date = parser.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else {
+      return nil
+    }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(identifier: zone) ?? .current
+    formatter.dateFormat = "MM-dd HH:mm"
+    return formatter.string(from: date)
   }
 
   /// The inspector's 用量 rows. Absent usage is an empty list, so the section shows its own

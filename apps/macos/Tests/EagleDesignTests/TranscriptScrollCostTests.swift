@@ -65,8 +65,8 @@ struct TranscriptScrollCostTests {
       LazyVStack(alignment: .leading, spacing: Theme.Metric.turnGap) {
         ForEach(entries) { entry in
           switch entry {
-          case .user(_, let text):
-            UserBubble(text)
+          case .user(_, let text, let origin):
+            UserBubble(text, origin: origin)
           case .assistant(_, let blocks):
             AssistantBubble(text: blocks.markdown, preparedBlocks: markdown[entry.id]).equatable()
           case .note(_, let text, let tints):

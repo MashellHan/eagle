@@ -64,7 +64,7 @@ struct BotsPresenterTests {
     #expect(entries.count == 3)
     #expect(
       {
-        if case .user(_, "问题") = entries[0] { return true } else { return false }
+        if case .user(_, "问题", _) = entries[0] { return true } else { return false }
       }())
     #expect(
       {
@@ -574,5 +574,78 @@ struct BotsTrimmedToolPageTests {
     #expect(rows.map(\.output) == ["FIRST", "SECOND"])
     #expect(rows[1].input.contains("second"))
     #expect(rows[0].input.isEmpty, "an orphan result has no call to show")
+  }
+}
+
+/// Trigger rows and the inspector's trigger detail are pure presentation.
+@MainActor
+@Suite("Bots trigger presentation")
+struct BotsTriggerPresenterTests {
+  private let presenter = BotsPresenter()
+
+  private func summary(
+    kind: TriggerSummary.Kind = .schedule,
+    enabled: Bool = true,
+    next: String? = "2026-10-29T01:00:00.000Z",
+    dropped: Int = 0
+  ) -> TriggerSummary {
+    TriggerSummary(
+      id: "t_9f2a1c3d04",
+      kind: kind,
+      name: "morning triage",
+      enabled: enabled,
+      schedule: kind == .schedule
+        ? TriggerSummary.Schedule(cron: "0 9 * * *", timezone: "Asia/Shanghai", nextDueAt: next)
+        : nil,
+      counters: TriggerSummary.Counters(fired: 12, dropped: dropped)
+    )
+  }
+
+  @Test("a row says what it is, when it is next due, and what it lost")
+  func subtitle() {
+    #expect(presenter.triggerSubtitle(summary()) == "定时 · 下次 10-29 09:00")
+    #expect(presenter.triggerSubtitle(summary(enabled: false)) == "定时 · 下次 10-29 09:00 · 已停用")
+    #expect(
+      presenter.triggerSubtitle(summary(kind: .webhook)).hasPrefix("Webhook"),
+      "a webhook has no schedule to show")
+    #expect(
+      presenter.triggerSubtitle(summary(dropped: 4)).contains("丢弃 4"),
+      "a loss is visible on the row")
+  }
+
+  @Test("the inspector's rows are read-only and skip zero counters")
+  func detailRows() {
+    let detail = TriggerDetail(
+      summary: summary(kind: .webhook, dropped: 4), prompt: "handle the deploy",
+      endpoint: "/v1/triggers/b_1/t_9f2a1c3d04")
+    let rows = presenter.inspectorTrigger(detail)
+    #expect(rows.contains { $0.label == "类型" && $0.value == "Webhook" })
+    #expect(rows.contains { $0.label == "端点" && $0.value.hasPrefix("/v1/triggers/") })
+    #expect(rows.contains { $0.label == "已丢弃" && $0.value == "4 条" })
+    #expect(rows.contains { $0.label == "指令" && $0.value == "handle the deploy" })
+    #expect(!rows.contains { $0.label == "计划" }, "a webhook has no cron row")
+    #expect(!rows.contains { $0.label == "被拒绝" }, "zero counters are not rows")
+
+    let schedule = presenter.inspectorTrigger(
+      TriggerDetail(summary: summary(), prompt: "triage"))
+    #expect(schedule.contains { $0.label == "计划" && $0.value == "0 9 * * *" })
+    #expect(schedule.contains { $0.label == "时区" && $0.value == "Asia/Shanghai" })
+    #expect(schedule.contains { $0.label == "下次" })
+
+    let long = presenter.inspectorTrigger(
+      TriggerDetail(summary: summary(), prompt: String(repeating: "字", count: 200)))
+    #expect(long.contains { $0.label == "指令" && $0.value.hasSuffix("…") })
+  }
+
+  @Test("an instant is shown in the trigger's own zone")
+  func dueLabel() {
+    #expect(
+      BotsPresenter.dueLabel("2026-10-29T01:00:00.000Z", zone: "Asia/Shanghai") == "10-29 09:00")
+    #expect(
+      BotsPresenter.dueLabel("2026-10-29T01:00:00.000Z", zone: "UTC") == "10-29 01:00")
+    #expect(BotsPresenter.dueLabel("not a date", zone: "UTC") == nil)
+    #expect(
+      BotsPresenter.dueLabel("2026-10-29T01:00:00.000Z", zone: "Mars/Olympus") != nil,
+      "an unknown zone falls back instead of dropping the row")
   }
 }

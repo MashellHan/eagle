@@ -6,7 +6,8 @@ public enum TranscriptEntry: Identifiable, Hashable, Sendable {
   case assistant(id: String, blocks: [AssistantTurn.Block])
   /// The assistant turn still receiving deltas: the bubble shows a caret.
   case streamingAssistant(id: String, blocks: [AssistantTurn.Block])
-  case user(id: String, text: String)
+  /// A person's turn; `origin` names a cause other than a person typing (TRIGGERS.md §6).
+  case user(id: String, text: String, origin: String? = nil)
   case note(id: String, text: String, tintIndices: [Int])
   case tool(id: String, row: ToolRow)
   /// Several calls from one turn, collapsed into a single line with a detail sheet.
@@ -15,7 +16,7 @@ public enum TranscriptEntry: Identifiable, Hashable, Sendable {
 
   public var id: String {
     switch self {
-    case .assistant(let id, _), .streamingAssistant(let id, _), .user(let id, _),
+    case .assistant(let id, _), .streamingAssistant(let id, _), .user(let id, _, _),
       .note(let id, _, _), .tool(let id, _), .toolRun(let id, _), .typing(let id):
       return id
     }
@@ -220,8 +221,8 @@ public struct ConversationColumn: View {
           removal: .opacity
         )
       )
-    case .user(_, let text):
-      UserBubble(text)
+    case .user(_, let text, let origin):
+      UserBubble(text, origin: origin)
         .transition(
           .asymmetric(
             insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .bottomTrailing)),

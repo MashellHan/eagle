@@ -73,7 +73,7 @@ struct TranscriptRowCostTests {
       LazyVStack(alignment: .leading, spacing: Theme.Metric.turnGap) {
         ForEach(entries) { entry in
           switch entry {
-          case .user(_, let text), .note(_, let text, _):
+          case .user(_, let text, _), .note(_, let text, _):
             Text(text)
           case .assistant(_, let blocks):
             Text(blocks.markdown)

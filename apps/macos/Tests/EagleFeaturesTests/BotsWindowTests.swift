@@ -27,7 +27,8 @@ struct BotsWindowTests {
 
   private func window(
     gateway: Bool? = true,
-    catalog: StubCatalog = StubCatalog()
+    catalog: StubCatalog = StubCatalog(),
+    triggers: StubTriggers = StubTriggers()
   ) async throws -> (
     BotsWorkspaceViewModel, AppViewModel, StubConversation, OutboxStore
   ) {
@@ -52,7 +53,8 @@ struct BotsWindowTests {
       conversation: conversationPort,
       outbox: outbox
     )
-    let app = AppViewModel(catalog: catalog, conversation: conversation, outbox: outbox)
+    let app = AppViewModel(
+      catalog: catalog, conversation: conversation, outbox: outbox, triggers: triggers)
     let bots = BotsWorkspaceViewModel(
       settings: BotsSettings(environment: [:]),
       makeApp: { _ in app },
@@ -627,5 +629,142 @@ final class StubConversation: ConversationPort {
     continuation?.finish()
     continuation = nil
     pending.removeAll()
+  }
+}
+
+/// The trigger surface a window test drives: its list, detail and one recorded switch.
+final class StubTriggers: TriggerPort, @unchecked Sendable {
+  var details: [TriggerDetail] = []
+  var switches: [(String, String, Bool)] = []
+  var failure: Error?
+
+  func list(botId: String) async throws -> [TriggerDetail] {
+    if let failure { throw failure }
+    return details
+  }
+
+  func setEnabled(botId: String, triggerId: String, enabled: Bool) async throws -> TriggerDetail {
+    switches.append((botId, triggerId, enabled))
+    if let failure { throw failure }
+    guard let index = details.firstIndex(where: { $0.id == triggerId }) else {
+      throw ClientError("no such trigger")
+    }
+    var summary = details[index].summary
+    summary.enabled = enabled
+    let detail = TriggerDetail(
+      summary: summary, prompt: details[index].prompt, endpoint: details[index].endpoint)
+    details[index] = detail
+    return detail
+  }
+}
+
+@MainActor
+@Suite("Bots triggers", .serialized)
+struct BotsTriggerTests {
+  private func waitUntil(
+    timeout: TimeInterval = 2, _ condition: () -> Bool
+  ) async throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+      if condition() { return }
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    Issue.record("condition not met within \(timeout)s")
+  }
+
+  private func summary(
+    id: String = "t_9f2a1c3d04", enabled: Bool = true
+  ) -> TriggerSummary {
+    TriggerSummary(
+      id: id,
+      kind: .schedule,
+      name: "morning triage",
+      enabled: enabled,
+      schedule: TriggerSummary.Schedule(
+        cron: "0 9 * * *", timezone: "Asia/Shanghai",
+        nextDueAt: "2026-10-29T01:00:00.000Z"),
+      counters: TriggerSummary.Counters(fired: 2)
+    )
+  }
+
+  private func ready(
+    triggers: StubTriggers = StubTriggers(), list: [TriggerSummary]? = nil
+  ) async throws -> (BotsWorkspaceViewModel, StubConversation, StubTriggers) {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bots-trigger-\(UUID().uuidString)", isDirectory: true)
+    let catalog = StubCatalog()
+    catalog.bots = [
+      BotSummary(
+        id: "b_1", title: "研究员", createdAt: "x", updatedAt: "x",
+        model: ModelRef(provider: "p", modelId: "m"), state: .idle)
+    ]
+    let port = StubConversation()
+    let outbox = OutboxStore(directory: directory)
+    let conversation = ConversationViewModel(botId: "", conversation: port, outbox: outbox)
+    let app = AppViewModel(
+      catalog: catalog, conversation: conversation, outbox: outbox, triggers: triggers)
+    let bots = BotsWorkspaceViewModel(
+      settings: BotsSettings(environment: [:]), makeApp: { _ in app },
+      gatewayProbe: { true })
+    await bots.start()
+    await bots.awaitScheduledPublishDrain()
+    bots.select("b_1")
+    port.emit(.connection(.ready))
+    let snapshot = ConversationSnapshot(
+      botId: "b_1", triggers: list ?? [summary()])
+    port.emit(.snapshot(snapshot))
+    await bots.awaitScheduledPublishDrain()
+    try await waitUntil { app.conversation.hasSnapshot }
+    triggers.details = [
+      TriggerDetail(summary: summary(), prompt: "triage the queue")
+    ]
+    return (bots, port, triggers)
+  }
+
+  @Test("a bot's triggers are a sidebar section with one toggle per row")
+  func section() async throws {
+    let (bots, _, _) = try await ready()
+    guard let section = bots.sections.first(where: { $0.title == "触发器" }) else {
+      Issue.record("no trigger section")
+      return
+    }
+    #expect(section.role == .owned, "the model owns the definitions, not the window")
+    #expect(section.items.count == 1)
+    #expect(section.items[0].title == "morning triage")
+    #expect(section.items[0].subtitle.contains("定时"))
+    #expect(section.items[0].toggle?.isOn == true)
+    #expect(bots.owns(section.items[0].id), "the row routes to this window")
+  }
+
+  @Test("one click switches a trigger through the port and never opens its menu")
+  func toggle() async throws {
+    let (bots, port, triggers) = try await ready()
+    guard let row = bots.sections.first(where: { $0.title == "触发器" })?.items.first else {
+      Issue.record("no trigger row")
+      return
+    }
+    bots.toggleTrigger(row.id)
+    try await waitUntil { triggers.switches.count == 1 }
+    #expect(triggers.switches[0].2 == false, "the switch sends the inverted value")
+
+    port.emit(.triggers([summary(enabled: false)]))
+    await bots.awaitScheduledPublishDrain()
+    try await waitUntil {
+      bots.sections.first(where: { $0.title == "触发器" })?.items.first?.toggle?.isOn == false
+    }
+  }
+
+  @Test("opening a trigger row keeps the bot and fills the inspector")
+  func detail() async throws {
+    let (bots, _, _) = try await ready()
+    guard let row = bots.sections.first(where: { $0.title == "触发器" })?.items.first else {
+      Issue.record("no trigger row")
+      return
+    }
+    bots.select(row.id)
+    #expect(bots.selectedId == "b_1", "a trigger row never changes the open bot")
+    try await waitUntil { !bots.triggerRows.isEmpty }
+    #expect(bots.triggerRows.contains { $0.label == "计划" && $0.value == "0 9 * * *" })
+    #expect(bots.triggerRows.contains { $0.label == "指令" && $0.value == "triage the queue" })
   }
 }

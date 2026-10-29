@@ -43,6 +43,8 @@ public struct InspectorColumn: View {
   private let tasks: [InspectorTaskRow]
   private let usage: [InspectorUsageRow]
   private let choices: [InspectorChoiceRow]
+  /// The selected trigger's read-only detail; empty leaves the section's placeholder.
+  private let triggers: [InspectorUsageRow]
   private let onChoose: (String, String) -> Void
   @Binding private var tab: Tab
   private let onToggleJob: (String, Bool) -> Void
@@ -67,6 +69,7 @@ public struct InspectorColumn: View {
     tasks: [InspectorTaskRow] = [],
     usage: [InspectorUsageRow] = [],
     choices: [InspectorChoiceRow] = [],
+    triggers: [InspectorUsageRow] = [],
     onChoose: @escaping (String, String) -> Void = { _, _ in },
     tab: Binding<Tab>,
     onToggleJob: @escaping (String, Bool) -> Void = { _, _ in },
@@ -90,6 +93,7 @@ public struct InspectorColumn: View {
     self.tasks = tasks
     self.usage = usage
     self.choices = choices
+    self.triggers = triggers
     self.onChoose = onChoose
     self._tab = tab
     self.onToggleJob = onToggleJob
@@ -160,7 +164,8 @@ public struct InspectorColumn: View {
     switch tab {
     case .detail:
       return InspectorSections.detail(
-        artifacts: artifacts, jobs: jobs, tasks: tasks, usage: usage, choices: choices)
+        artifacts: artifacts, jobs: jobs, tasks: tasks, usage: usage, choices: choices,
+        triggers: triggers)
     case .library:
       return InspectorSections.library(artifacts: artifacts)
     case .computer:

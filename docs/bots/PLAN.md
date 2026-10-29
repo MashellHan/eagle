@@ -531,8 +531,15 @@ Shipped so far, each with its own failing test first:
    service republishes the list after every store change, so a model's own edit
    reaches the sidebar without a resubscribe.
 
-Still open in stage 1: the webhook endpoint, and the client rows that render this
-event (Swift side).
+7. The window: a `触发器` sidebar section with a one-click switch per row, the
+   inspector's read-only trigger detail, the origin chip on a message whose cause
+   was not a person, and the `trigger` group's switch in Settings. The sidebar's
+   inline control and the `owned` section role are EagleDesign additions; a row the
+   model owns offers no rename, move or delete.
+
+Stage 1 is functionally complete: a Bot creates a trigger with its own tools, a
+schedule fires through the invocation port, the queue batches and retries it, and a
+person sees it in the window and switches it. The webhook endpoint is stage 2.
 
 ### Stage 0, as built
 

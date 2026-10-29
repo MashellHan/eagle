@@ -59,10 +59,12 @@ public struct AssistantTurn: View {
 /// The only colored surface in the transcript: a green pill aligned right.
 public struct UserBubble: View {
   private let text: String
+  private let origin: String?
   @State private var hovering = false
 
-  public init(_ text: String) {
+  public init(_ text: String, origin: String? = nil) {
     self.text = text
+    self.origin = origin
   }
 
   public var body: some View {
@@ -71,15 +73,23 @@ public struct UserBubble: View {
       HStack(alignment: .bottom, spacing: 8) {
         copyAction
         selectable(
-          Text(text)
-            .font(Theme.TypeScale.bubble)
-            .foregroundStyle(.white)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
-            .background(
-              RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Theme.Palette.accentFill)
-            )
+          VStack(alignment: .leading, spacing: 3) {
+            if let origin {
+              // A cause other than a person typing: one small line above the bubble's text.
+              Text(origin)
+                .font(Theme.TypeScale.pill)
+                .foregroundStyle(.white.opacity(0.72))
+            }
+            Text(text)
+              .font(Theme.TypeScale.bubble)
+              .foregroundStyle(.white)
+          }
+          .padding(.horizontal, 16)
+          .padding(.vertical, 9)
+          .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+              .fill(Theme.Palette.accentFill)
+          )
         )
         .messageCopyAlignment()
       }

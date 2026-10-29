@@ -564,8 +564,12 @@ return an endpoint path without credentials, and the app shows the token separat
 
 | Surface | Content | Allowed actions |
 | --- | --- | --- |
-| Sidebar, under the selected bot | One row per trigger: kind icon, `name`, an enable switch, and a `lastSkipped`/`dropped` badge when non-zero | Toggle enable; open detail |
+| Sidebar, a `触发器` section for the selected bot | One row per trigger: `name`, a line with kind, next due instant and any loss, and a one-click switch at the trailing edge | Toggle enable; open detail |
 | Inspector column | Read-only detail: kind, name, prompt text, schedule expression and timezone with the next due instant, counters, last fired/skipped, and for webhook the endpoint URL and the token with copy buttons | Toggle enable; copy endpoint/token |
+
+The switch is part of the row, not a menu: the sidebar's row control renders it outside the
+selection button, so one click toggles and never selects. A row the model owns carries no
+rename, move or delete menu.
 
 The person never creates, edits or deletes a trigger. A missing trigger section
 means the bot has none, not that the feature is off. The sidebar rows come from the
