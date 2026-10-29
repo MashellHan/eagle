@@ -299,7 +299,7 @@ export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 export const isThinkingLevel = (value: unknown): value is ThinkingLevel =>
   typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
 
-export const TOOL_GROUP_NAMES = ["core", "coding", "herdr", "agents", "search"] as const;
+export const TOOL_GROUP_NAMES = ["core", "coding", "herdr", "agents", "search", "trigger"] as const;
 
 export type ToolGroup = (typeof TOOL_GROUP_NAMES)[number];
 

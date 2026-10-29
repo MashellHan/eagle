@@ -17,6 +17,11 @@ import {
 } from "./herdr/tools.ts";
 import { createListTool } from "./list.ts";
 import { SEARCH_TOOLS_EXTENSION, searchExtension } from "./search/tools.ts";
+import {
+  type createTriggerTools,
+  TRIGGER_TOOLS_EXTENSION,
+  triggerExtension,
+} from "./trigger/tools.ts";
 import type { BotWorkspace } from "./types.ts";
 
 export const BOTS_TOOLS_EXTENSION = "bots-tools";
@@ -27,6 +32,7 @@ const GROUP_EXTENSIONS: Record<ToolGroup, readonly string[]> = {
   herdr: [HERDR_TOOLS_EXTENSION, toolSearch.name],
   agents: [AGENTS_TOOLS_EXTENSION],
   search: [SEARCH_TOOLS_EXTENSION, toolSearch.name],
+  trigger: [TRIGGER_TOOLS_EXTENSION, toolSearch.name],
 };
 
 export const selectToolExtensions = (registry: RegistryReader, groups: readonly string[]) => {
@@ -71,6 +77,8 @@ export type ToolRegistryOptions = {
   readonly search?: Omit<Parameters<typeof searchExtension>[0], "botId"> & {
     readonly botId: string;
   };
+  /** Trigger tools act on this bot's own definitions; absent in a build without storage. */
+  readonly trigger?: Parameters<typeof createTriggerTools>[0];
 };
 
 export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistryOptions = {}) => {
@@ -95,8 +103,11 @@ export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistr
   registry.install(CodingTools);
   registry.install(agentsExtension());
   if (options.search !== undefined) registry.install(searchExtension(options.search));
+  if (options.trigger !== undefined) registry.install(triggerExtension(options.trigger));
   // Deferred tools need their loader; without one the model would never see them.
-  if (herdr !== undefined || options.search !== undefined) registry.install(toolSearch);
+  if (herdr !== undefined || options.search !== undefined || options.trigger !== undefined) {
+    registry.install(toolSearch);
+  }
   if (herdr !== undefined) {
     registry.install(
       defineExtension({

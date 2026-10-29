@@ -191,3 +191,42 @@ test("selection reads native registry replacement and removal rather than a star
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("the trigger group installs its extension and the shared loader, and nothing without a host", async () => {
+  const daemonRoot = await mkdtemp(join(tmpdir(), "bots-trigger-registry-"));
+  try {
+    const workspace = await openWorkspace(join(daemonRoot, "workspace"));
+    const host = {
+      botId: "b_1",
+      create: async () => ({ trigger: {} as never, created: true }),
+      list: async () => [],
+      update: async () => ({}) as never,
+      enable: async () => ({}) as never,
+      remove: async () => ({ triggerId: "t_1" }),
+      endpoint: (triggerId: string) => `/v1/triggers/b_1/${triggerId}`,
+    };
+    const registry = createToolRegistry(workspace, { trigger: host });
+    const names = selectToolExtensions(registry, ["core", "coding", "trigger"]).map(
+      (extension) => extension.name,
+    );
+    assert.deepEqual(names.sort(), ["bots-tools", "bots-trigger", "coding-tools", "tool-search"]);
+    assert.deepEqual(
+      registry
+        .snapshot()
+        .extension("bots-trigger")
+        ?.tools?.map((tool) => tool.name)
+        .sort(),
+      ["trigger_create", "trigger_delete", "trigger_enable", "trigger_list", "trigger_update"],
+    );
+
+    // Without a host the group has no tools, so selecting it offers nothing, not even the
+    // loader: a `tool_search` that can load nothing is worse than no group at all.
+    const bare = createToolRegistry(workspace);
+    assert.deepEqual(
+      selectToolExtensions(bare, ["core", "coding", "trigger"]).map((extension) => extension.name),
+      ["bots-tools", "coding-tools"],
+    );
+  } finally {
+    await rm(daemonRoot, { recursive: true, force: true });
+  }
+});

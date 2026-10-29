@@ -45,7 +45,8 @@ const EDGES: ReadonlyArray<{
     allows: (target) =>
       target === "src/core/Invocation.ts" ||
       target === "src/core/TriggerStore.ts" ||
-      target === "src/core/domain.ts",
+      target === "src/core/domain.ts" ||
+      target === "src/tools/types.ts",
   },
   {
     prefix: "src/runtime/",
@@ -179,6 +180,7 @@ test("the rules allow the documented edges", () => {
     { file: "src/triggers/webhook/module.ts", specifier: "../../core/Invocation.ts" },
     { file: "src/triggers/webhook/module.ts", specifier: "../../core/TriggerStore.ts" },
     { file: "src/triggers/schedule/tick.ts", specifier: "../../core/domain.ts" },
+    { file: "src/triggers/webhook/module.ts", specifier: "../../tools/types.ts" },
     { file: "src/triggers/webhook/module.ts", specifier: "../../log/log.ts" },
   ];
   assert.deepEqual(

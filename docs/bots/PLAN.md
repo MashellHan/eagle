@@ -501,6 +501,21 @@ registry and lifecycle fixes it needs), 1 `trigger` group with schedule plus ori
 field and app surface, 2 webhook ingress, 3 `peers`. Each stage states its exit
 criteria in TRIGGERS.md §12.
 
+### Stage 1, in progress
+
+Shipped so far, each with its own failing test first:
+
+1. The transcript `origin` field and its sidecar (see "Stage 0, as built" for the
+   four fixes it needed), so a fired message can carry who caused it.
+2. `core/TriggerStore.ts`: one journal per bot as the source of truth, mutations
+   idempotent by `opId` (the SDK tool-task id) and atomic with the cap check,
+   cursor/counters as engine-owned state, compaction on open.
+3. The `trigger` tool group: five deferred tools, a per-bot host, install only when
+   the daemon supplies that host, and the model-facing prompt section.
+
+Still open in stage 1: the queue and drain pump, the schedule tick, and the
+`triggers` event with the sidebar surface. No caller fires yet.
+
 ### Stage 0, as built
 
 The port, its four prerequisite fixes and their tests are in. `ConversationService`

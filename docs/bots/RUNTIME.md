@@ -349,11 +349,17 @@ third-party plugins are explicitly outside the product scope.
 
 ### Tool groups
 
-`core/domain.ts` owns the product vocabulary: `core`, `coding`, `herdr`, `agents`.
+`core/domain.ts` owns the product vocabulary: `core`, `coding`, `herdr`, `agents`,
+`search`, `trigger`.
 `core` and `coding` are always selected, including when settings request an empty list.
 `core` maps to `bots-tools`, `coding` to native `coding-tools`, `herdr` to `bots-herdr`
-and the native `tool-search` loader, and `agents` to `bots-agents`. Both required groups
+and the native `tool-search` loader, `agents` to `bots-agents`, `search` to `bots-search`,
+and `trigger` to `bots-trigger`. Both required groups
 are shown enabled and disabled for editing in the settings UI.
+
+`bots-trigger` is installed only when the runtime is given a trigger host bound to that
+bot's store; the five tools are deferred behind `tool-search`, and the host carries the
+durable tool-task id as each mutation's operation id (TRIGGERS.md §7).
 
 ### Hot registry refresh
 

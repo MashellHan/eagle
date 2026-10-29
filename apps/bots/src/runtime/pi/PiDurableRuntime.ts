@@ -40,6 +40,7 @@ import type { Log } from "../../log/log.ts";
 import { createHerdrClient } from "../../tools/herdr/client.ts";
 import { createToolRegistry, selectToolExtensions } from "../../tools/registry.ts";
 import type { SearchClient } from "../../tools/search/client.ts";
+import type { TriggerToolHost } from "../../tools/types.ts";
 import type { UsageMeter } from "../../tools/usage.ts";
 import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
@@ -143,6 +144,8 @@ export type PiRuntimeOptions = {
   readonly workspaceRoot?: (spec: RuntimeBotSpec) => string;
   /** The web-search client for a bot, absent when no provider key is configured. */
   readonly search?: (spec: RuntimeBotSpec) => SearchClient | undefined;
+  /** The trigger tools' host for a bot, bound to that bot's own definitions. */
+  readonly trigger?: (spec: RuntimeBotSpec) => Promise<TriggerToolHost | undefined>;
   /** Where a tool that costs something books it (docs/bots/PROTOCOL.md, "Usage statistics"). */
   readonly usage?: UsageMeter;
 };
@@ -172,6 +175,7 @@ export class PiDurableRuntime implements RuntimePort {
       );
       const groups = resolveToolGroups(spec.toolGroups);
       const search = this.#options.search?.(spec);
+      const trigger = await this.#options.trigger?.(spec);
       const registry = createToolRegistry(workspace, {
         herdr: { client: createHerdrClient(), stateDir: spec.dir, botId: spec.id },
         ...(search === undefined
@@ -183,6 +187,7 @@ export class PiDurableRuntime implements RuntimePort {
                 ...(this.#options.usage === undefined ? {} : { meter: this.#options.usage }),
               },
             }),
+        ...(trigger === undefined ? {} : { trigger }),
       });
       const installed = selectToolExtensions(registry, groups);
       const harness = await HarnessFactory.open(

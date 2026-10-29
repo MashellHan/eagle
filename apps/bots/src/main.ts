@@ -17,6 +17,7 @@ import {
 import { newFailure } from "./core/failures.ts";
 import { OriginStore, originPath } from "./core/OriginStore.ts";
 import type { RuntimeEvent } from "./core/RuntimePort.ts";
+import { TriggerStore, triggerJournalPath } from "./core/TriggerStore.ts";
 import { declareEvent } from "./log/events.ts";
 import { Log } from "./log/log.ts";
 import { FileLogSink } from "./log/sink.ts";
@@ -54,6 +55,7 @@ import { UsageStore } from "./server/usage.ts";
 import type { SearchClient } from "./tools/search/client.ts";
 import { createDeepSeekSearch } from "./tools/search/deepseek.ts";
 import { createTavilySearch } from "./tools/search/tavily.ts";
+import { triggerHost } from "./triggers/host.ts";
 
 export type DaemonHandle = {
   readonly config: DaemonConfig;
@@ -174,12 +176,23 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   );
   const compaction = compactionFromEnv(process.env, windowTokens);
   const usageStore = new UsageStore(join(root, "usage.sqlite"));
+  // One store per bot, opened on demand: a bot that never uses a trigger reads no journal.
+  const triggers = new Map<string, Promise<TriggerStore>>();
+  const triggerStoreFor = (botId: string): Promise<TriggerStore> => {
+    const open = triggers.get(botId);
+    if (open !== undefined) return open;
+    const opened = TriggerStore.open(botId, triggerJournalPath(directory.botDir(botId)));
+    triggers.set(botId, opened);
+    opened.catch(() => triggers.delete(botId));
+    return opened;
+  };
   const runtime = new PiDurableRuntime({
     models: () => models,
     log,
     compaction,
     usage: usageStore,
     search: () => providers.client,
+    trigger: async (spec) => triggerHost(spec.id, await triggerStoreFor(spec.id)),
   });
   const defaultModel =
     gateway === undefined

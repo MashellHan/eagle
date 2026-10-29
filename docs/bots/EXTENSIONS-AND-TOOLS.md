@@ -87,6 +87,7 @@ because extensions can capture Bot-specific services and directories.
 | `agents` | `bots-agents` | Optional | All three child-agent tools when selected |
 | `herdr` | `bots-herdr`, `tool-search` | Optional | `tool_search`; the eight Herdr tools are deferred |
 | `search` | `bots-search`, `tool-search` | Optional, **off by default** | `tool_search` is offered; `web_search` and `web_fetch` are deferred |
+| `trigger` | `bots-trigger`, `tool-search` | Optional, **off by default** | `tool_search` is offered; the five `trigger_*` tools are deferred |
 
 Current defaults select `core`, `coding`, `herdr` and `agents`; `search` stays off
 until a person turns it on. Settings are daemon-wide and applied to
@@ -95,6 +96,11 @@ Bot. `core` and `coding` are normalized back in even for an empty selection;
 their settings switches stay on and cannot be disabled. Herdr registrations
 require an injected CLI client, which the normal daemon runtime supplies. The
 search registrations use the daemon's provider-independent routing client.
+
+The `trigger` registrations exist only when the daemon supplies the per-bot
+storage host, so a build without trigger storage offers no trigger tools and no
+loader for them. Definitions and the five tools are implemented; the scheduler,
+the webhook endpoint and the sidebar surface are not (TRIGGERS.md §12).
 
 A group whose own extension is not installed contributes nothing, not even its
 loader. The normal daemon installs search even before configuration: its tools
@@ -260,7 +266,7 @@ the current `DEFAULT_TOOL_GROUPS = [...TOOL_GROUP_NAMES]` expression.
 | Group | Extension | Planned tool names | Offering policy |
 | --- | --- | --- | --- |
 | `memory` | `bots-memory` | `memory_list`, `memory_search`, `memory_read`, `memory_write`, `memory_delete` | Deferred |
-| `trigger` | `bots-trigger` | `trigger_create`, `trigger_list`, `trigger_update`, `trigger_enable`, `trigger_delete` | Deferred |
+| `trigger` | `bots-trigger` | `trigger_create`, `trigger_list`, `trigger_update`, `trigger_enable`, `trigger_delete` | Deferred; group, store and tools shipped, scheduler and endpoint pending |
 | `peers` | `bots-peers` | `peer_list`, `peer_send`, `peer_read` | Deferred |
 | Existing `agents` | `bots-agents` | Add `agent_list`; retain the existing three names/semantics | Eager when selected |
 
