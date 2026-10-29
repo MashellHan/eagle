@@ -19,14 +19,26 @@ public struct DeviceHostConfiguration: Codable, Sendable {
     guard version == 1, !profile.isEmpty, profile.utf8.count <= 80,
       let url = URLComponents(string: baseUrl), url.user == nil, url.password == nil,
       url.query == nil, url.fragment == nil, ["", "/"].contains(url.path),
-      url.host != nil,
-      url.scheme == "https"
-        || (url.scheme == "http" && ["127.0.0.1", "localhost", "[::1]"].contains(url.host ?? "")),
-      machServiceName.hasPrefix("ai.hexly.eagle.devices."),
+      let host = url.host?.lowercased(), !host.isEmpty, !serviceOrigin.isEmpty,
+      url.scheme?.lowercased() == "https"
+        || (url.scheme?.lowercased() == "http"
+          && ["127.0.0.1", "localhost", "[::1]"].contains(host)),
+      machServiceName == "ai.hexly.eagle.devices"
+        || machServiceName.hasPrefix("ai.hexly.eagle.devices."),
       launchAgentPlist == machServiceName + ".plist"
     else { throw DeviceHostError.invalidConfiguration }
   }
-  public var serviceOrigin: String { baseUrl.hasSuffix("/") ? String(baseUrl.dropLast()) : baseUrl }
+  public var serviceOrigin: String {
+    guard var url = URLComponents(string: baseUrl), let host = url.url?.host() else { return "" }
+    url.scheme = url.scheme?.lowercased()
+    // URL.host uses IDNA for international names. URLComponents.host needs IPv6 brackets.
+    url.host = host.contains(":") ? "[\(host.lowercased())]" : host.lowercased()
+    if (url.scheme == "https" && url.port == 443) || (url.scheme == "http" && url.port == 80) {
+      url.port = nil
+    }
+    url.path = ""
+    return url.string ?? ""
+  }
   public var stateDirectory: URL {
     let name = SHA256.hash(data: Data(profile.utf8)).prefix(8).map { String(format: "%02x", $0) }
       .joined()

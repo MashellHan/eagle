@@ -1,5 +1,15 @@
 # 用户视角检查点
 
+## 2026-10-29 12:54 +08 — 设备页模型集成，候选启动接线中
+
+- Herdr default/w4 三人配置不变，已读 service/reviewer 实际输出；service 独占设备页
+  model/view，Lead 负责 helper 生命周期、App/Bots 启动与集成。
+- helper/XPC 源码与局部真实传输的 review 已关闭；运行时和候选签名装配 fixture
+  通过，fixture 的 App/helper 是占位可执行文件，未作为真实 Swift App 启动证据。
+- 共享设备 model 已集成 6063beb，7 项局部测试为作者证据；原 host 的 origin/retry
+  两项 P2 正修复。实际 App/SMAppService 和多个 Bot 经设备群执行仍是下一断点。
+- Herdr 采集、D1、公网没有新增运行验收；未部署、发布、替换日常 App 或验证物理双 Mac。
+
 ## 2026-10-29 12:37 +08 — 私有 Swift 宿主已接真实本机执行
 
 - Herdr default/w4 仍是三人：Lead/reviewer Astra Max，service Sol xhigh；已读实际

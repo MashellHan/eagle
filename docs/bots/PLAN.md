@@ -77,6 +77,10 @@ XPC 与独立 EagleDeviceHelper 可执行目标已加入：XPC 在每条消息�
 真实错误代码身份的管理写入先红后拒绝，4 项 pipe/XPC 测试通过。SMAppService
 注册适配器已写，尚待完整候选包启动；本地 ad-hoc 签名不作为发行身份验证证据。
 
+宿主 origin 大小写/默认端口与 Node 对齐，并接受发行 Mach service 名称；并发 retry
+合并且等待旧 Node 实际退出才允许替换。真实延迟退出进程先复现多个新子进程及
+初始化失败，修复后 6 项宿主测试通过；设备页 model 已独立集成，尚在增量审查。
+
 ## Where the code lives
 
 ### Exclusive search providers (2026-10-28)

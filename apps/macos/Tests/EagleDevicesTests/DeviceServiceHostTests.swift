@@ -14,7 +14,7 @@ private final class HostVault: DeviceIdentityVault, @unchecked Sendable {
 
 @Suite("Private device host") @MainActor
 struct DeviceServiceHostTests {
-  private func host() throws -> DeviceServiceHost {
+  private func host(delayedExit: Bool = false) throws -> DeviceServiceHost {
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent(
       "../../../../"
     ).standardizedFileURL
@@ -28,6 +28,21 @@ struct DeviceServiceHostTests {
       .trimmingCharacters(in: .whitespacesAndNewlines)
     process.waitUntilExit()
     let directory = URL(fileURLWithPath: "/tmp/eagle-host-" + UUID().uuidString.prefix(12))
+    var entry = root.appendingPathComponent("packages/agent/dist/agent/device-service.js")
+    if delayedExit {
+      try FileManager.default.createDirectory(
+        at: directory, withIntermediateDirectories: true,
+        attributes: [.posixPermissions: 0o700])
+      let script = """
+        import {appendFileSync} from 'node:fs';
+        import {runDeviceService} from '\(entry.absoluteString)';
+        appendFileSync(new URL('starts',import.meta.url), String(process.pid)+'\\n');
+        process.stdin.once('end',()=>setTimeout(()=>{},500));
+        await runDeviceService();
+        """
+      entry = directory.appendingPathComponent("delayed-exit.mjs")
+      try Data(script.utf8).write(to: entry)
+    }
     let configuration = try JSONDecoder().decode(
       DeviceHostConfiguration.self,
       from: Data(
@@ -37,7 +52,7 @@ struct DeviceServiceHostTests {
       identity: try .loadOrCreate(profile: "test", vault: HostVault()),
       configuration: configuration,
       node: URL(fileURLWithPath: path),
-      entry: root.appendingPathComponent("packages/agent/dist/agent/device-service.js"),
+      entry: entry,
       stateDirectory: directory)
   }
   private func ready(_ host: DeviceServiceHost) async throws {
@@ -170,6 +185,60 @@ struct DeviceServiceHostTests {
     trustedClient.invalidate()
     withExtendedLifetime(trustedServer) { trustedListener.invalidate() }
     try await clean(host)
+  }
+
+  @Test("concurrent retries retain exactly one live helper-owned service")
+  func concurrentRetry() async throws {
+    let host = try host(delayedExit: true)
+    let starts = host.stateDirectory.appendingPathComponent("starts")
+    // Also clean a child leaked by the pre-fix implementation, using only this fixture's PIDs.
+    defer {
+      if let content = try? String(contentsOf: starts, encoding: .utf8) {
+        for line in content.split(separator: "\n") {
+          if let pid = Int32(line) { kill(pid, SIGTERM) }
+        }
+      }
+      try? FileManager.default.removeItem(at: host.stateDirectory)
+    }
+    try await ready(host)
+    do {
+      async let first = host.call("service.retry")
+      async let second = host.call("service.retry")
+      _ = try await (first, second)
+      for _ in 0..<200 {
+        if host.localReady || host.failure != nil { break }
+        try await Task.sleep(for: .milliseconds(10))
+      }
+      #expect(host.localReady)
+      #expect(host.failure == nil)
+      #expect(try String(contentsOf: starts, encoding: .utf8).split(separator: "\n").count == 2)
+      #expect(try await host.call("service.status")["localReady"]?.bool == true)
+      #expect(try await host.call("policy.get")["mode"]?.string == "all-approve")
+    } catch {
+      await host.stop()
+      throw error
+    }
+    await host.stop()
+  }
+
+  @Test("configuration origin matches WHATWG before exact registration signing")
+  func normalizedOrigin() throws {
+    let config = try JSONDecoder().decode(
+      DeviceHostConfiguration.self,
+      from: Data(
+        #"{"version":1,"profile":"test","baseUrl":"https://EXAMPLE.com:443/","machServiceName":"ai.hexly.eagle.devices","launchAgentPlist":"ai.hexly.eagle.devices.plist"}"#
+          .utf8))
+    let identity = try DeviceIdentity.loadOrCreate(profile: "test", vault: HostVault())
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    let payload = [
+      "eagle-device-register-v1", "https://example.com", identity.deviceId, identity.publicKey,
+      UUID().uuidString.lowercased(), Data(repeating: 5, count: 32).base64URL, String(now + 30000),
+    ].joined(separator: "\n")
+    #expect(throws: Never.self) { try config.validate() }
+    #expect(config.serviceOrigin == "https://example.com")
+    #expect(throws: Never.self) {
+      try identity.signRegistration(payload, serviceOrigin: config.serviceOrigin, now: now)
+    }
   }
 
   @Test(

@@ -36,6 +36,8 @@ public final class DeviceServiceHost {
   private var timeouts: [String: Task<Void, Never>] = [:]
   private var approvalId: String?
   private var approvalTimeout: Task<Void, Never>?
+  private var stopping: Task<Void, Never>?
+  private var retrying: Task<Void, any Error>?
 
   public init(
     identity: DeviceIdentity, configuration: DeviceHostConfiguration,
@@ -49,6 +51,7 @@ public final class DeviceServiceHost {
   }
 
   public func start() throws {
+    guard stopping == nil else { throw DeviceHostError.unavailable }
     if child?.isRunning == true { return }
     try configuration.validate()
     guard FileManager.default.isExecutableFile(atPath: node.path),
@@ -95,7 +98,7 @@ public final class DeviceServiceHost {
     output = outgoing.fileHandleForReading
     var config: [String: DeviceJSON] = [
       "type": .string("configure"), "version": .number(1),
-      "baseUrl": .string(configuration.baseUrl),
+      "baseUrl": .string(configuration.serviceOrigin),
       "deviceId": .string(identity.deviceId), "publicKey": .string(identity.publicKey),
       "name": .string(Host.current().localizedName ?? "Mac"), "platform": .string("darwin"),
       "arch": .string(Self.arch), "stateDirectory": .string(stateDirectory.path),
@@ -115,17 +118,41 @@ public final class DeviceServiceHost {
   }
 
   public func stop() async {
-    let process = child
+    if let stopping {
+      await stopping.value
+      return
+    }
+    guard let process = child else {
+      disconnected()
+      return
+    }
     generation = UUID()
     try? input?.close()
     input = nil
-    for _ in 0..<50 {
-      if process?.isRunning != true { break }
-      try? await Task.sleep(for: .milliseconds(100))
-    }
-    if process?.isRunning == true { process?.terminate() }
     disconnected()
-    child = nil
+    let task = Task { @MainActor in
+      for _ in 0..<50 {
+        if !process.isRunning { break }
+        try? await Task.sleep(for: .milliseconds(100))
+      }
+      if process.isRunning { process.terminate() }
+      // Keep ownership until exit; no replacement may race an old journal/socket owner.
+      while process.isRunning { try? await Task.sleep(for: .milliseconds(50)) }
+    }
+    stopping = task
+    await task.value
+    if child === process { child = nil }
+    stopping = nil
+  }
+  private func retry() async throws {
+    if let retrying { return try await retrying.value }
+    let task = Task { @MainActor in
+      await self.stop()
+      try self.start()
+    }
+    retrying = task
+    defer { retrying = nil }
+    try await task.value
   }
   private func disconnected() {
     localReady = false
@@ -156,8 +183,7 @@ public final class DeviceServiceHost {
       return .object(status)
     }
     if method == "service.retry" {
-      await stop()
-      try start()
+      try await retry()
       return .object(["starting": .bool(true)])
     }
     guard localReady else { throw DeviceHostError.unavailable }
