@@ -708,6 +708,19 @@ Stage order: 0 interface and its contract tests (including the four adapter,
 registry and lifecycle fixes it needs), 1 `trigger` group with schedule plus origin
 field and app surface, 2 webhook ingress, 3 `peers`.
 
+### Peers, as built (2026-10-29)
+
+Daemon side: `core/PeerExchangeStore.ts` (durable exchange, request-keyed receipts, ten
+messages per side before the exchange closes), `peers/host.ts` (catalog + invocation +
+receipts, refusals with reasons), `tools/peers/tools.ts` (`peer_list`/`peer_send`/
+`peer_read` and a prompt that states the budget and the stopping rule), and
+`RuntimeHandle.entryById` for reading an answer. `apps/bots/test/peers` proves it with two
+real Harnesses over real sqlite: a message lands as a peer-originated turn and the sender
+reads the recipient's answer; ownership and receipts are the sender's only.
+
+Still open: the client read path (the `peers` wire capability stays false), so no live bot
+shows an exchange in the app yet.
+
 ### Peers UI, as built (2026-10-29, client only)
 
 The presentation half of stage 3 landed before its daemon side, against a fixture:

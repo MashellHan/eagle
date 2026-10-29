@@ -204,6 +204,16 @@ public struct SettingsView: View {
               .toggleStyle(.switch)
               .tint(Theme.Palette.accentStrong)
           }
+          Divider().overlay(Theme.Palette.line)
+          SettingsRow(
+            "Bot 互通",
+            detail: "让 Bot 一对一给别的 Bot 发消息并读回它的回答；每个来回每边最多 10 条"
+          ) {
+            Toggle("", isOn: toolGroupBinding(SettingsViewModel.peersToolGroup))
+              .labelsHidden()
+              .toggleStyle(.switch)
+              .tint(Theme.Palette.accentStrong)
+          }
         }
       }
     }

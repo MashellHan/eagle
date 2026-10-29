@@ -797,6 +797,37 @@ queue → cut → `invoke` → run); the innermost failure is the only one logge
 | 2 | webhook endpoint, per-trigger tokens in headers and log redaction, response matrix, limits, idempotency | §9.3 green; local `curl` enqueues once under retry; no token in logs |
 | 3 | `peers` group, route-enforcement spike, outbound receipts, answer read, caps | Two real Harnesses; `peer_read` ownership; path and caps proven; capability decision recorded |
 
+### Stage 3, as built (2026-10-29, daemon side)
+
+The owner replaced the A/B route spike with a **turn budget per exchange**, which is a
+numeric rule the daemon can enforce without knowing the model's text: eighteen messages
+per exchange at most, ten from each side.
+
+- `core/PeerExchangeStore.ts` keeps one record per exchange (`<root>/peers/<id>.json`):
+  participants, turns (`fromBotId`, `toBotId`, `requestId`, `at`), status. Appends are
+  serialized, written through a temp file, keyed by `requestId` so a retry is recognised,
+  and the record is finished with `turn_limit` once **both** sides have spent
+  `PEER_MAX_TURNS` (10). A finished exchange is never reopened; a new send starts a new one.
+- `peers/host.ts` composes the catalog, the invocation port and the receipts. A send
+  resolves the recipient by id (self, unknown and unavailable are refusals), continues the
+  pair's open exchange or opens one, stamps its receipt **before** `invoke`, admits with
+  `origin: {kind:"peer", fromBotId}` and `whenBusy:"followUp"`, and returns
+  `{botId, requestId, status, exchangeId, sent, remaining}`. A side that has sent ten is
+  refused with the limit in the message, so the model is told to stop rather than retried.
+- `tools/peers/tools.ts` ships `peer_list`, `peer_send`, `peer_read`. The prompt
+  (`peersSection`) states the ten-message budget, says a spent side is refused, tells the
+  bot to stop when the exchange stops making progress, and that a send is admission, not
+  an answer.
+- `RuntimeHandle.entryById` is the one method the port grew: `peer_read` reads the
+  recipient's answer by `Submission.answerEntryId` without paging a transcript.
+- `peer_read` ownership comes from the receipt journal keyed by the calling bot; reading
+  another bot's `requestId` is refused, and reading never starts a turn.
+
+Not built yet: the A/B visited-path rule for routes longer than two bots (out of scope
+while an exchange is a pair), the per-hour caps, and the client side — `peers` stays
+`false` on the wire because the app has no read API for an exchange yet, so the transcript
+row and dialog are still fed by a fixture.
+
 The origin field lands in its own commit at the start of stage 1, before the first
 fired message exists, so no migration is needed.
 

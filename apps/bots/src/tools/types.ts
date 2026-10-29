@@ -1,3 +1,5 @@
+import type { SubmissionStatus } from "../core/domain.ts";
+
 // The shape every bot tool speaks (docs/bots/RUNTIME.md, "Tools"): a handler receives the
 // workspace and validated arguments and returns what the model should see. Failures are
 // results, not exceptions, so one bad path cannot fail the run.
@@ -71,4 +73,66 @@ export type TriggerToolHost = {
   }): Promise<{ readonly triggerId: string }>;
   /** Where a webhook delivers to, without the credential the app keeps. */
   endpoint(triggerId: string): string;
+};
+
+/** One bot another bot may talk to. Availability is an observation, never a promise. */
+export type PeerListing = {
+  readonly botId: string;
+  readonly title: string;
+  readonly availability: "idle" | "working" | "unavailable";
+};
+
+/** What one admitted peer message reports: admission and the remaining budget, never an answer. */
+export type PeerSendResult = {
+  readonly toBotId: string;
+  readonly requestId: string;
+  readonly status: SubmissionStatus;
+  readonly exchangeId: string;
+  /** How many messages this bot has now sent inside the exchange. */
+  readonly sent: number;
+  /** What this bot may still send before its side is spent. */
+  readonly remaining: number;
+  readonly exchangeStatus: "open" | "finished";
+};
+
+export type PeerReadResult = {
+  readonly requestId: string;
+  readonly toBotId: string;
+  readonly status: SubmissionStatus | "unknown";
+  readonly reason?: string;
+  /** The recipient's answer, once it has one. */
+  readonly answer?: string;
+};
+
+export type PeerReceiptView = {
+  readonly requestId: string;
+  readonly toBotId: string;
+  readonly at: string;
+  readonly status: SubmissionStatus | "unknown";
+};
+
+/**
+ * What the peer tools may do (docs/bots/EXTENSIONS-AND-TOOLS.md §6.4). The host binds the sender:
+ * the model names a recipient and a message, never who it is. Admission, durability and the turn
+ * budget belong to the daemon, so a tool cannot promise more than the exchange allows.
+ */
+export type PeerToolHost = {
+  readonly botId: string;
+  /** The longest message the admission port accepts, in characters. */
+  readonly maxMessage: number;
+  list(input: {
+    readonly query?: string;
+    readonly cursor?: string;
+    readonly limit: number;
+  }): Promise<{ readonly items: readonly PeerListing[]; readonly nextCursor?: string }>;
+  send(input: {
+    readonly taskId: string;
+    readonly toBotId: string;
+    readonly message: string;
+  }): Promise<PeerSendResult>;
+  read(input: { readonly requestId: string }): Promise<PeerReadResult>;
+  receipts(input: {
+    readonly toBotId?: string;
+    readonly limit: number;
+  }): Promise<readonly PeerReceiptView[]>;
 };

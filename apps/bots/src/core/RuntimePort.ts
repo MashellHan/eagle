@@ -81,6 +81,8 @@ export interface RuntimeHandle {
   submission(
     key: { submissionId: string } | { requestId: string },
   ): Promise<Submission | undefined>;
+  /** One committed message by entry id: how a peer reads the answer it was pointed at. */
+  entryById?(entryId: string): Promise<Message | undefined>;
   /** Older messages, oldest first. The trace names the command that asked for them. */
   history(input: {
     beforeEntryId?: string;

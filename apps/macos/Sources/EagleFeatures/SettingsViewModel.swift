@@ -47,7 +47,9 @@ public final class SettingsViewModel: ObservableObject {
   ]
   public static let defaultThinkingLevel = "medium"
   /// Every group the daemon knows, in display order; the daemon owns which are installed.
-  public static let toolGroups = ["core", "coding", "herdr", "agents", "search", "trigger"]
+  public static let toolGroups = [
+    "core", "coding", "herdr", "agents", "search", "trigger", "peers",
+  ]
   /// What a daemon that predates a new group is assumed to run: new groups stay off.
   public static let defaultToolGroups = ["core", "coding", "herdr", "agents", "trigger"]
   public static let mandatoryToolGroups: Set<String> = ["core", "coding"]
@@ -55,6 +57,7 @@ public final class SettingsViewModel: ObservableObject {
   public static let agentsToolGroup = "agents"
   public static let searchToolGroup = "search"
   public static let triggerToolGroup = "trigger"
+  public static let peersToolGroup = "peers"
   private var gatewayThinkingLevelChosen = false
   private var gatewayToolGroupsChosen = false
   private var gatewayLoaded = false

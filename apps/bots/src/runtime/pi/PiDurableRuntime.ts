@@ -40,7 +40,7 @@ import type { Log } from "../../log/log.ts";
 import { createHerdrClient } from "../../tools/herdr/client.ts";
 import { createToolRegistry, selectToolExtensions } from "../../tools/registry.ts";
 import type { SearchClient } from "../../tools/search/client.ts";
-import type { TriggerToolHost } from "../../tools/types.ts";
+import type { PeerToolHost, TriggerToolHost } from "../../tools/types.ts";
 import type { UsageMeter } from "../../tools/usage.ts";
 import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
@@ -147,6 +147,8 @@ export type PiRuntimeOptions = {
   readonly search?: (spec: RuntimeBotSpec) => SearchClient | undefined;
   /** The trigger tools' host for a bot, bound to that bot's own definitions. */
   readonly trigger?: (spec: RuntimeBotSpec) => Promise<TriggerToolHost | undefined>;
+  /** The peer tools' host for a bot, bound to that bot as the sender. */
+  readonly peers?: (spec: RuntimeBotSpec) => Promise<PeerToolHost | undefined>;
   /** Where a tool that costs something books it (docs/bots/PROTOCOL.md, "Usage statistics"). */
   readonly usage?: UsageMeter;
 };
@@ -177,6 +179,7 @@ export class PiDurableRuntime implements RuntimePort {
       const groups = resolveToolGroups(spec.toolGroups);
       const search = this.#options.search?.(spec);
       const trigger = await this.#options.trigger?.(spec);
+      const peers = await this.#options.peers?.(spec);
       const registry = createToolRegistry(workspace, {
         ...(this.#options.deviceSocket === undefined
           ? {}
@@ -194,6 +197,7 @@ export class PiDurableRuntime implements RuntimePort {
               },
             }),
         ...(trigger === undefined ? {} : { trigger }),
+        ...(peers === undefined ? {} : { peers }),
       });
       const installed = selectToolExtensions(registry, groups);
       const harness = await HarnessFactory.open(
@@ -538,6 +542,38 @@ class PiRuntimeHandle implements RuntimeHandle {
         {
           cause,
         },
+      );
+    }
+  }
+
+  /** One entry, read by its own id: no paging, no window, so an old answer stays reachable. */
+  async entryById(entryId: string): Promise<Message | undefined> {
+    try {
+      const root = await this.#harness.root(BACKGROUND_CONTEXT);
+      const page = await root.entries(
+        {
+          order: "ascending",
+          minEntryId: piEntryId(entryId),
+          maxEntryId: piEntryId(entryId),
+        },
+        1,
+        undefined,
+        BACKGROUND_CONTEXT,
+      );
+      for (const entry of page.items) {
+        const message = this.#mapper.entryMessage(entry);
+        if (message !== undefined && message.id === entryId) return message;
+      }
+      return undefined;
+    } catch (cause) {
+      if (cause instanceof ClassifiedFailure) throw cause;
+      const minted = this.#classifier.classify("history", "storage_failed", "runtime");
+      this.#logFailure(minted, this.#spec.trace, Events.classify, "runtime");
+      throw new ClassifiedFailure(
+        minted.classification.failure,
+        "runtime",
+        minted.classification.message,
+        { cause },
       );
     }
   }

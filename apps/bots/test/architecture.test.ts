@@ -59,6 +59,17 @@ const EDGES: ReadonlyArray<{
       target === "src/core/domain.ts" ||
       target === "src/core/RuntimePort.ts",
   },
+  {
+    // A caller of the invocation port, like `src/triggers/`: the peer host may reach the
+    // exchange store and the invocation port, and nothing of the transport or the registry.
+    prefix: "src/peers/",
+    allows: (target) =>
+      target.startsWith("src/peers/") ||
+      target === "src/core/Invocation.ts" ||
+      target === "src/core/PeerExchangeStore.ts" ||
+      target === "src/core/domain.ts" ||
+      target === "src/tools/types.ts",
+  },
   // The tool extension is part of the adapter boundary: it defines pi-durable tools, so
   // it may import pi-durable and may not reach core, protocol or transport.
   { prefix: "src/tools/", allows: (target) => target.startsWith("src/tools/") },
@@ -187,6 +198,9 @@ test("the rules allow the documented edges", () => {
     { file: "src/triggers/ingress.ts", specifier: "../server/http.ts" },
     { file: "src/triggers/webhook/module.ts", specifier: "../../tools/types.ts" },
     { file: "src/triggers/webhook/module.ts", specifier: "../../log/log.ts" },
+    { file: "src/peers/host.ts", specifier: "../core/PeerExchangeStore.ts" },
+    { file: "src/peers/host.ts", specifier: "../core/Invocation.ts" },
+    { file: "src/peers/host.ts", specifier: "../tools/types.ts" },
   ];
   assert.deepEqual(
     violations(allowed.map(({ file, specifier }) => ({ file, dependencies: [specifier] }))),

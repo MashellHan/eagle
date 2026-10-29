@@ -268,7 +268,7 @@ the current `DEFAULT_TOOL_GROUPS = [...TOOL_GROUP_NAMES]` expression.
 | --- | --- | --- | --- |
 | `memory` | `bots-memory` | `memory_list`, `memory_search`, `memory_read`, `memory_write`, `memory_delete` | Deferred |
 | `trigger` | `bots-trigger` | `trigger_create`, `trigger_list`, `trigger_update`, `trigger_enable`, `trigger_delete` | Deferred; shipped and on by default |
-| `peers` | `bots-peers` | `peer_list`, `peer_send`, `peer_read` | Deferred |
+| `peers` | `bots-peers` | `peer_list`, `peer_send`, `peer_read` | Deferred; shipped behind a toggle |
 | Existing `agents` | `bots-agents` | Add `agent_list`; retain the existing three names/semantics | Eager when selected |
 
 Each deferred group selects the same native `tool-search` extension. Install it
@@ -409,6 +409,11 @@ reject repeated recipients and cap the initial route at four Bots. Do not wait
 synchronously for peers from within a peer send. Test A -> B -> A and longer
 cycles so communication cannot silently turn into an unbounded model loop.
 This is product routing/cost control, not an execution sandbox.
+
+As built (2026-10-29): the three tools exist, deferred behind `tool_search`, and the
+daemon enforces a ten-message budget per side per exchange
+(`core/PeerExchangeStore.ts`, TRIGGERS.md §10 "Stage 3, as built"). The route/visited-path
+spike below is still open for routes longer than a pair.
 
 `peer_send` is not registered until the route-enforcement spike in
 [TRIGGERS.md](TRIGGERS.md) §10 decides its mechanism: a numeric-only release would

@@ -17,12 +17,14 @@ import {
 } from "./core/domain.ts";
 import { newFailure } from "./core/failures.ts";
 import { OriginStore, originPath } from "./core/OriginStore.ts";
+import { PeerExchangeStore } from "./core/PeerExchangeStore.ts";
 import type { RuntimeEvent } from "./core/RuntimePort.ts";
 import { TriggerSecretStore, triggerSecretsPath } from "./core/TriggerSecrets.ts";
 import { TriggerStore, triggerJournalPath } from "./core/TriggerStore.ts";
 import { declareEvent } from "./log/events.ts";
 import { Log } from "./log/log.ts";
 import { FileLogSink } from "./log/sink.ts";
+import { peerHostFor } from "./peers/host.ts";
 import { encodeServerEvent } from "./protocol/encode.ts";
 import { createDaemonModels } from "./runtime/pi/models.ts";
 import { PiDurableRuntime, type PiSettings } from "./runtime/pi/PiDurableRuntime.ts";
@@ -79,6 +81,14 @@ const packageVersion = (): string => {
   } catch {
     return "0.0.0";
   }
+};
+
+/** The answer text a peer reads: the text blocks of one committed message. */
+const textOf = (
+  blocks: readonly { readonly type: string; readonly text?: string }[],
+): string | undefined => {
+  const text = blocks.map((block) => (block.type === "text" ? (block.text ?? "") : "")).join("");
+  return text === "" ? undefined : text;
 };
 
 /** Encoded bytes of one event, measured on the frame the wire layer would write. */
@@ -183,6 +193,9 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   );
   const compaction = compactionFromEnv(process.env, windowTokens);
   const usageStore = new UsageStore(join(root, "usage.sqlite"));
+  // Exchanges between bots live next to the catalog: one durable record each, with the budget.
+  const peerStore = new PeerExchangeStore(join(root, "peers"));
+  await peerStore.open();
   // One store per bot, opened on demand: a bot that never uses a trigger reads no journal.
   const triggers = new Map<string, Promise<TriggerStore>>();
   /** Webhook credentials per bot, and every token the log must redact. */
@@ -303,6 +316,18 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       triggerHost(spec.id, await triggerStoreFor(spec.id), async (triggerId) => {
         const queue = queues.get(`${spec.id}/${triggerId}`);
         return queue === undefined ? undefined : (await queue).cursor();
+      }),
+    peers: async (spec) =>
+      peerHostFor({
+        botId: spec.id,
+        store: peerStore,
+        bots: () => registry.summaries(),
+        invoke: (input) => service.invoke(input),
+        submission: (query) => service.submission(query),
+        entryText: async (botId, entryId) => {
+          const message = await registry.handleOf(botId)?.entryById?.(entryId);
+          return message === undefined ? undefined : textOf(message.blocks);
+        },
       }),
   });
   const defaultModel =
