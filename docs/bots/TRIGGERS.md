@@ -120,7 +120,7 @@ characters (`BotRegistry.ts:95`) and SDK call IDs may contain `/`
 | Caller | Key | Length | Stability source |
 | --- | --- | --- | --- |
 | Client `send` | `r_<client id>` | 8–64 | Client outbox |
-| `schedule` | `sh_<triggerId>_<dueAtUnixSeconds>` | 3 + 12 + 1 + 10 = 26 | The due instant named by the durable cursor |
+| `schedule` | `sh_<triggerId>_<batchId>` | 3 + 12 + 1 + ≤10 = ≤26 | The queue's durable batch counter; the due instant is the fire's own *item* identity, journaled by the tick |
 | `webhook` | `wh_<triggerId>_<batchId>` | 3 + 12 + 1 + ≤10 = ≤26 | The trigger's durable batch counter |
 | `peer` | `pr_<16 hex>` of `sha256(fromBotId ‖ toBotId ‖ taskId)` | 19 | The durable tool-task identity (`ToolExecutionApi.taskId`) |
 

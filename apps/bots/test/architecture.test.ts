@@ -43,6 +43,7 @@ const EDGES: ReadonlyArray<{
     // nothing else — no service, no registry, no runtime, no transport (TRIGGERS.md §3.7).
     prefix: "src/triggers/",
     allows: (target) =>
+      target.startsWith("src/triggers/") ||
       target === "src/core/Invocation.ts" ||
       target === "src/core/TriggerStore.ts" ||
       target === "src/core/domain.ts" ||

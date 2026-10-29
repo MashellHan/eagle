@@ -513,7 +513,13 @@ Shipped so far, each with its own failing test first:
 3. The `trigger` tool group: five deferred tools, a per-bot host, install only when
    the daemon supplies that host, and the model-facing prompt section.
 
-Still open in stage 1: the queue and drain pump, the schedule tick, and the
+4. The queue and the drain pump (`src/triggers/queue.ts`, `pump.ts`): a bounded
+   FIFO that evicts the oldest and counts the loss, a frozen batch cut by the
+   rendered send budget rather than by truncation, and a per-bot pump that
+   reconciles a batch against its submission record before it cuts again, retries
+   an unadmitted batch with the same key, and takes turns across one bot's triggers.
+
+Still open in stage 1: the schedule tick, the webhook endpoint, and the
 `triggers` event with the sidebar surface. No caller fires yet.
 
 ### Stage 0, as built
