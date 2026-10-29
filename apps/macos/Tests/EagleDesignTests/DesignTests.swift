@@ -24,9 +24,8 @@ struct ThemeTests {
     #expect(
       Theme.Metric.headerTopInset + Theme.Metric.headerBandHeight <= Theme.Metric.headerHeight)
     #expect(Theme.Metric.trafficLightsEnd == 75.5)
-    #expect(Theme.Metric.brandLeadingInset > Theme.Metric.trafficLightsEnd)
-    #expect(Theme.Metric.brandVersionMinWidth <= Theme.Metric.sidebarWidth)
-    #expect(Theme.Metric.brandVersionMinWidth > Theme.Metric.sidebarMinWidth)
+    #expect(Theme.Metric.trafficLightsClearance > Theme.Metric.trafficLightsEnd)
+    #expect(Theme.Metric.logoSize == Theme.Metric.avatarRow)
     #expect(Theme.Metric.listCardInset == 12)
     #expect(Theme.Metric.rowContentInset + Theme.Metric.listCardInset == Theme.Metric.contentInset)
     #expect(Theme.Metric.edgeFadeHeight == 20)

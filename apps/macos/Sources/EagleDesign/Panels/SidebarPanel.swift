@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Left column on the reference grid: traffic lights on the header row's centreline, the brand
-/// starting after them, rows from 72, 58 pt rows, unread pill at 28 pt and a 62 pt user card.
+/// Left column on the reference grid: traffic lights and the toolbar in the window's top corner,
+/// the brand on its own row under them, then the list, 58 pt rows, unread pill at 28 pt and a
+/// 62 pt user card. The brand's mark sits on the list's content line.
 public struct SidebarPanel: View {
   private let sections: [SidebarSection]
   private let selection: String?
@@ -104,21 +105,65 @@ public struct SidebarPanel: View {
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      BrandHeader(
-        version: Self.version,
-        showsVersion: width >= Theme.Metric.brandVersionMinWidth,
-        onSearch: onSearch,
-        onCompose: onCreateBot,
-        onCreateGroup: onCreateGroup,
-        canCompose: canCreateBot,
-        onCollapse: onCollapse
-      )
+      header
       list
       footer
     }
     .frame(width: width)
     .frame(maxHeight: .infinity)
     .background(Theme.Palette.canvas)
+  }
+
+  /// The toolbar shares the window's top corner with the traffic lights; the brand takes the row
+  /// under it, on the list's content line, so the mark lines up with every bot's avatar.
+  private var header: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(spacing: 6) {
+        Spacer(minLength: 0)
+        toolbar
+      }
+      .frame(height: Theme.Metric.headerControlHeight)
+      .padding(.horizontal, Theme.Metric.contentInset)
+      .padding(.top, Theme.Metric.headerTopInset)
+
+      BrandHeader(version: Self.version)
+        .padding(.leading, Theme.Metric.contentInset)
+        .padding(.trailing, Theme.Metric.contentInset)
+        .padding(.top, Theme.Metric.brandRowGap)
+    }
+  }
+
+  private var toolbar: some View {
+    HStack(spacing: 6) {
+      IconButton(
+        systemName: "magnifyingglass",
+        label: "搜索",
+        size: Theme.Metric.headerControlHeight,
+        style: .circled,
+        action: onSearch
+      )
+      MenuIconButton(
+        systemName: "plus",
+        label: "新建",
+        size: Theme.Metric.headerControlHeight
+      ) {
+        Button(action: onCreateBot) {
+          Label("新建 Bot", systemImage: "person.badge.plus")
+        }
+        .disabled(!canCreateBot)
+        Button(action: onCreateGroup) {
+          Label("新建分组", systemImage: "folder.badge.plus")
+        }
+        .disabled(!canCreateBot)
+      }
+      IconButton(
+        systemName: "sidebar.left",
+        label: "收起侧栏",
+        size: Theme.Metric.headerControlHeight,
+        style: .circled,
+        action: onCollapse
+      )
+    }
   }
 
   private var list: some View {

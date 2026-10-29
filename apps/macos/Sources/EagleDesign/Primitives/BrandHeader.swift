@@ -37,36 +37,14 @@ public struct VersionBadge: View {
   }
 }
 
-/// Product identity for the sidebar: the bare eagle mark, the lowercase name and
-/// a version badge. No plate, no texture, no avatar.
+/// Product identity for the sidebar: the bare eagle mark, the lowercase name and a version
+/// badge. The mark sits on the same content line as the bot rows' avatars, so the identity
+/// reads as the first row of the list. No plate, no texture, no avatar.
 public struct BrandHeader: View {
   private let version: String
-  private let onSearch: () -> Void
-  private let onCompose: () -> Void
-  /// A daemon group is a second kind of thing to create, so the + becomes a menu.
-  private let onCreateGroup: (() -> Void)?
-  private let canCompose: Bool
-  private let onCollapse: () -> Void
-  /// The row also carries the window controls, so a narrow sidebar drops the version badge
-  /// instead of letting the wordmark wrap.
-  private let showsVersion: Bool
 
-  public init(
-    version: String,
-    showsVersion: Bool = true,
-    onSearch: @escaping () -> Void = {},
-    onCompose: @escaping () -> Void = {},
-    onCreateGroup: (() -> Void)? = nil,
-    canCompose: Bool = true,
-    onCollapse: @escaping () -> Void = {}
-  ) {
+  public init(version: String) {
     self.version = version
-    self.showsVersion = showsVersion
-    self.onSearch = onSearch
-    self.onCompose = onCompose
-    self.onCreateGroup = onCreateGroup
-    self.canCompose = canCompose
-    self.onCollapse = onCollapse
   }
 
   @ViewBuilder
@@ -86,24 +64,7 @@ public struct BrandHeader: View {
   }
 
   public var body: some View {
-    HeaderRow {
-      content
-    }
-  }
-
-  private var content: some View {
-    HStack(spacing: 6) {
-      identity
-        .layoutPriority(1)
-      Spacer(minLength: 8)
-      controls
-    }
-    .padding(.leading, Theme.Metric.brandLeadingInset)
-    .padding(.trailing, Theme.Metric.contentInset)
-  }
-
-  private var identity: some View {
-    HStack(spacing: 6) {
+    HStack(spacing: Theme.Metric.brandMarkGap) {
       mark
         .frame(width: Theme.Metric.logoSize, height: Theme.Metric.logoSize)
         .accessibilityHidden(true)
@@ -112,51 +73,9 @@ public struct BrandHeader: View {
         .tracking(-0.4)
         .foregroundStyle(Theme.Palette.textPrimary)
         .lineLimit(1)
-        .fixedSize()
-      if showsVersion { VersionBadge(version: version) }
+      VersionBadge(version: version)
+      Spacer(minLength: 0)
     }
-  }
-
-  private var controls: some View {
-    HStack(spacing: 6) {
-      IconButton(
-        systemName: "magnifyingglass",
-        label: "搜索",
-        size: Theme.Metric.headerControlHeight,
-        style: .circled,
-        action: onSearch
-      )
-      if let onCreateGroup {
-        MenuIconButton(
-          systemName: "plus",
-          label: "新建",
-          size: Theme.Metric.headerControlHeight
-        ) {
-          Button(action: onCompose) {
-            Label("新建 Bot", systemImage: "person.badge.plus")
-          }
-          .disabled(!canCompose)
-          Button(action: onCreateGroup) {
-            Label("新建分组", systemImage: "folder.badge.plus")
-          }
-          .disabled(!canCompose)
-        }
-      } else {
-        IconButton(
-          systemName: "plus",
-          label: "新建会话",
-          size: Theme.Metric.headerControlHeight,
-          style: .circled,
-          action: onCompose
-        )
-      }
-      IconButton(
-        systemName: "sidebar.left",
-        label: "收起侧栏",
-        size: Theme.Metric.headerControlHeight,
-        style: .circled,
-        action: onCollapse
-      )
-    }
+    .frame(height: Theme.Metric.logoSize)
   }
 }

@@ -66,11 +66,11 @@ public enum Theme {
     public static let headerTopInset: CGFloat = contentInset
     /// The logo matches the list avatars and is bounded by the header.
     public static let logoSize: CGFloat = min(avatarRow, headerControlHeight)
-    /// The brand header clears the traffic lights, then starts on its own inset.
-    public static let brandLeadingInset: CGFloat = trafficLightsEnd + 12
-    /// The width at which the row still holds the lights, mark, wordmark, version badge and the
-    /// three controls on one line; a narrower sidebar drops the badge.
-    public static let brandVersionMinWidth: CGFloat = 365
+    /// Content that shares the window's top corner with the traffic lights starts past them.
+    public static let trafficLightsClearance: CGFloat = trafficLightsEnd + 8
+    /// The brand's own row, one gap under the toolbar; its mark sits on the list's content line.
+    public static let brandRowGap: CGFloat = 12
+    public static let brandMarkGap: CGFloat = 6
     public static let headerControlHeight: CGFloat = 34
     public static let participantHeight: CGFloat = 40
     public static let participantInset: CGFloat = 12
