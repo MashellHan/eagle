@@ -17,6 +17,18 @@ public struct PeerRef: Identifiable, Hashable, Sendable {
   }
 }
 
+/// Who an answer was given to, and the exchange it belongs to. The id lets the row open that
+/// exchange; an origin without one is a label only.
+public struct PeerOrigin: Hashable, Sendable {
+  public let peer: PeerRef
+  public let exchangeId: String?
+
+  public init(peer: PeerRef, exchangeId: String? = nil) {
+    self.peer = peer
+    self.exchangeId = exchangeId
+  }
+}
+
 /// One message inside an exchange. Text is what a person reads: the dialog is not a log viewer.
 public struct PeerMessage: Identifiable, Hashable, Sendable {
   public let id: String

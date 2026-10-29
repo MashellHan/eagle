@@ -101,6 +101,15 @@ public struct WorkspaceShellView: View {
 
   private var selectedIsBot: Bool { bots.owns(list.selection) }
 
+  /// The sample transcript carries its own exchanges, so opening one only needs the entry that
+  /// holds it. A bot's exchanges will be read from the daemon by id.
+  private func openPeerExchange(_ id: String) {
+    for case .peerExchange(_, let exchange) in chat.entries where exchange.id == id {
+      openedPeerExchange = exchange
+      return
+    }
+  }
+
   /// The sample transcript is only reachable while the sample data is switched on.
   private var selectedIsMock: Bool {
     loadMockData && list.selection != nil && !selectedIsBot
@@ -217,7 +226,7 @@ public struct WorkspaceShellView: View {
               showsInspector: layout.showsInspector,
               onShowSidebar: { layout.toggleSidebar() },
               onToggleInspector: { layout.toggleInspector() },
-              onOpenPeerExchange: { openedPeerExchange = $0 }
+              onOpenPeerExchange: { openPeerExchange($0) }
             )
           } else {
             NoConversationPlaceholder(

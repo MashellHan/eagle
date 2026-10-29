@@ -5,7 +5,7 @@ import SwiftUI
 public enum TranscriptEntry: Identifiable, Hashable, Sendable {
   /// `from` names the peer whose message this answer was given to; absent means the open bot was
   /// answering a person.
-  case assistant(id: String, blocks: [AssistantTurn.Block], from: PeerRef? = nil)
+  case assistant(id: String, blocks: [AssistantTurn.Block], from: PeerOrigin? = nil)
   /// The assistant turn still receiving deltas: the bubble shows a caret.
   case streamingAssistant(id: String, blocks: [AssistantTurn.Block])
   /// A person's turn; `origin` names a cause other than a person typing (TRIGGERS.md §6).
@@ -62,8 +62,8 @@ public struct ConversationColumn: View {
   private let onSend: () -> Void
   private let onShowSidebar: () -> Void
   private let onToggleInspector: () -> Void
-  /// Opens a folded peer exchange; nil leaves the row inert for surfaces that never show one.
-  private let onOpenPeerExchange: ((PeerExchange) -> Void)?
+  /// Opens a peer exchange by id; nil leaves the rows inert for surfaces that never show one.
+  private let onOpenPeerExchange: ((String) -> Void)?
   private let showsSidebar: Bool
   private let showsInspector: Bool
   private let participantStatus: ParticipantStatus?
@@ -95,7 +95,7 @@ public struct ConversationColumn: View {
     onDismissError: @escaping () -> Void = {},
     onShowSidebar: @escaping () -> Void = {},
     onToggleInspector: @escaping () -> Void = {},
-    onOpenPeerExchange: ((PeerExchange) -> Void)? = nil
+    onOpenPeerExchange: ((String) -> Void)? = nil
   ) {
     self.title = title
     self.subtitle = subtitle
@@ -247,7 +247,7 @@ public struct ConversationColumn: View {
         AssistantBubble(text: blocks.markdown, preparedBlocks: preparedMarkdown[entry.id])
           .equatable()
         if let from {
-          PeerOriginRow(peer: from)
+          PeerOriginRow(origin: from) { id in onOpenPeerExchange?(id) }
         }
       }
       .transition(
@@ -278,7 +278,7 @@ public struct ConversationColumn: View {
     case .note(_, let text, let tintIndices):
       DeliveryNote(text, avatars: tintIndices.map(Theme.Palette.avatarTint))
     case .peerExchange(_, let exchange):
-      PeerExchangeRow(exchange: exchange) { onOpenPeerExchange?(exchange) }
+      PeerExchangeRow(exchange: exchange) { onOpenPeerExchange?(exchange.id) }
         .transition(.opacity)
     case .tool(_, let row):
       ToolCallRow(row)

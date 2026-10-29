@@ -75,7 +75,7 @@ struct SnapshotRenderer {
                   "已叫 VPS管家去升 us2 / jp1",
                 ]),
               ],
-              from: MockWorkspace.ves),
+              from: PeerOrigin(peer: MockWorkspace.ves, exchangeId: "x1")),
           ],
           draft: .constant(""),
           onSend: {}

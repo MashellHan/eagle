@@ -44,23 +44,40 @@ public struct PeerExchangeRow: View {
 }
 
 /// Who a message came from, under the message itself: the one place a person learns that an answer
-/// was not written by the bot they are looking at.
+/// was not written by the bot they are looking at. It reads on the same centred line as every other
+/// exchange row, and opens that exchange when the entry knows which one it was.
 public struct PeerOriginRow: View {
-  private let peer: PeerRef
+  private let origin: PeerOrigin
+  private let onOpen: (String) -> Void
+  @State private var hovering = false
 
-  public init(peer: PeerRef) {
-    self.peer = peer
+  public init(origin: PeerOrigin, onOpen: @escaping (String) -> Void = { _ in }) {
+    self.origin = origin
+    self.onOpen = onOpen
   }
 
   public var body: some View {
-    HStack(spacing: 6) {
-      Spacer(minLength: 0)
-      Text("消息来自")
-        .font(Theme.TypeScale.note)
-        .foregroundStyle(Theme.Palette.textMuted)
-      PeerFaceName(peer: peer, font: Theme.TypeScale.note, tint: Theme.Palette.textSecondary)
+    Button {
+      if let id = origin.exchangeId { onOpen(id) }
+    } label: {
+      HStack(spacing: 6) {
+        Spacer(minLength: 0)
+        Text("消息来自")
+          .font(Theme.TypeScale.note)
+          .foregroundStyle(Theme.Palette.textMuted)
+        PeerFaceName(
+          peer: origin.peer, font: Theme.TypeScale.note, tint: Theme.Palette.textSecondary)
+        Spacer(minLength: 0)
+      }
+      .padding(.vertical, 3)
+      .padding(.horizontal, 12)
+      .background(Capsule().fill(hovering ? Theme.Palette.hover : Color.clear))
+      .contentShape(Rectangle())
     }
-    .frame(maxWidth: .infinity)
-    .accessibilityElement(children: .combine)
+    .buttonStyle(.plain)
+    .disabled(origin.exchangeId == nil)
+    .onHover { hovering = origin.exchangeId == nil ? false : $0 }
+    .animation(.easeOut(duration: 0.12), value: hovering)
+    .accessibilityLabel("消息来自 \(origin.peer.title)")
   }
 }

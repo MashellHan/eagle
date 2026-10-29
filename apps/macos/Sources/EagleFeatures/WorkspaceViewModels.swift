@@ -134,9 +134,9 @@ public enum MockWorkspace {
           "2026-10-24 09:00 北京时间，base-mcp 合并了：PR #73，merge commit fd621be，关掉 3 个 issue（#70 #71 #72）。其中 2 个是 CVE，body-parser 升到了 2.4.0，fast-uri 升到了 3.1.9。Codex 审查 1 轮就通过了。排队的 next-ai 已经接着开始修。"
         )
       ],
-      from: MockWorkspace.ves
+      from: PeerOrigin(peer: MockWorkspace.ves, exchangeId: "x1")
     ),
-    .note(id: "n3", text: "2 条消息往来：", tintIndices: [4, 3]),
+    .peerExchange(id: "x2", exchange: MockWorkspace.fireflyExchange),
     .assistant(
       id: "a4",
       blocks: [
@@ -168,6 +168,23 @@ public enum MockWorkspace {
   public static let depsExpert = PeerRef(
     id: "deps", title: "依赖修复专家",
     face: BotFace.Style(shape: .pebble, tint: .violet), tintIndex: 4)
+
+  public static let firefly = PeerRef(
+    id: "firefly", title: "发布管家",
+    face: BotFace.Style(shape: .squircle, tint: .orange), tintIndex: 3)
+
+  public static let fireflyExchange = PeerExchange(
+    id: "x2",
+    participants: [firefly, depsExpert],
+    messages: [
+      PeerMessage(
+        id: "x2m1", senderId: "firefly",
+        text: "firefly 的 v3.1.1 补丁版已经在 CI 里了，通过就合并。"),
+      PeerMessage(
+        id: "x2m2", senderId: "deps",
+        text: "好，合并后我同步给依赖清单，next-ai 接着开始修。"),
+    ],
+    startedAt: "今天 19:34")
 
   public static let vesExchange = PeerExchange(
     id: "x1",
