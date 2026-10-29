@@ -314,3 +314,60 @@ test("native socket leases recover disconnected or silent owners and reject stal
     await f.close();
   }
 });
+
+test("policy changed while a real approval signature verifies cannot admit side effects", async () => {
+  const f = fixture();
+  const original = crypto.subtle.verify.bind(crypto.subtle);
+  let enter: () => void;
+  let release: (() => void) | undefined;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  try {
+    f.runtime.setPolicy("always-ask");
+    const input = await request(f.device.deviceId, {
+      kind: "command",
+      command: "printf must-not-run",
+    });
+    const envelope = {
+      operationId: input.operationId,
+      sourceDeviceId: f.device.deviceId,
+      targetDeviceId: f.device.deviceId,
+      digest: input.digest as string,
+      policyVersion: f.runtime.policy.version,
+      expiresAt: Date.now() + 60000,
+    };
+    input.approval = {
+      ...envelope,
+      signature: sign(
+        null,
+        Buffer.from(approvalPayload(envelope)),
+        f.keys.privateKey,
+      ).toString("base64url"),
+    };
+    crypto.subtle.verify = async (
+      ...args: Parameters<SubtleCrypto["verify"]>
+    ) => {
+      const verified = await original(...args);
+      enter();
+      await blocked;
+      return verified;
+    };
+    const running = f.runtime.handle(input, f.device);
+    await entered;
+    f.runtime.setPolicy("paused");
+    release?.();
+    assert.equal((await running).status, "denied");
+    assert.equal(
+      (await f.runtime.handle({ ...input, action: "get" }, f.device)).status,
+      "unknown",
+    );
+  } finally {
+    crypto.subtle.verify = original;
+    release?.();
+    await f.close();
+  }
+});

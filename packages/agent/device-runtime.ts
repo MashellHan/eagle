@@ -141,17 +141,18 @@ export class DeviceRuntime {
       );
       return { accepted: false, result: result(existing) };
     }
+    const policy = this.policy;
     if (
-      this.policy.mode === "paused" ||
-      (this.policy.mode === "always-ask" &&
-        !(await verifyApproval(request.approval, request, source, this.policy)))
+      policy.mode === "paused" ||
+      (policy.mode === "always-ask" &&
+        !(await verifyApproval(request.approval, request, source, policy))) ||
+      this.policy.version !== policy.version ||
+      this.closed
     )
       return {
         accepted: false,
         result: { status: "denied", error: "policy_confirmation_required" },
       };
-    if (this.active.size || this.native.size)
-      return { accepted: false, result: { status: "busy" } };
     // Recheck synchronously after signature verification yields: another request
     // may have admitted this ID while awaiting WebCrypto.
     const duplicate = this.visible(request.operationId, source);
@@ -163,6 +164,8 @@ export class DeviceRuntime {
       );
       return { accepted: false, result: result(duplicate) };
     }
+    if (this.active.size || this.native.size)
+      return { accepted: false, result: { status: "busy" } };
     const admission = this.journal.begin(
       request.operationId,
       fingerprint,
