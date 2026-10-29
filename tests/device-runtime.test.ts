@@ -87,6 +87,53 @@ test("journal admits before command side effects and original ID never reruns", 
     await f.close();
   }
 });
+
+test("an identity change preserves the journal without exposing the previous target's results", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "device-target-identity-"));
+  const path = join(directory, "operations.sqlite");
+  const previous = local().device;
+  const current = local().device;
+  const source = local().device;
+  const marker = join(directory, "count");
+  const input = await request(previous.deviceId, {
+    kind: "command",
+    command: `printf x >> '${marker}'; cat '${marker}'`,
+  });
+  const before = new DeviceRuntime(previous, path);
+  try {
+    assert.equal((await before.handle(input, source)).output, "x");
+  } finally {
+    await before.close();
+  }
+  const after = new DeviceRuntime(current, path);
+  try {
+    for (const action of ["get", "cancel", "run"] as const) {
+      await t.test(action, async () => {
+        const value = await after.handle(
+          { ...input, action, targetDeviceId: current.deviceId },
+          source,
+        );
+        assert.equal(value.status, "denied");
+        assert.equal(value.output, undefined);
+        assert.equal(readFileSync(marker, "utf8"), "x");
+      });
+    }
+    assert.equal(after.journal.get(input.operationId)?.stdout, "x");
+    assert.equal(
+      after.journal.getScope(input.operationId)?.targetDeviceId,
+      previous.deviceId,
+    );
+    const fresh = await request(current.deviceId, {
+      kind: "command",
+      command: "printf new-identity",
+    });
+    assert.equal((await after.handle(fresh, source)).output, "new-identity");
+  } finally {
+    await after.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("one target is busy while get/cancel remain available and an unknown ID cannot execute", async () => {
   const f = fixture();
   try {

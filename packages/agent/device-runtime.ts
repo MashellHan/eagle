@@ -98,8 +98,12 @@ export class DeviceRuntime {
   private visible(id: string, source: Device): OperationRecord | null {
     const record = this.journal.get(id);
     const scope = this.journal.getScope(id);
-    if (record && scope?.sourceDeviceId !== source.deviceId)
-      throw new Error("operation_source_mismatch");
+    if (
+      record &&
+      (scope?.sourceDeviceId !== source.deviceId ||
+        scope.targetDeviceId !== this.device.deviceId)
+    )
+      throw new OperationAdmissionError("operation_scope_mismatch");
     return record;
   }
   private async admit(
@@ -199,9 +203,7 @@ export class DeviceRuntime {
     } catch (error) {
       if (
         error instanceof OperationAdmissionError ||
-        error instanceof z.ZodError ||
-        (error instanceof Error &&
-          error.message === "operation_source_mismatch")
+        error instanceof z.ZodError
       )
         return {
           accepted: false,
@@ -301,9 +303,7 @@ export class DeviceRuntime {
     } catch (error) {
       if (
         error instanceof OperationAdmissionError ||
-        error instanceof z.ZodError ||
-        (error instanceof Error &&
-          error.message === "operation_source_mismatch")
+        error instanceof z.ZodError
       )
         return { status: "denied", error: "operation_conflict" };
       this.unhealthy = true;

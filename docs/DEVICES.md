@@ -108,6 +108,13 @@ A lost response means query the same ID; never automatically run again or switch
 target. Journal admission precedes side effects; interrupted running entries
 recover as unknown, never rerun. get/cancel remain usable during a running job.
 A target's local operations use the same journal and policy, without cloud.
+When a device identity changes, its private journal and fixed socket stay in place.
+Every stored result remains bound to both its original source and target identity;
+the new identity cannot read, cancel or rerun those operations. Caller request IDs
+retain their original target/digest binding, including uncertain remote requests.
+Native admission blocks are journal-wide and survive an identity change; only the
+existing trusted boot/completion rules can release them. No old row is moved,
+retargeted or deleted when adopting a new file-vault identity.
 
 Policy `{mode:"all-approve"|"always-ask"|"paused",version:positive integer}` is
 persisted by target. Default all-approve. Always ask is confirmed in the initiating

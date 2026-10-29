@@ -12,6 +12,7 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import {
   approvalPayload,
@@ -671,3 +672,151 @@ test("trusted configure boot identity alone recovers admission after a Mac reboo
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+for (const pendingNative of [false, true]) {
+  test(`a new helper identity keeps the original journal, operation bindings and native block=${pendingNative}`, async () => {
+    const root = mkdtempSync(join(tmpdir(), "device-service-identity-"));
+    const bootSessionId = randomUUID();
+    const previous = { ...serviceConfiguration(root), bootSessionId };
+    const current = { ...serviceConfiguration(root), bootSessionId };
+    const marker = join(root, "count");
+    const operation = {
+      kind: "command",
+      command: `printf x >> '${marker}'; cat '${marker}'`,
+    };
+    const request = {
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+      targetDeviceId: previous.deviceId,
+      action: "run",
+      operation,
+      digest: await deviceDigest(canonicalDeviceJSON(operation)),
+    };
+    const outgoing = {
+      ...request,
+      operationId: randomUUID(),
+      targetDeviceId: randomUUID(),
+    };
+    const nativeOperation = {
+      kind: "native",
+      tool: "bash",
+      args: { command: "an-unconfirmed-native-owner" },
+    };
+    const native = {
+      ...request,
+      operationId: randomUUID(),
+      operation: nativeOperation,
+      digest: await deviceDigest(canonicalDeviceJSON(nativeOperation)),
+    };
+    const ids = [request.operationId, outgoing.operationId, native.operationId];
+    const snapshot = () => {
+      const database = new DatabaseSync(join(root, "operations.sqlite"), {
+        readOnly: true,
+      });
+      try {
+        return Object.fromEntries(
+          ["operations", "outgoing_requests"].map((table) => [
+            table,
+            database
+              .prepare(`SELECT * FROM ${table} WHERE id IN (?,?,?) ORDER BY id`)
+              .all(...ids),
+          ]),
+        );
+      } finally {
+        database.close();
+      }
+    };
+    try {
+      const oldService = serviceProcess();
+      try {
+        oldService.child.stdin.write(`${JSON.stringify(previous)}\n`);
+        await oldService.message("ready");
+        assert.equal(
+          (
+            (await portCall(previous.socketPath, "execute", request))
+              .result as { output: string }
+          ).output,
+          "x",
+        );
+        assert.equal(
+          (
+            (await portCall(previous.socketPath, "execute", outgoing))
+              .result as { status: string }
+          ).status,
+          "unknown",
+        );
+        if (pendingNative) {
+          assert.equal(
+            (
+              (await portCall(previous.socketPath, "local.begin", native))
+                .result as { accepted: boolean }
+            ).accepted,
+            true,
+          );
+        }
+      } finally {
+        await oldService.stop();
+      }
+      const originalRows = snapshot();
+      const nextService = serviceProcess();
+      try {
+        nextService.child.stdin.write(`${JSON.stringify(current)}\n`);
+        const ready = await nextService.message("ready");
+        assert.equal(ready.deviceId, current.deviceId);
+        assert.equal(ready.socketPath, previous.socketPath);
+        for (const old of [request, outgoing]) {
+          for (const action of ["run", "get"]) {
+            const value = (
+              await portCall(current.socketPath, "execute", {
+                ...old,
+                action,
+                targetDeviceId: current.deviceId,
+              })
+            ).result as { status: string; output?: string };
+            assert.equal(value.status, "denied");
+            assert.equal(value.output, undefined);
+          }
+        }
+        if (pendingNative) {
+          assert.equal(
+            (
+              (
+                await portCall(current.socketPath, "local.begin", {
+                  ...native,
+                  targetDeviceId: current.deviceId,
+                })
+              ).result as { accepted: boolean }
+            ).accepted,
+            false,
+          );
+        }
+        const newOperation = {
+          kind: "command",
+          command: "printf new-identity",
+        };
+        const value = (
+          await portCall(current.socketPath, "execute", {
+            ...request,
+            requestId: randomUUID(),
+            operationId: randomUUID(),
+            targetDeviceId: current.deviceId,
+            operation: newOperation,
+            digest: await deviceDigest(canonicalDeviceJSON(newOperation)),
+          })
+        ).result as { status: string; output?: string };
+        assert.equal(value.status, pendingNative ? "busy" : "completed");
+        if (!pendingNative) assert.equal(value.output, "new-identity");
+        assert.equal(readFileSync(marker, "utf8"), "x");
+      } finally {
+        await nextService.stop();
+      }
+      assert.deepEqual(
+        snapshot(),
+        originalRows,
+        "old rows stay under their original identity and target",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
