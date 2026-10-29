@@ -5,6 +5,21 @@ enforcement of the boundaries in [ARCHITECTURE.md](ARCHITECTURE.md). Runtime
 behaviour under test is described in [RUNTIME.md](RUNTIME.md); log assertions in
 [OBSERVABILITY.md](OBSERVABILITY.md).
 
+The root `npm run check` and Linux CI job use only the root lock and top-level
+`tests/*.test.ts`; they never require the independent Bots installation. Bots keeps
+its own `npm ci` / `npm run check` and is not a root workspace member.
+
+App/device integration lives in `tests/device-integration/` and runs explicitly as
+`npm run test:devices` from the root, after root `npm ci`, independent
+`npm --prefix apps/bots ci`, and `npm --workspace @nocoo/eagle-agent run build`.
+Those tests cross real process/HTTP/socket ports; Bots product code never imports
+Eagle, Agent or Worker sources. Missing dependencies fail this explicit suite.
+The macOS CI job prepares these two independent installs, runs the integration
+suite, and retains its Swift build/format/coverage gates. Local candidate acceptance
+also runs the Bots and Bots-macOS gates; no default root test silently opts into
+cross-product tests. Process tests are not evidence of physical multi-Mac operation
+or distribution signing.
+
 ## The loop
 
 For every behaviour change:

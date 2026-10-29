@@ -48,6 +48,12 @@ worktree；旧 `main@c34be59` 只作按需复用来源。当前尚未完成设�
 本轮 Lead/reviewer 使用 Astra Max，服务开发按用户会话偏好使用 Sol xhigh。
 部署、发布和日常 App 替换在本地候选完成后按具体授权处理。
 
+检查边界：根 `npm run check` 和 Linux CI 仅安装根 lock，不加载 Bots 源码/依赖。
+独立 Bots 继续运行自己的 `npm run check`。App/设备联动使用显式 `npm run test:devices`
+（`tests/device-integration/`），需要两边各自 `npm ci` 后经真实进程/port 验证；macOS
+CI 同样显式准备两边和 Agent 构建，再执行此检查及原 Swift 门禁。不跳过依赖缺失，
+不把 Bots 并入 root workspace，也不让跨产品回归隐式进入根 `tests/*.test.ts`。
+
 已落地的首个 App 切片：menu 的模板导航增加“设置…”，宿主注入当前 workspace
 真实设置动作；重复打开不关闭设置。`GallerySettingsTests` 先实测旧视图缺少入口，
 再通过 AppKit accessibility 点击新按钮并核对宿主回调一次；尚未替代打包 App 的
