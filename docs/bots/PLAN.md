@@ -534,54 +534,60 @@ implemented 状态解释为已经完整提交、安装或发布。
 | `23f9c99` | 原生每 Bot 授权协调：四源、三份完整回归及对应契约 | tree `696291d7`，197 + 49、92.9%；Reviewer 00:26 已关，正常 pre-commit |
 | `b731cd0` | 共享窗口的 owned Supervisor 生命周期及完整测试/契约 | tree `0585d145`，207 + 49、93.3%；Reviewer 00:31 已关，正常 pre-commit；父真实四场景 32 PASS 另留证 |
 | `45c5cc9` | 两份 coverage 脚本的私有 scratch/含空格路径、原 fixture 回归及 TESTING 契约 | tree `bece2ed4`；4 个行为断言红→App 208 + 49、93.2%，同树 standalone 127/127、91.7%，strict format；Reviewer 00:48 已关，正常 pre-commit |
+| `23d3c00` | Herdr client/恢复/面板七文件与真实 WS fixture/契约 | exact 220 + 49、94.1%，Reviewer 07:49，正常 Biome/Swift hooks |
+| `f798c2b` | owner 认证、统一 HTTP/WS lease、真实 full-entry 回归与 REALTIME 契约 | tree c9a01433，exact root 183/183、typecheck/lint/build exit0，Reviewer 08:13，正常 hook |
+| `4ea27f7` | 机器/Inspector/Settings UI、verification 实际工厂与对应完整回归/契约 | tree 10aa32cd，exact 232 + 49、94.0%，status-auth 与 token P1 已关，Reviewer 08:20，正常 Swift hook |
+| `4c04259` | Agent/relay 执行生命周期 37 文件闭包，含原真实 launchd 回归 | tree c7bb86de，exact root 253/253、launchd 5/5、typecheck/lint/build；08:31 闭包 P2 于 08:35 关闭，正常 Biome hook |
+| `4be7176` | 独立 helper 可执行目标、真实 Keychain 回归及专属契约 | tree ce3de9d2；127 + 2、91.7%、strict format；仅前置两份 Agent 测试变化，相同输入复用已审计，正常 hook |
+| `9f559ea` | 独立 Bots bundle、包外启动/有界清理回归与契约 | tree 19622a0e，exact Bots 534/534、95.59/87.94/91.93%；退出等待 P2 经实际红→绿于08:41关闭，正常 Bots hook |
+| `fece8f0` | 锁定 Agent/App 装配、真实 native/SIGKILL fixtures、CI/hooks 与交付契约 | tree 2c16555d；root 258/258、native 25/25、App 232 + 49/93.9%、strict format；两项装配 P2 红→绿后09:06闭审，正常 hook；隔离 release 装配43.618秒 exit0 |
+| `80ef675` | 同步运维既有 Python 回归进入 root 普通 suite 及操作事实 | tree 6214499f；exact root 259/259、零失败/跳过，typecheck/lint/build exit0；08:48窄审的两文件patch字节未变，正常 Biome hook |
 
-Herdr 原生 client/恢复/面板的原七文件完整树（含真实 WS `.mjs` fixture）已过
-181 + 49、94.7%，正常 hook 因缺精确 root Biome 2.6.3 拒绝，尚未提交。原 stage
-补丁 SHA256 仍为 `ba319f34816d500962a0556c3fb2d185ba4301a7cc8956a8c776e1f34abc79f9`；
-不重复尝试，不抽测试或改文件类型。NATIVE-ACCESS/REMOTE-ACCESS/ARCHITECTURE 的
-其余行为契约随各实现组保留；独立进度提交只收 CHECKPOINTS 与 PLAN。
+截至 2026-10-29 07:58，Herdr 原生 client/恢复/面板已以 `23d3c00` 正常提交。
+七文件包含真实 WS `.mjs` fixture 和原 NATIVE 契约；exact 候选 220 + 49、
+3269/3473 = 94.1%、strict format，正常 pre-commit 实跑 Biome 2.6.3 与 Swift。
+Reviewer 07:49 已关闭。旧缺包拒绝日志及原 patch `ba319f34…` 保留；七文件不再暂存。
+NATIVE-ACCESS/REMOTE-ACCESS/ARCHITECTURE 的其余行为契约仍随各实现组提交，
+独立进度提交只收 CHECKPOINTS 与 PLAN。
 
-最近完整 working App 源快照 `8a8447fe…` 已过 229 feature + 49 design、
-3376/3655 = 92.4%、strict format。最小 verification 组合和实际 client 工厂已接线，
-选定环境的 token/P1 在同测试真实 HTTP 红→绿后于 00:23 关闭；Orca 两处目标/动作
-标签窄审也已关闭。它们与 Inspector/settings 组合仍是 working 改动，依赖未提交
-Herdr 类型，不把此结果当成已提交或完整 App 冷启动。standalone Bots 最新为
-127/127、91.7%；二十处 observed 依赖差异与首轮缺 node_modules 的五个 setup
-失败均保留，精确安装后仍须正式重跑。
+最新已提交完整 App UI 候选 `4ea27f7` / tree `10aa32cd…` 通过 232 feature + 49 design、
+3434/3655 = 94.0%、strict format。选定环境 token P1 已在真实 HTTP 红→绿后于
+00:23 关闭，status-auth P2 于 08:04 关闭，Orca 两处目标/动作标签窄审关闭；
+Inspector/settings 和 verification 组合已正常提交。standalone Bots 历史结果为 127/127、91.7%；旧 observed 安装的
+二十处差异和首轮五个 fixture setup 失败保留，不能冒充新 exact gate。
 
-22:31 用户已授权本任务进程临时使用 npm 官方源，锁定版本与全局默认源保持不变。
-Xcode 27.1 / 27A9275 已安装、接受许可并完成 first launch，Swift 资源阻塞已解除。
-root 官方源 ci 的 TLS `ENOTCONN` 是连接层失败，非官方版本 404；root/Bots 精确
-安装仍未恢复，两 lock hash 未改。相同网络/cache/CI 探查已停止，等待可用连接。
-资源恢复后第一步核对原 stage/备份与 lock hash，用获准官方源执行精确 ci，再继续
-原 Herdr 七文件的正常 hook；所有完整 gates 汇总交父复核前不 push。
+07:25 用户授权新 artifact 传输入口后，43 个原始 tgz 已从 Huawei/Tencent 获取，
+各自 lock SRI、名称、版本全匹配；父已独立复核。正常 root/Bots offline ci 均 exit 0，
+以 task-private npm cache 供后续 bundle 继承。root/Bots lock hash 仍为 a2ab0b26… /
+177687ad…，全局 registry 未改，实际版本差异已清零。Xcode 27.1 / 27A9275 就绪。
+依赖阻塞已经解除，继续正常原子提交及所有 required gates，不重复旧网络探测。
 
-00:34 父从 `8a8447fe…` 全部 201 项 hash/mode 匹配输入构建 debug EagleApp 裸执行
-文件，exit 0；全新 private profile、独立端口、auto off 下实际窗口存活 8.544 秒，
-无子进程，仅 SIGTERM 自有 PID。证据 `/tmp/eagle-root-native-launch-20261029-md7h6el3/evidence.json`。
-这不证明完整 `.app`、正常退出清理或活跃 backend。兼容 Worker/SSH 与候选 App 指南
-已入 NATIVE-ACCESS 并通过窄审，命令尚未执行；基础机器管理/Herdr 不需模型 key，
-隔离 A Bot → B 则在该 profile 正常配置 Raven 并新建测试 Bot，不复制日常 DB/凭据。
-完整 App 装配/运行、完整 backend 冷启动、物理双 Mac 和 feature push 仍分别未完成。
+00:34 私有 profile 裸执行窗口存活 8.544 秒，无子进程，只 SIGTERM 自有 PID；
+`/tmp/eagle-root-native-launch-20261029-md7h6el3/evidence.json` 不证明完整 App 或正常退出。
+07:53 完整 production Worker＋五个 local D1 migrations＋两本地 Agent 已独立 20 组
+通过，source f7c58a729c… / 81 inputs；鉴权、真实 WS、命令/文件授权、去重、DO 报告、
+撤销和所有自有进程/状态清理已验证。historyWrites=false，D1 legacy history 为空是契约。
+证据 `/tmp/eagle-root-two-local-20261029-Qd3m9c/evidence.json`；不是物理双 Mac。
 
-00:50 收口后不再启动门禁或重探网络。下一轮保持以下完整待提交边界，原七文件 stage
-先恢复且逐字核验；新全量备份由 `.local/pending-delivery-latest.json` 指向，旧 97 文件
-备份与原红日志均保留，不以备份覆盖当前用户改动：
+09:11 装配组已正常提交为 `fece8f0`，tree `2c16555d`。其完整 root 258/258、
+native integration 25/25 均零失败/跳过；App 232 + 49、3433/3655 = 93.9%、
+strict format 通过。release 装配43.618秒 exit0，580项源输入 hash/mode 回核一致，
+内置 Agent/Bots/helper 及签名检查完成。完整 App 已交父入口，实际启动/正常退出验收
+尚未返回；不以装配成功代替运行成功。随后同步组 `80ef675` / tree `6214499f` 完整
+root 259/259、typecheck/lint/build均通过并正常提交。旧 87/97 文件备份与红日志不覆盖。
 
-| 待提交组 | 依赖与当前阻塞 |
+以下保留独立收尾边界：
+
+| 待提交组 | 依赖与下一验证 |
 | --- | --- |
-| 原 Herdr 七文件 | client/model/view、两测试、真实 `.mjs` fixture、原 NATIVE 契约同组；精确 root Biome 缺失 |
-| owner 认证与 Agent/relay 执行生命周期 | 第 2 组认证可独立；第 3/4 组按上述 service/config/CLI 依赖闭包保留命令、文件、Herdr、恢复与去重回归；root 精确依赖和完整 gate 待恢复 |
-| helper 可执行目标 | `Package.swift`、`BotsCredentialHelper/Entry.swift` 与真实跨进程/Keychain 回归同组；已提交的是独立 helper client，不能用其绿测替代 executable gate；root `.ts`/fixture 正常 hook 仍阻塞 |
-| App UI 与 verification 组合 | 机器/授权入口、Inspector、Settings、profile、实际 token 工厂、Orca 两标签及完整回归/契约；工作源 229 + 49 已测，但依赖尚未提交的 Herdr 类型 |
-| 装配与跨进程交付门禁 | Bots bundle 脚本/测试、Agent bundle、App 装配、保留的 native/SIGKILL fixtures、CI/hooks 与指南；exact root/Bots 安装阻塞，observed deps 不能代替完整候选 |
-| 同步运维回归 | 保留 `tests/upstream-sync.test.ts` 和已有操作契约；不重跑 scheduler，不绕 root lint |
+| 完整 App 运行与本地 zip | 装配20文件已提交；父独占冻结driver验收，结果未返回。通过后本地ditto归档及SHA256，不进Git、不替换已安装App |
+| 交付记录与正常推送 | 实现、契约和完整回归均已提交；整理实际运行证据和指南，汇总给父复核后持有scheduler共用锁执行正常push hooks |
 
-恢复时先核 stage/备份与两个 lock hash，再在可用连接下使用已批准的任务级官方源
-执行 root 和 `apps/bots` 的精确 `npm ci --registry=https://registry.npmjs.org/`，不改版本。
-按上述边界执行正常 hooks，完成 root/Bots、browser、native、package 和隔离完整 App
-门禁；完整兼容 backend、实际 A/B 验收各自记录结果。汇总交父复核后才允许推送
-`MashellHan/eagle:feature/eagle-machines-herdr`，不推 main、不发 PR、不部署或发布。
+完成 root/Bots、browser、native、package 与隔离完整 App gates 后汇总交父复核，
+再以协调锁正常推 `MashellHan/eagle:feature/eagle-machines-herdr`，不推 main，
+不发 PR、不部署或发布。物理 A/B 验收在用户取得分支后进行，不作为 push 前置条件。
+基础机器管理/Herdr 不需模型 key；隔离 A Bot → B 则在该 profile 正常配置 Raven 并
+新建测试 Bot，不复制日常 DB/凭据。兼容 backend 已在本机实测，两Mac SSH 步骤仍未运行。
 
 #### M0–M1 执行计划更新（2026-10-29）
 
@@ -594,11 +600,11 @@ root 官方源 ci 的 TLS `ENOTCONN` 是连接层失败，非官方版本 404；
 | 阶段 | 状态 | 交付与依赖 | 验收证据 |
 | --- | --- | --- | --- |
 | R0 — 上游对齐与接口/设计 | integrated; review continues | d77d676 合并 3405ff8；90a633f 独立合并 7101566，保留 remote 注入及 off→omitted；复用单 loader/工具组 | 2026-10-28 launchd 已启用并首跑，旧冲突候选保留；第二次合并 Bots check 526/526、App build 通过，107 项保护改动恢复审计完整；见 [运行证据](../CHECKPOINTS.md) 和 [同步操作](../UPSTREAM-SYNC.md) |
-| R1 — 基础 Agent 与真实机器页 | implemented; delivery gates open | 原生连接/钥匙串、真实目录、部署绑定、独立 launchd、同身份修复与每 Bot 授权已接线 | HTTP/WS、私有 Keychain、真实服务和 App 模型退出后执行已验证；安装包 cold launch、真实 Access、完整 Worker 与物理双 Mac 尚待验收 |
+| R1 — 基础 Agent 与真实机器页 | implemented; delivery gates open | 原生连接/钥匙串、真实目录、部署绑定、独立 launchd、同身份修复与每 Bot 授权已接线 | HTTP/WS、私有 Keychain、真实服务和 App 模型退出后执行已验证；完整 Worker＋两本地 Agent 20 组通过；整包 cold launch、真实 Access 与物理双 Mac 尚待验收 |
 | R2 — 通用机器执行 | implemented; acceptance in progress | journal、有界命令与授权文件 provider 接真实 WS；实际 startDaemon/Harness/remote extension 已注入 helper 和每 Bot 权限 | 父真实本地主链 20/20；SIGKILL 保留 journal 14/14、丢失 journal 16/16，原 ID 查询且不重放；恢复已留入 native 回归并实跑 3/3。模型 SSE 为本地 fixture，非完整 Worker/D1 或物理 A/B Macs |
 | R3 — 可配置机器插件与 Herdr | implemented; delivery gates open | 静态 provider、官方 installer、显式 named session 和机器面板已接线；原生/Bot 共用 run/get/cancel 与 journal，未决 ID 可恢复 | 父真实官方安装 9 项、原生 client→生产 relay→Agent→已装 Herdr 10 项通过；Bot 无 Herdr 返回 not_installed，既有会话保留；整包安装和物理双 Mac 尚未验证 |
 | R4 — 多台 Mac 访问同一 Bot（后续独立交付） | planned | 本轮不实现跨 Mac 聊天视图；后续复用 v1 HTTP/WS 和原生 transport | 两客户端共享历史/实时消息及独立 Bot 主机生命周期的验收留后续；不阻塞本轮机器管理与插件交付 |
-| R5 — 审查与跨机器交付 | in progress; exact npm gates blocked | 已关闭权限/恢复/清理及 verification token P1；按依赖完成独立 native commits，剩余实现/契约/回归整组保留；alpha.2 已 pack/install 未发布，A/B 与隔离指南已写并窄审 | Xcode 27.1 就绪；最新完整 working App 229 + 49、92.4%，standalone 127/127、91.7%（observed deps）；00:34 私有 profile 裸执行窗口成功，不认证完整 `.app`/正常退出。精确 root/Bots 安装仍因连接层阻塞；完整 App、完整 backend、物理双 Mac、push 四项各自未完成。完整 gates 交父复核前不 push，无 PR/部署/npm 发布或现有 App 替换 |
+| R5 — 审查与跨机器交付 | in progress; release assembled, runtime pending | 权限/恢复/清理、token、lifecycle闭包与装配P2均已关闭；正常提交到80ef675；A/B与隔离指南已写并窄审 | exact root259/259、native25/25；App232+49/93.9%、strict format；standalone127/127/91.7%+Keychain2/2；Bots534/534；browser191通过/11既有条件排除。release装配43.618秒exit0、580源hash/mode一致；两次父driver在快退出utility身份采样处失败，均未启动App/daemon，不能判定App成败。现由本聊天父入口独占driver修正与后续运行，w1只读。通过后本地zip，正常push hooks及父汇总复核；物理双Mac为交付后验收，无PR/部署/npm发布或现有App替换 |
 
 R1/R2/R3/R5 是本轮功能交付范围，不能退化为只操作已有 Herdr 终端；R4 和 Web UI 留后续。
 按可独立审查的原子提交集成到本地 main，保留先前三个提交和父对话计划；只推送

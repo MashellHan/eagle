@@ -3419,3 +3419,334 @@ were used for acceptance; live DeepSeek/Tavily verification remains unperformed.
   two-Mac acceptance and feature push are four individually open outcomes. No
   App/Agent/Bot/Worker/SSH process was started here during this closure, and no
   existing App/service was replaced. No push, PR, deployment or publication.
+
+## 2026-10-29 07:40 +08:00 — Exact dependency transport recovered
+
+- User explicitly resumed delivery at 07:25 and authorized new artifact download
+  paths; Parent owns browser/M365 exploration, Lead remains the only source/Git/
+  install writer. The initial read-only audit found HEAD `f8a47a2`, all 87 pending
+  file hashes/modes and their complete path set unchanged, and the original
+  seven-file Herdr stage still byte-identical at `ba319f34…`. No existing green
+  suite was rerun for that audit.
+- The 04:00 scheduler check actually completed at 04:06:10 in
+  `runs/20261028T200005Z-check-4ea34e75`: upstream `7101566`, source `f8a47a2`,
+  target null, no merge or push, decision `evidence_insufficient`. There is no new
+  upstream delta. The job remains loaded, five runs, last exit 0, currently not
+  running. Its comparison raised a new static P2: the Bot grant directory adapter
+  swallows status authentication failures after a successful directory read.
+  It has been read, not yet reproduced or closed; existing P1 closures do not
+  cover this new finding.
+- New Yarn-registry and npmjs.com-alias probes failed before HTTP; no artifact
+  was accepted. Huawei's `repo.huaweicloud.com/repository/npm/` and Tencent's
+  `mirrors.cloud.tencent.com/npm/` both returned the original Biome 2.6.3 tgz,
+  113233 bytes, with the exact lock SHA-512. This was reported before installation.
+  The USTC endpoint redirected to the already unavailable npmMirror transport;
+  it was not retried. API's separate four fixed GitHub release-tag reads yielded
+  no original npm tgz; their 404s/asset lists do not prove package nonexistence.
+- All 43 previously missing tarballs (18 root, 25 Bots) have now been obtained
+  from the new public mirrors and checked against lock SRI plus package name/
+  version. The local metadata validator initially assumed `package/package.json`;
+  `@types/ws` actually uses `ws/package.json`. Its retained bytes already matched
+  SRI and were accepted after correcting that assumption, without another request
+  or repacking. Source/HTTP/SRI evidence:
+  `.local/exact-artifacts-20261029-m34sr1ym/manifest.json`.
+- Normal `npm cache add` populated a task-private cache with 307 distinct exact
+  artifacts for 316 platform-relevant lock entries, reusing the previous verified
+  cache inventory rather than rescanning it. No global registry/cache/SSL setting
+  changed. Root `npm ci --offline` finished at 07:39:07, exit 0, and executed the
+  normal prepare hook. Bots `ci` then finished at 07:40:47, exit 0. Both use the
+  original locks and the task cache; the Bots command retains the documented
+  Tencent URL-prefix rewrite. Existing dependency trees were moved into the
+  recorded private backup before replacement. npm's install-script warnings are
+  retained in the logs; install success is not a claim that release gates passed.
+  Evidence: `.local/exact-install-20261029.json` and the two `exact-*-ci` logs.
+- Root/Bots lock hashes remain `a2ab0b26…` / `177687ad…`; the seven-file index
+  patch and global default registry are unchanged. Biome actually reports 2.6.3;
+  Wrangler 4.152.0 and Anthropic 4.0.88 are installed. Xcode 27.1 remains ready.
+  The old dependency blockage is resolved for these installations. Next is the
+  complete Herdr atomic candidate with exact dependencies, normal hooks and
+  remaining root/Bots/native/browser/package gates; the static status-auth P2
+  requires its own narrow behavior check.
+- No new live Herdr collection, production owner/Access authentication, D1
+  ingestion, App launch or machine rendering has occurred in this resumed phase.
+  Complete candidate App assembly/runtime, complete compatible-backend cold start,
+  physical A/B acceptance and feature push remain separately unverified. Parent
+  must review the full gate summary before any feature push; no PR, deployment,
+  publication or replacement of an existing App/service is authorized by these
+  artifact results.
+
+## 2026-10-29 07:58 +08:00 — Herdr committed; complete local backend verified
+
+- HEAD is `23d3c00d97cef6b500718b58441d6ae9724f948a`, tree `45a302a8…`.
+  The original Herdr seven-file closure, including the real WS fixture and its
+  contract, passed 220 feature + 49 design, 3269/3473 = 94.1% and strict format
+  with exact dependencies. Reviewer 07:49 closed the boundary. Normal pre-commit
+  ran Biome 2.6.3 and Swift format, exit 0; `.local/native-herdr-exact-atomic.json`
+  retains tree/log/patch hashes. The earlier rejected commit and original patch
+  remain preserved. These seven files are committed, not staged for another retry.
+- Parent's complete production Worker plus two local foreground Agents actually
+  ran at 07:53:31–07:53:37 (UTC 23:53, correcting the earlier 08:53 message).
+  Twenty check groups passed on 81 frozen inputs, source `f7c58a729c…`; all five
+  D1 migrations ran locally, with exact Wrangler 4.152.0 / Node 26.9.0. The live
+  revision was checked before fixture writes. Owner/Origin/machine credential
+  rejection, real WS, command/file separation, idempotency, revocation and both
+  DO reports passed. Legacy D1 history remains empty because historyWrites=false.
+  Herdr 0.9.5 was only auto-probed read-only and stayed disabled; no real inventory
+  collection, session selection or provider reconfiguration occurred.
+- Evidence `/tmp/eagle-root-two-local-20261029-Qd3m9c/evidence.json` independently
+  hashes to `a095692b9eb334805ee206ae094694171e0c36c8c4a34314b259aadde08b5838`;
+  source manifest hashes to `d7e5a4a7b65d125b7b120a5c88f24550afd3ab5e302e24a5238ec5f086604e6d`.
+  Parent's read-only cleanup recheck found zero of 52 recorded PIDs alive and
+  both ports reusable. Worker SIGTERM and the intentionally revoked Agent's
+  fail-closed exit are expected. Three earlier temporary-script expectation/setup
+  issues are retained separately; no product source was changed for that smoke.
+- Exact root/Bots installation is restored; the 43 SRI-matching tarballs and ci
+  logs were independently rechecked. Bundle and gates inherit the task-private
+  cache. Xcode 27.1 is ready. Parent owns missing Playwright browser installation;
+  no duplicate browser install or npm recovery search is being run here.
+- Next broken hop is the newly confirmed status-auth P2: production directory
+  aggregation currently swallows 401/403 after a successful machine list. The
+  original behavior was mechanically extracted and real loopback HTTP regression
+  cases are running in a private snapshot; no behavior red or fix is claimed yet.
+  They require zero new save/helper copy, retained local revocation and unchanged
+  ordinary offline/unknown behavior. No rendering or App launch occurred here.
+  Complete App assembly/runtime, physical A/B acceptance and feature push remain
+  separate from the local backend smoke. Physical A/B is post-delivery acceptance,
+  not a push prerequisite. No PR, deployment, publication or installed App change.
+
+## 2026-10-29 08:14 +08:00 — Owner auth committed; exact full checks advancing
+
+- Owner authentication is now committed as `f798c2b693a76cc3337ae973154a8e8a706b7764`,
+  tree `c9a01433…`, seven files including REALTIME contract and complete HTTP/WS
+  regressions. The exact index tree passed full root check: 183/183, zero fail/skip,
+  strict TypeScript, Biome and Vite build. Reviewer 08:13 closed its dependency
+  boundary. The normal pre-commit ran Biome, exit 0. Evidence:
+  `.local/owner-auth-exact-atomic.json`, `.local/owner-auth-module-root-green.json`.
+- Two real fixture prerequisites were fixed without weakening assertions. A fresh
+  external Agent install needed ws/zod packuments despite existing SRI-verified
+  tarballs; normal task-cache `npm cache add` plus offline `npm view` obtained and
+  verified exactly ws 8.22.0 / zod 4.6.7 from the authorized Huawei source, with
+  unchanged locks. The second run's Agent pack/install passed. Native-auth's
+  private Worker bundle remained outside Miniflare's default modulesRoot; raw
+  esbuild and Wrangler-only runs both failed before seed. The Wrangler output was
+  byte-identical to the successful API fixture. Explicit modulesRoot fixed the
+  module name, and the original full-entry auth cases then executed and passed.
+  All failed runs remain recorded; a filename containing green never overrides
+  its recorded nonzero exit code.
+- The status-auth P2 is closed in working UI/verification source: real HTTP 401/403
+  produced 14 failing assertions under old behavior; only the production aggregate
+  changed for the green 232 feature + 49 design, 3434/3655 = 94.0%, strict format.
+  Reviewer 08:04 verified unchanged regression inputs and retained offline/unknown
+  semantics plus local revoke. This belongs with the full UI composition, still
+  pending commit, not an independent four-file slice. Its first test-macro compile
+  error remains separate from behavior evidence.
+- The complete working root snapshot now passed all 256 tests, zero fail/skip,
+  including Agent/package/recovery paths. Its next gate failed at typecheck: the
+  generated global NodeJS.ProcessEnv requires Cloudflare bindings even for safe
+  isolated child environments. This is being narrowed without inheriting host
+  credentials or changing Worker runtime flags. Exact Biome exposed ordinary
+  pending code style/null checks; retained backups precede formatting, and normal
+  safe cleanup APIs preserve errors. No thresholds, tests or hooks were relaxed.
+- Parent installed exact Playwright Chromium/headless 1248 and FFmpeg 1013 with
+  browser GC disabled, exit 0. Browser gate remains this writer's next responsibility;
+  Parent only prepares the complete App runtime driver, without build or launch.
+  The task-private cache continues into all offline packing subprocesses.
+- Parent read the completed 08:00 scheduler run: upstream remains 7101566 with no
+  new delta, keep_local; its sole P2 captured the already repaired status-auth
+  source. The 08:06:58 isolated merge attempt failed at its own original-registry
+  root-install at 08:08:36, target absent and no push. That scheduler installation
+  failure does not invalidate this task's exact offline installs. No job was
+  stopped, lock deleted or tick repeated.
+- Herdr collection and rendering are unchanged since the preceding checkpoint.
+  Complete local Worker/D1/two-Agent evidence remains the 07:53 twenty groups;
+  no production Access or D1 writes. Complete App runtime and branch push remain
+  open; physical A/B is user acceptance after branch delivery. No PR, deployment,
+  publication or installed App/service replacement.
+
+## 2026-10-29 08:29 +08:00 — Native composition committed; execution closure green
+
+- Native machine/Inspector/settings and verification composition is committed as
+  `4ea27f7ae1da4afdd28b5a6252f0eb2677fd1c9e`, tree `10aa32cd…`. Its exact candidate
+  passed 232 feature + 49 design tests, 3434/3655 = 94.0%, strict format and normal
+  Swift pre-commit. Reviewer 08:20 closed the 17-file boundary, including the
+  real-HTTP status-auth regression and selected-environment token factories.
+  Evidence: `.local/native-ui-exact-atomic.json` and its gate/commit logs.
+- The current index is the complete 35-file Agent/relay/lifecycle group, tree
+  `cc627de1…`. Its exact full root check passed 253/253, zero fail/skip, TypeScript,
+  Biome and Vite build. Worker Env bindings remain required; only the generated
+  global Node ProcessEnv augmentation was removed. Explicit isolated child
+  environment allowlists remain intact. `.local/agent-execution-exact-gate.json`
+  records the tested tree; independent review is still running, so no commit is
+  claimed yet. Earlier full-working 256-test/typecheck failure stays recorded.
+- The five-file helper executable/Keychain/contract candidate, tree `3c1ec2c1…`,
+  is now running full standalone Bots Swift coverage, strict format and real
+  cross-process Keychain tests. It is not yet staged or committed. Next are the
+  independent Bots bundle group, Agent/App assembly and retained native recovery
+  fixtures, browser and remaining complete delivery gates, using the same exact
+  task cache. No parallel heavy suite is running in this team.
+- Parent has read and prepared its isolated complete-App acceptance driver under
+  `/tmp/eagle-candidate-acceptance-driver-20261029-JqIrnL`; it has not compiled or
+  run that driver. After assembly, this writer supplies the absolute App path,
+  tested tree, input manifest and build log; Parent alone runs its launch/normal
+  exit/embedded daemon-helper checks. The 00:34 raw-executable window remains
+  separate evidence. No complete App launch or new rendering occurred here.
+- Herdr collection, owner/Access boundaries and D1 evidence are unchanged: the
+  07:53 complete local Worker/two-Agent twenty groups passed, Herdr auto-probe
+  stayed disabled, and all fixture processes/state were cleaned up. Physical
+  two-Mac acceptance follows branch delivery. Feature push remains pending the
+  complete gate summary and parent review; no PR, deployment or publication.
+
+## 2026-10-29 08:44 +08:00 — Execution/helper/daemon bundle committed
+
+- Reviewer 08:31 found the Agent candidate omitted the existing independent
+  launchd test and Swift fixture. Both were added unchanged; the original 35-file
+  tree remains recorded and was not called review-complete. New tree `c7bb86de…`
+  passed full exact root 253/253 and the real installed launchd gate 5/5, zero
+  fail/skip, plus TypeScript/Biome/build. Reviewer 08:35 closed this P2. Normal
+  Biome pre-commit produced `4c04259eb46c100589fd754e47853aa548125511`.
+  Evidence: `.local/agent-execution-lifecycle-exact-gate.json` and
+  `.local/agent-execution-exact-atomic.json`.
+- The independent helper is committed as `4be7176a2923f5529e0a525bc026e712d1674201`,
+  tree `ce3de9d2…`, normal hook exit 0. Its complete exact standalone gate passed
+  127/127, 1899/2072 = 91.7%, strict format and real Keychain integration 2/2.
+  Rebuilding its predecessor changed only the two unrelated Agent test files;
+  identical helper inputs and patch reuse are explicitly recorded, not reported
+  as a second run. API review 08:30/08:35 closed code and provenance respectively.
+- Bots bundle review 08:33 found unbounded HTTP/normal-exit waits in its smoke
+  test. A private real daemon held SIGTERM: the original test remained waiting
+  after 12 seconds and had not cleaned its state. With request/exit/forced-cleanup
+  deadlines, the same probe returned an expected failing test and removed its
+  daemon/state. Normal success still requires exit `[0, null]`. The final exact
+  candidate passed full Bots check 534/534, zero skip; coverage 95.59% lines,
+  87.94% branches, 91.93% functions with unchanged thresholds. API 08:41 closed
+  P2, and normal Bots Biome pre-commit produced `9f559eabe701ed3eb7f01ee9203d5e0fd0c1fe5c`,
+  tree `19622a0e…`. Red/green probe, final gate and commit logs remain separate in
+  `.local/bots-bundle-deadline-*.json` / `.local/bots-bundle-exact-atomic.json`.
+- The pending App-delivery group passed full root 255/255 and actual native
+  integration 25/25, zero skip, including installed launchd, private Keychain,
+  real URLSession HTTP/WS and both real Bot SIGKILL journal variants. Native
+  sourceHash `897662e3…`, tree `0f11450d…`; the root check's prior tree differs only
+  in the independent Bots smoke-test deadline and is recorded as input reuse.
+  Final root check including the retained synchronization test finished at 08:44:
+  256/256, zero skip, TypeScript/lint/build exit 0, tree `d62da5b9…`. Browser is
+  running; complete native coverage and release App assembly follow serially.
+  App-delivery review remains open. No complete bundle or runtime is claimed yet.
+- Parent remains the sole executor of the prepared complete-App driver after
+  receiving its absolute path, tree/input manifest and build log. Following that
+  successful acceptance, this writer will create a local `ditto` zip and SHA256
+  for copying to B, outside Git; no installed App is replaced. Parent has verified
+  the personal GitHub identity/URL. Final publication still requires the shared
+  flock, remote check, parent gate review and ordinary push hooks with the task
+  cache/registry/offline environment.
+- Herdr collection/rendering and local backend evidence are unchanged: the 07:53
+  complete Worker/five migrations/two-Agent twenty groups passed; Herdr remained
+  read-only/disabled and all fixture state was removed. No Access/production D1,
+  physical A/B or complete App launch occurred here. No parallel heavy gate,
+  network recovery probe, scheduler tick, PR, deployment or publication was run.
+
+## 2026-10-29 09:01 +08:00 — Assembly P2 regressions green; final gates continue
+
+- The completed browser gate reported 191 passed and 11 pre-existing device
+  condition exclusions, exit 0; it is not a zero-skip result. No condition or
+  test was changed to obtain it. Evidence:
+  `.local/delivery-final-exact-browser.json`, tree `d62da5b9…`. Full root on that
+  earlier tree passed 256/256. The personal-account helper separately confirmed
+  MashellHan and the sole personal push URL, without changing defaults.
+- Reviewer 08:46 found two static P2s in the pending assembly group: an empty
+  Agent prefix re-resolved dependency ranges without consuming root-lock SRI,
+  and the SIGKILL wrapper only killed its own process group while the held
+  command belonged to a different group. Neither was covered by the preceding
+  root/native green, so the group stayed uncommitted.
+- New real regressions produced four failures: a private installed dependency
+  version mismatch was accepted; the bundle lacked its dependency lock; the
+  extracted original held command survived its actual runner's death; and outer
+  cleanup could not confirm it stopped. Temporary observation added only a
+  private command identity/receipt before fixing the original hold behavior.
+  Owned child processes were independently cleaned up. Source/cache tarballs and
+  repository locks were not altered by fault injection. Evidence:
+  `.local/delivery-assembly-p2-red.json`, 1 pass / 4 fail, zero skips.
+- The minimal fix now packs a real local Agent tgz, verifies its SHA512, lets npm
+  generate a private wrapper lock with overrides from root-lock versions, checks
+  every resolved node's version/SRI, and runs normal offline npm ci. Runtime
+  dependency resolution must stay inside the bundle at the locked versions.
+  The held command retains a 10-second limit independently of its runner; both
+  cleanup layers verify its private process identity, and unconfirmed cleanup
+  fails while retaining state. Original 45/47-second outer deadlines, recovery
+  assertions and production command runner are unchanged.
+- The affected checks are now 5/5 green, zero skips, on source `d61d40e3…`:
+  `.local/delivery-assembly-p2-green.json`. Full exact root is running on the
+  new 20-file App-delivery candidate `2c16555d…`; full native integration and
+  review follow. Prior red/green trees remain retained. Release App assembly has
+  not yet run, and Parent has not run its prepared App acceptance driver.
+- Committed HEAD remains `9f559ea`; pending groups are App assembly/contracts/
+  native fixtures, the separate synchronization regression, then progress docs.
+  No change to actual Herdr collection, rendering, Access or production D1;
+  the 07:53 complete local backend twenty groups remain the independent evidence.
+  Scheduler cache advice is retained read-only and does not block App delivery;
+  no launcher, permanent registry change or additional tick was introduced.
+
+## 2026-10-29 09:13 +08:00 — Release App assembled and handed to independent runtime acceptance
+
+- Reviewer 09:06 closed both assembly P2 findings on tree `2c16555d…`; the real
+  four-failure red and 5/5 green keep the same assertions. Full exact root is
+  258/258 and native integration 25/25, both zero fail/skip. Full App coverage
+  passed 232 feature + 49 design tests, 3433/3655 = 93.9%, with strict format.
+  Evidence: `.local/app-delivery-reviewed-exact-root.json`,
+  `.local/app-delivery-reviewed-exact-native.json` and
+  `.local/delivery-reviewed-exact-coverage.json`; all share source `14d2fdfe…`.
+  The browser result remains 191 passed / 11 existing device exclusions; no
+  unchanged browser suite was repeated for these assembly-only fixes.
+- Isolated `build-app.sh release` finished in 43.618 seconds, exit 0, including
+  exact Agent/Bots packages, the private helper and codesign verification. All
+  580 source inputs retain their original hash/mode. Artifact inventory has
+  14,422 entries and only internal symlinks. Evidence:
+  `.local/delivery-release-candidate.json` and
+  `.local/delivery-release-app-manifest.json`. The App remains in that private
+  snapshot; no installed App was replaced.
+- Normal Biome pre-commit produced `fece8f0e449ab8072836ee3872d7e02381363383`,
+  exact tree `2c16555db0687b49342aa320d4b8f896cf0b4e8b`, containing the complete
+  20-file assembly/contracts/native-fixture group. The two-file synchronization
+  regression retains API 08:48 review and an unchanged patch; its final-tree
+  full root check is now running. Progress documents remain separate.
+- Parent independently verified the 580 source hashes/modes/Git blobs and the
+  normal commit log, and is now the sole executor of its prepared complete-App
+  acceptance driver. Its runtime result is still pending; this writer has not
+  launched the App. A local transferable zip follows successful acceptance.
+- Actual Herdr collection, authentication, D1 and rendering evidence remains
+  unchanged: complete local Worker/five D1 migrations/two-Agent twenty groups
+  passed at 07:53, Herdr read-only probe stayed disabled, and owned state was
+  cleaned up. No production Access/D1, new rendering or physical A/B run is
+  claimed. The next unresolved hop is complete App launch/normal exit and embedded
+  daemon/helper behavior, followed by final ordinary push hooks under the shared
+  scheduler lock. No PR, deployment, npm publication or scheduler change.
+
+## 2026-10-29 09:19 +08:00 — Implementation groups committed; App-driver preflight remains open
+
+- The final synchronization candidate `6214499f…`, source `355ec373…`, passed
+  complete exact root check 259/259, zero fail/skip, with TypeScript, Biome and
+  build exit 0 in 19.552 seconds. The unchanged two-file patch retains API 08:48
+  review. Normal pre-commit produced `80ef6753054da07b981408568db8eac1c7781871`.
+  Evidence: `.local/delivery-reviewed-exact-root.json` and
+  `.local/sync-delivery-exact-atomic.json`. Product implementation, corresponding
+  contracts and complete regression groups are now committed; progress docs alone
+  remain to commit. `.local/delivery-final-gates.json` maps retained gate logs to
+  their tested trees and verifies that the applicable current source hashes match.
+- Two independently scheduled acceptance-driver attempts stopped during kernel
+  identity sampling of fast-exiting utility children: node version in retained
+  `2387m_il`, helper codesign verification in Parent's `wrb830r2`. Neither entered
+  any App phase or started an App/daemon. This is not an App behavior failure or
+  a successful launch. The first evidence remains at
+  `/private/tmp/eagle-candidate-acceptance-2387m_il/evidence.json`; its recorded
+  children are reaped, but cleanup remains false because the earlier identity
+  uncertainty is deliberately retained. No failure record was overwritten.
+- Coordination is corrected: this conversation's Parent alone may fix the
+  temporary acceptance driver and run it next. `team-leader-w1` has acknowledged
+  read-only coordination; this writer performs no App launch or driver changes.
+  Release candidate `fece8f0` / tree `2c16555d` is unchanged. The local zip and
+  personal feature push await the actual runtime evidence, not a repeated utility
+  failure interpreted as product evidence. No active gate or build is running here.
+- Herdr collection, owner/Access authentication, D1 and rendering have no new
+  runtime result: the 07:53 complete local backend twenty groups remain valid,
+  no production/Access or physical two-Mac run is claimed, and no new rendering
+  or scheduler action occurred. The next hop remains independent complete-App
+  runtime, then local zip and ordinary push hooks under the common flock.
