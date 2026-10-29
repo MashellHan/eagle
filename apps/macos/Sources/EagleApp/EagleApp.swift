@@ -6,11 +6,20 @@ import SwiftUI
 @main
 struct EagleApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-  @AppStorage("eagle.appearance") private var appearance = "system"
+  @AppStorage private var appearance: String
+  private let configuration: AppLaunchConfiguration
+
+  init() {
+    let configuration = AppLaunchConfiguration.current
+    self.configuration = configuration
+    _appearance = AppStorage(
+      wrappedValue: "system", "eagle.appearance", store: configuration.defaults)
+  }
 
   var body: some Scene {
     WindowGroup("Eagle") {
-      WorkspaceShellView(onShowGallery: { GalleryWindow.show() })
+      WorkspaceShellView(configuration: configuration, onShowGallery: { GalleryWindow.show() })
+        .defaultAppStorage(configuration.defaults)
         .frame(minWidth: 1280, minHeight: 760)
         .ignoresSafeArea()
         .background(WindowConfigurator())
@@ -59,7 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   /// The daemon is a child of the app: quitting the app must not leave it running.
   func applicationWillTerminate(_ notification: Notification) {
-    BotsDaemonSupervisor.terminateRecordedDaemon()
+    BotsDaemonSupervisor.terminateRecordedDaemon(defaults: AppLaunchConfiguration.current.defaults)
   }
 }
 

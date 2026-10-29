@@ -204,7 +204,7 @@ public final class SettingsViewModel: ObservableObject {
   }
 
   private func client() throws -> CatalogHTTPClient {
-    let token = try TokenStore(root: botsSettings.rootURL).read()
+    let token = try botsSettings.readToken()
     return CatalogHTTPClient(baseURL: botsSettings.baseURL, token: token, session: urlSession)
   }
 

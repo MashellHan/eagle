@@ -56,6 +56,9 @@ public struct InspectorColumn: View {
   private let onEditFace: (() -> Void)?
   private let onCommitName: ((String) -> Void)?
   private let onCommitLabel: ((String) -> Void)?
+  private let machineSummary: String?
+  private let machineMessage: String?
+  private let onManageMachines: (() -> Void)?
 
   public init(
     name: String,
@@ -79,7 +82,10 @@ public struct InspectorColumn: View {
     label: String? = nil,
     onEditFace: (() -> Void)? = nil,
     onCommitName: ((String) -> Void)? = nil,
-    onCommitLabel: ((String) -> Void)? = nil
+    onCommitLabel: ((String) -> Void)? = nil,
+    machineSummary: String? = nil,
+    machineMessage: String? = nil,
+    onManageMachines: (() -> Void)? = nil
   ) {
     self.name = name
     self.subtitle = subtitle
@@ -103,6 +109,9 @@ public struct InspectorColumn: View {
     self.onEditFace = onEditFace
     self.onCommitName = onCommitName
     self.onCommitLabel = onCommitLabel
+    self.machineSummary = machineSummary
+    self.machineMessage = machineMessage
+    self.onManageMachines = onManageMachines
   }
 
   public var body: some View {
@@ -164,11 +173,21 @@ public struct InspectorColumn: View {
     case .library:
       return InspectorSections.library(artifacts: artifacts)
     case .computer:
+      if let machineSummary {
+        return [
+          InspectorSectionModel(
+            id: "machine-grants", title: "机器授权", symbolName: "desktopcomputer",
+            rows: .none,
+            placeholder: InspectorPlaceholder(
+              symbolName: "desktopcomputer",
+              title: machineSummary, detail: "此 Bot 的机器与权限分别管理。"))
+        ]
+      }
       return InspectorSections.computer()
     }
   }
 
-  private var content: some View {
+  @ViewBuilder private var content: some View {
     ForEach(sections) { section in
       InspectorSectionView(
         section: section,
@@ -178,6 +197,13 @@ public struct InspectorColumn: View {
         onStopTask: onStopTask,
         onChoose: onChoose
       )
+    }
+    if tab == .computer, let onManageMachines {
+      SettingsActionButton("管理机器授权…", action: onManageMachines)
+      if let machineMessage {
+        Text(machineMessage).font(Theme.TypeScale.note).foregroundStyle(Theme.Palette.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
     }
   }
 }

@@ -9,17 +9,18 @@ public struct WorkspaceShellView: View {
   @StateObject private var inspector: InspectorViewModel
   @StateObject private var layout: ShellLayoutViewModel
   @StateObject private var account = AccountMenuViewModel()
-  @StateObject private var settings = SettingsViewModel()
-  @StateObject private var daemon = BotsDaemonSupervisor()
-  @StateObject private var bots = BotsWorkspaceViewModel()
+  @StateObject private var settings: SettingsViewModel
+  @StateObject private var daemon: BotsDaemonSupervisor
+  @StateObject private var bots: BotsWorkspaceViewModel
   @StateObject private var chrome = SidebarChromeViewModel()
   @State private var showsAccountMenu = false
   @State private var showsBotCreate = false
   @State private var showsBotFaceEditor = false
   @State private var showsSettings = false
-  @AppStorage("eagle.appearance") private var appearance = "system"
-  @AppStorage("eagle.hideToolCalls") private var hideToolCalls = false
-  @AppStorage("eagle.loadMockData") private var loadMockData = false
+  @AppStorage private var appearance: String
+  @AppStorage private var hideToolCalls: Bool
+  @AppStorage private var loadMockData: Bool
+  private let configuration: AppLaunchConfiguration
   private let onShowGallery: () -> Void
 
   public init(
@@ -27,12 +28,38 @@ public struct WorkspaceShellView: View {
     chat: BotChatViewModel = BotChatViewModel(),
     inspector: InspectorViewModel = InspectorViewModel(),
     layout: ShellLayoutViewModel = ShellLayoutViewModel(),
+    configuration: AppLaunchConfiguration = .current,
     onShowGallery: @escaping () -> Void = {}
   ) {
     _list = StateObject(wrappedValue: list)
     _chat = StateObject(wrappedValue: chat)
     _inspector = StateObject(wrappedValue: inspector)
     _layout = StateObject(wrappedValue: layout)
+    self.configuration = configuration
+    _settings = StateObject(
+      wrappedValue: SettingsViewModel(botsSettings: configuration.botsSettings))
+    _daemon = StateObject(
+      wrappedValue: BotsDaemonSupervisor(
+        settings: configuration.botsSettings, environment: configuration.environment,
+        defaults: configuration.defaults, loadEnvironmentFile: configuration.loadsDaemonEnvironment)
+    )
+    _bots = StateObject(
+      wrappedValue: BotsWorkspaceViewModel(
+        settings: configuration.botsSettings,
+        makeApp: {
+          try await BotsWorkspaceViewModel.liveApp(
+            settings: $0, makeOutbox: configuration.makeOutbox)
+        },
+        remoteGrantFactory: {
+          try BotRemoteAccess.grant(
+            bot: $0, settings: configuration.botsSettings, configuration: configuration)
+        }))
+    _appearance = AppStorage(
+      wrappedValue: "system", "eagle.appearance", store: configuration.defaults)
+    _hideToolCalls = AppStorage(
+      wrappedValue: false, "eagle.hideToolCalls", store: configuration.defaults)
+    _loadMockData = AppStorage(
+      wrappedValue: false, "eagle.loadMockData", store: configuration.defaults)
     self.onShowGallery = onShowGallery
   }
 
@@ -251,8 +278,26 @@ public struct WorkspaceShellView: View {
           onCommitName: selectedIsBot
             ? { title in Task { await bots.updateSelected(title: title) } } : nil,
           onCommitLabel: selectedIsBot
-            ? { label in Task { await bots.updateSelected(label: label) } } : nil
+            ? { label in Task { await bots.updateSelected(label: label) } } : nil,
+          machineSummary: selectedIsBot ? bots.remoteSummary : nil,
+          machineMessage: selectedIsBot ? bots.remoteMessage : nil,
+          onManageMachines: selectedIsBot ? { Task { await bots.openRemoteGrant() } } : nil
         )
+        .sheet(
+          item: Binding(
+            get: { bots.remoteGrant }, set: { if $0 == nil { bots.dismissRemoteGrant() } })
+        ) { model in
+          BotRemoteGrantView(
+            model: model,
+            onOpenMachines: {
+              settings.selection = .machines
+              showsSettings = true
+            },
+            onOpenTools: {
+              settings.selection = .bots
+              showsSettings = true
+            })
+        }
         .sheet(isPresented: $showsBotFaceEditor) {
           if let face = bots.selectedFace {
             BotFaceEditorSheet(
@@ -273,9 +318,11 @@ public struct WorkspaceShellView: View {
           showsSettings = true
         }
         // The daemon is a prerequisite of the Bots connection, not of the window.
-        await daemon.startIfNeeded()
-        await bots.start()
-        await bots.loadModels()
+        await configuration.runAutomaticConnection {
+          await daemon.startIfNeeded()
+          await bots.start()
+          await bots.loadModels()
+        }
       }
       .onDisappear {
         // Closing the window must release the bot's connection, or its subscriber slot
@@ -325,6 +372,7 @@ public struct WorkspaceShellView: View {
     .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSettings)) { _ in
       showsSettings.toggle()
     }
+    .defaultAppStorage(configuration.defaults)
   }
 
   /// Centred settings card over a blurred, dimmed copy of the window. The
@@ -336,19 +384,22 @@ public struct WorkspaceShellView: View {
         .ignoresSafeArea()
         .onTapGesture { showsSettings = false }
 
-      SettingsView(model: settings, onClose: { showsSettings = false }, daemon: daemon)
-        .frame(width: Theme.Metric.settingsWidth, height: Theme.Metric.settingsHeight)
-        .background(
-          RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Theme.Palette.surface)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-          RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
-        )
-        .shadow(color: .black.opacity(0.28), radius: 40, y: 18)
-        .background(TrafficLights(hidden: true))
+      SettingsView(
+        model: settings, onClose: { showsSettings = false }, daemon: daemon,
+        configuration: configuration
+      )
+      .frame(width: Theme.Metric.settingsWidth, height: Theme.Metric.settingsHeight)
+      .background(
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+          .fill(Theme.Palette.surface)
+      )
+      .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+      .overlay(
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+          .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+      )
+      .shadow(color: .black.opacity(0.28), radius: 40, y: 18)
+      .background(TrafficLights(hidden: true))
     }
     .transition(.opacity)
   }

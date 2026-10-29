@@ -5,18 +5,28 @@ import SwiftUI
 /// The settings window content, one screen per rail section.
 public struct SettingsView: View {
   @StateObject private var model: SettingsViewModel
-  @AppStorage("eagle.appearance") private var appearance = "system"
-  @AppStorage("eagle.hideToolCalls") private var hideToolCalls = false
-  @AppStorage("eagle.loadMockData") private var loadMockData = false
+  @AppStorage private var appearance: String
+  @AppStorage private var hideToolCalls: Bool
+  @AppStorage private var loadMockData: Bool
+  private let configuration: AppLaunchConfiguration
   private let onClose: () -> Void
   private let daemon: BotsDaemonSupervisor?
 
   public init(
-    model: SettingsViewModel = SettingsViewModel(),
+    model: SettingsViewModel? = nil,
     onClose: @escaping () -> Void = {},
-    daemon: BotsDaemonSupervisor? = nil
+    daemon: BotsDaemonSupervisor? = nil,
+    configuration: AppLaunchConfiguration = .current
   ) {
-    _model = StateObject(wrappedValue: model)
+    _model = StateObject(
+      wrappedValue: model ?? SettingsViewModel(botsSettings: configuration.botsSettings))
+    self.configuration = configuration
+    _appearance = AppStorage(
+      wrappedValue: "system", "eagle.appearance", store: configuration.defaults)
+    _hideToolCalls = AppStorage(
+      wrappedValue: false, "eagle.hideToolCalls", store: configuration.defaults)
+    _loadMockData = AppStorage(
+      wrappedValue: false, "eagle.loadMockData", store: configuration.defaults)
     self.onClose = onClose
     self.daemon = daemon
   }
@@ -184,6 +194,11 @@ public struct SettingsView: View {
               .labelsHidden()
               .toggleStyle(.switch)
               .tint(Theme.Palette.accentStrong)
+          }
+          Divider().overlay(Theme.Palette.line)
+          SettingsRow("远程机器工具", detail: "适用于所有 Bot；启用后仍需逐个 Bot 授权机器") {
+            Toggle("", isOn: toolGroupBinding(SettingsViewModel.remoteToolGroup))
+              .labelsHidden().toggleStyle(.switch).tint(Theme.Palette.accentStrong)
           }
         }
       }
@@ -388,57 +403,7 @@ public struct SettingsView: View {
   }
 
   private var machines: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      SettingsCard {
-        VStack(spacing: 2) {
-          ForEach(model.machines) { machine in
-            DeviceRow(
-              symbol: machine.symbol,
-              name: machine.name,
-              status: machine.status,
-              online: machine.online,
-              permission: machine.permission.rawValue,
-              onPermission: { model.cyclePermission(machine.id) },
-              onRename: machine.renamable ? { model.beginRename(machine.id) } : nil,
-              onMore: { model.remove(machine.id) }
-            )
-          }
-        }
-        .padding(.vertical, 8)
-      }
-
-      SettingsCaption("Eagle 的机器")
-      SettingsCard {
-        VStack(alignment: .leading, spacing: 12) {
-          Text("更新 Eagle 的机器")
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(Theme.Palette.textPrimary)
-          Text("所有机器共用同一个 Agent 版本。文件与登录信息保留，已安装的 Agent 会被替换；每台机器会依次重启采集服务。")
-            .font(.system(size: 13))
-            .foregroundStyle(Theme.Palette.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-          InfoBanner("所有机器的 Agent 均为最新版本")
-        }
-        .padding(.vertical, 16)
-      }
-
-      SettingsCard {
-        HStack(alignment: .center, spacing: 20) {
-          VStack(alignment: .leading, spacing: 6) {
-            Text("重置 Eagle 的机器")
-              .font(.system(size: 15, weight: .semibold))
-              .foregroundStyle(Theme.Palette.textPrimary)
-            Text("当机器卡住时可以重新开始。它会按上一次完整快照重建，最近的改动可能丢失。")
-              .font(.system(size: 13))
-              .foregroundStyle(Theme.Palette.textSecondary)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-          Spacer(minLength: 0)
-          DestructivePill("重置") {}
-        }
-        .padding(.vertical, 16)
-      }
-    }
+    MachineSettingsView(configuration: configuration)
   }
 
   private var realtime: some View {

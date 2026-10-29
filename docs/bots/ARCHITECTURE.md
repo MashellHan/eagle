@@ -38,6 +38,16 @@ own state even when its main outbox cannot be written. Omitting the fallback
 argument preserves the existing user-private temporary location; the Bots
 package does not interpret Eagle launch settings.
 
+An explicit host verification configuration also supplies the daemon's root,
+port and environment. It can disable loading the development `.env` while using
+the same supervisor lifecycle. Default App startup still loads that file as
+before; verification neither imports provider credentials nor changes daemon
+configuration defaults inside the Bots package.
+The host's selected environment also supplies token overrides and initial-Bot
+selection to all its client factories. They do not re-read the process environment
+after the host has selected an isolated profile; the independent TokenStore still
+accepts an explicit environment without knowing about Eagle profiles.
+
 ## Host daemon lifecycle
 
 The host's Bots supervisor accepts explicit preferences and environment. It resolves

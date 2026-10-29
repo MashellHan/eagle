@@ -39,11 +39,12 @@ if ! grep -q 'WorkspaceViewModels.swift' "$REPORT"; then
   exit 1
 fi
 
-# New machine logic must be instrumented too; views keep their image-review gate.
-for logic in Sources/EagleFeatures/Machines/*.swift; do
+# New machine and launch logic must be instrumented; views keep image review.
+for logic in Sources/EagleFeatures/AppLaunchConfiguration.swift Sources/EagleFeatures/Machines/*.swift; do
+  [ -f "$logic" ] || continue
   case "$logic" in *View.swift) continue ;; esac
   if ! grep -q "$(basename "$logic")" "$REPORT"; then
-    echo "coverage: missing machine logic $logic"
+    echo "coverage: missing native logic $logic"
     exit 1
   fi
 done
@@ -58,7 +59,7 @@ for logic in BotsCore/Domain/RemoteTools BotsTransport/RemoteToolsHTTPClient; do
 done
 
 awk -v minimum="$MINIMUM" '
-  /WorkspaceViewModels\.swift|SettingsViewModel\.swift|SettingsModels\.swift|SidebarComposition\.swift|Theme\.swift|SidebarList\.swift/ || (/Machines\/.*\.swift/ && !/View\.swift/) ||
+  /WorkspaceViewModels\.swift|SettingsViewModel\.swift|SettingsModels\.swift|SidebarComposition\.swift|Theme\.swift|SidebarList\.swift|AppLaunchConfiguration\.swift/ || (/Machines\/.*\.swift/ && !/View\.swift/) ||
   $1 ~ /(^|\/)BotsCore\/Domain\/RemoteTools\.swift$/ ||
   $1 ~ /(^|\/)BotsTransport\/RemoteToolsHTTPClient\.swift$/ {
     lines += $8

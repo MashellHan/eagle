@@ -39,6 +39,10 @@ runtime or Seatbelt dependency. Herdr remains an optional machine provider.
 The macOS machine page reads the protected machine directory and each machine's
 execution status. A successful empty directory, failed authentication and an
 unreachable status are different states; it never inserts demonstration machines.
+For Bot grants, a 401/403 from any machine status invalidates the whole directory
+read, even if the list and other statuses succeeded. No new credential reservation
+or copy is allowed from that read; existing local Bot grants remain revocable.
+Ordinary offline or unreachable observations do not add an online-only grant rule.
 Online execution and command permission are separate. Capability timestamps mean
 "last capability report", not last seen. Rename/revoke wait for the server reply.
 Machine identifiers containing a saved credential are refused before any request.
@@ -89,6 +93,65 @@ An unresolved operation retains its original bookmark and blocks new setup calls
 query/cancel always target that ID. A durable `unknown` result requires explicitly
 checking the target before continuing. Its reference remains available in the
 panel's saved-operation list, including after reopening; continuing never replays it.
+
+The selected Bot's computer inspector opens a sheet fixed to that Bot. It lists
+the saved deployment's real machines and five separate permissions, initially
+unselected. The daemon-wide remote tool-group switch is independent and remains
+off by default. Authorizing a machine does not turn the group on; turning the
+group off does not revoke stored authority.
+The native coordination contract covers reservation, private credential copying,
+activation, revocation and shared-deployment replacement in
+[Remote access](bots/REMOTE-ACCESS.md#原生授权协调组件). Its model/client checks are
+separate from the helper executable, Inspector composition and complete App bundle.
+
+## Isolated App verification configuration
+
+The verification entry is an explicit composition of the existing stores and
+clients, not an OS sandbox. Component gates do
+not validate the complete candidate or an active backend. With
+`EAGLE_APP_VERIFICATION_ROOT` set, the App requires an existing directory owned by
+the current user with mode 0700, and an explicit `BOTS_PORT` in 1024–65535 other
+than the daily default 43117. Invalid or partial verification settings stop
+startup; they never fall back to the daily configuration.
+
+This configuration gives preferences and the machine-connection/sharing Keychain
+items their own namespace derived from the canonical verification root. Agent
+configuration, Bots state, provider configuration, outbox and refusal fallback
+use separate children of that root. The private helper's Bot credential accounts
+remain scoped to the selected daemon root. Node, Agent CLI and helper executable
+overrides may select the prepared candidate's programs; secrets are not passed in
+the launch environment. The App-owned daemon does not load a checkout `.env` in
+this mode.
+
+Catalog, gateway settings and machine-grant clients use the selected profile's
+token source. Verification ignores inherited `BOTS_TOKEN` and `BOTS_OPEN`; the
+daemon token is read from its private Bots root. Ordinary launch keeps explicit
+token and initial-Bot overrides from its selected environment.
+
+Automatic daemon startup and Bot connection are both off for verification unless
+`EAGLE_APP_VERIFICATION_CONNECT_BOTS=1` is explicitly supplied. Ordinary startup
+without verification settings retains the existing stores and automatic behavior.
+Opening another window and App exit use the same verification preferences and
+ownership scope. Verification data is retained for reopening; first revoke this
+run's Bot grants and stop its owned services, then clean only its recorded root,
+preferences domain and Keychain items.
+
+After a complete candidate is available, create a separate profile on each Mac
+and choose an unused non-default Bots port. From the checkout root, this example
+opens only the UI; it does not automatically start or connect Bots:
+
+```sh
+umask 077
+eagle_profile_root="$(mktemp -d "${TMPDIR:-/tmp}/eagle-app-verification.XXXXXX")"
+EAGLE_APP_VERIFICATION_ROOT="$eagle_profile_root" BOTS_PORT=52117 \
+  ./apps/macos/.build/Eagle.app/Contents/MacOS/EagleApp
+```
+
+Record the profile root for reopening. To test A Bot → B, reopen A with that same
+root and port plus `EAGLE_APP_VERIFICATION_CONNECT_BOTS=1`, then configure Raven
+and create its test Bot normally. Machine management and Herdr on B do not require
+that switch or a model key. These launch commands still require runtime validation
+of the assembled candidate; the component gates do not certify it.
 
 Recorded local checks and unresolved release gates are in [CHECKPOINTS.md](CHECKPOINTS.md).
 The complete candidate App, Access edge and a second physical Mac remain unverified.

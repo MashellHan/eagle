@@ -6,19 +6,25 @@ import EagleDesign
 import Foundation
 import SwiftUI
 
-/// Where the shell finds the daemon. The token always comes from `<root>/token`; the port
-/// is the daemon's default 43117. A development shell can point elsewhere with the
-/// `BOTS_ROOT` / `BOTS_PORT` environment variables.
+/// Where the shell finds the daemon. Token and initial-Bot overrides use this selected
+/// environment throughout; a verification profile does not re-read ambient credentials.
 public struct BotsSettings {
   public let rootPath: String
   public let port: String
+  private let environment: [String: String]
 
   public init(environment: [String: String] = ProcessInfo.processInfo.environment) {
+    self.environment = environment
     rootPath = environment["BOTS_ROOT"] ?? TokenStore.defaultRoot.path
     port = environment["BOTS_PORT"] ?? "43117"
   }
 
   public var rootURL: URL { URL(fileURLWithPath: rootPath, isDirectory: true) }
+  var opensFirstBot: Bool { environment["BOTS_OPEN"] == "1" }
+
+  func readToken() throws -> String {
+    try TokenStore(root: rootURL, environment: environment).read()
+  }
 
   public var baseURL: URL {
     URL(string: "http://127.0.0.1:\(Int(port) ?? 43117)") ?? URL(string: "http://127.0.0.1:43117")!
@@ -54,6 +60,10 @@ final class BotsWorkspaceViewModel: ObservableObject {
   /// The selected bot's model and reasoning level, as menus.
   @Published private(set) var choices: [InspectorChoiceRow] = []
   @Published private(set) var connection: ConnectionState = .connecting
+  @Published private(set) var remoteGrant: BotRemoteGrantModel?
+  @Published private(set) var remoteSummary = "尚未读取此 Bot 的机器授权"
+  @Published private(set) var remoteMessage: String?
+  private let makeRemoteGrant: @MainActor (BotSummary) throws -> BotRemoteGrantModel
 
   var participantStatus: ParticipantStatus {
     let ready = connection == .ready && app?.conversation.hasSnapshot == true
@@ -104,14 +114,17 @@ final class BotsWorkspaceViewModel: ObservableObject {
   init(
     settings: BotsSettings = BotsSettings(),
     makeApp: @escaping AppFactory = BotsWorkspaceViewModel.liveApp,
-    gatewayProbe: (@MainActor () async -> Bool?)? = nil
+    gatewayProbe: (@MainActor () async -> Bool?)? = nil,
+    remoteGrantFactory: (@MainActor (BotSummary) throws -> BotRemoteGrantModel)? = nil
   ) {
     self.settings = settings
     self.makeApp = makeApp
+    self.makeRemoteGrant =
+      remoteGrantFactory ?? { try BotRemoteAccess.grant(bot: $0, settings: settings) }
     self.gatewayProbe =
       gatewayProbe ?? {
         do {
-          let token = try TokenStore(root: settings.rootURL).read()
+          let token = try settings.readToken()
           let client = CatalogHTTPClient(baseURL: settings.baseURL, token: token)
           return try await client.loadGateway().configured
         } catch {
@@ -120,15 +133,53 @@ final class BotsWorkspaceViewModel: ObservableObject {
       }
   }
 
+  func openRemoteGrant() async {
+    guard remoteGrant == nil, let bot = selectedBot else { return }
+    remoteMessage = nil
+    do {
+      let model = try makeRemoteGrant(bot)
+      remoteGrant = model
+      await model.load()
+      guard remoteGrant === model, selectedId == bot.id else { return }
+      if let configuration = model.configuration {
+        remoteSummary =
+          configuration.cleanupPending
+          ? "授权更新待清理"
+          : configuration.targets.isEmpty
+            ? "此 Bot 尚未授权任何机器"
+            : "此 Bot 已启用 \(configuration.targets.filter(\.enabled).count) 项机器授权"
+      }
+    } catch { remoteMessage = BotRemoteGrantModel.describe(error) }
+  }
+
+  func dismissRemoteGrant() {
+    if let model = remoteGrant, selectedId == model.botID, let configuration = model.configuration {
+      remoteSummary =
+        configuration.cleanupPending
+        ? "授权更新待清理"
+        : configuration.targets.isEmpty
+          ? "此 Bot 尚未授权任何机器"
+          : "此 Bot 已启用 \(configuration.targets.filter(\.enabled).count) 项机器授权"
+    }
+    remoteGrant?.invalidate()
+    remoteGrant = nil
+  }
+
   /// The production factory: token from the root, the HTTP catalog and one socket per bot.
   static func liveApp(settings: BotsSettings) async throws -> AppViewModel {
-    let token = try TokenStore(root: settings.rootURL).read()
+    try await liveApp(settings: settings, makeOutbox: { OutboxStore() })
+  }
+
+  static func liveApp(
+    settings: BotsSettings, makeOutbox: () -> OutboxStore
+  ) async throws -> AppViewModel {
+    let token = try settings.readToken()
     let catalog = CatalogHTTPClient(baseURL: settings.baseURL, token: token)
     // A health check first: a missing token or a stopped daemon is a setup problem, not an
     // empty catalog.
     _ = try await catalog.load()
     let connection = BotsConnection(baseURL: settings.baseURL, token: token)
-    let outbox = OutboxStore()
+    let outbox = makeOutbox()
     return AppViewModel(
       catalog: catalog,
       conversation: ConversationViewModel(conversation: connection, outbox: outbox),
@@ -258,7 +309,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       publish()
       // The shell keeps its own landing selection (the demo workspace) unless a
       // development shell asks to open Bots directly.
-      if ProcessInfo.processInfo.environment["BOTS_OPEN"] == "1", let first = app?.bots.first {
+      if settings.opensFirstBot, let first = app?.bots.first {
         select(first.id)
       }
       NotificationCenter.default.publisher(for: .botsGatewayChanged)
@@ -275,6 +326,10 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   func select(_ id: String) {
     guard let app, owns(id) else { return }
+    if selectedId != id {
+      remoteSummary = "尚未读取此 Bot 的机器授权"
+      remoteMessage = nil
+    }
     selectedId = id
     app.select(id)
     // The sidebar's selection is the shell's, so a programmatic selection (a new bot, a
@@ -386,6 +441,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   /// The window is gone: its socket must go too, or the daemon keeps a subscriber.
   func disconnect() {
+    dismissRemoteGrant()
     // `disconnect` cancels the event task and closes the transport; the daemon then
     // releases the subscriber slot.
     app?.conversation.disconnect()

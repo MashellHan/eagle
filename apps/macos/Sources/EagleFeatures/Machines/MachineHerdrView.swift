@@ -17,6 +17,8 @@ public struct MachineHerdrView: View {
           Text("Herdr · \(model.machine.name)").font(.title3.weight(.semibold))
           Text(model.machine.id).font(Theme.TypeScale.mono).foregroundStyle(
             Theme.Palette.textSecondary)
+          Text("部署：\(deploymentLabel)").font(Theme.TypeScale.note).foregroundStyle(
+            Theme.Palette.textSecondary)
         }
         Spacer()
         SettingsActionButton("关闭") { dismiss() }
@@ -102,6 +104,8 @@ public struct MachineHerdrView: View {
             SettingsCard {
               VStack(alignment: .leading, spacing: 8) {
                 Text(model.historical ? "历史操作结果" : "本次操作").font(.headline)
+                Text("\(actionLabel(reference.action)) · \(model.machine.name)")
+                  .font(Theme.TypeScale.note)
                 Text(reference.id).font(Theme.TypeScale.mono).textSelection(.enabled)
                 Text("发起于 \(reference.createdAt.formatted(date: .abbreviated, time: .standard))")
                   .font(Theme.TypeScale.note).foregroundStyle(Theme.Palette.textSecondary)
@@ -157,6 +161,22 @@ public struct MachineHerdrView: View {
       Button("继续查询原操作", role: .cancel) {}
     } message: {
       Text("未知结果不会变成成功，也不会自动重试。请先核对安装和会话；原 ID 将保留供以后查询。")
+    }
+  }
+  private var deploymentLabel: String {
+    let origin = model.connection.origin
+    let host = origin.host() ?? origin.absoluteString
+    return origin.port.map { "\(host):\($0)" } ?? host
+  }
+  private func actionLabel(_ action: String) -> String {
+    switch action {
+    case "probe": return "检测 Herdr"
+    case "install": return "安装 Herdr"
+    case "configure": return "保存并验证会话"
+    case "create_session": return "创建新会话"
+    case "disable": return "停用插件"
+    case "inspect": return "检查 Herdr 工具"
+    default: return "Herdr 操作"
     }
   }
   private func check(_ name: String, _ value: Bool?, detail: String? = nil) -> some View {

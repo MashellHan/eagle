@@ -1,8 +1,17 @@
 import AppKit
 import BotsCore
+import Darwin
 import EagleDesign
 import EagleFeatures
 import SwiftUI
+
+@MainActor
+private final class SnapshotMachineVault: MachineCredentialVault {
+  var value: MachineConnection?
+  func load() throws -> MachineConnection? { value }
+  func save(_ connection: MachineConnection) throws { value = connection }
+  func remove() throws { value = nil }
+}
 
 /// Headless snapshot entry point. Renders the shell and the template gallery to
 /// PNG files so the layout can be reviewed without screen-recording permission.
@@ -14,7 +23,7 @@ import SwiftUI
 @main
 struct SnapshotRenderer {
   @MainActor
-  static func main() {
+  static func main() async {
     let output =
       CommandLine.arguments.count > 1
       ? CommandLine.arguments[1]
@@ -29,6 +38,40 @@ struct SnapshotRenderer {
       print("wrote service snapshots to \(directory.path)")
       return
     }
+
+    if CommandLine.arguments.contains("--machine-connection") {
+      let vault = SnapshotMachineVault()
+      do {
+        let connection = try JSONDecoder().decode(
+          MachineConnection.self, from: FileHandle.standardInput.readDataToEndOfFile()
+        )
+        let model = MachineSettingsModel(vault: vault)
+        model.address = connection.origin.absoluteString
+        model.credential = connection.ownerToken
+        model.useAccess = connection.accessClientID != nil
+        model.accessID = connection.accessClientID ?? ""
+        model.accessSecret = connection.accessClientSecret ?? ""
+        await model.saveAndConnect()
+        guard model.phase == .ready else { throw MachineAccessError.unavailable }
+        for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
+          model.activate()
+          capture(
+            SettingsScaffold(selection: .constant(.machines), onClose: {}) {
+              MachineSettingsView(model: model)
+            }.preferredColorScheme(scheme),
+            size: CGSize(width: 920, height: 800), named: "machines-connected-\(name)",
+            in: directory,
+            appearance: scheme == .dark ? .darkAqua : .aqua
+          )
+        }
+        print("wrote machine connection snapshots")
+      } catch {
+        FileHandle.standardError.write(Data("Machine snapshot failed\n".utf8))
+        exit(1)
+      }
+      return
+    }
+
     captureInspectors(in: directory)
     if CommandLine.arguments.contains("--inspector-only") {
       print("wrote inspector snapshots to \(directory.path)")
@@ -91,10 +134,11 @@ struct SnapshotRenderer {
       in: directory
     )
 
-    let machines = SettingsViewModel()
-    machines.selection = .machines
+    let machineModel = MachineSettingsModel(vault: SnapshotMachineVault())
     capture(
-      SettingsView(model: machines).preferredColorScheme(.light),
+      SettingsScaffold(selection: .constant(.machines), onClose: {}) {
+        MachineSettingsView(model: machineModel)
+      }.preferredColorScheme(.light),
       size: CGSize(width: 920, height: 720),
       named: "settings-machines",
       in: directory
