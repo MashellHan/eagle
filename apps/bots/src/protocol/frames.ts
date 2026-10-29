@@ -528,19 +528,14 @@ const decodeSubmission = (ctx: Ctx, raw: unknown): Submission => {
 
 const decodeAgent = (ctx: Ctx, raw: unknown): AgentView => {
   if (!isObject(raw)) fail(ctx, "agent must be an object");
-  return {
-    model: {
-      provider: str(ctx, (isObject(raw.model) ? raw.model : {}).provider, "agent.model.provider"),
-      modelId: str(ctx, (isObject(raw.model) ? raw.model : {}).modelId, "agent.model.modelId"),
-    },
-    thinkingLevel: anyStr(ctx, raw.thinkingLevel, "agent.thinkingLevel"),
-    instructions: (() => {
-      const instructions = anyStr(ctx, raw.instructions, "agent.instructions");
-      if (Array.from(instructions).length > 4_000)
-        fail(ctx, "agent.instructions exceeds 4000 characters");
-      return instructions;
-    })(),
-  };
+  const model = isObject(raw.model) ? raw.model : {};
+  const provider = str(ctx, model.provider, "agent.model.provider");
+  const modelId = str(ctx, model.modelId, "agent.model.modelId");
+  const thinkingLevel = anyStr(ctx, raw.thinkingLevel, "agent.thinkingLevel");
+  const instructions = anyStr(ctx, raw.instructions, "agent.instructions");
+  if (Array.from(instructions).length > 4_000)
+    fail(ctx, "agent.instructions exceeds 4000 characters");
+  return { model: { provider, modelId }, thinkingLevel, instructions };
 };
 
 const decodeSnapshot = (ctx: Ctx, raw: unknown): ConversationSnapshot => {
