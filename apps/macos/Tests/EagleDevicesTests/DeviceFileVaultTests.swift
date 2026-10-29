@@ -24,6 +24,26 @@ struct DeviceFileVaultTests {
   {
     try DeviceIdentity.loadOrCreate(profile: profile, vault: DeviceFileVault(directory: directory))
   }
+  private func extendedACL(_ path: URL) throws -> String {
+    let acl = try #require(acl_get_file(path.path, ACL_TYPE_EXTENDED))
+    defer { acl_free(UnsafeMutableRawPointer(acl)) }
+    var entry: acl_entry_t?
+    try #require(acl_get_entry(acl, Int32(ACL_FIRST_ENTRY.rawValue), &entry) == 0)
+    let text = try #require(acl_to_text(acl, nil))
+    defer { acl_free(text) }
+    return String(cString: text)
+  }
+  private func grant(_ permissions: String, to path: URL, mode: Int) throws -> String {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/chmod")
+    process.arguments = ["+a", "everyone allow " + permissions, path.path]
+    try process.run()
+    process.waitUntilExit()
+    try #require(process.terminationStatus == 0)
+    let attributes = try FileManager.default.attributesOfItem(atPath: path.path)
+    #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == mode)
+    return try extendedACL(path)
+  }
 
   @Test("real private storage persists one identity and separates profiles")
   func persists() throws {
@@ -85,6 +105,89 @@ struct DeviceFileVaultTests {
       try load(directory, profile: "new-profile")
     }
     #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+  }
+
+  @Test("an explicit file ACL is rejected despite mode 0600 without changing the identity")
+  func rejectsFileACL() throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let directory = root.appendingPathComponent("identities")
+    _ = try load(directory)
+    let file = try identityFile(directory)
+    let original = try Data(contentsOf: file)
+    let acl = try grant("read", to: file, mode: 0o600)
+    #expect(throws: DeviceIdentityError.insecureStorage) { try load(directory) }
+    #expect(try Data(contentsOf: file) == original)
+    #expect(try extendedACL(file) == acl)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+  }
+
+  @Test("directory ACLs including file inheritance reject reads and creation at mode 0700")
+  func rejectsDirectoryACL() throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let directory = root.appendingPathComponent("identities")
+    _ = try load(directory)
+    let file = try identityFile(directory)
+    let original = try Data(contentsOf: file)
+    let acl = try grant("read,search,file_inherit", to: directory, mode: 0o700)
+    #expect(throws: DeviceIdentityError.insecureStorage) { try load(directory) }
+    #expect(throws: DeviceIdentityError.insecureStorage) {
+      try load(directory, profile: "new-profile")
+    }
+    #expect(try Data(contentsOf: file) == original)
+    #expect(try extendedACL(directory) == acl)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+  }
+
+  @Test("inherited directory ACLs reject creation before any identity is written")
+  func rejectsInheritedDirectoryACL() throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let originalDirectory = root.appendingPathComponent("original")
+    let originalIdentity = try load(originalDirectory)
+    let originalFile = try identityFile(originalDirectory)
+    let original = try Data(contentsOf: originalFile)
+    _ = try grant("read,file_inherit,directory_inherit", to: root, mode: 0o700)
+    let directory = root.appendingPathComponent("inherited")
+    #expect(throws: DeviceIdentityError.insecureStorage) { try load(directory) }
+    #expect(try extendedACL(directory).contains("inherited"))
+    let attributes = try FileManager.default.attributesOfItem(atPath: directory.path)
+    #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o700)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    #expect(try Data(contentsOf: originalFile) == original)
+    #expect(try load(originalDirectory).deviceId == originalIdentity.deviceId)
+  }
+
+  @Test("an inherited record ACL remains unsafe after moving into a private directory")
+  func rejectsInheritedFileACL() throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let originalDirectory = root.appendingPathComponent("original")
+    let identity = try load(originalDirectory)
+    let originalFile = try identityFile(originalDirectory)
+    let original = try Data(contentsOf: originalFile)
+    let staging = root.appendingPathComponent("staging")
+    let directory = root.appendingPathComponent("identities")
+    for path in [staging, directory] {
+      try FileManager.default.createDirectory(
+        at: path, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+    }
+    _ = try grant("read,file_inherit,only_inherit", to: staging, mode: 0o700)
+    let inheritedFile = staging.appendingPathComponent(originalFile.lastPathComponent)
+    try #require(
+      FileManager.default.createFile(
+        atPath: inheritedFile.path, contents: original, attributes: [.posixPermissions: 0o600]))
+    let file = directory.appendingPathComponent(originalFile.lastPathComponent)
+    try FileManager.default.moveItem(at: inheritedFile, to: file)
+    let acl = try extendedACL(file)
+    #expect(acl.contains("inherited"))
+    let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+    #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+    #expect(throws: DeviceIdentityError.insecureStorage) { try load(directory) }
+    #expect(try Data(contentsOf: file) == original)
+    #expect(try extendedACL(file) == acl)
+    #expect(try load(originalDirectory).deviceId == identity.deviceId)
   }
 
   @Test("corrupt, empty and oversized files never create another identity")

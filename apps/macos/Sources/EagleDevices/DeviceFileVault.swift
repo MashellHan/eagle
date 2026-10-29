@@ -31,6 +31,7 @@ public struct DeviceFileVault: DeviceIdentityVault {
     else {
       throw DeviceIdentityError.insecureStorage
     }
+    try requireNoExtendedACL(file)
     guard info.st_size > 0, info.st_size <= maximumSize else {
       throw DeviceIdentityError.corruptIdentity
     }
@@ -67,6 +68,7 @@ public struct DeviceFileVault: DeviceIdentityVault {
       unlinkat(parent, temporary, 0)
     }
     guard fchmod(file, 0o600) == 0 else { throw DeviceIdentityError.storageUnavailable }
+    try requireNoExtendedACL(file)
     try data.withUnsafeBytes { bytes in
       var offset = 0
       while offset < bytes.count {
@@ -128,10 +130,29 @@ public struct DeviceFileVault: DeviceIdentityVault {
       guard info.st_uid == getuid(), info.st_mode & 0o7777 == 0o700 else {
         throw DeviceIdentityError.insecureStorage
       }
+      try requireNoExtendedACL(current)
       return current
     } catch {
       close(current)
       throw error
+    }
+  }
+
+  private func requireNoExtendedACL(_ descriptor: Int32) throws {
+    guard let acl = acl_get_fd_np(descriptor, ACL_TYPE_EXTENDED) else {
+      // Darwin uses ENOENT when this pinned descriptor has no extended ACL.
+      if errno == ENOENT { return }
+      throw DeviceIdentityError.storageUnavailable
+    }
+    defer { acl_free(UnsafeMutableRawPointer(acl)) }
+    guard acl_valid(acl) == 0 else { throw DeviceIdentityError.storageUnavailable }
+    var entry: acl_entry_t?
+    errno = 0
+    let result = acl_get_entry(acl, Int32(ACL_FIRST_ENTRY.rawValue), &entry)
+    if result == 0 { throw DeviceIdentityError.insecureStorage }
+    // Darwin reports EINVAL at the end of a valid ACL, including an empty one.
+    guard result == -1, errno == EINVAL else {
+      throw DeviceIdentityError.storageUnavailable
     }
   }
 

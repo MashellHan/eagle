@@ -18,7 +18,11 @@ New records are written completely to a private temporary file, fsynced and
 published atomically without replacing an existing record. Concurrent creators
 reuse the winner's identity. Directory traversal and file opens reject symlinks;
 the record must be a regular, single-link file with the exact ownership and modes
-above. Existing unsafe, empty, oversized (>4096 bytes) or corrupt records fail
+above. The opened directory and record descriptors must have no Darwin extended
+ACL entries, including inherited entries. ACL lookup or validation failure fails
+closed. New temporary records pass the same ACL check before any private key
+bytes are written; existing ACLs are never removed or changed. Existing unsafe,
+empty, oversized (>4096 bytes) or corrupt records fail
 closed and are never replaced with a fresh identity. Stable errors are
 `device_identity_storage_insecure`, `device_identity_storage_unavailable` and
 `device_identity_corrupt`. The injectable `DeviceIdentityVault` remains available
