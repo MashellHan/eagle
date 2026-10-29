@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
@@ -8,7 +8,9 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { test } from "node:test";
 import {
+  approvalPayload,
   canonicalDeviceJSON,
+  type DeviceApproval,
   deviceDigest,
 } from "../packages/contracts/src/devices.ts";
 
@@ -23,6 +25,10 @@ test("private helper config boots offline local tools; Bot port cannot change po
   const lines = createInterface({ input: child.stdout });
   const messages: Record<string, unknown>[] = [];
   const waiters = new Map<string, (value: Record<string, unknown>) => void>();
+  let approvalHandler:
+    | ((message: Record<string, unknown>) => Promise<void>)
+    | undefined;
+  const approvalErrors: unknown[] = [];
   let stderr = "";
   child.stderr.on("data", (data) => (stderr += data.toString()));
   let readyResolve: () => void;
@@ -35,6 +41,10 @@ test("private helper config boots offline local tools; Bot port cannot change po
     const message = JSON.parse(line) as Record<string, unknown>;
     messages.push(message);
     if (message.type === "ready") readyResolve();
+    if (message.type === "approve")
+      void approvalHandler?.(message).catch((error) =>
+        approvalErrors.push(error),
+      );
     if (typeof message.requestId === "string")
       waiters.get(message.requestId)?.(message);
   });
@@ -72,6 +82,19 @@ test("private helper config boots offline local tools; Bot port cannot change po
           `${JSON.stringify({ requestId: randomUUID(), method, params })}\n`,
         );
       });
+    }
+    async function trusted(
+      method: string,
+      params?: unknown,
+    ): Promise<Record<string, unknown>> {
+      const requestId = randomUUID();
+      const response = new Promise<Record<string, unknown>>((resolve) =>
+        waiters.set(requestId, resolve),
+      );
+      child.stdin.write(
+        `${JSON.stringify({ type: "manage", requestId, method, params })}\n`,
+      );
+      return response;
     }
     const status = await request("status");
     assert.equal((status.result as { localReady: boolean }).localReady, true);
@@ -140,6 +163,100 @@ test("private helper config boots offline local tools; Bot port cannot change po
           .result as { status: string }
       ).status,
       "completed",
+    );
+    const asking = await trusted("policy.set", { mode: "always-ask" });
+    const policyVersion = (asking.result as { version: number }).version;
+    const askingOperation = {
+      kind: "command",
+      command: "printf approved-helper",
+    };
+    const askingInput = {
+      ...input,
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+      operation: askingOperation,
+      digest: await deviceDigest(canonicalDeviceJSON(askingOperation)),
+    };
+    assert.equal(
+      ((await request("execute", askingInput)).result as { status: string })
+        .status,
+      "denied",
+    );
+    approvalHandler = async (message) => {
+      assert.equal(message.sourceDeviceId, deviceId);
+      assert.equal(message.targetDeviceId, deviceId);
+      assert.equal(
+        message.digest,
+        await deviceDigest(canonicalDeviceJSON(message.operation)),
+      );
+      assert.deepEqual(message.operation, askingOperation);
+      const envelope = {
+        operationId: message.operationId as string,
+        sourceDeviceId: deviceId,
+        targetDeviceId: deviceId,
+        digest: message.digest as string,
+        policyVersion: message.policyVersion as number,
+        expiresAt: message.expiresAt as number,
+      };
+      const signed = {
+        ...envelope,
+        signature: sign(
+          null,
+          Buffer.from(approvalPayload(envelope)),
+          key.privateKey,
+        ).toString("base64url"),
+      };
+      child.stdin.write(
+        `${JSON.stringify({ type: "approval", requestId: message.requestId, approval: signed })}\n`,
+      );
+    };
+    const proposed = await request("approval.request", {
+      request: askingInput,
+      policyVersion,
+      expiresAt: Date.now() + 60000,
+    });
+    assert.equal(proposed.error, undefined);
+    const signed = (proposed.result as { approval: DeviceApproval }).approval;
+    assert.equal(
+      (
+        (
+          await request("execute", {
+            ...askingInput,
+            approval: { ...signed, digest: "0".repeat(64) },
+          })
+        ).result as { status: string }
+      ).status,
+      "denied",
+    );
+    assert.equal(
+      (
+        (await request("execute", { ...askingInput, approval: signed }))
+          .result as { output: string }
+      ).output,
+      "approved-helper",
+    );
+    approvalHandler = async (message) => {
+      child.stdin.write(
+        `${JSON.stringify({ type: "approval", requestId: message.requestId, error: "user_denied" })}\n`,
+      );
+    };
+    const rejected = await request("approval.request", {
+      request: { ...askingInput, operationId: randomUUID() },
+      policyVersion,
+      expiresAt: Date.now() + 60000,
+    });
+    assert.equal(rejected.error, "helper_request_denied");
+    const expired = await request("approval.request", {
+      request: askingInput,
+      policyVersion,
+      expiresAt: Date.now() - 1,
+    });
+    assert.equal(expired.error, "invalid_approval_request");
+    assert.deepEqual(approvalErrors, []);
+    assert.equal(
+      messages.filter((message) => message.type === "sign").length,
+      0,
+      "approvals must never use raw signing bridge",
     );
     const managementId = randomUUID();
     const managed = new Promise<Record<string, unknown>>((resolve) =>
