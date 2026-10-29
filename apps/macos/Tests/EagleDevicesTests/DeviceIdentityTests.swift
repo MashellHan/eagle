@@ -151,6 +151,62 @@ struct DeviceIdentityTests {
     #expect(try DeviceJSON.encoded(value).decoded(DeviceJSON.self) == value)
   }
 
+  @Test("uppercase approval UUIDs verify with the actual service contract")
+  func crossLanguageApproval() throws {
+    let identity = try DeviceIdentity.loadOrCreate(profile: "test", vault: MemoryVault())
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    let original = try makeRequest(
+      identity: identity,
+      operation: .object([
+        "kind": .string("command"), "command": .string("pwd"),
+      ]), now: now)
+    guard case .object(var fields) = try DeviceJSON.encoded(original) else { return }
+    fields["requestId"] = .string(original.requestId.uppercased())
+    fields["operationId"] = .string(original.operationId.uppercased())
+    fields["targetDeviceId"] = .string(original.targetDeviceId.uppercased())
+    let request = try DeviceJSON.object(fields).decoded(DeviceApprovalRequest.self)
+    let approval = try identity.approve(request, now: now)
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+      .appendingPathComponent("../../../../").standardizedFileURL
+    let module = root.appendingPathComponent("packages/contracts/src/devices.ts").absoluteString
+    let script = """
+      import {readFileSync} from 'node:fs';
+      import {DeviceApproval,OperationRequest,verifyApproval} from '\(module)';
+      const x=JSON.parse(readFileSync(0,'utf8'));
+      const approval=DeviceApproval.parse(x.approval);
+      const request=OperationRequest.parse({...x.request,action:'run'});
+      console.log(await verifyApproval(approval,request,{deviceId:approval.sourceDeviceId,publicKey:x.publicKey},{mode:'always-ask',version:approval.policyVersion}));
+      """
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    process.arguments = ["node", "--input-type=module", "-e", script]
+    let input = Pipe()
+    let output = Pipe()
+    process.standardInput = input
+    process.standardOutput = output
+    process.standardError = Pipe()
+    try process.run()
+    var wire = fields
+    wire.removeValue(forKey: "policyVersion")
+    wire.removeValue(forKey: "expiresAt")
+    wire.removeValue(forKey: "sourceDeviceId")
+    let payload = try DeviceJSON.encoded(approval)
+    try input.fileHandleForWriting.write(
+      contentsOf: JSONEncoder().encode(
+        DeviceJSON.object([
+          "approval": payload, "request": .object(wire), "publicKey": .string(identity.publicKey),
+        ])))
+    try input.fileHandleForWriting.close()
+    let answer = output.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    #expect(process.terminationStatus == 0)
+    #expect(
+      String(data: answer, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        == "true")
+    #expect(request.operationId == original.operationId)
+    #expect(request.targetDeviceId == original.targetDeviceId)
+  }
+
   @Test("the helper and independent Bot adapter share canonical wire vectors")
   func sharedVector() throws {
     let path = URL(fileURLWithPath: #filePath).deletingLastPathComponent()

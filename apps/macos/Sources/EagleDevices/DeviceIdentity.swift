@@ -109,6 +109,21 @@ public struct DeviceApprovalRequest: Codable, Equatable, Sendable, Identifiable 
   public let digest: String
   public let policyVersion: Int
   public let expiresAt: Int64
+  private enum CodingKeys: String, CodingKey {
+    case requestId, operationId, sourceDeviceId, targetDeviceId, operation, digest, policyVersion,
+      expiresAt
+  }
+  public init(from decoder: any Decoder) throws {
+    let fields = try decoder.container(keyedBy: CodingKeys.self)
+    requestId = try fields.decode(String.self, forKey: .requestId).lowercased()
+    operationId = try fields.decode(String.self, forKey: .operationId).lowercased()
+    sourceDeviceId = try fields.decode(String.self, forKey: .sourceDeviceId).lowercased()
+    targetDeviceId = try fields.decode(String.self, forKey: .targetDeviceId).lowercased()
+    operation = try fields.decode(DeviceJSON.self, forKey: .operation)
+    digest = try fields.decode(String.self, forKey: .digest)
+    policyVersion = try fields.decode(Int.self, forKey: .policyVersion)
+    expiresAt = try fields.decode(Int64.self, forKey: .expiresAt)
+  }
   public var id: String { requestId }
   public var signingPayload: String {
     [

@@ -714,3 +714,5 @@ and a matching digest before a trusted App confirmation can be signed.
 returns `result:{approval:<signed envelope>}`. The adapter unwraps that envelope
 before attaching it to the same operation; it never treats transport success as
 human confirmation.
+The helper canonicalizes all approval UUID fields to lowercase at decoding, so
+the displayed operation, signed bytes and service verification use the same IDs.
