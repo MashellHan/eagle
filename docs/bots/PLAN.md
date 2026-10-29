@@ -26,6 +26,9 @@ discovery. Those additions are not implemented or enabled by this plan update.
 Orca 固定源码参考、认证/存储边界及旧代码处理见
 [共享设备与配对方案](DEVICE-PAIRING.md)。
 
+本轮只聚焦安装即执行、跨 Mac 自动注册/配对/设备群与明确目标执行。共享设备目录
+由内部自动接线提供，不新增 Bot 分享链接、Bot 互联/共享开关或额外配置流程。
+
 2026-10-29：已从 `nocoo/eagle@7101566` 启动实施。Eagle Herdr 团队使用独立
 worktree；旧 `main@c34be59` 只作按需复用来源。当前尚未完成设备群或配对验收。
 
@@ -110,6 +113,14 @@ ECONNREFUSED，未发生本地 Registry 配对。当前修复在包指纹变化�
 由真实 App 串行注销/重新注册；同一包重开不停止 helper，系统审批仍须满足。状态读取
 期间保留停用入口；仅确有原配对请求时显示配对恢复提示，不修改任何原 ID 或历史。
 后台注册、延迟注销、失败回滚以及 UI 超时文案已有局部行为红绿，真实候选恢复待重签启动。
+
+14:40 当前收尾：注册审批 P2 已关闭；真实 GUI 已确认聊天、两个窗口与关窗重开后的
+两个 Bot/历史保留。LWCR 刷新后暴露 login Keychain 读取阻塞，用户明确选择私有文件
+凭据；FileVault 以 0700/0600 和无扩展 ACL 为边界，16 项局部测试通过，ACL review
+已关闭。旧 Keychain 与 journal 原位保留，固定 socket 不变；原 journal 的 source/target
+scope 隔离新身份、原 ID 不挪目标、native 阻断仍覆盖旧行，真实进程/运行时 27 项通过。
+当前设备保持停用，正从新目录完整装配并签名独立候选；下一证据仅为 Root GUI 启用后
+的本机真实执行。物理多 Mac 与发行验证仍待后续授权和实际环境，不作为当前本机交付前置。
 
 ## Where the code lives
 
