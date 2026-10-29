@@ -710,3 +710,7 @@ capabilities. Normative cross-language canonical parameter vectors are in
 identity tests. The Keychain signer accepts registration payloads only at its
 registration seam; typed approvals require complete, validated operation data
 and a matching digest before a trusted App confirmation can be signed.
+`approval.request` sends `{request,policyVersion,expiresAt}` as JSONL params and
+returns `result:{approval:<signed envelope>}`. The adapter unwraps that envelope
+before attaching it to the same operation; it never treats transport success as
+human confirmation.

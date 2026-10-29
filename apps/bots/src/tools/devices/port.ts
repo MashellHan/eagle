@@ -122,7 +122,7 @@ export class SocketDevicePort implements SharedDevicePort {
     policyVersion: number,
     signal?: AbortSignal,
   ): Promise<DeviceApproval> {
-    return approvalSchema.parse(
+    return z.object({ approval: approvalSchema }).parse(
       await this.#call(
         "approval.request",
         {
@@ -132,7 +132,7 @@ export class SocketDevicePort implements SharedDevicePort {
         },
         signal,
       ),
-    );
+    ).approval;
   }
   async begin(request: DeviceRequest, signal?: AbortSignal): Promise<NativeAdmission> {
     const channel = new DeviceChannel(this.#path);

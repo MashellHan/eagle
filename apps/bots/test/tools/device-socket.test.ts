@@ -5,6 +5,11 @@ import { createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import {
+  type DeviceRequest,
+  operationDigest,
+  SocketDevicePort,
+} from "../../src/tools/devices/port.ts";
 import { DeviceChannel } from "../../src/tools/devices/socket.ts";
 
 const fixture = async (handle: (socket: Socket, request: Record<string, unknown>) => void) => {
@@ -38,6 +43,38 @@ const fixture = async (handle: (socket: Socket, request: Record<string, unknown>
     },
   };
 };
+
+test("typed approval decodes the host envelope and preserves its operation bindings", async () => {
+  const operation = { kind: "command", command: "pwd" };
+  const request: DeviceRequest = {
+    requestId: randomUUID(),
+    operationId: randomUUID(),
+    targetDeviceId: randomUUID(),
+    sourceBotId: "bot-one",
+    action: "run",
+    operation,
+    digest: operationDigest(operation),
+  };
+  const approval = {
+    operationId: request.operationId,
+    sourceDeviceId: randomUUID(),
+    targetDeviceId: request.targetDeviceId,
+    digest: request.digest,
+    policyVersion: 2,
+    expiresAt: Date.now() + 60000,
+    signature: "test-signature",
+  };
+  const bench = await fixture((socket, frame) => {
+    assert.equal(frame.method, "approval.request");
+    assert.deepEqual((frame.params as { request: unknown }).request, request);
+    socket.write(`${JSON.stringify({ requestId: frame.requestId, result: { approval } })}\n`);
+  });
+  try {
+    assert.deepEqual(await new SocketDevicePort(bench.path).approve(request, 2), approval);
+  } finally {
+    await bench.close();
+  }
+});
 
 test("device v1 JSONL keeps split Unicode and correlates out-of-order replies", async () => {
   const requests: Record<string, unknown>[] = [];
