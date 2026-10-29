@@ -56,7 +56,10 @@ public enum Theme {
     public static let toolbarHeight: CGFloat = 32
     public static let toolbarTopInset: CGFloat = 0
     public static let headerHeight: CGFloat = 72
-    public static let headerBottomInset: CGFloat = 8
+    /// The tallest control in the header band is the participant card, so the band is its height.
+    public static let headerBandHeight: CGFloat = participantHeight
+    /// One content inset above every column's header: the card and both side columns start here.
+    public static let headerTopInset: CGFloat = contentInset
     /// The logo matches the list avatars and is bounded by the header.
     public static let logoSize: CGFloat = min(avatarRow, headerControlHeight)
     /// The brand header starts after the traffic lights.

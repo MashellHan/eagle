@@ -35,7 +35,7 @@ public struct WindowHeader<Center: View>: View {
   }
 
   public var body: some View {
-    ZStack {
+    ZStack(alignment: .top) {
       HStack(spacing: 6) {
         brand
         Spacer(minLength: 12)
@@ -63,8 +63,8 @@ public struct WindowHeader<Center: View>: View {
 
       center
     }
-    .padding(.bottom, Theme.Metric.headerBottomInset)
-    .frame(height: Theme.Metric.headerHeight, alignment: .bottom)
+    .padding(.top, Theme.Metric.headerTopInset)
+    .frame(height: Theme.Metric.headerHeight, alignment: .top)
     .background(Theme.Palette.surface)
     .overlay(alignment: .bottom) {
       Rectangle()

@@ -12,8 +12,8 @@ public struct HeaderRow<Content: View>: View {
 
   public var body: some View {
     content
-      .frame(height: Theme.Metric.headerControlHeight)
-      .padding(.bottom, Theme.Metric.headerBottomInset)
-      .frame(height: Theme.Metric.headerHeight, alignment: .bottom)
+      .frame(height: Theme.Metric.headerBandHeight, alignment: .top)
+      .padding(.top, Theme.Metric.headerTopInset)
+      .frame(height: Theme.Metric.headerHeight, alignment: .top)
   }
 }

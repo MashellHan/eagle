@@ -18,6 +18,10 @@ struct ThemeTests {
     #expect(Theme.Metric.sectionHeaderHeight == 24)
     #expect(Theme.Metric.sectionGap == 18)
     #expect(Theme.Metric.headerHeight == 72)
+    #expect(Theme.Metric.headerBandHeight == Theme.Metric.participantHeight)
+    #expect(Theme.Metric.headerTopInset == 20)
+    #expect(
+      Theme.Metric.headerTopInset + Theme.Metric.headerBandHeight <= Theme.Metric.headerHeight)
     #expect(Theme.Metric.listCardInset == 12)
     #expect(Theme.Metric.rowContentInset + Theme.Metric.listCardInset == Theme.Metric.contentInset)
     #expect(Theme.Metric.headerLeadingInset == Theme.Metric.contentInset)
