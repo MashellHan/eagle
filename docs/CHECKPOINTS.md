@@ -1,5 +1,18 @@
 # 用户视角检查点
 
+## 2026-10-29 14:06 +08 — 用户反馈后的本机注册修复
+
+- 当前 App/Bots/API 均活跃，但旧 helper 注册仍因 Launch Constraint Violation 无法启动，
+  stale socket 实测 ECONNREFUSED。Registry 无配对/结果，App 无 pending pairing；服务超时
+  不能被描述为已发生配对。用户新 Bot/历史、设备身份及所有原记录保持原位。
+- Root 已获 AX 权限并用 candidate bundle ID 定位 PID 14747，真实进入设备页复现
+  “未就绪/未知/配对超时”、停用开关被状态轮询禁用；录屏权限仍为 false。
+- Lead 修复包指纹变化后的 SMAppService 串行注销/重新注册，并保留同包 helper、系统
+  审批和失败记录。只在确有 pending 时显示配对恢复提示，状态等待期间可发起停用。
+  后台注册 10 项、既有 host 6 项及 UI/model 22 项均通过；正常重签启动是下一跳。
+- 只读 service 已完成运行链路归因，reviewer 待明确修复提交。采集/D1/公网未变化，
+  不清状态、不替换日常 App，也不让用户反复手动排错。
+
 ## 2026-10-29 13:47 +08 — 本阶段候选收尾与后台注册更新待办
 
 - 已报源码问题全部增量 review 关闭，功能构建 SHA 为 `259614a`。最终独立候选通过

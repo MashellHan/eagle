@@ -105,6 +105,12 @@ App 监督器已从 bundle 解析 Node/Bots 并固定注入 v1 设备 socket；�
 隔离本地 API 与 Raven 偏好保留；本阶段停在用户试用，下一功能只在收到反馈后推进。
 物理多 Mac、真实 UI 点击及发行签名/公证仍为未完成边界。
 
+首次用户试用发现 helper 更新后 macOS 保留旧启动约束：App/XPC 超时、Bot socket
+ECONNREFUSED，未发生本地 Registry 配对。当前修复在包指纹变化（或旧安装无指纹）时
+由真实 App 串行注销/重新注册；同一包重开不停止 helper，系统审批仍须满足。状态读取
+期间保留停用入口；仅确有原配对请求时显示配对恢复提示，不修改任何原 ID 或历史。
+后台注册、延迟注销、失败回滚以及 UI 超时文案已有局部行为红绿，真实候选恢复待重签启动。
+
 ## Where the code lives
 
 ### Exclusive search providers (2026-10-28)

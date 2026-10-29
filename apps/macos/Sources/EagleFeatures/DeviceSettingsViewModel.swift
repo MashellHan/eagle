@@ -114,6 +114,7 @@ private struct DeviceServiceState: Decodable {
   public var needsBackgroundApproval: Bool { errorCode == "background_approval_required" }
   public var socketPath: String? { enabled && localReady ? control.socketPath : nil }
   public var controlsBusy: Bool { isStarting || isRefreshing || isBusy }
+  public var canToggleService: Bool { !isBusy && (enabled || !controlsBusy) }
   public var canRetryService: Bool { enabled && started && !localReady && !isStarting }
   public var errorMessage: String? {
     guard let errorCode else { return nil }
@@ -133,7 +134,10 @@ private struct DeviceServiceState: Decodable {
     case "request_conflict": return "此请求已绑定另一个配对码，请输入原配对码或查询原请求。"
     case "pairing_binding_unavailable": return "原请求缺少配对码校验信息，只能继续查询原结果。"
     case "invalid_session", "revoked_session", "unknown_device": return "设备身份会话已失效，请重新连接设备服务。"
-    case "device_service_timeout": return "服务响应超时。配对结果不确定时，请查询原请求。"
+    case "device_service_timeout":
+      return pendingRedeemRequestId == nil
+        ? "设备服务响应超时。可关闭后重新启用设备服务。"
+        : "设备服务响应超时。配对结果尚不确定，请保留并查询原请求。"
     default: return "设备服务暂时不可用，请重试。"
     }
   }

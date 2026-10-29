@@ -122,6 +122,14 @@ closing the App window does not end this pipe. Helper EOF stops the child cleanl
 The App attempts registration for both `notRegistered` and the first-install
 `notFound` state, then requires `enabled` before opening XPC. A background approval
 request stays pending until macOS authorizes it; registration alone is not readiness.
+The App records a nonsecret fingerprint of the signed App/helper identities, helper
+executable and launch plist after successful registration. An updated or previously
+untracked enabled installation awaits its own SMAppService unregister callback before
+registering the current bundle, so cached launch constraints cannot strand a new helper.
+Unchanged installations keep the running helper. Approval-required state is not reset,
+failed registration does not advance the fingerprint, and device identity, journal and
+pending pairing records are untouched. The device switch remains accessible during a
+status read; stopping still waits for registration and prevents automatic restart.
 
 Unix socket is JSONL request/response, one response per request:
 `{requestId,method,params?}` → `{requestId,result}` or `{requestId,error}`.

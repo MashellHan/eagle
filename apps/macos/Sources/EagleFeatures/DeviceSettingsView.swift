@@ -78,7 +78,7 @@ public struct DeviceSettingsView: View {
           .labelsHidden()
           .toggleStyle(.switch)
           .tint(Theme.Palette.accentStrong)
-          .disabled(model.controlsBusy)
+          .disabled(!model.canToggleService)
         }
         HStack(spacing: 18) {
           Label(model.localReady ? "本机可用" : "本机未就绪", systemImage: "desktopcomputer")

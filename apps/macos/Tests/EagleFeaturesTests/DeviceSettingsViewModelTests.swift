@@ -88,6 +88,57 @@ struct DeviceSettingsViewModelTests {
     #expect(model.directoryIsStale)
   }
 
+  @Test("a status timeout mentions pairing only when an original pairing request exists")
+  func timeoutContext() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    control.handler = { method, _ in
+      if method == "service.status" { throw DeviceHostError.timeout }
+      return nil
+    }
+    await model.startIfNeeded()
+    #expect(model.errorCode == "device_service_timeout")
+    #expect(model.errorMessage?.contains("配对") == false)
+    #expect(model.pendingRedeemRequestId == nil)
+    let id = UUID().uuidString.lowercased()
+    defaults.set(
+      ["requestId": id, "codeHash": String(repeating: "a", count: 64)],
+      forKey: DeviceSettingsViewModel.pendingRedeemKey)
+    control.handler = nil
+    let pending = DeviceSettingsViewModel(control: control, defaults: defaults)
+    await pending.startIfNeeded()
+    control.handler = { method, _ in
+      if method == "service.status" { throw DeviceHostError.timeout }
+      return nil
+    }
+    await pending.refresh()
+    #expect(pending.pendingRedeemRequestId == id)
+    #expect(pending.errorMessage?.contains("原请求") == true)
+    #expect(
+      defaults.dictionary(forKey: DeviceSettingsViewModel.pendingRedeemKey)?["requestId"] as? String
+        == id)
+  }
+
+  @Test("the service switch remains usable while a startup status reply is pending")
+  func stopDuringStatus() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    var release: CheckedContinuation<Void, Never>?
+    control.statusGate = { await withCheckedContinuation { release = $0 } }
+    let starting = Task { await model.startIfNeeded() }
+    while release == nil { await Task.yield() }
+    #expect(model.isStarting && model.isRefreshing)
+    #expect(model.canToggleService)
+    let stopping = Task { await model.setEnabled(false) }
+    while !model.isBusy { await Task.yield() }
+    release?.resume()
+    await starting.value
+    await stopping.value
+    #expect(!model.enabled)
+    #expect(control.stops == 1)
+    #expect(control.starts == 1)
+  }
+
   @Test("pairing uses bounded TTL and never persists a code")
   func pairingTTL() async throws {
     let (model, control, defaults) = deviceSettingsFixture()
@@ -223,6 +274,7 @@ struct DeviceSettingsViewModelTests {
   var stops = 0
   var openedSettings = 0
   var stopGate: (() async -> Void)?
+  var statusGate: (() async -> Void)?
   var stopError: (any Error)?
   var startError: (any Error)?
   var confirm: (@MainActor @Sendable (DeviceApprovalRequest) async -> Bool)?
@@ -239,6 +291,7 @@ struct DeviceSettingsViewModelTests {
   }
   func call(_ method: String, params: DeviceJSON?) async throws -> DeviceJSON {
     calls.append((method, params))
+    if method == "service.status" { await statusGate?() }
     if let result = try handler?(method, params) { return result }
     switch method {
     case "service.status":
