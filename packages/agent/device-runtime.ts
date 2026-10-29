@@ -1,0 +1,308 @@
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
+import { open, opendir, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import {
+  canonicalDeviceJSON,
+  type Device,
+  DevicePolicy,
+  deviceDigest,
+  OperationRequest,
+  OperationResult,
+  verifyApproval,
+} from "../contracts/src/devices.ts";
+import { runProcess } from "./device-command.ts";
+import {
+  OperationJournal,
+  type OperationOutcome,
+  type OperationRecord,
+  type OperationScope,
+} from "./device-journal.ts";
+
+function result(record: OperationRecord): OperationResult {
+  return {
+    status: record.state === "succeeded" ? "completed" : record.state,
+    output: record.stdout,
+    ...(record.stderr ? { error: record.stderr } : {}),
+    exitCode: record.exitCode,
+  };
+}
+function outcome(value: OperationResult): OperationOutcome {
+  return {
+    state:
+      value.status === "completed"
+        ? "succeeded"
+        : value.status === "failed"
+          ? "failed"
+          : value.status === "cancelled"
+            ? "cancelled"
+            : "unknown",
+    stdout: value.output ?? "",
+    stderr: value.error ?? "",
+    exitCode: value.exitCode ?? null,
+  };
+}
+export class DeviceRuntime {
+  readonly device: Device;
+  readonly journal: OperationJournal;
+  policy: DevicePolicy;
+  private policyPath: string;
+  private active = new Map<
+    string,
+    { controller: AbortController; promise: Promise<OperationResult> }
+  >();
+  private native = new Set<string>();
+  private closed = false;
+  private secrets: () => string[];
+  constructor(
+    device: Device,
+    path: string,
+    secrets: () => string[] = () => [],
+  ) {
+    this.secrets = secrets;
+    this.device = device;
+    this.journal = new OperationJournal(path);
+    this.policyPath = join(dirname(path), "policy.json");
+    try {
+      this.policy = DevicePolicy.parse(
+        JSON.parse(readFileSync(this.policyPath, "utf8")),
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        this.journal.close();
+        throw new Error("Invalid persisted device policy");
+      }
+      this.policy = { mode: "all-approve", version: 1 };
+    }
+  }
+  setPolicy(mode: DevicePolicy["mode"]): DevicePolicy {
+    const next = DevicePolicy.parse({ mode, version: this.policy.version + 1 });
+    writeFileSync(this.policyPath, JSON.stringify(next), { mode: 0o600 });
+    chmodSync(this.policyPath, 0o600);
+    this.policy = next;
+    return next;
+  }
+  private scope(source: Device, request: OperationRequest): OperationScope {
+    return {
+      kind: "device",
+      sourceDeviceId: source.deviceId,
+      targetDeviceId: request.targetDeviceId,
+      ...(request.sourceBotId ? { sourceBotId: request.sourceBotId } : {}),
+    };
+  }
+  private visible(id: string, source: Device): OperationRecord | null {
+    const record = this.journal.get(id);
+    const scope = this.journal.getScope(id);
+    if (record && scope?.sourceDeviceId !== source.deviceId)
+      throw new Error("operation_source_mismatch");
+    return record;
+  }
+  private async admit(
+    input: OperationRequest,
+    source: Device,
+    native: boolean,
+  ): Promise<{ accepted: boolean; result: OperationResult }> {
+    const parsed = OperationRequest.safeParse(input);
+    if (!parsed.success || this.closed)
+      return {
+        accepted: false,
+        result: { status: "denied", error: "invalid_request" },
+      };
+    const request = parsed.data;
+    if (
+      request.action !== "run" ||
+      request.targetDeviceId !== this.device.deviceId ||
+      !request.operation ||
+      (request.operation.kind === "native") !== native
+    )
+      return {
+        accepted: false,
+        result: { status: "denied", error: "invalid_operation_target" },
+      };
+    const digest = await deviceDigest(canonicalDeviceJSON(request.operation));
+    if (digest !== request.digest)
+      return {
+        accepted: false,
+        result: { status: "denied", error: "digest_mismatch" },
+      };
+    const fingerprint = await deviceDigest(
+      canonicalDeviceJSON({
+        sourceDeviceId: source.deviceId,
+        targetDeviceId: request.targetDeviceId,
+        digest,
+        sourceBotId: request.sourceBotId,
+      }),
+    );
+    const existing = this.visible(request.operationId, source);
+    if (existing) {
+      this.journal.begin(
+        request.operationId,
+        fingerprint,
+        this.scope(source, request),
+      );
+      return { accepted: false, result: result(existing) };
+    }
+    if (
+      this.policy.mode === "paused" ||
+      (this.policy.mode === "always-ask" &&
+        !(await verifyApproval(request.approval, request, source, this.policy)))
+    )
+      return {
+        accepted: false,
+        result: { status: "denied", error: "policy_confirmation_required" },
+      };
+    if (this.active.size || this.native.size)
+      return { accepted: false, result: { status: "busy" } };
+    // Recheck synchronously after signature verification yields: another request
+    // may have admitted this ID while awaiting WebCrypto.
+    const duplicate = this.visible(request.operationId, source);
+    if (duplicate) {
+      this.journal.begin(
+        request.operationId,
+        fingerprint,
+        this.scope(source, request),
+      );
+      return { accepted: false, result: result(duplicate) };
+    }
+    const admission = this.journal.begin(
+      request.operationId,
+      fingerprint,
+      this.scope(source, request),
+    );
+    if (!admission.created)
+      return { accepted: false, result: result(admission.operation) };
+    this.native.add(request.operationId);
+    return { accepted: true, result: { status: "running" } };
+  }
+  async beginNative(
+    request: OperationRequest,
+    source: Device,
+  ): Promise<{ accepted: boolean; result: OperationResult }> {
+    try {
+      if (source.deviceId !== this.device.deviceId)
+        return { accepted: false, result: { status: "denied" } };
+      return await this.admit(request, source, true);
+    } catch {
+      return {
+        accepted: false,
+        result: { status: "denied", error: "operation_conflict" },
+      };
+    }
+  }
+  completeNative(operationId: string, value: OperationResult): OperationResult {
+    if (!this.native.has(operationId))
+      return { status: "denied", error: "native_not_running" };
+    const parsed = OperationResult.parse(value);
+    if (
+      !["completed", "failed", "cancelled", "unknown"].includes(parsed.status)
+    )
+      return { status: "denied", error: "invalid_completion" };
+    const stored = this.journal.finish(operationId, outcome(parsed));
+    this.native.delete(operationId);
+    return result(stored);
+  }
+  async handle(
+    input: OperationRequest,
+    source: Device,
+  ): Promise<OperationResult> {
+    try {
+      const request = OperationRequest.parse(input);
+      if (request.targetDeviceId !== this.device.deviceId)
+        return { status: "denied", error: "wrong_target" };
+      if (request.action !== "run") {
+        const record = this.visible(request.operationId, source);
+        if (!record) return { status: "unknown" };
+        if (request.action === "cancel")
+          this.active.get(request.operationId)?.controller.abort();
+        return result(record);
+      }
+      if (request.operation?.kind === "native")
+        return { status: "denied", error: "native_requires_local_begin" };
+      const admitted = await this.admit(request, source, false);
+      if (!admitted.accepted) return admitted.result;
+      const controller = new AbortController();
+      const promise = Promise.resolve().then(async () => {
+        let value: OperationOutcome;
+        try {
+          value = await this.execute(request, controller.signal);
+        } catch {
+          value = {
+            state: "failed",
+            stdout: "",
+            stderr: "execution_failed",
+            exitCode: null,
+          };
+        }
+        try {
+          return result(this.journal.finish(request.operationId, value));
+        } finally {
+          this.active.delete(request.operationId);
+        }
+      });
+      this.active.set(request.operationId, { controller, promise });
+      this.native.delete(request.operationId);
+      return await promise;
+    } catch {
+      return { status: "denied", error: "operation_conflict" };
+    }
+  }
+  private async execute(
+    request: OperationRequest,
+    signal: AbortSignal,
+  ): Promise<OperationOutcome> {
+    const operation = request.operation;
+    if (!operation) throw new Error("missing_operation");
+    const empty = { stdout: "", stderr: "", exitCode: null };
+    if (operation.kind === "command")
+      return runProcess(
+        {
+          program: "/bin/sh",
+          args: ["-c", operation.command],
+          cwd: operation.cwd ?? process.env.HOME ?? process.cwd(),
+          timeoutMs: operation.timeoutMs ?? 30000,
+        },
+        signal,
+        this.secrets(),
+        {
+          PATH: process.env.PATH ?? "/usr/bin:/bin:/usr/sbin:/sbin",
+          HOME: process.env.HOME,
+          LANG: "en_US.UTF-8",
+          TMPDIR: process.env.TMPDIR,
+        },
+      );
+    if (operation.kind === "native") throw new Error("invalid_native");
+    const path = resolve(operation.path);
+    if (signal.aborted) return { ...empty, state: "cancelled" };
+    let output = "";
+    if (operation.kind === "file.read") {
+      const file = await open(path, "r");
+      try {
+        const buffer = Buffer.alloc(65536);
+        const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+        output = buffer.subarray(0, bytesRead).toString("utf8");
+      } finally {
+        await file.close();
+      }
+    } else if (operation.kind === "file.write") {
+      await writeFile(path, operation.content, { signal });
+      output = "written";
+    } else {
+      const directory = await opendir(path);
+      const names: string[] = [];
+      for await (const entry of directory) {
+        names.push(entry.name);
+        if (names.length >= 1000) break;
+      }
+      output = JSON.stringify(names);
+    }
+    for (const secret of this.secrets())
+      if (secret) output = output.replaceAll(secret, "[REDACTED]");
+    return { ...empty, state: "succeeded", stdout: output, exitCode: 0 };
+  }
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    for (const value of this.active.values()) value.controller.abort();
+    await Promise.all([...this.active.values()].map((x) => x.promise));
+    this.journal.close();
+  }
+}

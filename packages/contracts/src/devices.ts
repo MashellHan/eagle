@@ -26,6 +26,12 @@ export const PairingRedeem = z.strictObject({
 });
 export const DeviceOperation = z.discriminatedUnion("kind", [
   z.strictObject({
+    kind: z.literal("native"),
+    tool: z.string().min(1).max(120),
+    args: z.record(z.string(), z.unknown()),
+    cwd: z.string().max(4096).optional(),
+  }),
+  z.strictObject({
     kind: z.literal("command"),
     command: z.string().min(1).max(65536),
     cwd: z.string().max(4096).optional(),
@@ -62,6 +68,7 @@ export const DeviceApproval = z.strictObject({
 export type DeviceApproval = z.infer<typeof DeviceApproval>;
 export const OperationRequest = z
   .strictObject({
+    sourceBotId: z.string().min(1).max(120).optional(),
     requestId: DeviceId,
     operationId: DeviceId,
     targetDeviceId: DeviceId,
