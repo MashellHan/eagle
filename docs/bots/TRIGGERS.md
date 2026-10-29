@@ -602,6 +602,8 @@ precedent rather than inventing a delta protocol.
 - A bot-scoped event is delivered to the bot's subscribers only. Because a
   connection subscribes to one bot for its whole life (PROTOCOL.md), the sidebar
   rows of the selected bot are live and other bots' rows are not subscribed.
+- Counters are the trigger's own history: a queued delivery raises `fired` (an eviction
+  `dropped`, a refusal `refused`), and a schedule fire raises `fired` with `lastFiredAt`.
 - Order is stable (`createdAt`, then `id`), so a re-render cannot reshuffle rows.
 - Bounded by construction, not by hope: `name` ≤ 64 chars, `cron` normalized to ≤ 64
   chars and re-encoded from its parsed fields, timezone must be a known IANA name, so
@@ -617,7 +619,7 @@ Both routes require the daemon bearer, like every other `/v1` route.
 
 | Route | Purpose | Notes |
 | --- | --- | --- |
-| `GET /v1/triggers?botId=<id>` | Detail for one bot: prompt, endpoint, token | The only place a token is returned |
+| `GET /v1/triggers?botId=<id>` | Detail for one bot: prompt, endpoint, token, counters | The only place a token is returned; the app copies it, the model never sees it |
 | `PATCH /v1/triggers/<botId>/<triggerId>` with `{enabled}` | The person's only mutation | Rejects any other field with `invalid_command`, and answers 404 for a trigger of another bot |
 
 The daemon publishes the `triggers` event after every accepted mutation, whoever
@@ -682,9 +684,13 @@ the `Log` secret list (`main.ts:132`) so redaction covers it.
 | `enabled: false` | `409`, `{ "reason": "disabled" }` |
 | Queue at 32 | `429`, `{ "reason": "queue_full" }` — the queue never evicts to make room for an unauthenticated burst |
 | Accepted | `202`, `{ "queued": n, "dropped": n }` — queued, **not** executed |
+| Browser request (`Origin` present) | `403`; a page never posts a delivery |
+| Body that is neither `{ "text": "…" }` nor non-empty text | `422`, `{ "reason": "text is required" }` |
 
-Other hardening: reject a request carrying an `Origin` header, POST only, no query
-parameters, per-token token bucket 120/min, per-trigger `maxFiresPerHour` default 60.
+Other hardening: POST only, no query parameters. Backpressure today is the 32-item
+queue (`429`) plus the bot's own admission budget; a per-token token bucket and a
+per-trigger `maxFiresPerHour` remain **planned** and are not implemented, so an
+accepted delivery is never silently dropped.
 
 Item identity: `Idempotency-Key` when present, else `sha256(body ‖ content-type)`
 truncated to 16 chars, deduped against the queued items, **every open frozen batch**

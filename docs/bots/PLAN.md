@@ -537,9 +537,17 @@ Shipped so far, each with its own failing test first:
    inline control and the `owned` section role are EagleDesign additions; a row the
    model owns offers no rename, move or delete.
 
-Stage 1 is functionally complete: a Bot creates a trigger with its own tools, a
-schedule fires through the invocation port, the queue batches and retries it, and a
-person sees it in the window and switches it. The webhook endpoint is stage 2.
+8. Stage 2's webhook ingress: `POST /v1/triggers/<botId>/<triggerId>` authenticated by
+   the trigger's own bearer (the daemon bearer is not accepted there), with the
+   documented 202/409/413/422/429/404 matrix, a 64 KiB body cap, an `Origin` refusal,
+   idempotency by `Idempotency-Key` or a body hash across the retry window, one token
+   per trigger persisted 0600 and minted at boot, and counters that follow a delivery.
+
+Both trigger kinds now work end to end: a Bot creates a trigger with its own tools, a
+schedule or a webhook delivery becomes one batched turn through the invocation port, and
+a person sees and switches it in the window. Not yet implemented from the stage-2
+contract: the per-token bucket and `maxFiresPerHour` (the queue cap and the admission
+budget are today's backpressure). Stage 3 (`peers`) is untouched.
 
 ### Stage 0, as built
 
