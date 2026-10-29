@@ -66,8 +66,6 @@ public enum Theme {
     public static let headerTopInset: CGFloat = contentInset
     /// Content that shares the window's top corner with the traffic lights starts past them.
     public static let trafficLightsClearance: CGFloat = trafficLightsEnd + 8
-    /// The wordmark's own row, one gap under the toolbar, on the list's content line.
-    public static let brandRowGap: CGFloat = 12
     public static let headerControlHeight: CGFloat = 34
     public static let participantHeight: CGFloat = 40
     public static let participantInset: CGFloat = 12

@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// Left column on the reference grid: traffic lights and the toolbar in the window's top corner,
-/// the wordmark on its own row under them, then the list, 58 pt rows, unread pill at 28 pt and a
-/// 62 pt user card. The wordmark sits on the list's content line.
+/// then the list, 58 pt rows, unread pill at 28 pt and a 62 pt user card.
 public struct SidebarPanel: View {
   private let sections: [SidebarSection]
   private let selection: String?
@@ -110,26 +109,17 @@ public struct SidebarPanel: View {
     .background(Theme.Palette.canvas)
   }
 
-  /// The toolbar shares the window's top corner with the traffic lights; the wordmark takes the
-  /// row under it, on the list's content line.
+  /// The toolbar shares the window's top corner with the traffic lights. The list follows it, so
+  /// the panel's first section sits one content inset under the controls rather than on the
+  /// three-column grid the other panels use.
   private var header: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      HStack(spacing: 6) {
-        Spacer(minLength: 0)
-        toolbar
-      }
-      .frame(height: Theme.Metric.headerControlHeight)
-      .padding(.horizontal, Theme.Metric.contentInset)
-      .padding(.top, Theme.Metric.headerTopInset)
-
-      Text("eagle")
-        .font(Theme.TypeScale.brand)
-        .tracking(-0.4)
-        .foregroundStyle(Theme.Palette.textPrimary)
-        .padding(.leading, Theme.Metric.contentInset)
-        .padding(.trailing, Theme.Metric.contentInset)
-        .padding(.top, Theme.Metric.brandRowGap)
+    HStack(spacing: 6) {
+      Spacer(minLength: 0)
+      toolbar
     }
+    .frame(height: Theme.Metric.headerControlHeight)
+    .padding(.horizontal, Theme.Metric.contentInset)
+    .padding(.top, Theme.Metric.headerTopInset)
   }
 
   private var toolbar: some View {
@@ -174,7 +164,7 @@ public struct SidebarPanel: View {
           }
         }
         .padding(.horizontal, Theme.Metric.listCardInset)
-        .padding(.top, Theme.Metric.edgeFadeHeight + 8)
+        .padding(.top, Theme.Metric.contentInset)
         .padding(.bottom, 8)
       }
       .scrollIndicators(.never)
