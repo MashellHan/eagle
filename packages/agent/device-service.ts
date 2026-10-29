@@ -31,6 +31,7 @@ const configure = DeviceRegistration.extend({
   baseUrl: z.url(),
   stateDirectory: z.string().min(1),
   socketPath: z.string().min(1),
+  bootSessionId: DeviceId.optional(),
 });
 const portRequest = z.strictObject({
   requestId: DeviceId,
@@ -477,6 +478,7 @@ export async function runDeviceService(): Promise<void> {
       device,
       join(config.stateDirectory, "operations.sqlite"),
       () => cloud?.secrets() ?? [],
+      config.bootSessionId,
     );
     nativeLeases = new NativeDeviceLeases(runtime, 30000, () =>
       send({ type: "failed", error: "native_lease_storage_failed" }),

@@ -61,10 +61,11 @@ export class DeviceRuntime {
     device: Device,
     path: string,
     secrets: () => string[] = () => [],
+    bootSessionId?: string,
   ) {
     this.secrets = secrets;
     this.device = device;
-    this.journal = new OperationJournal(path);
+    this.journal = new OperationJournal(path, 10_000, bootSessionId);
     this.native = new Set(this.journal.blockedNative());
     this.policyPath = join(dirname(path), "policy.json");
     try {

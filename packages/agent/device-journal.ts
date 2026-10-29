@@ -11,9 +11,10 @@ import {
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isMainThread } from "node:worker_threads";
-import type {
-  OperationRequest,
-  OperationResult,
+import {
+  DeviceId,
+  type OperationRequest,
+  type OperationResult,
 } from "../contracts/src/devices.ts";
 
 export type OperationOutcome = {
@@ -43,6 +44,7 @@ type Row = {
   exit_code: number | null;
   scope: string | null;
   native_blocked: number;
+  native_boot_session_id: string | null;
 };
 
 const terminalStates = new Set(["succeeded", "failed", "cancelled", "unknown"]);
@@ -105,13 +107,16 @@ export class OperationJournal {
   private capacity: number;
   private closed = false;
   private ownerKeys: string[] = [];
+  private bootSessionId?: string;
 
-  constructor(path: string, capacity = 10_000) {
+  constructor(path: string, capacity = 10_000, bootSessionId?: string) {
     if (!isMainThread)
       throw new Error("Operation journal must be owned by the primary thread");
     if (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 100_000)
       throw new Error("Invalid operation journal capacity");
     this.capacity = capacity;
+    this.bootSessionId =
+      bootSessionId === undefined ? undefined : DeviceId.parse(bootSessionId);
     const directory = dirname(path);
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const parent = lstatSync(directory);
@@ -162,7 +167,8 @@ export class OperationJournal {
           stderr TEXT NOT NULL DEFAULT '',
           exit_code INTEGER,
           scope TEXT,
-          native_blocked INTEGER NOT NULL DEFAULT 0
+          native_blocked INTEGER NOT NULL DEFAULT 0,
+          native_boot_session_id TEXT
         );
         CREATE TABLE IF NOT EXISTS outgoing_requests (
           id TEXT PRIMARY KEY,target TEXT NOT NULL,digest TEXT,source_bot TEXT,
@@ -181,6 +187,20 @@ export class OperationJournal {
         this.database.exec(
           "ALTER TABLE operations ADD COLUMN native_blocked INTEGER NOT NULL DEFAULT 0",
         );
+      if (!columns.some((column) => column.name === "native_boot_session_id"))
+        this.database.exec(
+          "ALTER TABLE operations ADD COLUMN native_boot_session_id TEXT",
+        );
+      // Only a trusted helper's proof of a different OS boot establishes that
+      // the old native process cannot still be running. Never upgrade unknown
+      // outcome evidence or give the original operation another admission.
+      if (this.bootSessionId)
+        this.database
+          .prepare(`UPDATE operations
+          SET state='unknown',exit_code=NULL,native_blocked=0
+          WHERE native_blocked=1 AND native_boot_session_id IS NOT NULL
+            AND native_boot_session_id<>?`)
+          .run(this.bootSessionId);
     } catch (error) {
       database?.close();
       for (const key of this.ownerKeys) localOwners.delete(key);
@@ -213,9 +233,15 @@ export class OperationJournal {
       throw new OperationAdmissionError("Operation journal capacity reached");
     this.database
       .prepare(
-        "INSERT INTO operations (id, fingerprint, state, scope,native_blocked) VALUES (?, ?, 'running', ?,?)",
+        "INSERT INTO operations (id, fingerprint, state, scope,native_blocked,native_boot_session_id) VALUES (?, ?, 'running', ?,?,?)",
       )
-      .run(id, fingerprint, scopeValue, nativeBlocked ? 1 : 0);
+      .run(
+        id,
+        fingerprint,
+        scopeValue,
+        nativeBlocked ? 1 : 0,
+        nativeBlocked ? (this.bootSessionId ?? null) : null,
+      );
     return {
       created: true,
       operation: {

@@ -583,3 +583,91 @@ for (const transport of ["stdin", "socket"]) {
     }
   });
 }
+
+test("trusted configure boot identity alone recovers admission after a Mac reboot", async () => {
+  const root = mkdtempSync(join(tmpdir(), "device-service-boot-"));
+  const configuration = serviceConfiguration(root);
+  const boot = randomUUID();
+  const nextBoot = randomUUID();
+  const operation = {
+    kind: "native",
+    tool: "bash",
+    args: { command: "never-rerun" },
+  };
+  const native = {
+    requestId: randomUUID(),
+    operationId: randomUUID(),
+    targetDeviceId: configuration.deviceId,
+    action: "run",
+    operation,
+    digest: await deviceDigest(canonicalDeviceJSON(operation)),
+  };
+  try {
+    for (const [index, bootSessionId] of [
+      boot,
+      boot.toUpperCase(),
+      nextBoot,
+    ].entries()) {
+      const service = serviceProcess();
+      try {
+        service.child.stdin.write(
+          `${JSON.stringify({ ...configuration, bootSessionId })}\n`,
+        );
+        await service.message("ready");
+        const admission = (
+          await portCall(configuration.socketPath, "local.begin", native)
+        ).result as { accepted: boolean; result: { status: string } };
+        assert.equal(admission.accepted, index === 0);
+        if (index > 0) assert.equal(admission.result.status, "unknown");
+        if (index === 1) {
+          assert.equal(
+            (
+              await portCall(configuration.socketPath, "configure", {
+                bootSessionId: nextBoot,
+              })
+            ).error,
+            "unknown_local_method",
+          );
+          assert.equal(
+            typeof (
+              await portCall(configuration.socketPath, "local.begin", {
+                ...native,
+                bootSessionId: nextBoot,
+              })
+            ).error,
+            "string",
+          );
+        }
+        const command = { kind: "command", command: "printf after-reboot" };
+        const result = (
+          await portCall(configuration.socketPath, "execute", {
+            ...native,
+            requestId: randomUUID(),
+            operationId: randomUUID(),
+            operation: command,
+            digest: await deviceDigest(canonicalDeviceJSON(command)),
+          })
+        ).result as { status: string; output?: string };
+        assert.equal(result.status, index === 2 ? "completed" : "busy");
+        if (index === 2) {
+          assert.equal(result.output, "after-reboot");
+          assert.equal(
+            (
+              (
+                await portCall(configuration.socketPath, "operation.get", {
+                  ...native,
+                  action: "get",
+                })
+              ).result as { status: string }
+            ).status,
+            "unknown",
+          );
+        }
+      } finally {
+        await service.stop();
+      }
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

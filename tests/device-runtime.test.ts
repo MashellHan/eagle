@@ -649,3 +649,100 @@ test("caller pins survive restart and uncertain re-submission becomes a query of
     await f.close();
   }
 });
+
+for (const scenario of [
+  "same",
+  "changed",
+  "missing-current",
+  "missing-admission",
+] as const) {
+  test(`native reboot recovery stays unknown and respects ${scenario} trusted boot identity`, async () => {
+    const directory = mkdtempSync(join(tmpdir(), "device-boot-"));
+    const { device } = local();
+    const path = join(directory, "journal.sqlite");
+    const originalBoot = randomUUID();
+    const currentBoot =
+      scenario === "missing-current"
+        ? undefined
+        : scenario === "same"
+          ? originalBoot.toUpperCase()
+          : randomUUID();
+    let runtime = new DeviceRuntime(
+      device,
+      path,
+      () => [],
+      scenario === "missing-admission" ? undefined : originalBoot,
+    );
+    try {
+      const native = await request(device.deviceId, {
+        kind: "native",
+        tool: "bash",
+        args: { command: "never-rerun" },
+      });
+      assert.equal((await runtime.beginNative(native, device)).accepted, true);
+      runtime.abandonNative(native.operationId);
+      await runtime.close();
+      runtime = new DeviceRuntime(device, path, () => [], currentBoot);
+      assert.equal(
+        (await runtime.handle({ ...native, action: "get" }, device)).status,
+        "unknown",
+      );
+      const duplicate = await runtime.beginNative(
+        { ...native, requestId: randomUUID() },
+        device,
+      );
+      assert.equal(
+        duplicate.accepted,
+        false,
+        "reboot never permits rerunning the old native ID",
+      );
+      assert.equal(duplicate.result.status, "unknown");
+      const file = join(directory, "new-operation-count");
+      const fresh = await request(device.deviceId, {
+        kind: "command",
+        command: `printf x >> '${file}'; cat '${file}'`,
+      });
+      const result = await runtime.handle(fresh, device);
+      assert.equal(
+        result.status,
+        scenario === "changed" ? "completed" : "busy",
+      );
+      if (scenario === "changed") {
+        assert.equal(result.output, "x");
+        const nextNative = {
+          ...native,
+          operationId: randomUUID(),
+          requestId: randomUUID(),
+        };
+        assert.equal(
+          (await runtime.beginNative(nextNative, device)).accepted,
+          true,
+        );
+        assert.equal(
+          runtime.completeNative(native.operationId, { status: "completed" })
+            .status,
+          "denied",
+          "old completion cannot release or overwrite anything after reboot recovery",
+        );
+        assert.equal(
+          (
+            await runtime.handle(
+              { ...fresh, operationId: randomUUID() },
+              device,
+            )
+          ).status,
+          "busy",
+          "the new native owner keeps its admission",
+        );
+        runtime.completeNative(nextNative.operationId, { status: "completed" });
+        assert.equal(
+          (await runtime.handle({ ...native, action: "get" }, device)).status,
+          "unknown",
+        );
+      }
+    } finally {
+      await runtime.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+}

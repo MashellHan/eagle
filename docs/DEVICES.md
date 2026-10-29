@@ -107,7 +107,7 @@ invalid. Unconfirmed requests are denied, never automatically approved.
 App bundles Node + Agent and launches `dist/agent/device-service.js` with no
 credentials in argv or environment. Parent-child stdin/stdout is private JSONL.
 App first writes `{type:"configure",version:1,baseUrl,deviceId,publicKey,name,
-platform,arch,stateDirectory,socketPath}`. stateDirectory is App-private 0700;
+platform,arch,stateDirectory,socketPath,bootSessionId?}`. stateDirectory is App-private 0700;
 socketPath is an App-private Unix socket (0600), not a public TCP port. Public key
 and IDs may be persisted there; private key and session tokens may not.
 
@@ -139,8 +139,8 @@ durably marks the native operation unknown and keeps device admission blocked.
 A missing heartbeat never proves that the underlying native tool stopped. This
 block survives service restart. Only the original owning lease can settle its
 own operation with explicit completed/failed/cancelled evidence; a late completion
-on the original socket is allowed. Disconnected-owner recovery needs a trusted
-management evidence flow; until then the device stays blocked. Unknown completion
+on the original socket is allowed. A disconnected owner stays blocked until
+the trusted OS reboot proof described below. Unknown completion
 does not clear the block. A new random
 leaseId is bound to the owning socket; stale/other-socket complete or heartbeat
 is rejected and cannot release another admission. No native request is rerun.
@@ -148,6 +148,28 @@ Only the initiating local device may complete its native admission. Native and
 remote tools share policy/journal/serial admission; interrupted native operations
 recover unknown. Native is rejected by remote execute/relay. args is a JSON object;
 the complete native operation participates in the same canonical parameter digest.
+
+For reboot recovery, the trusted Swift helper reads macOS `kern.bootsessionuuid`
+directly and supplies that UUID as optional `configure.bootSessionId`. It must
+read the actual local kernel value on each launch, never accept a Bot/App user
+claim or substitute a process/session/random UUID. On read failure it omits the
+field. Node canonicalizes UUID case and durably records this identity together
+with each native admission. This field is absent from Bot requests, approval
+payloads, directory and cloud registration; there is no socket or management
+method for setting it or manually clearing a block.
+
+On journal startup, only two present, different trusted boot identities establish
+that the original owner's processes and command groups cannot still run. Node
+atomically clears that admission's `native_blocked` flag and preserves its result
+as unknown, before accepting new work. The original operation ID remains a query
+of its unknown result and is never admitted again. Its retired lease cannot
+complete it or release a later operation. Same boot (including case variants),
+missing current identity, or a legacy admission with no recorded identity keeps
+the block. App/Node/Bot restart, cancellation and heartbeat expiry are no reboot
+proof. For an admission with recorded boot identity, the honest recovery action
+is **restart this Mac**, then let the helper supply the new kernel UUID; reboot
+does not prove the old operation succeeded. Legacy unknown-boot blocks have no
+automatic recovery. No process supervisor or execution scheduler is involved.
 
 Management uses only the trusted helper's parent stdin:
 `{type:"manage",requestId,method,params?}` → stdout
