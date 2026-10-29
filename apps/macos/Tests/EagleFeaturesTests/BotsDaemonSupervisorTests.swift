@@ -120,10 +120,12 @@ struct BotsDaemonSupervisorTests {
     #expect(normal.port == "43118")
     #expect(normal.rootPath.hasSuffix("eagle-bots-device-candidate"))
     #expect(normal.clientDirectory.path.hasPrefix(normal.rootPath))
+    let inheritedDaily = BotsSettings(
+      environment: ["BOTS_ROOT": "/daily/bots", "BOTS_PORT": "43117"], bundle: app)
+    #expect(inheritedDaily.rootPath == normal.rootPath)
+    #expect(inheritedDaily.port == normal.port)
     let settings = BotsSettings(
-      environment: [
-        "BOTS_ROOT": root.appendingPathComponent("data").path, "BOTS_PORT": String(Int(port)),
-      ], bundle: app)
+      rootPath: root.appendingPathComponent("data").path, port: String(Int(port)))
     let daemon = BotsDaemonSupervisor(
       settings: settings, bundle: app,
       environment: [

@@ -21,12 +21,21 @@ public struct BotsSettings {
   ) {
     let candidate =
       (try? DeviceHostConfiguration.load(bundle: bundle))?.profile == "device-candidate"
-    isIsolated = candidate || environment["BOTS_ROOT"] != nil
+    let development = bundle.pathExtension != "app"
+    let overrides = development ? environment : [:]
+    isIsolated = candidate || overrides["BOTS_ROOT"] != nil
     rootPath =
-      environment["BOTS_ROOT"]
+      overrides["BOTS_ROOT"]
       ?? (candidate
         ? TokenStore.defaultRoot.path + "-device-candidate" : TokenStore.defaultRoot.path)
-    port = environment["BOTS_PORT"] ?? (candidate ? "43118" : "43117")
+    port = overrides["BOTS_PORT"] ?? (candidate ? "43118" : "43117")
+  }
+
+  /// Explicit host/test injection is separate from ambient shell configuration.
+  public init(rootPath: String, port: String) {
+    self.rootPath = rootPath
+    self.port = port
+    isIsolated = true
   }
 
   public var rootURL: URL { URL(fileURLWithPath: rootPath, isDirectory: true) }
