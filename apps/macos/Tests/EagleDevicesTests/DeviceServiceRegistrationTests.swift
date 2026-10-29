@@ -112,6 +112,29 @@ struct DeviceServiceRegistrationTests {
     #expect(defaults.object(forKey: key) == nil)
   }
 
+  @Test("approving this registered bundle promotes it without stopping the new helper")
+  func approvedRegistration() async throws {
+    let (registration, service, defaults, domain) = fixture(status: .notRegistered)
+    defer { defaults.removePersistentDomain(forName: domain) }
+    service.registeredStatus = .requiresApproval
+    do {
+      try await registration.prepare(fingerprint: "new")
+      Issue.record("system approval must still be required")
+    } catch let error as DevicePortError {
+      #expect(error.code == "background_approval_required")
+    }
+    #expect(defaults.string(forKey: key) == nil)
+    #expect(defaults.string(forKey: key + ".pending") == "new")
+    service.status = .enabled
+    service.registeredStatus = .enabled
+    // A fresh App instance must retain the pending registration binding as well.
+    let reopened = DeviceServiceRegistration(service: service, defaults: defaults, profile: "test")
+    try await reopened.prepare(fingerprint: "new")
+    #expect(service.events == ["register"])
+    #expect(defaults.string(forKey: key) == "new")
+    #expect(defaults.object(forKey: key + ".pending") == nil)
+  }
+
   @Test("registration failure does not claim the replacement is installed")
   func failedRegister() async throws {
     let (registration, service, defaults, domain) = fixture(status: .notRegistered)
@@ -123,17 +146,32 @@ struct DeviceServiceRegistrationTests {
     #expect(defaults.object(forKey: key) == nil)
   }
 
+  @Test("the latest pending registration takes precedence over an older approved bundle")
+  func pendingTakesPrecedence() async throws {
+    let (registration, service, defaults, domain) = fixture()
+    defer { defaults.removePersistentDomain(forName: domain) }
+    defaults.set("old", forKey: key)
+    defaults.set("replacement", forKey: key + ".pending")
+    try await registration.prepare(fingerprint: "old")
+    #expect(service.events == ["unregister", "register"])
+    #expect(defaults.string(forKey: key) == "old")
+    #expect(defaults.object(forKey: key + ".pending") == nil)
+  }
+
   @Test("unregister clears only the installation record after success")
   func stop() async throws {
     let (registration, service, defaults, domain) = fixture()
     defer { defaults.removePersistentDomain(forName: domain) }
     defaults.set("current", forKey: key)
+    defaults.set("waiting", forKey: key + ".pending")
     service.unregisterError = DeviceHostError.failed
     await #expect(throws: DeviceHostError.failed) { try await registration.stop() }
     #expect(defaults.string(forKey: key) == "current")
+    #expect(defaults.string(forKey: key + ".pending") == "waiting")
     service.unregisterError = nil
     try await registration.stop()
     #expect(defaults.object(forKey: key) == nil)
+    #expect(defaults.object(forKey: key + ".pending") == nil)
   }
 
   @Test("both code identities and executable or plist changes alter the installation fingerprint")
@@ -161,11 +199,12 @@ struct DeviceServiceRegistrationTests {
   var registerError: DeviceHostError?
   var unregisterError: DeviceHostError?
   var unregisterGate: (() async -> Void)?
+  var registeredStatus: SMAppService.Status = .enabled
   init(status: SMAppService.Status) { self.status = status }
   func register() throws {
     events.append("register")
     if let registerError { throw registerError }
-    status = .enabled
+    status = registeredStatus
   }
   func unregister() async throws {
     events.append("unregister")

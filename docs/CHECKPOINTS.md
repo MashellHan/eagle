@@ -1,5 +1,18 @@
 # 用户视角检查点
 
+## 2026-10-29 14:26 +08 — 免 Keychain 决策与本机 GUI 证据
+
+- 新注册已通过真实 GUI off/on 生效；之后 helper 卡在旧 login Keychain 的私钥读取，
+  与先前 LWCR 拒绝不同。用户明确改用 0700/0600 私有文件凭据，不再尝试旧 Keychain。
+  旧 Keychain/设备 journal 留原位，候选将使用新身份；两个 Bot、聊天和 Raven 配置保留。
+- Root 真实 GUI 已验证新超时文案、可用停用开关，以及键盘输入/发送/Raven 回复；证据
+  `gui/local-reenable.json`、`gui/chat.json`。设备服务现保持停用，无在途操作。
+- 注册审批 P2 已有行为红绿：成功注册待系统审批时保存单独 pending 指纹，批准同包后
+  不重复注销；12 项局部测试通过，先独立提交/review。Service 专写 FileVault，Lead
+  继续 helper 启动和身份/历史边界，仍不改设备服务协议或放宽代码身份检查。
+- Root 只读旧 journal 为两条 succeeded、native_blocked=0；旧 outgoing 目标/原 ID 保留。
+  物理多 Mac、采集/D1/公网与发行验证仍未新增。
+
 ## 2026-10-29 14:06 +08 — 用户反馈后的本机注册修复
 
 - 当前 App/Bots/API 均活跃，但旧 helper 注册仍因 Launch Constraint Violation 无法启动，

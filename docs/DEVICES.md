@@ -130,6 +130,9 @@ Unchanged installations keep the running helper. Approval-required state is not 
 failed registration does not advance the fingerprint, and device identity, journal and
 pending pairing records are untouched. The device switch remains accessible during a
 status read; stopping still waits for registration and prevents automatic restart.
+A successful registration that still needs system approval keeps a separate pending
+fingerprint. Approval of that same bundle promotes the record without stopping or
+registering its helper again; successful stop clears both installation records.
 
 Unix socket is JSONL request/response, one response per request:
 `{requestId,method,params?}` → `{requestId,result}` or `{requestId,error}`.

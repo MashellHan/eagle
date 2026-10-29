@@ -15,12 +15,14 @@ extension SMAppService: DeviceBackgroundService {}
   private let service: any DeviceBackgroundService
   private let defaults: UserDefaults
   private let key: String
+  private let pendingKey: String
   private var preparing: Task<Void, Error>?
 
   init(service: any DeviceBackgroundService, defaults: UserDefaults, profile: String) {
     self.service = service
     self.defaults = defaults
     key = "eagle.devices.registeredBundle.\(profile)"
+    pendingKey = key + ".pending"
   }
 
   static func fingerprint(
@@ -43,23 +45,29 @@ extension SMAppService: DeviceBackgroundService {}
 
   private func update(fingerprint: String) async throws {
     if service.status == .requiresApproval { throw DevicePortError("background_approval_required") }
-    let changed = service.status == .enabled && defaults.string(forKey: key) != fingerprint
+    let registered = defaults.string(forKey: pendingKey) ?? defaults.string(forKey: key)
+    let changed = service.status == .enabled && registered != fingerprint
     if changed {
       // SMAppService caches launch constraints. Updating files/signatures is insufficient.
       // Its asynchronous unregister callback is the boundary before registering a replacement.
       try await service.unregister()
+      defaults.removeObject(forKey: pendingKey)
     }
     if changed || service.status == .notRegistered || service.status == .notFound {
       try service.register()
+      // Registration may succeed before system approval. Keep that binding across App launches.
+      defaults.set(fingerprint, forKey: pendingKey)
     }
     if service.status == .requiresApproval { throw DevicePortError("background_approval_required") }
     guard service.status == .enabled else { throw DeviceHostError.unavailable }
     defaults.set(fingerprint, forKey: key)
+    defaults.removeObject(forKey: pendingKey)
   }
 
   func stop() async throws {
     if let preparing { _ = try? await preparing.value }
     try await service.unregister()
     defaults.removeObject(forKey: key)
+    defaults.removeObject(forKey: pendingKey)
   }
 }
