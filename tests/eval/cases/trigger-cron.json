@@ -1,0 +1,34 @@
+{
+  "id": "trigger-cron",
+  "title": "定时触发器：同一个 cron 连续触发两次",
+  "kind": "trigger",
+  "notes": "A minute-resolution schedule must fire on its own, twice, with no client involved. Run it with --repeat 3 to prove stability.",
+  "timeoutMs": 300000,
+  "toolGroups": ["core", "coding"],
+  "triggers": [
+    {
+      "kind": "schedule",
+      "name": "每分钟巡查",
+      "prompt": "巡查一次，只回一句状态",
+      "cron": "* * * * *",
+      "timezone": "Asia/Shanghai"
+    }
+  ],
+  "model": {
+    "script": [{ "text": "巡查完成：一切正常。" }],
+    "repeatLast": true
+  },
+  "steps": [
+    { "kind": "waitFor", "origin": "schedule", "count": 2, "timeoutMs": 240000 }
+  ],
+  "expect": {
+    "atLeast": [
+      { "origin": "schedule", "count": 2 },
+      { "role": "assistant", "count": 2 }
+    ],
+    "messages": [
+      { "role": "user", "origin": "schedule", "contains": "巡查一次" }
+    ],
+    "noErrors": true
+  }
+}

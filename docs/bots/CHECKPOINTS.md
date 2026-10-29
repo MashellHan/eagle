@@ -543,3 +543,161 @@ effect, and a `../../etc/hosts` read came back as a refusal instead of a run fai
 
 Next broken hop: Slice 2 — the herdr tools (open a space, schedule the controller, monitor,
 fetch results, bidirectional messages), then Codex review at max reasoning.
+
+## 2026-10-29 09:20 — triggers are visible, switchable and firing
+
+Observed: a Bot's triggers now exist as one product surface. The Bot's own model
+creates and manages them with five tools; a schedule fires through the invocation
+port and is batched, retried and delivered by the queue; the window lists the
+selected bot's triggers in a `触发器` sidebar section with a one-click switch on
+each row, and the inspector shows that trigger's plan, next due instant, counters,
+endpoint and prompt read-only. Settings offers the `trigger` group. A message
+whose cause was a trigger carries a small origin line above its text.
+
+Verified:
+
+- `apps/bots`: `npm run check` 599 tests, coverage 95.24 / 87.90 / 90.61. The new
+  suites cover the store journal (idempotency, cap, cursor, restart), the tools'
+  mapping and refusals, the queue (cap, frozen batch, budget cut, envelope), the
+  pump (reconcile, retry with the same key, round-robin), the schedule (zone math,
+  arm/fire/missed, one journal record per decision), the `triggers` event and its
+  budgets, the HTTP detail/switch contract, and the composition end to end with a
+  fake port.
+- `apps/bots-macos`: `swift test` 51 + 43 tests, `./Scripts/coverage.sh` 91.1%.
+- `apps/macos`: `swift test` 134 + 49 tests, `./Scripts/coverage.sh` 95.7%,
+  `./Scripts/build-app.sh` builds `.build/Eagle.app`.
+- Live daemon, real process on a temporary root: `POST /v1/bots` created a bot, a
+  replayed `triggers.journal.jsonl` was read back by `GET /v1/triggers?botId=…`
+  with its prompt, `PATCH …/<trigger>` returned `enabled:false` and appended an
+  `enable` record, re-enabling let the real ticker arm the cursor at
+  `2026-10-30T01:00:00.000Z` (09:00 Asia/Shanghai), which then appeared as
+  `nextDueAt` in the detail — `triggers/<triggerId>.jsonl` held exactly one
+  `cursor` record. A `PATCH` with an extra field returned 400.
+
+Next broken hop: the webhook endpoint (stage 2) — a trigger of kind `webhook`
+cannot receive a delivery yet, so only schedules produce fires. Nothing has
+exercised a real model creating a trigger through `trigger_create` (no gateway key
+in this session), and no image of the new sidebar row has been reviewed.
+
+## 2026-10-29 10:35 — both trigger kinds deliver
+
+Observed: a webhook trigger now receives work. A service posts to
+`/v1/triggers/<botId>/<triggerId>` with that trigger's own bearer and gets `202`; the
+delivery becomes one batched message whose origin chip says `webhook`, and the bot
+answers. A schedule trigger fires at its minute on its own, and its message says
+`schedule`. The app's trigger detail shows the endpoint and the token to copy, the
+counters follow reality, and disabling a trigger makes its endpoint answer `409`.
+
+Verified:
+
+- `apps/bots`: `npm run check` 611 tests, coverage 95.08 / 88.02 / 90.19. New suites:
+  the ingress contract (202/409/413/422/429/404, one 404 for unknown/wrong token,
+  text extraction, clamping, idempotency with and without a key, the retry window),
+  the secret store (mint once, 0600, reopen, forget, corrupt file), the HTTP route with
+  and without an ingress, and the queue's last-delivered window.
+- `apps/bots-macos`: `swift test` green, `./Scripts/coverage.sh` 90.8%.
+  `apps/macos`: 134 + 49 tests green, coverage 95.7%.
+- Live, real daemon on a temporary root with a local faux OpenAI Responses endpoint:
+  the gateway saved over `PUT /v1/settings`, a webhook trigger replayed from its
+  journal, a token minted at boot in `triggers.secrets.json`, `POST …/t_aaaaaaaaaa`
+  → `202` and a user message `origin:{kind:"webhook"}` followed by an assistant answer;
+  the same `Idempotency-Key` twice → `queued: 1` then `queued: 0`, and still `0` after
+  the run had closed its batch; wrong token → `404`; the daemon bearer on the delivery
+  route → `404`; disabled → `409`; a `* * * * *` schedule fired at its minute
+  (`origin:{kind:"schedule"}`, envelope `[schedule · 1 item · …]`), advanced its cursor
+  and incremented `fired`.
+
+Next broken hop: `peers` (stage 3) is untouched. Two stage-2 limits are declared but
+not implemented — the per-token bucket and `maxFiresPerHour`; the 32-item queue (`429`)
+and the admission budget are the only backpressure. Nothing here exercised a model
+creating a trigger through `trigger_create` (the triggers came from their journals), and
+no image of the new rows has been reviewed.
+
+## 2026-10-29 11:20 — acceptance cases, and the bug the cron case found
+
+Observed: `tests/eval` now holds eight acceptance cases and a runner. Each one boots a
+real daemon, plays a scripted model, runs real tools and then checks the transcript,
+the tools that were called, the files on disk and the model request count. Both trigger
+kinds were re-run until they were stable, and three different complex LLM + tool-call
+loops pass.
+
+Verified:
+
+- `npm --prefix apps/bots run eval`, one full run: `chat-basic`, `coding-fix-loop`,
+  `complex-self-trigger`, `complex-webhook-triage`, `complex-workspace-audit`,
+  `search-unconfigured`, `trigger-cron`, `trigger-webhook` — all ok.
+- Stability: `trigger-cron --repeat 3` ok three times (two fires each, ≈2 min a round);
+  `trigger-webhook --repeat 3` ok three times (2 rows per round after dedupe).
+- The three complex shapes, each an LLM + tool-call loop:
+  1. `complex-workspace-audit` — list → read → `bash node -e …` → write `report.md`;
+     the report is checked on disk.
+  2. `complex-webhook-triage` — a delivery with no client involved → read
+     `logs/deploy.log` → write `triage.md` → answer; origin and file both checked.
+  3. `complex-self-trigger` — the model calls `trigger_create` for a webhook trigger,
+     the case reads the minted endpoint, delivers to it, and the model answers the
+     triggered run.
+- `apps/bots`: `npm run check` 612 tests at 95.11 / 88.07 / 90.21.
+- The cron case found a real defect: `ScheduleTicker`'s timer tick enqueued a fire but
+  never woke the pump, so a schedule only delivered when an unrelated idle edge
+  happened to drain it. Fixed in `479dd7f` with a test that drives the injected timer.
+
+Next broken hop: `peers` (stage 3). A case cannot prove a real provider — the model is
+scripted — and a case runs with a temporary `XDG_CONFIG_HOME`, so keyed search is
+exercised only by the unit suite. Nothing here runs Herdr.
+
+## 2026-10-29 11:55 — the window drives a real daemon
+
+Observed: the macOS client logic, pointed at a running daemon, sees a Bot's triggers in
+the sidebar with a switch each, toggles one (and the daemon's own event moves the row),
+receives a webhook delivery as a transcript row labelled `Webhook`, and receives a
+schedule fire as a row labelled `定时` — all without a stub.
+
+Verified:
+
+- `Tests/EagleFeaturesTests/LiveDaemonTests.swift`, gated by `BOTS_LIVE_ROOT` and
+  `BOTS_LIVE_PORT`, against a real daemon on `/tmp/live-mac` (a `* * * * *` schedule and
+  a webhook trigger, faux model endpoint): one run passed in 41 s. It asserts the
+  `触发器` section holds both rows with `toggle.isOn == true`, a one-click toggle flips
+  the row to `false` and back (the daemon's `triggers` event is what moves it), a
+  `POST /v1/triggers/<bot>/<trigger>` with the trigger's own token returns 202 and
+  produces a `Webhook` row, and a schedule fire produces a `定时` row.
+- `apps/macos`: 136 + 49 tests green, coverage 95.7%, `build-app.sh` builds.
+  (One performance test flaked while a daemon and a model server were running in the
+  background; it passed once they were stopped.)
+- Before that, the same daemon paths were driven by `npm --prefix apps/bots run eval`
+  (8/8) and by `curl`/a raw WebSocket client.
+
+Next broken hop: nobody has looked at the rendered window — the inline switch and the
+section position are covered by unit tests and this live drive, not by an image review.
+`peers` (stage 3) remains untouched.
+
+## 2026-10-29 12:30 — default triggers, a shared face, and an honest daemon prompt
+
+Observed: a new Bot can create its own schedule or webhook without a trip to Settings,
+because the `trigger` group is now selected by default. The conversation header draws the
+same Bot face (shape and colour) as the sidebar row and the inspector. When the daemon is
+not running the app stops trying and says so, with one explicit retry.
+
+Verified:
+
+- `npm --prefix apps/bots run eval`: 9/9 cases, including the new
+  `complex-default-trigger`, which sets no `toolGroups` and still creates a webhook
+  trigger with `trigger_create` and receives a delivery.
+- `apps/bots`: `npm run check` 612 tests at 95.12 / 88.05 / 90.21.
+- `apps/bots-macos`: 51 tests. New policy tests: a connection that never reached
+  `welcome` is stopped with the daemon message, a session that dropped still retries.
+- `apps/macos`: 138 + 49 tests, coverage 95.7%, `build-app.sh` builds. New tests: the
+  header's status offers `canRetry` (and the subtitle carries the daemon message), a
+  retry opens exactly one fresh connection, and — against a real closed port — the
+  connection ends `.failed` with the daemon message and is still failed 1.5 s later, so
+  there is no blind retry loop.
+- One performance test (`Transcript row cost`) flaked twice at 2.51 against a 2.5 bound
+  under load. Fixed by measuring its least disturbed round instead of a median (load can
+  only add time, and a real regression raises every round), not by widening the bound;
+  an ordinary user bubble also went back to one `Text` instead of a container it only
+  needed for the origin chip. The full pre-push gate then passed and `main` reached
+  `origin/main` at `81b4c3d`.
+
+Next broken hop: the per-trigger hourly cap and token bucket remain planned; `peers` is
+untouched; nobody has reviewed a rendered screenshot of the new header face or the
+trigger rows.

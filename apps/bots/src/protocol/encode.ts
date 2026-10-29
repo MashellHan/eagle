@@ -8,6 +8,7 @@ import type {
   DeltaChange,
   Message,
   TaskSummary,
+  TriggerSummary,
 } from "../core/domain.ts";
 import type { ClientCommand, ServerEvent } from "./frames.ts";
 import { PROTOCOL_VERSION } from "./version.ts";
@@ -44,6 +45,13 @@ export const encodeMessage = (m: Message): Wire => {
   };
   if (m.requestId !== undefined) wire.requestId = m.requestId;
   if (m.stopReason !== undefined) wire.stopReason = m.stopReason;
+  // The wire carries what a client renders. Internal ids stay in the daemon.
+  if (m.origin !== undefined) {
+    wire.origin = {
+      kind: m.origin.kind,
+      ...(m.origin.label === undefined ? {} : { label: m.origin.label }),
+    };
+  }
   return wire;
 };
 
@@ -81,9 +89,38 @@ const encodeBot = (b: BotSummary): Wire => {
 
 const encodeGroup = (group: BotGroup): Wire => ({ id: group.id, title: group.title });
 
+const encodeTrigger = (trigger: TriggerSummary): Wire => {
+  const wire: Wire = {
+    id: trigger.id,
+    kind: trigger.kind,
+    name: trigger.name,
+    enabled: trigger.enabled,
+    counters: {
+      fired: trigger.counters.fired,
+      dropped: trigger.counters.dropped,
+      refused: trigger.counters.refused,
+    },
+  };
+  if (trigger.schedule !== undefined) {
+    wire.schedule = {
+      cron: trigger.schedule.cron,
+      timezone: trigger.schedule.timezone,
+      ...(trigger.schedule.nextDueAt === undefined
+        ? {}
+        : { nextDueAt: trigger.schedule.nextDueAt }),
+    };
+  }
+  if (trigger.lastFiredAt !== undefined) wire.lastFiredAt = trigger.lastFiredAt;
+  if (trigger.lastSkipped !== undefined) {
+    wire.lastSkipped = { at: trigger.lastSkipped.at, reason: trigger.lastSkipped.reason };
+  }
+  return wire;
+};
+
 export const encodeSnapshot = (s: ConversationSnapshot): Wire => {
   const value: Wire = { botId: s.botId };
   if (s.tasks !== undefined) value.tasks = s.tasks.map(encodeTask);
+  if (s.triggers !== undefined) value.triggers = s.triggers.map(encodeTrigger);
   if (s.agent) {
     value.agent = {
       model: { provider: s.agent.model.provider, modelId: s.agent.model.modelId },
@@ -162,6 +199,7 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
         entries: event.capabilities.entries === true,
         usage: event.capabilities.usage === true,
         peers: event.capabilities.peers === true,
+        triggers: event.capabilities.triggers === true,
       };
       wire.bots = event.bots.map(encodeBot);
       if (event.groups !== undefined) wire.groups = event.groups.map(encodeGroup);
@@ -184,6 +222,9 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
         totalTokens: event.usage.totalTokens,
         ...(event.usage.costUsd === undefined ? {} : { costUsd: event.usage.costUsd }),
       };
+      return wire;
+    case "triggers":
+      wire.triggers = event.triggers.map(encodeTrigger);
       return wire;
     case "tasks":
       wire.tasks = event.tasks.map(encodeTask);

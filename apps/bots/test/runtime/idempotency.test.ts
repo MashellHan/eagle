@@ -114,3 +114,52 @@ test("a re-sent requestId converges after a restart", async () => {
     await bench.cleanup();
   }
 });
+
+test("a reopened adapter still resolves a settled request id, and a full budget does not matter", async () => {
+  const bench = await createBench();
+  const spec = bench.spec();
+  try {
+    bench.faux.setResponses([text("answer")]);
+    const first = await bench.runtime.open(spec);
+    const admitted = await first.submit({
+      requestId,
+      text: "只发送一次的问题",
+      whenBusy: "followUp",
+      trace,
+    });
+    const events: RuntimeEvent[] = [];
+    await first.subscribe(trace, (event) => events.push(event));
+    await waitFor(
+      () => of(events, "submission").some((event) => event.record.status === "done"),
+      "the turn to settle",
+    );
+    assert.equal((await first.submission({ requestId }))?.status, "done");
+    await first.close(trace, 5_000);
+
+    // A fresh adapter over the same sqlite file: the in-memory ledger is gone, and a
+    // settled record is absent from `inspect()` (it lists queued and placed only).
+    const second = await bench.runtime.open(bench.spec());
+    const reopened = await second.submission({ requestId });
+    assert.equal(reopened?.id, admitted.id, "the durable lookup answers with the same record");
+    assert.equal(reopened?.requestId, requestId);
+    assert.equal(reopened?.status, "done");
+    assert.notEqual(reopened?.entryId, undefined, "a settled record keeps its entries");
+    assert.notEqual(reopened?.answerEntryId, undefined);
+    const again = await second.submit({
+      requestId,
+      text: "只发送一次的问题",
+      whenBusy: "followUp",
+      trace,
+    });
+    assert.equal(again.id, admitted.id, "the retry is the same submission");
+    const history = await second.history({ limit: 10 });
+    assert.deepEqual(
+      history.messages.map((message) => message.role),
+      ["user", "assistant"],
+      "no second run was admitted",
+    );
+    await second.close(trace, 5_000);
+  } finally {
+    await bench.cleanup();
+  }
+});

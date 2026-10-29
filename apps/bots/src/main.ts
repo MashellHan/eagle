@@ -8,6 +8,7 @@ import type { DaemonConfig } from "./config.ts";
 import { BotDirectory, nodeDirectoryFs } from "./core/BotDirectory.ts";
 import { BotRegistry } from "./core/BotRegistry.ts";
 import { ConversationService } from "./core/ConversationService.ts";
+import type { TriggerSummary } from "./core/domain.ts";
 import {
   DEFAULT_THINKING_LEVEL,
   isThinkingLevel,
@@ -15,7 +16,10 @@ import {
   resolveToolGroups,
 } from "./core/domain.ts";
 import { newFailure } from "./core/failures.ts";
+import { OriginStore, originPath } from "./core/OriginStore.ts";
 import type { RuntimeEvent } from "./core/RuntimePort.ts";
+import { TriggerSecretStore, triggerSecretsPath } from "./core/TriggerSecrets.ts";
+import { TriggerStore, triggerJournalPath } from "./core/TriggerStore.ts";
 import { declareEvent } from "./log/events.ts";
 import { Log } from "./log/log.ts";
 import { FileLogSink } from "./log/sink.ts";
@@ -34,7 +38,7 @@ import {
   testGateway,
   writeGateway,
 } from "./server/gateway.ts";
-import { type Daemon, startServer } from "./server/http.ts";
+import { type Daemon, startServer, type TriggerIngress } from "./server/http.ts";
 import {
   PROVIDERS,
   type ProviderApi,
@@ -53,6 +57,10 @@ import { UsageStore } from "./server/usage.ts";
 import type { SearchClient } from "./tools/search/client.ts";
 import { createDeepSeekSearch } from "./tools/search/deepseek.ts";
 import { createTavilySearch } from "./tools/search/tavily.ts";
+import { triggerHost } from "./triggers/host.ts";
+import { createIngress } from "./triggers/ingress.ts";
+import { TriggerProducers } from "./triggers/producers.ts";
+import { fileJournal, TriggerQueue } from "./triggers/queue.ts";
 
 export type DaemonHandle = {
   readonly config: DaemonConfig;
@@ -78,6 +86,7 @@ const StartupEvents = {
   singletonStart: declareEvent("core.singleton.start"),
   singletonOk: declareEvent("core.singleton.ok"),
   singletonFail: declareEvent("core.singleton.fail"),
+  originReplayDegrade: declareEvent("core.origin.replay.degrade"),
 } as const;
 
 export const measureEvent = (event: RuntimeEvent): number =>
@@ -127,9 +136,11 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   let gateway: GatewayConfig | undefined;
   // The log exists before the lock so a refused second start is on record, and it holds
   // the token as a secret for redaction from its first record.
+  // Declared before the log: its redaction closure reads this set on every record.
+  const triggerTokens = new Set<string>();
   const sink = new FileLogSink({ root, minimum: canonical.logLevel });
   const log = new Log(sink.sink, undefined, {
-    secrets: () => [token, gateway?.apiKey ?? "", ...providers.secrets()],
+    secrets: () => [token, gateway?.apiKey ?? "", ...providers.secrets(), ...triggerTokens],
   });
   const startup = "tr_boot_1";
   log.emit("info", "core", StartupEvents.singletonStart, { trace: startup });
@@ -172,6 +183,115 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   );
   const compaction = compactionFromEnv(process.env, windowTokens);
   const usageStore = new UsageStore(join(root, "usage.sqlite"));
+  // One store per bot, opened on demand: a bot that never uses a trigger reads no journal.
+  const triggers = new Map<string, Promise<TriggerStore>>();
+  /** Webhook credentials per bot, and every token the log must redact. */
+  const secretStores = new Map<string, Promise<TriggerSecretStore>>();
+  const secretsFor = (botId: string): Promise<TriggerSecretStore> => {
+    const open = secretStores.get(botId);
+    if (open !== undefined) return open;
+    const opened = TriggerSecretStore.open(triggerSecretsPath(directory.botDir(botId)));
+    secretStores.set(botId, opened);
+    opened.catch(() => secretStores.delete(botId));
+    opened.then((store) => {
+      for (const token of store.tokens()) triggerTokens.add(token);
+    });
+    return opened;
+  };
+  /** A webhook trigger is usable the moment it exists, so its token is minted here. */
+  const ensureWebhookTokens = async (botId: string): Promise<void> => {
+    const store = await triggerStoreFor(botId);
+    const webhooks = store.list().filter((trigger) => trigger.kind === "webhook");
+    if (webhooks.length === 0) return;
+    const secrets = await secretsFor(botId);
+    for (const trigger of webhooks) triggerTokens.add(await secrets.tokenFor(trigger.id));
+  };
+  /** Set once the service exists: a model's own edit has to reach the sidebar. */
+  let refreshTriggers: (botId: string) => void = () => undefined;
+  const triggerStoreFor = (botId: string): Promise<TriggerStore> => {
+    const open = triggers.get(botId);
+    if (open !== undefined) return open;
+    const opened = TriggerStore.open(botId, triggerJournalPath(directory.botDir(botId)), {
+      onChange: () => refreshTriggers(botId),
+      onDropped: (count) => {
+        log.emit("warn", "core", StartupEvents.originReplayDegrade, {
+          trace: "tr_trigger_load_0001",
+          botId,
+          failure: newFailure("internal", "core"),
+          detail: { count },
+        });
+      },
+    });
+    triggers.set(botId, opened);
+    opened.catch(() => triggers.delete(botId));
+    return opened;
+  };
+  // One queue per trigger, keyed by bot and trigger: the delivery journal is its own file,
+  // so deleting a trigger cannot touch another one's undelivered work.
+  const queues = new Map<string, Promise<TriggerQueue>>();
+  const queueFor = (botId: string, triggerId: string): Promise<TriggerQueue> => {
+    const key = `${botId}/${triggerId}`;
+    const open = queues.get(key);
+    if (open !== undefined) return open;
+    const opened = TriggerQueue.open({
+      triggerId,
+      journal: fileJournal(join(directory.botDir(botId), "triggers", `${triggerId}.jsonl`)),
+    });
+    queues.set(key, opened);
+    opened.catch(() => queues.delete(key));
+    return opened;
+  };
+  /** What the sidebar sees: definitions, counters, and the queue's next due instant. */
+  const summarize = async (botId: string): Promise<readonly TriggerSummary[]> => {
+    const store = await triggerStoreFor(botId);
+    return Promise.all(
+      store.list().map(async (trigger) => {
+        const queue = await queueFor(botId, trigger.id);
+        const cursor = trigger.schedule === undefined ? undefined : queue.cursor();
+        return {
+          id: trigger.id,
+          kind: trigger.kind,
+          name: trigger.name,
+          enabled: trigger.enabled,
+          counters: trigger.counters,
+          ...(trigger.schedule === undefined
+            ? {}
+            : {
+                schedule: {
+                  cron: trigger.schedule.cron,
+                  timezone: trigger.schedule.timezone,
+                  ...(cursor === undefined ? {} : { nextDueAt: cursor }),
+                },
+              }),
+          ...(trigger.lastFiredAt === undefined ? {} : { lastFiredAt: trigger.lastFiredAt }),
+          ...(trigger.lastSkipped === undefined ? {} : { lastSkipped: trigger.lastSkipped }),
+        };
+      }),
+    );
+  };
+  /** Detail for the app: the list plus what only the store knows, never a credential. */
+  const triggerDetails = async (botId: string): Promise<Record<string, unknown>[]> => {
+    const store = await triggerStoreFor(botId);
+    const summaries = await summarize(botId);
+    const entries: Record<string, unknown>[] = [];
+    for (const summary of summaries) {
+      const definition = store.get(summary.id);
+      const endpoint =
+        summary.kind === "webhook" ? `/v1/triggers/${botId}/${summary.id}` : undefined;
+      let token: string | undefined;
+      if (endpoint !== undefined) {
+        token = await (await secretsFor(botId)).tokenFor(summary.id);
+        triggerTokens.add(token);
+      }
+      entries.push({
+        ...summary,
+        prompt: definition?.prompt ?? "",
+        ...(endpoint === undefined ? {} : { endpoint }),
+        ...(token === undefined ? {} : { token }),
+      });
+    }
+    return entries;
+  };
   const runtime = new PiDurableRuntime({
     ...(canonical.deviceSocket === undefined ? {} : { deviceSocket: canonical.deviceSocket }),
     models: () => models,
@@ -179,6 +299,11 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     compaction,
     usage: usageStore,
     search: () => providers.client,
+    trigger: async (spec) =>
+      triggerHost(spec.id, await triggerStoreFor(spec.id), async (triggerId) => {
+        const queue = queues.get(`${spec.id}/${triggerId}`);
+        return queue === undefined ? undefined : (await queue).cursor();
+      }),
   });
   const defaultModel =
     gateway === undefined
@@ -205,6 +330,29 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     settlingOf: (botId) => registry.settling(botId),
     measure: measureEvent,
     log,
+    // A caller without a connection still needs the bot open while it admits, and the bot
+    // must be able to idle-close afterwards (TRIGGERS.md §3.3).
+    lease: {
+      acquire: (botId) => registry.touch(botId),
+      release: (botId) => registry.release(botId),
+    },
+    triggersOf: { list: summarize },
+    // Every admission is labelled, so an unlabelled message means "unknown", never
+    // "human" (TRIGGERS.md §6.2). One file per bot, under its own directory.
+    origins: {
+      store: async (botId) => {
+        const store = await OriginStore.open(originPath(directory.botDir(botId)));
+        if (store.dropped > 0) {
+          log.emit("warn", "core", StartupEvents.originReplayDegrade, {
+            trace: "tr_origin_load_0001",
+            botId,
+            failure: newFailure("internal", "core"),
+            detail: { count: store.dropped },
+          });
+        }
+        return store;
+      },
+    },
     onRunning: (botId, running) => {
       if (registry.markRunning(botId, running)) broadcast?.();
     },
@@ -225,6 +373,70 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       broadcast?.();
     },
   });
+
+  // Producers: one pump per bot and one schedule ticker, stopped before admissions drain.
+  let triggerTraces = 0;
+  const producers = new TriggerProducers({
+    bots: () => registry.summaries().map((summary) => summary.id),
+    storeFor: triggerStoreFor,
+    queueFor,
+    port: service,
+    now: () => new Date(),
+    newTrace: () => {
+      triggerTraces += 1;
+      return `tr_trigger_${Date.now().toString(36)}_${triggerTraces.toString(36)}`;
+    },
+  });
+  producers.start();
+  // A webhook trigger that existed before this process must be deliverable immediately:
+  // its token is minted at boot, not on the first time somebody opens the row.
+  for (const summary of registry.summaries()) {
+    void ensureWebhookTokens(summary.id).catch(() => undefined);
+  }
+  refreshTriggers = (botId: string) => {
+    void ensureWebhookTokens(botId).catch(() => undefined);
+    void summarize(botId)
+      .then((list) =>
+        service.publishTriggers(botId, list, `tr_trigger_refresh_${Date.now().toString(36)}`),
+      )
+      .catch(() => undefined);
+  };
+  // One inbound delivery: authenticate, dedupe, enqueue; the pump decides when it runs.
+  const ingress: TriggerIngress = createIngress({
+    storeFor: triggerStoreFor,
+    secretsFor,
+    queueFor,
+    drain: (botId) => void producers.pumpFor(botId).drain(),
+    now: () => new Date(),
+    count: (botId, triggerId, delta) => {
+      void triggerStoreFor(botId)
+        .then((store) => {
+          const current = store.get(triggerId);
+          if (current === undefined) return undefined;
+          return store.patch({
+            triggerId,
+            patch: {
+              counters: {
+                fired: current.counters.fired + (delta.fired ?? 0),
+                dropped: current.counters.dropped + (delta.dropped ?? 0),
+                refused: current.counters.refused + (delta.refused ?? 0),
+              },
+            },
+          });
+        })
+        .catch(() => undefined);
+    },
+  });
+  const triggerApi = {
+    list: triggerDetails,
+    setEnabled: async (botId: string, triggerId: string, enabled: boolean, trace: string) => {
+      const store = await triggerStoreFor(botId);
+      if (store.get(triggerId) === undefined) return undefined;
+      await store.enable({ opId: `ui_${trace}`, triggerId, enabled });
+      const details = await triggerDetails(botId);
+      return details.find((entry) => entry.id === triggerId);
+    },
+  };
   const capabilities = {
     agent: true,
     tools: true,
@@ -232,6 +444,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     entries: false,
     usage: true,
     peers: false,
+    triggers: true,
   };
   let modelCache: { at: number; ids: readonly string[] } | undefined;
   const settings: GatewayApi = {
@@ -318,6 +531,8 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     registry,
     service,
     settings,
+    triggers: triggerApi,
+    ingress,
     version: packageVersion(),
     instance: `i_${process.pid}`,
     capabilities,
@@ -352,7 +567,11 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       timer.unref?.();
     });
     const stopped = (async () => {
+      // Producers stop first, then admissions already in flight settle, and only then may
+      // the registry close handles under them (TRIGGERS.md §3.6).
+      producers.stop();
       await daemon.close();
+      await service.drain();
       await registry.shutdown();
       await sink.close();
       await lock.close();

@@ -192,6 +192,18 @@ public enum InspectorSections {
     )
   )
 
+  public static let triggersSection = InspectorSectionModel(
+    id: "triggers",
+    title: "触发器",
+    symbolName: "bolt.badge.clock",
+    rows: .usage([]),
+    placeholder: InspectorPlaceholder(
+      symbolName: "bolt.slash",
+      title: "没有选中触发器",
+      detail: "侧栏里点开一个触发器，它的计划与计数会出现在这里。"
+    )
+  )
+
   public static let usageSection = InspectorSectionModel(
     id: "usage",
     title: "用量",
@@ -235,12 +247,14 @@ public enum InspectorSections {
     jobs: [InspectorJob],
     tasks: [InspectorTaskRow],
     usage: [InspectorUsageRow],
-    choices: [InspectorChoiceRow] = []
+    choices: [InspectorChoiceRow] = [],
+    triggers: [InspectorUsageRow] = []
   ) -> [InspectorSectionModel] {
     [
       modelSection.with(.choices(choices)),
       artifactsSection.with(.artifacts(artifacts)),
       jobsSection.with(.jobs(jobs)),
+      triggersSection.with(.usage(triggers)),
       tasksSection.with(.tasks(tasks)),
       usageSection.with(.usage(usage)),
     ]

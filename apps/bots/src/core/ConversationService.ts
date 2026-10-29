@@ -11,13 +11,24 @@ import type {
   Failure,
   Message,
   Submission,
+  TriggerSummary,
   Usage,
 } from "./domain.ts";
 import { ClassifiedFailure } from "./domain.ts";
 import { EventHub, type HubSubscriber, type HubSubscription } from "./EventHub.ts";
 import { newFailure } from "./failures.ts";
+import {
+  INVOCATION_ID,
+  type Invocation,
+  type InvocationPort,
+  MAX_INVOCATION_TEXT,
+} from "./Invocation.ts";
+import type { OriginStore } from "./OriginStore.ts";
 import type { RuntimeEvent, RuntimeHandle, RuntimeHistory, SubmitInput } from "./RuntimePort.ts";
 import { reduceView, type SubmissionRanks, seedRanks, trimWindow } from "./view.ts";
+
+/** The closed origin set of the invocation port; `unknown` is a reconstruction only. */
+const ORIGIN_KINDS = new Set(["human", "schedule", "webhook", "peer", "unknown"]);
 
 const Events = {
   subscribeStart: declareEvent("core.subscribe.start"),
@@ -74,6 +85,28 @@ export type ConversationServiceOptions = {
   readonly onRecovered?: (botId: string, running: boolean) => void;
   /** A conversation reported its cumulative spend, for the usage statistics. */
   readonly onUsage?: (botId: string, usage: Usage) => void;
+  /**
+   * The registry's lease, so an invocation without a connection keeps a bot open and still
+   * lets it idle-close. `acquire` answers false for an unknown, deleting or quarantined bot.
+   */
+  readonly lease?: {
+    readonly acquire: (botId: string) => boolean;
+    readonly release: (botId: string) => void;
+  };
+  /**
+   * The bot's triggers, read when its view opens (docs/bots/TRIGGERS.md §8). Absent means
+   * the daemon has no trigger storage; every existing path still works.
+   */
+  readonly triggersOf?: {
+    readonly list: (botId: string) => Promise<readonly TriggerSummary[]>;
+  };
+  /**
+   * The per-bot origin record (docs/bots/TRIGGERS.md §6). Absent means the daemon does not
+   * label admissions, which is the phase-1 behavior; every caller still works.
+   */
+  readonly origins?: {
+    readonly store: (botId: string) => Promise<OriginStore | undefined>;
+  };
 };
 
 /** Only `not_admitted` lets a client drop its outbox entry (docs/bots/PROTOCOL.md). */
@@ -108,6 +141,8 @@ type Bot = {
   detach: (() => void) | undefined;
   /** Publishes what the runtime delivered while the first subscription was rendering. */
   readonly release: () => void;
+  /** Where this bot's admission origins are read and written, when the daemon records them. */
+  origins: OriginStore | undefined;
 };
 
 type Connection = {
@@ -119,7 +154,7 @@ type Connection = {
 
 type FailEvent = typeof Events.subscribeFail | typeof Events.submitFail | typeof Events.historyFail;
 
-export class ConversationService {
+export class ConversationService implements InvocationPort {
   readonly #open: OpenBot;
   readonly #handleOf: ((botId: string) => RuntimeHandle | undefined) | undefined;
   readonly #settlingOf: ((botId: string) => boolean) | undefined;
@@ -137,6 +172,17 @@ export class ConversationService {
     | undefined;
   readonly #onRecovered: ((botId: string, running: boolean) => void) | undefined;
   readonly #onUsage: ((botId: string, usage: Usage) => void) | undefined;
+  readonly #lease: ConversationServiceOptions["lease"];
+  readonly #origins: ConversationServiceOptions["origins"];
+  readonly #triggersOf: ConversationServiceOptions["triggersOf"];
+  /** Resolved views by bot id, so `observe` can answer synchronously without opening. */
+  readonly #current = new Map<string, Bot>();
+  /** Invocation observers, keyed by bot id and bound to the value, not to one Bot object. */
+  readonly #observers = new Map<string, Set<(running: boolean) => void>>();
+  /** Admissions in flight across every bot: `drain` waits for them before shutdown. */
+  #admitting = 0;
+  #draining = false;
+  readonly #idle: (() => void)[] = [];
   /** Per-bot admission serialization: check-then-submit is one serial section. */
   readonly #admissions = new Map<string, Promise<unknown>>();
   /** Per-bot view serialization: subscribe and recover never rebuild one view twice. */
@@ -161,6 +207,9 @@ export class ConversationService {
     this.#onSessionFailed = options.onSessionFailed;
     this.#onRecovered = options.onRecovered;
     this.#onUsage = options.onUsage;
+    this.#lease = options.lease;
+    this.#origins = options.origins;
+    this.#triggersOf = options.triggersOf;
     this.#hubOptions = {
       measure: options.measure,
       ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
@@ -241,10 +290,12 @@ export class ConversationService {
     connection.bot = bot;
     connection.state = "live";
     bot.hub.publishSnapshot(snapshot, trace);
+    // Deliver inside this call: a commit published from the baseline callback is part of
+    // the same subscription, and a caller that awaits `subscribe` has seen everything.
+    bot.hub.drain();
     // A bot whose baseline is already running is running, not idle. The catalog event
     // follows the baseline, so the first frame a client sees is still the snapshot.
-    this.#onRunning?.(snapshot.botId, snapshot.running);
-    bot.release();
+    this.#emitRunning(snapshot.botId, snapshot.running);
     if (baseline === undefined) {
       throw this.#cancelled(Events.subscribeFail, trace, botId, connectionId);
     }
@@ -273,26 +324,210 @@ export class ConversationService {
    * revision, and settlements reach everyone through the hub instead.
    */
   async send(connectionId: string, input: SubmitInput): Promise<Submission> {
-    const owner = this.#connectionBot(connectionId);
+    // The connection owns the subscription, so it names the bot: the view's own id is the
+    // runtime's answer, not the identity a command must address.
+    let botId: string;
+    try {
+      this.#botOf(connectionId, input.requestId);
+      botId = this.#connectionBot(connectionId) as string;
+    } catch (error) {
+      this.#record(
+        Events.submitFail,
+        input.trace,
+        this.#connectionBot(connectionId),
+        connectionId,
+        error,
+        input.requestId,
+      );
+      throw error;
+    }
+    return this.#admitAndLog({ ...input, botId, origin: { kind: "human" } }, connectionId);
+  }
+
+  /**
+   * Admit work on behalf of a caller with no connection (docs/bots/TRIGGERS.md §3). The
+   * port is idempotent by `(botId, requestId)`, opens a cold bot, and never waits for an
+   * answer; queueing, batching and timing stay with the caller.
+   */
+  async invoke(input: Invocation): Promise<Submission> {
+    return this.#admitAndLog(input, undefined);
+  }
+
+  /** Durable by `requestId` once the runtime adapter reads its own storage (§3.2). */
+  async submission(query: {
+    readonly botId: string;
+    readonly requestId: string;
+  }): Promise<Submission | undefined> {
+    const bot = await this.#bot(query.botId, query.requestId);
+    return bot.handle?.submission({ requestId: query.requestId });
+  }
+
+  /**
+   * The bot's run state for a caller with no connection. Attach reports the current value
+   * and then every transition, so a caller waits on an edge instead of polling; an
+   * unopened bot reports `false` and is not opened by observing it.
+   */
+  observe(botId: string, sink: (running: boolean) => void): { detach(): void } {
+    const observers = this.#observers.get(botId) ?? new Set<(running: boolean) => void>();
+    this.#observers.set(botId, observers);
+    observers.add(sink);
+    sink(this.#current.get(botId)?.snapshot.running ?? false);
+    return {
+      detach: () => {
+        observers.delete(sink);
+        if (observers.size === 0 && this.#observers.get(botId) === observers) {
+          this.#observers.delete(botId);
+        }
+      },
+    };
+  }
+
+  /**
+   * Stops accepting admissions and waits for the ones already in flight, so shutdown can
+   * close bots without racing a submit (docs/bots/TRIGGERS.md §3.6).
+   */
+  async drain(): Promise<void> {
+    this.#draining = true;
+    if (this.#admitting === 0) return;
+    await new Promise<void>((resolve) => this.#idle.push(resolve));
+  }
+
+  /** One admission path for a connection and for a port caller; logging keeps the connId. */
+  async #admitAndLog(input: Invocation, connId: string | undefined): Promise<Submission> {
+    const botId = input.botId;
+    const withConn = connId === undefined ? {} : { connId };
     this.#log?.emit("info", "core", Events.submitStart, {
       trace: input.trace,
-      ...(owner === undefined ? {} : { botId: owner }),
-      connId: connectionId,
+      botId,
+      ...withConn,
       reqId: input.requestId,
     });
+    let leased = false;
+    this.#admitting += 1;
     try {
-      const record = await this.#admit(connectionId, input);
+      this.#assertInvocation(input);
+      if (this.#lease !== undefined) {
+        if (!this.#lease.acquire(botId)) {
+          throw new CommandError(
+            this.#mint("unknown_bot"),
+            "not_admitted",
+            "the bot cannot be admitted right now",
+            input.requestId,
+          );
+        }
+        leased = true;
+      }
+      // Write-ahead: the label must exist before the entry does, or a restart would leave
+      // a message whose cause is unknown forever (TRIGGERS.md §6.2).
+      await this.#recordOrigin(botId, input);
+      const record = await this.#admit(botId, {
+        requestId: input.requestId,
+        text: input.text,
+        whenBusy: input.whenBusy ?? "followUp",
+        trace: input.trace,
+      });
       this.#log?.emit("info", "core", Events.submitOk, {
         trace: input.trace,
-        ...(owner === undefined ? {} : { botId: owner }),
-        connId: connectionId,
+        botId,
+        ...withConn,
         reqId: input.requestId,
         detail: { queued: record.status === "queued", count: 1 },
       });
       return record;
     } catch (error) {
-      this.#record(Events.submitFail, input.trace, owner, connectionId, error, input.requestId);
+      this.#record(Events.submitFail, input.trace, botId, connId, error, input.requestId);
       throw error;
+    } finally {
+      if (leased) this.#lease?.release(botId);
+      this.#admitting -= 1;
+      if (this.#admitting === 0) for (const resolve of this.#idle.splice(0)) resolve();
+    }
+  }
+
+  /**
+   * Replaces the bot's trigger list and tells its subscribers. Called by whoever owns the
+   * store after a mutation, so a sidebar follows a model's own edit (TRIGGERS.md §8.3).
+   */
+  publishTriggers(botId: string, triggers: readonly TriggerSummary[], trace: string): void {
+    const bot = this.#current.get(botId);
+    if (bot === undefined) return;
+    bot.snapshot = { ...bot.snapshot, triggers };
+    bot.hub.publish({ type: "triggers", trace, triggers });
+  }
+
+  /** A broken sidecar must not make a bot unusable: its labels fall back to `unknown`. */
+  async #openOrigins(botId: string, trace: string): Promise<OriginStore | undefined> {
+    void trace;
+    if (this.#origins === undefined) return undefined;
+    return this.#origins.store(botId).catch(() => undefined);
+  }
+
+  /** The bot's origin record, loaded once per bot and cached on its view. */
+  async #originsFor(botId: string): Promise<OriginStore | undefined> {
+    if (this.#origins === undefined) return undefined;
+    const bot = await this.#bot(botId, "tr_origin_load_0001");
+    return bot.origins;
+  }
+
+  /** A failed origin write refuses the admission: an unlabeled entry is worse than none. */
+  async #recordOrigin(botId: string, input: Invocation): Promise<void> {
+    if (this.#origins === undefined) return;
+    const store = await this.#originsFor(botId);
+    if (store === undefined) return;
+    try {
+      await store.record({ requestId: input.requestId, origin: input.origin });
+    } catch (cause) {
+      throw new CommandError(
+        this.#mint("storage_failed"),
+        "runtime",
+        "the admission origin could not be recorded",
+        input.requestId,
+        { cause },
+      );
+    }
+  }
+
+  /** Attaches the recorded origin, by entry id and then by request id (TRIGGERS.md §6.2). */
+  #withOrigin(message: Message, store: OriginStore | undefined): Message {
+    if (store === undefined || message.role !== "user") return message;
+    const origin = store.originOf(message);
+    return origin === undefined ? message : { ...message, origin };
+  }
+
+  #withOrigins(view: ConversationSnapshot, store: OriginStore | undefined): ConversationSnapshot {
+    if (store === undefined) return view;
+    let changed = false;
+    const messages = view.messages.map((message) => {
+      const next = this.#withOrigin(message, store);
+      if (next !== message) changed = true;
+      return next;
+    });
+    return changed ? { ...view, messages } : view;
+  }
+
+  /** Refuses what can never be admitted before any runtime call: the key alphabet and the
+   * send budget mirror the wire contract, and a non-human caller may not interrupt a run.
+   */
+  #assertInvocation(input: Invocation): void {
+    if (this.#draining) {
+      throw new CommandError(
+        this.#mint("internal"),
+        "not_admitted",
+        "the daemon is shutting down",
+        input.requestId,
+      );
+    }
+    if (!INVOCATION_ID.test(input.requestId)) {
+      throw this.#refuse("the request id is malformed", input.requestId);
+    }
+    if (Array.from(input.text).length > MAX_INVOCATION_TEXT) {
+      throw this.#refuse(`text exceeds ${MAX_INVOCATION_TEXT} characters`, input.requestId);
+    }
+    if (!ORIGIN_KINDS.has(input.origin?.kind as string)) {
+      throw this.#refuse("the invocation origin is unknown", input.requestId);
+    }
+    if (input.whenBusy === "steer" && input.origin.kind !== "human") {
+      throw this.#refuse("only a person may steer a running answer", input.requestId);
     }
   }
 
@@ -356,7 +591,7 @@ export class ConversationService {
     // keep pointing at one view, and the hub keeps its subscribers.
     const attached = await this.#attach(handle, bot.hub, trace, bot);
     attached.release();
-    this.#onRunning?.(bot.snapshot.botId, bot.snapshot.running);
+    this.#emitRunning(bot.snapshot.botId, bot.snapshot.running);
     return bot.snapshot;
   }
 
@@ -379,8 +614,9 @@ export class ConversationService {
       const kept: Message[] = [];
       let bytes = 0;
       for (let index = page.messages.length - 1; index >= 0; index -= 1) {
-        const message = page.messages[index];
-        if (message === undefined) break;
+        const raw = page.messages[index];
+        if (raw === undefined) break;
+        const message = this.#withOrigin(raw, this.#current.get(botId)?.origins);
         const size = this.#measureMessage(message);
         if (kept.length >= MAX_WINDOW_MESSAGES || bytes + size > MAX_PAGE_BYTES) break;
         kept.push(message);
@@ -430,10 +666,13 @@ export class ConversationService {
    * admission. A reservation is held until that submission's own event arrives, because
    * the view only learns about the work after the runtime commits it.
    */
-  async #admit(connectionId: string, input: SubmitInput): Promise<Submission> {
-    const bot = this.#botOf(connectionId, input.requestId);
-    return this.#serialize(bot.snapshot.botId, async () => {
-      const handle = this.#handle(connectionId, input.requestId);
+  async #admit(botId: string, input: SubmitInput): Promise<Submission> {
+    // A port caller may be the first thing to touch this bot: open (and recover) it here,
+    // outside the serial section, so an unavailable bot still answers with its view.
+    await this.#bot(botId, input.requestId);
+    return this.#serialize(botId, async () => {
+      const bot = await this.#bot(botId, input.requestId);
+      const handle = this.#handleOfBot(bot, input.requestId);
       let stored: Submission | undefined;
       try {
         stored = await handle.submission({ requestId: input.requestId });
@@ -495,7 +734,7 @@ export class ConversationService {
       try {
         // The bot can become unavailable while the record lookup awaited: the handle this
         // section captured may be dead by now, so availability is re-checked here.
-        const live = this.#botOf(connectionId, input.requestId);
+        const live = await this.#bot(botId, input.requestId);
         if (live.degraded !== undefined || live.handle !== handle) {
           bot.reserved.delete(input.requestId);
           throw new CommandError(
@@ -583,7 +822,7 @@ export class ConversationService {
     evt: FailEvent,
     trace: string,
     botId: string | undefined,
-    connectionId: string,
+    connectionId: string | undefined,
     error: unknown,
     requestId?: string,
   ): void {
@@ -593,11 +832,17 @@ export class ConversationService {
     this.#log?.emit(own ? "error" : "warn", "core", evt, {
       trace,
       ...(botId === undefined ? {} : { botId }),
-      connId: connectionId,
+      ...(connectionId === undefined ? {} : { connId: connectionId }),
       ...(requestId === undefined ? {} : { reqId: requestId }),
       failure,
       ...(own ? { origin: true as const } : { propagated: true }),
     });
+  }
+
+  /** One place publishes a run-state change: the catalog and every invocation observer. */
+  #emitRunning(botId: string, running: boolean): void {
+    this.#onRunning?.(botId, running);
+    for (const sink of [...(this.#observers.get(botId) ?? [])]) sink(running);
   }
 
   /** A failure this service owns: minted once, recorded once, carried unchanged. */
@@ -660,7 +905,10 @@ export class ConversationService {
 
   /** A live bot that can actually run; an unavailable one refuses the command. */
   #handle(connectionId: string, requestId?: string): RuntimeHandle {
-    const bot = this.#botOf(connectionId, requestId);
+    return this.#handleOfBot(this.#botOf(connectionId, requestId), requestId);
+  }
+
+  #handleOfBot(bot: Bot, requestId?: string): RuntimeHandle {
     if (bot.degraded !== undefined || bot.handle === undefined) {
       throw new CommandError(
         this.#mint(bot.degraded?.reason ?? "storage_failed"),
@@ -689,6 +937,20 @@ export class ConversationService {
   }
 
   async #bot(botId: string, trace: string): Promise<Bot> {
+    try {
+      const bot = await this.#resolveBot(botId, trace);
+      this.#current.set(botId, bot);
+      return bot;
+    } catch (error) {
+      // A bot that is gone must not keep answering `observe` from a stale view.
+      if (error instanceof ClassifiedFailure && error.failure.kind === "unknown_bot") {
+        this.#current.delete(botId);
+      }
+      throw error;
+    }
+  }
+
+  async #resolveBot(botId: string, trace: string): Promise<Bot> {
     const cached = this.#bots.get(botId);
     if (cached !== undefined) {
       const bot = await cached.catch(() => undefined);
@@ -711,6 +973,7 @@ export class ConversationService {
         }
       }
       this.#bots.delete(botId);
+      this.#current.delete(botId);
     }
     return this.#openBotCached(botId, trace);
   }
@@ -746,7 +1009,16 @@ export class ConversationService {
     });
     try {
       const handle = await this.#open(botId, trace);
-      return await this.#attach(handle, hub, trace);
+      const bot = await this.#attach(handle, hub, trace);
+      const triggers = await this.#triggersOf?.list(botId).catch(() => undefined);
+      if (triggers !== undefined) bot.snapshot = { ...bot.snapshot, triggers };
+      bot.origins = await this.#openOrigins(botId, trace);
+      if (bot.origins !== undefined) bot.snapshot = this.#withOrigins(bot.snapshot, bot.origins);
+      // The view is live whether or not a client ever subscribes: a port caller must see
+      // commits, and `subscribe` re-reads the snapshot synchronously before publishing its
+      // baseline, so nothing can be lost between the two.
+      bot.release();
+      return bot;
     } catch (error) {
       // A bot that cannot open is `unavailable`, not a failed connection: the client
       // renders the reason and can `recover` it.
@@ -772,6 +1044,7 @@ export class ConversationService {
         reserved: new Map<string, number>(),
         detach: undefined,
         release: () => undefined,
+        origins: undefined,
       };
     }
   }
@@ -780,10 +1053,27 @@ export class ConversationService {
     const buffered: RuntimeEvent[] = [];
     let ready = false;
     let bot: Bot;
-    const apply = (event: RuntimeEvent): void => {
+    const enrich = (event: RuntimeEvent): RuntimeEvent => {
+      const store = bot.origins;
+      if (store === undefined) return event;
+      if (event.type === "append")
+        return { ...event, message: this.#withOrigin(event.message, store) };
+      if (event.type === "snapshot")
+        return { ...event, value: this.#withOrigins(event.value, store) };
+      return event;
+    };
+    const apply = (incoming: RuntimeEvent): void => {
+      const event = enrich(incoming);
       const wasRunning = bot.snapshot.running;
       if (event.type === "usage") this.#onUsage?.(bot.snapshot.botId, event.usage);
-      if (event.type === "submission") bot.reserved.delete(event.record.requestId);
+      if (event.type === "submission") {
+        bot.reserved.delete(event.record.requestId);
+        // The entry id is durable now, so the label becomes reachable after a restart.
+        const { requestId, entryId } = event.record;
+        if (entryId !== undefined && bot.origins !== undefined) {
+          void bot.origins.backfill({ requestId, entryId }).catch(() => undefined);
+        }
+      }
       let next = reduceView(bot.snapshot, event, bot.ranks);
       if (
         event.type === "error" &&
@@ -812,7 +1102,7 @@ export class ConversationService {
       }
       next = this.#fitPage(next);
       bot.snapshot = next;
-      if (next.running !== wasRunning) this.#onRunning?.(next.botId, next.running);
+      if (next.running !== wasRunning) this.#emitRunning(next.botId, next.running);
       // A snapshot from the runtime may carry a stale pending list; broadcast the one the
       // bot actually holds so a client never adopts a downgraded submission.
       hub.publish(

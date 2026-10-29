@@ -40,6 +40,7 @@ import type { Log } from "../../log/log.ts";
 import { createHerdrClient } from "../../tools/herdr/client.ts";
 import { createToolRegistry, selectToolExtensions } from "../../tools/registry.ts";
 import type { SearchClient } from "../../tools/search/client.ts";
+import type { TriggerToolHost } from "../../tools/types.ts";
 import type { UsageMeter } from "../../tools/usage.ts";
 import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
@@ -144,6 +145,8 @@ export type PiRuntimeOptions = {
   readonly workspaceRoot?: (spec: RuntimeBotSpec) => string;
   /** The web-search client for a bot, absent when no provider key is configured. */
   readonly search?: (spec: RuntimeBotSpec) => SearchClient | undefined;
+  /** The trigger tools' host for a bot, bound to that bot's own definitions. */
+  readonly trigger?: (spec: RuntimeBotSpec) => Promise<TriggerToolHost | undefined>;
   /** Where a tool that costs something books it (docs/bots/PROTOCOL.md, "Usage statistics"). */
   readonly usage?: UsageMeter;
 };
@@ -173,6 +176,7 @@ export class PiDurableRuntime implements RuntimePort {
       );
       const groups = resolveToolGroups(spec.toolGroups);
       const search = this.#options.search?.(spec);
+      const trigger = await this.#options.trigger?.(spec);
       const registry = createToolRegistry(workspace, {
         ...(this.#options.deviceSocket === undefined
           ? {}
@@ -189,6 +193,7 @@ export class PiDurableRuntime implements RuntimePort {
                 ...(this.#options.usage === undefined ? {} : { meter: this.#options.usage }),
               },
             }),
+        ...(trigger === undefined ? {} : { trigger }),
       });
       const installed = selectToolExtensions(registry, groups);
       const harness = await HarnessFactory.open(
@@ -465,6 +470,10 @@ class PiRuntimeHandle implements RuntimeHandle {
   /**
    * Resolves by either id. A settled input is gone from the live inspection list, so the
    * ledger carries `requestId → submissionId` and pi reacquires the record by id (F12).
+   * The ledger is memory-only, so a record admitted by a previous process needs the
+   * durable index: `inspect()` lists queued and placed work only
+   * (harness/types.d.ts:656), and without this lookup a restart would hide an already
+   * settled key from duplicate detection (TRIGGERS.md §3.2).
    */
   async submission(
     key: { submissionId: string } | { requestId: string },
@@ -479,8 +488,35 @@ class PiRuntimeHandle implements RuntimeHandle {
     }
     if ("submissionId" in key) return undefined;
     const inspection = await this.#harness.inspect(BACKGROUND_CONTEXT);
-    const record = inspection.submissions.find((item) => item.requestId === key.requestId);
-    return record === undefined ? undefined : convertSubmission(record);
+    const live = inspection.submissions.find((item) => item.requestId === key.requestId);
+    if (live !== undefined) return convertSubmission(live);
+    const stored = await this.#durableSubmission(key.requestId);
+    if (stored === undefined) return undefined;
+    // Remember it, so a duplicate answers from memory from now on.
+    this.#submissionIds.set(key.requestId, String(stored.id));
+    this.#requestIds.set(String(stored.id), key.requestId);
+    return convertSubmission(stored);
+  }
+
+  /** The durable index of a settled admission, for a key this process never admitted. */
+  async #durableSubmission(requestId: string) {
+    try {
+      const root = await this.#harness.root(BACKGROUND_CONTEXT);
+      return await root.commit(
+        (tx) => tx.submissionByRequest(this.#rootId, requestId),
+        BACKGROUND_CONTEXT,
+      );
+    } catch (cause) {
+      if (cause instanceof ClassifiedFailure) throw cause;
+      const minted = this.#classifier.classify("submission", "internal", "runtime");
+      this.#logFailure(minted, this.#spec.trace, Events.classify, "runtime");
+      throw new ClassifiedFailure(
+        minted.classification.failure,
+        "unknown",
+        minted.classification.message,
+        { cause },
+      );
+    }
   }
 
   /** Older messages, oldest first; the newest window is not re-fetched. */
@@ -929,6 +965,7 @@ class PiRuntimeHandle implements RuntimeHandle {
   async #consume(state: Subscription, batch: readonly AgentEvent[], trace: string): Promise<void> {
     // A user entry is published before the record that names its send, so attribute the
     // whole batch first and then map it.
+    this.#mapper.prime(batch);
     const byEntry = new Map<string, string>();
     for (const event of batch) {
       if (event.type !== "submission") continue;

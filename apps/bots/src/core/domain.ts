@@ -59,6 +59,18 @@ export type ToolResultBlock = {
 export type ContentBlock = TextBlock | ThinkingBlock | ToolCallBlock | ToolResultBlock;
 
 export type MessageRole = "user" | "assistant" | "notice" | "tool" | "system";
+
+/**
+ * Who admitted the input that produced a user message (docs/bots/TRIGGERS.md §6). Absent
+ * means the daemon has no record — an older message, or one it never admitted — and the
+ * wire reports that as `unknown`, never as `human`.
+ */
+export type MessageOrigin =
+  | { readonly kind: "human"; readonly label?: string }
+  | { readonly kind: "schedule"; readonly triggerId?: string; readonly label?: string }
+  | { readonly kind: "webhook"; readonly triggerId?: string; readonly label?: string }
+  | { readonly kind: "peer"; readonly fromBotId?: string; readonly label?: string }
+  | { readonly kind: "unknown"; readonly label?: string };
 export type MessageState = "streaming" | "complete" | "aborted" | "error";
 
 export type Message = {
@@ -69,6 +81,8 @@ export type Message = {
   readonly blocks: readonly ContentBlock[];
   /** User messages only: ties the committed entry to the `send` that caused it. */
   readonly requestId?: string;
+  /** User messages only: who admitted this input, when the daemon recorded it. */
+  readonly origin?: MessageOrigin;
   readonly stopReason?: StopReason;
 };
 
@@ -89,6 +103,22 @@ export type Submission = {
   readonly answerEntryId?: string;
   /** Only on `unanswered`: `model_error`, `aborted`, `run_failed`, `stale`, `withdrawn`, … */
   readonly reason?: string;
+};
+
+/** What a client renders about one trigger; the prompt and the endpoint come over HTTP. */
+export type TriggerSummary = {
+  readonly id: string;
+  readonly kind: "schedule" | "webhook";
+  readonly name: string;
+  readonly enabled: boolean;
+  readonly schedule?: {
+    readonly cron: string;
+    readonly timezone: string;
+    readonly nextDueAt?: string;
+  };
+  readonly counters: { readonly fired: number; readonly dropped: number; readonly refused: number };
+  readonly lastFiredAt?: string;
+  readonly lastSkipped?: { readonly at: string; readonly reason: string };
 };
 
 export type Usage = {
@@ -196,6 +226,8 @@ export type ConversationSnapshot = {
   readonly parked?: boolean;
   /** Live work of every conversation this bot owns, for the inspector. */
   readonly tasks?: readonly TaskSummary[];
+  /** The bot's own triggers, newest page of the sidebar's trigger section (TRIGGERS.md §8). */
+  readonly triggers?: readonly TriggerSummary[];
   readonly pending: readonly Submission[];
   readonly inbox: readonly InboxItem[];
   readonly running: boolean;
@@ -223,6 +255,7 @@ export type Capabilities = {
   readonly entries: boolean;
   readonly usage: boolean;
   readonly peers: boolean;
+  readonly triggers: boolean;
 };
 
 export const ALL_CAPABILITIES_OFF: Capabilities = {
@@ -232,6 +265,7 @@ export const ALL_CAPABILITIES_OFF: Capabilities = {
   entries: false,
   usage: true,
   peers: false,
+  triggers: false,
 };
 
 /** Every domain failure crosses layers with one identity minted by its classifier. */
@@ -285,14 +319,20 @@ export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 export const isThinkingLevel = (value: unknown): value is ThinkingLevel =>
   typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
 
-export const TOOL_GROUP_NAMES = ["core", "coding", "herdr", "agents", "search"] as const;
+export const TOOL_GROUP_NAMES = ["core", "coding", "herdr", "agents", "search", "trigger"] as const;
 
 export type ToolGroup = (typeof TOOL_GROUP_NAMES)[number];
 
 export const MANDATORY_TOOL_GROUPS: readonly ToolGroup[] = ["core", "coding"];
 
 /** New optional groups start unselected: a person turns them on in settings. */
-export const DEFAULT_TOOL_GROUPS: readonly ToolGroup[] = ["core", "coding", "herdr", "agents"];
+export const DEFAULT_TOOL_GROUPS: readonly ToolGroup[] = [
+  "core",
+  "coding",
+  "herdr",
+  "agents",
+  "trigger",
+];
 
 export const isToolGroup = (value: unknown): value is ToolGroup =>
   typeof value === "string" && (TOOL_GROUP_NAMES as readonly string[]).includes(value);

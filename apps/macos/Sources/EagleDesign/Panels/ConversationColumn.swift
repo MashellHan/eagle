@@ -6,7 +6,8 @@ public enum TranscriptEntry: Identifiable, Hashable, Sendable {
   case assistant(id: String, blocks: [AssistantTurn.Block])
   /// The assistant turn still receiving deltas: the bubble shows a caret.
   case streamingAssistant(id: String, blocks: [AssistantTurn.Block])
-  case user(id: String, text: String)
+  /// A person's turn; `origin` names a cause other than a person typing (TRIGGERS.md §6).
+  case user(id: String, text: String, origin: String? = nil)
   case note(id: String, text: String, tintIndices: [Int])
   case tool(id: String, row: ToolRow)
   /// Several calls from one turn, collapsed into a single line with a detail sheet.
@@ -15,7 +16,7 @@ public enum TranscriptEntry: Identifiable, Hashable, Sendable {
 
   public var id: String {
     switch self {
-    case .assistant(let id, _), .streamingAssistant(let id, _), .user(let id, _),
+    case .assistant(let id, _), .streamingAssistant(let id, _), .user(let id, _, _),
       .note(let id, _, _), .tool(let id, _), .toolRun(let id, _), .typing(let id):
       return id
     }
@@ -47,6 +48,8 @@ public struct ConversationColumn: View {
   private let title: String
   private let subtitle: String
   private let tintIndex: Int
+  /// The bot's own face, shared with its sidebar row and the inspector.
+  private let face: BotFace.Style?
   private let entries: [TranscriptEntry]
   private let showsToolCalls: Bool
   private let preparedMarkdown: [String: [RenderedMarkdownBlock]]
@@ -60,13 +63,16 @@ public struct ConversationColumn: View {
   private let onStop: () -> Void
   private let onInsert: (() -> Void)?
   private let onRecover: () -> Void
+  private let onRetryConnection: () -> Void
   private let onDismissError: () -> Void
   @State private var scroller = TranscriptScroller()
+  @State private var composerFocusRequest = 0
 
   public init(
     title: String,
     subtitle: String,
     tintIndex: Int,
+    face: BotFace.Style? = nil,
     entries: [TranscriptEntry],
     showsToolCalls: Bool = true,
     preparedMarkdown: [String: [RenderedMarkdownBlock]] = [:],
@@ -78,6 +84,7 @@ public struct ConversationColumn: View {
     onStop: @escaping () -> Void = {},
     onInsert: (() -> Void)? = nil,
     onRecover: @escaping () -> Void = {},
+    onRetryConnection: @escaping () -> Void = {},
     onDismissError: @escaping () -> Void = {},
     onShowSidebar: @escaping () -> Void = {},
     onToggleInspector: @escaping () -> Void = {}
@@ -85,6 +92,7 @@ public struct ConversationColumn: View {
     self.title = title
     self.subtitle = subtitle
     self.tintIndex = tintIndex
+    self.face = face
     self.entries = entries
     self.showsToolCalls = showsToolCalls
     self.preparedMarkdown = preparedMarkdown
@@ -96,6 +104,7 @@ public struct ConversationColumn: View {
     self.onStop = onStop
     self.onInsert = onInsert
     self.onRecover = onRecover
+    self.onRetryConnection = onRetryConnection
     self.onDismissError = onDismissError
     self.onShowSidebar = onShowSidebar
     self.onToggleInspector = onToggleInspector
@@ -120,7 +129,9 @@ public struct ConversationColumn: View {
         placeholder: "给 \(title) 发消息",
         text: $draft,
         onSend: onSend,
-        onInsert: onInsert
+        onInsert: onInsert,
+        autofocus: true,
+        focusRequest: composerFocusRequest
       )
       .fixedSize(horizontal: false, vertical: true)
       .padding(.horizontal, Theme.Metric.conversationInset)
@@ -136,9 +147,11 @@ public struct ConversationColumn: View {
         ParticipantBubble(
           name: title,
           tintIndex: tintIndex,
+          face: face,
           status: participantStatus,
           onStop: onStop,
           onRecover: onRecover,
+          onRetry: onRetryConnection,
           onDismissError: onDismissError,
           action: onToggleInspector
         )
@@ -170,36 +183,47 @@ public struct ConversationColumn: View {
 
   private var transcript: some View {
     ScrollViewReader { proxy in
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: Theme.Metric.turnGap) {
-          ForEach(entries.hidingToolCalls(!showsToolCalls)) { entry in
-            row(entry).id(entry.id)
+      GeometryReader { viewport in
+        ScrollView {
+          LazyVStack(alignment: .leading, spacing: Theme.Metric.turnGap) {
+            ForEach(entries.hidingToolCalls(!showsToolCalls)) { entry in
+              row(entry).id(entry.id)
+            }
+            Color.clear.frame(height: 1).id("bottom")
           }
-          Color.clear.frame(height: 1).id("bottom")
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, Theme.Metric.conversationInset)
+          // Clear of the top edge fade: the first row must not start under it.
+          .padding(.top, Theme.Metric.edgeFadeHeight + 10)
+          .padding(.bottom, 12)
+          .frame(minHeight: viewport.size.height, alignment: .top)
+          // The document's background catches only blank space, behind message controls.
+          .background {
+            Color.clear
+              .contentShape(Rectangle())
+              .onTapGesture { composerFocusRequest += 1 }
+              .accessibilityHidden(true)
+          }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Theme.Metric.conversationInset)
-        // Clear of the top edge fade: the first row must not start under it.
-        .padding(.top, Theme.Metric.edgeFadeHeight + 10)
-        .padding(.bottom, 12)
-      }
-      .scrollEdgeFades(
-        Theme.Palette.surface, top: Theme.Metric.edgeFadeHeight, bottom: Theme.Metric.edgeFadeHeight
-      )
-      .onScrollPhaseChange { _, phase in
-        scroller.setUserScrolling(
-          phase == .tracking || phase == .interacting || phase == .decelerating)
-        if phase == .idle, scroller.endUserScroll() {
-          proxy.scrollTo("bottom", anchor: .bottom)
-        }
-      }
-      .onScrollGeometryChange(for: TranscriptScrollMetrics.self) { geometry in
-        TranscriptScrollMetrics(
-          contentHeight: geometry.contentSize.height, visibleBottom: geometry.visibleRect.maxY
+        .scrollEdgeFades(
+          Theme.Palette.surface, top: Theme.Metric.edgeFadeHeight,
+          bottom: Theme.Metric.edgeFadeHeight
         )
-      } action: { _, metrics in
-        if scroller.update(metrics) {
-          proxy.scrollTo("bottom", anchor: .bottom)
+        .onScrollPhaseChange { _, phase in
+          scroller.setUserScrolling(
+            phase == .tracking || phase == .interacting || phase == .decelerating)
+          if phase == .idle, scroller.endUserScroll() {
+            proxy.scrollTo("bottom", anchor: .bottom)
+          }
+        }
+        .onScrollGeometryChange(for: TranscriptScrollMetrics.self) { geometry in
+          TranscriptScrollMetrics(
+            contentHeight: geometry.contentSize.height, visibleBottom: geometry.visibleRect.maxY
+          )
+        } action: { _, metrics in
+          if scroller.update(metrics) {
+            proxy.scrollTo("bottom", anchor: .bottom)
+          }
         }
       }
     }
@@ -220,8 +244,8 @@ public struct ConversationColumn: View {
           removal: .opacity
         )
       )
-    case .user(_, let text):
-      UserBubble(text)
+    case .user(_, let text, let origin):
+      UserBubble(text, origin: origin)
         .transition(
           .asymmetric(
             insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .bottomTrailing)),

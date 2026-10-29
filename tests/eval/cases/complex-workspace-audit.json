@@ -1,0 +1,55 @@
+{
+  "id": "complex-workspace-audit",
+  "title": "复杂①：列出仓库、读源码、跑一次导出检查、写审计报告",
+  "kind": "complex",
+  "notes": "A four-step coding shape: list, read, run, write. The report file is checked on disk, so a model that only narrates success fails.",
+  "toolGroups": ["core", "coding"],
+  "workspace": {
+    "src/parse.js": "export const parse = (text) => text.split(\",\").map((part) => part.trim());\n",
+    "src/format.js": "export const format = (rows) => rows.join(\" | \");\n",
+    "README.md": "# sample\n\nparse and format helpers.\n"
+  },
+  "model": {
+    "script": [
+      { "toolCall": { "name": "list", "args": { "path": "." } } },
+      { "toolCall": { "name": "read", "args": { "path": "src/parse.js" } } },
+      {
+        "toolCall": {
+          "name": "bash",
+          "args": {
+            "command": "node -e \"Promise.all([import('./src/parse.js'), import('./src/format.js')]).then(([a, b]) => console.log(Object.keys(a), Object.keys(b)))\""
+          }
+        }
+      },
+      {
+        "toolCall": {
+          "name": "write",
+          "args": {
+            "path": "report.md",
+            "content": "# 审计报告\n\n- src/parse.js 导出 parse：逗号切分并 trim\n- src/format.js 导出 format：用 ` | ` 连接\n- 两个模块都能被 node 正常导入\n"
+          }
+        }
+      },
+      {
+        "text": "审计完成，报告写在 report.md：两个模块各导出一个函数，导入检查通过。"
+      }
+    ]
+  },
+  "steps": [
+    { "kind": "chat", "text": "审计 src/ 下的模块，把结论写成 report.md" }
+  ],
+  "expect": {
+    "messages": [
+      { "role": "user", "origin": "human", "contains": "审计 src/" },
+      { "role": "tool", "contains": "src/parse.js" },
+      { "role": "tool", "contains": "parse" },
+      { "role": "tool", "contains": "format" },
+      { "role": "tool", "contains": "report.md" },
+      { "role": "assistant", "contains": "审计完成" }
+    ],
+    "toolsCalled": ["list", "read", "bash", "write"],
+    "files": { "report.md": "审计报告" },
+    "noErrors": true,
+    "modelRequests": { "max": 6 }
+  }
+}

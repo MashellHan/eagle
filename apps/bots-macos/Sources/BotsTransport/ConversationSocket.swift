@@ -64,6 +64,9 @@ public final class ConversationSocket: NSObject {
   private var closed = false
   private var handshakeDone = false
   private var attempt = 0
+  /// Whether this socket ever completed a handshake: a first connection that never did
+  /// means the daemon is not running, which is a prompt, not something to retry blindly.
+  private var everReady = false
   /// One per connection; the heartbeat task ends when its connection does.
   private var generation = 0
   private var gap = RevisionGap()
@@ -224,6 +227,7 @@ public final class ConversationSocket: NSObject {
     if decoded.type == "welcome" {
       lock.lock()
       handshakeDone = true
+      everReady = true
       attempt = 0
       gap.reset(to: nil)
       lock.unlock()
@@ -327,13 +331,23 @@ public final class ConversationSocket: NSObject {
     resyncDeadline = nil
     lock.unlock()
     previous?.cancel(with: .abnormalClosure, reason: nil)
-    switch closeBehaviour(code) {
+    switch Self.behaviour(code: code, everReady: everReady) {
     case .stop(let message):
       fail(message)
     case .retry:
       scheduleReconnect()
     }
   }
+
+  /// A first connection that never reached `welcome` means nothing is listening: ask the
+  /// person to start the daemon instead of reconnecting every few seconds. A connection
+  /// that dropped after a session keeps the contract's retry.
+  public static func behaviour(code: Int, everReady: Bool) -> CloseBehaviour {
+    if code == 1006 && !everReady { return .stop(daemonDownMessage) }
+    return closeBehaviour(code)
+  }
+
+  public static let daemonDownMessage = "Bots daemon 未启动。到「设置 → Bots」启动后重试。"
 
   /// Close codes are the contract's reconnection policy (PROTOCOL.md, "Close codes").
   public enum CloseBehaviour: Equatable, Sendable {

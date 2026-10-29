@@ -1,0 +1,99 @@
+{
+  "id": "coding-fix-loop",
+  "title": "读、跑、改、再跑：修好一个失败的脚本",
+  "kind": "coding",
+  "notes": "The classic coding loop: the run must see the failure, change the file and prove the fix with the same command. The runner checks the file on disk, so a model that only claims success fails.",
+  "toolGroups": ["core", "coding"],
+  "workspace": {
+    "src/sum.js": "export const sum = (a, b) => a - b;\n",
+    "check.mjs": "import { sum } from \"./src/sum.js\";\nif (sum(2, 3) !== 5) { console.error(`wrong: ${sum(2, 3)}`); process.exit(1); }\nconsole.log(\"ok\");\n"
+  },
+  "model": {
+    "script": [
+      {
+        "toolCall": {
+          "name": "read",
+          "args": {
+            "path": "src/sum.js"
+          }
+        }
+      },
+      {
+        "toolCall": {
+          "name": "bash",
+          "args": {
+            "command": "node check.mjs"
+          }
+        }
+      },
+      {
+        "toolCall": {
+          "name": "edit",
+          "args": {
+            "path": "src/sum.js",
+            "edits": [
+              {
+                "oldText": "a - b",
+                "newText": "a + b"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "toolCall": {
+          "name": "bash",
+          "args": {
+            "command": "node check.mjs"
+          }
+        }
+      },
+      {
+        "text": "修好了：sum 现在做加法，node check.mjs 输出 ok。"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "kind": "chat",
+      "text": "check.mjs 跑不过，修好它"
+    }
+  ],
+  "expect": {
+    "messages": [
+      {
+        "role": "user",
+        "origin": "human",
+        "contains": "check.mjs 跑不过"
+      },
+      {
+        "role": "tool",
+        "contains": "a - b"
+      },
+      {
+        "role": "tool",
+        "contains": "wrong: -1"
+      },
+      {
+        "role": "tool",
+        "contains": "Successfully replaced"
+      },
+      {
+        "role": "tool",
+        "contains": "ok"
+      },
+      {
+        "role": "assistant",
+        "contains": "修好了"
+      }
+    ],
+    "toolsCalled": ["read", "bash", "edit"],
+    "files": {
+      "src/sum.js": "a + b"
+    },
+    "noErrors": true,
+    "modelRequests": {
+      "max": 6
+    }
+  }
+}

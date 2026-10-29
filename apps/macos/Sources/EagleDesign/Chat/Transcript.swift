@@ -59,10 +59,12 @@ public struct AssistantTurn: View {
 /// The only colored surface in the transcript: a green pill aligned right.
 public struct UserBubble: View {
   private let text: String
+  private let origin: String?
   @State private var hovering = false
 
-  public init(_ text: String) {
+  public init(_ text: String, origin: String? = nil) {
     self.text = text
+    self.origin = origin
   }
 
   public var body: some View {
@@ -71,9 +73,7 @@ public struct UserBubble: View {
       HStack(alignment: .bottom, spacing: 8) {
         copyAction
         selectable(
-          Text(text)
-            .font(Theme.TypeScale.bubble)
-            .foregroundStyle(.white)
+          bubbleText
             .padding(.horizontal, 16)
             .padding(.vertical, 9)
             .background(
@@ -85,6 +85,28 @@ public struct UserBubble: View {
       }
       .onHover { hovering = $0 }
     }
+  }
+
+  /// One `Text` for an ordinary message: the common row must not pay for a container it
+  /// does not need. Only a message with a cause other than a person gains a second line.
+  @ViewBuilder
+  private var bubbleText: some View {
+    if let origin {
+      VStack(alignment: .leading, spacing: 3) {
+        Text(origin)
+          .font(Theme.TypeScale.pill)
+          .foregroundStyle(.white.opacity(0.72))
+        messageText
+      }
+    } else {
+      messageText
+    }
+  }
+
+  private var messageText: some View {
+    Text(text)
+      .font(Theme.TypeScale.bubble)
+      .foregroundStyle(.white)
   }
 
   /// Selection machinery is built only for the row under the pointer: it costs more

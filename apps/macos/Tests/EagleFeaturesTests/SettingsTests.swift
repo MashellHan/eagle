@@ -338,7 +338,7 @@ struct SettingsGatewayTests {
     await model.loadGateway()
     #expect(model.gatewayBaseURL == "http://typed/v1")
     #expect(model.gatewayModel == "typed-model")
-    #expect(model.gatewayToolGroups == ["core", "coding", "agents"])
+    #expect(model.gatewayToolGroups == ["core", "coding", "agents", "trigger"])
     GatewayHTTPStub.handler = nil
   }
 
@@ -424,8 +424,8 @@ struct SettingsGatewayTests {
     }
     let model = SettingsViewModel(botsSettings: settings, urlSession: session)
     await model.loadGateway()
-    #expect(model.gateway?.toolGroups == ["core", "coding", "herdr", "agents"])
-    #expect(model.gatewayToolGroups == ["core", "coding", "herdr", "agents"])
+    #expect(model.gateway?.toolGroups == ["core", "coding", "herdr", "agents", "trigger"])
+    #expect(model.gatewayToolGroups == ["core", "coding", "herdr", "agents", "trigger"])
     GatewayHTTPStub.handler = nil
   }
 
@@ -440,7 +440,7 @@ struct SettingsGatewayTests {
     model.setToolGroup("herdr", isOn: false)
     #expect(model.isToolGroupEnabled("herdr") == false)
     model.setToolGroup("herdr", isOn: true)
-    #expect(model.gatewayToolGroups == ["core", "coding", "herdr", "agents"])
+    #expect(model.gatewayToolGroups == ["core", "coding", "herdr", "agents", "trigger"])
   }
 
   @Test("loadGatewayIfNeeded fetches only once")
@@ -587,11 +587,12 @@ struct SettingsGatewayTests {
     GatewayHTTPStub.handler = { request in
       let body = gatewayHTTPBody(request)
       let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
-      #expect(parsed?["toolGroups"] as? [String] == ["core", "coding", "herdr", "agents"])
+      #expect(
+        parsed?["toolGroups"] as? [String] == ["core", "coding", "herdr", "agents", "trigger"])
       return (
         200,
         Data(
-          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","coding","herdr","agents"]}}"#
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","coding","herdr","agents","trigger"]}}"#
             .utf8)
       )
     }
@@ -609,11 +610,11 @@ struct SettingsGatewayTests {
     GatewayHTTPStub.handler = { request in
       let body = gatewayHTTPBody(request)
       let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
-      #expect(parsed?["toolGroups"] as? [String] == ["core", "coding", "agents"])
+      #expect(parsed?["toolGroups"] as? [String] == ["core", "coding", "agents", "trigger"])
       return (
         200,
         Data(
-          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","coding","agents"]}}"#
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","coding","agents","trigger"]}}"#
             .utf8)
       )
     }
@@ -648,7 +649,7 @@ struct SettingsGatewayTests {
     model.gatewayBaseURL = "http://gw/v1"
     model.gatewayModel = "m1"
     await model.saveGateway()
-    #expect(saved == ["core", "coding", "herdr", "agents", "search"])
+    #expect(saved == ["core", "coding", "herdr", "agents", "search", "trigger"])
 
     GatewayHTTPStub.handler = { request in
       #expect(request.httpMethod == "GET")

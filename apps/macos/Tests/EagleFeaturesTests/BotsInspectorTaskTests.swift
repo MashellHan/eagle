@@ -116,8 +116,9 @@ struct BotsInspectorTaskTests {
     #expect(presenter.inspectorTasks(for: []).isEmpty)
     let sections = InspectorSections.detail(
       artifacts: [], jobs: [], tasks: presenter.inspectorTasks(for: []), usage: [])
-    #expect(sections[3].isEmpty)
-    #expect(sections[3].placeholder.title == "没有正在运行的任务")
+    #expect(sections[3].isEmpty, "no trigger is open either")
+    #expect(sections[4].isEmpty)
+    #expect(sections[4].placeholder.title == "没有正在运行的任务")
   }
 }
 

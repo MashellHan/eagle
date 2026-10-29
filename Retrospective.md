@@ -612,3 +612,17 @@ and the device list must retain the OS-provided local name while making unavaila
 execution explicit. Evidence: `.local/settings-layout/layout-service-recovered.json`;
 the local-row regression covers disabled startup and failed startup without a
 directory, plus disabling an already known device.
+
+## 2026-10-29 — Upstream Croner dependency missing from the npm proxy
+
+Preparing the device-group PR against upstream `4eefe0a` introduced the locked
+`croner@11.0.0` dependency. Normal `npm --prefix apps/bots ci` failed with a
+tarball 404 from the configured proxy. Inventory of the task cache found every
+required artifact except Croner; a retained local cache held its original bytes.
+The bytes matched the committed SHA512 and the archive's package name/version.
+After normal `npm cache add` into the private device-task cache, offline `npm ci`
+completed with the unchanged Bots lock. All 102 installed package versions
+matched; 28 optional packages for other platforms were absent. No package was
+repacked and no registry or TLS setting changed. Evidence is retained under
+`.local/device-evidence/upstream-pr/npm-recovery/`; installation success alone
+does not establish the subsequent build, push or two-Mac acceptance results.

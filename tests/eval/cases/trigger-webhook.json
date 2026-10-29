@@ -1,0 +1,78 @@
+{
+  "id": "trigger-webhook",
+  "title": "Webhook 投递：一次触发、重试去重、停用 409、错 token 404",
+  "kind": "trigger",
+  "notes": "The delivery contract end to end: one item per key inside the retry window, and the endpoint answering honestly when it cannot accept.",
+  "toolGroups": ["core", "coding"],
+  "triggers": [
+    {
+      "kind": "webhook",
+      "name": "deploy notify",
+      "prompt": "有一次部署投递；用一句话说明结果"
+    }
+  ],
+  "model": {
+    "script": [
+      { "text": "收到部署通知：2f1a 已完成。" },
+      { "text": "又收到一次，仍然是 2f1a。" }
+    ]
+  },
+  "steps": [
+    {
+      "kind": "webhook",
+      "trigger": "deploy notify",
+      "body": "deploy 2f1a finished"
+    },
+    {
+      "kind": "webhook",
+      "trigger": "deploy notify",
+      "body": "deploy 2f1a finished",
+      "idempotencyKey": "retry-1"
+    },
+    {
+      "kind": "webhook",
+      "trigger": "deploy notify",
+      "body": "deploy 2f1a finished",
+      "idempotencyKey": "retry-1"
+    },
+    { "kind": "waitFor", "origin": "webhook", "count": 2, "timeoutMs": 30000 },
+    { "kind": "patch", "trigger": "deploy notify", "enabled": false },
+    {
+      "kind": "webhook",
+      "trigger": "deploy notify",
+      "body": "ignored",
+      "expectStatus": 409
+    },
+    {
+      "kind": "http",
+      "method": "POST",
+      "path": "/v1/triggers/<bot>/<trigger:deploy notify>",
+      "headers": {
+        "authorization": "Bearer wrong-token",
+        "content-type": "text/plain"
+      },
+      "body": "x",
+      "expectStatus": 404
+    },
+    { "kind": "patch", "trigger": "deploy notify", "enabled": true }
+  ],
+  "expect": {
+    "messages": [
+      {
+        "role": "user",
+        "origin": "webhook",
+        "contains": "deploy 2f1a finished"
+      },
+      { "role": "assistant", "contains": "2f1a" },
+      {
+        "role": "user",
+        "origin": "webhook",
+        "contains": "deploy 2f1a finished"
+      },
+      { "role": "assistant", "contains": "又收到一次" }
+    ],
+    "atLeast": [{ "origin": "webhook", "count": 2 }],
+    "noErrors": true,
+    "modelRequests": { "max": 3 }
+  }
+}

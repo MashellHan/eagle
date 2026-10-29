@@ -180,7 +180,7 @@ struct ChatTests {
 
     #expect(model.entries.count == 2)
     #expect(model.entries[0].id == "local-0")
-    if case .user(_, let text) = model.entries[0] {
+    if case .user(_, let text, _) = model.entries[0] {
       #expect(text == "今天 eagle 会修吗")
     } else {
       Issue.record("expected a user turn")

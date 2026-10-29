@@ -3,8 +3,9 @@
 Status snapshot. The contracts live in
 [PRODUCT.md](PRODUCT.md), [ARCHITECTURE.md](ARCHITECTURE.md),
 [PROTOCOL.md](PROTOCOL.md), [RUNTIME.md](RUNTIME.md),
-[OBSERVABILITY.md](OBSERVABILITY.md) and [TESTING.md](TESTING.md). This file says
-what exists, what is next, and where it lives. Update it whenever a stage closes.
+[OBSERVABILITY.md](OBSERVABILITY.md), [TRIGGERS.md](TRIGGERS.md) and
+[TESTING.md](TESTING.md). This file says what exists, what is next, and where it
+lives. Update it whenever a stage closes.
 
 The current tool taxonomy, native extension integration and test-evidence map are
 in [Extensions and tools](EXTENSIONS-AND-TOOLS.md). That guide also
@@ -604,10 +605,135 @@ daemon nor a key. Not verified in this pass: a real
 DeepSeek key and a live `web_search` call, and a bot switching the `search` group on against
 a running daemon (the runtime path is covered by the deterministic faux-model test).
 
+## Triggers and peers (stage 0 delivered 2026-10-28; stages 1-3 planned)
+
+[TRIGGERS.md](TRIGGERS.md) defines the bot-side invocation port and the three
+callers that will use it. Design decisions frozen with the owner:
+
+- One port (`core/Invocation.ts`: `invoke`/`submission`/`observe`) is the only way
+  a non-connection caller admits work. Queueing, batching and timing stay caller
+  policy, so a caller can be replaced without touching core. Stage 0 also fixes two
+  existing holes it depends on: a settled record is invisible after a restart until
+  the adapter uses the durable `submissionByRequest` lookup, and an idle close can
+  race an admission until the registry tracks activity generations.
+- Each trigger owns a 32-item FIFO queue, evicting the oldest, and delivers to an
+  idle Bot only: one frozen, merged submission per idle window, cut by the
+  `MAX_SEND_TEXT` budget rather than truncated, driven by a drain pump because a run
+  can finish before `submit` returns.
+- `trigger` (schedule + webhook) and `peers` are two optional tool groups registered
+  like every other group and deferred behind `tool_search`. The Bot's own model
+  creates and manages its triggers; the app lists them read-only with a single
+  enable switch. No user-facing trigger creation exists.
+- The app lists a Bot's triggers in the sidebar under that bot and mirrors them in
+  read-only detail, with enable as the person's only action; an additive `triggers`
+  event mirrors `tasks` and the model remains the only creator.
+- Transcript messages gain an additive `origin` field backed by a per-Bot
+  `origins.jsonl` sidecar, written before admission and applied on all four render
+  paths, so a label survives a restart and absence means `unknown`, never `human`.
+- Scheduling is Bot-owned and fires only while the daemon runs: no catch-up, no
+  user-registered cron jobs. External cron uses a webhook endpoint authenticated by
+  a per-trigger bearer token in a header, and the daemon stays loopback-only.
+
+Stage order: 0 interface and its contract tests (including the four adapter,
+registry and lifecycle fixes it needs), 1 `trigger` group with schedule plus origin
+field and app surface, 2 webhook ingress, 3 `peers`. Each stage states its exit
+criteria in TRIGGERS.md §12.
+
+### Stage 1, in progress
+
+Shipped so far, each with its own failing test first:
+
+1. The transcript `origin` field and its sidecar (see "Stage 0, as built" for the
+   four fixes it needed), so a fired message can carry who caused it.
+2. `core/TriggerStore.ts`: one journal per bot as the source of truth, mutations
+   idempotent by `opId` (the SDK tool-task id) and atomic with the cap check,
+   cursor/counters as engine-owned state, compaction on open.
+3. The `trigger` tool group: five deferred tools, a per-bot host, install only when
+   the daemon supplies that host, and the model-facing prompt section.
+
+4. The queue and the drain pump (`src/triggers/queue.ts`, `pump.ts`): a bounded
+   FIFO that evicts the oldest and counts the loss, a frozen batch cut by the
+   rendered send budget rather than by truncation, and a per-bot pump that
+   reconciles a batch against its submission record before it cuts again, retries
+   an unadmitted batch with the same key, and takes turns across one bot's triggers.
+
+5. The schedule tick and the producers (`src/triggers/schedule.ts`,
+   `producers.ts`): cron in the trigger's own zone through the pinned `croner`, a
+   cursor that is only armed, fired or recorded as missed, one queue record per
+   decision, and a `TriggerProducers` that owns one pump per bot plus the single
+   ticker, started after recovery and stopped before admissions drain.
+
+6. The `triggers` surface: a bot-scoped `triggers` event with the same list on
+   `snapshot`, the `triggers` capability, `GET /v1/triggers?botId=…` detail and
+   `PATCH /v1/triggers/<botId>/<triggerId>` as the person's only mutation. The
+   service republishes the list after every store change, so a model's own edit
+   reaches the sidebar without a resubscribe.
+
+7. The window: a `触发器` sidebar section with a one-click switch per row, the
+   inspector's read-only trigger detail, the origin chip on a message whose cause
+   was not a person, and the `trigger` group's switch in Settings. The sidebar's
+   inline control and the `owned` section role are EagleDesign additions; a row the
+   model owns offers no rename, move or delete.
+
+8. Stage 2's webhook ingress: `POST /v1/triggers/<botId>/<triggerId>` authenticated by
+   the trigger's own bearer (the daemon bearer is not accepted there), with the
+   documented 202/409/413/422/429/404 matrix, a 64 KiB body cap, an `Origin` refusal,
+   idempotency by `Idempotency-Key` or a body hash across the retry window, one token
+   per trigger persisted 0600 and minted at boot, and counters that follow a delivery.
+
+Both trigger kinds now work end to end: a Bot creates a trigger with its own tools, a
+schedule or a webhook delivery becomes one batched turn through the invocation port, and
+a person sees and switches it in the window.
+
+9. Acceptance cases in `tests/eval` (format and cases in
+   [its README](../../tests/eval/README.md)): a real daemon, a scripted Responses model,
+   real tools, and checks on the transcript plus the files on disk. Eight cases cover
+   chat, a coding loop, the two trigger kinds, an unconfigured search, and three
+   different complex shapes. `npm --prefix apps/bots run eval` runs them; they are not
+   part of `check`, because a case boots a process and writes files. The cron case found
+   a real defect: a timer tick enqueued a schedule fire but never woke the pump, so only
+   an unrelated idle edge could deliver it (`TriggerProducers.onTick` now drains). Not yet implemented from the stage-2
+contract: the per-token bucket and `maxFiresPerHour` (the queue cap and the admission
+budget are today's backpressure). Stage 3 (`peers`) is untouched.
+
+### Stage 0, as built
+
+The port, its four prerequisite fixes and their tests are in. `ConversationService`
+implements `InvocationPort`: `invoke` is idempotent by `(botId, requestId)`, opens a
+cold bot under the registry's lease, validates the key alphabet and text budget
+before any runtime call, and shares the human admission chain; `submission` answers a
+bot-scoped durable lookup; `observe` reports the current run state and its edges
+without opening anything; `drain` refuses new work and waits for admissions already
+in flight. `send` is now a thin wrapper over the same path.
+
+The four fixes stage 0 depended on:
+
+1. The adapter resolves a settled `requestId` through
+   `Tx.submissionByRequest`, because the in-memory ledger dies with the process and
+   `inspect()` lists only queued and placed work.
+2. `BotRegistry` tracks a per-bot activity generation, so an idle close that spanned
+   `await busy()` is abandoned when a lease was taken meanwhile.
+3. Delete closes its door, drains the leases already granted under the close
+   deadline, and only then takes the lifecycle window; the reverse order deadlocks
+   against an `open()` waiting for that window. A miss quarantines instead of moving
+   the directory.
+4. The internal per-bot view is live without a subscriber, and shutdown drains the
+   service before the registry closes handles.
+
+Evidence: `npm run check` green at 527 tests, 95.41% lines / 88.32% branches /
+91.38% functions over 90/85/90 thresholds; `test/core/invocation.test.ts` (13),
+`test/core/invocation-stack.test.ts` (2), `test/core/registry.test.ts` (+4) and
+`test/runtime/idempotency.test.ts` (+1). Two existing service tests were rewritten
+because they asserted the buffering mechanism this stage replaced; RUNTIME.md's
+baseline paragraph now states the new rule.
+
 ## Next work, in order
 
 1. Finish the client surface: history paging, bot settings behind the `agent`
    capability, and an inspector that renders a bot's own state.
+2. Deliver the trigger stages in [TRIGGERS.md](TRIGGERS.md) §12, starting with the
+   invocation port, because every later caller depends on it and none of them
+   changes it.
 
 The extension/tool track has its own proposed sequence in
 [Extensions and tools](EXTENSIONS-AND-TOOLS.md#6-planned-optional-groups):

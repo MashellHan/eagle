@@ -115,7 +115,7 @@ version, the instance id, the pid and a bot count, never bot content.
 // GatewaySettings: the key is never returned, only whether one is stored.
 { "configured": true, "provider": "magpie", "baseUrl": "http://127.0.0.1:3425/v1",
   "model": "auto/gpt-6-luna", "hasApiKey": true, "thinkingLevel": "medium",
-  "toolGroups": ["core", "coding", "herdr", "agents"] }
+  "toolGroups": ["core", "coding", "herdr", "agents", "trigger"] }
 
 // GatewayProbe: the test asks the gateway for its model list.
 { "ok": true, "status": 200, "message": "连接成功，网关报告 17 个模型",
@@ -197,6 +197,32 @@ replacement, never a delta; an empty list means nothing runs.
 - Ids are wire ids (`t_` for tasks, `c_` for conversations); a client that does not parse
   them may treat them as opaque strings.
 - The `tasks` capability is `true`. A client that predates the field simply ignores it.
+
+## Triggers
+
+`triggers` lists the Bot's own schedule and webhook triggers — the ones its model created
+through the `trigger_*` tools — and each `snapshot` carries the current list as `triggers`.
+It is a whole-list replacement, never a delta; an empty list means the Bot has none.
+
+```json
+{ "id": "t_9f2a1c3d04", "kind": "schedule", "name": "morning triage", "enabled": true,
+  "schedule": { "cron": "0 9 * * *", "timezone": "Asia/Shanghai",
+                "nextDueAt": "2026-10-29T01:00:00.000Z" },
+  "counters": { "fired": 12, "dropped": 0, "refused": 1 },
+  "lastFiredAt": "2026-10-28T01:00:03.114Z" }
+```
+
+- `kind` is `schedule` or `webhook`; a `webhook` trigger has no `schedule` object.
+- `nextDueAt` is the durable delivery cursor, absent while the trigger is disabled or
+  before its first tick. `lastSkipped.reason` is `disabled`, `missed`, `rate_limited` or
+  `queue_full`; a `missed` window is never replayed.
+- The event never carries the trigger's prompt, its webhook credential or its endpoint:
+  detail is `GET /v1/triggers?botId=…` and the person's only mutation is
+  `PATCH /v1/triggers/<botId>/<triggerId>` with `{ "enabled": true|false }`.
+- Order is creation order, so a re-render cannot reshuffle rows.
+- The `triggers` capability is `true`. A client that predates the field ignores it, and a
+  daemon without trigger storage omits the field rather than inventing an empty list.
+- Normative sample: `triggers.server.json`.
 
 ## Per-bot agent
 
@@ -368,7 +394,8 @@ client → { "type": "hello", "protocolVersion": 1, "client": "BotsApp/0.1.0" }
 server → { "type": "welcome", "protocolVersion": 1,
            "server": { "version": "0.1.0", "instance": "i_7f3", "pid": 4711 },
            "capabilities": { "agent": false, "tools": true, "tasks": false,
-                             "entries": false, "usage": false, "peers": false },
+                             "entries": false, "usage": false, "peers": false,
+                             "triggers": true },
            "bots": [ BotSummary, … ] }
 ```
 

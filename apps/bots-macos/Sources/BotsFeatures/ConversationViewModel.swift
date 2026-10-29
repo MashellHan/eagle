@@ -59,6 +59,8 @@ public final class ConversationViewModel: ObservableObject {
   public var title: String { selectedBotId ?? "" }
   /// The live work of the selected bot, for the inspector's 任务 section.
   public var tasks: [TaskSummary] { state.tasks }
+  /// The bot's own triggers, as the sidebar's trigger section renders them.
+  public var triggers: [TriggerSummary] { state.triggers }
   /// Tokens and cost so far, for the inspector's 用量 section.
   public var usage: Usage? { state.usage }
   public var canSend: Bool {
@@ -89,6 +91,15 @@ public final class ConversationViewModel: ObservableObject {
         self.apply(event)
       }
     }
+  }
+
+  /// A connection that ended for good (the daemon is not running): open it again instead
+  /// of hoping the socket retries, and keep the transcript that is already on screen.
+  public func reconnect() {
+    guard let botId = selectedBotId else { return }
+    eventsTask?.cancel()
+    eventsTask = nil
+    select(botId: botId)
   }
 
   public func disconnect() {
@@ -340,6 +351,8 @@ public final class ConversationViewModel: ObservableObject {
       hasOlder = page.hasMore
     case .tasks(let tasks):
       state = Reducer.apply(.tasks(tasks), to: state)
+    case .triggers(let triggers):
+      state = Reducer.apply(.triggers(triggers), to: state)
     case .usage(let usage):
       state = Reducer.apply(.usage(usage), to: state)
     case .catalog(let catalog):
@@ -391,6 +404,7 @@ public final class ConversationViewModel: ObservableObject {
     next.streaming = nil
     next.running = false
     next.tasks = []
+    next.triggers = []
     return next
   }
 

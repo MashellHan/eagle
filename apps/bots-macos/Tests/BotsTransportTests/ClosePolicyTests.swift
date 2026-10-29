@@ -50,3 +50,25 @@ final class NotReadyCommandTests: XCTestCase {
     connection.close()
   }
 }
+
+/// A first connection that never reached `welcome` is a prompt, not a retry loop; a drop
+/// after a live session keeps the contract's retry.
+final class NetworkDropPolicyTests: XCTestCase {
+  func testNeverReadyIsNotRetried() {
+    XCTAssertEqual(
+      ConversationSocket.behaviour(code: 1006, everReady: false),
+      .stop(ConversationSocket.daemonDownMessage)
+    )
+  }
+
+  func testAnEstablishedSessionStillRetries() {
+    XCTAssertEqual(ConversationSocket.behaviour(code: 1006, everReady: true), .retry)
+  }
+
+  func testOtherCodesKeepTheirDocumentedPolicy() {
+    XCTAssertEqual(
+      ConversationSocket.behaviour(code: 4004, everReady: false),
+      .stop("this bot no longer exists"))
+    XCTAssertEqual(ConversationSocket.behaviour(code: 4000, everReady: false), .retry)
+  }
+}

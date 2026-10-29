@@ -27,7 +27,8 @@ struct BotsWindowTests {
 
   private func window(
     gateway: Bool? = true,
-    catalog: StubCatalog = StubCatalog()
+    catalog: StubCatalog = StubCatalog(),
+    triggers: StubTriggers = StubTriggers()
   ) async throws -> (
     BotsWorkspaceViewModel, AppViewModel, StubConversation, OutboxStore
   ) {
@@ -52,7 +53,8 @@ struct BotsWindowTests {
       conversation: conversationPort,
       outbox: outbox
     )
-    let app = AppViewModel(catalog: catalog, conversation: conversation, outbox: outbox)
+    let app = AppViewModel(
+      catalog: catalog, conversation: conversation, outbox: outbox, triggers: triggers)
     let bots = BotsWorkspaceViewModel(
       settings: BotsSettings(environment: [:]),
       makeApp: { _ in app },
@@ -572,10 +574,13 @@ final class StubConversation: ConversationPort {
   var sent: [Sent] = []
   var aborted = 0
   var lastBotId: String?
+  /// Every `open`, so a reconnect is observable.
+  var opens = 0
   private var continuation: AsyncStream<ConversationEvent>.Continuation?
   private var pending: [ConversationEvent] = []
 
   func open(botId: String) -> AsyncStream<ConversationEvent> {
+    opens += 1
     continuation?.finish()
     continuation = nil
     return AsyncStream { continuation in
@@ -627,5 +632,221 @@ final class StubConversation: ConversationPort {
     continuation?.finish()
     continuation = nil
     pending.removeAll()
+  }
+}
+
+/// The trigger surface a window test drives: its list, detail and one recorded switch.
+final class StubTriggers: TriggerPort, @unchecked Sendable {
+  var details: [TriggerDetail] = []
+  var switches: [(String, String, Bool)] = []
+  var failure: Error?
+
+  func list(botId: String) async throws -> [TriggerDetail] {
+    if let failure { throw failure }
+    return details
+  }
+
+  func setEnabled(botId: String, triggerId: String, enabled: Bool) async throws -> TriggerDetail {
+    switches.append((botId, triggerId, enabled))
+    if let failure { throw failure }
+    guard let index = details.firstIndex(where: { $0.id == triggerId }) else {
+      throw ClientError("no such trigger")
+    }
+    var summary = details[index].summary
+    summary.enabled = enabled
+    let detail = TriggerDetail(
+      summary: summary, prompt: details[index].prompt, endpoint: details[index].endpoint)
+    details[index] = detail
+    return detail
+  }
+}
+
+@MainActor
+@Suite("Bots triggers", .serialized)
+struct BotsTriggerTests {
+  private func waitUntil(
+    timeout: TimeInterval = 2, _ condition: () -> Bool
+  ) async throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+      if condition() { return }
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    Issue.record("condition not met within \(timeout)s")
+  }
+
+  private func summary(
+    id: String = "t_9f2a1c3d04", enabled: Bool = true
+  ) -> TriggerSummary {
+    TriggerSummary(
+      id: id,
+      kind: .schedule,
+      name: "morning triage",
+      enabled: enabled,
+      schedule: TriggerSummary.Schedule(
+        cron: "0 9 * * *", timezone: "Asia/Shanghai",
+        nextDueAt: "2026-10-29T01:00:00.000Z"),
+      counters: TriggerSummary.Counters(fired: 2)
+    )
+  }
+
+  private func ready(
+    triggers: StubTriggers = StubTriggers(), list: [TriggerSummary]? = nil
+  ) async throws -> (BotsWorkspaceViewModel, StubConversation, StubTriggers) {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bots-trigger-\(UUID().uuidString)", isDirectory: true)
+    let catalog = StubCatalog()
+    catalog.bots = [
+      BotSummary(
+        id: "b_1", title: "研究员", createdAt: "x", updatedAt: "x",
+        model: ModelRef(provider: "p", modelId: "m"), state: .idle)
+    ]
+    let port = StubConversation()
+    let outbox = OutboxStore(directory: directory)
+    let conversation = ConversationViewModel(botId: "", conversation: port, outbox: outbox)
+    let app = AppViewModel(
+      catalog: catalog, conversation: conversation, outbox: outbox, triggers: triggers)
+    let bots = BotsWorkspaceViewModel(
+      settings: BotsSettings(environment: [:]), makeApp: { _ in app },
+      gatewayProbe: { true })
+    await bots.start()
+    await bots.awaitScheduledPublishDrain()
+    bots.select("b_1")
+    port.emit(.connection(.ready))
+    let snapshot = ConversationSnapshot(
+      botId: "b_1", triggers: list ?? [summary()])
+    port.emit(.snapshot(snapshot))
+    await bots.awaitScheduledPublishDrain()
+    try await waitUntil { app.conversation.hasSnapshot }
+    triggers.details = [
+      TriggerDetail(summary: summary(), prompt: "triage the queue")
+    ]
+    return (bots, port, triggers)
+  }
+
+  @Test("a bot's triggers are a sidebar section with one toggle per row")
+  func section() async throws {
+    let (bots, _, _) = try await ready()
+    guard let section = bots.sections.first(where: { $0.title == "触发器" }) else {
+      Issue.record("no trigger section")
+      return
+    }
+    #expect(section.role == .owned, "the model owns the definitions, not the window")
+    #expect(section.items.count == 1)
+    #expect(section.items[0].title == "morning triage")
+    #expect(section.items[0].subtitle.contains("定时"))
+    #expect(section.items[0].toggle?.isOn == true)
+    #expect(bots.owns(section.items[0].id), "the row routes to this window")
+  }
+
+  @Test("one click switches a trigger through the port and never opens its menu")
+  func toggle() async throws {
+    let (bots, port, triggers) = try await ready()
+    guard let row = bots.sections.first(where: { $0.title == "触发器" })?.items.first else {
+      Issue.record("no trigger row")
+      return
+    }
+    bots.toggleTrigger(row.id)
+    try await waitUntil { triggers.switches.count == 1 }
+    #expect(triggers.switches[0].2 == false, "the switch sends the inverted value")
+
+    port.emit(.triggers([summary(enabled: false)]))
+    await bots.awaitScheduledPublishDrain()
+    try await waitUntil {
+      bots.sections.first(where: { $0.title == "触发器" })?.items.first?.toggle?.isOn == false
+    }
+  }
+
+  @Test("opening a trigger row keeps the bot and fills the inspector")
+  func detail() async throws {
+    let (bots, _, _) = try await ready()
+    guard let row = bots.sections.first(where: { $0.title == "触发器" })?.items.first else {
+      Issue.record("no trigger row")
+      return
+    }
+    bots.select(row.id)
+    #expect(bots.selectedId == "b_1", "a trigger row never changes the open bot")
+    try await waitUntil { !bots.triggerRows.isEmpty }
+    #expect(bots.triggerRows.contains { $0.label == "计划" && $0.value == "0 9 * * *" })
+    #expect(bots.triggerRows.contains { $0.label == "指令" && $0.value == "triage the queue" })
+  }
+}
+
+@MainActor
+@Suite("Bots daemon reconnect", .serialized)
+struct BotsDaemonReconnectTests {
+  private func window() async throws -> (BotsWorkspaceViewModel, StubConversation, AppViewModel) {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bots-reconnect-\(UUID().uuidString)", isDirectory: true)
+    let catalog = StubCatalog()
+    catalog.bots = [
+      BotSummary(
+        id: "b_1", title: "研究员", createdAt: "x", updatedAt: "x",
+        model: ModelRef(provider: "p", modelId: "m"), state: .idle)
+    ]
+    let port = StubConversation()
+    let outbox = OutboxStore(directory: directory)
+    let conversation = ConversationViewModel(botId: "", conversation: port, outbox: outbox)
+    let app = AppViewModel(catalog: catalog, conversation: conversation, outbox: outbox)
+    let bots = BotsWorkspaceViewModel(
+      settings: BotsSettings(environment: [:]), makeApp: { _ in app },
+      gatewayProbe: { true })
+    await bots.start()
+    await bots.awaitScheduledPublishDrain()
+    bots.select("b_1")
+    port.emit(.connection(.ready))
+    port.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    await bots.awaitScheduledPublishDrain()
+    return (bots, port, app)
+  }
+
+  @Test("a dead connection offers one retry and does not retry by itself")
+  func retryAffordance() async throws {
+    let (bots, port, _) = try await window()
+    #expect(bots.participantStatus.canRetry == false)
+
+    port.emit(.connection(.failed(reason: ConversationSocket.daemonDownMessage)))
+    let deadline = Date().addingTimeInterval(2)
+    while !bots.participantStatus.canRetry, Date() < deadline {
+      try await Task.sleep(nanoseconds: 20_000_000)
+      await bots.awaitScheduledPublishDrain()
+    }
+
+    #expect(bots.participantStatus.canRetry, "the person is offered a retry")
+    #expect(bots.subtitle == ConversationSocket.daemonDownMessage, "and told to start it")
+
+    let opens = port.opens
+    bots.retryConnection()
+    #expect(port.opens == opens + 1, "the retry opens one fresh connection")
+  }
+}
+
+@MainActor
+@Suite("Bots daemon absent", .serialized)
+struct BotsDaemonAbsentTests {
+  @Test("a closed port reports the daemon as down and never reconnects on its own")
+  func deadPort() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bots-absent-\(UUID().uuidString)", isDirectory: true)
+    let outbox = OutboxStore(directory: directory)
+    // Port 9 is the discard port: nothing listens on it here, so the upgrade is refused.
+    let connection = BotsConnection(
+      baseURL: URL(string: "http://127.0.0.1:9")!, token: "unused")
+    let model = ConversationViewModel(botId: "", conversation: connection, outbox: outbox)
+    model.select(botId: "b_1")
+
+    let deadline = Date().addingTimeInterval(30)
+    while !model.connection.isFailed, Date() < deadline {
+      try await Task.sleep(nanoseconds: 50_000_000)
+    }
+    #expect(model.connection.isFailed, "the socket stops instead of retrying forever")
+    #expect(
+      model.connection == .failed(reason: ConversationSocket.daemonDownMessage),
+      "and says what to do about it")
+    #expect(model.canSend == false, "a dead connection cannot send")
+
+    // Give the old behaviour time to show up: it reconnected within a few hundred ms.
+    try await Task.sleep(nanoseconds: 1_500_000_000)
+    #expect(model.connection.isFailed, "still failed: no blind retry loop")
   }
 }

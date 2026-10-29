@@ -238,6 +238,18 @@ export class EventMapper {
     this.#remember(record);
   }
 
+  /**
+   * Resolves this commit batch's submission records before anything is mapped, so a user
+   * append in the same batch already knows its `requestId` — and therefore its origin —
+   * when it is published. The wire order stays append → submission either way; what
+   * changes is that the append is no longer published blind (TRIGGERS.md §6.3a).
+   */
+  prime(batch: readonly AgentEvent[]): void {
+    for (const event of batch) {
+      if (event.type === "submission") this.#remember(event.record);
+    }
+  }
+
   /** One committed entry as a domain message, for `history`. */
   entryMessage(entry: EntryRecord): Message | undefined {
     return this.#convertEntry(entry);

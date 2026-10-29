@@ -145,6 +145,34 @@ public enum ContentBlock: Codable, Sendable, Equatable {
   }
 }
 
+/// Who admitted a user message (docs/bots/TRIGGERS.md §6). Absent means the daemon has no
+/// record, which renders as `.unknown` — never as a person.
+public struct MessageOrigin: Codable, Sendable, Equatable, Hashable {
+  public enum Kind: String, Codable, Sendable {
+    case human, schedule, webhook, peer, unknown
+  }
+
+  public var kind: Kind
+  /// The trigger's name, or the sending bot's title; presentation only.
+  public var label: String?
+
+  public init(kind: Kind, label: String? = nil) {
+    self.kind = kind
+    self.label = label
+  }
+
+  /// The chip a transcript shows, or nil for a plain human message.
+  public var chip: String? {
+    switch kind {
+    case .human: return nil
+    case .schedule: return label ?? "定时"
+    case .webhook: return label ?? "Webhook"
+    case .peer: return label ?? "其他 Bot"
+    case .unknown: return nil
+    }
+  }
+}
+
 public struct Message: Codable, Sendable, Equatable, Identifiable {
   public var id: String
   public var role: MessageRole
@@ -153,6 +181,8 @@ public struct Message: Codable, Sendable, Equatable, Identifiable {
   public var blocks: [ContentBlock]
   public var requestId: String?
   public var stopReason: StopReason?
+  /// User messages only: who caused them, when the daemon recorded it.
+  public var origin: MessageOrigin?
 
   public init(
     id: String,
@@ -161,7 +191,8 @@ public struct Message: Codable, Sendable, Equatable, Identifiable {
     createdAt: String,
     blocks: [ContentBlock],
     requestId: String? = nil,
-    stopReason: StopReason? = nil
+    stopReason: StopReason? = nil,
+    origin: MessageOrigin? = nil
   ) {
     self.id = id
     self.role = role
@@ -170,6 +201,7 @@ public struct Message: Codable, Sendable, Equatable, Identifiable {
     self.blocks = blocks
     self.requestId = requestId
     self.stopReason = stopReason
+    self.origin = origin
   }
 
   public var text: String { blocks.map(\.displayText).joined() }
@@ -621,6 +653,9 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
   public var parked: Bool?
   /// Live work of every conversation this bot owns; absent means nothing runs.
   public var tasks: [TaskSummary]
+  /// The bot's own triggers; empty means none, and the capability decides whether to show
+  /// the section at all (PROTOCOL.md, "Triggers").
+  public var triggers: [TriggerSummary]
   /// Tokens and cost so far; absent until the first answered turn.
   public var usage: Usage?
   /// What the bot runs with, when the daemon reports it.
@@ -637,6 +672,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     unavailable: BotUnavailable? = nil,
     parked: Bool? = nil,
     tasks: [TaskSummary] = [],
+    triggers: [TriggerSummary] = [],
     usage: Usage? = nil,
     agent: AgentView? = nil
   ) {
@@ -650,13 +686,14 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     self.unavailable = unavailable
     self.parked = parked
     self.tasks = tasks
+    self.triggers = triggers
     self.usage = usage
     self.agent = agent
   }
 
   private enum CodingKeys: String, CodingKey {
     case botId, messages, truncatedBefore, streaming, pending, inbox, running, unavailable, parked
-    case tasks, agent, usage
+    case tasks, triggers, agent, usage
   }
 
   /// `streaming` is `{ "messageId": "p_a1" }` on the wire and `null` when no attempt is in
@@ -672,6 +709,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     unavailable = try container.decodeIfPresent(BotUnavailable.self, forKey: .unavailable)
     parked = try container.decodeIfPresent(Bool.self, forKey: .parked)
     tasks = try container.decodeIfPresent([TaskSummary].self, forKey: .tasks) ?? []
+    triggers = try container.decodeIfPresent([TriggerSummary].self, forKey: .triggers) ?? []
     usage = try container.decodeIfPresent(Usage.self, forKey: .usage)
     agent = try container.decodeIfPresent(AgentView.self, forKey: .agent)
     if let pointer = try container.decodeIfPresent(StreamingPointer.self, forKey: .streaming) {
@@ -692,6 +730,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     try container.encodeIfPresent(unavailable, forKey: .unavailable)
     try container.encodeIfPresent(parked, forKey: .parked)
     try container.encode(tasks, forKey: .tasks)
+    try container.encode(triggers, forKey: .triggers)
     try container.encodeIfPresent(usage, forKey: .usage)
     try container.encodeIfPresent(agent, forKey: .agent)
     if let streaming {
@@ -835,5 +874,84 @@ public struct HistoryPage: Sendable, Equatable {
   public init(messages: [Message], hasMore: Bool) {
     self.messages = messages
     self.hasMore = hasMore
+  }
+}
+
+/// What a sidebar renders about one trigger (docs/bots/PROTOCOL.md, "Triggers"). The prompt
+/// and a webhook endpoint come over HTTP; the event never carries a credential.
+public struct TriggerSummary: Codable, Sendable, Equatable, Identifiable, Hashable {
+  public struct Schedule: Codable, Sendable, Equatable, Hashable {
+    public var cron: String
+    public var timezone: String
+    /// The durable delivery cursor; absent while disabled or before the first tick.
+    public var nextDueAt: String?
+
+    public init(cron: String, timezone: String, nextDueAt: String? = nil) {
+      self.cron = cron
+      self.timezone = timezone
+      self.nextDueAt = nextDueAt
+    }
+  }
+
+  public struct Counters: Codable, Sendable, Equatable, Hashable {
+    public var fired: Int
+    public var dropped: Int
+    public var refused: Int
+
+    public init(fired: Int = 0, dropped: Int = 0, refused: Int = 0) {
+      self.fired = fired
+      self.dropped = dropped
+      self.refused = refused
+    }
+  }
+
+  public struct Skipped: Codable, Sendable, Equatable, Hashable {
+    public var at: String
+    public var reason: String
+
+    public init(at: String, reason: String) {
+      self.at = at
+      self.reason = reason
+    }
+  }
+
+  public enum Kind: String, Codable, Sendable {
+    case schedule, webhook
+  }
+
+  public var id: String
+  public var kind: Kind
+  public var name: String
+  public var enabled: Bool
+  public var schedule: Schedule?
+  public var counters: Counters
+  public var lastFiredAt: String?
+  public var lastSkipped: Skipped?
+
+  public init(
+    id: String,
+    kind: Kind,
+    name: String,
+    enabled: Bool,
+    schedule: Schedule? = nil,
+    counters: Counters = Counters(),
+    lastFiredAt: String? = nil,
+    lastSkipped: Skipped? = nil
+  ) {
+    self.id = id
+    self.kind = kind
+    self.name = name
+    self.enabled = enabled
+    self.schedule = schedule
+    self.counters = counters
+    self.lastFiredAt = lastFiredAt
+    self.lastSkipped = lastSkipped
+  }
+
+  /// The badge a sidebar row shows when the queue lost or refused something.
+  public var warning: String? {
+    if let skipped = lastSkipped { return skipped.reason == "missed" ? "错过" : skipped.reason }
+    if counters.dropped > 0 { return "丢弃 \(counters.dropped)" }
+    return nil
   }
 }

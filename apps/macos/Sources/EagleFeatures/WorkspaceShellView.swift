@@ -172,6 +172,9 @@ public struct WorkspaceShellView: View {
           onGallery: { onShowGallery { showsSettings = true } },
           onPinItem: { id in chrome.togglePin(id) },
           moveTargets: { id in moveTargets(for: id) },
+          onToggleItem: { id in
+            if bots.owns(id) { bots.toggleTrigger(id) }
+          },
           onMoveItem: { id, groupId in
             if bots.owns(id) {
               moveItem(id, to: groupId)
@@ -217,7 +220,9 @@ public struct WorkspaceShellView: View {
             NoConversationPlaceholder(
               onCreate: { showsBotCreate = true },
               onShowSidebar: { layout.toggleSidebar() },
-              showsSidebar: layout.showsSidebar
+              showsSidebar: layout.showsSidebar,
+              daemonMessage: bots.error,
+              onRetry: bots.error == nil ? nil : { Task { await bots.retryConnectionAsync() } }
             )
           }
         }
@@ -232,6 +237,7 @@ public struct WorkspaceShellView: View {
           tasks: selectedIsBot ? bots.tasks : [],
           usage: selectedIsBot ? bots.usage : [],
           choices: selectedIsBot ? bots.choices : [],
+          triggers: selectedIsBot ? bots.triggerRows : [],
           onChoose: { row, value in
             guard selectedIsBot else { return }
             Task { await bots.choose(row, value: value) }

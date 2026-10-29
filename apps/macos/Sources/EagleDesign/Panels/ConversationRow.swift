@@ -45,6 +45,11 @@ public struct ConversationRow: View {
           .truncationMode(.tail)
       }
       Spacer(minLength: 0)
+      if item.toggle != nil {
+        // The switch is drawn by the panel, outside this row's button; the row only
+        // reserves its width so the subtitle never runs beneath it.
+        Color.clear.frame(width: Theme.Metric.rowToggleWidth)
+      }
       if item.unread {
         Circle()
           .fill(Theme.Palette.accent)

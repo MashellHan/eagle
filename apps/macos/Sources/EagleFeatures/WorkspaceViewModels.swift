@@ -146,7 +146,7 @@ public enum MockWorkspace {
     ),
     .note(
       id: "n4", text: "已发送给 deps 2026-10-24 next-ai 和 deps 2026-10-24 bogo", tintIndices: [2, 3]),
-    .user(id: "u1", text: "今天 eagle 会修吗"),
+    .user(id: "u1", text: "今天 eagle 会修吗", origin: nil),
     .assistant(
       id: "a5",
       blocks: [
@@ -379,7 +379,7 @@ public final class BotChatViewModel: ObservableObject {
   public func send() {
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty else { return }
-    entries.append(.user(id: "local-\(sentCount)", text: text))
+    entries.append(.user(id: "local-\(sentCount)", text: text, origin: nil))
     entries.append(.typing(id: "typing-\(sentCount)"))
     sentCount += 1
     draft = ""

@@ -121,6 +121,7 @@ src/
     domain.ts                 Message, ContentBlock, ConversationSnapshot, Submission,
                               BotSummary, BotState, ErrorKind, BusyMode  (wire-independent)
     RuntimePort.ts            RuntimePort, RuntimeHandle, RuntimeEvent, RuntimeBotSpec
+    Invocation.ts             InvocationPort, Invocation, InvocationOrigin, id and text caps
     BotDirectory.ts           catalog.json CRUD, atomic write
     BotRegistry.ts            open/close/quarantine, idle close, recovery scan, deadlock-free lock
     EventHub.ts               per-bot rev, fanout, coalescing, snapshot rerender, paging
@@ -190,6 +191,13 @@ typing row while an attempt has no text yet).
 Swift type use the same word. Wire decoding is confined to `BotsTransport`.
 
 ## Ports
+
+Two boundaries. `RuntimePort` is the runtime adapter's contract, one Harness per
+bot. `InvocationPort` (`core/Invocation.ts`) is the one way a caller **without a
+client connection** admits work — a schedule, a webhook delivery or another bot —
+and it is defined in [TRIGGERS.md](TRIGGERS.md) §3. The service implements both
+sides of routing: `subscribe`/`send` for a connection, `invoke`/`observe` for a
+port caller, over one per-bot view and one admission chain.
 
 ```ts
 // apps/bots/src/core/RuntimePort.ts
@@ -427,10 +435,19 @@ Rules:
 5. Recovery scan at startup: for each catalogued bot, open + resume; keep active
    ones open, queue the rest for idle close. A failing bot is reported and
    skipped; the scan never aborts the daemon.
-6. Shutdown: stop accepting work, `close` every handle with a shared deadline.
-   Handles that time out are logged as quarantined; process exit releases the
-   socket lock and the OS closes their files. A timeout is never logged as
-   success.
+6. Shutdown: stop accepting work, drain the admissions already in flight,
+   `close` every handle with a shared deadline. Handles that time out are
+   logged as quarantined; process exit releases the socket lock and the OS
+   closes their files. A timeout is never logged as success.
+7. Delete order is part of the contract: mark the bot deleting (no new lease, no
+   new open), drain the leases already granted with the close deadline, then take
+   the lifecycle window, close, and move. The window cannot be taken first,
+   because an `open()` in flight waits for it and the drain would wait for that
+   open.
+8. An idle-close decision that spans `await busy()` is abandoned when any lease was
+   taken meanwhile: the port's answer may predate a run that has just started. The
+   registry tracks that with a per-bot activity generation, not with a second
+   subscriber counter.
 
 ### Lifecycle windows
 

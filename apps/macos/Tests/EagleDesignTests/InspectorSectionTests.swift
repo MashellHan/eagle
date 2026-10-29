@@ -20,7 +20,7 @@ struct InspectorSectionTests {
       depth: 1, isRunning: false, isBlocked: false),
   ]
 
-  @Test("the detail tab is 模型, 编码, 例行任务, 任务, 用量 — always all five, in that order")
+  @Test("the detail tab is 模型, 编码, 例行任务, 触发器, 任务, 用量 — always all six, in order")
   func detailOrder() {
     let usage = [
       InspectorUsageRow(id: "input", label: "输入", value: "12.3k"),
@@ -31,9 +31,11 @@ struct InspectorSectionTests {
         id: "model", label: "模型", value: "auto/gpt-6-luna", selected: "auto/gpt-6-luna",
         choices: [.init(id: "auto/gpt-6-luna", title: "auto/gpt-6-luna")])
     ]
+    let trigger = [InspectorUsageRow(id: "cron", label: "计划", value: "0 9 * * *")]
     let sections = InspectorSections.detail(
-      artifacts: artifacts, jobs: jobs, tasks: tasks, usage: usage, choices: choices)
-    #expect(sections.map(\.title) == ["模型", "编码", "例行任务", "任务", "用量"])
+      artifacts: artifacts, jobs: jobs, tasks: tasks, usage: usage, choices: choices,
+      triggers: trigger)
+    #expect(sections.map(\.title) == ["模型", "编码", "例行任务", "触发器", "任务", "用量"])
     #expect(sections.map(\.id).count == Set(sections.map(\.id)).count)
     #expect(sections.allSatisfy { !$0.symbolName.isEmpty }, "every section header carries a glyph")
     #expect(sections.allSatisfy { !$0.isEmpty })
@@ -42,12 +44,17 @@ struct InspectorSectionTests {
       return
     }
     #expect(rows == choices)
-    guard case .tasks(let taskRows) = sections[3].rows else {
-      Issue.record("the fourth section holds the tasks")
+    guard case .usage(let triggerRows) = sections[3].rows else {
+      Issue.record("the fourth section holds the selected trigger")
+      return
+    }
+    #expect(triggerRows == trigger)
+    guard case .tasks(let taskRows) = sections[4].rows else {
+      Issue.record("the fifth section holds the tasks")
       return
     }
     #expect(taskRows == tasks)
-    guard case .usage(let figures) = sections[4].rows else {
+    guard case .usage(let figures) = sections[5].rows else {
       Issue.record("the last section holds the usage")
       return
     }
@@ -59,15 +66,15 @@ struct InspectorSectionTests {
     let sections = InspectorSections.detail(
       artifacts: [], jobs: [], tasks: [], usage: [])
     #expect(
-      sections.map(\.title) == ["模型", "编码", "例行任务", "任务", "用量"],
+      sections.map(\.title) == ["模型", "编码", "例行任务", "触发器", "任务", "用量"],
       "a section never disappears")
     #expect(sections.allSatisfy { $0.isEmpty })
     #expect(
       sections.map(\.placeholder.title)
-        == ["这个会话没有模型", "还没有产物", "没有例行任务", "没有正在运行的任务", "还没有用量"])
+        == ["这个会话没有模型", "还没有产物", "没有例行任务", "没有选中触发器", "没有正在运行的任务", "还没有用量"])
     #expect(sections.allSatisfy { !$0.placeholder.symbolName.isEmpty })
     #expect(sections.allSatisfy { !$0.placeholder.detail.isEmpty })
-    #expect(sections[3].placeholder.title == "没有正在运行的任务")
+    #expect(sections[4].placeholder.title == "没有正在运行的任务")
   }
 
   @Test("the library and computer tabs are decorated sections too")
@@ -89,14 +96,14 @@ struct InspectorSectionTests {
   @Test("a section with rows never reads as empty, whatever the row kind")
   func emptinessFollowsRows() {
     let sections = InspectorSections.detail(artifacts: [], jobs: jobs, tasks: [], usage: [])
-    #expect(sections.map(\.isEmpty) == [true, true, false, true, true])
+    #expect(sections.map(\.isEmpty) == [true, true, false, true, true, true])
     let onlyArtifacts = InspectorSections.detail(
       artifacts: artifacts, jobs: [], tasks: [], usage: [])
-    #expect(onlyArtifacts.map(\.isEmpty) == [true, false, true, true, true])
+    #expect(onlyArtifacts.map(\.isEmpty) == [true, false, true, true, true, true])
     let withUsage = InspectorSections.detail(
       artifacts: [], jobs: [], tasks: [],
       usage: [InspectorUsageRow(id: "input", label: "输入", value: "812")])
-    #expect(withUsage.map(\.isEmpty) == [true, true, true, true, false])
+    #expect(withUsage.map(\.isEmpty) == [true, true, true, true, true, false])
   }
 
   @Test("a task row indents with its depth and spins only while running")

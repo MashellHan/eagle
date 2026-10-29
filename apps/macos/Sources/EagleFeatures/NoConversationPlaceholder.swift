@@ -7,17 +7,29 @@ struct NoConversationPlaceholder: View {
   let onCreate: () -> Void
   let onShowSidebar: () -> Void
   let showsSidebar: Bool
+  /// The Bots daemon could not be reached: say so and offer one explicit retry instead of
+  /// leaving an empty window that only a person who knows the daemon would understand.
+  var daemonMessage: String?
+  var onRetry: (() -> Void)?
 
   var body: some View {
     VStack(spacing: 10) {
-      Text("没有打开的对话")
+      Text(daemonMessage == nil ? "没有打开的对话" : "Bots daemon 未连接")
         .font(Theme.TypeScale.bodyEmphasis)
         .foregroundStyle(Theme.Palette.textPrimary)
-      Text("从侧栏选一个 Bot，或者新建一个")
+      Text(daemonMessage ?? "从侧栏选一个 Bot，或者新建一个")
         .font(Theme.TypeScale.note)
         .foregroundStyle(Theme.Palette.textSecondary)
-      SettingsActionButton("新建 Bot", prominent: true, action: onCreate)
-        .padding(.top, 4)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: 360)
+      if let onRetry {
+        SettingsActionButton("重新连接", prominent: true, action: onRetry)
+          .padding(.top, 4)
+        SettingsActionButton("新建 Bot", action: onCreate)
+      } else {
+        SettingsActionButton("新建 Bot", prominent: true, action: onCreate)
+          .padding(.top, 4)
+      }
       if !showsSidebar {
         IconButton(
           systemName: "sidebar.left", label: "展开侧栏", style: .circled, action: onShowSidebar

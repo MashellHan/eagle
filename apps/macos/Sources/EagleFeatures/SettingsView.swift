@@ -188,6 +188,16 @@ public struct SettingsView: View {
               .toggleStyle(.switch)
               .tint(Theme.Palette.accentStrong)
           }
+          Divider().overlay(Theme.Palette.line)
+          SettingsRow(
+            "触发器",
+            detail: "Bot 自己设置定时任务与 Webhook；开关与详情在侧栏，修改仍由 Bot 完成"
+          ) {
+            Toggle("", isOn: toolGroupBinding(SettingsViewModel.triggerToolGroup))
+              .labelsHidden()
+              .toggleStyle(.switch)
+              .tint(Theme.Palette.accentStrong)
+          }
         }
       }
     }

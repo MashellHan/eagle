@@ -1,0 +1,62 @@
+{
+  "id": "search-unconfigured",
+  "title": "没有搜索 Key 时，搜索工具给出可读的拒绝，运行继续",
+  "kind": "search",
+  "notes": "Search is a provider-backed tool and its group is deferred: the model must discover it with tool_search first. Without a saved key the call must fail as a result the model can read, not as a failed run.",
+  "toolGroups": ["core", "coding", "search"],
+  "model": {
+    "script": [
+      {
+        "toolCall": {
+          "name": "tool_search",
+          "args": {
+            "query": "web search web fetch"
+          }
+        }
+      },
+      {
+        "toolCall": {
+          "name": "web_search",
+          "args": {
+            "query": "eagle bots"
+          }
+        }
+      },
+      {
+        "text": "搜索不可用：还没有配置搜索 Key，所以我没法联网查。"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "kind": "chat",
+      "text": "查一下 eagle bots 的最新资料"
+    }
+  ],
+  "expect": {
+    "messages": [
+      {
+        "role": "user",
+        "origin": "human",
+        "contains": "查一下"
+      },
+      {
+        "role": "tool",
+        "contains": "web_search"
+      },
+      {
+        "role": "tool",
+        "contains": "搜索失败"
+      },
+      {
+        "role": "assistant",
+        "contains": "搜索不可用"
+      }
+    ],
+    "toolsCalled": ["tool_search", "web_search"],
+    "noErrors": true,
+    "modelRequests": {
+      "max": 4
+    }
+  }
+}

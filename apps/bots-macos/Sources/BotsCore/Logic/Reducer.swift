@@ -16,6 +16,8 @@ public struct ConversationState: Sendable, Equatable {
   public var parked: Bool
   /// Live work of every conversation the bot owns, newest list wins.
   public var tasks: [TaskSummary]
+  /// The bot's own triggers; a snapshot or a `triggers` event replaces the list whole.
+  public var triggers: [TriggerSummary]
   /// Tokens and cost so far; a snapshot is the first place it appears.
   public var usage: Usage?
   /// What the bot runs with, when the daemon reports it.
@@ -36,6 +38,7 @@ public struct ConversationState: Sendable, Equatable {
     unavailable: BotUnavailable? = nil,
     parked: Bool = false,
     tasks: [TaskSummary] = [],
+    triggers: [TriggerSummary] = [],
     usage: Usage? = nil,
     agent: AgentView? = nil,
     lastRev: Int? = nil,
@@ -51,6 +54,7 @@ public struct ConversationState: Sendable, Equatable {
     self.unavailable = unavailable
     self.parked = parked
     self.tasks = tasks
+    self.triggers = triggers
     self.usage = usage
     self.agent = agent
     self.lastRev = lastRev
@@ -97,6 +101,7 @@ public enum Reducer {
       unavailable: value.unavailable,
       parked: value.parked ?? false,
       tasks: value.tasks,
+      triggers: value.triggers,
       usage: value.usage,
       agent: value.agent,
       lastRev: rev,
@@ -147,6 +152,8 @@ public enum Reducer {
     case .tasks(let tasks):
       // A whole-list replacement: settled work leaves the list instead of going terminal.
       next.tasks = tasks
+    case .triggers(let triggers):
+      next.triggers = triggers
     case .usage(let usage):
       next.usage = usage
     case .connection, .catalog:

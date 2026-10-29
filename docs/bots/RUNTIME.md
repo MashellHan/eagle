@@ -269,9 +269,12 @@ Projection, which is also part of the mapping contract:
   inbox name, with records the adapter already holds supplying their details. Work
   the snapshot does not name is settled, so it leaves `pending` even if a settlement
   event was missed, and a cold start still shows the input a crash interrupted.
-- The baseline of a subscription is delivered before any later commit: events that
-  arrive while it is being computed are buffered, so a fresh snapshot can never
-  replace content that is already newer.
+- An internal view is live as soon as the bot is open, whether or not a client ever
+  subscribes: `ConversationService` releases the buffered commits at attach, so a
+  port caller observes them and a later subscriber's baseline already contains them
+  (TRIGGERS.md §3.5). The baseline is read synchronously before it is published, so
+  a commit that arrives during the open is folded into the snapshot a client first
+  sees, and a commit that arrives after it is numbered later.
 - Each converted message is measured as its encoded JSON; above `MAX_MESSAGE_BYTES`
   it is withheld and replaced by the notice (PROTOCOL.md). The adapter may not
   import the wire layer, so `src/runtime/pi/limits.ts` mirrors those two numbers and
@@ -300,7 +303,7 @@ Projection, which is also part of the mapping contract:
 | `progress.outputIntervalMs` | 100 | Reserved (tool output) |
 | `afterFailedRun` | `"continue"` | A failed run must not strand queued follow-ups |
 | `restartLimit` | 5 (default) | Parked tasks surface as `task_parked` and are cleared by `recover` |
-| `toolGroups` (per bot) | from stored config, default `["core", "coding", "herdr", "agents"]` | `core` and `coding` are mandatory. The former adds `list`; the latter is native `CodingTools`. Herdr and child-agent extensions are optional. See "Tool groups" below |
+| `toolGroups` (per bot) | from stored config, default `["core", "coding", "herdr", "agents", "trigger"]` | `core` and `coding` are mandatory. The former adds `list`; the latter is native `CodingTools`. Herdr and child-agent extensions are optional. See "Tool groups" below |
 | `thinkingLevel` (per bot) | from `bot.json`, default `medium` | Written by the settings page for every bot; applied when the Harness opens and moved in place on a live conversation (`root.configure`). One value for the whole daemon, because a bot cannot yet choose its own |
 | Search provider | `<XDG_CONFIG_HOME or ~/.config>/eagle-bots/providers.json` (0600) | Independent DeepSeek/Tavily keys with one selected provider. The `search` tool group is off by default. Its deferred `web_search`/`web_fetch` use a stable routing client that resolves the selected provider/key at invocation, including existing conversations; missing configuration is an error result, and failures never trigger fallback. Successful calls each book one `search` call |
 | Usage statistics | `<root>/usage.sqlite`, 90 days | `usage_daily(bot_id, day, source, tokens, calls, cost_usd)` plus `last_seen(bot_id, total_tokens, cost_usd)` so a cumulative model report becomes a delta. A source is a string (`model`, `search`), so a new spender needs no schema change; the first token-only `daily` table is migrated into the `model` source on open. Kept outside a bot's session, so deleting a bot keeps its history; pruned on boot and on write |
@@ -346,11 +349,17 @@ third-party plugins are explicitly outside the product scope.
 
 ### Tool groups
 
-`core/domain.ts` owns the product vocabulary: `core`, `coding`, `herdr`, `agents`.
+`core/domain.ts` owns the product vocabulary: `core`, `coding`, `herdr`, `agents`,
+`search`, `trigger`.
 `core` and `coding` are always selected, including when settings request an empty list.
 `core` maps to `bots-tools`, `coding` to native `coding-tools`, `herdr` to `bots-herdr`
-and the native `tool-search` loader, and `agents` to `bots-agents`. Both required groups
+and the native `tool-search` loader, `agents` to `bots-agents`, `search` to `bots-search`,
+and `trigger` to `bots-trigger`. Both required groups
 are shown enabled and disabled for editing in the settings UI.
+
+`bots-trigger` is installed only when the runtime is given a trigger host bound to that
+bot's store; the five tools are deferred behind `tool-search`, and the host carries the
+durable tool-task id as each mutation's operation id (TRIGGERS.md §7).
 
 ### Hot registry refresh
 

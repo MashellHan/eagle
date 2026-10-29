@@ -90,6 +90,9 @@ public enum Wire {
     case "tasks":
       let frame = try decoder.decode(TasksFrame.self, from: data)
       return Decoded(event: .tasks(frame.tasks), rev: frame.rev, type: "tasks")
+    case "triggers":
+      let frame = try decoder.decode(TriggersFrame.self, from: data)
+      return Decoded(event: .triggers(frame.triggers), rev: frame.rev, type: "triggers")
     case "usage":
       let frame = try decoder.decode(UsageFrame.self, from: data)
       return Decoded(event: .usage(frame.usage), rev: frame.rev, type: "usage")
@@ -235,6 +238,11 @@ public enum Wire {
 struct TasksFrame: Decodable {
     let rev: Int
     let tasks: [TaskSummary]
+  }
+
+  struct TriggersFrame: Decodable {
+    let rev: Int
+    let triggers: [TriggerSummary]
   }
 
   struct ErrorFrame: Decodable {

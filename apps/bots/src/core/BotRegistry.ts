@@ -53,6 +53,15 @@ type Entry = {
   handle: RuntimeHandle | undefined;
   opening: Promise<RuntimeHandle> | undefined;
   subscribers: number;
+  /**
+   * Bumped by every lease. An idle-close decision that spans `await busy()` is stale when
+   * this moved, because a run may have started after the port answered (TRIGGERS.md §3.3).
+   */
+  activity: number;
+  /** A delete owns the bot: no new lease, no new open, and no close until leases drain. */
+  deleting: boolean;
+  /** Waiters for "no lease is held", so a delete drains instead of polling. */
+  readonly leaseWaiters: (() => void)[];
   unavailable: { readonly reason: ErrorKind; readonly message: string } | undefined;
   cancelIdle: (() => void) | undefined;
   cancelRetry: (() => void) | undefined;
@@ -181,6 +190,9 @@ export class BotRegistry {
         handle: undefined,
         opening: undefined,
         subscribers: 0,
+        activity: 0,
+        deleting: false,
+        leaseWaiters: [],
         unavailable: undefined,
         cancelIdle: undefined,
         cancelRetry: undefined,
@@ -489,6 +501,9 @@ export class BotRegistry {
       handle: undefined,
       opening: undefined,
       subscribers: 0,
+      activity: 0,
+      deleting: false,
+      leaseWaiters: [],
       unavailable: undefined,
       cancelIdle: undefined,
       cancelRetry: undefined,
@@ -524,19 +539,57 @@ export class BotRegistry {
     }
     this.#options.log.emit("info", "core", Events.deleteStart, { trace, botId });
     entry.closing = true;
+    entry.deleting = true;
     this.#cancelTimers(entry);
-    let finish: () => void = () => undefined;
-    // The whole delete is one settling window: an open that arrives while the directory
-    // is being moved would create a handle for a bot the catalog no longer has.
-    entry.settling = new Promise<void>((resolve) => {
-      finish = resolve;
-    });
     try {
-      await this.#delete(entry, botId, trace);
+      // The door closes first: a new lease or a new open is refused from here on. Only
+      // then may the delete wait for the leases already granted — waiting while `settling`
+      // is set would deadlock, because an `open()` in flight waits for `settling`
+      // (TRIGGERS.md §3.6).
+      await this.#drainLeases(entry, trace);
+      let finish: () => void = () => undefined;
+      // The whole delete is one settling window: an open that arrives while the directory
+      // is being moved would create a handle for a bot the catalog no longer has.
+      entry.settling = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      try {
+        await this.#delete(entry, botId, trace);
+      } finally {
+        entry.settling = undefined;
+        finish();
+      }
     } finally {
-      entry.settling = undefined;
-      finish();
+      entry.deleting = false;
     }
+  }
+
+  /**
+   * Waits until no lease is held, bounded by the close deadline: a lease that never
+   * settles quarantines the bot instead of moving a directory under a live lookup.
+   */
+  async #drainLeases(entry: Entry, trace: string): Promise<void> {
+    if (entry.subscribers === 0) return;
+    const setTimer = this.#options.setTimer ?? defaultTimer;
+    const outcome = await new Promise<"released" | "timeout">((resolve) => {
+      const cancel = setTimer(() => {
+        const at = entry.leaseWaiters.indexOf(waiter);
+        if (at !== -1) entry.leaseWaiters.splice(at, 1);
+        resolve("timeout");
+      }, this.#options.closeDeadlineMs);
+      const waiter = () => {
+        cancel();
+        resolve("released");
+      };
+      entry.leaseWaiters.push(waiter);
+    });
+    if (outcome === "released") return;
+    this.#quarantine(entry, trace);
+    throw new ClassifiedFailure(
+      newFailure("internal"),
+      "not_admitted",
+      "an admission did not drain; the bot is quarantined",
+    );
   }
 
   async #delete(entry: Entry, botId: string, trace: string): Promise<void> {
@@ -585,7 +638,9 @@ export class BotRegistry {
    */
   async open(botId: string, trace: string): Promise<RuntimeHandle> {
     const entry = this.#entry(botId, trace);
-    // A close (idle, delete or shutdown) owns the handle until it settles. Opening during
+    // A close (idle, delete or shutdown) owns the handle until it settles. The delete
+    // sets `settling` only after its lease drain, so an open that started before the door
+    // closed is never waited on by the drain it belongs to (TRIGGERS.md §3.6). Opening during
     // that window would create a second Harness over one sqlite file, and the close would
     // then clear the handle it never owned (ARCHITECTURE.md, "Bot lifecycle").
     if (entry.settling !== undefined) {
@@ -667,19 +722,27 @@ export class BotRegistry {
     return true;
   }
 
-  /** A subscription started: the bot must stay open while it lasts. */
-  touch(botId: string): void {
+  /**
+   * A subscription or an admission started: the bot must stay open while it lasts.
+   * Answers false for a bot that is unknown, quarantined or being deleted, so a caller
+   * never holds a lease it cannot release.
+   */
+  touch(botId: string): boolean {
     const entry = this.#entries.get(botId);
-    if (entry === undefined) return;
+    if (entry === undefined || entry.deleting || entry.state === "quarantined") return false;
     this.#touch(entry);
+    return true;
   }
 
-  /** The last subscription ended: close after the idle window if the bot is quiet. */
+  /** The last lease ended: close after the idle window if the bot is quiet. */
   release(botId: string): void {
     const entry = this.#entries.get(botId);
     if (entry === undefined) return;
     entry.subscribers = Math.max(0, entry.subscribers - 1);
-    if (entry.subscribers === 0) this.#scheduleIdle(entry);
+    if (entry.subscribers > 0) return;
+    // A delete is draining: it owns the next step, so no idle close is scheduled here.
+    for (const resolve of entry.leaseWaiters.splice(0)) resolve();
+    if (!entry.deleting) this.#scheduleIdle(entry);
   }
 
   async shutdown(): Promise<void> {
@@ -780,6 +843,7 @@ export class BotRegistry {
 
   #touch(entry: Entry): void {
     entry.subscribers += 1;
+    entry.activity += 1;
     entry.cancelIdle?.();
     entry.cancelIdle = undefined;
   }
@@ -797,9 +861,14 @@ export class BotRegistry {
     if (entry.subscribers > 0 || entry.handle === undefined) return;
     if (entry.state === "quarantined" || entry.closing) return;
     const trace = this.#boot();
+    const activity = entry.activity;
     const busy = await entry.handle.busy().catch(() => ({ run: false, tasks: false }));
+    // A lease taken while `busy()` was in flight may have started a run: that answer is
+    // stale, and the touch/release pair has already rescheduled this decision.
+    if (entry.activity !== activity) return;
     // A subscription or a delete can arrive while `busy()` was in flight.
-    if (entry.subscribers > 0 || entry.closing || entry.handle === undefined) return;
+    if (entry.subscribers > 0 || entry.closing || entry.deleting || entry.handle === undefined)
+      return;
     if (busy.run || busy.tasks) {
       // A background task keeps the bot warm; the close condition reads the port.
       this.#scheduleIdle(entry);

@@ -39,5 +39,6 @@ jobs:
       - run: npm --workspace @nocoo/eagle-agent run build
       - run: npm run test:devices
       - run: swift build --package-path apps/macos
+      - run: npm run test:focus
       - run: cd apps/macos && swift format lint --strict --recursive Sources Scripts Tests
       - run: apps/macos/Scripts/coverage.sh

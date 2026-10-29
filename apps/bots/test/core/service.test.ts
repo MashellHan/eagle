@@ -294,7 +294,7 @@ test("a failed open does not poison the next attempt", async () => {
   );
 });
 
-test("an event delivered while subscribing is published after the first snapshot", async () => {
+test("an event delivered while opening is already in the baseline a client first sees", async () => {
   const runtime = new FakeRuntime();
   const service = new ConversationService({
     open: async (botId, openTrace) => {
@@ -324,13 +324,11 @@ test("an event delivered while subscribing is published after the first snapshot
   const joined = await subscribe(service, received);
   assert.deepEqual(
     received.map((event) => [event.type, event.rev]),
-    [
-      ["snapshot", 1],
-      ["status", 2],
-    ],
-    "the baseline is numbered before anything that arrived during subscribe",
+    [["snapshot", 2]],
+    "a commit that arrives during the open is folded into the baseline, not sent before it",
   );
-  assert.equal(joined.rev, 1);
+  assert.equal(joined.rev, 2, "the baseline carries the revision that names its content");
+  assert.equal(joined.snapshot.running, true, "the baseline carries the run that already started");
 });
 
 test("a later connection starts from the current view, not the open-time snapshot", async () => {
@@ -431,7 +429,7 @@ test("the baseline snapshot is the first frame and its revision is returned", as
   );
 });
 
-test("events produced while the buffer is releasing keep their order", async () => {
+test("a commit published from the baseline callback lands after it", async () => {
   const runtime = new FakeRuntime();
   const service = new ConversationService({
     open: async (botId, openTrace) => {
@@ -466,14 +464,14 @@ test("events produced while the buffer is releasing keep their order", async () 
   const seen: string[] = [];
   await service.subscribe("c_1", "b_1", trace, (event) => {
     seen.push(event.type === "append" ? event.message.id : event.type);
-    if (event.type === "append" && event.message.id === "e_1") {
+    if (event.type === "snapshot") {
       runtime.handle("b_1").emit({ type: "append", trace, message: message("e_3") });
     }
   });
   assert.deepEqual(
     seen,
-    ["snapshot", "e_1", "snapshot", "e_3"],
-    "an event produced inside the release lands after the buffered ones, not before",
+    ["snapshot", "e_3"],
+    "commits that landed during the open are in the baseline; one produced by its sink follows it",
   );
   const joined = await service.subscribe("c_2", "b_1", trace, () => {});
   assert.deepEqual(

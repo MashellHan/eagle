@@ -22,12 +22,14 @@
     "fixtures:check": "node --experimental-strip-types scripts/fixtures.ts check",
     "fixtures:write": "node --experimental-strip-types scripts/fixtures.ts write",
     "smoke:model": "node --env-file-if-exists=.env --experimental-strip-types scripts/smoke-model.ts",
-    "check": "npm run fixtures:check && npm test && npm run typecheck && npm run lint && npm run coverage"
+    "check": "npm run fixtures:check && npm test && npm run typecheck && npm run lint && npm run coverage",
+    "eval": "node --experimental-strip-types scripts/eval.ts"
   },
   "dependencies": {
     "@earendil-works/chord": "1.4.0",
     "@earendil-works/pi-ai": "1.4.0",
     "@earendil-works/pi-durable": "1.4.0",
+    "croner": "11.0.0",
     "ws": "8.22.0",
     "zod": "4.6.7"
   },

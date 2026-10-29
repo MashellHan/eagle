@@ -496,4 +496,84 @@ final class DomainCoverageMoreTests: XCTestCase {
     XCTAssertEqual(decoded.days.first?.id, "2026-10-20")
     XCTAssertEqual(decoded.bots.first?.id, "b_1")
   }
+
+  func testAnOriginDecodesEncodesAndNamesItsCause() throws {
+    let json = """
+      {"kind":"webhook","label":"deploy notify"}
+      """
+    let decoded = try JSONDecoder().decode(
+      MessageOrigin.self, from: Data(json.utf8))
+    XCTAssertEqual(decoded.kind, .webhook)
+    XCTAssertEqual(decoded.chip, "deploy notify")
+    XCTAssertEqual(
+      try JSONDecoder().decode(MessageOrigin.self, from: Data(#"{"kind":"schedule"}"#.utf8)).chip,
+      "定时",
+      "a schedule without a name still says what it is"
+    )
+    XCTAssertEqual(
+      try JSONDecoder().decode(MessageOrigin.self, from: Data(#"{"kind":"peer"}"#.utf8)).chip,
+      "其他 Bot"
+    )
+    XCTAssertNil(
+      try JSONDecoder().decode(MessageOrigin.self, from: Data(#"{"kind":"unknown"}"#.utf8)).chip,
+      "an unrecorded cause renders as a plain message"
+    )
+    XCTAssertThrowsError(
+      try JSONDecoder().decode(MessageOrigin.self, from: Data(#"{"kind":"telepathy"}"#.utf8)),
+      "an unknown kind is refused, not guessed"
+    )
+
+    let message = Message(
+      id: "e_1",
+      role: .user,
+      state: .complete,
+      createdAt: "2026-10-28T00:00:00.000Z",
+      blocks: [.text("hi")],
+      origin: decoded
+    )
+    let round = try JSONDecoder().decode(
+      Message.self, from: try JSONEncoder().encode(message))
+    XCTAssertEqual(round.origin, decoded)
+    let plain = Message(
+      id: "e_2", role: .user, state: .complete, createdAt: "x", blocks: [])
+    XCTAssertNil(plain.origin, "a message without a cause decodes without one")
+  }
+
+  func testATriggerSummaryDecodesEncodesAndFlagsItsProblems() throws {
+    let json = """
+      {"id":"t_9f2a1c3d04","kind":"schedule","name":"morning triage","enabled":true,
+       "schedule":{"cron":"0 9 * * *","timezone":"Asia/Shanghai",
+                   "nextDueAt":"2026-10-29T01:00:00.000Z"},
+       "counters":{"fired":12,"dropped":0,"refused":1},
+       "lastSkipped":{"at":"2026-10-28T00:00:00.000Z","reason":"missed"}}
+      """
+    let decoded = try JSONDecoder().decode(
+      TriggerSummary.self, from: Data(json.utf8))
+    XCTAssertEqual(decoded.schedule?.nextDueAt, "2026-10-29T01:00:00.000Z")
+    XCTAssertEqual(decoded.warning, "错过")
+    XCTAssertEqual(
+      try JSONDecoder().decode(TriggerSummary.self, from: try JSONEncoder().encode(decoded)),
+      decoded
+    )
+
+    let webhook = TriggerSummary(
+      id: "t_7b1e55aa10", kind: .webhook, name: "deploy notify", enabled: false,
+      counters: TriggerSummary.Counters(fired: 1, dropped: 4)
+    )
+    XCTAssertNil(webhook.schedule)
+    XCTAssertEqual(webhook.warning, "丢弃 4")
+    XCTAssertEqual(
+      try JSONDecoder().decode(
+        TriggerSummary.self, from: try JSONEncoder().encode(webhook)),
+      webhook
+    )
+
+    let skipped = TriggerSummary(
+      id: "t_aaaaaaaaaa", kind: .schedule, name: "x", enabled: true,
+      lastSkipped: TriggerSummary.Skipped(at: "2026-10-28T00:00:00.000Z", reason: "rate_limited")
+    )
+    XCTAssertEqual(skipped.warning, "rate_limited")
+    XCTAssertNil(
+      TriggerSummary(id: "t_bbbbbbbbbb", kind: .webhook, name: "y", enabled: true).warning)
+  }
 }
