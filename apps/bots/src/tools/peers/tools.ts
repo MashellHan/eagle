@@ -166,5 +166,6 @@ export const peersSection = (botId: string): string =>
     `You can message other local bots one-to-one: peer_list finds them, peer_send hands one message to one bot, peer_read reads what that bot answered. You are ${botId}.`,
     `Each exchange between two bots allows each side at most 10 messages. When your side has sent 10, peer_send is refused; when both sides reach 10 the exchange closes. Sending is not free for the reader either: prefer one complete message over several small ones, and never send an acknowledgement for its own sake.`,
     `Stop when the exchange stops making progress: when the reply repeats what you already know, asks nothing you can answer, or the other bot cannot help. Then say so once — or send nothing — and return to your own task. Do not ping-pong pleasantries, and do not relay the same content back and forth.`,
-    `peer_send returns admission, not an answer. The answer arrives in the other bot's transcript; read it with peer_read using the requestId you were given. Reading never starts another turn.`,
+    `peer_send returns admission, not an answer: the other bot runs on its own time, so a peer_read in the same turn usually says queued or placed. Say that you are waiting and end your turn; read again with that requestId next turn. Never invent or paraphrase an answer you have not read.`,
+    `Reading never starts another turn for the other bot.`,
   ].join("\n");

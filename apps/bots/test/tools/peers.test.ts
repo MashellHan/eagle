@@ -170,5 +170,7 @@ test("the prompt states the budget, the stop rule and that a send is not an answ
   assert.match(prompt, /peer_send is refused/);
   assert.match(prompt, /Stop when the exchange stops making progress/);
   assert.match(prompt, /admission, not an answer/);
+  assert.match(prompt, /queued or placed/);
+  assert.match(prompt, /Never invent/);
   assert.match(prompt, /b_self/);
 });

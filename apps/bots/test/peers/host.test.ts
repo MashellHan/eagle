@@ -103,7 +103,11 @@ test("a send admits one message addressed to the recipient, with the peer origin
     assert.equal(result.sent, 1);
     assert.equal(result.remaining, PEER_MAX_TURNS - 1);
     assert.equal(result.exchangeStatus, "open");
-    assert.deepEqual(bench.sent[0]?.origin, { kind: "peer", fromBotId: "b_sender" });
+    assert.deepEqual(bench.sent[0]?.origin, {
+      kind: "peer",
+      fromBotId: "b_sender",
+      label: "sender",
+    });
     assert.equal(bench.sent[0]?.botId, "b_target");
   } finally {
     await bench.cleanup();

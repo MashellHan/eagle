@@ -103,11 +103,18 @@ export const peerHostFor = (deps: PeerHostDeps): PeerToolHost => ({
     // The receipt is durable before admission: a crash in between leaves a recoverable record,
     // never a message the sender cannot name (TRIGGERS.md §10, "lost acknowledgement").
     const { exchange: appended } = await deps.store.append(exchange.id, turn);
+    // The label is the sender's own name: it is what the recipient's transcript shows a
+    // person, and it survives a restart with the origin sidecar.
+    const self = deps.bots().find((bot) => bot.id === deps.botId);
     const submission = await deps.invoke({
       botId: recipient.id,
       requestId,
       text: message,
-      origin: { kind: "peer", fromBotId: deps.botId },
+      origin: {
+        kind: "peer",
+        fromBotId: deps.botId,
+        ...(self === undefined ? {} : { label: self.title }),
+      },
       whenBusy: "followUp",
       trace: `tr_peer_${requestId.slice(3, 11)}`,
     });
