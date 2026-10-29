@@ -156,6 +156,8 @@ public enum Reducer {
       next.triggers = triggers
     case .usage(let usage):
       next.usage = usage
+    case .agent(let agent):
+      next.agent = agent
     case .connection, .catalog:
       break
     case .error(let kind, _, _, _, _):

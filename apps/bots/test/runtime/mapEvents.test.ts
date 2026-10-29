@@ -52,6 +52,30 @@ const of = <T extends RuntimeEvent["type"]>(events: readonly RuntimeEvent[], typ
 const appends = (events: readonly RuntimeEvent[]) =>
   of(events, "append").map((event) => [event.message.id, event.replaces ?? null] as const);
 
+test("an agent change reaches the live view without interrupting its partial or pending input", () => {
+  const mapper = new EventMapper({ botId: "b_golden", now: fixedClock });
+  live: for (const batch of golden("answer-with-deltas").events) {
+    for (const event of batch) {
+      mapper.map(event as never, trace);
+      if ((event as { type: string }).type === "message_update") break live;
+    }
+  }
+  const before = mapper.view();
+  assert.equal(before.running, true);
+  assert.notEqual(before.streaming, null);
+  assert.ok(before.pending.length > 0);
+  const agent = {
+    model: { provider: "faux", modelId: "faux-1" },
+    thinkingLevel: "high",
+    instructions: "Keep the conversation intact.",
+  };
+  const events = mapper.map({ type: "agent_changed", agent } as never, trace);
+  assert.deepEqual(events, [{ type: "agent", trace, agent }]);
+  const client = events.reduce((view, event) => reduceView(view, event, new Map()), before);
+  assert.deepEqual(client, { ...before, agent });
+  assert.deepEqual(mapper.view(), client);
+});
+
 // ---------------------------------------------------------------- rows 23-26: goldens
 
 test("maps a recorded run to append, delta, append, submission, status", () => {

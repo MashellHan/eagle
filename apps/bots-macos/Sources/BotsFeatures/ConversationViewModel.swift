@@ -355,6 +355,8 @@ public final class ConversationViewModel: ObservableObject {
       state = Reducer.apply(.triggers(triggers), to: state)
     case .usage(let usage):
       state = Reducer.apply(.usage(usage), to: state)
+    case .agent(let agent):
+      state = Reducer.apply(.agent(agent), to: state)
     case .catalog(let catalog):
       onCatalog?(catalog)
     case .error(let kind, let disposition, let message, _, let requestId):

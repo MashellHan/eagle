@@ -32,6 +32,7 @@ final class FixtureDecodingTests: XCTestCase {
     "submission.server.json",
     "submission.connection.server.json",
     "bots.server.json",
+    "agent.server.json",
     "triggers.server.json",
     "error.server.json",
     "error-rejected.server.json",
@@ -45,6 +46,19 @@ final class FixtureDecodingTests: XCTestCase {
       let data = try Data(contentsOf: url)
       XCTAssertNoThrow(try Wire.decode(data), "\(name) must decode")
     }
+  }
+
+  func testTheAgentFixtureReachesTheConversation() throws {
+    let data = try Data(contentsOf: Self.fixtures.appendingPathComponent("agent.server.json"))
+    let decoded = try Wire.decode(data)
+    XCTAssertEqual(decoded.type, "agent")
+    XCTAssertEqual(decoded.rev, 45)
+    guard case .agent(let agent) = decoded.event else {
+      return XCTFail("a configuration update must reach the current conversation")
+    }
+    XCTAssertEqual(agent.model.modelId, "faux-1")
+    XCTAssertEqual(agent.thinkingLevel, "high")
+    XCTAssertEqual(agent.instructions, "Keep the conversation intact.")
   }
 
   func testTheSnapshotCarriesItsTranscript() throws {
