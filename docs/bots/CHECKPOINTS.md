@@ -578,3 +578,37 @@ Next broken hop: the webhook endpoint (stage 2) — a trigger of kind `webhook`
 cannot receive a delivery yet, so only schedules produce fires. Nothing has
 exercised a real model creating a trigger through `trigger_create` (no gateway key
 in this session), and no image of the new sidebar row has been reviewed.
+
+## 2026-10-29 10:35 — both trigger kinds deliver
+
+Observed: a webhook trigger now receives work. A service posts to
+`/v1/triggers/<botId>/<triggerId>` with that trigger's own bearer and gets `202`; the
+delivery becomes one batched message whose origin chip says `webhook`, and the bot
+answers. A schedule trigger fires at its minute on its own, and its message says
+`schedule`. The app's trigger detail shows the endpoint and the token to copy, the
+counters follow reality, and disabling a trigger makes its endpoint answer `409`.
+
+Verified:
+
+- `apps/bots`: `npm run check` 611 tests, coverage 95.08 / 88.02 / 90.19. New suites:
+  the ingress contract (202/409/413/422/429/404, one 404 for unknown/wrong token,
+  text extraction, clamping, idempotency with and without a key, the retry window),
+  the secret store (mint once, 0600, reopen, forget, corrupt file), the HTTP route with
+  and without an ingress, and the queue's last-delivered window.
+- `apps/bots-macos`: `swift test` green, `./Scripts/coverage.sh` 90.8%.
+  `apps/macos`: 134 + 49 tests green, coverage 95.7%.
+- Live, real daemon on a temporary root with a local faux OpenAI Responses endpoint:
+  the gateway saved over `PUT /v1/settings`, a webhook trigger replayed from its
+  journal, a token minted at boot in `triggers.secrets.json`, `POST …/t_aaaaaaaaaa`
+  → `202` and a user message `origin:{kind:"webhook"}` followed by an assistant answer;
+  the same `Idempotency-Key` twice → `queued: 1` then `queued: 0`, and still `0` after
+  the run had closed its batch; wrong token → `404`; the daemon bearer on the delivery
+  route → `404`; disabled → `409`; a `* * * * *` schedule fired at its minute
+  (`origin:{kind:"schedule"}`, envelope `[schedule · 1 item · …]`), advanced its cursor
+  and incremented `fired`.
+
+Next broken hop: `peers` (stage 3) is untouched. Two stage-2 limits are declared but
+not implemented — the per-token bucket and `maxFiresPerHour`; the 32-item queue (`429`)
+and the admission budget are the only backpressure. Nothing here exercised a model
+creating a trigger through `trigger_create` (the triggers came from their journals), and
+no image of the new rows has been reviewed.
