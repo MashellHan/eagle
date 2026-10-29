@@ -2,6 +2,7 @@
 // own behaviour into these events; it never numbers revisions, encodes frames or knows
 // the catalog.
 import type {
+  AgentView,
   BusyMode,
   ConversationSnapshot,
   DeltaChange,
@@ -29,6 +30,7 @@ export type RuntimeEvent = { readonly trace: string } & (
   | { readonly type: "tasks"; readonly tasks: readonly TaskSummary[] }
   | { readonly type: "triggers"; readonly triggers: readonly TriggerSummary[] }
   | { readonly type: "usage"; readonly usage: Usage }
+  | { readonly type: "agent"; readonly agent: AgentView }
   | { readonly type: "snapshot"; readonly value: ConversationSnapshot }
   | {
       readonly type: "error";

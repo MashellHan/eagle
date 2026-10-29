@@ -2154,3 +2154,21 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   exceeded its local 15-second deadline. The local merge is not published; the final
   macOS Swift push stage was not reached. Preserve limits and hooks when recovering.
   Evidence: `.local/device-evidence/upstream-pr/`.
+
+## 2026-10-29 18:40 +0800 — Merged thinking update integrated locally
+
+- GitHub confirmed PR #108 merged at 18:32:37 +08 as
+  `b75816156d5b558f40ec73fd715e34c399f5512f`. Lead fetched that actual commit and
+  merged it into the device worktree without conflicts; earlier test-merge SHAs
+  were not used. The existing Catalog trigger expectation needed no extra change.
+- The 17-file increment updates only agent configuration through the typed event;
+  device wiring, native admission, shared observation, history and pending state
+  remain intact. Astra reviewed fixed tree `b15b6b2` with no substantive findings.
+- Affected headless checks passed: Bots normal and coverage each 636/636,
+  types/Biome, and Bots Swift 136/136. Evidence:
+  `.local/device-evidence/upstream-pr/lead-followup-jdtkrxaq/pr108-integration/`.
+- This sync is local. PR #109 remains a draft at published `a96ee48`; its update
+  still awaits the independent focus fix and normal push gate. That candidate's
+  Services selection and all 42 native checks await unlock and test-window
+  coordination. Browser port 27053 is released, but no native test or App update
+  was performed here. Physical two-Mac acceptance remains pending.

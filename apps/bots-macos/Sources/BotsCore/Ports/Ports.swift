@@ -17,6 +17,8 @@ public enum ConversationEvent: Sendable, Equatable {
   case triggers([TriggerSummary])
   /// Tokens and cost so far, whenever the daemon's totals move.
   case usage(Usage)
+  /// The bot's complete current model, thinking level and instructions.
+  case agent(AgentView)
   case catalog(BotCatalog)
   case error(
     kind: ErrorKind,

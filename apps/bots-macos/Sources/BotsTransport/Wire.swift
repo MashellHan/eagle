@@ -96,6 +96,9 @@ public enum Wire {
     case "usage":
       let frame = try decoder.decode(UsageFrame.self, from: data)
       return Decoded(event: .usage(frame.usage), rev: frame.rev, type: "usage")
+    case "agent":
+      let frame = try decoder.decode(AgentFrame.self, from: data)
+      return Decoded(event: .agent(frame.agent), rev: frame.rev, type: "agent")
     case "error":
       let frame = try decoder.decode(ErrorFrame.self, from: data)
       // The handshake failure carries `server` instead of a disposition and is sent before
@@ -228,6 +231,11 @@ public enum Wire {
   struct HistoryFrame: Decodable {
     let messages: [Message]
     let hasMore: Bool
+  }
+
+  struct AgentFrame: Decodable {
+    let rev: Int
+    let agent: AgentView
   }
 
   struct UsageFrame: Decodable {

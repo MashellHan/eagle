@@ -63,6 +63,9 @@ export const reduceView = (
   event: RuntimeEvent,
   ranks: SubmissionRanks,
 ): ConversationSnapshot => {
+  if (event.type === "agent") {
+    return { ...view, agent: event.agent };
+  }
   if (event.type === "append") {
     const messages = upsert(view.messages, event.message, event.replaces);
     // A provisional becomes the streaming target; anything that supersedes it clears

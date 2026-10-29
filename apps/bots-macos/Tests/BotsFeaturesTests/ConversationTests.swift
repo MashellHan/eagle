@@ -29,6 +29,38 @@ final class ConversationTests: XCTestCase {
     model.select(botId: "b_1")
   }
 
+  func testAnAgentUpdatePreservesLoadedHistoryAndUnconfirmedSends() async throws {
+    let (model, fake, outbox) = makeModel()
+    ready(model)
+    fake.emit(.connection(.ready))
+    fake.emit(.snapshot(ConversationSnapshot(botId: "b_1", running: true, parked: true)))
+    try await waitUntil { model.hasSnapshot }
+    let older = Message(
+      id: "e_1", role: .user, state: .complete, createdAt: "2026-01-01T00:00:00.000Z",
+      blocks: [.text("已经加载的旧消息")])
+    fake.emit(.history(page: HistoryPage(messages: [older], hasMore: true)))
+    try await waitUntil { model.state.messages.count == 1 }
+    model.draft = "尚未确认的新消息"
+    model.send()
+    try await waitUntil { fake.sent.count == 1 }
+    let before = model.state
+    let pending = try outbox.entries(for: "b_1").map(\.requestId)
+    XCTAssertEqual(before.messages.count, 2)
+    XCTAssertTrue(before.messages.last?.isOptimistic == true)
+    let agent = AgentView(
+      model: ModelRef(provider: "faux", modelId: "faux-1"),
+      thinkingLevel: "high", instructions: "Keep the conversation intact.")
+    fake.emit(.agent(agent))
+    try await waitUntil { model.state.agent == agent }
+
+    var expected = before
+    expected.agent = agent
+    XCTAssertEqual(model.state, expected)
+    XCTAssertTrue(model.hasOlder)
+    XCTAssertTrue(model.parked)
+    XCTAssertEqual(try outbox.entries(for: "b_1").map(\.requestId), pending)
+  }
+
   func testInsertingSendsASteerAndAPlainSendQueues() async throws {
     let (model, fake, _) = makeModel()
     ready(model)

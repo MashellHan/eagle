@@ -1,6 +1,7 @@
 // Domain → wire. Key order is fixed so the encoder output can be compared
 // byte-for-byte with the normative fixtures.
 import type {
+  AgentView,
   BotGroup,
   BotSummary,
   ContentBlock,
@@ -117,17 +118,17 @@ const encodeTrigger = (trigger: TriggerSummary): Wire => {
   return wire;
 };
 
+const encodeAgent = (agent: AgentView): Wire => ({
+  model: { provider: agent.model.provider, modelId: agent.model.modelId },
+  thinkingLevel: agent.thinkingLevel,
+  instructions: agent.instructions,
+});
+
 export const encodeSnapshot = (s: ConversationSnapshot): Wire => {
   const value: Wire = { botId: s.botId };
   if (s.tasks !== undefined) value.tasks = s.tasks.map(encodeTask);
   if (s.triggers !== undefined) value.triggers = s.triggers.map(encodeTrigger);
-  if (s.agent) {
-    value.agent = {
-      model: { provider: s.agent.model.provider, modelId: s.agent.model.modelId },
-      thinkingLevel: s.agent.thinkingLevel,
-      instructions: s.agent.instructions,
-    };
-  }
+  if (s.agent) value.agent = encodeAgent(s.agent);
   value.messages = s.messages.map(encodeMessage);
   if (s.truncatedBefore !== undefined) value.truncatedBefore = s.truncatedBefore;
   value.streaming = s.streaming === null ? null : { messageId: s.streaming };
@@ -206,6 +207,9 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
       return wire;
     case "snapshot":
       wire.value = encodeSnapshot(event.value);
+      return wire;
+    case "agent":
+      wire.agent = encodeAgent(event.agent);
       return wire;
     case "append":
       if (event.replaces !== undefined) wire.replaces = event.replaces;

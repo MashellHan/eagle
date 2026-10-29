@@ -1,0 +1,13 @@
+{
+  "type": "agent",
+  "rev": 45,
+  "trace": "tr_0190a1b2-3e4f-7a50-8b1c-2d3e4f506172",
+  "agent": {
+    "model": {
+      "provider": "faux",
+      "modelId": "faux-1"
+    },
+    "thinkingLevel": "high",
+    "instructions": "Keep the conversation intact."
+  }
+}

@@ -3,6 +3,7 @@
 // encode. Nothing reaches a domain type without passing its closed union.
 
 import type {
+  AgentView,
   BotGroup,
   BotSummary,
   ContentBlock,
@@ -118,6 +119,12 @@ export type ServerEvent =
       readonly rev: number;
       readonly trace: string;
       readonly usage: Usage;
+    }
+  | {
+      readonly type: "agent";
+      readonly rev: number;
+      readonly trace: string;
+      readonly agent: AgentView;
     }
   | {
       readonly type: "history";
@@ -519,6 +526,18 @@ const decodeSubmission = (ctx: Ctx, raw: unknown): Submission => {
   };
 };
 
+const decodeAgent = (ctx: Ctx, raw: unknown): AgentView => {
+  if (!isObject(raw)) fail(ctx, "agent must be an object");
+  const model = isObject(raw.model) ? raw.model : {};
+  const provider = str(ctx, model.provider, "agent.model.provider");
+  const modelId = str(ctx, model.modelId, "agent.model.modelId");
+  const thinkingLevel = anyStr(ctx, raw.thinkingLevel, "agent.thinkingLevel");
+  const instructions = anyStr(ctx, raw.instructions, "agent.instructions");
+  if (Array.from(instructions).length > 4_000)
+    fail(ctx, "agent.instructions exceeds 4000 characters");
+  return { model: { provider, modelId }, thinkingLevel, instructions };
+};
+
 const decodeSnapshot = (ctx: Ctx, raw: unknown): ConversationSnapshot => {
   if (!isObject(raw)) fail(ctx, "snapshot value must be an object");
   const streamingRaw = required(ctx, raw, "streaming");
@@ -546,29 +565,7 @@ const decodeSnapshot = (ctx: Ctx, raw: unknown): ConversationSnapshot => {
   if (present(raw, "unavailable") && !isObject(raw.unavailable)) {
     fail(ctx, "unavailable must be an object");
   }
-  const agent = isObject(raw.agent)
-    ? {
-        model: {
-          provider: str(
-            ctx,
-            (isObject(raw.agent.model) ? raw.agent.model : {}).provider,
-            "agent.model.provider",
-          ),
-          modelId: str(
-            ctx,
-            (isObject(raw.agent.model) ? raw.agent.model : {}).modelId,
-            "agent.model.modelId",
-          ),
-        },
-        thinkingLevel: anyStr(ctx, raw.agent.thinkingLevel, "agent.thinkingLevel"),
-        instructions: (() => {
-          const instructions = anyStr(ctx, raw.agent.instructions, "agent.instructions");
-          if (Array.from(instructions).length > 4_000)
-            fail(ctx, "agent.instructions exceeds 4000 characters");
-          return instructions;
-        })(),
-      }
-    : undefined;
+  const agent = isObject(raw.agent) ? decodeAgent(ctx, raw.agent) : undefined;
   const unavailable = isObject(raw.unavailable)
     ? {
         reason: oneOf(ctx, raw.unavailable.reason, ERROR_KINDS, "unavailable.reason"),
@@ -843,6 +840,15 @@ export function decodeServerEvent(raw: Record<string, unknown>): ServerEvent {
         rev: rev as number,
         trace,
         usage: decodeUsage(ctx, required(ctx, raw, "usage")),
+      };
+    }
+    case "agent": {
+      const { rev, trace } = requireEnvelope(ctx, raw, true);
+      return {
+        type,
+        rev: rev as number,
+        trace,
+        agent: decodeAgent(ctx, required(ctx, raw, "agent")),
       };
     }
     case "tasks": {
