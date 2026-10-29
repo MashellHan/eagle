@@ -11,7 +11,7 @@ struct EagleApp: App {
   var body: some Scene {
     WindowGroup("Eagle") {
       WorkspaceShellView(onShowGallery: { openSettings in
-        GalleryWindow.show(onShowSettings: openSettings)
+        GalleryWindowController.shared.show(onShowSettings: openSettings)
       })
       .frame(minWidth: 1280, minHeight: 760)
       .ignoresSafeArea()
@@ -29,7 +29,7 @@ struct EagleApp: App {
       }
       CommandGroup(after: .newItem) {
         Button("模板库") {
-          GalleryWindow.show()
+          GalleryWindowController.shared.show()
         }
         .keyboardShortcut("g", modifiers: [.command, .shift])
 
@@ -81,46 +81,6 @@ struct WindowConfigurator: NSViewRepresentable {
   }
 
   func updateNSView(_ view: NSView, context: Context) {}
-}
-
-/// Small AppKit window so the gallery can be opened next to the shell without
-/// turning it into a second primary scene.
-@MainActor
-enum GalleryWindow {
-  private static var window: NSWindow?
-
-  static func show(
-    onShowSettings: @escaping () -> Void = {
-      NotificationCenter.default.post(name: .eagleToggleSettings, object: nil)
-    }
-  ) {
-    let originWindow = NSApp.keyWindow
-    let content = TemplateGallery {
-      window?.orderOut(nil)
-      originWindow?.makeKeyAndOrderFront(nil)
-      onShowSettings()
-    }
-    if let window {
-      window.contentView = NSHostingView(rootView: content)
-      window.makeKeyAndOrderFront(nil)
-      return
-    }
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 1180, height: 900),
-      styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
-      backing: .buffered,
-      defer: false
-    )
-    window.title = "Eagle 模板库"
-    window.titlebarAppearsTransparent = true
-    window.titleVisibility = .hidden
-    window.contentView = NSHostingView(
-      rootView: content
-    )
-    window.center()
-    window.makeKeyAndOrderFront(nil)
-    Self.window = window
-  }
 }
 
 extension EagleApp {

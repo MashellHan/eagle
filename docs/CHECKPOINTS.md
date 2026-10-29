@@ -1,5 +1,19 @@
 # 用户视角检查点
 
+## 2026-10-29 11:43 +08 — device-groups 本地候选
+
+- Herdr：default/w4 的 Lead、service、reviewer 已读实际输出并协调提交；本轮没有运行
+  已安装 Agent 的真实采集，也没有触碰旧 w1 团队或旧工作树。
+- 认证与群：服务分支真实本地 Miniflare/Registry SQLite 覆盖四成员、方向无关配对、
+  撤销、慢请求事务重验；集成已 cherry-pick 至 `9074cec`。未向公网写入或部署。
+- D1：本轮新设备权威是本地 Registry/DeviceExecution SQLite；现有 D1 报表路径
+  尚未跑完整候选门禁，不能据此声称线上报表或真实采集已通过。
+- 渲染：`2650fc5` 增加 App 内 menu 的真实设置动作，NSHostingView 的入口查找红测
+  和 AXPress 回调绿测已完成；打包 App 的设备页交互尚未验收。
+- 下个断点：Swift Keychain 独立宿主、真实设备页、Bots 共享 port 正接线。
+  native 心跳失联不能证明副作用已停止，修复须阻断新接纳直至原执行终止可确认。
+  无第二台已连接 Mac，无发布签名 identity；不把隔离进程当物理双 Mac 验收。
+
 ## 2026-10-21 09:57 +08 — v0.12.0 published
 
 - Published GitHub Release [v0.12.0](https://github.com/nocoo/eagle/releases/tag/v0.12.0).
