@@ -39,6 +39,9 @@ test("npm agent artifact installs outside the checkout and accepts credentials o
     )[0] as { version: string; filename: string; files: { path: string }[] };
     assert.equal(packed.version, manifest.version);
     assert(
+      packed.files.some((file) => file.path === "dist/agent/device-service.js"),
+    );
+    assert(
       packed.files.every(
         (file: { path: string }) =>
           !/\.ts$|\.local|\.env|\.dev.vars/.test(file.path),
@@ -58,6 +61,17 @@ test("npm agent artifact installs outside the checkout and accepts credentials o
       { stdio: "pipe" },
     );
     const cli = join(directory, "node_modules/.bin/eagle-agent");
+    const deviceEntry = join(
+      directory,
+      "node_modules/@nocoo/eagle-agent/dist/agent/device-service.js",
+    );
+    const deviceLoad = spawnSync(process.execPath, [deviceEntry], {
+      input: "",
+      encoding: "utf8",
+      timeout: 2000,
+    });
+    assert.equal(deviceLoad.error, undefined);
+    assert.equal(deviceLoad.status, 0, deviceLoad.stderr);
     assert.equal(
       execFileSync(cli, ["--version"], { encoding: "utf8" }).trim(),
       manifest.version,
