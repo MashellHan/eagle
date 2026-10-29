@@ -229,8 +229,10 @@ capability is `true`.
 An applied agent change is broadcast as a bot-scoped `agent` event, carrying the complete
 `AgentView` with `rev` and `trace`. It replaces only the current agent configuration; the
 transcript, loaded history, optimistic sends, pending inputs, tasks, triggers and recovery
-state stay intact. The initial subscription snapshot still carries `agent`. This is a v1
-additive event: older clients consume its revision and ignore it under I8.
+state stay intact. The initial subscription snapshot still carries `agent`. A gateway-wide change
+(`PUT /v1/settings`, which rewrites every bot's level or model) reaches each open conversation the
+same way, one `agent` event per bot. This is a v1 additive event: older clients consume its
+revision and ignore it under I8.
 
 ## Providers
 
@@ -425,7 +427,7 @@ server → { "type": "snapshot", "rev": 42, "trace": "tr_…", "value": Conversa
 // ConversationSnapshot
 {
   "botId": "b_…",
-  "agent": { "model": {…}, "thinkingLevel": "off", "instructions": "" },  // reserved
+  "agent": { "model": {…}, "thinkingLevel": "off", "instructions": "" },  // a live change arrives as an `agent` event
   "messages": [ Message, … ],            // newest page, oldest first
   "truncatedBefore": "e_3",              // present when older messages exist
   "streaming": { "messageId": "p_a2" },  // null when no run is active; always present
