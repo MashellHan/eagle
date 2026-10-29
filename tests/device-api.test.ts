@@ -12,6 +12,8 @@ import { request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
+import NativeWebSocket from "ws";
+import type { OperationRequest } from "../packages/contracts/src/devices.ts";
 
 type ApiBody = {
   challengeId: string;
@@ -39,6 +41,10 @@ export class DeviceRegistry extends Registry {
   if(result.ok&&targetId&&result.source.deviceId!==targetId&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_revoke_after_check'").toArray().length){
    const row=this.ctx.storage.sql.exec("SELECT deviceId FROM test_revoke_after_check WHERE deviceId=?",result.source.deviceId).toArray()[0];
    if(row)this.ctx.storage.transactionSync(()=>{this.ctx.storage.sql.exec("DELETE FROM test_revoke_after_check WHERE deviceId=?",row.deviceId);this.ctx.storage.sql.exec("UPDATE devices SET groupId=NULL,membershipEpoch=membershipEpoch+1,credentialVersion=credentialVersion+1 WHERE deviceId=?",row.deviceId);});
+  }
+  if(result.ok&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_check_delay'").toArray().length){
+   const delayed=this.ctx.storage.sql.exec("SELECT deviceId FROM test_check_delay WHERE deviceId=?",result.source.deviceId).toArray()[0];
+   if(delayed){this.ctx.storage.sql.exec("UPDATE test_check_delay SET started=1 WHERE deviceId=?",delayed.deviceId);await new Promise(resolve=>setTimeout(resolve,500));}
   }return result;
  }
 }
@@ -872,4 +878,196 @@ test("accepted uppercase UUIDs use canonical identity and the execution route", 
     `${base}/execution/${a.deviceId.toUpperCase()}/agent`,
   );
   assert.equal(response.status, 426);
+});
+
+async function rawSocket(
+  deviceId: string,
+  role: "agent" | "request",
+): Promise<NativeWebSocket> {
+  const url = new URL(
+    `${DEVICE_PREFIX}/execution/${deviceId}/${role}`,
+    (await mf.ready).origin,
+  );
+  url.protocol = "ws:";
+  const socket = new NativeWebSocket(url);
+  await new Promise<void>((resolveOpen, reject) => {
+    socket.once("open", () => resolveOpen());
+    socket.once("error", reject);
+  });
+  return socket;
+}
+const DEVICE_PREFIX = "/api/devices/v1";
+function frame<T>(socket: NativeWebSocket): Promise<T> {
+  return new Promise((resolveFrame, reject) => {
+    const timeout = setTimeout(() => {
+      socket.off("message", received);
+      reject(new Error("test frame timeout"));
+    }, 2000);
+    const received = (data: NativeWebSocket.RawData) => {
+      clearTimeout(timeout);
+      resolveFrame(JSON.parse(data.toString()) as T);
+    };
+    socket.once("message", received);
+  });
+}
+const authentication = (token: string) => ({
+  type: "authenticate",
+  sessionToken: token,
+  capabilities: ["command"],
+  policy: { mode: "all-approve", version: 1 },
+});
+
+test("relay correlation is generated per forwarding and cannot leak an old result to reused caller IDs", async () => {
+  const [a, b, c] = await Promise.all(
+    ["correlation-a", "correlation-b", "correlation-c"].map(identity),
+  );
+  await pair(a.token, await code(b.token));
+  await pair(c.token, await code(b.token));
+  const agent = await rawSocket(b.deviceId, "agent");
+  const ready = frame<{ type: string }>(agent);
+  agent.send(JSON.stringify(authentication(b.token)));
+  assert.equal((await ready).type, "ready");
+  let callerA: NativeWebSocket | undefined;
+  let callerC: NativeWebSocket | undefined;
+  try {
+    const requestId = randomUUID();
+    const operationId = randomUUID();
+    const { deviceDigest, canonicalDeviceJSON } = await import(
+      "../packages/contracts/src/devices.ts"
+    );
+    const operation = {
+      kind: "command" as const,
+      command: "printf source-a-private-result",
+    };
+    const request = {
+      requestId,
+      operationId,
+      targetDeviceId: b.deviceId,
+      action: "run" as const,
+      operation,
+      digest: await deviceDigest(canonicalDeviceJSON(operation)),
+    };
+    callerA = await rawSocket(b.deviceId, "request");
+    const firstFrame = frame<{ request: OperationRequest }>(agent);
+    callerA.send(
+      JSON.stringify({ type: "request", sessionToken: a.token, request }),
+    );
+    const first = await firstFrame;
+    const closed = new Promise<void>((resolveClosed) =>
+      callerA?.once("close", () => resolveClosed()),
+    );
+    callerA.close();
+    await closed;
+    callerC = await rawSocket(b.deviceId, "request");
+    const response = frame<{
+      requestId: string;
+      result: { status: string; output?: string };
+    }>(callerC);
+    const secondFrame = frame<{ request: OperationRequest }>(agent);
+    callerC.send(
+      JSON.stringify({
+        type: "request",
+        sessionToken: c.token,
+        request: { ...request, action: "get" },
+      }),
+    );
+    const second = await secondFrame;
+    agent.send(
+      JSON.stringify({
+        type: "result",
+        requestId: first.request.requestId,
+        operationId,
+        targetDeviceId: b.deviceId,
+        result: { status: "completed", output: "source-a-private-result" },
+      }),
+    );
+    agent.send(
+      JSON.stringify({
+        type: "result",
+        requestId: second.request.requestId,
+        operationId,
+        targetDeviceId: b.deviceId,
+        result: { status: "denied", error: "operation_source_mismatch" },
+      }),
+    );
+    const answer = await response;
+    assert.equal(answer.result.status, "denied");
+    assert.equal(answer.requestId, requestId);
+    assert.notEqual(first.request.requestId, second.request.requestId);
+    assert.notEqual(first.request.requestId, requestId);
+  } finally {
+    callerA?.terminate();
+    callerC?.terminate();
+    agent.terminate();
+  }
+});
+
+test("closed sockets cannot revive after Registry RPC and Agent queue admission is bounded", async () => {
+  const storage = await mf.unsafeGetDurableObjectStorage(
+    "eagle",
+    "DeviceRegistry",
+    { name: "registry" },
+  );
+  await storage.exec(
+    "CREATE TABLE test_check_delay(deviceId TEXT PRIMARY KEY,started INTEGER NOT NULL DEFAULT 0)",
+  );
+  try {
+    for (const flood of ["none", "frames", "bytes"]) {
+      const a = await identity(`closed-auth-${flood}`);
+      await storage.exec(
+        "INSERT INTO test_check_delay(deviceId) VALUES(?)",
+        a.deviceId,
+      );
+      const socket = await rawSocket(a.deviceId, "agent");
+      let remoteClosed = false;
+      socket.once("close", () => {
+        remoteClosed = true;
+      });
+      socket.send(JSON.stringify(authentication(a.token)));
+      const deadline = Date.now() + 1000;
+      while (Date.now() < deadline) {
+        const started = await storage.exec(
+          "SELECT started FROM test_check_delay WHERE deviceId=?",
+          a.deviceId,
+        );
+        if (started[0].started === 1) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      if (flood !== "none") {
+        for (let i = 0; i < (flood === "frames" ? 32 : 3); i++)
+          socket.send(
+            JSON.stringify({
+              type: "heartbeat",
+              ...(flood === "bytes" ? { padding: "x".repeat(500000) } : {}),
+              capabilities: ["command"],
+              policy: { mode: "all-approve", version: 1 },
+            }),
+          );
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.equal(
+          remoteClosed,
+          true,
+          "queued frame count must be bounded before Registry RPC resolves",
+        );
+      } else {
+        socket.close();
+        await new Promise<void>((resolveClosed) =>
+          socket.once("close", () => resolveClosed()),
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 550));
+      assert.notEqual(
+        (await call("/directory", a.token)).body.devices[0].online,
+        true,
+        "closed authentication must never create a live agent",
+      );
+      socket.terminate();
+      await storage.exec(
+        "DELETE FROM test_check_delay WHERE deviceId=?",
+        a.deviceId,
+      );
+    }
+  } finally {
+    await storage.exec("DROP TABLE test_check_delay");
+  }
 });

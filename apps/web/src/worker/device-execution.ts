@@ -44,6 +44,7 @@ type Agent = {
 };
 type Pending = {
   socket: WebSocket;
+  agentSocket: WebSocket;
   request: OperationRequest;
   token: string;
   timer: ReturnType<typeof setTimeout>;
@@ -131,18 +132,52 @@ export class DeviceExecution extends DurableObject<Env> {
     let authenticated = false;
     let handled = false;
     let chain = Promise.resolve();
-    const timeout = setTimeout(
-      () => socket.close(1008, "authentication_timeout"),
-      5000,
-    );
+    let closedFlag = false;
+    let receivedFrames = 0;
+    let queuedFrames = 0;
+    let queuedBytes = 0;
+    const live = () => !closedFlag && socket.readyState === 1;
+    const timeout = setTimeout(() => {
+      closed();
+      socket.close(1008, "authentication_timeout");
+    }, 5000);
+    const closed = () => {
+      closedFlag = true;
+      clearTimeout(timeout);
+      if (this.agent?.socket === socket) {
+        this.agent = undefined;
+        clearTimeout(this.lease);
+        this.failPending("target_disconnected_query_original_id");
+      }
+      for (const [id, pending] of this.pending)
+        if (pending.socket === socket) {
+          clearTimeout(pending.timer);
+          this.pending.delete(id);
+        }
+    };
     socket.addEventListener("message", (event) => {
+      if (!live()) return;
+      const bytes =
+        typeof event.data === "string"
+          ? new TextEncoder().encode(event.data).length
+          : 524289;
+      if (
+        bytes > 524288 ||
+        queuedFrames >= 16 ||
+        queuedBytes + bytes > 1048576 ||
+        (role === "request" && receivedFrames >= 1)
+      ) {
+        closed();
+        socket.close(1008, "frame_or_queue_limit");
+        return;
+      }
+      receivedFrames++;
+      queuedFrames++;
+      queuedBytes += bytes;
       chain = chain
         .then(async () => {
-          if (
-            typeof event.data !== "string" ||
-            new TextEncoder().encode(event.data).length > 524288
-          )
-            throw new Error("frame_limit");
+          if (!live()) return;
+          if (typeof event.data !== "string") throw new Error("frame_limit");
           const data: unknown = JSON.parse(event.data);
           if (role === "agent") {
             if (!authenticated) {
@@ -150,6 +185,7 @@ export class DeviceExecution extends DurableObject<Env> {
               const checked = await this.env.DEVICE_REGISTRY.getByName(
                 "registry",
               ).check(auth.sessionToken, targetId);
+              if (!live()) return;
               if (!checked.ok || checked.source.deviceId !== targetId)
                 throw new Error("unauthorized_agent");
               if (this.agent) {
@@ -174,6 +210,7 @@ export class DeviceExecution extends DurableObject<Env> {
             const checked = await this.env.DEVICE_REGISTRY.getByName(
               "registry",
             ).check(this.agent.token, targetId);
+            if (!live() || this.agent?.socket !== socket) return;
             if (!checked.ok) throw new Error("revoked_agent");
             const beat = heartbeat.safeParse(data);
             if (beat.success) {
@@ -184,6 +221,7 @@ export class DeviceExecution extends DurableObject<Env> {
             const pending = this.pending.get(message.requestId);
             if (
               !pending ||
+              pending.agentSocket !== socket ||
               pending.request.operationId !== message.operationId ||
               message.targetDeviceId !== targetId
             )
@@ -191,6 +229,12 @@ export class DeviceExecution extends DurableObject<Env> {
             const fresh = await this.env.DEVICE_REGISTRY.getByName(
               "registry",
             ).check(pending.token, targetId);
+            if (
+              !live() ||
+              this.agent?.socket !== socket ||
+              this.pending.get(message.requestId) !== pending
+            )
+              return;
             clearTimeout(pending.timer);
             this.pending.delete(message.requestId);
             this.respond(
@@ -217,6 +261,7 @@ export class DeviceExecution extends DurableObject<Env> {
           const checked = await this.env.DEVICE_REGISTRY.getByName(
             "registry",
           ).check(caller.sessionToken, targetId);
+          if (!live()) return;
           if (!checked.ok) {
             this.respond(socket, operation, {
               status: "denied",
@@ -231,11 +276,20 @@ export class DeviceExecution extends DurableObject<Env> {
             });
             return;
           }
+          const selectedAgent = this.agent;
           const target = await this.env.DEVICE_REGISTRY.getByName(
             "registry",
           ).check(this.agent.token, targetId);
+          if (!live()) return;
+          if (this.agent !== selectedAgent) {
+            this.respond(socket, operation, {
+              status: "unknown",
+              error: "agent_changed",
+            });
+            return;
+          }
           if (!target.ok) {
-            this.agent.socket.close(1008, "revoked_agent");
+            selectedAgent.socket.close(1008, "revoked_agent");
             this.agent = undefined;
             this.respond(socket, operation, {
               status: "denied",
@@ -276,10 +330,12 @@ export class DeviceExecution extends DurableObject<Env> {
           }
           // All digest/signature awaits precede the final authority read.
           // Revocation before forwarding must prevent target side effects.
+          if (!live()) return;
           const agent = this.agent;
           const final = await this.env.DEVICE_REGISTRY.getByName(
             "registry",
           ).check(caller.sessionToken, targetId);
+          if (!live()) return;
           if (
             !final.ok ||
             !agent ||
@@ -307,21 +363,19 @@ export class DeviceExecution extends DurableObject<Env> {
             });
             return;
           }
-          if (
-            this.pending.size >= 64 ||
-            this.pending.has(operation.requestId)
-          ) {
+          if (this.pending.size >= 64) {
             this.respond(socket, operation, {
               status: "busy",
               error: "relay_busy",
             });
             return;
           }
+          const relayId = crypto.randomUUID();
           const timer = setTimeout(
             () => {
-              const pending = this.pending.get(operation.requestId);
+              const pending = this.pending.get(relayId);
               if (pending) {
-                this.pending.delete(operation.requestId);
+                this.pending.delete(relayId);
                 this.respond(socket, operation, {
                   status: "unknown",
                   error: "response_timeout_query_original_id",
@@ -332,7 +386,8 @@ export class DeviceExecution extends DurableObject<Env> {
               ? (operation.operation.timeoutMs ?? 30000) + 5000
               : 35000,
           );
-          this.pending.set(operation.requestId, {
+          this.pending.set(relayId, {
+            agentSocket: agent.socket,
             socket,
             request: operation,
             token: caller.sessionToken,
@@ -342,29 +397,21 @@ export class DeviceExecution extends DurableObject<Env> {
             type: "operation",
             sourceDeviceId: final.source.deviceId,
             sourcePublicKey: final.source.publicKey,
-            request: operation,
+            request: { ...operation, requestId: relayId },
           });
         })
         .catch(() => {
+          closed();
           try {
             socket.close(1008, "invalid_or_unauthorized_frame");
           } catch {}
+        })
+        .finally(() => {
+          queuedFrames--;
+          queuedBytes -= bytes;
         });
       this.ctx.waitUntil(chain);
     });
-    const closed = () => {
-      clearTimeout(timeout);
-      if (this.agent?.socket === socket) {
-        this.agent = undefined;
-        clearTimeout(this.lease);
-        this.failPending("target_disconnected_query_original_id");
-      }
-      for (const [id, pending] of this.pending)
-        if (pending.socket === socket) {
-          clearTimeout(pending.timer);
-          this.pending.delete(id);
-        }
-    };
     socket.addEventListener("close", closed);
     socket.addEventListener("error", closed);
     return new Response(null, { status: 101, webSocket: client });

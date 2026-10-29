@@ -74,7 +74,11 @@ IDs are UUIDs; upper/lowercase input is accepted and canonicalized to lowercase
 before lookup, routing, comparison or signing. `digest` is lowercase SHA-256 of recursively key-sorted compact
 JSON of `operation` (UTF-8; omitted optional fields omitted). Target and digest
 are immutable for an operation ID. Source is derived from session, never trusted
-from caller. Relay sends `{type:"operation",sourceDeviceId,sourcePublicKey,request}`;
+from caller. Each forwarding generates a fresh server correlation UUID for the
+Agent-facing requestId, bound to that Agent socket generation. Pending state keeps
+the original caller IDs and restores them on the caller response. Late results
+from a retired request/Agent never match another caller reusing the same IDs.
+Relay sends `{type:"operation",sourceDeviceId,sourcePublicKey,request}`;
 agent responds `{type:"result",requestId,operationId,targetDeviceId,result}`.
 Result: `{status:"running"|"completed"|"failed"|"cancelled"|"unknown"|"busy"|
 "denied",output?,error?,exitCode?}`. busy means unaccepted, never queued.
@@ -181,3 +185,9 @@ A valid oversized native completion is sanitized and bounded, then committed.
 Journal/storage failure returns unknown and preserves admission; it never reports
 an admitted side effect as an unaccepted denial. Admission rechecks policy version,
 service closure and approval expiry after asynchronous signature verification.
+
+WS admission checks a 512 KiB per-frame bound before promise queueing. An Agent
+socket holds at most 16 pending frames and 1 MiB pending UTF-8 bytes; excess
+closes it. A caller socket accepts one frame total. Every asynchronous Registry
+return checks that its originating socket and Agent generation remain live;
+closed or replaced connections cannot become authenticated again.
