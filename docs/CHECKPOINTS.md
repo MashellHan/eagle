@@ -1,5 +1,18 @@
 # 用户视角检查点
 
+## 2026-10-29 14:55 +08 — 标准装包后仍阻断于系统启动约束
+
+- `d32ea1a` 已从新 staging 完整装配并签名；最终路径 deep/strict 通过，内置 Node
+  原字节保留，Agent 1.1.0 含目标 scope 守卫。注册、ACL、journal 三片 review 均关闭。
+- Root 在真实 GUI 开启后仍未就绪，FileVault 目录尚未创建。系统先记录 SM 提交成功，
+  再以 amfid -423 与 Launch Constraint Violation 拒绝当前 helper；后续 EX_CONFIG
+  不能当作缺文件或 Keychain 失败。当前 App 的运行/磁盘 CDHash 一致。
+- 仅对该候选强制更新 LaunchServices 登记返回 0，但现有 job 下一调度仍失败；没有
+  删除全局 BTM/LS、关闭签名校验或改身份记录。Root 正将同一签名字节安装到
+  `~/Applications/Eagle Device Candidate.app` 后做正常注册验证，尚待其实际结果。
+- GUI 仅由外部 Root 操作；误投到 w1 的预检未执行任何 GUI/状态修改，不计验收。
+  用户数据、隔离 API/Raven 保留；采集/D1/公网与物理多 Mac 没有新增证据。
+
 ## 2026-10-29 14:40 +08 — 文件凭据候选准备重新装包
 
 - FileVault 及扩展 ACL 拒绝已集成；默认不访问 Keychain，原私钥/设备记录不删除。
