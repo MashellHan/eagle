@@ -612,3 +612,35 @@ not implemented — the per-token bucket and `maxFiresPerHour`; the 32-item queu
 and the admission budget are the only backpressure. Nothing here exercised a model
 creating a trigger through `trigger_create` (the triggers came from their journals), and
 no image of the new rows has been reviewed.
+
+## 2026-10-29 11:20 — acceptance cases, and the bug the cron case found
+
+Observed: `tests/eval` now holds eight acceptance cases and a runner. Each one boots a
+real daemon, plays a scripted model, runs real tools and then checks the transcript,
+the tools that were called, the files on disk and the model request count. Both trigger
+kinds were re-run until they were stable, and three different complex LLM + tool-call
+loops pass.
+
+Verified:
+
+- `npm --prefix apps/bots run eval`, one full run: `chat-basic`, `coding-fix-loop`,
+  `complex-self-trigger`, `complex-webhook-triage`, `complex-workspace-audit`,
+  `search-unconfigured`, `trigger-cron`, `trigger-webhook` — all ok.
+- Stability: `trigger-cron --repeat 3` ok three times (two fires each, ≈2 min a round);
+  `trigger-webhook --repeat 3` ok three times (2 rows per round after dedupe).
+- The three complex shapes, each an LLM + tool-call loop:
+  1. `complex-workspace-audit` — list → read → `bash node -e …` → write `report.md`;
+     the report is checked on disk.
+  2. `complex-webhook-triage` — a delivery with no client involved → read
+     `logs/deploy.log` → write `triage.md` → answer; origin and file both checked.
+  3. `complex-self-trigger` — the model calls `trigger_create` for a webhook trigger,
+     the case reads the minted endpoint, delivers to it, and the model answers the
+     triggered run.
+- `apps/bots`: `npm run check` 612 tests at 95.11 / 88.07 / 90.21.
+- The cron case found a real defect: `ScheduleTicker`'s timer tick enqueued a fire but
+  never woke the pump, so a schedule only delivered when an unrelated idle edge
+  happened to drain it. Fixed in `479dd7f` with a test that drives the injected timer.
+
+Next broken hop: `peers` (stage 3). A case cannot prove a real provider — the model is
+scripted — and a case runs with a temporary `XDG_CONFIG_HOME`, so keyed search is
+exercised only by the unit suite. Nothing here runs Herdr.
