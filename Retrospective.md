@@ -550,3 +550,13 @@ closure created in a MainActor test inherited isolation but ran inside URLProtoc
 background callback. The crash report identified the executor assertion. Replacing the
 nested callback with ordinary decoding exposed the intended red test (both providers
 remained selected). A crashed or uncompilable test is not behavioral red evidence.
+
+## 2026-10-29 — device-service worktree dependency installation
+
+At base `7101566`, normal `npm ci` failed with proxy E404 for locked
+`wrangler@4.152.0`. The independent service worktree verified 215 cached original
+artifact bodies against its own committed root lock SRI; missing entries were
+optional artifacts for other platforms. A task-private cache then completed
+normal offline `npm ci`, including prepare/hook installation. The lock remained
+unchanged. This is local dependency recovery evidence, not release validation or
+a permanent registry exception. Receipts stay in ignored `.local/device-npm/`.

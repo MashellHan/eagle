@@ -29,6 +29,7 @@ import {
   viewerIdentity,
 } from "./auth.ts";
 
+export { DeviceRegistry } from "./device-registry.ts";
 export { MachineDirectory } from "./directory.ts";
 export { MachineState } from "./machine.ts";
 
@@ -699,6 +700,14 @@ export default {
   },
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (
+      url.pathname === "/api/devices/v1" ||
+      url.pathname.startsWith("/api/devices/v1/")
+    ) {
+      if (!env.DEVICE_REGISTRY)
+        return json({ error: "device_service_unavailable" }, 503);
+      return env.DEVICE_REGISTRY.getByName("registry").fetch(request);
+    }
     if (
       url.hostname === "eagle-ingest.hexly.ai" &&
       ![

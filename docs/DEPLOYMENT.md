@@ -98,3 +98,19 @@ existing AI connection and encrypted credential are preserved. Set `AI_ENCRYPTIO
 Users save provider/model and API keys in `/settings`. The directory DO stores authenticated ciphertext in the separate `ai-credential` record; API responses never return the key. Blank input keeps the existing credential, explicit clearing removes it, and changing provider/endpoint/protocol/authentication requires a new key. Without a complete AI configuration the schedule is a no-op.
 
 Run `scripts/verify-daily.ts` with the same origin/Access settings as `verify-live.ts` to verify settings, no secret exposure, unconfigured skip, D1 query, report UI and mobile layout. The detailed generation/storage contract is in [DAILY-REPORTS.md](DAILY-REPORTS.md).
+
+## Shared device service candidate (not deployed)
+
+The independent `/api/devices/v1` contract is in [DEVICES.md](DEVICES.md).
+Integration must add `DEVICE_REGISTRY` → `DeviceRegistry` and
+`DEVICE_EXECUTION` → `DeviceExecution` Durable Object bindings and a new SQLite
+class migration. Registry uses `getByName("registry")`; execution uses device ID.
+Do not route these identities through `DIRECTORY`, `MACHINES` or owner tokens.
+Device/group/pairing data belongs only to Registry SQLite, never D1. No production
+resource or npm release has been created by this implementation slice.
+
+Local registry evidence uses `node --test tests/device-api.test.ts` with a unique
+ignored worker bundle and isolated real Miniflare/SQLite state. Bundles must be
+under the repository: this pinned Miniflare/workerd fails to load an otherwise
+identical bundle with an absolute entrypoint outside its module root. The test
+never seeds a remote resource or the daily development database.
