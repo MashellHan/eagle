@@ -34,6 +34,7 @@ export { MachineState } from "./machine.ts";
 
 import { withAiKey } from "./ai-secret.ts";
 import { aiConfig, aiReady, runDaily, testAi } from "./daily.ts";
+import { executionRoute } from "./execution-route.ts";
 import { withProfile } from "./profile.ts";
 
 class HttpError extends Error {
@@ -236,6 +237,8 @@ function positive(
 async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
+  const execution = await executionRoute(request, env);
+  if (execution) return execution;
   if (path === "/api/v1/realtime" || path === "/api/v1/realtime-agent") {
     if (
       request.method !== "GET" ||
@@ -715,6 +718,7 @@ export default {
         "/api/v1/reports",
         "/api/v1/heartbeat",
         "/api/v1/realtime-agent",
+        "/api/v1/execution-agent",
         "/api/live",
       ].includes(url.pathname)
     )

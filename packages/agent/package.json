@@ -1,7 +1,7 @@
 {
   "name": "@nocoo/eagle-agent",
-  "version": "1.0.0",
-  "description": "Report all local Herdr spaces and machine resources to Eagle",
+  "version": "1.1.0-alpha.2",
+  "description": "Independent Eagle machine execution and optional Herdr reporting",
   "type": "module",
   "license": "UNLICENSED",
   "repository": {

@@ -10,12 +10,9 @@ import {
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import {
-  ReportSchema,
-  SlowIntervalSchema,
-  WatchPortsSchema,
-} from "../contracts/src/schema.ts";
+import { ReportSchema } from "../contracts/src/schema.ts";
 import {
   type AgentConfig,
   checkUrl,
@@ -23,23 +20,46 @@ import {
   sendReport,
   stripRetiredConfig,
 } from "./collector.ts";
+import { ConfigSchema } from "./config.ts";
+import { executionWatch } from "./execution-service.ts";
+import { FileGrants } from "./file-grants.ts";
 import { realtimeWatch } from "./realtime.ts";
+import {
+  assertReservedIdentity,
+  ensurePrivateConfiguration,
+  prepareIdentity,
+  serviceCommand,
+  servicePaths,
+  updateConfiguration,
+  validateConfiguration,
+} from "./service.ts";
 import { drainSpool } from "./spool.ts";
 import { AGENT_VERSION } from "./version.ts";
 
-const ConfigSchema = z.strictObject({
-  url: z.string().url(),
-  token: z.string().min(32),
-  machineId: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/),
-  machineName: z.string().min(1),
-  intervalSeconds: z.literal(30).default(30),
-  slowIntervalSeconds: SlowIntervalSchema,
-  codexDir: z.string().optional(),
-  spoolDir: z.string().optional(),
-  watchPorts: WatchPortsSchema.default([]),
-});
-const path =
-  process.env.EAGLE_CONFIG || join(homedir(), ".config/eagle/agent.json");
+const path = servicePaths(
+  process.env.EAGLE_CONFIG || join(homedir(), ".config/eagle/agent.json"),
+).config;
+async function stdinJSON(): Promise<unknown> {
+  if (process.stdin.isTTY)
+    throw new Error(
+      "Pass JSON through stdin; never pass credentials as arguments",
+    );
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of process.stdin) {
+    const bytes = Buffer.from(chunk);
+    size += bytes.length;
+    if (size > 65_536) throw new Error("Configuration exceeds 64 KiB");
+    chunks.push(bytes);
+  }
+  try {
+    return JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)),
+    );
+  } catch {
+    throw new Error("Invalid configuration JSON");
+  }
+}
 async function heartbeat(config: AgentConfig, warning?: string) {
   const response = await fetch(`${checkUrl(config.url)}/api/v1/heartbeat`, {
     method: "POST",
@@ -106,7 +126,7 @@ async function main() {
   const action = process.argv[2] || "once";
   if (action === "--help" || action === "help") {
     console.log(
-      "Eagle Agent\nCommands: init (JSON on stdin), collect <file>, upload <file>, once, watch, realtime-watch, heartbeat\nConfig: EAGLE_CONFIG or ~/.config/eagle/agent.json (0600). Node.js 24+ and Herdr required.",
+      "Eagle Agent\nCommands: identity (reserve local ID), init/reconfigure (JSON on stdin), serve, service install/start/stop/status, files list/grant/revoke (changes by JSON stdin), collect <file>, upload <file>, once, watch, realtime-watch, heartbeat\nConfig: EAGLE_CONFIG or ~/.config/eagle/agent.json (0600). Node.js 24+. Herdr is required only for collection/realtime; serve is independent and commands default to disabled.",
     );
     return;
   }
@@ -114,25 +134,51 @@ async function main() {
     console.log(AGENT_VERSION);
     return;
   }
-  if (action === "init") {
-    if (process.stdin.isTTY)
-      throw new Error(
-        "Pass configuration JSON through stdin; never pass credentials as arguments",
+  if (action === "service") {
+    console.log(
+      JSON.stringify(
+        serviceCommand(
+          process.argv[3] ?? "status",
+          path,
+          fileURLToPath(import.meta.url),
+        ),
+      ),
+    );
+    return;
+  }
+  if (action === "identity") {
+    console.log(JSON.stringify(prepareIdentity(path)));
+    return;
+  }
+  if (action === "files") {
+    const grants = new FileGrants(path);
+    const operation = process.argv[3] ?? "list";
+    if (operation === "list")
+      console.log(JSON.stringify({ grants: grants.list() }));
+    else if (operation === "grant")
+      console.log(JSON.stringify({ grant: grants.grant(await stdinJSON()) }));
+    else if (operation === "revoke") {
+      const request = z
+        .strictObject({ id: z.string() })
+        .parse(await stdinJSON());
+      grants.revoke(request.id);
+      console.log(JSON.stringify({ grants: grants.list() }));
+    } else
+      throw new Error("File commands: list, grant or revoke (JSON on stdin)");
+    return;
+  }
+  if (action === "init" || action === "reconfigure") {
+    const value = await stdinJSON();
+    if (action === "reconfigure") {
+      updateConfiguration(path, value);
+      console.log(
+        "Secure configuration updated for the same machine and deployment; start the service explicitly.",
       );
-    let input = "";
-    for await (const chunk of process.stdin) {
-      input += chunk;
-      if (input.length > 65536) throw new Error("Configuration exceeds 64 KiB");
+      return;
     }
-    let value: unknown;
-    try {
-      value = JSON.parse(input);
-    } catch {
-      throw new Error("Invalid configuration JSON");
-    }
-    const config = ConfigSchema.parse(value);
-    checkUrl(config.url);
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    const config = validateConfiguration(value);
+    ensurePrivateConfiguration(path);
+    assertReservedIdentity(path, config.machineId);
     const file = await open(path, "wx", 0o600);
     try {
       await file.writeFile(JSON.stringify(config, null, 2));
@@ -140,7 +186,7 @@ async function main() {
       await file.close();
     }
     console.log(
-      "Secure configuration created. Run eagle-agent once to verify reporting.",
+      "Secure configuration created. Run eagle-agent serve to verify the independent execution connection. Optional Herdr collection: eagle-agent once.",
     );
     return;
   }
@@ -174,6 +220,22 @@ async function main() {
       throw new Error("Machine identity mismatch");
     console.log(
       JSON.stringify(await sendReport(config.url, config.token, report)),
+    );
+  } else if (action === "serve") {
+    const stop = new AbortController();
+    process.once("SIGTERM", () => stop.abort());
+    process.once("SIGINT", () => stop.abort());
+    const grants = new FileGrants(path);
+    await executionWatch(
+      config,
+      {
+        journalPath: join(dirname(path), "execution", "operations.sqlite"),
+        commands: config.execution?.commands ?? false,
+        workingDirectory: config.execution?.workingDirectory ?? homedir(),
+        files: { grants: () => grants.list(), privateRoot: dirname(path) },
+        herdr: { configPath: path },
+      },
+      stop.signal,
     );
   } else if (action === "realtime-watch") {
     const stop = new AbortController();
@@ -222,7 +284,7 @@ async function main() {
     }
   } else
     throw new Error(
-      "Commands: collect <file>, upload <file>, once, watch, realtime-watch, heartbeat",
+      "Commands: collect <file>, upload <file>, once, watch, realtime-watch, heartbeat, serve",
     );
 }
 void main().catch((e: unknown) => {

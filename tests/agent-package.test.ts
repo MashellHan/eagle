@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import pkg from "../package.json" with { type: "json" };
@@ -20,6 +20,7 @@ test("npm agent artifact installs outside the checkout and accepts credentials o
   assert.equal(AGENT_VERSION, manifest.version);
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[""].version, pkg.version);
+  assert.equal(lock.packages["packages/agent"].version, manifest.version);
   const directory = mkdtempSync(join(tmpdir(), "eagle-agent-package-"));
   try {
     const packed = Object.values(
@@ -66,6 +67,10 @@ test("npm agent artifact installs outside the checkout and accepts credentials o
       execFileSync(cli, ["--help"], { encoding: "utf8" }),
       /init.*once.*watch/s,
     );
+    assert.match(
+      execFileSync(cli, ["--help"], { encoding: "utf8" }),
+      /serve.*independent/s,
+    );
     const config = {
       url: "http://127.0.0.1:37053",
       machineId: "pack-test",
@@ -75,6 +80,16 @@ test("npm agent artifact installs outside the checkout and accepts credentials o
     };
     const configPath = join(directory, "config/agent.json");
     const env = { ...process.env, EAGLE_CONFIG: configPath };
+    const prepared = spawnSync(cli, ["identity"], { env, encoding: "utf8" });
+    assert.equal(prepared.status, 0, prepared.stderr);
+    const identity = JSON.parse(prepared.stdout);
+    assert.match(identity.machineId, /^mac-[0-9a-f-]{36}$/);
+    assert.equal(identity.configured, false);
+    assert.deepEqual(
+      JSON.parse(execFileSync(cli, ["identity"], { env, encoding: "utf8" })),
+      identity,
+    );
+    config.machineId = identity.machineId;
     const initialized = spawnSync(cli, ["init"], {
       env,
       input: JSON.stringify(config),
@@ -84,6 +99,22 @@ test("npm agent artifact installs outside the checkout and accepts credentials o
     assert(!initialized.stdout.includes(config.token));
     assert.equal(statSync(configPath).mode & 0o777, 0o600);
     assert.equal(statSync(join(directory, "config")).mode & 0o777, 0o700);
+    const configuredIdentity = execFileSync(cli, ["identity"], {
+      env,
+      encoding: "utf8",
+    });
+    assert.equal(
+      configuredIdentity.includes(config.token),
+      false,
+      "Identity must not disclose the machine credential",
+    );
+    assert.deepEqual(JSON.parse(configuredIdentity), {
+      machineId: config.machineId,
+      configured: true,
+      url: config.url,
+      commands: false,
+      workingDirectory: homedir(),
+    });
     const unconfigured = spawnSync(cli, ["manager-watch"], {
       env,
       encoding: "utf8",

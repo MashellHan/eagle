@@ -1,5 +1,27 @@
 # @nocoo/eagle-agent
 
+## Unpublished machine-service candidate
+
+Source candidate 1.1.0-alpha.2 adds `eagle-agent serve`: a standalone outbound
+machine connection with a private durable execution journal. It does not need
+Herdr. In the private config, `execution.commands` explicitly enables commands
+(default false); `execution.workingDirectory` selects their initial directory,
+not an OS permission boundary. Commands use the Agent account's permissions.
+Use the same absolute EAGLE_CONFIG for the foreground check and the independent
+user service. Missing Herdr does not block this connection.
+
+Local directory consent is separate from command permission. `eagle-agent files
+list` shows local grants; `files grant` reads `{ "root": "/absolute/directory",
+"name": "Documents" }` from stdin and `files revoke` reads `{ "id": "grant-id" }`.
+Only the machine can grant directories. The remote `file.read`/`file.list` tools
+use the returned ID/generation and a relative path, with 32 KiB results. Revoking
+a grant also hides cached file results; reauthorization never replays old work.
+These commands use the same private EAGLE_CONFIG directory as `serve`.
+
+This candidate is not published. Verify a locally packed tarball and its installed
+CLI before use; the website onboarding and public instructions below retain the
+verified published 1.0.0. Source/branch testing does not upgrade live services.
+
 Agent 1.0.0 removes the optional semantic layer: `manager-once`,
 `manager-watch`, `manager.command` and the legacy `evidenceFile` input are gone,
 so the package now ships only deterministic collection, realtime bridging and

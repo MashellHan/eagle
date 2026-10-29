@@ -1,13 +1,15 @@
 import { DurableObject } from "cloudflare:workers";
 import { changesBetween } from "../../../../packages/contracts/src/assessment.ts";
 import type { Registration } from "../../../../packages/contracts/src/connect.ts";
+import type {
+  DailyJob,
+  DailyReport,
+} from "../../../../packages/contracts/src/daily.ts";
 import {
-  type DailyJob,
-  type DailyReport,
   dailyCutoff,
   dailyStart,
   sampleHour,
-} from "../../../../packages/contracts/src/daily.ts";
+} from "../../../../packages/contracts/src/daily-input.ts";
 import {
   compactHour,
   utcHour,
@@ -23,6 +25,7 @@ import type {
   Report,
 } from "../../../../packages/contracts/src/schema.ts";
 import { agentTokens } from "./auth.ts";
+import { ExecutionRelay } from "./execution.ts";
 import { LiveRelay } from "./realtime.ts";
 
 type DailyState = DailyJob & {
@@ -36,7 +39,32 @@ type DailyState = DailyJob & {
 /** Current deterministic state plus short-lived daily input. */
 export class MachineState extends DurableObject<Env> {
   private live = new LiveRelay(this.ctx, this.env, (id) => this.authorized(id));
+  private execution = new ExecutionRelay(this.ctx, this.env, (id) =>
+    this.authorized(id),
+  );
+  executionStatus(machineId: string) {
+    if (!this.registration(machineId))
+      return new Response(null, { status: 404 });
+    return Response.json(this.execution.status(machineId), {
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
   fetch(request: Request) {
+    if (new URL(request.url).pathname === "/execution") {
+      const role = request.headers.get("x-execution-role");
+      const machine = request.headers.get("x-execution-machine");
+      if (!machine || (role !== "agent" && role !== "viewer"))
+        return new Response(null, { status: 403 });
+      const registration = this.registration(machine);
+      if (!registration?.enabled)
+        return new Response(null, { status: role === "agent" ? 401 : 404 });
+      return this.execution.connect(
+        role,
+        machine,
+        Number(request.headers.get("x-execution-expires")),
+        request.headers.get("x-execution-credential"),
+      );
+    }
     const role = request.headers.get("x-live-role");
     if (role !== "agent" && role !== "viewer")
       return new Response(null, { status: 403 });
@@ -61,21 +89,24 @@ export class MachineState extends DurableObject<Env> {
     );
   }
   webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
-    this.live.message(socket, message);
+    if (this.execution.owns(socket)) this.execution.message(socket, message);
+    else this.live.message(socket, message);
   }
   webSocketClose(socket: WebSocket, code: number, reason: string) {
     try {
       // Reserved local-only codes (notably abrupt-disconnect 1006) cannot be sent.
       socket.close([1005, 1006, 1015].includes(code) ? 1000 : code, reason);
     } finally {
-      this.live.close(socket);
+      if (this.execution.owns(socket)) this.execution.close(socket);
+      else this.live.close(socket);
     }
   }
   webSocketError(socket: WebSocket) {
     try {
       socket.close(1011, "Connection failed");
     } finally {
-      this.live.close(socket);
+      if (this.execution.owns(socket)) this.execution.close(socket);
+      else this.live.close(socket);
     }
   }
   constructor(ctx: DurableObjectState, env: Env) {
@@ -166,7 +197,10 @@ export class MachineState extends DurableObject<Env> {
         : (previous?.expiresAt ?? null),
     };
     this.ctx.storage.kv.put("registration", machine);
-    if (issue || action === "revoke") this.live.revoke();
+    if (issue || action === "revoke") {
+      this.live.revoke();
+      this.execution.revoke();
+    }
     return machine;
   }
 
@@ -465,7 +499,9 @@ export class MachineState extends DurableObject<Env> {
 
   async alarm() {
     this.live.sweep();
+    this.execution.sweep();
     await this.live.schedule();
+    await this.execution.schedule();
   }
 
   heartbeat(warning?: string, credentialId: string | null = null) {
