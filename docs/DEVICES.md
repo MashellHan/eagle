@@ -118,7 +118,13 @@ including a running prior admission. `local.complete` takes
 The initiating Bot keeps the same Unix socket open from begin through complete.
 `local.heartbeat` `{operationId,leaseId}` on that socket renews a 30-second lease
 and returns `{expiresAt}`; renew every 10 seconds. Socket closure or lease expiry
-durably marks the native operation unknown and releases admission. A new random
+durably marks the native operation unknown and keeps device admission blocked.
+A missing heartbeat never proves that the underlying native tool stopped. This
+block survives service restart. Only the original owning lease can settle its
+own operation with explicit completed/failed/cancelled evidence; a late completion
+on the original socket is allowed. Disconnected-owner recovery needs a trusted
+management evidence flow; until then the device stays blocked. Unknown completion
+does not clear the block. A new random
 leaseId is bound to the owning socket; stale/other-socket complete or heartbeat
 is rejected and cannot release another admission. No native request is rerun.
 Only the initiating local device may complete its native admission. Native and

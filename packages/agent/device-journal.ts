@@ -38,6 +38,7 @@ type Row = {
   stderr: string;
   exit_code: number | null;
   scope: string | null;
+  native_blocked: number;
 };
 
 const terminalStates = new Set(["succeeded", "failed", "cancelled", "unknown"]);
@@ -156,7 +157,8 @@ export class OperationJournal {
           stdout TEXT NOT NULL DEFAULT '',
           stderr TEXT NOT NULL DEFAULT '',
           exit_code INTEGER,
-          scope TEXT
+          scope TEXT,
+          native_blocked INTEGER NOT NULL DEFAULT 0
         );
         UPDATE operations SET state = 'unknown', exit_code = NULL
           WHERE state = 'running';
@@ -167,6 +169,10 @@ export class OperationJournal {
         .all() as { name: string }[];
       if (!columns.some((column) => column.name === "scope"))
         this.database.exec("ALTER TABLE operations ADD COLUMN scope TEXT");
+      if (!columns.some((column) => column.name === "native_blocked"))
+        this.database.exec(
+          "ALTER TABLE operations ADD COLUMN native_blocked INTEGER NOT NULL DEFAULT 0",
+        );
     } catch (error) {
       database?.close();
       for (const key of this.ownerKeys) localOwners.delete(key);
@@ -178,6 +184,7 @@ export class OperationJournal {
     id: string,
     fingerprint: string,
     scope?: OperationScope,
+    nativeBlocked = false,
   ): { created: boolean; operation: OperationRecord } {
     if (
       !/^[a-zA-Z0-9_-]{1,120}$/.test(id) ||
@@ -198,9 +205,9 @@ export class OperationJournal {
       throw new OperationAdmissionError("Operation journal capacity reached");
     this.database
       .prepare(
-        "INSERT INTO operations (id, fingerprint, state, scope) VALUES (?, ?, 'running', ?)",
+        "INSERT INTO operations (id, fingerprint, state, scope,native_blocked) VALUES (?, ?, 'running', ?,?)",
       )
-      .run(id, fingerprint, scopeValue);
+      .run(id, fingerprint, scopeValue, nativeBlocked ? 1 : 0);
     return {
       created: true,
       operation: {
@@ -213,7 +220,11 @@ export class OperationJournal {
     };
   }
 
-  finish(id: string, outcome: OperationOutcome): OperationRecord {
+  finish(
+    id: string,
+    outcome: OperationOutcome,
+    settleNative = false,
+  ): OperationRecord {
     if (
       !terminalStates.has(outcome.state) ||
       typeof outcome.stdout !== "string" ||
@@ -233,12 +244,23 @@ export class OperationJournal {
       throw new Error("Invalid or over-budget operation result");
     const previous = this.row(id);
     if (!previous) throw new Error("Unknown operation");
-    if (previous.state !== "running") return record(previous);
+    if (
+      previous.state !== "running" &&
+      !(settleNative && previous.state === "unknown" && previous.native_blocked)
+    )
+      return record(previous);
     this.database
       .prepare(
-        "UPDATE operations SET state = ?, stdout = ?, stderr = ?, exit_code = ? WHERE id = ?",
+        "UPDATE operations SET state = ?, stdout = ?, stderr = ?, exit_code = ?,native_blocked=CASE WHEN ? THEN 0 ELSE native_blocked END WHERE id = ?",
       )
-      .run(outcome.state, outcome.stdout, outcome.stderr, outcome.exitCode, id);
+      .run(
+        outcome.state,
+        outcome.stdout,
+        outcome.stderr,
+        outcome.exitCode,
+        settleNative ? 1 : 0,
+        id,
+      );
     const stored = this.row(id);
     if (!stored) throw new Error("Operation result was not persisted");
     return record(stored);
@@ -254,6 +276,13 @@ export class OperationJournal {
     const scope = JSON.parse(value) as OperationScope;
     scopeText(scope);
     return scope;
+  }
+  blockedNative(): string[] {
+    return (
+      this.database
+        .prepare("SELECT id FROM operations WHERE native_blocked=1")
+        .all() as { id: string }[]
+    ).map((row) => row.id);
   }
 
   private row(id: string): Row | undefined {

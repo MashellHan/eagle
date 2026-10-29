@@ -242,74 +242,94 @@ test("always ask verifies operation-bound signature and paused blocks new operat
   }
 });
 
-test("native socket leases recover disconnected or silent owners and reject stale completion", async () => {
+test("lost native ownership remains blocked across timeout/restart until original completion evidence", async () => {
   const { NativeDeviceLeases } = await import(
     "../packages/agent/device-native-leases.ts"
   );
   const f = fixture();
   try {
     const leases = new NativeDeviceLeases(f.runtime, 30);
-    const firstSession = { id: randomUUID(), closed: false };
+    const session = { id: randomUUID(), closed: false };
     const input = await request(f.device.deviceId, {
       kind: "native",
       tool: "bash",
       args: { command: "sleep 20" },
     });
-    const first = await leases.begin(input, firstSession);
+    const first = await leases.begin(input, session);
     assert.equal(first.accepted, true);
     assert(first.leaseId);
-    firstSession.closed = true;
-    leases.disconnect(firstSession.id);
+    await new Promise((resolve) => setTimeout(resolve, 60));
     assert.equal(
       (await f.runtime.handle({ ...input, action: "get" }, f.device)).status,
       "unknown",
     );
-    const secondSession = { id: randomUUID(), closed: false };
-    const next = {
+    const other = await request(f.device.deviceId, {
+      kind: "command",
+      command: "printf overlap",
+    });
+    assert.equal((await f.runtime.handle(other, f.device)).status, "busy");
+    assert.throws(() =>
+      leases.complete(input.operationId, randomUUID(), session.id, {
+        status: "completed",
+      }),
+    );
+    assert.throws(() =>
+      leases.complete(
+        input.operationId,
+        first.leaseId as string,
+        randomUUID(),
+        { status: "completed" },
+      ),
+    );
+    assert.equal(
+      leases.complete(input.operationId, first.leaseId as string, session.id, {
+        status: "completed",
+        output: "owner finished",
+      }).status,
+      "completed",
+    );
+    assert.equal((await f.runtime.handle(other, f.device)).output, "overlap");
+    const second = {
       ...input,
       requestId: randomUUID(),
       operationId: randomUUID(),
     };
-    const second = await leases.begin(next, secondSession);
-    assert.equal(second.accepted, true);
-    assert.throws(() =>
-      leases.complete(
-        next.operationId,
-        first.leaseId as string,
-        secondSession.id,
-        { status: "completed" },
-      ),
-    );
-    assert.throws(() =>
-      leases.complete(
-        next.operationId,
-        second.leaseId as string,
-        firstSession.id,
-        { status: "completed" },
-      ),
-    );
+    const accepted = await leases.begin(second, session);
+    assert.equal(accepted.accepted, true);
+    session.closed = true;
+    leases.disconnect(session.id);
     assert.equal(
-      (await f.runtime.handle({ ...next, action: "get" }, f.device)).status,
-      "running",
+      (
+        await f.runtime.handle(
+          { ...other, operationId: randomUUID() },
+          f.device,
+        )
+      ).status,
+      "busy",
     );
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    assert.equal(
-      (await f.runtime.handle({ ...next, action: "get" }, f.device)).status,
-      "unknown",
+    leases.close();
+    await f.runtime.close();
+    const recovered = new DeviceRuntime(
+      f.device,
+      join(f.directory, "journal.sqlite"),
     );
-    assert.throws(() =>
-      leases.complete(
-        next.operationId,
-        second.leaseId as string,
-        secondSession.id,
-        { status: "completed" },
-      ),
-    );
-    const third = await request(f.device.deviceId, {
-      kind: "command",
-      command: "printf recovered",
-    });
-    assert.equal((await f.runtime.handle(third, f.device)).output, "recovered");
+    try {
+      assert.equal(
+        (await recovered.handle({ ...second, action: "get" }, f.device)).status,
+        "unknown",
+      );
+      assert.equal(
+        (
+          await recovered.handle(
+            { ...other, operationId: randomUUID() },
+            f.device,
+          )
+        ).status,
+        "busy",
+      );
+    } finally {
+      await recovered.close();
+    }
   } finally {
     await f.close();
   }

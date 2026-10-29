@@ -123,47 +123,6 @@ test("private helper config boots offline local tools; Bot port cannot change po
       ((await request("execute", input)).result as { output: string }).output,
       "offline",
     );
-    const nativeOperation = {
-      kind: "native",
-      tool: "bash",
-      args: { command: "sleep 20" },
-    };
-    const native = {
-      ...input,
-      requestId: randomUUID(),
-      operationId: randomUUID(),
-      operation: nativeOperation,
-      digest: await deviceDigest(canonicalDeviceJSON(nativeOperation)),
-    };
-    const admission = (await request("local.begin", native)).result as {
-      accepted: boolean;
-      leaseId: string;
-    };
-    assert.equal(admission.accepted, true);
-    assert.equal(typeof admission.leaseId, "string");
-    let recovered = "running";
-    for (let attempt = 0; attempt < 30 && recovered === "running"; attempt++) {
-      recovered = (
-        (await request("operation.get", { ...native, action: "get" }))
-          .result as { status: string }
-      ).status;
-      if (recovered === "running")
-        await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    assert.equal(recovered, "unknown");
-    const stale = await request("local.complete", {
-      operationId: native.operationId,
-      leaseId: admission.leaseId,
-      result: { status: "completed" },
-    });
-    assert.equal(stale.error, "native_lease_mismatch");
-    assert.equal(
-      (
-        (await request("execute", { ...input, operationId: randomUUID() }))
-          .result as { status: string }
-      ).status,
-      "completed",
-    );
     const asking = await trusted("policy.set", { mode: "always-ask" });
     const policyVersion = (asking.result as { version: number }).version;
     const askingOperation = {
@@ -277,6 +236,48 @@ test("private helper config boots offline local tools; Bot port cannot change po
       messages.some(
         (message) => message.type === "cloud" && message.status === "offline",
       ),
+    );
+    await trusted("policy.set", { mode: "all-approve" });
+    const nativeOperation = {
+      kind: "native",
+      tool: "bash",
+      args: { command: "sleep 20" },
+    };
+    const native = {
+      ...input,
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+      operation: nativeOperation,
+      digest: await deviceDigest(canonicalDeviceJSON(nativeOperation)),
+    };
+    const admission = (await request("local.begin", native)).result as {
+      accepted: boolean;
+      leaseId: string;
+    };
+    assert.equal(admission.accepted, true);
+    assert.equal(typeof admission.leaseId, "string");
+    let recovered = "running";
+    for (let attempt = 0; attempt < 30 && recovered === "running"; attempt++) {
+      recovered = (
+        (await request("operation.get", { ...native, action: "get" }))
+          .result as { status: string }
+      ).status;
+      if (recovered === "running")
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(recovered, "unknown");
+    const stale = await request("local.complete", {
+      operationId: native.operationId,
+      leaseId: admission.leaseId,
+      result: { status: "completed" },
+    });
+    assert.equal(stale.error, "native_lease_mismatch");
+    assert.equal(
+      (
+        (await request("execute", { ...input, operationId: randomUUID() }))
+          .result as { status: string }
+      ).status,
+      "busy",
     );
   } finally {
     clearTimeout(timer);

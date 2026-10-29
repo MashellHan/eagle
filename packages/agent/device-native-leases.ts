@@ -85,10 +85,6 @@ export class NativeDeviceLeases {
     const lease = this.leases.get(operationId);
     if (!lease || lease.leaseId !== leaseId || lease.sessionId !== sessionId)
       throw new Error("native_lease_mismatch");
-    if (lease.expiresAt <= Date.now()) {
-      this.abandon(operationId);
-      throw new Error("native_lease_expired");
-    }
     return lease;
   }
   heartbeat(
@@ -97,6 +93,10 @@ export class NativeDeviceLeases {
     sessionId: string,
   ): { expiresAt: number } {
     const lease = this.owned(operationId, leaseId, sessionId);
+    if (lease.expiresAt <= Date.now()) {
+      this.abandon(operationId);
+      throw new Error("native_lease_expired");
+    }
     clearTimeout(lease.timer);
     lease.expiresAt = Date.now() + this.leaseMs;
     lease.timer = this.timer(operationId, leaseId);
@@ -110,7 +110,7 @@ export class NativeDeviceLeases {
   ): OperationResult {
     const lease = this.owned(operationId, leaseId, sessionId);
     const completed = this.runtime.completeNative(operationId, result);
-    if (completed.status !== "denied") {
+    if (["completed", "failed", "cancelled"].includes(completed.status)) {
       clearTimeout(lease.timer);
       this.leases.delete(operationId);
     }
@@ -121,7 +121,6 @@ export class NativeDeviceLeases {
     if (!lease) return;
     this.runtime.abandonNative(operationId);
     clearTimeout(lease.timer);
-    this.leases.delete(operationId);
   }
   disconnect(sessionId: string): void {
     for (const [operationId, lease] of this.leases)
@@ -129,5 +128,6 @@ export class NativeDeviceLeases {
   }
   close(): void {
     for (const operationId of this.leases.keys()) this.abandon(operationId);
+    this.leases.clear();
   }
 }

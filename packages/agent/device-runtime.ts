@@ -61,6 +61,7 @@ export class DeviceRuntime {
     this.secrets = secrets;
     this.device = device;
     this.journal = new OperationJournal(path);
+    this.native = new Set(this.journal.blockedNative());
     this.policyPath = join(dirname(path), "policy.json");
     try {
       this.policy = DevicePolicy.parse(
@@ -170,6 +171,7 @@ export class DeviceRuntime {
       request.operationId,
       fingerprint,
       this.scope(source, request),
+      native,
     );
     if (!admission.created)
       return { accepted: false, result: result(admission.operation) };
@@ -199,8 +201,9 @@ export class DeviceRuntime {
       !["completed", "failed", "cancelled", "unknown"].includes(parsed.status)
     )
       return { status: "denied", error: "invalid_completion" };
-    const stored = this.journal.finish(operationId, outcome(parsed));
-    this.native.delete(operationId);
+    const settled = parsed.status !== "unknown";
+    const stored = this.journal.finish(operationId, outcome(parsed), settled);
+    if (settled) this.native.delete(operationId);
     return result(stored);
   }
   abandonNative(operationId: string): OperationResult {
@@ -211,7 +214,6 @@ export class DeviceRuntime {
       stderr: "native_owner_disconnected_or_lease_expired",
       exitCode: null,
     });
-    this.native.delete(operationId);
     return result(stored);
   }
   async handle(
