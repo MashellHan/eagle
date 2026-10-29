@@ -25,7 +25,11 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      # The macOS client is a standalone SPM package with no npm dependency.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      # The focus probe uses Node built-ins and system AppKit, without npm packages.
       - run: swift build --package-path apps/macos
+      - run: npm run test:focus
       - run: cd apps/macos && swift format lint --strict --recursive Sources Scripts Tests
       - run: apps/macos/Scripts/coverage.sh

@@ -15,6 +15,10 @@ if [ -d apps/macos ]; then
   if [ -d /Applications/Xcode.app/Contents/Developer ]; then
     export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
   fi
+  if [ "$(uname -s)" = Darwin ]; then
+    echo "pre-push: native focus"
+    npm run test:focus
+  fi
   if command -v swift >/dev/null 2>&1; then
     (cd apps/macos && swift test)
   else
