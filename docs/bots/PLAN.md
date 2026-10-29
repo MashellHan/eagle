@@ -67,6 +67,11 @@ socket 新模块缺失只算构建缺口，不作为行为红测。证据 `share
 7 项 Swift 身份测试（含真实隔离 Keychain 写入/读取/清理）及 9 项 Bots 适配器测试。
 这片未接 helper 代码身份验证、SMAppService 或人工确认 UI，尚不能签发实际用户审批。
 
+Swift 私有进程宿主已用实际 Node 服务验证：自动 configure、本地离线就绪、中文
+文件写入、Bot 管理拒绝与 parent 管理策略生效。完整 typed approval 由宿主确认
+回调后签名；未连接/拒绝不签。3 项宿主测试包括真实内核 boot UUID 读取，审批
+回调未接线的行为红测已保留。代码身份 XPC、后台注册和人工确认页面仍在接线。
+
 ## Where the code lives
 
 ### Exclusive search providers (2026-10-28)
