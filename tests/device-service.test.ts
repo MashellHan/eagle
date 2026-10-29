@@ -1,0 +1,133 @@
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { connect } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createInterface } from "node:readline";
+import { test } from "node:test";
+import {
+  canonicalDeviceJSON,
+  deviceDigest,
+} from "../packages/contracts/src/devices.ts";
+
+test("private helper config boots offline local tools; Bot port cannot change policy or pairing", async () => {
+  const root = mkdtempSync(join(tmpdir(), "device-port-"));
+  const deviceId = randomUUID();
+  const socketPath = join(root, "service.sock");
+  const key = generateKeyPairSync("ed25519");
+  const child = spawn(process.execPath, ["packages/agent/device-service.ts"], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const lines = createInterface({ input: child.stdout });
+  const messages: Record<string, unknown>[] = [];
+  const waiters = new Map<string, (value: Record<string, unknown>) => void>();
+  let stderr = "";
+  child.stderr.on("data", (data) => (stderr += data.toString()));
+  let readyResolve: () => void;
+  let readyReject: (error: Error) => void;
+  const ready = new Promise<void>((resolve, reject) => {
+    readyResolve = resolve;
+    readyReject = reject;
+  });
+  lines.on("line", (line) => {
+    const message = JSON.parse(line) as Record<string, unknown>;
+    messages.push(message);
+    if (message.type === "ready") readyResolve();
+    if (typeof message.requestId === "string")
+      waiters.get(message.requestId)?.(message);
+  });
+  child.once("exit", () => readyReject(new Error(`service exited: ${stderr}`)));
+  child.stdin.write(
+    `${JSON.stringify({ type: "configure", version: 1, baseUrl: "http://127.0.0.1:1", deviceId, publicKey: key.publicKey.export({ type: "spki", format: "der" }).toString("base64url"), name: "offline-test", platform: "darwin", arch: "arm64", stateDirectory: root, socketPath })}\n`,
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      ready,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`local readiness timeout ${stderr}`)),
+          5000,
+        );
+      }),
+    ]);
+    clearTimeout(timer);
+    assert.equal(statSync(socketPath).mode & 0o777, 0o600);
+    async function request(
+      method: string,
+      params?: unknown,
+    ): Promise<Record<string, unknown>> {
+      const socket = connect(socketPath);
+      const reader = createInterface({ input: socket });
+      return new Promise((resolve, reject) => {
+        socket.on("error", reject);
+        reader.once("line", (line) => {
+          socket.end();
+          reader.close();
+          resolve(JSON.parse(line));
+        });
+        socket.write(
+          `${JSON.stringify({ requestId: randomUUID(), method, params })}\n`,
+        );
+      });
+    }
+    const status = await request("status");
+    assert.equal((status.result as { localReady: boolean }).localReady, true);
+    for (const method of [
+      "policy.set",
+      "pairing.create",
+      "pairing.revoke",
+      "pairing.redeem",
+      "member.remove",
+    ]) {
+      assert.equal(
+        (await request(method, { mode: "all-approve", deviceId })).error,
+        "management_requires_private_helper",
+      );
+    }
+    const operation = { kind: "command", command: "printf offline" };
+    const input = {
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+      targetDeviceId: deviceId,
+      action: "run",
+      operation,
+      digest: await deviceDigest(canonicalDeviceJSON(operation)),
+    };
+    assert.equal(
+      ((await request("execute", input)).result as { output: string }).output,
+      "offline",
+    );
+    const managementId = randomUUID();
+    const managed = new Promise<Record<string, unknown>>((resolve) =>
+      waiters.set(managementId, resolve),
+    );
+    child.stdin.write(
+      `${JSON.stringify({ type: "manage", requestId: managementId, method: "policy.set", params: { mode: "paused" } })}\n`,
+    );
+    const response = await managed;
+    assert.equal((response.result as { mode: string }).mode, "paused");
+    const denied = await request("execute", {
+      ...input,
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+    });
+    assert.equal((denied.result as { status: string }).status, "denied");
+    assert(
+      messages.some(
+        (message) => message.type === "cloud" && message.status === "offline",
+      ),
+    );
+  } finally {
+    clearTimeout(timer);
+    child.stdin.end();
+    await new Promise<void>((resolve) => {
+      if (child.exitCode !== null) resolve();
+      else child.once("exit", () => resolve());
+    });
+    lines.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

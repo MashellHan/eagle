@@ -1891,3 +1891,15 @@ its own fixture root, and never opens the live daemon. The app bundle builds and
 ad-hoc signature verifies. The running old app is connected with no running tasks;
 restart of the built bundle follows the commit. No real provider calls or key writes
 were used for acceptance; live DeepSeek/Tavily verification remains unperformed.
+
+## 2026-10-29 — shared-device service worktree
+
+Local Node Agent A/B instances authenticated with ephemeral test Ed25519 keys,
+paired through the real Miniflare Registry SQLite DO, opened outbound Agent WS
+connections and completed commands in both directions. Original-ID query/replay
+and member revocation passed; 6 device API tests and 5 runtime tests passed.
+These are isolated processes, not two physical Macs. D1 is unused by this new
+path; daily-dev/production data and resources were untouched. No App rendering,
+Keychain, installed runtime, Herdr collection or public endpoint was verified.
+Next broken hop: trusted helper stdin management/approval and shared local Unix
+socket are not connected yet. Lead owns App/Bots integration and full gates.
