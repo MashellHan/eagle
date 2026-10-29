@@ -241,3 +241,76 @@ test("always ask verifies operation-bound signature and paused blocks new operat
     await f.close();
   }
 });
+
+test("native socket leases recover disconnected or silent owners and reject stale completion", async () => {
+  const { NativeDeviceLeases } = await import(
+    "../packages/agent/device-native-leases.ts"
+  );
+  const f = fixture();
+  try {
+    const leases = new NativeDeviceLeases(f.runtime, 30);
+    const firstSession = { id: randomUUID(), closed: false };
+    const input = await request(f.device.deviceId, {
+      kind: "native",
+      tool: "bash",
+      args: { command: "sleep 20" },
+    });
+    const first = await leases.begin(input, firstSession);
+    assert.equal(first.accepted, true);
+    assert(first.leaseId);
+    firstSession.closed = true;
+    leases.disconnect(firstSession.id);
+    assert.equal(
+      (await f.runtime.handle({ ...input, action: "get" }, f.device)).status,
+      "unknown",
+    );
+    const secondSession = { id: randomUUID(), closed: false };
+    const next = {
+      ...input,
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+    };
+    const second = await leases.begin(next, secondSession);
+    assert.equal(second.accepted, true);
+    assert.throws(() =>
+      leases.complete(
+        next.operationId,
+        first.leaseId as string,
+        secondSession.id,
+        { status: "completed" },
+      ),
+    );
+    assert.throws(() =>
+      leases.complete(
+        next.operationId,
+        second.leaseId as string,
+        firstSession.id,
+        { status: "completed" },
+      ),
+    );
+    assert.equal(
+      (await f.runtime.handle({ ...next, action: "get" }, f.device)).status,
+      "running",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.equal(
+      (await f.runtime.handle({ ...next, action: "get" }, f.device)).status,
+      "unknown",
+    );
+    assert.throws(() =>
+      leases.complete(
+        next.operationId,
+        second.leaseId as string,
+        secondSession.id,
+        { status: "completed" },
+      ),
+    );
+    const third = await request(f.device.deviceId, {
+      kind: "command",
+      command: "printf recovered",
+    });
+    assert.equal((await f.runtime.handle(third, f.device)).output, "recovered");
+  } finally {
+    await f.close();
+  }
+});

@@ -200,6 +200,17 @@ export class DeviceRuntime {
     this.native.delete(operationId);
     return result(stored);
   }
+  abandonNative(operationId: string): OperationResult {
+    if (!this.native.has(operationId)) return { status: "unknown" };
+    const stored = this.journal.finish(operationId, {
+      state: "unknown",
+      stdout: "",
+      stderr: "native_owner_disconnected_or_lease_expired",
+      exitCode: null,
+    });
+    this.native.delete(operationId);
+    return result(stored);
+  }
   async handle(
     input: OperationRequest,
     source: Device,

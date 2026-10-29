@@ -107,14 +107,20 @@ Unix socket is JSONL request/response, one response per request:
 `{requestId,method,params?}` → `{requestId,result}` or `{requestId,error}`.
 Bot port read/execute methods: `status`, `directory`, `execute` (OperationRequest),
 `operation.get`, `operation.cancel` (OperationRequest), `local.begin` and
-`local.complete`. It rejects all management writes, including `policy.set`,
+`local.complete` and `local.heartbeat`. It rejects all management writes, including `policy.set`,
 `pairing.create/revoke/redeem` and `member.remove`; 0600 alone does not distinguish
 same-UID Bots from the App. `pairing.result` is App management only as well.
 `local.begin` takes OperationRequest with `operation:{kind:"native",tool,args,cwd?}`
-(native CodingTools only); it returns `{accepted:boolean,result}`. Only accepted
+(native CodingTools only); it returns `{accepted:boolean,result,leaseId?,expiresAt?}`. Only accepted
 true permits invoking the native tool. Duplicate begin always accepted false,
 including a running prior admission. `local.complete` takes
-`{operationId,result}` and durably finalizes/releases the same device lock.
+`{operationId,leaseId,result}` and durably finalizes/releases the same device lock.
+The initiating Bot keeps the same Unix socket open from begin through complete.
+`local.heartbeat` `{operationId,leaseId}` on that socket renews a 30-second lease
+and returns `{expiresAt}`; renew every 10 seconds. Socket closure or lease expiry
+durably marks the native operation unknown and releases admission. A new random
+leaseId is bound to the owning socket; stale/other-socket complete or heartbeat
+is rejected and cannot release another admission. No native request is rerun.
 Only the initiating local device may complete its native admission. Native and
 remote tools share policy/journal/serial admission; interrupted native operations
 recover unknown. Native is rejected by remote execute/relay. args is a JSON object;
@@ -139,7 +145,7 @@ to show the complete operation/target and confirm, then replies stdin
 `approval.request` (OperationRequest plus policyVersion/expiry), never approve.
 No unattended/timeout fallback. The `sign` bridge accepts registration purpose
 only; it rejects approval payloads and all other purposes.
- Local directory always includes self;
+Local directory always includes self;
 remote entries are fetched live before remote execution. Multiple Bots share
 this port and never copy device secrets. `status` returns
 `{deviceId,localReady,cloudStatus,policy}`. App may open the same port for settings.

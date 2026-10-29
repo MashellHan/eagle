@@ -20,6 +20,7 @@ import {
   verifyApproval,
 } from "../contracts/src/devices.ts";
 import { DeviceCloud } from "./device-cloud.ts";
+import { NativeDeviceLeases } from "./device-native-leases.ts";
 import { DeviceRuntime } from "./device-runtime.ts";
 
 const configure = DeviceRegistration.extend({
@@ -150,6 +151,7 @@ export async function runDeviceService(): Promise<void> {
     process.stdout.write(`${JSON.stringify(value)}\n`);
   const pending = new Map<string, HelperPending>();
   let runtime: DeviceRuntime | undefined;
+  let nativeLeases: NativeDeviceLeases | undefined;
   let cloud: DeviceCloud | undefined;
   let server: ReturnType<typeof createServer> | undefined;
   let configuration: z.infer<typeof configure> | undefined;
@@ -184,6 +186,7 @@ export async function runDeviceService(): Promise<void> {
     }
     pending.clear();
     for (const socket of sockets) socket.destroy();
+    nativeLeases?.close();
     await cloud?.close();
     await runtime?.close();
     if (server?.listening)
@@ -258,7 +261,11 @@ export async function runDeviceService(): Promise<void> {
         throw new Error("unknown_management_method");
     }
   };
-  const local = async (method: string, params: unknown): Promise<unknown> => {
+  const local = async (
+    method: string,
+    params: unknown,
+    session: { id: string; closed: boolean },
+  ): Promise<unknown> => {
     if (!runtime || !cloud) throw new Error("not_ready");
     if (managementMethods.has(method))
       throw new Error("management_requires_private_helper");
@@ -273,15 +280,31 @@ export async function runDeviceService(): Promise<void> {
       case "directory":
         return getDirectory();
       case "local.begin":
-        return runtime.beginNative(
-          OperationRequest.parse(params),
-          runtime.device,
-        );
+        return nativeLeases?.begin(OperationRequest.parse(params), session);
       case "local.complete": {
         const input = z
-          .strictObject({ operationId: DeviceId, result: OperationResult })
+          .strictObject({
+            operationId: DeviceId,
+            leaseId: DeviceId,
+            result: OperationResult,
+          })
           .parse(params);
-        return runtime.completeNative(input.operationId, input.result);
+        return nativeLeases?.complete(
+          input.operationId,
+          input.leaseId,
+          session.id,
+          input.result,
+        );
+      }
+      case "local.heartbeat": {
+        const input = z
+          .strictObject({ operationId: DeviceId, leaseId: DeviceId })
+          .parse(params);
+        return nativeLeases?.heartbeat(
+          input.operationId,
+          input.leaseId,
+          session.id,
+        );
       }
       case "execute":
       case "operation.get":
@@ -380,6 +403,9 @@ export async function runDeviceService(): Promise<void> {
       join(config.stateDirectory, "operations.sqlite"),
       () => cloud?.secrets() ?? [],
     );
+    nativeLeases = new NativeDeviceLeases(runtime, 30000, () =>
+      send({ type: "failed", error: "native_lease_storage_failed" }),
+    );
     cloud = new DeviceCloud(
       config.baseUrl,
       device,
@@ -404,9 +430,18 @@ export async function runDeviceService(): Promise<void> {
     await clearStaleSocket(config.socketPath);
     server = createServer((socket) => {
       sockets.add(socket);
+      const session = { id: randomUUID(), closed: false };
       let inFlight = 0;
       socket.on("error", () => socket.destroy());
-      socket.once("close", () => sockets.delete(socket));
+      socket.once("close", () => {
+        session.closed = true;
+        sockets.delete(socket);
+        try {
+          nativeLeases?.disconnect(session.id);
+        } catch {
+          send({ type: "failed", error: "native_lease_storage_failed" });
+        }
+      });
       jsonLines(
         socket,
         (value) => {
@@ -422,7 +457,7 @@ export async function runDeviceService(): Promise<void> {
             return;
           }
           inFlight++;
-          void local(request.data.method, request.data.params)
+          void local(request.data.method, request.data.params, session)
             .then(
               (result) => {
                 if (!socket.destroyed)
