@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const DeviceId = z.uuid();
+export const DeviceId = z.uuid().toLowerCase();
 const encoded = z
   .string()
   .regex(/^[A-Za-z0-9_-]+$/)
@@ -119,6 +119,7 @@ export type DeviceDirectory = {
   localDeviceId: string;
   groupId: string | null;
   revision: number;
+  observationRevision: string;
   devices: DeviceView[];
 };
 export const DEVICE_PREFIX = "/api/devices/v1";

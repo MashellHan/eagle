@@ -206,6 +206,7 @@ export async function runDeviceService(): Promise<void> {
       localDeviceId: device.deviceId,
       groupId: device.groupId,
       revision: device.membershipEpoch,
+      observationRevision: `local:${Date.now()}:${runtime.policy.version}`,
       devices: [
         {
           ...device,

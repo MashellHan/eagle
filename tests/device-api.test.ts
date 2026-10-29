@@ -358,6 +358,55 @@ test("real outbound WebSockets execute bidirectionally with original-ID dedup an
       (await cloudA.execute({ ...input, requestId: randomUUID() })).output,
       "from-b",
     );
+    const beforePolicy = await cloudA.directory();
+    runtimeB.setPolicy("always-ask");
+    cloudB.publishPolicy();
+    let changed = await cloudA.directory();
+    const observationDeadline = Date.now() + 1000;
+    while (
+      changed.devices.find((d) => d.deviceId === b.deviceId)?.policy
+        ?.version !== runtimeB.policy.version &&
+      Date.now() < observationDeadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      changed = await cloudA.directory();
+    }
+    assert.equal(changed.revision, beforePolicy.revision);
+    assert.notEqual(
+      changed.observationRevision,
+      beforePolicy.observationRevision,
+    );
+    const asking = {
+      ...input,
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+    };
+    assert.equal((await cloudA.execute(asking)).status, "denied");
+    const { approvalPayload } = await import(
+      "../packages/contracts/src/devices.ts"
+    );
+    const envelope = {
+      operationId: asking.operationId,
+      sourceDeviceId: a.deviceId,
+      targetDeviceId: b.deviceId,
+      digest: asking.digest,
+      policyVersion: runtimeB.policy.version,
+      expiresAt: Date.now() + 60000,
+    };
+    const approved = {
+      ...asking,
+      approval: {
+        ...envelope,
+        signature: sign(
+          null,
+          Buffer.from(approvalPayload(envelope)),
+          a.keys.privateKey,
+        ).toString("base64url"),
+      },
+    };
+    assert.equal((await cloudA.execute(approved)).output, "from-b");
+    runtimeB.setPolicy("all-approve");
+    cloudB.publishPolicy();
     const registry = await mf.unsafeGetDurableObjectStorage(
       "eagle",
       "DeviceRegistry",
@@ -813,4 +862,14 @@ test("failed redemption attempts persist their rate budget without changing memb
     )[0].n,
     0,
   );
+});
+
+test("accepted uppercase UUIDs use canonical identity and the execution route", async () => {
+  const { DeviceId } = await import("../packages/contracts/src/devices.ts");
+  const a = await identity("case-device");
+  assert.equal(DeviceId.parse(a.deviceId.toUpperCase()), a.deviceId);
+  const response = await mf.dispatchFetch(
+    `${base}/execution/${a.deviceId.toUpperCase()}/agent`,
+  );
+  assert.equal(response.status, 426);
 });

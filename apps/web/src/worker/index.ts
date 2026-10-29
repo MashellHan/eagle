@@ -708,12 +708,14 @@ export default {
       if (!env.DEVICE_REGISTRY)
         return json({ error: "device_service_unavailable" }, 503);
       const execution = url.pathname.match(
-        /^\/api\/devices\/v1\/execution\/([0-9a-f-]{36})\/(agent|request)$/,
+        /^\/api\/devices\/v1\/execution\/([0-9a-fA-F-]{36})\/(agent|request)$/,
       );
       if (execution) {
         if (!env.DEVICE_EXECUTION)
           return json({ error: "device_service_unavailable" }, 503);
-        return env.DEVICE_EXECUTION.getByName(execution[1]).fetch(request);
+        return env.DEVICE_EXECUTION.getByName(execution[1].toLowerCase()).fetch(
+          request,
+        );
       }
       return env.DEVICE_REGISTRY.getByName("registry").fetch(request);
     }

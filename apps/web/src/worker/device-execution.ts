@@ -122,7 +122,7 @@ export class DeviceExecution extends DurableObject<Env> {
       return deviceJSON({ error: "not_found" }, 404);
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket")
       return deviceJSON({ error: "websocket_required" }, 426);
-    const targetId = match[1];
+    const targetId = DeviceId.parse(match[1]);
     const role = match[2];
     const pair = new WebSocketPair();
     const client = pair[0];

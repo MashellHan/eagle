@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 import {
+  canonicalDeviceJSON,
   DEVICE_PREFIX,
   type Device,
   type DeviceDirectory,
@@ -209,20 +210,33 @@ export class DeviceRegistry extends DurableObject {
   }
   private async observedDirectory(id: string): Promise<DeviceDirectory> {
     const directory = this.directory(id);
-    if (!this.env.DEVICE_EXECUTION) return directory;
-    directory.devices = await Promise.all(
-      directory.devices.map(async (device) => {
-        try {
-          return {
-            ...device,
-            ...(await this.env.DEVICE_EXECUTION.getByName(
-              device.deviceId,
-            ).observation()),
-          };
-        } catch {
-          return device;
-        }
-      }),
+    if (this.env.DEVICE_EXECUTION)
+      directory.devices = await Promise.all(
+        directory.devices.map(async (device) => {
+          try {
+            return {
+              ...device,
+              ...(await this.env.DEVICE_EXECUTION.getByName(
+                device.deviceId,
+              ).observation()),
+            };
+          } catch {
+            return device;
+          }
+        }),
+      );
+    directory.observationRevision = await deviceDigest(
+      canonicalDeviceJSON(
+        directory.devices.map(
+          ({ deviceId, online, lastSeenAt, capabilities, policy }) => ({
+            deviceId,
+            online,
+            lastSeenAt,
+            capabilities,
+            policy,
+          }),
+        ),
+      ),
     );
     return directory;
   }
@@ -246,6 +260,7 @@ export class DeviceRegistry extends DurableObject {
       localDeviceId: id,
       groupId: self.groupId,
       revision,
+      observationRevision: "unknown",
       devices: devices.map(({ localRevision: _revision, ...device }) => ({
         ...device,
         online: null,

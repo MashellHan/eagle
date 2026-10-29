@@ -24,7 +24,13 @@ Signatures are base64url raw Ed25519. Node and Bots never receive the private ke
   and are single-use. Sessions expire in 15 minutes; only their hash is stored.
 - Other HTTPS calls use `Authorization: Bearer <sessionToken>`; credentials are
   memory only. Registration and redemption have bounded server rate limits.
-- `GET /directory` returns `{localDeviceId,groupId,revision,devices}`. Device:
+- `GET /directory` returns `{localDeviceId,groupId,revision,observationRevision,devices}`.
+  revision tracks durable membership/metadata only. observationRevision is an
+  opaque SHA-256 of current device observations, including online lease expiry,
+  lastSeenAt, capabilities and policy. Refresh consumers compare both values,
+  never suppress observation changes just because membership revision is equal.
+  Synchronous pairing-result snapshots use observationRevision `unknown`; refresh
+  GET /directory for live observations. Device:
   `{deviceId,publicKey,name,platform,arch,groupId,membershipEpoch,credentialVersion,
   online,lastSeenAt,capabilities,policy}`. `online` is true/false/null (unknown);
   lastSeenAt is Unix milliseconds/null; capabilities is an observed list of
@@ -64,7 +70,8 @@ Every run/get/cancel rechecks live Registry source and target membership.
 OperationRequest: `{requestId,operationId,targetDeviceId,action:"run"|"get"|"cancel",
 sourceBotId?:string,operation?:{kind:"command",command,cwd?,timeoutMs?}|{kind:"file.read",path}|
 {kind:"file.write",path,content}|{kind:"file.list",path},digest?,approval?}`.
-IDs are UUIDs. `digest` is lowercase SHA-256 of recursively key-sorted compact
+IDs are UUIDs; upper/lowercase input is accepted and canonicalized to lowercase
+before lookup, routing, comparison or signing. `digest` is lowercase SHA-256 of recursively key-sorted compact
 JSON of `operation` (UTF-8; omitted optional fields omitted). Target and digest
 are immutable for an operation ID. Source is derived from session, never trusted
 from caller. Relay sends `{type:"operation",sourceDeviceId,sourcePublicKey,request}`;
