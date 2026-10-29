@@ -191,3 +191,12 @@ socket holds at most 16 pending frames and 1 MiB pending UTF-8 bytes; excess
 closes it. A caller socket accepts one frame total. Every asynchronous Registry
 return checks that its originating socket and Agent generation remain live;
 closed or replaced connections cannot become authenticated again.
+
+Before local/remote dispatch, the shared Node service durably pins operationId,
+targetDeviceId and parameter digest in its private journal. IDs cannot move to
+another device (including local fallback) or change parameters. After dispatch
+or an unknown outcome, another run submission is converted to get for the same
+target; no network reconnect automatically resends a run. Explicit busy/denied
+responses to an actual run record unaccepted state and allow an explicit retry
+with the same binding. Pins survive service restart and never store tokens or
+operation parameter plaintext.

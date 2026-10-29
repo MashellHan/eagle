@@ -20,6 +20,7 @@ import {
   verifyApproval,
 } from "../contracts/src/devices.ts";
 import { DeviceCloud } from "./device-cloud.ts";
+import { OperationAdmissionError } from "./device-journal.ts";
 import { NativeDeviceLeases } from "./device-native-leases.ts";
 import { DeviceRuntime } from "./device-runtime.ts";
 
@@ -278,8 +279,44 @@ export async function runDeviceService(): Promise<void> {
         };
       case "directory":
         return getDirectory();
-      case "local.begin":
-        return nativeLeases?.begin(OperationRequest.parse(params), session);
+      case "local.begin": {
+        const input = OperationRequest.parse(params);
+        if (
+          input.targetDeviceId !== runtime.device.deviceId ||
+          input.operation?.kind !== "native" ||
+          input.action !== "run" ||
+          (await deviceDigest(canonicalDeviceJSON(input.operation))) !==
+            input.digest
+        )
+          return {
+            accepted: false,
+            result: { status: "denied", error: "invalid_native_request" },
+          };
+        try {
+          const prepared = runtime.journal.prepareOutgoing(input);
+          if (prepared.action !== "run")
+            return {
+              accepted: false,
+              result: await runtime.handle(prepared, runtime.device),
+            };
+          const admitted = await nativeLeases?.begin(prepared, session);
+          if (!admitted) throw new Error("native_service_unavailable");
+          runtime.journal.completeOutgoing(prepared, admitted.result);
+          return admitted;
+        } catch (error) {
+          return {
+            accepted: false,
+            result: {
+              status:
+                error instanceof OperationAdmissionError ? "denied" : "unknown",
+              error:
+                error instanceof OperationAdmissionError
+                  ? "operation_binding_conflict"
+                  : "caller_storage_unavailable",
+            },
+          };
+        }
+      }
       case "local.complete": {
         const input = z
           .strictObject({
@@ -308,25 +345,56 @@ export async function runDeviceService(): Promise<void> {
       case "execute":
       case "operation.get":
       case "operation.cancel": {
-        const request = OperationRequest.parse(params);
+        const input = OperationRequest.parse(params);
         if (
-          (method === "operation.get" && request.action !== "get") ||
-          (method === "operation.cancel" && request.action !== "cancel")
+          (method === "operation.get" && input.action !== "get") ||
+          (method === "operation.cancel" && input.action !== "cancel")
         )
           throw new Error("action_mismatch");
-        if (request.targetDeviceId === runtime.device.deviceId)
-          return runtime.handle(request, runtime.device);
-        if (request.operation?.kind === "native")
+        if (
+          input.action === "run" &&
+          (await deviceDigest(canonicalDeviceJSON(input.operation))) !==
+            input.digest
+        )
+          return { status: "denied", error: "digest_mismatch" };
+        if (
+          input.operation?.kind === "native" &&
+          input.targetDeviceId !== runtime.device.deviceId
+        )
           return { status: "denied", error: "native_is_local_only" };
+        let request: OperationRequest;
         try {
-          await cloud.directory();
-        } catch {
+          request = runtime.journal.prepareOutgoing(input);
+        } catch (error) {
           return {
-            status: "unknown",
-            error: "cloud_unavailable_query_original_id",
+            status:
+              error instanceof OperationAdmissionError ? "denied" : "unknown",
+            error:
+              error instanceof OperationAdmissionError
+                ? "operation_binding_conflict"
+                : "caller_storage_unavailable",
           };
         }
-        return cloud.execute(request);
+        let result: OperationResult;
+        if (request.targetDeviceId === runtime.device.deviceId)
+          result = await runtime.handle(request, runtime.device);
+        else {
+          try {
+            await cloud.directory();
+            result = await cloud.execute(request);
+          } catch {
+            result = {
+              status: "unknown",
+              error: "cloud_unavailable_query_original_id",
+            };
+          }
+        }
+        try {
+          runtime.journal.completeOutgoing(request, result);
+        } catch {
+          return { status: "unknown", error: "caller_storage_unavailable" };
+        }
+        return result;
       }
       case "approval.request": {
         const input = z

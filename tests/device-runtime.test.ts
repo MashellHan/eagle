@@ -602,3 +602,50 @@ test("same ID completing concurrent approval verification returns its original s
     await f.close();
   }
 });
+
+test("caller pins survive restart and uncertain re-submission becomes a query of the original target", async () => {
+  const f = fixture();
+  try {
+    const input = await request(randomUUID(), {
+      kind: "command",
+      command: "printf original-target",
+    });
+    assert.equal(f.runtime.journal.prepareOutgoing(input).action, "run");
+    assert.equal(
+      f.runtime.journal.prepareOutgoing({ ...input, requestId: randomUUID() })
+        .action,
+      "get",
+    );
+    assert.throws(() =>
+      f.runtime.journal.prepareOutgoing({
+        ...input,
+        targetDeviceId: f.device.deviceId,
+      }),
+    );
+    await f.runtime.close();
+    const recovered = new DeviceRuntime(
+      f.device,
+      join(f.directory, "journal.sqlite"),
+    );
+    try {
+      assert.equal(recovered.journal.prepareOutgoing(input).action, "get");
+      const busy = {
+        ...input,
+        requestId: randomUUID(),
+        operationId: randomUUID(),
+      };
+      assert.equal(recovered.journal.prepareOutgoing(busy).action, "run");
+      recovered.journal.completeOutgoing(busy, { status: "busy" });
+      assert.equal(recovered.journal.prepareOutgoing(busy).action, "run");
+      recovered.journal.completeOutgoing(
+        { ...busy, action: "get" },
+        { status: "denied" },
+      );
+      assert.equal(recovered.journal.prepareOutgoing(busy).action, "get");
+    } finally {
+      await recovered.close();
+    }
+  } finally {
+    await f.close();
+  }
+});

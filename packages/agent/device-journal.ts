@@ -11,6 +11,10 @@ import {
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isMainThread } from "node:worker_threads";
+import type {
+  OperationRequest,
+  OperationResult,
+} from "../contracts/src/devices.ts";
 
 export type OperationOutcome = {
   state: "succeeded" | "failed" | "cancelled" | "unknown";
@@ -160,6 +164,10 @@ export class OperationJournal {
           scope TEXT,
           native_blocked INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS outgoing_requests (
+          id TEXT PRIMARY KEY,target TEXT NOT NULL,digest TEXT,source_bot TEXT,
+          state TEXT NOT NULL CHECK(state IN ('sent','retryable'))
+        );
         UPDATE operations SET state = 'unknown', exit_code = NULL
           WHERE state = 'running';
         COMMIT;
@@ -283,6 +291,62 @@ export class OperationJournal {
         .prepare("SELECT id FROM operations WHERE native_blocked=1")
         .all() as { id: string }[]
     ).map((row) => row.id);
+  }
+  prepareOutgoing(request: OperationRequest): OperationRequest {
+    const row = this.database
+      .prepare(
+        "SELECT target,digest,source_bot,state FROM outgoing_requests WHERE id=?",
+      )
+      .get(request.operationId) as
+      | {
+          target: string;
+          digest: string | null;
+          source_bot: string | null;
+          state: "sent" | "retryable";
+        }
+      | undefined;
+    if (row) {
+      if (
+        row.target !== request.targetDeviceId ||
+        (request.digest !== undefined && row.digest !== request.digest) ||
+        (request.action === "run" &&
+          row.source_bot !== (request.sourceBotId ?? null))
+      )
+        throw new OperationAdmissionError("operation_binding_conflict");
+      const action =
+        request.action === "run" && row.state !== "retryable"
+          ? "get"
+          : request.action;
+      this.database
+        .prepare("UPDATE outgoing_requests SET state='sent' WHERE id=?")
+        .run(request.operationId);
+      return { ...request, action };
+    }
+    const count = this.database
+      .prepare("SELECT count(*) n FROM outgoing_requests")
+      .get() as { n: number };
+    if (count.n >= this.capacity)
+      throw new OperationAdmissionError("caller_journal_capacity");
+    this.database
+      .prepare("INSERT INTO outgoing_requests VALUES(?,?,?,?,'sent')")
+      .run(
+        request.operationId,
+        request.targetDeviceId,
+        request.digest ?? null,
+        request.sourceBotId ?? null,
+      );
+    return request;
+  }
+  completeOutgoing(request: OperationRequest, value: OperationResult): void {
+    const retryable =
+      request.action === "run" && ["busy", "denied"].includes(value.status);
+    this.database
+      .prepare("UPDATE outgoing_requests SET state=? WHERE id=? AND target=?")
+      .run(
+        retryable ? "retryable" : "sent",
+        request.operationId,
+        request.targetDeviceId,
+      );
   }
 
   private row(id: string): Row | undefined {

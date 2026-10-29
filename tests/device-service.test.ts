@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -123,6 +123,71 @@ test("private helper config boots offline local tools; Bot port cannot change po
       ((await request("execute", input)).result as { output: string }).output,
       "offline",
     );
+    const changedTarget = await request("execute", {
+      ...input,
+      targetDeviceId: randomUUID(),
+    });
+    assert.equal((changedTarget.result as { status: string }).status, "denied");
+    const lost = {
+      ...input,
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+      targetDeviceId: randomUUID(),
+    };
+    assert.equal(
+      ((await request("execute", lost)).result as { status: string }).status,
+      "unknown",
+    );
+    assert.equal(
+      (
+        (await request("execute", { ...lost, targetDeviceId: deviceId }))
+          .result as { status: string }
+      ).status,
+      "denied",
+      "an uncertain remote operation cannot become a local retry",
+    );
+    const lostFile = join(root, "lost-response-count");
+    const lostOperation = {
+      kind: "command",
+      command: `printf x >> '${lostFile}'; sleep 0.1; cat '${lostFile}'`,
+    };
+    const lostRequest = {
+      ...input,
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+      operation: lostOperation,
+      digest: await deviceDigest(canonicalDeviceJSON(lostOperation)),
+    };
+    const lostSocket = connect(socketPath);
+    lostSocket.end(
+      `${JSON.stringify({ requestId: randomUUID(), method: "execute", params: lostRequest })}\n`,
+    );
+    await new Promise<void>((resolveClosed) =>
+      lostSocket.once("close", () => resolveClosed()),
+    );
+    let recoveredCommand: { status: string; output?: string } = {
+      status: "running",
+    };
+    for (
+      let attempt = 0;
+      attempt < 100 && recoveredCommand.status !== "completed";
+      attempt++
+    ) {
+      recoveredCommand = (
+        await request("operation.get", { ...lostRequest, action: "get" })
+      ).result as { status: string; output?: string };
+      if (recoveredCommand.status !== "completed")
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(recoveredCommand.status, "completed");
+    assert.equal(
+      (
+        (await request("execute", { ...lostRequest, requestId: randomUUID() }))
+          .result as { output: string }
+      ).output,
+      "x",
+    );
+    assert.equal(readFileSync(lostFile, "utf8"), "x");
     const asking = await trusted("policy.set", { mode: "always-ask" });
     const policyVersion = (asking.result as { version: number }).version;
     const askingOperation = {
