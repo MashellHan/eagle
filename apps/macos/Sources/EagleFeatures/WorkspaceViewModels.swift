@@ -126,14 +126,15 @@ public enum MockWorkspace {
         )
       ]
     ),
-    .note(id: "n2", text: "2 条消息往来：", tintIndices: [5, 2]),
+    .peerExchange(id: "x1", exchange: MockWorkspace.vesExchange),
     .assistant(
       id: "a3",
       blocks: [
         .paragraph(
           "2026-10-24 09:00 北京时间，base-mcp 合并了：PR #73，merge commit fd621be，关掉 3 个 issue（#70 #71 #72）。其中 2 个是 CVE，body-parser 升到了 2.4.0，fast-uri 升到了 3.1.9。Codex 审查 1 轮就通过了。排队的 next-ai 已经接着开始修。"
         )
-      ]
+      ],
+      from: MockWorkspace.ves
     ),
     .note(id: "n3", text: "2 条消息往来：", tintIndices: [4, 3]),
     .assistant(
@@ -157,6 +158,38 @@ public enum MockWorkspace {
     ),
     .typing(id: "typing"),
   ]
+
+  /// The counterpart of the sample exchange, and the exchange itself: one round trip with four
+  /// messages, the shape the collapsed row and the dialog are built for.
+  public static let ves = PeerRef(
+    id: "ves", title: "VPS管家",
+    face: BotFace.Style(shape: .blob, tint: .sky), tintIndex: 1)
+
+  public static let depsExpert = PeerRef(
+    id: "deps", title: "依赖修复专家",
+    face: BotFace.Style(shape: .pebble, tint: .violet), tintIndex: 4)
+
+  public static let vesExchange = PeerExchange(
+    id: "x1",
+    participants: [ves, depsExpert],
+    messages: [
+      PeerMessage(
+        id: "x1m1", senderId: "ves",
+        text: "us2 和 jp1 上 dashboard 的 `tsc --noEmit` 都过不了，帮我看下是不是 `useSearchParams` 可能为 null。"),
+      PeerMessage(
+        id: "x1m2", senderId: "deps",
+        text: "收到，已经定位到 `packages/dashboard/sidebar.tsx` 和 `request-table.tsx` 两处没有判空，一共十来个调用点。"),
+      PeerMessage(
+        id: "x1m3", senderId: "ves",
+        text: "要发补丁版吗？两台机器都在等，旧依赖一共占了大概 7G。"),
+      PeerMessage(
+        id: "x1m4", senderId: "deps",
+        text: "发 v3.1.1：\n\n"
+          + "- 修 `useSearchParams` / `usePathname` 的判空\n"
+          + "- 全新 `bun install` 下 `build` 和 `tsc` 都过\n"
+          + "- 合并后我通知你升 us2 / jp1"),
+    ],
+    startedAt: "今天 19:30")
 
   public static let artifacts: [InspectorArtifact] = [
     InspectorArtifact(id: "d1", title: "deps 2026-10-24 sleepy"),

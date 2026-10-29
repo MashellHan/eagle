@@ -112,6 +112,22 @@ public enum Theme {
     public static let panelTaskSpinner: CGFloat = 10
     public static let panelEmptyGlyph: CGFloat = 15
     public static let panelEmptyVertical: CGFloat = 8
+    /// A peer exchange: an inline collapsed row in the transcript and a read-only dialog with a
+    /// two-sided conversation. Rows are signed at the end, so the avatar sits under the last bubble.
+    public static let peerFace: CGFloat = 15
+    public static let peerChipFace: CGFloat = 20
+    public static let peerGutter: CGFloat = 8
+    public static let peerGroupGap: CGFloat = 18
+    public static let peerMessageGap: CGFloat = 6
+    public static let peerLabelGap: CGFloat = 6
+    public static let peerBubbleMaxWidth: CGFloat = 560
+    public static let peerBubbleRadius: CGFloat = 12
+    /// The dialog's conversation column: narrower than the panel, so a 560 pt bubble does not
+    /// stretch a line across the window.
+    public static let peerDialogColumnWidth: CGFloat = 900
+    public static let peerDialogRadius: CGFloat = 18
+    public static let peerDialogInset: CGFloat = 22
+    public static let peerDialogFooter: CGFloat = 56
     public static let conversationInset: CGFloat = 24
     public static let turnGap: CGFloat = 24
     public static let inspectorRowHeight: CGFloat = 40

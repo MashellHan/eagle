@@ -58,6 +58,40 @@ struct SnapshotRenderer {
       )
     }
 
+    for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
+      capture(
+        ConversationColumn(
+          title: "依赖修复专家", subtitle: "Bots", tintIndex: 4,
+          entries: [
+            .user(id: "u1", text: "PR #490 已开好，我先过闸门再合并发版。", origin: nil),
+            .peerExchange(id: "x1", exchange: MockWorkspace.vesExchange),
+            .assistant(
+              id: "a1",
+              blocks: [
+                .paragraph("哥，v3.1.1 好了。"),
+                .bullets([
+                  "PR #490 已用 merge commit 合进 main（bb6ee42）",
+                  "Release: v3.1.1 —— 修的是 dashboard 里 `useSearchParams` / `usePathname` 可能为 null 的类型问题",
+                  "已叫 VPS管家去升 us2 / jp1",
+                ]),
+              ],
+              from: MockWorkspace.ves),
+          ],
+          draft: .constant(""),
+          onSend: {}
+        )
+        .preferredColorScheme(scheme),
+        size: CGSize(width: 760, height: 520), named: "peers-inline-\(name)", in: directory,
+        appearance: scheme == .dark ? .darkAqua : .aqua
+      )
+      capture(
+        PeerConversationDialog(exchange: MockWorkspace.vesExchange) {}
+          .preferredColorScheme(scheme),
+        size: CGSize(width: 1186, height: 820), named: "peers-dialog-\(name)", in: directory,
+        appearance: scheme == .dark ? .darkAqua : .aqua
+      )
+    }
+
     capture(
       WorkspaceShellView().preferredColorScheme(.light),
       size: CGSize(width: 1728, height: 1082),

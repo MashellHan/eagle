@@ -68,11 +68,15 @@ struct BotsPresenterTests {
       }())
     #expect(
       {
-        if case .assistant(_, [.paragraph("回答")]) = entries[1] { return true } else { return false }
+        if case .assistant(_, [.paragraph("回答")], _) = entries[1] {
+          return true
+        } else {
+          return false
+        }
       }())
     #expect(
       {
-        if case .assistant(_, [.note("回答超出传输上限")]) = entries[2] {
+        if case .assistant(_, [.note("回答超出传输上限")], _) = entries[2] {
           return true
         } else {
           return false
@@ -130,7 +134,7 @@ struct BotsPresenterTests {
   }
 
   private func noteText(_ entry: TranscriptEntry?) -> String? {
-    guard case .assistant(_, let blocks) = entry else { return nil }
+    guard case .assistant(_, let blocks, _) = entry else { return nil }
     for block in blocks {
       if case .note(let text) = block { return text }
     }
@@ -159,7 +163,7 @@ struct BotsPresenterTests {
     // The answer is its own bubble: no thinking, no call, no result text inside it.
     #expect(
       {
-        if case .assistant(_, let blocks) = entries.first {
+        if case .assistant(_, let blocks, _) = entries.first {
           return blocks == [.paragraph("可见")]
         }
         return false
@@ -171,7 +175,7 @@ struct BotsPresenterTests {
       })
     #expect(
       entries.contains {
-        if case .assistant(_, [.note("回答因为长度上限被截断。")]) = $0 { true } else { false }
+        if case .assistant(_, [.note("回答因为长度上限被截断。")], _) = $0 { true } else { false }
       })
   }
 
@@ -188,7 +192,7 @@ struct BotsPresenterTests {
     let entry = presenter.transcript(for: state).first
     #expect(
       {
-        if case .assistant(_, [.paragraph("一半"), .note("回答已中止")]) = entry { return true }
+        if case .assistant(_, [.paragraph("一半"), .note("回答已中止")], _) = entry { return true }
         return false
       }())
   }
@@ -322,7 +326,7 @@ struct BotsToolRowTests {
     // The answer text on the same message keeps its own bubble, in order.
     #expect(
       entries.contains {
-        if case .assistant(_, [.paragraph("我先看一下。")]) = $0 { true } else { false }
+        if case .assistant(_, [.paragraph("我先看一下。")], _) = $0 { true } else { false }
       })
   }
 
@@ -390,7 +394,7 @@ struct BotsToolRowTests {
     )
     let entries = presenter.transcript(for: state)
     #expect(entries.count == 1)
-    if case .assistant(let id, let blocks) = entries[0] {
+    if case .assistant(let id, let blocks, _) = entries[0] {
       #expect(id == "e_13")
       #expect(blocks == [.paragraph("回答")])
     } else {
@@ -418,7 +422,7 @@ struct BotsToolRowTests {
     let entries = presenter.transcript(for: state)
     #expect(toolRows(entries).count == 1)
     #expect(
-      entries.contains { if case .assistant(_, [.note("回答已中止")]) = $0 { true } else { false } }
+      entries.contains { if case .assistant(_, [.note("回答已中止")], _) = $0 { true } else { false } }
     )
   }
 }

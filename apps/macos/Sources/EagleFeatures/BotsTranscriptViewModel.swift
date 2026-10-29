@@ -13,7 +13,7 @@ actor BotsTranscriptProjector {
     var next: [String: (text: String, blocks: [RenderedMarkdownBlock])] = [:]
     for entry in entries {
       switch entry {
-      case .assistant(_, let blocks), .streamingAssistant(_, let blocks):
+      case .assistant(_, let blocks, _), .streamingAssistant(_, let blocks):
         let text = blocks.markdown
         if let cached = prepared[entry.id], cached.text == text {
           next[entry.id] = cached

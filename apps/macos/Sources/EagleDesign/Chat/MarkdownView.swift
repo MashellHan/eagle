@@ -8,15 +8,23 @@ public struct AssistantBubble: View, Equatable {
   private let text: String
   private let streaming: Bool
   private let preparedBlocks: [RenderedMarkdownBlock]?
+  private let cornerRadius: CGFloat
+  private let maxWidth: CGFloat
   @StateObject private var model = MarkdownViewModel()
   @State private var hovering = false
 
   public init(
-    text: String, streaming: Bool = false, preparedBlocks: [RenderedMarkdownBlock]? = nil
+    text: String,
+    streaming: Bool = false,
+    preparedBlocks: [RenderedMarkdownBlock]? = nil,
+    cornerRadius: CGFloat = 20,
+    maxWidth: CGFloat = Theme.Metric.conversationMaxContentWidth - 120
   ) {
     self.text = text
     self.streaming = streaming
     self.preparedBlocks = preparedBlocks
+    self.cornerRadius = cornerRadius
+    self.maxWidth = maxWidth
   }
 
   public var body: some View {
@@ -33,17 +41,17 @@ public struct AssistantBubble: View, Equatable {
         .padding(.horizontal, 16)
         .padding(.vertical, 13)
         .background(
-          RoundedRectangle(cornerRadius: 20, style: .continuous)
+          RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(Theme.Palette.card)
         )
         .overlay(
-          RoundedRectangle(cornerRadius: 20, style: .continuous)
+          RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
         )
         .messageCopyAlignment()
         copyAction
       }
-      .frame(maxWidth: Theme.Metric.conversationMaxContentWidth - 120, alignment: .leading)
+      .frame(maxWidth: maxWidth, alignment: .leading)
       .onHover { hovering = $0 }
       Spacer(minLength: 40)
     }

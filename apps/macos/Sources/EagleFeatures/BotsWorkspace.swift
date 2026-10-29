@@ -951,7 +951,7 @@ struct BotsPresenter {
       flush()
       if rows.isEmpty, message.state == .streaming { return [] }
       if message.state == .streaming, let last = rows.last,
-        case .assistant(let id, let blocks) = last
+        case .assistant(let id, let blocks, _) = last
       {
         rows[rows.count - 1] = .streamingAssistant(id: id, blocks: blocks)
       }
@@ -959,8 +959,8 @@ struct BotsPresenter {
       if notes.isEmpty { return rows }
       if !hasTool, let last = rows.popLast() {
         // A plain answer keeps its single row: the notes belong to the same bubble.
-        if case .assistant(let id, let blocks) = last {
-          return rows + [.assistant(id: id, blocks: blocks + notes)]
+        if case .assistant(let id, let blocks, let from) = last {
+          return rows + [.assistant(id: id, blocks: blocks + notes, from: from)]
         }
         return rows + [last] + [.assistant(id: "\(message.id)-note", blocks: notes)]
       }

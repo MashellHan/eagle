@@ -51,7 +51,7 @@ struct TranscriptScrollCostTests {
 
   private static func prepared(_ entries: [TranscriptEntry]) -> [String: [RenderedMarkdownBlock]] {
     entries.reduce(into: [:]) { result, entry in
-      if case .assistant(let id, let blocks) = entry {
+      if case .assistant(let id, let blocks, _) = entry {
         result[id] = [.paragraph(AttributedString(blocks.markdown))]
       }
     }
@@ -66,7 +66,7 @@ struct TranscriptScrollCostTests {
           switch entry {
           case .user(_, let text, let origin):
             UserBubble(text, origin: origin)
-          case .assistant(_, let blocks):
+          case .assistant(_, let blocks, _):
             AssistantBubble(text: blocks.markdown, preparedBlocks: markdown[entry.id]).equatable()
           case .note(_, let text, let tints):
             DeliveryNote(text, avatars: tints.map(Theme.Palette.avatarTint))

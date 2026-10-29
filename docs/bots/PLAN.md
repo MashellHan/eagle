@@ -706,7 +706,19 @@ callers that will use it. Design decisions frozen with the owner:
 
 Stage order: 0 interface and its contract tests (including the four adapter,
 registry and lifecycle fixes it needs), 1 `trigger` group with schedule plus origin
-field and app surface, 2 webhook ingress, 3 `peers`. Each stage states its exit
+field and app surface, 2 webhook ingress, 3 `peers`.
+
+### Peers UI, as built (2026-10-29, client only)
+
+The presentation half of stage 3 landed before its daemon side, against a fixture:
+`PeerExchangeRow` (the folded line inside the transcript), `PeerConversationDialog`
+(the read-only round trip, its pair chip, sender labels and trailing avatars) and
+`PeerOriginRow` (whose message caused an answer) live in `EagleDesign/Peers`, with
+`MockWorkspace.vesExchange` as the only data. `TranscriptEntry` gained
+`.peerExchange` and an optional `from` on `.assistant` for that origin line. No
+daemon record, no capability change and no wire field exists yet, so `peers` stays
+false and no live bot shows one; the data source is the owner's decision A: the
+daemon keeps one durable exchange record and the client reads it over HTTP once. Each stage states its exit
 criteria in TRIGGERS.md §12.
 
 ### Stage 1, in progress

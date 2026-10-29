@@ -18,6 +18,9 @@ public struct WorkspaceShellView: View {
   @State private var showsAccountMenu = false
   @State private var showsBotCreate = false
   @State private var showsBotFaceEditor = false
+  @State private var showsSettings = false
+  /// The exchange a person opened from a folded row; nil while no dialog is up.
+  @State private var openedPeerExchange: PeerExchange?
   @AppStorage("eagle.appearance") private var appearance = "system"
   @AppStorage("eagle.hideToolCalls") private var hideToolCalls = false
   @AppStorage("eagle.loadMockData") private var loadMockData = false
@@ -213,7 +216,8 @@ public struct WorkspaceShellView: View {
               showsSidebar: layout.showsSidebar,
               showsInspector: layout.showsInspector,
               onShowSidebar: { layout.toggleSidebar() },
-              onToggleInspector: { layout.toggleInspector() }
+              onToggleInspector: { layout.toggleInspector() },
+              onOpenPeerExchange: { openedPeerExchange = $0 }
             )
           } else {
             NoConversationPlaceholder(
@@ -320,6 +324,18 @@ public struct WorkspaceShellView: View {
         layout.toggleInspector()
       }
 
+      if let exchange = openedPeerExchange {
+        // The sidebar stays visible, as the transcript behind the dialog keeps its context.
+        Color.black.opacity(0.001)
+          .ignoresSafeArea()
+          .onTapGesture { openedPeerExchange = nil }
+        PeerConversationDialog(exchange: exchange) { openedPeerExchange = nil }
+          .padding(.leading, layout.showsSidebar ? layout.sidebarWidth + 20 : 20)
+          .padding(.trailing, 46)
+          .padding(.vertical, 28)
+          .transition(.opacity.combined(with: .scale(scale: 0.995)))
+      }
+
       if showsAccountMenu {
         Color.black.opacity(0.001)
           .ignoresSafeArea()
@@ -334,6 +350,7 @@ public struct WorkspaceShellView: View {
       }
     }
     .animation(.snappy(duration: 0.18), value: showsAccountMenu)
+    .animation(.easeOut(duration: 0.16), value: openedPeerExchange)
     .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSettings)) { _ in
       showSettings()
     }

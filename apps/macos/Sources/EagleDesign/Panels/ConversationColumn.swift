@@ -3,12 +3,16 @@ import SwiftUI
 /// One transcript row. Assistant turns are plain text; only user turns and the
 /// delivery meta lines carry color.
 public enum TranscriptEntry: Identifiable, Hashable, Sendable {
-  case assistant(id: String, blocks: [AssistantTurn.Block])
+  /// `from` names the peer whose message this answer was given to; absent means the open bot was
+  /// answering a person.
+  case assistant(id: String, blocks: [AssistantTurn.Block], from: PeerRef? = nil)
   /// The assistant turn still receiving deltas: the bubble shows a caret.
   case streamingAssistant(id: String, blocks: [AssistantTurn.Block])
   /// A person's turn; `origin` names a cause other than a person typing (TRIGGERS.md §6).
   case user(id: String, text: String, origin: String? = nil)
   case note(id: String, text: String, tintIndices: [Int])
+  /// One round trip between this bot and one counterpart, folded into a single line.
+  case peerExchange(id: String, exchange: PeerExchange)
   case tool(id: String, row: ToolRow)
   /// Several calls from one turn, collapsed into a single line with a detail sheet.
   case toolRun(id: String, rows: [ToolRow])
@@ -16,8 +20,9 @@ public enum TranscriptEntry: Identifiable, Hashable, Sendable {
 
   public var id: String {
     switch self {
-    case .assistant(let id, _), .streamingAssistant(let id, _), .user(let id, _, _),
-      .note(let id, _, _), .tool(let id, _), .toolRun(let id, _), .typing(let id):
+    case .assistant(let id, _, _), .streamingAssistant(let id, _), .user(let id, _, _),
+      .note(let id, _, _), .peerExchange(let id, _), .tool(let id, _), .toolRun(let id, _),
+      .typing(let id):
       return id
     }
   }
@@ -57,6 +62,8 @@ public struct ConversationColumn: View {
   private let onSend: () -> Void
   private let onShowSidebar: () -> Void
   private let onToggleInspector: () -> Void
+  /// Opens a folded peer exchange; nil leaves the row inert for surfaces that never show one.
+  private let onOpenPeerExchange: ((PeerExchange) -> Void)?
   private let showsSidebar: Bool
   private let showsInspector: Bool
   private let participantStatus: ParticipantStatus?
@@ -87,7 +94,8 @@ public struct ConversationColumn: View {
     onRetryConnection: @escaping () -> Void = {},
     onDismissError: @escaping () -> Void = {},
     onShowSidebar: @escaping () -> Void = {},
-    onToggleInspector: @escaping () -> Void = {}
+    onToggleInspector: @escaping () -> Void = {},
+    onOpenPeerExchange: ((PeerExchange) -> Void)? = nil
   ) {
     self.title = title
     self.subtitle = subtitle
@@ -108,6 +116,7 @@ public struct ConversationColumn: View {
     self.onDismissError = onDismissError
     self.onShowSidebar = onShowSidebar
     self.onToggleInspector = onToggleInspector
+    self.onOpenPeerExchange = onOpenPeerExchange
   }
 
   public var body: some View {
@@ -233,10 +242,23 @@ public struct ConversationColumn: View {
   @ViewBuilder
   private func row(_ entry: TranscriptEntry) -> some View {
     switch entry {
-    case .assistant(_, let blocks), .streamingAssistant(_, let blocks):
+    case .assistant(_, let blocks, let from):
+      VStack(alignment: .leading, spacing: 6) {
+        AssistantBubble(text: blocks.markdown, preparedBlocks: preparedMarkdown[entry.id])
+          .equatable()
+        if let from {
+          PeerOriginRow(peer: from)
+        }
+      }
+      .transition(
+        .asymmetric(
+          insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .bottomLeading)),
+          removal: .opacity
+        )
+      )
+    case .streamingAssistant(_, let blocks):
       AssistantBubble(
-        text: blocks.markdown, streaming: entry.isStreaming,
-        preparedBlocks: preparedMarkdown[entry.id]
+        text: blocks.markdown, streaming: true, preparedBlocks: preparedMarkdown[entry.id]
       )
       .equatable()
       .transition(
@@ -255,6 +277,9 @@ public struct ConversationColumn: View {
         )
     case .note(_, let text, let tintIndices):
       DeliveryNote(text, avatars: tintIndices.map(Theme.Palette.avatarTint))
+    case .peerExchange(_, let exchange):
+      PeerExchangeRow(exchange: exchange) { onOpenPeerExchange?(exchange) }
+        .transition(.opacity)
     case .tool(_, let row):
       ToolCallRow(row)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
