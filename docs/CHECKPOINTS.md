@@ -2138,3 +2138,19 @@ approval were exercised with ephemeral test keys. No real Keychain, App renderin
 Herdr collection, D1 write, public deployment or physical second Mac was verified.
 Next broken hop: bounded cloud reconnect recovery and authorization immediately
 before relay forwarding are under fault-injection tests; Lead owns integration.
+
+
+## 2026-10-29 17:57 +0800 — Device PR opened; upstream focus gate remains blocked
+
+- User delivery: draft https://github.com/nocoo/eagle/pull/109 points to the already
+  published device head `a96ee48`. Physical two-Mac pairing/execution remains pending.
+- Herdr: the existing Astra reviewer cleared local merge `def775d` against `4eefe0a`;
+  device wiring, approvals and shared observation remain intact. No App was replaced.
+- Authentication/storage: personal GitHub authentication created the PR; root checks
+  passed, including local Miniflare/D1 fixtures. No new live cloud/device-auth claim.
+- Rendering/checks: browser 191 passed with 11 existing viewport skips; Bots checks
+  (633 normal and coverage), Swift client 134, device integration 7 and eval 9 passed.
+- Broken hop: normal push stopped when the inherited native composer-focus fixture
+  exceeded its local 15-second deadline. The local merge is not published; the final
+  macOS Swift push stage was not reached. Preserve limits and hooks when recovering.
+  Evidence: `.local/device-evidence/upstream-pr/`.
