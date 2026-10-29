@@ -157,7 +157,7 @@ public struct ConversationColumn: View {
         )
         .padding(
           .horizontal,
-          (showsSidebar ? Theme.Metric.conversationInset : Theme.Metric.trafficLightsEnd)
+          (showsSidebar ? Theme.Metric.conversationInset : Theme.Metric.brandLeadingInset)
             + Theme.Metric.headerControlHeight + 8
         )
 
@@ -174,7 +174,7 @@ public struct ConversationColumn: View {
           }
         }
         .padding(
-          .leading, showsSidebar ? Theme.Metric.conversationInset : Theme.Metric.trafficLightsEnd
+          .leading, showsSidebar ? Theme.Metric.conversationInset : Theme.Metric.brandLeadingInset
         )
         .padding(.trailing, Theme.Metric.conversationInset)
       }

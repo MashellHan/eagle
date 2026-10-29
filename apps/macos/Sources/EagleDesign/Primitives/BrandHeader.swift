@@ -47,9 +47,13 @@ public struct BrandHeader: View {
   private let onCreateGroup: (() -> Void)?
   private let canCompose: Bool
   private let onCollapse: () -> Void
+  /// The row also carries the window controls, so a narrow sidebar drops the version badge
+  /// instead of letting the wordmark wrap.
+  private let showsVersion: Bool
 
   public init(
     version: String,
+    showsVersion: Bool = true,
     onSearch: @escaping () -> Void = {},
     onCompose: @escaping () -> Void = {},
     onCreateGroup: (() -> Void)? = nil,
@@ -57,6 +61,7 @@ public struct BrandHeader: View {
     onCollapse: @escaping () -> Void = {}
   ) {
     self.version = version
+    self.showsVersion = showsVersion
     self.onSearch = onSearch
     self.onCompose = onCompose
     self.onCreateGroup = onCreateGroup
@@ -88,6 +93,17 @@ public struct BrandHeader: View {
 
   private var content: some View {
     HStack(spacing: 6) {
+      identity
+        .layoutPriority(1)
+      Spacer(minLength: 8)
+      controls
+    }
+    .padding(.leading, Theme.Metric.brandLeadingInset)
+    .padding(.trailing, Theme.Metric.contentInset)
+  }
+
+  private var identity: some View {
+    HStack(spacing: 6) {
       mark
         .frame(width: Theme.Metric.logoSize, height: Theme.Metric.logoSize)
         .accessibilityHidden(true)
@@ -95,8 +111,14 @@ public struct BrandHeader: View {
         .font(Theme.TypeScale.brand)
         .tracking(-0.4)
         .foregroundStyle(Theme.Palette.textPrimary)
-      VersionBadge(version: version)
-      Spacer(minLength: 8)
+        .lineLimit(1)
+        .fixedSize()
+      if showsVersion { VersionBadge(version: version) }
+    }
+  }
+
+  private var controls: some View {
+    HStack(spacing: 6) {
       IconButton(
         systemName: "magnifyingglass",
         label: "搜索",
@@ -136,7 +158,5 @@ public struct BrandHeader: View {
         action: onCollapse
       )
     }
-    .padding(.leading, Theme.Metric.headerLeadingInset)
-    .padding(.trailing, Theme.Metric.contentInset)
   }
 }

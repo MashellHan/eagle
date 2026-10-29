@@ -50,9 +50,13 @@ public enum Theme {
     public static let inspectorMinWidth: CGFloat = 280
     public static let inspectorMaxWidth: CGFloat = 460
 
-    /// Traffic lights: 13.5 pt circles at (16, 15) with a 23 pt pitch.
-    public static let trafficLightInset: CGFloat = 15
-    public static let trafficLightsEnd: CGFloat = 75
+    /// Traffic lights: three 13.5 pt circles from x 16 with a 23 pt pitch, in the window's own
+    /// top-left corner. The brand row clears them rather than moving them.
+    public static let trafficLightLeading: CGFloat = 16
+    public static let trafficLightSize: CGFloat = 13.5
+    public static let trafficLightPitch: CGFloat = 23
+    public static let trafficLightsEnd: CGFloat =
+      trafficLightLeading + trafficLightPitch * 2 + trafficLightSize
     public static let toolbarHeight: CGFloat = 32
     public static let toolbarTopInset: CGFloat = 0
     public static let headerHeight: CGFloat = 72
@@ -62,10 +66,13 @@ public enum Theme {
     public static let headerTopInset: CGFloat = contentInset
     /// The logo matches the list avatars and is bounded by the header.
     public static let logoSize: CGFloat = min(avatarRow, headerControlHeight)
-    /// The brand header starts after the traffic lights.
-    public static let headerLeadingInset: CGFloat = 20
+    /// The brand header clears the traffic lights, then starts on its own inset.
+    public static let brandLeadingInset: CGFloat = trafficLightsEnd + 12
+    /// The width at which the row still holds the lights, mark, wordmark, version badge and the
+    /// three controls on one line; a narrower sidebar drops the badge.
+    public static let brandVersionMinWidth: CGFloat = 365
     public static let headerControlHeight: CGFloat = 34
-    public static let participantHeight: CGFloat = 46
+    public static let participantHeight: CGFloat = 40
     public static let participantInset: CGFloat = 12
     public static let participantGap: CGFloat = 12
     public static let participantAvatar: CGFloat = 26

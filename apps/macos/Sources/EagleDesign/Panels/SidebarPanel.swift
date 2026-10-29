@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Left column on the reference grid: traffic lights at (16, 15), toolbar at
-/// 36 pt, profile avatar 55 pt starting at 79, first section header at 214,
-/// 58 pt rows, unread pill at 28 pt and a 62 pt user card.
+/// Left column on the reference grid: traffic lights on the header row's centreline, the brand
+/// starting after them, rows from 72, 58 pt rows, unread pill at 28 pt and a 62 pt user card.
 public struct SidebarPanel: View {
   private let sections: [SidebarSection]
   private let selection: String?
@@ -107,6 +106,7 @@ public struct SidebarPanel: View {
     VStack(alignment: .leading, spacing: 0) {
       BrandHeader(
         version: Self.version,
+        showsVersion: width >= Theme.Metric.brandVersionMinWidth,
         onSearch: onSearch,
         onCompose: onCreateBot,
         onCreateGroup: onCreateGroup,
