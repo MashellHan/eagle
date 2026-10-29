@@ -193,19 +193,20 @@ function verifyInstalled(directory: string, lock: Lock) {
       throw new Error(`installed package differs from lock: ${path}`);
   }
 }
-function internalLinks(root: string, directory = root): void {
+export function verifyRuntimeLinks(root: string, directory = root): void {
+  const boundary = realpathSync(root);
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
     if (entry.isSymbolicLink()) {
       const target = readlinkSync(path);
-      const resolved = relative(root, realpathSync(path));
+      const resolved = relative(boundary, realpathSync(path));
       if (
         isAbsolute(target) ||
         resolved === ".." ||
         resolved.startsWith(`..${sep}`)
       )
         throw new Error(`runtime symlink escapes bundle: ${path}`);
-    } else if (entry.isDirectory()) internalLinks(root, path);
+    } else if (entry.isDirectory()) verifyRuntimeLinks(root, path);
   }
 }
 function verifyNode(path: string) {
@@ -345,14 +346,17 @@ export function assembleRuntime(options: Options): void {
     mkdirSync(join(bots, "scripts"), { recursive: true });
     for (const name of ["package.json", "package-lock.json"])
       copyFileSync(join(botsSource, name), join(bots, name));
-    cpSync(join(botsSource, "src"), join(bots, "src"), { recursive: true });
+    cpSync(join(botsSource, "src"), join(bots, "src"), {
+      recursive: true,
+      verbatimSymlinks: true,
+    });
     copyFileSync(
       join(botsSource, "scripts/serve.ts"),
       join(bots, "scripts/serve.ts"),
     );
     npm(botsCache, bots, ["ci", "--omit=dev", "--no-audit", "--no-fund"]);
     verifyInstalled(bots, botsLock);
-    internalLinks(stage);
+    verifyRuntimeLinks(stage);
     if (
       originalLocks[0] !== digest(rootLockPath) ||
       originalLocks[1] !== digest(botsLockPath)

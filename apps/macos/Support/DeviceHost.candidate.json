@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "profile": "device-candidate",
+  "baseUrl": "http://127.0.0.1:17053",
+  "machServiceName": "ai.hexly.eagle.devices.candidate",
+  "launchAgentPlist": "ai.hexly.eagle.devices.candidate.plist"
+}

@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "profile": "device-release",
+  "baseUrl": "BUILD_TIME_HTTPS_ORIGIN_REQUIRED",
+  "machServiceName": "ai.hexly.eagle.devices",
+  "launchAgentPlist": "ai.hexly.eagle.devices.plist"
+}
