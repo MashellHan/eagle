@@ -73,6 +73,21 @@ struct DeviceSettingsViewModelTests {
     #expect(control.calls.contains { $0.0 == "policy.set" && $0.1?["mode"] == .string("paused") })
   }
 
+  @Test("failed status refresh cannot advertise cached local readiness")
+  func failedRefresh() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    await model.startIfNeeded()
+    control.handler = { method, _ in
+      if method == "service.status" { throw DeviceHostError.unavailable }
+      return nil
+    }
+    await model.refresh()
+    #expect(!model.localReady)
+    #expect(model.cloudStatus == "unknown")
+    #expect(model.directoryIsStale)
+  }
+
   @Test("pairing uses bounded TTL and never persists a code")
   func pairingTTL() async throws {
     let (model, control, defaults) = deviceSettingsFixture()
@@ -128,6 +143,43 @@ struct DeviceSettingsViewModelTests {
     #expect(restored.pendingRedeemRequestId == nil)
     #expect(defaults.string(forKey: DeviceSettingsViewModel.pendingRedeemKey) == nil)
     #expect(control.calls.filter { $0.0 == "pairing.redeem" }.count == 1)
+  }
+
+  @Test("late UI decisions cannot approve a replacement operation")
+  func approvalIdentity() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    await model.startIfNeeded()
+    let expiry = Int64(Date().timeIntervalSince1970 * 1000) + 60000
+    let first = try deviceApproval(expiresAt: expiry)
+    let second = try deviceApproval(expiresAt: expiry)
+    let callback = try #require(control.confirm)
+    let firstResult = Task { await callback(first) }
+    while model.pendingApproval == nil { await Task.yield() }
+    model.respondToApproval(false, requestId: first.id)
+    #expect(await firstResult.value == false)
+    let secondResult = Task { await callback(second) }
+    while model.pendingApproval == nil { await Task.yield() }
+    model.respondToApproval(true, requestId: first.id)
+    #expect(model.pendingApproval?.id == second.id)
+    model.respondToApproval(false, requestId: second.id)
+    #expect(await secondResult.value == false)
+  }
+
+  @Test("approval times out without a UI response and cancellation denies")
+  func approvalTimeout() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    await model.startIfNeeded()
+    let callback = try #require(control.confirm)
+    let request = try deviceApproval(expiresAt: Int64(Date().timeIntervalSince1970 * 1000) + 100)
+    #expect(await callback(request) == false)
+    #expect(model.pendingApproval == nil)
+    let next = try deviceApproval(expiresAt: Int64(Date().timeIntervalSince1970 * 1000) + 60000)
+    let result = Task { await callback(next) }
+    while model.pendingApproval == nil { await Task.yield() }
+    result.cancel()
+    #expect(await result.value == false)
   }
 
   @Test("approval requires an explicit current unexpired decision and disable denies")

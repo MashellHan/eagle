@@ -178,10 +178,12 @@ private struct DeviceServiceState: Decodable {
     guard enabled, started, !isRefreshing else { return }
     isRefreshing = true
     defer { isRefreshing = false }
+    var observedStatus = false
     do {
       let status = try await control.call("service.status", params: nil).decoded(
         DeviceServiceState.self)
       guard enabled else { return }
+      observedStatus = true
       localReady = status.localReady
       localDeviceId = status.deviceId
       cloudStatus = status.cloudStatus
@@ -195,6 +197,11 @@ private struct DeviceServiceState: Decodable {
       policy = try await control.call("policy.get", params: nil).decoded(DevicePolicyState.self)
       errorCode = nil
     } catch {
+      if !observedStatus {
+        localReady = false
+        cloudStatus = "unknown"
+        respondToApproval(false)
+      }
       directoryIsStale = true
       record(error)
     }
@@ -245,6 +252,7 @@ private struct DeviceServiceState: Decodable {
     await perform {
       let requestId = UUID().uuidString.lowercased()
       self.defaults.set(requestId, forKey: Self.pendingRedeemKey)
+      guard self.defaults.synchronize() else { throw DeviceHostError.failed }
       self.pendingRedeemRequestId = requestId
       do {
         let result = try await self.control.call(
@@ -299,7 +307,8 @@ private struct DeviceServiceState: Decodable {
 
   private func applyDirectory(_ value: DeviceJSON) throws {
     let current = try value.decoded(DeviceDirectoryState.self)
-    if directory?.revision != current.revision
+    if directory?.groupId != current.groupId || directory?.localDeviceId != current.localDeviceId
+      || directory?.revision != current.revision
       || directory?.observationRevision != current.observationRevision
     {
       directory = current
@@ -339,7 +348,7 @@ private struct DeviceServiceState: Decodable {
         let delay = max(0, request.expiresAt - milliseconds)
         approvalExpiry = Task { @MainActor [weak self] in
           do { try await Task.sleep(for: .milliseconds(delay)) } catch { return }
-          self?.respondToApproval(false)
+          self?.respondToApproval(false, requestId: request.id)
         }
       }
     } onCancel: {
@@ -347,6 +356,12 @@ private struct DeviceServiceState: Decodable {
         if self?.pendingApproval?.id == request.id { self?.respondToApproval(false) }
       }
     }
+  }
+
+  /// A button acts only on the operation it displayed, even if a newer request has arrived.
+  public func respondToApproval(_ allow: Bool, requestId: String) {
+    guard pendingApproval?.id == requestId else { return }
+    respondToApproval(allow)
   }
 
   public func respondToApproval(_ allow: Bool) {
