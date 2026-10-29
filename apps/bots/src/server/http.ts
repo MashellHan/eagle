@@ -47,6 +47,8 @@ export type ServerOptions = {
   readonly providers?: ProviderApi;
   /** Model gateway settings, when the daemon was configured with a store. */
   readonly settings?: GatewayApi;
+  /** A bot's triggers: read-only detail for the app, and the person's one switch. */
+  readonly triggers?: TriggerApi;
   readonly pid?: number;
   /** 0 asks the kernel for a free port, which is what tests do. */
   readonly port: number;
@@ -259,6 +261,18 @@ const extras = (
     result.appearance = { shape: face.shape as BotShape, tint: face.tint as BotTint };
   }
   return result;
+};
+
+/** The app's only trigger surface: read detail, and switch one on or off. */
+export type TriggerApi = {
+  readonly list: (botId: string) => Promise<readonly Record<string, unknown>[]>;
+  /** Returns the updated entry, or undefined when the trigger is not this bot's. */
+  readonly setEnabled: (
+    botId: string,
+    triggerId: string,
+    enabled: boolean,
+    trace: string,
+  ) => Promise<Record<string, unknown> | undefined>;
 };
 
 export const startServer = async (options: ServerOptions): Promise<Daemon> => {
@@ -495,6 +509,49 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
         const groups = await registry.reorderGroups(ids, `tr_http_${++sequence}`);
         broadcastCatalog();
         json(response, 200, { groups });
+        return;
+      }
+      if (path === "/v1/triggers" && request.method === "GET") {
+        const botId = new URL(request.url ?? "/", "http://127.0.0.1").searchParams.get("botId");
+        if (botId === null || botId.length === 0) {
+          json(response, 400, {
+            error: { kind: "invalid_command", message: "botId is required" },
+          });
+          return;
+        }
+        if (options.triggers === undefined) {
+          json(response, 404, { error: { kind: "unknown_bot", message: "no trigger storage" } });
+          return;
+        }
+        json(response, 200, { triggers: await options.triggers.list(botId) });
+        return;
+      }
+      const triggerMatch = /^\/v1\/triggers\/([A-Za-z0-9_-]+)\/(t_[A-Za-z0-9_-]{10})$/.exec(path);
+      if (triggerMatch !== null && request.method === "PATCH") {
+        const [, botId, triggerId] = triggerMatch as unknown as [string, string, string];
+        const body = await readBody(request);
+        const enabled = isObject(body) ? body.enabled : undefined;
+        if (typeof enabled !== "boolean" || Object.keys(body as object).length !== 1) {
+          json(response, 400, {
+            error: { kind: "invalid_command", message: "send only { enabled: true|false }" },
+          });
+          return;
+        }
+        if (options.triggers === undefined) {
+          json(response, 404, { error: { kind: "unknown_bot", message: "no trigger storage" } });
+          return;
+        }
+        const trigger = await options.triggers.setEnabled(
+          botId,
+          triggerId,
+          enabled,
+          `tr_http_${++sequence}`,
+        );
+        if (trigger === undefined) {
+          json(response, 404, { error: { kind: "unknown_bot", message: "no such trigger" } });
+          return;
+        }
+        json(response, 200, { trigger });
         return;
       }
       const taskMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/tasks\/(t_\d+)\/(retry|abort)$/.exec(path);

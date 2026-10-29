@@ -8,12 +8,14 @@ import { WebSocket } from "ws";
 import { BotDirectory, nodeDirectoryFs } from "../../src/core/BotDirectory.ts";
 import { BotRegistry, type RegistryOptions } from "../../src/core/BotRegistry.ts";
 import { ConversationService } from "../../src/core/ConversationService.ts";
+import type { TriggerSummary } from "../../src/core/domain.ts";
 import { OriginStore, originPath } from "../../src/core/OriginStore.ts";
 import type { RuntimePort } from "../../src/core/RuntimePort.ts";
 import { captureLog, type LogRecord } from "../../src/log/log.ts";
 import { measureEvent } from "../../src/main.ts";
 import { PiDurableRuntime } from "../../src/runtime/pi/PiDurableRuntime.ts";
 import type { GatewayApi } from "../../src/server/gateway.ts";
+import type { TriggerApi } from "../../src/server/http.ts";
 import { startServer } from "../../src/server/http.ts";
 import { FakeRuntime, type FakeScript } from "../../src/testing/FakeRuntime.ts";
 
@@ -59,6 +61,10 @@ export type StackOptions = {
   readonly runtime?: RuntimePort;
   /** Real-adapter limits: the message projection cap and the snapshot window. */
   readonly maxMessageBytes?: number;
+  /** A trigger surface for the HTTP contract; absent means the daemon has no triggers. */
+  readonly triggers?: TriggerApi;
+  /** The baseline trigger list a bot's view opens with. */
+  readonly triggersOf?: readonly TriggerSummary[];
   readonly windowMessages?: number;
   /** Model streaming pace, for a test that has to attach mid-answer. */
   readonly tokensPerSecond?: number;
@@ -162,6 +168,9 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     settlingOf: (botId) => registry.settling(botId),
     measure: measureEvent,
     log,
+    ...(options.triggersOf === undefined
+      ? {}
+      : { triggersOf: { list: async () => options.triggersOf as readonly TriggerSummary[] } }),
     // The composition root's lease (main.ts does the same), so an invocation without a
     // connection keeps the bot open while it admits.
     lease: {
@@ -198,7 +207,9 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
       entries: false,
       usage: true,
       peers: false,
+      triggers: true,
     },
+    ...(options.triggers === undefined ? {} : { triggers: options.triggers }),
     port: 0,
   });
   broadcast = daemon.broadcastCatalog;

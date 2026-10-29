@@ -525,9 +525,14 @@ Shipped so far, each with its own failing test first:
    decision, and a `TriggerProducers` that owns one pump per bot plus the single
    ticker, started after recovery and stopped before admissions drain.
 
-Still open in stage 1: the webhook endpoint and the `triggers` event with the
-sidebar surface. A schedule fires end to end through the invocation port, but no
-client can see or switch a trigger yet.
+6. The `triggers` surface: a bot-scoped `triggers` event with the same list on
+   `snapshot`, the `triggers` capability, `GET /v1/triggers?botId=…` detail and
+   `PATCH /v1/triggers/<botId>/<triggerId>` as the person's only mutation. The
+   service republishes the list after every store change, so a model's own edit
+   reaches the sidebar without a resubscribe.
+
+Still open in stage 1: the webhook endpoint, and the client rows that render this
+event (Swift side).
 
 ### Stage 0, as built
 

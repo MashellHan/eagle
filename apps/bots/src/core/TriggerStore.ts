@@ -122,6 +122,10 @@ export type TriggerStoreOptions = {
   readonly now?: () => Date;
   /** Deterministic ids for tests. */
   readonly newId?: () => string;
+  /** Told after every applied mutation, so the sidebar can follow a model's edit. */
+  readonly onChange?: (triggers: readonly TriggerDefinition[]) => void;
+  /** Told once the replay finished, with anything it could not read. */
+  readonly onDropped?: (count: number) => void;
 };
 
 export class TriggerStore {
@@ -136,12 +140,14 @@ export class TriggerStore {
   #queue: Promise<unknown> = Promise.resolve();
   /** Journal records read on open, for the compaction decision. */
   #records = 0;
+  readonly #onChange: ((triggers: readonly TriggerDefinition[]) => void) | undefined;
 
   private constructor(botId: string, path: string, options: TriggerStoreOptions) {
     this.#botId = botId;
     this.#path = path;
     this.#now = options.now ?? (() => new Date());
     this.#newId = options.newId ?? newTriggerId;
+    this.#onChange = options.onChange;
   }
 
   static async open(
@@ -156,13 +162,18 @@ export class TriggerStore {
     } catch (error) {
       if ((error as { code?: string }).code !== "ENOENT") throw error;
     }
+    let dropped = 0;
     for (const line of body.split("\n")) {
       if (line.trim().length === 0) continue;
       const record = parseRecord(line);
-      if (record === undefined) continue;
+      if (record === undefined) {
+        dropped += 1;
+        continue;
+      }
       store.#records += 1;
       store.#apply(record);
     }
+    if (dropped > 0) options.onDropped?.(dropped);
     if (store.#records > MAX_JOURNAL_RECORDS) await store.#compact();
     return store;
   }
@@ -358,6 +369,8 @@ export class TriggerStore {
     await appendFile(this.#path, `${JSON.stringify(record)}\n`, { mode: 0o600 });
     this.#records += 1;
     this.#apply(record);
+    // A replayed `opId` answers without reaching here, so this is one call per real change.
+    this.#onChange?.(this.list());
   }
 
   #apply(record: JournalRecord): void {

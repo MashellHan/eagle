@@ -98,6 +98,8 @@ export const toServerEvent = (event: HubEvent): ServerEvent => {
       return { type: "usage", rev: event.rev, trace: event.trace, usage: event.usage };
     case "tasks":
       return { type: "tasks", rev: event.rev, trace: event.trace, tasks: event.tasks };
+    case "triggers":
+      return { type: "triggers", rev: event.rev, trace: event.trace, triggers: event.triggers };
     case "status":
       return {
         type: "status",

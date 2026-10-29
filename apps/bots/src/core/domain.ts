@@ -105,6 +105,22 @@ export type Submission = {
   readonly reason?: string;
 };
 
+/** What a client renders about one trigger; the prompt and the endpoint come over HTTP. */
+export type TriggerSummary = {
+  readonly id: string;
+  readonly kind: "schedule" | "webhook";
+  readonly name: string;
+  readonly enabled: boolean;
+  readonly schedule?: {
+    readonly cron: string;
+    readonly timezone: string;
+    readonly nextDueAt?: string;
+  };
+  readonly counters: { readonly fired: number; readonly dropped: number; readonly refused: number };
+  readonly lastFiredAt?: string;
+  readonly lastSkipped?: { readonly at: string; readonly reason: string };
+};
+
 export type Usage = {
   readonly inputTokens: number;
   readonly outputTokens: number;
@@ -210,6 +226,8 @@ export type ConversationSnapshot = {
   readonly parked?: boolean;
   /** Live work of every conversation this bot owns, for the inspector. */
   readonly tasks?: readonly TaskSummary[];
+  /** The bot's own triggers, newest page of the sidebar's trigger section (TRIGGERS.md §8). */
+  readonly triggers?: readonly TriggerSummary[];
   readonly pending: readonly Submission[];
   readonly inbox: readonly InboxItem[];
   readonly running: boolean;
@@ -237,6 +255,7 @@ export type Capabilities = {
   readonly entries: boolean;
   readonly usage: boolean;
   readonly peers: boolean;
+  readonly triggers: boolean;
 };
 
 export const ALL_CAPABILITIES_OFF: Capabilities = {
@@ -246,6 +265,7 @@ export const ALL_CAPABILITIES_OFF: Capabilities = {
   entries: false,
   usage: true,
   peers: false,
+  triggers: false,
 };
 
 /** Every domain failure crosses layers with one identity minted by its classifier. */

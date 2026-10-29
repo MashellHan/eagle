@@ -72,6 +72,9 @@ export const reduceView = (
     else if (streaming === event.message.id || streaming === event.replaces) streaming = null;
     return { ...view, messages, streaming };
   }
+  if (event.type === "triggers") {
+    return { ...view, triggers: event.triggers };
+  }
   if (event.type === "delta") {
     return {
       ...view,

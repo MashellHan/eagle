@@ -124,7 +124,8 @@ characters (`BotRegistry.ts:95`) and SDK call IDs may contain `/`
 | `webhook` | `wh_<triggerId>_<batchId>` | 3 + 12 + 1 + ≤10 = ≤26 | The trigger's durable batch counter |
 | `peer` | `pr_<16 hex>` of `sha256(fromBotId ‖ toBotId ‖ taskId)` | 19 | The durable tool-task identity (`ToolExecutionApi.taskId`) |
 
-`triggerId` is therefore fixed at 12 characters (`t_` + 10 base32). A key that names
+`triggerId` is therefore fixed at 12 characters (`t_` + 10 of `[A-Za-z0-9_-]`; generated
+ids use a 32-symbol alphabet, and any 12-character id is addressable). A key that names
 a moment in time, a random value or a queue position is a defect.
 
 **Durable lookup.** `PiDurableRuntime.submission({requestId})` today reads an
@@ -271,7 +272,7 @@ failing-then-passing, no caller implemented.
 export type TriggerKind = "schedule" | "webhook";
 
 export type TriggerDefinition = {
-  readonly id: string; // t_ + 10 base32, exactly 12 characters (§3.2)
+  readonly id: string; // t_ + 10 characters of the wire alphabet, exactly 12 (§3.2)
   readonly botId: string;
   readonly kind: TriggerKind;
   readonly name: string; // 1..64 chars, unique per bot
@@ -613,7 +614,7 @@ Both routes require the daemon bearer, like every other `/v1` route.
 | Route | Purpose | Notes |
 | --- | --- | --- |
 | `GET /v1/triggers?botId=<id>` | Detail for one bot: prompt, endpoint, token | The only place a token is returned |
-| `PATCH /v1/triggers/<triggerId>` with `{enabled}` | The person's only mutation | Rejects any other field with `invalid_command` |
+| `PATCH /v1/triggers/<botId>/<triggerId>` with `{enabled}` | The person's only mutation | Rejects any other field with `invalid_command`, and answers 404 for a trigger of another bot |
 
 The daemon publishes the `triggers` event after every accepted mutation, whoever
 made it (tool or switch), so both surfaces converge on one source.

@@ -19,6 +19,7 @@ import type {
   Submission,
   SubmissionStatus,
   TaskSummary,
+  TriggerSummary,
   Usage,
 } from "../core/domain.ts";
 import { BOT_SHAPES, BOT_TINTS } from "../core/domain.ts";
@@ -105,6 +106,12 @@ export type ServerEvent =
       readonly rev: number;
       readonly trace: string;
       readonly tasks: readonly TaskSummary[];
+    }
+  | {
+      readonly type: "triggers";
+      readonly rev: number;
+      readonly trace: string;
+      readonly triggers: readonly TriggerSummary[];
     }
   | {
       readonly type: "usage";
@@ -354,6 +361,70 @@ const decodeOrigin = (ctx: Ctx, raw: unknown): MessageOrigin => {
   return { kind, ...(label === undefined ? {} : { label }) } as MessageOrigin;
 };
 
+const TRIGGER_KINDS = ["schedule", "webhook"] as const;
+const SKIP_REASONS = ["disabled", "missed", "rate_limited", "queue_full"] as const;
+
+const decodeTriggerSummary = (ctx: Ctx, raw: unknown): TriggerSummary => {
+  if (!isObject(raw)) fail(ctx, "trigger must be an object");
+  const schedule = raw.schedule === undefined ? undefined : raw.schedule;
+  if (schedule !== undefined && !isObject(schedule))
+    fail(ctx, "trigger.schedule must be an object");
+  const counters = raw.counters;
+  if (!isObject(counters)) fail(ctx, "trigger.counters must be an object");
+  const lastSkipped = raw.lastSkipped;
+  if (lastSkipped !== undefined && !isObject(lastSkipped)) {
+    fail(ctx, "trigger.lastSkipped must be an object");
+  }
+  return {
+    id: str(ctx, raw.id, "trigger.id"),
+    kind: oneOf(ctx, raw.kind, TRIGGER_KINDS, "trigger.kind"),
+    name: anyStr(ctx, raw.name, "trigger.name"),
+    enabled: bool(ctx, raw.enabled, "trigger.enabled"),
+    ...(schedule === undefined
+      ? {}
+      : {
+          schedule: {
+            cron: anyStr(ctx, (schedule as Record<string, unknown>).cron, "trigger.schedule.cron"),
+            timezone: anyStr(
+              ctx,
+              (schedule as Record<string, unknown>).timezone,
+              "trigger.schedule.timezone",
+            ),
+            ...((schedule as Record<string, unknown>).nextDueAt === undefined
+              ? {}
+              : {
+                  nextDueAt: anyStr(
+                    ctx,
+                    (schedule as Record<string, unknown>).nextDueAt,
+                    "trigger.schedule.nextDueAt",
+                  ),
+                }),
+          },
+        }),
+    counters: {
+      fired: int(ctx, (counters as Record<string, unknown>).fired, "trigger.counters.fired"),
+      dropped: int(ctx, (counters as Record<string, unknown>).dropped, "trigger.counters.dropped"),
+      refused: int(ctx, (counters as Record<string, unknown>).refused, "trigger.counters.refused"),
+    },
+    ...(raw.lastFiredAt === undefined
+      ? {}
+      : { lastFiredAt: anyStr(ctx, raw.lastFiredAt, "trigger.lastFiredAt") }),
+    ...(lastSkipped === undefined
+      ? {}
+      : {
+          lastSkipped: {
+            at: anyStr(ctx, (lastSkipped as Record<string, unknown>).at, "trigger.lastSkipped.at"),
+            reason: oneOf(
+              ctx,
+              (lastSkipped as Record<string, unknown>).reason,
+              SKIP_REASONS,
+              "trigger.lastSkipped.reason",
+            ),
+          },
+        }),
+  };
+};
+
 const decodeMessage = (ctx: Ctx, raw: unknown): Message => {
   if (!isObject(raw)) fail(ctx, "message must be an object");
   const role = oneOf(ctx, raw.role, ROLES, "message.role");
@@ -541,6 +612,13 @@ const decodeSnapshot = (ctx: Ctx, raw: unknown): ConversationSnapshot => {
     ...(raw.tasks === undefined
       ? {}
       : { tasks: arr(ctx, raw.tasks, "tasks").map((task) => decodeTaskSummary(ctx, task)) }),
+    ...(raw.triggers === undefined
+      ? {}
+      : {
+          triggers: arr(ctx, raw.triggers, "triggers").map((trigger) =>
+            decodeTriggerSummary(ctx, trigger),
+          ),
+        }),
     ...(agent === undefined ? {} : { agent }),
     ...(unavailable === undefined ? {} : { unavailable }),
   };
@@ -683,7 +761,7 @@ export function decodeServerEvent(raw: Record<string, unknown>): ServerEvent {
       if (!isObject(capabilitiesValue)) fail(ctx, "capabilities must be an object");
       const capabilitiesRaw = capabilitiesValue as Record<string, unknown>;
       const capabilities: Record<string, boolean> = {};
-      for (const name of ["agent", "tools", "tasks", "entries", "usage", "peers"]) {
+      for (const name of ["agent", "tools", "tasks", "entries", "usage", "peers", "triggers"]) {
         capabilities[name] = bool(
           ctx,
           required(ctx, capabilitiesRaw, name),
@@ -775,6 +853,17 @@ export function decodeServerEvent(raw: Record<string, unknown>): ServerEvent {
         trace,
         tasks: arr(ctx, required(ctx, raw, "tasks"), "tasks").map((task) =>
           decodeTaskSummary(ctx, task),
+        ),
+      };
+    }
+    case "triggers": {
+      const { rev, trace } = requireEnvelope(ctx, raw, true);
+      return {
+        type,
+        rev: rev as number,
+        trace,
+        triggers: arr(ctx, required(ctx, raw, "triggers"), "triggers").map((trigger) =>
+          decodeTriggerSummary(ctx, trigger),
         ),
       };
     }

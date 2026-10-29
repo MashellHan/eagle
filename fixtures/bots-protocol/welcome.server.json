@@ -12,7 +12,8 @@
     "tasks": false,
     "entries": false,
     "usage": false,
-    "peers": false
+    "peers": false,
+    "triggers": false
   },
   "bots": [
     {

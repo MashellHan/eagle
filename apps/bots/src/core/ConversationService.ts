@@ -11,6 +11,7 @@ import type {
   Failure,
   Message,
   Submission,
+  TriggerSummary,
   Usage,
 } from "./domain.ts";
 import { ClassifiedFailure } from "./domain.ts";
@@ -93,6 +94,13 @@ export type ConversationServiceOptions = {
     readonly release: (botId: string) => void;
   };
   /**
+   * The bot's triggers, read when its view opens (docs/bots/TRIGGERS.md §8). Absent means
+   * the daemon has no trigger storage; every existing path still works.
+   */
+  readonly triggersOf?: {
+    readonly list: (botId: string) => Promise<readonly TriggerSummary[]>;
+  };
+  /**
    * The per-bot origin record (docs/bots/TRIGGERS.md §6). Absent means the daemon does not
    * label admissions, which is the phase-1 behavior; every caller still works.
    */
@@ -166,6 +174,7 @@ export class ConversationService implements InvocationPort {
   readonly #onUsage: ((botId: string, usage: Usage) => void) | undefined;
   readonly #lease: ConversationServiceOptions["lease"];
   readonly #origins: ConversationServiceOptions["origins"];
+  readonly #triggersOf: ConversationServiceOptions["triggersOf"];
   /** Resolved views by bot id, so `observe` can answer synchronously without opening. */
   readonly #current = new Map<string, Bot>();
   /** Invocation observers, keyed by bot id and bound to the value, not to one Bot object. */
@@ -200,6 +209,7 @@ export class ConversationService implements InvocationPort {
     this.#onUsage = options.onUsage;
     this.#lease = options.lease;
     this.#origins = options.origins;
+    this.#triggersOf = options.triggersOf;
     this.#hubOptions = {
       measure: options.measure,
       ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
@@ -432,6 +442,17 @@ export class ConversationService implements InvocationPort {
       this.#admitting -= 1;
       if (this.#admitting === 0) for (const resolve of this.#idle.splice(0)) resolve();
     }
+  }
+
+  /**
+   * Replaces the bot's trigger list and tells its subscribers. Called by whoever owns the
+   * store after a mutation, so a sidebar follows a model's own edit (TRIGGERS.md §8.3).
+   */
+  publishTriggers(botId: string, triggers: readonly TriggerSummary[], trace: string): void {
+    const bot = this.#current.get(botId);
+    if (bot === undefined) return;
+    bot.snapshot = { ...bot.snapshot, triggers };
+    bot.hub.publish({ type: "triggers", trace, triggers });
   }
 
   /** A broken sidecar must not make a bot unusable: its labels fall back to `unknown`. */
@@ -989,6 +1010,8 @@ export class ConversationService implements InvocationPort {
     try {
       const handle = await this.#open(botId, trace);
       const bot = await this.#attach(handle, hub, trace);
+      const triggers = await this.#triggersOf?.list(botId).catch(() => undefined);
+      if (triggers !== undefined) bot.snapshot = { ...bot.snapshot, triggers };
       bot.origins = await this.#openOrigins(botId, trace);
       if (bot.origins !== undefined) bot.snapshot = this.#withOrigins(bot.snapshot, bot.origins);
       // The view is live whether or not a client ever subscribes: a port caller must see
