@@ -691,8 +691,12 @@ Verified:
   retry opens exactly one fresh connection, and — against a real closed port — the
   connection ends `.failed` with the daemon message and is still failed 1.5 s later, so
   there is no blind retry loop.
-- One performance test (`Transcript row cost`) flakes when the suite runs under load and
-  passes alone; it is recorded here rather than weakened.
+- One performance test (`Transcript row cost`) flaked twice at 2.51 against a 2.5 bound
+  under load. Fixed by measuring its least disturbed round instead of a median (load can
+  only add time, and a real regression raises every round), not by widening the bound;
+  an ordinary user bubble also went back to one `Text` instead of a container it only
+  needed for the origin chip. The full pre-push gate then passed and `main` reached
+  `origin/main` at `81b4c3d`.
 
 Next broken hop: the per-trigger hourly cap and token bucket remain planned; `peers` is
 untouched; nobody has reviewed a rendered screenshot of the new header face or the
