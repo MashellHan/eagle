@@ -15,7 +15,7 @@ struct DeviceApprovalPresentationTests {
     #expect(summary.title == "执行命令")
     #expect(
       summary.fields.map(\.value) == [
-        "printf '你好'\nrm output.txt", "/Users/test/My Project", "45000 毫秒",
+        "printf '你好'\nrm output.txt", "/Users/test/My Project", "45 秒",
       ])
   }
 

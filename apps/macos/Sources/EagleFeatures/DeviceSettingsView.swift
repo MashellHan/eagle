@@ -312,26 +312,38 @@ struct DeviceSummaryView: View {
           .font(Theme.TypeScale.pill)
           .foregroundStyle(Theme.Palette.textMuted)
         if !compact {
-          Text(device.deviceId)
-            .font(Theme.TypeScale.mono)
-            .foregroundStyle(Theme.Palette.textMuted)
-            .textSelection(.enabled)
-          Text(
-            "\(device.platform) · \(device.arch) · \(device.capabilities?.joined(separator: ", ") ?? "能力未知")"
-          )
+          DisclosureGroup("设备详情") {
+            VStack(alignment: .leading, spacing: 6) {
+              Text(device.deviceId)
+                .font(Theme.TypeScale.mono)
+                .textSelection(.enabled)
+              Text("系统：\(device.platform) · \(device.arch)")
+              Text("支持操作：\(capabilityLabels)")
+                .fixedSize(horizontal: false, vertical: true)
+              if let seen = device.lastSeenAt {
+                Text("最近观察：\(Date(timeIntervalSince1970: Double(seen) / 1000).formatted())")
+              }
+            }
+            .padding(.top, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+          }
           .font(Theme.TypeScale.pill)
           .foregroundStyle(Theme.Palette.textMuted)
-          .fixedSize(horizontal: false, vertical: true)
-          if let seen = device.lastSeenAt {
-            Text("最近观察：\(Date(timeIntervalSince1970: Double(seen) / 1000).formatted())")
-              .font(Theme.TypeScale.pill)
-              .foregroundStyle(Theme.Palette.textMuted)
-          }
         }
       }
       Spacer(minLength: 0)
     }
     .accessibilityElement(children: .combine)
+  }
+
+  private var capabilityLabels: String {
+    guard let capabilities = device.capabilities else { return "尚未观察到" }
+    let labels = [
+      "command": "运行命令", "file.read": "读取文件", "file.write": "写入文件", "file.list": "浏览目录",
+      "native": "本机工具",
+    ]
+    return capabilities.isEmpty
+      ? "无" : capabilities.map { labels[$0] ?? "其他操作" }.joined(separator: "、")
   }
 
   private var statusLabel: String {

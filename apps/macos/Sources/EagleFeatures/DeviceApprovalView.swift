@@ -131,7 +131,14 @@ struct DeviceApprovalPresentation {
       + values.keys.filter { !order.contains($0) && $0 != "kind" }.sorted()
     fields = keys.map { key in
       let value = values[key] ?? .null
-      let text = key == "timeoutMs" ? "\(Self.json(value)) 毫秒" : value.string ?? Self.json(value)
+      let text: String
+      if key == "timeoutMs", let milliseconds = value.number, milliseconds >= 1000 {
+        text = (milliseconds / 1000).formatted(.number.precision(.fractionLength(0...3))) + " 秒"
+      } else if key == "timeoutMs" {
+        text = "\(Self.json(value)) 毫秒"
+      } else {
+        text = value.string ?? Self.json(value)
+      }
       return Field(title: labels[key] ?? key, value: text)
     }
   }
