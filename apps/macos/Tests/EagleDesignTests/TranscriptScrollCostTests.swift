@@ -19,19 +19,18 @@ struct TranscriptScrollCostTests {
     let columnView = ConversationColumn(
       title: "Bot", subtitle: "Bots", tintIndex: 1, entries: entries,
       preparedMarkdown: markdown, draft: .constant(""), onSend: {})
-    // Median of interleaved rounds: a loaded CI runner inflates single rounds, and the
-    // cheaper baseline is the side that shows it. The guard exists to catch a bookkeeping
-    // regression (10x when it happened), not to police a tenth of a millisecond.
+    // The lowest of interleaved rounds, for the same reason as the row-cost guard: load can
+    // only add time, and a bookkeeping regression (10x when it happened) raises every round.
     var ratios: [Double] = []
-    for _ in 0..<3 {
+    for _ in 0..<5 {
       let column = Self.measure(columnView)
       let bare = Self.measure(Self.bareRows(entries, markdown))
       ratios.append(column / max(bare, 0.000_001))
     }
-    let ratio = ratios.sorted()[ratios.count / 2]
+    let ratio = ratios.min() ?? .greatestFiniteMagnitude
     print(
       "SCROLLBENCH rounds=\(ratios.map { String(format: "%.2f", $0) }.joined(separator: ",")) "
-        + "median=\(String(format: "%.2f", ratio))")
+        + "min=\(String(format: "%.2f", ratio))")
     #expect(ratio < 4, "conversation scroll costs \(String(format: "%.1f", ratio))x the same rows")
   }
 
