@@ -45,7 +45,12 @@ export class TriggerProducers {
       now: wiring.now,
       ...(wiring.periodMs === undefined ? {} : { periodMs: wiring.periodMs }),
       ...(wiring.setTimer === undefined ? {} : { setTimer: wiring.setTimer }),
-      onTick: (outcome) => wiring.onTick?.(outcome),
+      // A tick only enqueues: the pump for that bot is what admits the batch, so the
+      // timer path must wake it too (an explicit `tick()` below does the same).
+      onTick: (outcome) => {
+        void this.pumpFor(outcome.botId).drain();
+        wiring.onTick?.(outcome);
+      },
     });
   }
 

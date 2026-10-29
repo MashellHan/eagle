@@ -209,3 +209,47 @@ test("stop detaches the pumps and the ticker", async () => {
     await rm(setup.dir, { recursive: true, force: true });
   }
 });
+
+test("a timer tick wakes the pump, not only an explicit tick", async () => {
+  const setup = await bench();
+  let producers: TriggerProducers | undefined;
+  try {
+    const fake = fakePort();
+    let now = at("2026-10-28T00:00:00.000Z");
+    await setup.store.create({
+      opId: "op_1",
+      kind: "schedule",
+      name: "morning",
+      prompt: "triage",
+      schedule: { cron: "0 9 * * *", timezone: "Asia/Shanghai" },
+    });
+    const timers: (() => void)[] = [];
+    producers = new TriggerProducers({
+      bots: () => ["b_1"],
+      storeFor: async () => setup.store,
+      queueFor: setup.queueFor,
+      port: fake.port,
+      now: () => now,
+      newTrace: () => "tr_producers_0004",
+      setTimer: (run) => {
+        timers.push(run);
+        return () => undefined;
+      },
+    });
+    producers.start();
+    // The first tick arms the cursor; the second one, at the next minute, fires.
+    timers.shift()?.();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    now = at("2026-10-28T01:00:10.000Z");
+    timers.shift()?.();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(
+      fake.invoked.length,
+      1,
+      "the timer path admits the batch without an explicit tick()",
+    );
+  } finally {
+    producers?.stop();
+    await rm(setup.dir, { recursive: true, force: true });
+  }
+});
