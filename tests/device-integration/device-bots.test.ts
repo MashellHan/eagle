@@ -417,28 +417,40 @@ input.close();
 `,
   );
   const daemon = processPort(script, root);
-  // Private test configuration arrives on stdin, never argv or the environment.
-  daemon.send({ source: botsSource, root, socketPath, baseUrl, key });
-  const ready = await daemon.message((message) => message.type === "ready");
-  const token = readFileSync(join(root, "token"), "utf8").trim();
-  const origin = `http://127.0.0.1:${ready.port}`;
-  return {
-    ...daemon,
-    origin,
-    token,
-    async createBot(title: string) {
-      const response = await fetch(`${origin}/v1/bots`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ title }),
-      });
-      assert.equal(response.status, 201);
-      return ((await response.json()) as { bot: { id: string } }).bot.id;
-    },
-  };
+  // Private test configuration arrives on stdin, never argv or the inherited environment.
+  try {
+    daemon.send({ source: botsSource, root, socketPath, baseUrl, key });
+    const ready = await daemon.message((message) => message.type === "ready");
+    const token = readFileSync(join(root, "token"), "utf8").trim();
+    const origin = `http://127.0.0.1:${ready.port}`;
+    return {
+      ...daemon,
+      origin,
+      token,
+      async createBot(title: string) {
+        const response = await fetch(`${origin}/v1/bots`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ title }),
+        });
+        assert.equal(response.status, 201);
+        return ((await response.json()) as { bot: { id: string } }).bot.id;
+      },
+    };
+  } catch (error) {
+    try {
+      await daemon.stop();
+    } catch (shutdownError) {
+      throw new AggregateError(
+        [error, shutdownError],
+        "daemon startup and cleanup failed",
+      );
+    }
+    throw error;
+  }
 }
 
 async function botConnection(origin: string, token: string, botId: string) {
