@@ -155,6 +155,7 @@ export async function runDeviceService(): Promise<void> {
   let nativeLeases: NativeDeviceLeases | undefined;
   let cloud: DeviceCloud | undefined;
   let server: ReturnType<typeof createServer> | undefined;
+  let socketOwner: { dev: number; ino: number } | undefined;
   let configuration: z.infer<typeof configure> | undefined;
   let initializing: Promise<void> | undefined;
   let stopping = false;
@@ -192,11 +193,16 @@ export async function runDeviceService(): Promise<void> {
       await new Promise<void>((resolveClosed) =>
         server?.close(() => resolveClosed()),
       );
-    if (configuration) {
+    if (configuration && socketOwner) {
       const stat = lstatSync(configuration.socketPath, {
         throwIfNoEntry: false,
       });
-      if (stat?.isSocket()) unlinkSync(configuration.socketPath);
+      if (
+        stat?.isSocket() &&
+        stat.dev === socketOwner.dev &&
+        stat.ino === socketOwner.ino
+      )
+        unlinkSync(configuration.socketPath);
     }
     process.stdin.destroy();
   };
@@ -546,7 +552,11 @@ export async function runDeviceService(): Promise<void> {
     });
     await new Promise<void>((resolveListening, reject) => {
       server?.once("error", reject);
-      server?.listen(config.socketPath, () => resolveListening());
+      server?.listen(config.socketPath, () => {
+        const stat = lstatSync(config.socketPath);
+        socketOwner = { dev: stat.dev, ino: stat.ino };
+        resolveListening();
+      });
     });
     chmodSync(config.socketPath, 0o600);
     send({

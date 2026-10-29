@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -352,6 +358,137 @@ test("private helper config boots offline local tools; Bot port cannot change po
       else child.once("exit", () => resolve());
     });
     lines.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function serviceConfiguration(root: string) {
+  return {
+    type: "configure",
+    version: 1,
+    baseUrl: "http://127.0.0.1:1",
+    deviceId: randomUUID(),
+    publicKey: generateKeyPairSync("ed25519")
+      .publicKey.export({ type: "spki", format: "der" })
+      .toString("base64url"),
+    name: "socket-owner",
+    platform: "darwin",
+    arch: "arm64",
+    stateDirectory: root,
+    socketPath: join(root, "service.sock"),
+  };
+}
+
+function serviceProcess() {
+  const child = spawn(process.execPath, ["packages/agent/device-service.ts"], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const lines = createInterface({ input: child.stdout });
+  const messages: Record<string, unknown>[] = [];
+  const listeners = new Set<() => void>();
+  let stderr = "";
+  child.stderr.setEncoding("utf8").on("data", (text) => (stderr += text));
+  lines.on("line", (line) => {
+    messages.push(JSON.parse(line));
+    for (const listener of listeners) listener();
+  });
+  child.on("exit", () => {
+    for (const listener of listeners) listener();
+  });
+  return {
+    child,
+    message(type: string): Promise<Record<string, unknown>> {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          listeners.delete(check);
+          reject(new Error(`service ${type} timeout: ${stderr}`));
+        }, 5000);
+        const check = () => {
+          const message = messages.find((value) => value.type === type);
+          if (message || child.exitCode !== null) {
+            clearTimeout(timer);
+            listeners.delete(check);
+            if (message) resolve(message);
+            else reject(new Error(`service exited: ${stderr}`));
+          }
+        };
+        listeners.add(check);
+        check();
+      });
+    },
+    async stop() {
+      child.stdin.end();
+      if (child.exitCode === null)
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            child.kill("SIGKILL");
+            reject(new Error("service shutdown timeout"));
+          }, 5000);
+          child.once("exit", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      lines.close();
+    },
+  };
+}
+
+async function portCall(socketPath: string, method: string, params?: unknown) {
+  const socket = connect(socketPath);
+  const lines = createInterface({ input: socket });
+  try {
+    return await new Promise<Record<string, unknown>>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("port timeout")), 3000);
+      socket.once("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+      lines.once("line", (line) => {
+        clearTimeout(timer);
+        resolve(JSON.parse(line));
+      });
+      socket.write(
+        `${JSON.stringify({ requestId: randomUUID(), method, params })}\n`,
+      );
+    });
+  } finally {
+    lines.close();
+    socket.destroy();
+  }
+}
+
+test("failed second service never unlinks the first process's live socket", async () => {
+  const root = mkdtempSync(join(tmpdir(), "device-owner-"));
+  const configuration = serviceConfiguration(root);
+  const first = serviceProcess();
+  const second = serviceProcess();
+  try {
+    first.child.stdin.write(`${JSON.stringify(configuration)}\n`);
+    await first.message("ready");
+    const owner = statSync(configuration.socketPath);
+    second.child.stdin.write(`${JSON.stringify(configuration)}\n`);
+    assert.equal(
+      (await second.message("failed")).error,
+      "device_initialization_failed",
+    );
+    await second.stop();
+    assert.equal(
+      existsSync(configuration.socketPath),
+      true,
+      "failed initialization must preserve the live owner's path",
+    );
+    assert.equal(statSync(configuration.socketPath).ino, owner.ino);
+    assert.equal(
+      (
+        (await portCall(configuration.socketPath, "status")).result as {
+          localReady: boolean;
+        }
+      ).localReady,
+      true,
+    );
+  } finally {
+    await Promise.all([first.stop(), second.stop()]);
     rmSync(root, { recursive: true, force: true });
   }
 });
