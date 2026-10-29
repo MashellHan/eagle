@@ -279,10 +279,16 @@ public struct WorkspaceShellView: View {
           settings.selection = .bots
           showsSettings = true
         }
-        // The daemon is a prerequisite of the Bots connection, not of the window.
         await daemon.startIfNeeded()
-        guard case .running = daemon.status else { return }
+      }
+      .task(id: daemon.status) {
+        // Every window follows readiness, including a shared start or a Settings retry.
+        guard case .running = daemon.status else {
+          bots.disconnect()
+          return
+        }
         await bots.start()
+        guard !Task.isCancelled else { return }
         await bots.loadModels()
       }
       .task {

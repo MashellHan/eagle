@@ -92,6 +92,11 @@ App 监督器已从 bundle 解析 Node/Bots 并固定注入 v1 设备 socket；�
 端口、provider 配置与 outbox，真实 Node/Bots 子进程经 Swift 监督器启动的 5 项局部
 测试通过（测试用 runtime 链接，不是发行装配）；主窗口和实际候选包仍待贯通。
 
+窗口连接跟随共享 daemon 的实际 running 状态；打开第二个窗口或在设置重试成功后，
+无需重开窗口即可加载 Bots。同一窗口合并并发连接，关闭时取消连接并使旧代次失效，
+迟到的工厂/目录结果不能复活已关闭窗口或覆盖新连接。局部模型回归先复现重复连接、
+关闭后复活和旧连接覆盖，再验证修复；此证据不替代实际多窗口点击验收。
+
 ## Where the code lives
 
 ### Exclusive search providers (2026-10-28)

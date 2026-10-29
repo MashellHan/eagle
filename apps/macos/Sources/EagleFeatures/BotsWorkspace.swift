@@ -119,6 +119,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
   private let gatewayProbe: @MainActor () async -> Bool?
   private let presenter = BotsPresenter()
   private var app: AppViewModel?
+  private var connectionTask: Task<Void, Never>?
+  private var connectionGeneration = UUID()
   private var rows: [SidebarBotRow] = []
   private var cancellables = Set<AnyCancellable>()
   private var publicationScheduled = false
@@ -273,11 +275,35 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   /// Connects once. A failure is shown in the sidebar's subtitle, not as a new surface.
   func start() async {
+    guard !Task.isCancelled else { return }
+    if let connectionTask {
+      await connectionTask.value
+      return
+    }
     guard app == nil else { return }
+    let generation = connectionGeneration
+    let task = Task { @MainActor [weak self] in
+      guard let self else { return }
+      await self.connect(generation: generation)
+    }
+    connectionTask = task
+    await task.value
+    if generation == connectionGeneration { connectionTask = nil }
+  }
+
+  private func connect(generation: UUID) async {
     do {
       let model = try await makeApp(settings)
-      app = model
+      guard generation == connectionGeneration, !Task.isCancelled else {
+        model.conversation.disconnect()
+        return
+      }
       await model.refresh()
+      guard generation == connectionGeneration, !Task.isCancelled else {
+        model.conversation.disconnect()
+        return
+      }
+      app = model
       bind(model)
       publish()
       // The shell keeps its own landing selection (the demo workspace) unless a
@@ -292,6 +318,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
         .store(in: &cancellables)
       await refreshGateway()
     } catch {
+      guard generation == connectionGeneration, !Task.isCancelled else { return }
       subtitle = (error as? ClientError)?.message ?? error.localizedDescription
       self.error = subtitle
     }
@@ -393,7 +420,10 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   /// Reads the daemon's gateway state silently; it is shown only when a send is refused.
   private func refreshGateway() async {
-    gatewayConfigured = await gatewayProbe()
+    guard let current = app else { return }
+    let configured = await gatewayProbe()
+    guard app === current, !Task.isCancelled else { return }
+    gatewayConfigured = configured
     if gatewayConfigured == true { needsModelSetup = false }
   }
 
@@ -410,10 +440,21 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   /// The window is gone: its socket must go too, or the daemon keeps a subscriber.
   func disconnect() {
+    connectionGeneration = UUID()
+    connectionTask?.cancel()
+    connectionTask = nil
+    cancellables.removeAll()
     // `disconnect` cancels the event task and closes the transport; the daemon then
     // releases the subscriber slot.
     app?.conversation.disconnect()
+    app = nil
     selectedId = nil
+    connection = .stopped
+    running = false
+    canRecover = false
+    gatewayConfigured = nil
+    needsModelSetup = false
+    error = nil
     publish()
   }
 
@@ -765,7 +806,7 @@ struct BotsPresenter {
           text += value
         case .thinking:
           continue
-        case .toolCall(let callId, let name, let args):
+        case .toolCall(_, let name, let args):
           hasTool = true
           flush()
           let result = paired[ToolCallKey(messageId: message.id, block: blockIndex)]
