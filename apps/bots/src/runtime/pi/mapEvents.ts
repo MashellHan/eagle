@@ -214,7 +214,7 @@ export class EventMapper {
           thinkingLevel: event.agent.thinkingLevel ?? "off",
           instructions: event.agent.instructions ?? "",
         };
-        return [];
+        return [{ type: "agent", trace, agent: this.#agent }];
       case "deferred_poll":
         // F23: upstream dropped the partial, so the client must drop the provisional
         // too. Only a snapshot can say that, and `running` stays true: polling is work.

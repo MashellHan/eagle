@@ -226,6 +226,12 @@ conversation moves in place. `GET /v1/models` is a read-only proxy of the gatewa
 list (cached for a minute), so a picker never has to know the gateway itself. The `agent`
 capability is `true`.
 
+An applied agent change is broadcast as a bot-scoped `agent` event, carrying the complete
+`AgentView` with `rev` and `trace`. It replaces only the current agent configuration; the
+transcript, loaded history, optimistic sends, pending inputs, tasks, triggers and recovery
+state stay intact. The initial subscription snapshot still carries `agent`. This is a v1
+additive event: older clients consume its revision and ignore it under I8.
+
 ## Providers
 
 Third-party services a bot's tools may call. The catalogue is code (`id`, `title`,
@@ -482,6 +488,8 @@ is never a gap.
 
 { "type": "tasks", "rev": 45, "trace": "tr_…", "tasks": [ Task, … ] }
 
+{ "type": "agent", "rev": 45, "trace": "tr_…", "agent": AgentView }
+
 { "type": "usage", "rev": 45, "trace": "tr_…",
   "usage": { "inputTokens": 1234, "outputTokens": 567, "totalTokens": 1801,
              "costUsd": 0.42 } }              // costUsd only when the provider reports it
@@ -714,6 +722,7 @@ sides.
 | `append.server.json`, `append.streaming.server.json`, `append.finalize.server.json`, `delta.server.json` | transcript |
 | `append.tool.server.json`, `append.tool-result.server.json`, `snapshot.tools.server.json` | a tool call and its result, live and in a snapshot |
 | `history.client.json`, `history.server.json` | message paging |
+| `agent.server.json` | live agent configuration |
 | `status.server.json`, `submission.server.json`, `submission.connection.server.json` | run state and the connection-scoped duplicate reply |
 | `bots.server.json`, `error.server.json`, `error-rejected.server.json`, `version-mismatch.server.json` | catalog, runtime failure, definite rejection, exempt handshake failure |
 | `send.client.json`, `abort.client.json`, `recover.client.json`, `resync.client.json` | commands |

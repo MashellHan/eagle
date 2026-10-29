@@ -101,6 +101,7 @@ provisional: { id, attempt } | null   // id = "p_a<attempt>"
 | `message_end` with `entry.kind === "pi.tool-result"` | Map the durable result to `role:"tool"` with one `toolResult` block (`callId`, `name`, joined text, `isError`, `durationMs`); it never ends or replaces the streaming attempt | `append` |
 | `submission` | Map the record: status, `entryId`, `answerEntryId`, `reason` | `submission` |
 | `inbox_update` | Map queue items | `status` |
+| `agent_changed` | Update and publish only the complete agent configuration; preserve the attempt, transcript and submission ledger | `agent` |
 | `run_start` / `run_end` | `status{running, streaming: provisionalId \| null}`; `run_end` closes any open provisional | `status` |
 | `tool_execution_*` | The call itself rides in the assistant attempt (`toolcall` deltas); the result arrives as the `pi.tool-result` entry above. Execution telemetry is not projected | `delta{kind:"toolcall"}` / `append{role:"tool"}` |
 | `auto_retry_start` / `auto_retry_end` | Log only; the provisional stays open because the failed entry arrives after `auto_retry_start` | — |

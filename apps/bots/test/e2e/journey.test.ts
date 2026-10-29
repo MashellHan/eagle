@@ -3,7 +3,12 @@
 // The journey is the product's acceptance test.
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Message } from "../../src/core/domain.ts";
+import type {
+  AgentView,
+  ConversationSnapshot,
+  Message,
+  TriggerSummary,
+} from "../../src/core/domain.ts";
 import { text } from "../support/pi.ts";
 import { closeCode, frameQueue, hello, send, startStack } from "../support/server.ts";
 
@@ -41,6 +46,75 @@ const turn = async (
     }
   }
 };
+
+test("changing a thinking level updates the current subscription without reopening the bot", async () => {
+  const triggers: TriggerSummary[] = [
+    {
+      id: "t_9f2a1c3d04",
+      kind: "webhook",
+      name: "Updates",
+      enabled: true,
+      counters: { fired: 0, dropped: 0, refused: 0 },
+    },
+  ];
+  const stack = await startStack({ real: true, triggersOf: triggers });
+  try {
+    assert.ok(stack.faux !== undefined);
+    stack.faux.setResponses([text("Keep this answer.")]);
+    const botId = await stack.createBot("Thinking selection");
+    const socket = stack.connect();
+    const frames = frameQueue(socket);
+    await send(socket, hello);
+    await frames.next();
+    await send(socket, { type: "subscribe", botId, trace: tr("agent_sub") });
+    const baseline = await nextOfType(frames, "snapshot");
+    assert.deepEqual((baseline.value as ConversationSnapshot).triggers, triggers);
+    await turn(frames, socket, "r_agent_turn", "Remember this answer.", "agent_turn");
+    const usage = (await nextOfType(frames, "usage")).usage;
+    let revision = baseline.rev as number;
+
+    for (const thinkingLevel of ["high", "low"]) {
+      const saved = await fetch(`http://127.0.0.1:${stack.port}/v1/bots/${botId}`, {
+        method: "PATCH",
+        headers: {
+          authorization: `Bearer ${stack.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ thinkingLevel }),
+      });
+      assert.equal(saved.status, 200);
+      let frame: Frame;
+      for (;;) {
+        frame = await frames.next();
+        assert.notEqual(frame.type, "snapshot", "configuration must not reset the client window");
+        if (frame.type === "agent") break;
+      }
+      assert.equal((frame.agent as AgentView).thinkingLevel, thinkingLevel);
+      assert.ok((frame.rev as number) > revision);
+      revision = frame.rev as number;
+      assert.equal(stack.opens(), 1, "the existing conversation applies the choice in place");
+      assert.equal((await stack.directory.load())[0]?.thinkingLevel, thinkingLevel);
+    }
+
+    const again = stack.connect();
+    const renewed = frameQueue(again);
+    await send(again, hello);
+    await renewed.next();
+    await send(again, { type: "subscribe", botId, trace: tr("agent_again") });
+    const snapshot = (await nextOfType(renewed, "snapshot")).value as ConversationSnapshot;
+    assert.equal(snapshot.agent?.thinkingLevel, "low");
+    assert.equal(snapshot.messages.length, 2);
+    assert.deepEqual(snapshot.messages[1]?.blocks, [{ type: "text", text: "Keep this answer." }]);
+    assert.deepEqual(snapshot.usage, usage);
+    assert.deepEqual(snapshot.pending, []);
+    assert.equal(snapshot.running, false);
+    assert.deepEqual(snapshot.triggers, triggers);
+    again.close();
+    socket.close();
+  } finally {
+    await stack.close();
+  }
+});
 
 test("create, chat three turns, reconnect and delete", async () => {
   const stack = await startStack({ real: true });
