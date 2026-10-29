@@ -1,0 +1,90 @@
+{
+  "id": "complex-webhook-triage",
+  "title": "复杂②：Webhook 告警触发，读日志、写复盘、回报",
+  "kind": "complex",
+  "notes": "A triggered run that does real work: the delivery arrives with no client involved, the bot reads a log file, writes a report and answers. Both the origin and the written file are checked.",
+  "toolGroups": ["core", "coding"],
+  "triggers": [
+    {
+      "kind": "webhook",
+      "name": "deploy alert",
+      "prompt": "收到一条部署告警：读 logs/deploy.log，把根因与建议写进 triage.md，并回一句结论"
+    }
+  ],
+  "workspace": {
+    "logs/deploy.log": "10:02 build ok\n10:04 migrate start\n10:05 ERROR migrate failed: relation \"users\" already exists\n10:06 rollback start\n10:07 rollback done\n"
+  },
+  "model": {
+    "script": [
+      {
+        "toolCall": {
+          "name": "read",
+          "args": {
+            "path": "logs/deploy.log"
+          }
+        }
+      },
+      {
+        "toolCall": {
+          "name": "write",
+          "args": {
+            "path": "triage.md",
+            "content": "# 复盘\n\n- 根因：迁移重复创建 users 表，relation already exists\n- 处置：10:06 回滚，10:07 完成\n- 建议：迁移前检查 schema 版本，失败即停\n"
+          }
+        }
+      },
+      {
+        "text": "根因是迁移重复创建 users 表；已回滚，复盘写在 triage.md。"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "kind": "webhook",
+      "trigger": "deploy alert",
+      "body": "alert: deploy 2f1a migrate failed"
+    },
+    {
+      "kind": "waitFor",
+      "role": "assistant",
+      "contains": "复盘写在 triage.md",
+      "count": 1,
+      "timeoutMs": 60000
+    }
+  ],
+  "expect": {
+    "messages": [
+      {
+        "role": "user",
+        "origin": "webhook",
+        "contains": "deploy 2f1a"
+      },
+      {
+        "role": "tool",
+        "contains": "relation \"users\" already exists"
+      },
+      {
+        "role": "tool",
+        "contains": "triage.md"
+      },
+      {
+        "role": "assistant",
+        "contains": "复盘写在 triage.md"
+      }
+    ],
+    "atLeast": [
+      {
+        "origin": "webhook",
+        "count": 1
+      }
+    ],
+    "toolsCalled": ["read", "write"],
+    "files": {
+      "triage.md": "relation already exists"
+    },
+    "noErrors": true,
+    "modelRequests": {
+      "max": 4
+    }
+  }
+}

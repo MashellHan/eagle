@@ -119,7 +119,9 @@ product that lives in this repository:
 - Strict TDD per `docs/bots/TESTING.md`: demonstrate the failing test, then the
   smallest implementation, then `cd apps/bots && npm run check` (the client gate,
   `cd apps/bots-macos && swift test`, starts in stage 5). Never skip or focus a test, never widen a limit
-  or silence a log to pass.
+  or silence a log to pass. End-to-end acceptance lives in `tests/eval`
+  (`npm --prefix apps/bots run eval`): real daemon, scripted model, real tools. It is
+  not part of `check`; run it after changing a trigger, a tool or the invocation path.
 - Layer attribution is part of correctness: every crossing logs its layer with
   the shared `trace`, the innermost failure is the only error logged, and the
   diagnosis recipes in `docs/bots/OBSERVABILITY.md` are asserted by tests.

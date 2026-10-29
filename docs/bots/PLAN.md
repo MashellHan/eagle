@@ -545,7 +545,16 @@ Shipped so far, each with its own failing test first:
 
 Both trigger kinds now work end to end: a Bot creates a trigger with its own tools, a
 schedule or a webhook delivery becomes one batched turn through the invocation port, and
-a person sees and switches it in the window. Not yet implemented from the stage-2
+a person sees and switches it in the window.
+
+9. Acceptance cases in `tests/eval` (format and cases in
+   [its README](../../tests/eval/README.md)): a real daemon, a scripted Responses model,
+   real tools, and checks on the transcript plus the files on disk. Eight cases cover
+   chat, a coding loop, the two trigger kinds, an unconfigured search, and three
+   different complex shapes. `npm --prefix apps/bots run eval` runs them; they are not
+   part of `check`, because a case boots a process and writes files. The cron case found
+   a real defect: a timer tick enqueued a schedule fire but never woke the pump, so only
+   an unrelated idle edge could deliver it (`TriggerProducers.onTick` now drains). Not yet implemented from the stage-2
 contract: the per-token bucket and `maxFiresPerHour` (the queue cap and the admission
 budget are today's backpressure). Stage 3 (`peers`) is untouched.
 

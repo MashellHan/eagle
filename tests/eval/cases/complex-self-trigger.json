@@ -1,0 +1,74 @@
+{
+  "id": "complex-self-trigger",
+  "title": "复杂③：模型用工具给自己建一个 Webhook 触发器，再被它触发",
+  "kind": "complex",
+  "notes": "The lifecycle a person never performs: the model creates its own trigger through trigger_create, the runner reads the minted endpoint, and a delivery then reaches the bot.",
+  "toolGroups": ["core", "coding", "trigger"],
+  "model": {
+    "script": [
+      {
+        "toolCall": {
+          "name": "trigger_create",
+          "args": {
+            "kind": "webhook",
+            "name": "ops hook",
+            "prompt": "运维投递；用一句话确认收到"
+          }
+        }
+      },
+      {
+        "text": "已创建 ops hook 触发器，等待投递。"
+      },
+      {
+        "text": "收到投递：磁盘 92% 已记录。"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "kind": "chat",
+      "text": "给自己建一个 ops hook 触发器，建好只回一句确认"
+    },
+    {
+      "kind": "waitFor",
+      "role": "assistant",
+      "contains": "已创建",
+      "count": 1,
+      "timeoutMs": 30000
+    },
+    {
+      "kind": "webhook",
+      "trigger": "ops hook",
+      "body": "disk usage 92%"
+    },
+    {
+      "kind": "waitFor",
+      "role": "assistant",
+      "contains": "收到投递",
+      "count": 1,
+      "timeoutMs": 30000
+    }
+  ],
+  "expect": {
+    "messages": [
+      {
+        "role": "assistant",
+        "contains": "已创建 ops hook"
+      },
+      {
+        "role": "user",
+        "origin": "webhook",
+        "contains": "disk usage 92%"
+      },
+      {
+        "role": "assistant",
+        "contains": "收到投递"
+      }
+    ],
+    "toolsCalled": ["trigger_create"],
+    "noErrors": true,
+    "modelRequests": {
+      "max": 4
+    }
+  }
+}

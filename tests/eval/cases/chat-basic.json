@@ -1,0 +1,20 @@
+{
+  "id": "chat-basic",
+  "title": "一句闲聊得到一句回答",
+  "kind": "chat",
+  "notes": "The smallest closed loop: no tool, one user message, one answer.",
+  "toolGroups": ["core", "coding"],
+  "model": {
+    "script": [{ "text": "在的，需要我做什么？" }]
+  },
+  "steps": [{ "kind": "chat", "text": "你在吗" }],
+  "expect": {
+    "messages": [
+      { "role": "user", "origin": "human", "contains": "你在吗" },
+      { "role": "assistant", "contains": "需要我做什么" }
+    ],
+    "toolsCalled": [],
+    "noErrors": true,
+    "modelRequests": { "max": 2 }
+  }
+}
