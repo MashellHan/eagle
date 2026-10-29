@@ -152,7 +152,7 @@ request stays pending until macOS authorizes it; registration alone is not readi
 The App records a nonsecret fingerprint of the signed App/helper identities, helper
 executable and launch plist after successful registration. An updated or previously
 untracked enabled installation awaits its own SMAppService unregister callback before
-registering the current bundle, so cached launch constraints cannot strand a new helper.
+registering the current bundle. Registration success still does not establish OS launch admission.
 Unchanged installations keep the running helper. Approval-required state is not reset,
 failed registration does not advance the fingerprint, and device identity, journal and
 pending pairing records are untouched. The device switch remains accessible during a
@@ -160,6 +160,17 @@ status read; stopping still waits for registration and prevents automatic restar
 A successful registration that still needs system approval keeps a separate pending
 fingerprint. Approval of that same bundle promotes the record without stopping or
 registering its helper again; successful stop clears both installation records.
+
+The local candidate is delivered at `~/Applications/Eagle Device Candidate.app`.
+`apps/macos/.build/device-candidate/Eagle Device Candidate.app` remains the build
+artifact. Install the signed bundle without re-signing, then open the installed copy;
+the candidate bundle/profile and data remain separate from the daily App. This local
+ad-hoc candidate is not a distribution-signed or notarized release.
+An explicit nonempty `EAGLE_DEVICE_SERVICE_URL` at candidate build time selects a
+validated, canonical HTTPS origin; omitted or empty keeps `http://127.0.0.1:17053`.
+The candidate profile, bundle ID, Mach service, credential directory and device data
+paths stay the same. Release builds still require HTTPS and an explicit signing
+identity. This is a build input, not a user setting or deployment action.
 
 Unix socket is JSONL request/response, one response per request:
 `{requestId,method,params?}` → `{requestId,result}` or `{requestId,error}`.

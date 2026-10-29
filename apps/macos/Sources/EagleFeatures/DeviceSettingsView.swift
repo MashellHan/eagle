@@ -67,7 +67,7 @@ public struct DeviceSettingsView: View {
   private var serviceCard: some View {
     SettingsCard {
       VStack(alignment: .leading, spacing: 12) {
-        SettingsRow("设备服务", detail: "所有 Bot 共用这台 Mac 的设备连接") {
+        SettingsRow("设备服务") {
           if model.isStarting { SpinnerArc(size: 12) }
           Toggle(
             "启用设备服务",

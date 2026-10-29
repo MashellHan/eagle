@@ -13,7 +13,7 @@ public struct DeviceInspectorView: View {
 
   public var body: some View {
     VStack(alignment: .leading, spacing: Theme.Metric.panelSectionBodyGap) {
-      PanelSectionHeader(symbolName: "desktopcomputer", title: "共享设备")
+      PanelSectionHeader(symbolName: "desktopcomputer", title: "可用电脑")
       if let directory = model.directory, !directory.devices.isEmpty {
         ForEach(directory.devices) { device in
           DeviceSummaryView(
@@ -25,9 +25,6 @@ public struct DeviceInspectorView: View {
           .font(Theme.TypeScale.note)
           .foregroundStyle(Theme.Palette.textMuted)
       }
-      Text("所有 Bot 共用同一设备群")
-        .font(Theme.TypeScale.pill)
-        .foregroundStyle(Theme.Palette.textMuted)
       TextAction("管理设备", action: onManage)
         .frame(maxWidth: .infinity)
     }

@@ -579,3 +579,23 @@ weaker signature requirement, identity deletion or repeated helper kills. Future
 candidate updates must account for this registration boundary as well as file signing.
 Logs remain under `.local/device-evidence/candidate-update-system.log`; this is an
 observed local ad-hoc update failure, not evidence of a distribution-signed update.
+
+The later `d32ea1a` candidate was fully assembled and signed in a fresh staging
+directory. Its `.build` copy still failed after a successful SM submission:
+amfid reported -423 and launchd rejected the current helper's launch constraint.
+The running App and on-disk App CDHashes matched; the live job's expected hash
+could not be extracted from the public dump. A forced registration of only this
+bundle with LaunchServices returned zero but did not recover the existing job.
+Do not reduce these observations to an old-inode diagnosis or infer that every
+ad-hoc helper is unsupported.
+
+Root then stopped the service, quit the App and copied the signed bundle unchanged
+to `~/Applications/Eagle Device Candidate.app`. App/helper/Node hashes were identical,
+inodes were new, deep/strict verification passed and no re-signing occurred. Normal
+GUI registration there started the helper and created the file-vault identity;
+the page showed local readiness and the isolated API connection. A real Bot wrote
+and read a marker, with independent disk verification. This does not distinguish
+the new path from the fresh inodes. The normal installed copy is the local delivery
+path; no global BTM/LaunchServices reset, weaker code requirement or data deletion
+was used. Evidence is in `gui/application-install.json`, `gui/installed-startup.json`
+and `gui/local-command.json` under `.local/device-evidence/`.

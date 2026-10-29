@@ -102,9 +102,13 @@ Run `scripts/verify-daily.ts` with the same origin/Access settings as `verify-li
 ## Shared device service candidate (not deployed)
 
 The independent `/api/devices/v1` contract is in [DEVICES.md](DEVICES.md).
-Integration must add `DEVICE_REGISTRY` → `DeviceRegistry` and
-`DEVICE_EXECUTION` → `DeviceExecution` Durable Object bindings and a new SQLite
-class migration. Registry uses `getByName("registry")`; execution uses device ID.
+The integrated Worker configuration already includes `DEVICE_REGISTRY` → `DeviceRegistry`
+and `DEVICE_EXECUTION` → `DeviceExecution` Durable Object bindings, with both classes
+in SQLite migration `v3`. This candidate has not been deployed. Registry uses
+`getByName("registry")`; execution uses device ID. `/api/devices/v1` routes before the
+ingest-host restriction. The existing `https://eagle-ingest.hexly.ai` is the intended
+shared origin; its device API/WS availability still requires an authorized deployment
+and live verification, not a new user-facing configuration form.
 Do not route these identities through `DIRECTORY`, `MACHINES` or owner tokens.
 Device/group/pairing data belongs only to Registry SQLite, never D1. No production
 resource or npm release has been created by this implementation slice.

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Lives in the independent login helper, which owns the private Node pipes and Keychain identity.
+/// Lives in the independent login helper, which owns the private Node pipes and file-vault identity.
 @MainActor
 public final class DeviceServiceHost {
   public private(set) var localReady = false

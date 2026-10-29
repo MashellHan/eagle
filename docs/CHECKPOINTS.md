@@ -1,5 +1,17 @@
 # 用户视角检查点
 
+## 2026-10-29 15:08 +08 — 本机安装与真实执行闭环
+
+- Root 将 `d32ea1a` 原签名字节安装到 `~/Applications/Eagle Device Candidate.app`，
+  helper 正常运行、私有文件身份自动创建；不把路径与新 inode 的影响强行归为单一根因。
+- 真实 GUI 完成 remote_status、bash 写标记、read 读回，磁盘内容独立核对。同包关闭
+  重开后 App/Bots 确实退出再启动，helper PID 93874 不变、身份摘要/0700/0600 不变，
+  历史恢复且本机可用，无 Keychain 提示。证据 `gui/local-command.json`、`installed-reopen.json`。
+- 当前已连接的是隔离本地 API 127.0.0.1:17053；旧 journal、两个 Bot/历史与 Raven 保留。
+  采集、D1、公网、第二台 Mac 和分发签名仍无新增验收。
+- 本机阶段收束。当前安装包保留体验；源码仅清理多余共享 Bot 文案并同步凭据/部署现状。
+  下一最小片为 candidate 构建期 HTTPS origin，未传仍本地，不加配置 UI、不部署。
+
 ## 2026-10-29 14:55 +08 — 标准装包后仍阻断于系统启动约束
 
 - `d32ea1a` 已从新 staging 完整装配并签名；最终路径 deep/strict 通过，内置 Node

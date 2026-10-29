@@ -35,7 +35,7 @@ worktree；旧 `main@c34be59` 只作按需复用来源。当前尚未完成设�
 | 阶段 | 状态 | 范围和退出证据 |
 | --- | --- | --- |
 | D0 — 产品与契约 | in progress | 多成员群、方向无关的新增设备、单 Registry 配对事务、agent 选机和按设备串行已定；所属契约及审批位置随实现固定 |
-| D1 — 本机安装即用 | planned | 签名运行时、自动设备身份与环境初始化、本机默认全部允许、离线可用、系统授权待办；干净 Mac 不用 Node/部署表单 |
+| D1 — 本机安装即用 | in progress | 当前 Mac 常规安装、文件身份、真实 Bot 写读及同包重开已通过；干净 Mac 和分发签名尚未验证，不要求用户 Node/部署表单 |
 | D2 — 配对与群认证 | planned | 自动注册、设备持有证明、Registry 单事务消费码/入群/记录结果、成员隔离与撤销；A/C 群加入 B/D、回包丢失重试、其他群不可访问 |
 | D3 — 设备设置与 agent 联动 | planned | App 内 menu → 真实设置 → 设备；配对/状态/移除；共享设备 port 与系统引导、agent 明确目标调用；既有/新 Bot 顺序操作群内设备，目标证据可核对，旧逐 Bot 授权随替换删除 |
 | D4 — 设备权限与恢复 | planned | All approve / Always ask / 暂停，设备端真实执行策略、审批绑定与过期、journal 去重及原 ID 恢复；不存在只改 UI 的权限模式 |
@@ -121,6 +121,15 @@ ECONNREFUSED，未发生本地 Registry 配对。当前修复在包指纹变化�
 scope 隔离新身份、原 ID 不挪目标、native 阻断仍覆盖旧行，真实进程/运行时 27 项通过。
 当前设备保持停用，正从新目录完整装配并签名独立候选；下一证据仅为 Root GUI 启用后
 的本机真实执行。物理多 Mac 与发行验证仍待后续授权和实际环境，不作为当前本机交付前置。
+
+本机交付改用 `~/Applications/Eagle Device Candidate.app`，保留 `.build` 装配产物。
+整包原字节复制、没有重新签名；实际 GUI 启用后 helper running、文件身份自动创建、
+本机可用且连接隔离本地 API。真实 Bot 已完成 `remote_status → bash 写文件 → read`
+读回，Root 独立核对磁盘内容、两个 Bot 与私有配置保留。同包关闭/重开已通过：
+App/Bots 实际退出，helper PID 不变，身份摘要/0700/0600 保留、历史恢复、本机可用，
+没有 Keychain 提示。当前“云端已连接”仅指本机 127.0.0.1:17053；公网和第二台 Mac 未验。
+下一个最小片仅考虑 candidate 的构建期 HTTPS service origin，继续保留候选身份与数据
+隔离，不加用户配置表单、Bot 分享链接、Bot 互联或共享开关，不引入新的迁移框架。
 
 ## Where the code lives
 
