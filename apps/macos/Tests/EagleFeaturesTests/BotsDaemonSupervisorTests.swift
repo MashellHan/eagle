@@ -1,3 +1,4 @@
+import EagleDevices
 import Foundation
 import Testing
 
@@ -17,12 +18,12 @@ struct BotsDaemonSupervisorTests {
     return root
   }
 
-  @Test("the daemon is found from a built app's ancestry")
+  @Test("the development daemon is found from an unpackaged executable's ancestry")
   func resolvesFromAncestry() throws {
     let root = try tree()
     defer { try? FileManager.default.removeItem(at: root) }
     let executable = root.appendingPathComponent(
-      "apps/macos/.build/Eagle.app/Contents/MacOS/EagleApp"
+      "apps/macos/.build/debug/EagleApp"
     )
     let resolved = BotsDaemonSupervisor.resolveDaemonDirectory(
       explicit: nil,
@@ -50,10 +51,105 @@ struct BotsDaemonSupervisorTests {
   }
 
   @Test("an explicit node path is used or refused, never silently replaced")
-  func nodeResolution() {
+  func nodeResolution() throws {
     #expect(BotsDaemonSupervisor.resolveNode(environment: ["BOTS_NODE": "/bin/sh"]) == "/bin/sh")
     #expect(BotsDaemonSupervisor.resolveNode(environment: ["BOTS_NODE": "/nope"]) == nil)
-    // Without an explicit path the machine's node is found (Homebrew or /usr/bin).
-    #expect(BotsDaemonSupervisor.resolveNode(environment: ["PATH": "/bin"]) != nil)
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createSymbolicLink(
+      at: root.appendingPathComponent("node"), withDestinationURL: URL(fileURLWithPath: "/bin/sh"))
+    #expect(BotsDaemonSupervisor.resolveNode(environment: ["PATH": root.path]) != nil)
+  }
+
+  @Test("an installed App resolves Bots from its own runtime outside the repository")
+  func bundledRuntime() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let app = root.appendingPathComponent("Eagle Device Candidate.app")
+    let bots = app.appendingPathComponent("Contents/Resources/DeviceRuntime/bots")
+    try FileManager.default.createDirectory(
+      at: bots.appendingPathComponent("scripts"), withIntermediateDirectories: true)
+    try Data().write(to: bots.appendingPathComponent("scripts/serve.ts"))
+    #expect(
+      BotsDaemonSupervisor.resolveDaemonDirectory(
+        explicit: nil, executable: app.appendingPathComponent("Contents/MacOS/EagleApp"))?.path
+        == bots.path)
+  }
+
+  @Test("the App launches real Bots with bundled Node and its fixed offline device port")
+  func launchesBundledDaemon() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let app = root.appendingPathComponent("Eagle Device Candidate.app")
+    let runtime = app.appendingPathComponent("Contents/Resources/DeviceRuntime")
+    try FileManager.default.createDirectory(at: runtime, withIntermediateDirectories: true)
+    let config = Data(
+      #"{"version":1,"profile":"device-candidate","baseUrl":"http://127.0.0.1:1","machServiceName":"ai.hexly.eagle.devices.candidate","launchAgentPlist":"ai.hexly.eagle.devices.candidate.plist"}"#
+        .utf8)
+    try config.write(
+      to: runtime.deletingLastPathComponent().appendingPathComponent("DeviceHost.json"))
+    let configuration = try DeviceHostConfiguration.load(bundle: app)
+    let command = Process()
+    command.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    command.arguments = [
+      "node", "--input-type=module", "-e",
+      "import{createServer}from'node:net';const s=createServer();s.listen(0,'127.0.0.1',()=>{console.log(JSON.stringify({node:process.execPath,port:s.address().port}));s.close();});",
+    ]
+    let pipe = Pipe()
+    command.standardOutput = pipe
+    try command.run()
+    let info = try JSONDecoder().decode(
+      DeviceJSON.self, from: pipe.fileHandleForReading.readDataToEndOfFile())
+    command.waitUntilExit()
+    let node = try #require(info["node"]?.string)
+    let port = try #require(info["port"]?.number)
+    try FileManager.default.createSymbolicLink(
+      at: runtime.appendingPathComponent("node"), withDestinationURL: URL(fileURLWithPath: node))
+    let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+      .appendingPathComponent("../../../../").standardizedFileURL
+    try FileManager.default.createSymbolicLink(
+      at: runtime.appendingPathComponent("bots"),
+      withDestinationURL: repository.appendingPathComponent("apps/bots"))
+    let defaultsName = "eagle-bundled-bots-" + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: defaultsName))
+    defer {
+      defaults.removePersistentDomain(forName: defaultsName)
+      try? FileManager.default.removeItem(at: root)
+    }
+    let normal = BotsSettings(environment: [:], bundle: app)
+    #expect(normal.port == "43118")
+    #expect(normal.rootPath.hasSuffix("eagle-bots-device-candidate"))
+    #expect(normal.clientDirectory.path.hasPrefix(normal.rootPath))
+    let settings = BotsSettings(
+      environment: [
+        "BOTS_ROOT": root.appendingPathComponent("data").path, "BOTS_PORT": String(Int(port)),
+      ], bundle: app)
+    let daemon = BotsDaemonSupervisor(
+      settings: settings, bundle: app,
+      environment: [
+        "PATH": "", "NODE_OPTIONS": "--invalid-test-option", "BOTS_NODE": "/missing",
+        "BOTS_DAEMON_DIR": "/missing", "BOTS_DEVICE_SOCKET": "/wrong",
+      ], defaults: defaults)
+    await daemon.startIfNeeded()
+    if case .running = daemon.status {
+    } else {
+      Issue.record("bundled daemon did not start: \(daemon.status)")
+    }
+    do {
+      let (data, response) = try await URLSession.shared.data(
+        from: settings.baseURL.appendingPathComponent("v1/health"))
+      #expect((response as? HTTPURLResponse)?.statusCode == 200)
+      let health = try JSONDecoder().decode(DeviceJSON.self, from: data)
+      #expect(health["deviceAccess"]?["version"]?.number == 1)
+      #expect(!String(decoding: data, as: UTF8.self).contains(configuration.socketPath))
+      #expect(
+        FileManager.default.fileExists(
+          atPath: settings.rootURL.appendingPathComponent("token").path))
+    } catch {
+      await daemon.stop()
+      throw error
+    }
+    await daemon.stop()
+    #expect(daemon.status == .stopped)
   }
 }

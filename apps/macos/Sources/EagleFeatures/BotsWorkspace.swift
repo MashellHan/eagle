@@ -3,6 +3,7 @@ import BotsFeatures
 import BotsTransport
 import Combine
 import EagleDesign
+import EagleDevices
 import Foundation
 import SwiftUI
 
@@ -12,13 +13,27 @@ import SwiftUI
 public struct BotsSettings {
   public let rootPath: String
   public let port: String
+  public let isIsolated: Bool
 
-  public init(environment: [String: String] = ProcessInfo.processInfo.environment) {
-    rootPath = environment["BOTS_ROOT"] ?? TokenStore.defaultRoot.path
-    port = environment["BOTS_PORT"] ?? "43117"
+  public init(
+    environment: [String: String] = ProcessInfo.processInfo.environment,
+    bundle: URL = Bundle.main.bundleURL
+  ) {
+    let candidate =
+      (try? DeviceHostConfiguration.load(bundle: bundle))?.profile == "device-candidate"
+    isIsolated = candidate || environment["BOTS_ROOT"] != nil
+    rootPath =
+      environment["BOTS_ROOT"]
+      ?? (candidate
+        ? TokenStore.defaultRoot.path + "-device-candidate" : TokenStore.defaultRoot.path)
+    port = environment["BOTS_PORT"] ?? (candidate ? "43118" : "43117")
   }
 
   public var rootURL: URL { URL(fileURLWithPath: rootPath, isDirectory: true) }
+  public var clientDirectory: URL {
+    isIsolated
+      ? rootURL.appendingPathComponent("client", isDirectory: true) : AppPaths.supportDirectory
+  }
 
   public var baseURL: URL {
     URL(string: "http://127.0.0.1:\(Int(port) ?? 43117)") ?? URL(string: "http://127.0.0.1:43117")!
@@ -128,7 +143,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
     // empty catalog.
     _ = try await catalog.load()
     let connection = BotsConnection(baseURL: settings.baseURL, token: token)
-    let outbox = OutboxStore()
+    let outbox = OutboxStore(directory: settings.clientDirectory)
     return AppViewModel(
       catalog: catalog,
       conversation: ConversationViewModel(conversation: connection, outbox: outbox),

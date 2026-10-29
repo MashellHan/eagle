@@ -81,6 +81,11 @@ XPC 与独立 EagleDeviceHelper 可执行目标已加入：XPC 在每条消息�
 合并且等待旧 Node 实际退出才允许替换。真实延迟退出进程先复现多个新子进程及
 初始化失败，修复后 6 项宿主测试通过；设备页 model 已独立集成，尚在增量审查。
 
+App 监督器已从 bundle 解析 Node/Bots 并固定注入 v1 设备 socket；本机未就绪或停用
+也不删除接线。接管既有 daemon 前核对 health 的设备配置摘要。候选使用独立数据、
+端口、provider 配置与 outbox，真实 Node/Bots 子进程经 Swift 监督器启动的 5 项局部
+测试通过（测试用 runtime 链接，不是发行装配）；主窗口和实际候选包仍待贯通。
+
 ## Where the code lives
 
 ### Exclusive search providers (2026-10-28)
