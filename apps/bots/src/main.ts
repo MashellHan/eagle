@@ -385,6 +385,9 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       triggerTraces += 1;
       return `tr_trigger_${Date.now().toString(36)}_${triggerTraces.toString(36)}`;
     },
+    // A tick moves the cursor, which lives in the queue rather than the store: without
+    // this the sidebar's "next" would stay empty until the trigger first fired.
+    onTick: ({ botId }) => refreshTriggers(botId),
   });
   producers.start();
   // A webhook trigger that existed before this process must be deliverable immediately:
