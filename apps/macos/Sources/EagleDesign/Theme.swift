@@ -64,13 +64,10 @@ public enum Theme {
     public static let headerBandHeight: CGFloat = participantHeight
     /// One content inset above every column's header: the card and both side columns start here.
     public static let headerTopInset: CGFloat = contentInset
-    /// The logo matches the list avatars and is bounded by the header.
-    public static let logoSize: CGFloat = min(avatarRow, headerControlHeight)
     /// Content that shares the window's top corner with the traffic lights starts past them.
     public static let trafficLightsClearance: CGFloat = trafficLightsEnd + 8
-    /// The brand's own row, one gap under the toolbar; its mark sits on the list's content line.
+    /// The wordmark's own row, one gap under the toolbar, on the list's content line.
     public static let brandRowGap: CGFloat = 12
-    public static let brandMarkGap: CGFloat = 6
     public static let headerControlHeight: CGFloat = 34
     public static let participantHeight: CGFloat = 40
     public static let participantInset: CGFloat = 12

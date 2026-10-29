@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Left column on the reference grid: traffic lights and the toolbar in the window's top corner,
-/// the brand on its own row under them, then the list, 58 pt rows, unread pill at 28 pt and a
-/// 62 pt user card. The brand's mark sits on the list's content line.
+/// the wordmark on its own row under them, then the list, 58 pt rows, unread pill at 28 pt and a
+/// 62 pt user card. The wordmark sits on the list's content line.
 public struct SidebarPanel: View {
   private let sections: [SidebarSection]
   private let selection: String?
@@ -99,10 +99,6 @@ public struct SidebarPanel: View {
     self.onMoveGroup = onMoveGroup
   }
 
-  private static var version: String {
-    (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev"
-  }
-
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       header
@@ -114,8 +110,8 @@ public struct SidebarPanel: View {
     .background(Theme.Palette.canvas)
   }
 
-  /// The toolbar shares the window's top corner with the traffic lights; the brand takes the row
-  /// under it, on the list's content line, so the mark lines up with every bot's avatar.
+  /// The toolbar shares the window's top corner with the traffic lights; the wordmark takes the
+  /// row under it, on the list's content line.
   private var header: some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(spacing: 6) {
@@ -126,7 +122,10 @@ public struct SidebarPanel: View {
       .padding(.horizontal, Theme.Metric.contentInset)
       .padding(.top, Theme.Metric.headerTopInset)
 
-      BrandHeader(version: Self.version)
+      Text("eagle")
+        .font(Theme.TypeScale.brand)
+        .tracking(-0.4)
+        .foregroundStyle(Theme.Palette.textPrimary)
         .padding(.leading, Theme.Metric.contentInset)
         .padding(.trailing, Theme.Metric.contentInset)
         .padding(.top, Theme.Metric.brandRowGap)
