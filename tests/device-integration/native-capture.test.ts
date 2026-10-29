@@ -12,14 +12,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
-import { NativeDeviceLeases } from "../packages/agent/device-native-leases.ts";
-import { deviceOutcome } from "../packages/agent/device-output.ts";
-import { DeviceRuntime } from "../packages/agent/device-runtime.ts";
+import { NativeDeviceLeases } from "../../packages/agent/device-native-leases.ts";
+import { deviceOutcome } from "../../packages/agent/device-output.ts";
+import { DeviceRuntime } from "../../packages/agent/device-runtime.ts";
 import {
   canonicalDeviceJSON,
   deviceDigest,
   type OperationRequest,
-} from "../packages/contracts/src/devices.ts";
+} from "../../packages/contracts/src/devices.ts";
 
 // Bots stays independent: its capture implementation and SDK load only in a
 // separate Node process. Override the source for immutable red/green snapshots.
