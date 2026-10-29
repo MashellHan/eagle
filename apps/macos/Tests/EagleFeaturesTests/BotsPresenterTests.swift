@@ -686,6 +686,11 @@ extension Array where Element == InspectorUsageRow {
 struct BotsPresenterPeerTests {
   private let presenter = BotsPresenter()
 
+  /// Each message lands one step after the last, so an exchange's place in the chat is decided by
+  /// time and not by the order this test happened to build.
+  private final class Clock { var value = 0 }
+  private let clock = Clock()
+
   private func message(
     _ id: String,
     role: MessageRole,
@@ -693,11 +698,12 @@ struct BotsPresenterPeerTests {
     origin: MessageOrigin? = nil,
     blocks: [ContentBlock]? = nil
   ) -> Message {
-    Message(
+    clock.value += 1
+    return Message(
       id: id,
       role: role,
       state: .complete,
-      createdAt: "2026-10-29T12:00:00.000Z",
+      createdAt: String(format: "2026-10-29T12:%02d:00.000Z", clock.value),
       blocks: blocks ?? [.text(text)],
       origin: origin
     )
@@ -720,7 +726,7 @@ struct BotsPresenterPeerTests {
       ],
       count: 4,
       status: "open",
-      startedAt: "2026-10-29T12:00:00.000Z"
+      startedAt: "2026-10-29T12:02:30.000Z"
     )
   }
 
@@ -741,8 +747,8 @@ struct BotsPresenterPeerTests {
       bots: []
     )
 
-    // One row for the exchange, placed where the first peer message was; the person's own
-    // turns and the answers given to them stay.
+    // One row for the exchange, placed where it started; the person's own turns and the
+    // answers given to them stay.
     let rows = entries.map(\.id)
     #expect(rows == ["e_1", "e_2", "x_0123456789ab", "e_5", "e_6"])
     guard case .peerExchange(_, let exchange) = entries[2] else {
@@ -771,7 +777,7 @@ struct BotsPresenterPeerTests {
       exchanges: [summary],
       bots: []
     )
-    #expect(entries.map(\.id) == ["e_1", "e_4"])
+    #expect(entries.map(\.id) == ["e_1", "x_0123456789ab", "e_4"])
   }
 
   @Test("the answer a peer message caused stays inside the exchange too")
@@ -805,6 +811,27 @@ struct BotsPresenterPeerTests {
     #expect(entries.isEmpty, "no row with an invented count, and no leaked answer")
   }
 
+  @Test("the sender's own chat carries the same entry, without any peer message in it")
+  func senderSide() {
+    // This bot only sent: no peer message ever reached this transcript.
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "去和 B 讨论"),
+        message("e_2", role: .assistant, text: "已发给 B"),
+        message("e_3", role: .assistant, text: "结论"),
+      ]),
+      exchanges: [summary],
+      bots: []
+    )
+    #expect(entries.map(\.id) == ["e_1", "e_2", "x_0123456789ab", "e_3"])
+    guard case .peerExchange(_, let exchange) = entries[2] else {
+      Issue.record("the sender's chat has the folded row")
+      return
+    }
+    #expect(exchange.count == 4)
+    #expect(exchange.participants.map(\.title) == ["A", "B"])
+  }
+
   @Test("a peer message recorded before exchanges had ids leaves no row behind")
   func legacyPeerMessage() {
     let legacy = MessageOrigin(kind: .peer, label: "A")
@@ -817,6 +844,6 @@ struct BotsPresenterPeerTests {
       exchanges: [summary],
       bots: []
     )
-    #expect(entries.map(\.id) == ["e_3"])
+    #expect(entries.map(\.id) == ["x_0123456789ab", "e_3"])
   }
 }

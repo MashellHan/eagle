@@ -150,6 +150,13 @@ public struct ConversationColumn: View {
     .background(Theme.Palette.surface)
   }
 
+  /// The open bot's own colour: its bubbles, its label and its folded exchange rows share it, so a
+  /// chat looks like the bot it belongs to instead of the app's neutral card.
+  private var botAccent: Color {
+    if let face { return Theme.Palette.botTint(face.tint) }
+    return Theme.Palette.avatarTint(tintIndex)
+  }
+
   private var header: some View {
     HeaderRow {
       ZStack {
@@ -244,8 +251,11 @@ public struct ConversationColumn: View {
     switch entry {
     case .assistant(_, let blocks, let from):
       VStack(alignment: .leading, spacing: 6) {
-        AssistantBubble(text: blocks.markdown, preparedBlocks: preparedMarkdown[entry.id])
-          .equatable()
+        AssistantBubble(
+          text: blocks.markdown, preparedBlocks: preparedMarkdown[entry.id],
+          fill: botAccent.opacity(0.12), border: botAccent.opacity(0.34)
+        )
+        .equatable()
         if let from {
           PeerOriginRow(origin: from) { id in onOpenPeerExchange?(id) }
         }
@@ -258,7 +268,8 @@ public struct ConversationColumn: View {
       )
     case .streamingAssistant(_, let blocks):
       AssistantBubble(
-        text: blocks.markdown, streaming: true, preparedBlocks: preparedMarkdown[entry.id]
+        text: blocks.markdown, streaming: true, preparedBlocks: preparedMarkdown[entry.id],
+        fill: botAccent.opacity(0.12), border: botAccent.opacity(0.34)
       )
       .equatable()
       .transition(

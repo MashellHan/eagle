@@ -88,6 +88,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
   /// The exchange a person opened from a row; nil while no dialog is up.
   @Published private(set) var openedExchange: PeerExchange?
   private var loadingExchanges = false
+  /// Whether the previous publish saw a run in flight: an exchange can only start inside one.
+  private var wasRunning = false
 
   /// The placeholder's retry runs in a task: `start()` is async, the button is not.
   func retryConnectionAsync() async {
@@ -362,6 +364,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       if ProcessInfo.processInfo.environment["BOTS_OPEN"] == "1", let first = app?.bots.first {
         select(first.id)
       }
+      Task { await refreshExchanges() }
       NotificationCenter.default.publisher(for: .botsGatewayChanged)
         .sink { [weak self] _ in
           Task { @MainActor [weak self] in await self?.refreshGateway() }
@@ -384,6 +387,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
       onSelect?(id)
       return
     }
+    // The sender's side starts an exchange without ever receiving a peer message, so the list is
+    // read on selection and again when a run settles, not only when peer traffic arrives.
     selectedId = id
     selectedTriggerId = nil
     triggerDetail = nil
@@ -393,6 +398,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
     // development shell) moves the list too.
     onSelect?(id)
     publish()
+    Task { await refreshExchanges() }
   }
 
   /// One click on a row's switch. The daemon republishes the list, so the row follows.
@@ -426,6 +432,106 @@ final class BotsWorkspaceViewModel: ObservableObject {
       triggerDetail = nil
       if !triggerRows.isEmpty { triggerRows = [] }
     }
+  }
+
+  /// One read of the bot's exchanges, for selection and for the moment a run settles.
+  private func refreshExchanges() async {
+    guard let app, !loadingExchanges else { return }
+    loadingExchanges = true
+    await app.loadExchanges()
+    exchanges = app.exchanges
+    loadingExchanges = false
+    publish()
+  }
+
+  /// A peer message the transcript has not been told about yet: read the list once, then stop.
+  /// A failure leaves the row without its count rather than inventing one.
+  private func loadExchangesIfNeeded() {
+    guard let app, !loadingExchanges else { return }
+    let known = Set(exchanges.map(\.id))
+    let seen = conversationExchangeIds(app.conversation.state)
+    guard !seen.subtracting(known).isEmpty else { return }
+    loadingExchanges = true
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      await app.loadExchanges()
+      self.exchanges = app.exchanges
+      self.loadingExchanges = false
+      self.publish()
+    }
+  }
+
+  private func conversationExchangeIds(_ state: ConversationState) -> Set<String> {
+    var ids: Set<String> = []
+    for message in state.messages {
+      if let origin = message.origin, origin.kind == .peer, let id = origin.exchangeId {
+        ids.insert(id)
+      }
+    }
+    return ids
+  }
+
+  /// Opens one exchange: the row only carries the summary, so the round trip is read now.
+  func openExchange(_ exchangeId: String) async {
+    guard let app else { return }
+    guard let detail = await app.peerDetail(exchangeId) else { return }
+    let refs = detail.participants.map {
+      presenter.peerRef(id: $0.id, title: $0.title, bots: app.bots)
+    }
+    var messages: [PeerMessage] = []
+    for turn in detail.messages {
+      if !turn.text.isEmpty {
+        messages.append(PeerMessage(id: "\(turn.id)-q", senderId: turn.fromBotId, text: turn.text))
+      }
+      if let answer = turn.answer, !answer.isEmpty {
+        messages.append(PeerMessage(id: "\(turn.id)-a", senderId: turn.toBotId, text: answer))
+      }
+    }
+    openedExchange = PeerExchange(
+      id: detail.id,
+      participants: refs,
+      messages: messages,
+      startedAt: Self.dayLabel(detail.startedAt),
+      count: detail.messages.reduce(0) { $0 + 1 + ($1.answer == nil ? 0 : 1) }
+    )
+  }
+
+  func closeExchange() {
+    if openedExchange != nil { openedExchange = nil }
+  }
+
+  /// `今天 19:30` for today, `10-28 19:30` otherwise: the divider reads as a moment, not a stamp.
+  static func dayLabel(_ iso: String) -> String? {
+    let parser = ISO8601DateFormatter()
+    parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    guard let date = parser.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else {
+      return nil
+    }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = Calendar.current.isDateInToday(date) ? "'今天' HH:mm" : "MM-dd HH:mm"
+    return formatter.string(from: date)
+  }
+
+  func openTrigger(_ triggerId: String) async {
+    guard let app, let botId = selectedId else { return }
+    do {
+      guard let detail = try await app.triggerDetail(botId: botId, triggerId: triggerId) else {
+        self.error = "触发器 \(triggerId) 已不存在"
+        return
+      }
+      triggerDialog = TriggerDialog(
+        id: triggerId,
+        title: detail.summary.name,
+        subtitle: presenter.triggerSubtitle(detail.summary),
+        rows: presenter.triggerDialogRows(detail))
+    } catch {
+      self.error = (error as? ClientError)?.message ?? error.localizedDescription
+    }
+  }
+
+  func closeTrigger() {
+    if triggerDialog != nil { triggerDialog = nil }
   }
 
   /// The selected bot as the catalog describes it, for the inspector's profile.
@@ -632,6 +738,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       for: selected, agent: conversation.state.agent, models: app.models)
     if choices != nextChoices { choices = nextChoices }
     if running != conversation.state.running { running = conversation.state.running }
+    noteRunSettled(conversation.state.running)
     if connection != conversation.connection { connection = conversation.connection }
     let nextRecover = conversation.state.unavailable != nil || conversation.parked
     if canRecover != nextRecover { canRecover = nextRecover }
@@ -714,6 +821,14 @@ final class BotsWorkspaceViewModel: ObservableObject {
       .store(in: &cancellables)
   }
 
+  /// A run settling is when a peer send can have created an exchange: read the list once.
+  private func noteRunSettled(_ isRunning: Bool) {
+    if wasRunning, !isRunning {
+      Task { await refreshExchanges() }
+    }
+    wasRunning = isRunning
+  }
+
   private func schedulePublish() {
     if publicationScheduled {
       pendingRepublish = true
@@ -776,22 +891,35 @@ struct BotsPresenter {
       pendingTools.removeAll()
     }
     let peerCalls = peerCallIds(state.messages)
-    var foldedExchanges: Set<String> = []
+    /// Every exchange this bot is in becomes one row, placed where it started: the sender's side
+    /// shows it too, so both chats carry the same entry.
+    var pending =
+      exchanges
+      .compactMap { summary -> (startedAt: String, exchange: PeerExchange)? in
+        guard
+          let row = peerExchangeRow(exchangeId: summary.id, exchanges: exchanges, bots: bots)
+        else { return nil }
+        return (summary.startedAt, row)
+      }
+      .sorted { $0.startedAt < $1.startedAt }
+    var nextExchange = 0
+    func flushExchanges(upTo instant: String?) {
+      while nextExchange < pending.count {
+        let item = pending[nextExchange]
+        guard instant == nil || item.startedAt <= instant! else { return }
+        rows.append(.peerExchange(id: item.exchange.id, exchange: item.exchange))
+        nextExchange += 1
+      }
+    }
     /// True while the transcript is still inside the run a peer message started: that answer and
     /// its tool rows belong to the exchange, not to this chat with the person.
     var insidePeerRun = false
     for (index, message) in state.messages.enumerated() {
+      // An exchange that started before this message takes its place ahead of it.
+      flushExchanges(upTo: message.createdAt)
       if message.role == .user {
         if let origin = message.origin, origin.kind == .peer {
           insidePeerRun = true
-          // The row needs the daemon's count and both names; until the list arrives, and for a
-          // message recorded before exchanges had ids, the run simply stays out of the chat.
-          if let exchangeId = origin.exchangeId, foldedExchanges.insert(exchangeId).inserted,
-            let row = peerExchangeRow(
-              exchangeId: exchangeId, exchanges: exchanges, bots: bots)
-          {
-            rows.append(.peerExchange(id: exchangeId, exchange: row))
-          }
           continue
         }
         insidePeerRun = false
@@ -814,6 +942,7 @@ struct BotsPresenter {
       }
     }
     flushTools()
+    flushExchanges(upTo: nil)
     // A running tool already shows its own row; the typing row is for a silent model.
     let toolRunning = rows.contains { entry in
       switch entry {
