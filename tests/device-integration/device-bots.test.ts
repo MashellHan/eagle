@@ -45,13 +45,20 @@ type Receipt = {
 const botsSource = resolve(
   process.env.EAGLE_BOTS_INTEGRATION_SOURCE ?? "apps/bots",
 );
-const childEnv = (home: string): NodeJS.ProcessEnv => ({
-  HOME: home,
-  PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
-  TMPDIR: home,
-  NODE_OPTIONS: "",
-  NODE_PATH: "",
-});
+const childEnv = (home: string): NodeJS.ProcessEnv => {
+  const environment: NodeJS.ProcessEnv = {
+    ...process.env,
+    HOME: home,
+    PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+    TMPDIR: home,
+    NODE_OPTIONS: "",
+    NODE_PATH: "",
+  };
+  for (const name of Object.keys(environment))
+    if (!["HOME", "PATH", "TMPDIR", "NODE_OPTIONS", "NODE_PATH"].includes(name))
+      delete environment[name];
+  return environment;
+};
 
 async function until<T>(
   probe: () => Promise<T | undefined>,
