@@ -3750,3 +3750,107 @@ were used for acceptance; live DeepSeek/Tavily verification remains unperformed.
   no production/Access or physical two-Mac run is claimed, and no new rendering
   or scheduler action occurred. The next hop remains independent complete-App
   runtime, then local zip and ordinary push hooks under the common flock.
+
+## 2026-10-29 09:34 +08:00 — Packaged App window diagnosis; complete runtime acceptance pending
+
+- Parent's v2 driver passed bundle, utility and helper checks, then launched the
+  actual UI-only App PID 47093. It stayed alive and reported finishedLaunching,
+  but no owned on-screen window was seen within the unchanged 20-second limit.
+  Connected mode did not run. Normal AppKit termination returned App exit 0;
+  no driver signal, token or recorded process remained, and cleanup passed.
+  Evidence: `/private/tmp/eagle-candidate-acceptance-t5hrlqut/evidence.json`.
+  This is a failed window acceptance, not a complete App runtime pass. Parent
+  observed an awake display with other on-screen windows; no headless/locked
+  environment explanation is assumed.
+- Parent separately diagnosed the same v2 copied candidate/profile with automatic
+  connection off. PID 55878 produced one owned window in both all-window and
+  on-screen records, with AppKit identity/finishedLaunching verified. Normal quit
+  exited 0, no driver signals or token remained. Evidence:
+  `/private/tmp/eagle-window-diagnostic-jh3cyaw4/evidence.json`. The candidate can
+  create a window; this narrow result does not exercise connected mode.
+- Static inspection found an unconditional WindowGroup, normal activation and
+  bundle-relative resource lookup. Verification gates daemon connection, not the
+  window. No explicit source defect was established. Parent alone is adding
+  all-window diagnostics to the next fresh acceptance; the visible 20-second
+  deadline and all pass conditions stay unchanged. No App/driver edit, App launch
+  or rebuild was performed by this writer. Original failures remain retained.
+- HEAD remains `9b5ccea`; source, signed App and all completed exact gates remain
+  unchanged. Herdr collection/authentication/D1 evidence stays at the separate
+  07:53 complete local backend twenty groups; no production Access, new screenshot
+  rendering or physical two-Mac acceptance occurred. The next unresolved hop is
+  both complete App runtime phases, before local zip and normal feature push.
+
+## 2026-10-29 09:55 +08:00 — Complete App accepted; transfer archive verified
+
+- Parent's v3 exercised both real App windows, the owned bundled daemon,
+  Resources cwd, token authentication and normal exit 0 for both Apps. Overall
+  v3 remained failed because its no-reuse bind probe interpreted TCP TIME_WAIT
+  after daemon exit as a live port. The original evidence is retained at
+  `/private/tmp/eagle-candidate-acceptance-ax6zgo0q/evidence.json`; it was not
+  relabeled green. Parent fixed only its temporary probe, preserving live-listener
+  rejection; the real socket and utility-exit regressions each passed 5/5.
+- Complete v4 then passed all 12 checks and cleanup on the unchanged candidate.
+  UI-only and connected windows were visible; the actual selected-Node child ran
+  from the copied Resources/Bots; helper status and token authentication passed.
+  Both AppKit quits exited 0, with no driver signal, remaining process/token or
+  occupied port. Both bundle manifests stayed unchanged. Evidence:
+  `/private/tmp/eagle-candidate-acceptance-a39jqbnq/evidence.json`, SHA256
+  `767c0a2bb0cec35fc28962cd41b72928a5b1fc165eedca8bacda5d7254eb66ca`.
+  This writer performed no duplicate App run or product/driver edit.
+- The separate exact Bots crash gate is now 5/5, zero skip/fail, and its perf
+  gate 1/1. Median empty-open/reopen/turn/twenty-bot times were 3/1/4/12 ms against
+  unchanged 250/100/200/1000 ms bounds on arm64 Darwin, Node 26.9.0. Evidence:
+  `.local/delivery-bots-exact-resilience.json`, tree `6214499f`, source
+  `355ec373…`; Parent independently verified its 192 applicable hashes/modes.
+  The earlier 10-28 crash log and native SIGKILL tests were not substituted for
+  this independent required suite.
+- Local ditto archive `Eagle-0.14.2-arm64-fece8f0.zip` is 38,108,679 bytes, SHA256
+  `a6f703838ef7cf28b8fbafb4d98c9f71f912aa5d5f9dfe25c0a822c1b34e8601`.
+  All 14,422 archived file/symlink content hashes, modes and targets match the
+  source App; Parent separately checked CRC, path safety, size and checksum.
+  `.local/delivery-candidate-zip.json` points to the archive, checksum and source
+  provenance. It stays outside Git and no installed App was replaced.
+- NATIVE-ACCESS now starts with macOS 15+/arm64/external Node 24+ prerequisites,
+  compatible-backend and A/B profile steps. Historical failures move behind the
+  start instructions; full logs remain retained. CLI-only B can use the locked
+  Agent from the same zip without another npm dependency resolution. Physical
+  A/B and production Access remain subsequent acceptance; neither blocks the
+  authorized personal feature push. Actual Herdr collection and local D1 evidence
+  remains the separate 07:53 complete Worker/two-Agent twenty groups; no new
+  production, rendering or SSH run occurred.
+- User requested reusable npm recovery documentation as an independent commit:
+  project runbook, retrospective incident and root AGENTS pointer. Parent alone
+  created the cross-project skill/global entry; this writer has read them and
+  changes only the repository. Next: finish these document groups, then the
+  ordinary push hook under the scheduler's existing flock. No PR/deploy/npm release.
+
+## 2026-10-29 10:05 +08:00 — Recovery runbook committed; final delivery docs ready
+
+- `a703d54` independently commits NPM-RECOVERY, the retrospective incident and
+  the root AGENTS pointer. Its normal pre-commit exited 0; staged and committed
+  tree `755cedfe` match, and the other document changes were preserved. Receipt:
+  `.local/delivery-npm-recovery-docs-20261029.json`. The runbook distinguishes
+  initial official-registry/offline ci from later Huawei-registry packuments,
+  bundle installs and hooks using the same verified private cache. Both lock
+  hashes and global defaults remain unchanged; this recovery did not modify the
+  scheduled job's old-proxy configuration or its retained 08:08 failure.
+- The documentation example now uses explicit if/raise checks for lock SRI and
+  package identity. Parent independently passed six normal/optimized Python cases:
+  original ws and @types/ws manifests succeed, and a readable archive with changed
+  gzip metadata is rejected in both modes. Evidence:
+  `/tmp/eagle-npm-runbook-verify-dpdcesy3/green.json`; the old assert/optimization
+  failure remains in red.json. No npm/cache mutation or duplicate test occurred.
+- NATIVE-ACCESS, REMOTE-ACCESS and PLAN now reflect complete release assembly,
+  the unchanged v4 App's 12 checks and cleanup, the verified local transfer zip,
+  and all exact gates including separate Bots crash/performance. The A/B start
+  distinguishes a fresh verification profile, compatible backend and optional
+  Raven Bot setup; macOS 15+, arm64 and external Node 24+ are explicit. Physical
+  A/B, production Access and deployment remain separate, unperformed acceptance.
+- Herdr collection/authentication/D1 evidence remains the 07:53 complete local
+  Worker/two-Agent twenty groups. No new live collection, screenshot rendering,
+  App launch, backend or SSH session was started here. Parent has completed its
+  independent document/product/zip review. The next action after this docs commit
+  is the ordinary pre-push root/browser/native/Swift gate under the existing
+  scheduler flock, followed by exact personal-ref verification. This checkpoint
+  precedes the push; `.local/delivery-personal-push-20261029.json` will retain its
+  actual exit, hook log and remote result. No gate is currently running.

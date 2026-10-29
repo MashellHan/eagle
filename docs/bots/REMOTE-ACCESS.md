@@ -1,6 +1,6 @@
 # 远程访问、机器执行与可选插件
 
-日期：2026-10-29。状态：主链已实现，交付门禁未闭环；launchd 周期任务已启用。
+日期：2026-10-29。状态：主链和完整本地候选验收已通过；launchd 周期任务已启用。
 统一阶段和进度由 [PLAN.md](PLAN.md) 维护；
 本文描述已确认范围、体验和接口边界，不改变现有运行协议。
 
@@ -33,11 +33,12 @@ flowchart LR
 B 不需要完整 Bot 或模型 API key。历史基线是依赖 Herdr 的 Agent 1.0.0 和使用 mock
 的 macOS 机器页。2026-10-28 的 alpha.2 候选已支持独立基础执行，原生机器页、每 Bot
 授权与 remote runtime 已接真实接口和私有凭据 helper；Herdr 原生/Bot setup 共用
-provider。精确依赖已恢复，当前验收见 [CHECKPOINTS](../CHECKPOINTS.md)，这些源码和
-本地 fixture 结果不代表完整候选 App 已安装、已发布或已在两台物理 Mac 验证。
-打包层目前只验证了 alpha.2 Agent tgz 的 pack/install/version；完整 App 与个人 feature
-分支尚未交付。现有生产尚未部署本分支的 owner/execution 路由，需要已授权的兼容后端
-或隔离测试环境，Access 边缘另外验收。具体构建命令、UI/CLI 前提和待验清单见
+provider。精确依赖已恢复，完整 release App 已装配，独立两阶段运行验收 12 项与清理
+均通过；本地可转移 zip 的内容、CRC 和 SHA256 已核对。验收记录见
+[CHECKPOINTS](../CHECKPOINTS.md)，交付目标是个人 `feature/eagle-machines-herdr`
+分支，推送仍执行普通 hooks。现有生产尚未部署本分支的 owner/execution 路由，
+需要已授权的兼容后端或隔离测试环境。物理双 Mac、Access 边缘和生产部署仍未验收。
+具体构建命令、UI/CLI 前提和待验清单见
 [交付与复现边界](../NATIVE-ACCESS.md)。
 
 ## 安装 App 后的机器页
@@ -143,9 +144,9 @@ Eagle。模型绑定打开时的 Bot 身份，从已保存连接读取真实机�
 撤销之间保留租约，防止另一窗口先报告清理完成；不同 Bot 仍可独立操作。连接变更
 与在途授权互斥。cleanupPending、读取失败、认证失败和写入结果不确定保持不同语义。
 
-这些模型与客户端的契约不代表 helper 可执行文件或完整 App 已装配。真实 Keychain
-helper 的跨进程绑定测试随其可执行目标保留；Inspector 接线和 Supervisor 生命周期
-各自带其实现与回归提交。
+模型与客户端契约、helper 的真实 Keychain 跨进程测试，以及完整 App 的两阶段运行
+验收分别保留证据，当前结果见 [交付记录](../NATIVE-ACCESS.md#verification-record)。
+Inspector 接线和 Supervisor 生命周期各自带其实现与回归提交。
 
 ## 每四小时比较上游
 
@@ -203,7 +204,9 @@ BotWorkspace，不能当成已具备机器安装器或远程资源链路。本�
 冲突、门禁失败和并发更新均保留候选与失败记录，由 Lead 闭环；不 force push、不绕过 hooks。
 两种作业由 launchd 驱动；2026-10-28 已验证首跑、重入及持久停用/恢复。
 上游已通过独立正常合并进入本地 main；自动作业保留其冲突候选，没有推送。
-当前 feature 的完整交付门禁尚未通过，具体触发时点、候选与后续状态见上述运行记录。
+2026-10-29 08 点自动作业仍因旧代理缺 Wrangler 4.152.0 而安装失败，未推送；本次
+前台精确依赖恢复没有修改该作业配置。前台完整门禁、App 验收和后续推送结果与自动
+作业分别记录，见 [CHECKPOINTS](../CHECKPOINTS.md) 和 [交付指南](../NATIVE-ACCESS.md)。
 
 我们负责云端、多设备访问、基础执行端、机器页、机器插件安装管理和远程适配；
 nocoli 负责 Bot 核心、人格、长期记忆、调度和群聊。远程工具所需的最小 Bot extension

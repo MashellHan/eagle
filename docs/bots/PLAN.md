@@ -547,16 +547,16 @@ implemented 状态解释为已经完整提交、安装或发布。
 七文件包含真实 WS `.mjs` fixture 和原 NATIVE 契约；exact 候选 220 + 49、
 3269/3473 = 94.1%、strict format，正常 pre-commit 实跑 Biome 2.6.3 与 Swift。
 Reviewer 07:49 已关闭。旧缺包拒绝日志及原 patch `ba319f34…` 保留；七文件不再暂存。
-NATIVE-ACCESS/REMOTE-ACCESS/ARCHITECTURE 的其余行为契约仍随各实现组提交，
-独立进度提交只收 CHECKPOINTS 与 PLAN。
+NATIVE-ACCESS/REMOTE-ACCESS/ARCHITECTURE 的行为契约已随各实现组提交；
+当前指南收尾更新实际交付状态，不提前拆出未提交实现的契约。
 
-最新已提交完整 App UI 候选 `4ea27f7` / tree `10aa32cd…` 通过 232 feature + 49 design、
+独立 App UI 组 `4ea27f7` / tree `10aa32cd…` 通过 232 feature + 49 design、
 3434/3655 = 94.0%、strict format。选定环境 token P1 已在真实 HTTP 红→绿后于
 00:23 关闭，status-auth P2 于 08:04 关闭，Orca 两处目标/动作标签窄审关闭；
 Inspector/settings 和 verification 组合已正常提交。standalone Bots 历史结果为 127/127、91.7%；旧 observed 安装的
 二十处差异和首轮五个 fixture setup 失败保留，不能冒充新 exact gate。
 
-07:25 用户授权新 artifact 传输入口后，43 个原始 tgz 已从 Huawei/Tencent 获取，
+07:25 用户授权新 artifact 传输入口后，43 个原始 tgz 已从 Huawei 获取，
 各自 lock SRI、名称、版本全匹配；父已独立复核。正常 root/Bots offline ci 均 exit 0，
 以 task-private npm cache 供后续 bundle 继承。root/Bots lock hash 仍为 a2ab0b26… /
 177687ad…，全局 registry 未改，实际版本差异已清零。Xcode 27.1 / 27A9275 就绪。
@@ -572,19 +572,22 @@ Inspector/settings 和 verification 组合已正常提交。standalone Bots 历�
 09:11 装配组已正常提交为 `fece8f0`，tree `2c16555d`。其完整 root 258/258、
 native integration 25/25 均零失败/跳过；App 232 + 49、3433/3655 = 93.9%、
 strict format 通过。release 装配43.618秒 exit0，580项源输入 hash/mode 回核一致，
-内置 Agent/Bots/helper 及签名检查完成。完整 App 已交父入口，实际启动/正常退出验收
-尚未返回；不以装配成功代替运行成功。随后同步组 `80ef675` / tree `6214499f` 完整
-root 259/259、typecheck/lint/build均通过并正常提交。旧 87/97 文件备份与红日志不覆盖。
+内置 Agent/Bots/helper 及签名检查完成。父v4完整App验收随后12项及cleanup全过：
+两阶段可见窗口、真实内置daemon/鉴权、正常退出0、无signal/进程/token遗留。
+原utility/window/TIME_WAIT失败均保留，未修改App。随后同步组 `80ef675` / tree
+`6214499f` 完整root 259/259、typecheck/lint/build均通过并正常提交；独立Bots
+crash 5/5、perf 1/1也已在exact快照通过。旧 87/97 文件备份与红日志不覆盖。
 
 以下保留独立收尾边界：
 
-| 待提交组 | 依赖与下一验证 |
+| 收尾组 | 当前状态与下一验证 |
 | --- | --- |
-| 完整 App 运行与本地 zip | 装配20文件已提交；父独占冻结driver验收，结果未返回。通过后本地ditto归档及SHA256，不进Git、不替换已安装App |
-| 交付记录与正常推送 | 实现、契约和完整回归均已提交；整理实际运行证据和指南，汇总给父复核后持有scheduler共用锁执行正常push hooks |
+| npm恢复知识记录 | `a703d54` 已正常提交NPM-RECOVERY、Retrospective及根AGENTS入口；区分初始official/offline ci与后续Huawei metadata/pack环境，不改变全局源或已安装调度；父对示例正常/优化模式独验6/6 |
+| 交付指南与进度 | 简明A/B入口、Node/macOS/arm64前提、完整App和zip实际结果已整理；只更新文档，不增加产品功能或重复验收 |
+| 正常推送 | 父已复核完整gate、App及zip；下一步持有scheduler共用锁执行普通push hooks，核对个人目标ref等于最终HEAD，保留实际日志 |
 
-完成 root/Bots、browser、native、package 与隔离完整 App gates 后汇总交父复核，
-再以协调锁正常推 `MashellHan/eagle:feature/eagle-machines-herdr`，不推 main，
+root/Bots、browser、native、package 与隔离完整 App gates 已通过并经父复核，
+文档提交后以协调锁正常推 `MashellHan/eagle:feature/eagle-machines-herdr`，不推 main，
 不发 PR、不部署或发布。物理 A/B 验收在用户取得分支后进行，不作为 push 前置条件。
 基础机器管理/Herdr 不需模型 key；隔离 A Bot → B 则在该 profile 正常配置 Raven 并
 新建测试 Bot，不复制日常 DB/凭据。兼容 backend 已在本机实测，两Mac SSH 步骤仍未运行。
@@ -599,12 +602,12 @@ root 259/259、typecheck/lint/build均通过并正常提交。旧 87/97 文件�
 
 | 阶段 | 状态 | 交付与依赖 | 验收证据 |
 | --- | --- | --- | --- |
-| R0 — 上游对齐与接口/设计 | integrated; review continues | d77d676 合并 3405ff8；90a633f 独立合并 7101566，保留 remote 注入及 off→omitted；复用单 loader/工具组 | 2026-10-28 launchd 已启用并首跑，旧冲突候选保留；第二次合并 Bots check 526/526、App build 通过，107 项保护改动恢复审计完整；见 [运行证据](../CHECKPOINTS.md) 和 [同步操作](../UPSTREAM-SYNC.md) |
-| R1 — 基础 Agent 与真实机器页 | implemented; delivery gates open | 原生连接/钥匙串、真实目录、部署绑定、独立 launchd、同身份修复与每 Bot 授权已接线 | HTTP/WS、私有 Keychain、真实服务和 App 模型退出后执行已验证；完整 Worker＋两本地 Agent 20 组通过；整包 cold launch、真实 Access 与物理双 Mac 尚待验收 |
-| R2 — 通用机器执行 | implemented; acceptance in progress | journal、有界命令与授权文件 provider 接真实 WS；实际 startDaemon/Harness/remote extension 已注入 helper 和每 Bot 权限 | 父真实本地主链 20/20；SIGKILL 保留 journal 14/14、丢失 journal 16/16，原 ID 查询且不重放；恢复已留入 native 回归并实跑 3/3。模型 SSE 为本地 fixture，非完整 Worker/D1 或物理 A/B Macs |
-| R3 — 可配置机器插件与 Herdr | implemented; delivery gates open | 静态 provider、官方 installer、显式 named session 和机器面板已接线；原生/Bot 共用 run/get/cancel 与 journal，未决 ID 可恢复 | 父真实官方安装 9 项、原生 client→生产 relay→Agent→已装 Herdr 10 项通过；Bot 无 Herdr 返回 not_installed，既有会话保留；整包安装和物理双 Mac 尚未验证 |
+| R0 — 上游对齐与接口/设计 | integrated | d77d676 合并 3405ff8；90a633f 独立合并 7101566，保留 remote 注入及 off→omitted；复用单 loader/工具组 | 2026-10-28 launchd 已启用并首跑，旧冲突候选保留；第二次合并 Bots check 526/526、App build 通过，107 项保护改动恢复审计完整；见 [运行证据](../CHECKPOINTS.md) 和 [同步操作](../UPSTREAM-SYNC.md) |
+| R1 — 基础 Agent 与真实机器页 | implemented; local candidate verified | 原生连接/钥匙串、真实目录、部署绑定、独立 launchd、同身份修复与每 Bot 授权已接线 | HTTP/WS、私有Keychain、真实服务和App模型退出后执行已验证；完整Worker＋两本地Agent20组、完整App两阶段12项均过；真实Access与物理双Mac留后续验收 |
+| R2 — 通用机器执行 | implemented; local chain verified | journal、有界命令与授权文件 provider 接真实 WS；实际 startDaemon/Harness/remote extension 已注入 helper 和每 Bot 权限 | 父真实本地主链 20/20；SIGKILL 保留 journal 14/14、丢失 journal 16/16，原 ID 查询且不重放；恢复已留入 native 回归并实跑 3/3。模型 SSE 为本地 fixture，非完整 Worker/D1 或物理 A/B Macs |
+| R3 — 可配置机器插件与 Herdr | implemented; local candidate verified | 静态 provider、官方 installer、显式 named session 和机器面板已接线；原生/Bot 共用 run/get/cancel 与 journal，未决 ID 可恢复 | 父真实官方安装9项、原生client→生产relay→Agent→已装Herdr10项通过；Bot无Herdr返回not_installed，既有会话保留；完整App包启动已验，物理双Mac两种setup仍待用户验收 |
 | R4 — 多台 Mac 访问同一 Bot（后续独立交付） | planned | 本轮不实现跨 Mac 聊天视图；后续复用 v1 HTTP/WS 和原生 transport | 两客户端共享历史/实时消息及独立 Bot 主机生命周期的验收留后续；不阻塞本轮机器管理与插件交付 |
-| R5 — 审查与跨机器交付 | in progress; release assembled, runtime pending | 权限/恢复/清理、token、lifecycle闭包与装配P2均已关闭；正常提交到80ef675；A/B与隔离指南已写并窄审 | exact root259/259、native25/25；App232+49/93.9%、strict format；standalone127/127/91.7%+Keychain2/2；Bots534/534；browser191通过/11既有条件排除。release装配43.618秒exit0、580源hash/mode一致；两次父driver在快退出utility身份采样处失败，均未启动App/daemon，不能判定App成败。现由本聊天父入口独占driver修正与后续运行，w1只读。通过后本地zip，正常push hooks及父汇总复核；物理双Mac为交付后验收，无PR/部署/npm发布或现有App替换 |
+| R5 — 审查与跨机器交付 | local candidate accepted | 权限/恢复/清理、token、lifecycle闭包与装配P2均已关闭；实现正常提交到80ef675，进度到9b5ccea；简明A/B指南及npm恢复记录独立收口 | exact root259/259、native25/25；App232+49/93.9%、strict format；standalone127/127/91.7%+Keychain2/2；Bots534/534、独立crash5/5、perf1/1；browser191通过/11既有条件排除。release装配及父v4完整App12项/cleanup通过，原失败保留。本地zip 38,108,679 bytes、SHA a6f70383…，父独立核验；以普通hooks推个人feature，物理双Mac和Access为后续验收，无PR/部署/npm发布或现有App替换 |
 
 R1/R2/R3/R5 是本轮功能交付范围，不能退化为只操作已有 Herdr 终端；R4 和 Web UI 留后续。
 按可独立审查的原子提交集成到本地 main，保留先前三个提交和父对话计划；只推送
