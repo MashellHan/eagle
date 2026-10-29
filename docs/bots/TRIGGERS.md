@@ -295,8 +295,7 @@ export type TriggerDefinition = {
 
 | Path | Content | Notes |
 | --- | --- | --- |
-| `<bot dir>/triggers.journal.jsonl` | Every mutation, decision and counter change, append-only | **Source of truth**, mode 0600 |
-| `<bot dir>/triggers.json` | Materialized `{revision, triggers}`, atomic tmp + rename | Rebuildable from the journal; readers use it |
+| `<bot dir>/triggers.journal.jsonl` | Every mutation, decision and counter change, append-only | **Source of truth**, mode 0600. There is no second materialized file: memory is the view, and a long journal collapses to one snapshot record on open |
 | `<bot dir>/triggers.secrets.json` | `{ [triggerId]: token }`, 0600 | Webhook bearer only; never logged, never in model context, never in a URL |
 | `<bot dir>/triggers/<triggerId>.jsonl` | Queue items, frozen batches, delivery receipts | Append-only |
 
@@ -305,9 +304,11 @@ Rules:
 1. A Bot owns its triggers; there is no daemon-wide trigger registry and no trigger
    targeting a different bot. Deleting a bot takes all four paths with it.
 2. The journal is the only source of truth for definitions: a mutation is one
-   append with an `opId`, its payload and its result. `triggers.json` is derived, so
-   a crash can never leave a half-applied mutation, and a replayed tool call looks
-   up `opId` and returns the recorded result instead of mutating twice (§7).
+   append with an `opId`, its payload and its result, so a crash can never leave a
+   half-applied mutation and a replayed tool call looks up `opId` and returns the
+   recorded result instead of mutating twice (§7). Name uniqueness, the per-bot cap
+   and the append are one serialized section of that store, because the SDK may run
+   two tool calls in parallel.
 3. A definition is valid only when its kind matches its payload.
 4. `prompt` is model-authored text, never code: it is admitted as a user message and
    has exactly a user message's authority.
