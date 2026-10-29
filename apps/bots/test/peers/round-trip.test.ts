@@ -151,15 +151,17 @@ test("the peer_send tool, not just the host, hands a message over and peer_read 
       { taskId: "task-tool-1" } as never,
       {} as never,
     );
-    const admitted = sent.output.map((block) => block.text).join("\n");
+    const admitted = (sent.output ?? [])
+      .map((block) => ("text" in block ? block.text : ""))
+      .join("\n");
     assert.match(admitted, /admitted · to=/);
     const requestId = peerRequestId(sender, target, "task-tool-1");
     assert.match(admitted, new RegExp(requestId));
 
     await waitFor(async () => {
       const read = await peerRead.execute({ requestId } as never, {} as never, {} as never);
-      return read.output
-        .map((block) => block.text)
+      return (read.output ?? [])
+        .map((block) => ("text" in block ? block.text : ""))
         .join("\n")
         .includes("CI 里已经重现");
     }, "the peer_read tool returning the answer");
@@ -170,9 +172,64 @@ test("the peer_send tool, not just the host, hands a message over and peer_read 
       { taskId: "task-tool-1" } as never,
       {} as never,
     );
-    assert.match(again.output.map((block) => block.text).join("\n"), new RegExp(requestId));
+    assert.match(
+      (again.output ?? []).map((block) => ("text" in block ? block.text : "")).join("\n"),
+      new RegExp(requestId),
+    );
     const after = await viewOf(stack, target);
     assert.equal(after.filter((message) => message.role === "user").length, 1);
+  } finally {
+    await stack.close();
+  }
+});
+
+test("the app reads the exchange over HTTP: participants, count and the answer", async () => {
+  const stack = await startStack({ real: true, toolGroups: ["core", "coding", "peers"] });
+  try {
+    const sender = await stack.createBot("sender");
+    const target = await stack.createBot("target");
+    const faux = stack.faux;
+    assert.ok(faux !== undefined);
+    faux.setResponses([text("两份税册对不上，我按第二份改。")]);
+
+    const host = stack.peersFor(sender);
+    const sent = await host.send({ taskId: "task-http-1", toBotId: target, message: "对一下税册" });
+    await waitFor(
+      async () => (await host.read({ requestId: sent.requestId })).status === "done",
+      "the answer",
+    );
+
+    const call = (path: string) =>
+      fetch(`http://127.0.0.1:${stack.port}${path}`, {
+        headers: { authorization: `Bearer ${stack.token}` },
+      });
+
+    const list = (await (await call(`/v1/bots/${sender}/exchanges`)).json()) as {
+      exchanges: Array<{
+        id: string;
+        count: number;
+        participants: Array<{ id: string; title: string }>;
+      }>;
+    };
+    const summary = list.exchanges.find((item) => item.id === sent.exchangeId);
+    assert.ok(summary !== undefined, "the sender's catalog lists its exchange");
+    assert.deepEqual(summary.participants.map((item) => item.title).sort(), ["sender", "target"]);
+    assert.equal(summary.count, 2, "one question and one answer");
+
+    const detail = (await (
+      await call(`/v1/bots/${sender}/exchanges/${sent.exchangeId}`)
+    ).json()) as {
+      exchange: { turns: Array<{ text: string; answer?: string; fromBotId: string }> };
+    };
+    assert.equal(detail.exchange.turns[0]?.text, "对一下税册");
+    assert.equal(detail.exchange.turns[0]?.answer, "两份税册对不上，我按第二份改。");
+    assert.equal(detail.exchange.turns[0]?.fromBotId, sender);
+
+    // The recipient reads the same exchange, and a stranger cannot read it at all.
+    assert.equal((await call(`/v1/bots/${target}/exchanges/${sent.exchangeId}`)).status, 200);
+    const stranger = await stack.createBot("stranger");
+    assert.equal((await call(`/v1/bots/${stranger}/exchanges/${sent.exchangeId}`)).status, 404);
+    assert.equal((await call(`/v1/bots/${sender}/exchanges/x_000000000000`)).status, 404);
   } finally {
     await stack.close();
   }

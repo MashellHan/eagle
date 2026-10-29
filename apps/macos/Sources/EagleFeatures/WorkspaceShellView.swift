@@ -333,16 +333,22 @@ public struct WorkspaceShellView: View {
         layout.toggleInspector()
       }
 
-      if let exchange = openedPeerExchange {
+      if let exchange = openedPeerExchange ?? bots.openedExchange {
         // The sidebar stays visible, as the transcript behind the dialog keeps its context.
         Color.black.opacity(0.001)
           .ignoresSafeArea()
-          .onTapGesture { openedPeerExchange = nil }
-        PeerConversationDialog(exchange: exchange) { openedPeerExchange = nil }
-          .padding(.leading, layout.showsSidebar ? layout.sidebarWidth + 20 : 20)
-          .padding(.trailing, 46)
-          .padding(.vertical, 28)
-          .transition(.opacity.combined(with: .scale(scale: 0.995)))
+          .onTapGesture {
+            openedPeerExchange = nil
+            bots.closeExchange()
+          }
+        PeerConversationDialog(exchange: exchange) {
+          openedPeerExchange = nil
+          bots.closeExchange()
+        }
+        .padding(.leading, layout.showsSidebar ? layout.sidebarWidth + 20 : 20)
+        .padding(.trailing, 46)
+        .padding(.vertical, 28)
+        .transition(.opacity.combined(with: .scale(scale: 0.995)))
       }
 
       if showsAccountMenu {

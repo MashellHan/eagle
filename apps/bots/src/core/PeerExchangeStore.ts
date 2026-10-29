@@ -13,13 +13,20 @@ import { join } from "node:path";
  */
 export const PEER_MAX_TURNS = 10;
 
-export type PeerTurn = {
+export type PeerTurnInput = {
   readonly fromBotId: string;
   readonly toBotId: string;
   /** `pr_<16 hex>` of the sending tool task; stable across a retry (TRIGGERS.md §3.2). */
   readonly requestId: string;
+  /** What the sender handed over: the overlay shows exactly this, so the record is the transcript. */
+  readonly message: string;
+};
+
+export type PeerTurn = PeerTurnInput & {
   /** When the sender handed it over, ISO. */
   readonly at: string;
+  /** The recipient's answer, once it has one. */
+  readonly answer?: string;
 };
 
 export type PeerExchangeStatus = "open" | "finished";
@@ -120,7 +127,7 @@ export class PeerExchangeStore {
 
   async append(
     id: string,
-    turn: Omit<PeerTurn, "at">,
+    turn: PeerTurnInput,
   ): Promise<{ readonly exchange: PeerExchange; readonly duplicate: boolean }> {
     return this.#serial(async () => {
       const exchange = await this.get(id);
@@ -134,6 +141,24 @@ export class PeerExchangeStore {
       });
       await this.#write(next);
       return { exchange: next, duplicate: false };
+    });
+  }
+
+  /** Records what the recipient answered. Idempotent: the first answer wins. */
+  async answer(id: string, requestId: string, answer: string): Promise<PeerExchange | undefined> {
+    return this.#serial(async () => {
+      const exchange = await this.get(id);
+      if (exchange === undefined) return undefined;
+      const turn = exchange.turns.find((item) => item.requestId === requestId);
+      if (turn === undefined || turn.answer !== undefined) return exchange;
+      const next: PeerExchange = {
+        ...exchange,
+        turns: exchange.turns.map((item) =>
+          item.requestId === requestId ? { ...item, answer } : item,
+        ),
+      };
+      await this.#write(next);
+      return next;
     });
   }
 

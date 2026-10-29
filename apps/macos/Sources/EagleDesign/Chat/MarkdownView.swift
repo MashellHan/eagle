@@ -10,6 +10,9 @@ public struct AssistantBubble: View, Equatable {
   private let preparedBlocks: [RenderedMarkdownBlock]?
   private let cornerRadius: CGFloat
   private let maxWidth: CGFloat
+  /// Nil keeps the transcript's own card colour; a peer bubble passes its sender's tint.
+  private let fill: Color?
+  private let border: Color?
   @StateObject private var model = MarkdownViewModel()
   @State private var hovering = false
 
@@ -18,13 +21,17 @@ public struct AssistantBubble: View, Equatable {
     streaming: Bool = false,
     preparedBlocks: [RenderedMarkdownBlock]? = nil,
     cornerRadius: CGFloat = 20,
-    maxWidth: CGFloat = Theme.Metric.conversationMaxContentWidth - 120
+    maxWidth: CGFloat = Theme.Metric.conversationMaxContentWidth - 120,
+    fill: Color? = nil,
+    border: Color? = nil
   ) {
     self.text = text
     self.streaming = streaming
     self.preparedBlocks = preparedBlocks
     self.cornerRadius = cornerRadius
     self.maxWidth = maxWidth
+    self.fill = fill
+    self.border = border
   }
 
   public var body: some View {
@@ -43,10 +50,14 @@ public struct AssistantBubble: View, Equatable {
         .background(
           RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(Theme.Palette.card)
+            .overlay(
+              RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(fill ?? .clear)
+            )
         )
         .overlay(
           RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+            .strokeBorder(border ?? Theme.Palette.line, lineWidth: Theme.Metric.hairline)
         )
         .messageCopyAlignment()
         copyAction

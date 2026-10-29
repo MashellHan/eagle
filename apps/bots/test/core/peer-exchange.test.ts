@@ -28,10 +28,11 @@ const turn = (
   from: string,
   to: string,
   requestId = nextRequestId(),
-): { fromBotId: string; toBotId: string; requestId: string } => ({
+): { fromBotId: string; toBotId: string; requestId: string; message: string } => ({
   fromBotId: from,
   toBotId: to,
   requestId,
+  message: `message ${requestId}`,
 });
 
 test("an exchange is found again between the same two bots, in either direction", async () => {
@@ -120,4 +121,19 @@ test("a record survives a reopen of the store", async () => {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("a turn keeps the message it carried, and the first answer is the one kept", async () => {
+  await withStore(async (store) => {
+    const exchange = await store.create(["b_a", "b_b"]);
+    const sent = turn("b_a", "b_b", "pr_aaaabbbbccccdddd");
+    await store.append(exchange.id, sent);
+    const answered = await store.answer(exchange.id, sent.requestId, "第一份回答");
+    assert.equal(answered?.turns[0]?.message, `message ${sent.requestId}`);
+    assert.equal(answered?.turns[0]?.answer, "第一份回答");
+    const again = await store.answer(exchange.id, sent.requestId, "第二份回答");
+    assert.equal(again?.turns[0]?.answer, "第一份回答", "the first answer wins");
+    const missing = await store.answer(exchange.id, "pr_missing00000000", "x");
+    assert.equal(missing?.turns[0]?.answer, "第一份回答", "an unknown request changes nothing");
+  });
 });

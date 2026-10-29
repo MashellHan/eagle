@@ -32,7 +32,8 @@ struct BotsConversationContent: View {
       onRetryConnection: { bots.retryConnection() },
       onDismissError: { bots.dismissError() },
       onShowSidebar: { layout.toggleSidebar() },
-      onToggleInspector: { layout.toggleInspector() }
+      onToggleInspector: { layout.toggleInspector() },
+      onOpenPeerExchange: { id in Task { await bots.openExchange(id) } }
     )
     .id(bots.selectedId)
   }

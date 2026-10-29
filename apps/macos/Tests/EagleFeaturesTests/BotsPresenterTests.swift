@@ -681,3 +681,142 @@ struct BotsWebhookDetailTests {
 extension Array where Element == InspectorUsageRow {
   fileprivate var tokenRow: InspectorUsageRow? { first { $0.id == "token" } }
 }
+
+@Suite("Peers in the transcript")
+struct BotsPresenterPeerTests {
+  private let presenter = BotsPresenter()
+
+  private func message(
+    _ id: String,
+    role: MessageRole,
+    text: String,
+    origin: MessageOrigin? = nil,
+    blocks: [ContentBlock]? = nil
+  ) -> Message {
+    Message(
+      id: id,
+      role: role,
+      state: .complete,
+      createdAt: "2026-10-29T12:00:00.000Z",
+      blocks: blocks ?? [.text(text)],
+      origin: origin
+    )
+  }
+
+  private func state(_ messages: [Message]) -> ConversationState {
+    var state = ConversationState(botId: "b_1")
+    for message in messages {
+      state = Reducer.apply(.append(message: message, replaces: nil), to: state)
+    }
+    return state
+  }
+
+  private var summary: PeerExchangeSummary {
+    PeerExchangeSummary(
+      id: "x_0123456789ab",
+      participants: [
+        PeerExchangeParticipant(id: "b_a", title: "A"),
+        PeerExchangeParticipant(id: "b_b", title: "B"),
+      ],
+      count: 4,
+      status: "open",
+      startedAt: "2026-10-29T12:00:00.000Z"
+    )
+  }
+
+  @Test("a peer message never becomes a bubble: the chat keeps one folded row")
+  func folded() {
+    let peer = MessageOrigin(kind: .peer, label: "A", exchangeId: "x_0123456789ab")
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "去和 B 讨论"),
+        message("e_2", role: .assistant, text: "已发给 B"),
+        message("e_3", role: .user, text: "问题一", origin: peer),
+        message("e_4", role: .assistant, text: "只给 A 的回答"),
+        message("e_5", role: .user, text: "再问一句"),
+        message("e_6", role: .assistant, text: "结论"),
+        message("e_7", role: .user, text: "追问", origin: peer),
+      ]),
+      exchanges: [summary],
+      bots: []
+    )
+
+    // One row for the exchange, placed where the first peer message was; the person's own
+    // turns and the answers given to them stay.
+    let rows = entries.map(\.id)
+    #expect(rows == ["e_1", "e_2", "x_0123456789ab", "e_5", "e_6"])
+    guard case .peerExchange(_, let exchange) = entries[2] else {
+      Issue.record("the folded row is an exchange")
+      return
+    }
+    #expect(exchange.count == 4)
+    #expect(exchange.participants.map(\.title) == ["A", "B"])
+  }
+
+  @Test("the tools a bot uses on another bot stay out of the chat")
+  func peerToolsHidden() {
+    let call = ContentBlock.toolCall(callId: "call-1", name: "peer_send", args: [:])
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "去问 B"),
+        message("e_2", role: .assistant, text: "", blocks: [call]),
+        message(
+          "e_3", role: .tool, text: "",
+          blocks: [
+            .toolResult(
+              callId: "call-1", name: "peer_send", text: "admitted", isError: false, durationMs: 3)
+          ]),
+        message("e_4", role: .assistant, text: "已发出"),
+      ]),
+      exchanges: [summary],
+      bots: []
+    )
+    #expect(entries.map(\.id) == ["e_1", "e_4"])
+  }
+
+  @Test("the answer a peer message caused stays inside the exchange too")
+  func peerRunHidden() {
+    let peer = MessageOrigin(kind: .peer, label: "A", exchangeId: "x_0123456789ab")
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "问题", origin: peer),
+        message("e_2", role: .assistant, text: "只给 A 的回答"),
+        message("e_3", role: .user, text: "人问的话"),
+        message("e_4", role: .assistant, text: "给人的回答"),
+      ]),
+      exchanges: [summary],
+      bots: []
+    )
+    // The recipient's own chat keeps the row and the person's turn, never the exchange's answer.
+    #expect(entries.map(\.id) == ["x_0123456789ab", "e_3", "e_4"])
+  }
+
+  @Test("a peer run stays out of the chat until the daemon can name and count it")
+  func withoutSummary() {
+    let peer = MessageOrigin(kind: .peer, label: "A", exchangeId: "x_0123456789ab")
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "问题", origin: peer),
+        message("e_2", role: .assistant, text: "只给 A 的回答"),
+      ]),
+      exchanges: [],
+      bots: []
+    )
+    #expect(entries.isEmpty, "no row with an invented count, and no leaked answer")
+  }
+
+  @Test("a peer message recorded before exchanges had ids leaves no row behind")
+  func legacyPeerMessage() {
+    let legacy = MessageOrigin(kind: .peer, label: "A")
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "问题", origin: legacy),
+        message("e_2", role: .assistant, text: "只给 A 的回答"),
+        message("e_3", role: .user, text: "人问的话"),
+      ]),
+      exchanges: [summary],
+      bots: []
+    )
+    #expect(entries.map(\.id) == ["e_3"])
+  }
+}

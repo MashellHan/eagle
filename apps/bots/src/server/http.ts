@@ -52,6 +52,8 @@ export type ServerOptions = {
   readonly settings?: GatewayApi;
   /** A bot's triggers: read-only detail for the app, and the person's one switch. */
   readonly triggers?: TriggerApi;
+  /** The read side of bot-to-bot exchanges; absent in a build without a peer store. */
+  readonly peers?: PeerApi;
   /** The inbound side: one webhook delivery, authenticated by its own trigger token. */
   readonly ingress?: TriggerIngress;
   readonly pid?: number;
@@ -282,6 +284,16 @@ const extras = (
 };
 
 /** The app's only trigger surface: read detail, and switch one on or off. */
+/** What the app reads about an exchange between bots (docs/bots/TRIGGERS.md §10). */
+export type PeerApi = {
+  readonly list: (botId: string) => Promise<readonly Record<string, unknown>[]>;
+  /** Undefined when the exchange does not exist or this bot is not in it. */
+  readonly detail: (
+    botId: string,
+    exchangeId: string,
+  ) => Promise<Record<string, unknown> | undefined>;
+};
+
 export type TriggerApi = {
   readonly list: (botId: string) => Promise<readonly Record<string, unknown>[]>;
   /** Returns the updated entry, or undefined when the trigger is not this bot's. */
@@ -619,6 +631,33 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
           return;
         }
         json(response, 200, { triggers: await options.triggers.list(botId) });
+        return;
+      }
+      const exchangesMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/exchanges$/.exec(path);
+      if (exchangesMatch !== null && request.method === "GET") {
+        const botId = exchangesMatch[1] as string;
+        if (options.peers === undefined) {
+          json(response, 404, { error: { kind: "unknown_bot", message: "no peer storage" } });
+          return;
+        }
+        json(response, 200, { exchanges: await options.peers.list(botId) });
+        return;
+      }
+      const exchangeMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/exchanges\/(x_[0-9a-f]{12})$/.exec(
+        path,
+      );
+      if (exchangeMatch !== null && request.method === "GET") {
+        const [, botId, exchangeId] = exchangeMatch as unknown as [string, string, string];
+        if (options.peers === undefined) {
+          json(response, 404, { error: { kind: "unknown_bot", message: "no peer storage" } });
+          return;
+        }
+        const exchange = await options.peers.detail(botId, exchangeId);
+        if (exchange === undefined) {
+          json(response, 404, { error: { kind: "unknown_bot", message: "no such exchange" } });
+          return;
+        }
+        json(response, 200, { exchange });
         return;
       }
       const triggerMatch = /^\/v1\/triggers\/([A-Za-z0-9_-]+)\/(t_[A-Za-z0-9_-]{10})$/.exec(path);

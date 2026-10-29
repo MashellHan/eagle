@@ -155,10 +155,13 @@ public struct MessageOrigin: Codable, Sendable, Equatable, Hashable {
   public var kind: Kind
   /// The trigger's name, or the sending bot's title; presentation only.
   public var label: String?
+  /// A peer message's exchange: the transcript folds the whole round trip into one row.
+  public var exchangeId: String?
 
-  public init(kind: Kind, label: String? = nil) {
+  public init(kind: Kind, label: String? = nil, exchangeId: String? = nil) {
     self.kind = kind
     self.label = label
+    self.exchangeId = exchangeId
   }
 
   /// The chip a transcript shows, or nil for a plain human message.

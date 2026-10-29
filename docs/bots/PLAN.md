@@ -718,8 +718,11 @@ receipts, refusals with reasons), `tools/peers/tools.ts` (`peer_list`/`peer_send
 real Harnesses over real sqlite: a message lands as a peer-originated turn and the sender
 reads the recipient's answer; ownership and receipts are the sender's only.
 
-Still open: the client read path (the `peers` wire capability stays false), so no live bot
-shows an exchange in the app yet.
+The read path landed the same day: `GET /v1/bots/:id/exchanges` and
+`/exchanges/:exchangeId` (owner-scoped), turns that keep their message and answer, and a
+client that folds a round trip into one row in both chats (`PeerExchangeRow`) and reads the
+dialog's messages on open (`PeerConversationDialog`, each side in its own bot's colour).
+`peers` stays false on the wire: there is no peer frame, the app reads HTTP.
 
 ### Peers UI, as built (2026-10-29, client only)
 

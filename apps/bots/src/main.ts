@@ -24,6 +24,7 @@ import { TriggerStore, triggerJournalPath } from "./core/TriggerStore.ts";
 import { declareEvent } from "./log/events.ts";
 import { Log } from "./log/log.ts";
 import { FileLogSink } from "./log/sink.ts";
+import { peerApi } from "./peers/api.ts";
 import { peerHostFor } from "./peers/host.ts";
 import { encodeServerEvent } from "./protocol/encode.ts";
 import { createDaemonModels } from "./runtime/pi/models.ts";
@@ -560,6 +561,15 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     service,
     settings,
     triggers: triggerApi,
+    peers: peerApi({
+      store: peerStore,
+      bots: () => registry.summaries(),
+      submission: (query) => service.submission(query),
+      entryText: async (botId, entryId) => {
+        const message = await registry.handleOf(botId)?.entryById?.(entryId);
+        return message === undefined ? undefined : textOf(message.blocks);
+      },
+    }),
     ingress,
     version: packageVersion(),
     instance: `i_${process.pid}`,

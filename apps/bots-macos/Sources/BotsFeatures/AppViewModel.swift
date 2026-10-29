@@ -17,7 +17,11 @@ public final class AppViewModel: ObservableObject {
   @Published public var showingSettings = false
 
   public let conversation: ConversationViewModel
+  /// The bot's exchanges with other bots, folded into one row by the transcript.
+  @Published public private(set) var exchanges: [PeerExchangeSummary] = []
   private let catalog: CatalogPort
+  /// The read side of an exchange; nil in a test that never opens one.
+  private let peers: PeerPort?
   /// The trigger detail and switch; nil in a test that never opens the surface.
   private let triggers: TriggerPort?
   private var outbox: OutboxStore
@@ -26,11 +30,13 @@ public final class AppViewModel: ObservableObject {
     catalog: CatalogPort,
     conversation: ConversationViewModel,
     outbox: OutboxStore,
-    triggers: TriggerPort? = nil
+    triggers: TriggerPort? = nil,
+    peers: PeerPort? = nil
   ) {
     self.catalog = catalog
     self.conversation = conversation
     self.triggers = triggers
+    self.peers = peers
     self.outbox = outbox
     conversation.onCatalog = { [weak self] catalog in
       self?.apply(catalog)
@@ -49,6 +55,23 @@ public final class AppViewModel: ObservableObject {
     if selection == nil, let first = bots.first {
       select(first.id)
     }
+  }
+
+  /// The exchanges this bot takes part in. A failure leaves the last list rather than
+  /// claiming there are none: an unreachable daemon is not an empty conversation.
+  public func loadExchanges() async {
+    guard let peers, let selection else {
+      if !exchanges.isEmpty { exchanges = [] }
+      return
+    }
+    guard let loaded = try? await peers.list(botId: selection) else { return }
+    if loaded != exchanges { exchanges = loaded }
+  }
+
+  /// One exchange's round trip, read when a person opens the row.
+  public func peerDetail(_ exchangeId: String) async -> PeerExchangeDetail? {
+    guard let peers, let selection else { return nil }
+    return try? await peers.detail(botId: selection, exchangeId: exchangeId)
   }
 
   public func refresh() async {
@@ -240,6 +263,7 @@ public final class AppViewModel: ObservableObject {
   }
 
   public func select(_ botId: String) {
+    if selection != botId, !exchanges.isEmpty { exchanges = [] }
     selection = botId
     conversation.select(botId: botId)
   }

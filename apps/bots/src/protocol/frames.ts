@@ -365,7 +365,15 @@ const decodeOrigin = (ctx: Ctx, raw: unknown): MessageOrigin => {
   const kind = oneOf(ctx, raw.kind, ORIGIN_KINDS, "message.origin.kind");
   const label =
     raw.label === undefined ? undefined : anyStr(ctx, raw.label, "message.origin.label");
-  return { kind, ...(label === undefined ? {} : { label }) } as MessageOrigin;
+  const exchangeId =
+    raw.exchangeId === undefined
+      ? undefined
+      : anyStr(ctx, raw.exchangeId, "message.origin.exchangeId");
+  return {
+    kind,
+    ...(exchangeId === undefined ? {} : { exchangeId }),
+    ...(label === undefined ? {} : { label }),
+  } as MessageOrigin;
 };
 
 const TRIGGER_KINDS = ["schedule", "webhook"] as const;

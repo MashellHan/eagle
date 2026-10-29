@@ -64,21 +64,26 @@ public struct PeerExchange: Identifiable, Hashable, Sendable {
   public let messages: [PeerMessage]
   /// When the exchange started, already formatted for the divider.
   public let startedAt: String?
+  /// How many messages the daemon counted, when the row does not carry them all: a folded row
+  /// keeps only the count, and opening it reads the messages.
+  public let count: Int?
 
   public init(
     id: String,
     participants: [PeerRef],
     messages: [PeerMessage],
-    startedAt: String? = nil
+    startedAt: String? = nil,
+    count: Int? = nil
   ) {
     self.id = id
     self.participants = participants
     self.messages = messages
     self.startedAt = startedAt
+    self.count = count
   }
 
   /// The collapsed row's first half: a count, never a summary of what was said.
-  public var summary: String { "\(messages.count) 条消息来往：" }
+  public var summary: String { "\(count ?? messages.count) 条消息来往：" }
 
   public func participant(_ id: String) -> PeerRef? {
     participants.first { $0.id == id }

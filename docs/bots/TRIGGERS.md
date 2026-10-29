@@ -823,10 +823,27 @@ per exchange at most, ten from each side.
 - `peer_read` ownership comes from the receipt journal keyed by the calling bot; reading
   another bot's `requestId` is refused, and reading never starts a turn.
 
+The read side landed with it, because the owner's interaction rule is that a peer round
+trip never enters either bot's chat with the person:
+
+- A turn now keeps the message it carried, and the recipient's answer is filled in from its
+  own submission (`Submission.answerEntryId` → `RuntimeHandle.entryById`) and persisted. The
+  record is therefore the transcript the dialog renders.
+- `GET /v1/bots/:id/exchanges` lists the exchanges that bot takes part in (`id`,
+  `participants` with titles, `count` = question/answer pairs, `status`, `startedAt`), and
+  `GET /v1/bots/:id/exchanges/:exchangeId` returns the turns with their answers. Both are
+  owner-scoped: another bot's exchange is a 404.
+- The transcript folds an exchange into **one** row where the first peer message was: the
+  peer messages, the answer a peer message caused, and the `peer_*` tool rows never reach
+  the chat. The row is only drawn once the daemon can name and count it, so no invented
+  count is ever shown. Opening the row reads the round trip once; both sides' messages are
+  drawn with their own bot's face and tint.
+- A summary the bot gives the person is an ordinary assistant turn: it stays in the chat.
+
 Not built yet: the A/B visited-path rule for routes longer than two bots (out of scope
-while an exchange is a pair), the per-hour caps, and the client side — `peers` stays
-`false` on the wire because the app has no read API for an exchange yet, so the transcript
-row and dialog are still fed by a fixture.
+while an exchange is a pair) and the per-hour caps. The `peers` capability stays `false` on
+the wire because there is no peer *frame*: the app reads exchanges over HTTP and folds the
+transcript itself.
 
 The origin field lands in its own commit at the start of stage 1, before the first
 fired message exists, so no migration is needed.

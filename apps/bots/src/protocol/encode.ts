@@ -50,6 +50,9 @@ export const encodeMessage = (m: Message): Wire => {
   if (m.origin !== undefined) {
     wire.origin = {
       kind: m.origin.kind,
+      ...(m.origin.kind === "peer" && m.origin.exchangeId !== undefined
+        ? { exchangeId: m.origin.exchangeId }
+        : {}),
       ...(m.origin.label === undefined ? {} : { label: m.origin.label }),
     };
   }

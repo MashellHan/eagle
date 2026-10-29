@@ -4,16 +4,21 @@ import SwiftUI
 /// hairline, hover copy. Only the radius and the width differ, because this column is narrower.
 public struct PeerBubble: View {
   private let text: String
+  /// The sender's own colour: two bots in one dialog must not look like one voice.
+  private let tint: Color
 
-  public init(text: String) {
+  public init(text: String, tint: Color) {
     self.text = text
+    self.tint = tint
   }
 
   public var body: some View {
     AssistantBubble(
       text: text,
       cornerRadius: Theme.Metric.peerBubbleRadius,
-      maxWidth: Theme.Metric.peerBubbleMaxWidth
+      maxWidth: Theme.Metric.peerBubbleMaxWidth,
+      fill: tint.opacity(0.12),
+      border: tint.opacity(0.34)
     )
   }
 }
@@ -37,7 +42,7 @@ public struct PeerMessageGroup: View {
           .foregroundStyle(burst.sender.labelTint)
           .padding(.leading, Theme.Metric.peerLabelGap)
         ForEach(burst.messages) { message in
-          PeerBubble(text: message.text)
+          PeerBubble(text: message.text, tint: burst.sender.labelTint)
         }
       }
     }

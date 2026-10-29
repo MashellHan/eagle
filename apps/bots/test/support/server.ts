@@ -14,6 +14,7 @@ import { PeerExchangeStore } from "../../src/core/PeerExchangeStore.ts";
 import type { RuntimePort } from "../../src/core/RuntimePort.ts";
 import { captureLog, type LogRecord } from "../../src/log/log.ts";
 import { measureEvent } from "../../src/main.ts";
+import { peerApi } from "../../src/peers/api.ts";
 import { peerHostFor } from "../../src/peers/host.ts";
 import { PiDurableRuntime } from "../../src/runtime/pi/PiDurableRuntime.ts";
 import type { GatewayApi } from "../../src/server/gateway.ts";
@@ -209,6 +210,19 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     },
     ...(options.windowMessages === undefined ? {} : { windowMessages: options.windowMessages }),
   });
+  const textOfBlocks = (blocks: readonly { type: string; text?: string }[]): string | undefined => {
+    const text = blocks.map((block) => (block.type === "text" ? (block.text ?? "") : "")).join("");
+    return text === "" ? undefined : text;
+  };
+  const peersApi = peerApi({
+    store: peerStore,
+    bots: () => registry.summaries(),
+    submission: (query) => service.submission(query),
+    entryText: async (target, entryId) => {
+      const message = await registry.handleOf(target)?.entryById?.(entryId);
+      return message === undefined ? undefined : textOfBlocks(message.blocks);
+    },
+  });
   peersHolder.current = (botId) =>
     peerHostFor({
       botId,
@@ -243,6 +257,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
       triggers: true,
     },
     ...(options.triggers === undefined ? {} : { triggers: options.triggers }),
+    peers: peersApi,
     ...(options.ingress === undefined ? {} : { ingress: options.ingress }),
     port: 0,
   });

@@ -99,7 +99,12 @@ export const peerHostFor = (deps: PeerHostDeps): PeerToolHost => ({
       );
     }
 
-    const turn = { fromBotId: deps.botId, toBotId: recipient.id, requestId };
+    const turn = {
+      fromBotId: deps.botId,
+      toBotId: recipient.id,
+      requestId,
+      message,
+    };
     // The receipt is durable before admission: a crash in between leaves a recoverable record,
     // never a message the sender cannot name (TRIGGERS.md §10, "lost acknowledgement").
     const { exchange: appended } = await deps.store.append(exchange.id, turn);
@@ -113,6 +118,7 @@ export const peerHostFor = (deps: PeerHostDeps): PeerToolHost => ({
       origin: {
         kind: "peer",
         fromBotId: deps.botId,
+        exchangeId: appended.id,
         ...(self === undefined ? {} : { label: self.title }),
       },
       whenBusy: "followUp",
@@ -155,7 +161,10 @@ export const peerHostFor = (deps: PeerHostDeps): PeerToolHost => ({
     };
     if (submission.answerEntryId === undefined) return base;
     const answer = await deps.entryText(receipt.turn.toBotId, submission.answerEntryId);
-    return answer === undefined ? base : { ...base, answer };
+    if (answer === undefined) return base;
+    // The record keeps the answer, so the app reads the whole exchange once.
+    await deps.store.answer(receipt.exchangeId, requestId, answer);
+    return { ...base, answer };
   },
 
   receipts: async ({ toBotId, limit }) => {

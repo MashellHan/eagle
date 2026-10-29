@@ -68,7 +68,8 @@ const EDGES: ReadonlyArray<{
       target === "src/core/Invocation.ts" ||
       target === "src/core/PeerExchangeStore.ts" ||
       target === "src/core/domain.ts" ||
-      target === "src/tools/types.ts",
+      target === "src/tools/types.ts" ||
+      target === "src/server/http.ts",
   },
   // The tool extension is part of the adapter boundary: it defines pi-durable tools, so
   // it may import pi-durable and may not reach core, protocol or transport.
@@ -201,6 +202,7 @@ test("the rules allow the documented edges", () => {
     { file: "src/peers/host.ts", specifier: "../core/PeerExchangeStore.ts" },
     { file: "src/peers/host.ts", specifier: "../core/Invocation.ts" },
     { file: "src/peers/host.ts", specifier: "../tools/types.ts" },
+    { file: "src/peers/api.ts", specifier: "../server/http.ts" },
   ];
   assert.deepEqual(
     violations(allowed.map(({ file, specifier }) => ({ file, dependencies: [specifier] }))),

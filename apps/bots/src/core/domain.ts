@@ -69,7 +69,13 @@ export type MessageOrigin =
   | { readonly kind: "human"; readonly label?: string }
   | { readonly kind: "schedule"; readonly triggerId?: string; readonly label?: string }
   | { readonly kind: "webhook"; readonly triggerId?: string; readonly label?: string }
-  | { readonly kind: "peer"; readonly fromBotId?: string; readonly label?: string }
+  | {
+      readonly kind: "peer";
+      readonly fromBotId?: string;
+      /** The exchange this message belongs to, so a client folds the whole round trip. */
+      readonly exchangeId?: string;
+      readonly label?: string;
+    }
   | { readonly kind: "unknown"; readonly label?: string };
 export type MessageState = "streaming" | "complete" | "aborted" | "error";
 

@@ -8,7 +8,7 @@ export type InvocationOrigin =
   | { readonly kind: "human" }
   | { readonly kind: "schedule"; readonly triggerId: string }
   | { readonly kind: "webhook"; readonly triggerId: string }
-  | { readonly kind: "peer"; readonly fromBotId: string }
+  | { readonly kind: "peer"; readonly fromBotId: string; readonly exchangeId?: string }
   | { readonly kind: "unknown" };
 
 export type Invocation = {

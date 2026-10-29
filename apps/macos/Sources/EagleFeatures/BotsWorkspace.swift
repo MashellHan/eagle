@@ -83,6 +83,11 @@ final class BotsWorkspaceViewModel: ObservableObject {
   /// The selected trigger's detail as the inspector's label/value rows.
   @Published private(set) var triggerRows: [InspectorUsageRow] = []
   @Published private(set) var connection: ConnectionState = .connecting
+  /// The bot's exchanges with other bots, as the transcript folds them into one row each.
+  @Published private(set) var exchanges: [PeerExchangeSummary] = []
+  /// The exchange a person opened from a row; nil while no dialog is up.
+  @Published private(set) var openedExchange: PeerExchange?
+  private var loadingExchanges = false
 
   /// The placeholder's retry runs in a task: `start()` is async, the button is not.
   func retryConnectionAsync() async {
@@ -189,7 +194,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
       catalog: catalog,
       conversation: ConversationViewModel(conversation: connection, outbox: outbox),
       outbox: outbox,
-      triggers: TriggerHTTPClient(baseURL: settings.baseURL, token: token)
+      triggers: TriggerHTTPClient(baseURL: settings.baseURL, token: token),
+      peers: PeerHTTPClient(baseURL: settings.baseURL, token: token)
     )
   }
 
@@ -616,7 +622,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
     let nextSubtitle = presenter.subtitle(
       for: conversation.state, connection: conversation.connection)
     if subtitle != nextSubtitle { subtitle = nextSubtitle }
-    transcript.update(conversation.state)
+    transcript.update(conversation.state, exchanges: exchanges, bots: app.bots)
+    loadExchangesIfNeeded()
     let nextTasks = presenter.inspectorTasks(for: conversation.state.tasks)
     if tasks != nextTasks { tasks = nextTasks }
     let nextUsage = presenter.inspectorUsage(for: conversation.state.usage)
@@ -744,7 +751,15 @@ final class BotsWorkspaceViewModel: ObservableObject {
 /// Pure presentation: domain state in, Eagle's transcript entries out
 /// (docs/bots/PLAN.md, stage 5 — view models own the mapping, views only render).
 struct BotsPresenter {
-  func transcript(for state: ConversationState) -> [TranscriptEntry] {
+  /// Tools a Bot uses to talk to another Bot. They are not the person's conversation, so the
+  /// transcript folds them away with the peer messages themselves (see `peerExchangeRow`).
+  static let peerTools: Set<String> = ["peer_list", "peer_send", "peer_read"]
+
+  func transcript(
+    for state: ConversationState,
+    exchanges: [PeerExchangeSummary] = [],
+    bots: [BotSummary] = []
+  ) -> [TranscriptEntry] {
     let (paired, consumed) = pairTools(state.messages)
     // A call can only be executing within the run that sent it: once a newer user message
     // exists, an old call without a result belongs to a finished run and must not spin.
@@ -760,13 +775,35 @@ struct BotsPresenter {
       }
       pendingTools.removeAll()
     }
+    let peerCalls = peerCallIds(state.messages)
+    var foldedExchanges: Set<String> = []
+    /// True while the transcript is still inside the run a peer message started: that answer and
+    /// its tool rows belong to the exchange, not to this chat with the person.
+    var insidePeerRun = false
     for (index, message) in state.messages.enumerated() {
+      if message.role == .user {
+        if let origin = message.origin, origin.kind == .peer {
+          insidePeerRun = true
+          // The row needs the daemon's count and both names; until the list arrives, and for a
+          // message recorded before exchanges had ids, the run simply stays out of the chat.
+          if let exchangeId = origin.exchangeId, foldedExchanges.insert(exchangeId).inserted,
+            let row = peerExchangeRow(
+              exchangeId: exchangeId, exchanges: exchanges, bots: bots)
+          {
+            rows.append(.peerExchange(id: exchangeId, exchange: row))
+          }
+          continue
+        }
+        insidePeerRun = false
+      }
+      if insidePeerRun { continue }
       for row in entries(
         for: message,
         paired: paired,
         consumed: consumed,
         running: state.running,
-        current: index > (lastUserIndex ?? -1)
+        current: index > (lastUserIndex ?? -1),
+        skipCalls: peerCalls
       ) {
         if case .tool(_, let tool) = row {
           pendingTools.append(tool)
@@ -794,6 +831,41 @@ struct BotsPresenter {
       )
     }
     return rows
+  }
+
+  /// The one line a chat keeps about an exchange: how many messages passed, and between whom.
+  /// Nil while the daemon's list has not arrived: a row with an invented count is worse than none.
+  private func peerExchangeRow(
+    exchangeId: String,
+    exchanges: [PeerExchangeSummary],
+    bots: [BotSummary]
+  ) -> PeerExchange? {
+    guard
+      let summary = exchanges.first(where: { $0.id == exchangeId }),
+      !summary.participants.isEmpty
+    else { return nil }
+    return PeerExchange(
+      id: exchangeId,
+      participants: summary.participants.map { peerRef(id: $0.id, title: $0.title, bots: bots) },
+      messages: [],
+      startedAt: nil,
+      count: summary.count
+    )
+  }
+
+  /// A participant with the bot's own face and tint, so two bots never look alike.
+  func peerRef(id: String, title: String, bots: [BotSummary]) -> PeerRef {
+    guard let bot = bots.first(where: { $0.id == id }) else {
+      return PeerRef(
+        id: id, title: title, face: nil,
+        tintIndex: abs(id.hashValue) % Theme.Palette.avatarTints.count)
+    }
+    return PeerRef(
+      id: id,
+      title: bot.title,
+      face: faceStyle(for: bot),
+      tintIndex: tintIndex(for: bot)
+    )
   }
 
   private struct ToolResult {
@@ -870,12 +942,27 @@ struct BotsPresenter {
     )
   }
 
+  /// Every call id that belongs to a peer tool, so the call row and its result both stay out of
+  /// the transcript: the exchange row speaks for them.
+  private func peerCallIds(_ messages: [Message]) -> Set<String> {
+    var ids: Set<String> = []
+    for message in messages where message.role == .assistant {
+      for block in message.blocks {
+        if case .toolCall(let callId, let name, _) = block, Self.peerTools.contains(name) {
+          ids.insert(callId)
+        }
+      }
+    }
+    return ids
+  }
+
   private func entries(
     for message: Message,
     paired: [ToolCallKey: ToolResult],
     consumed: Set<String>,
     running: Bool,
-    current: Bool
+    current: Bool,
+    skipCalls: Set<String> = []
   ) -> [TranscriptEntry] {
     switch message.role {
     case .user:
@@ -887,6 +974,7 @@ struct BotsPresenter {
       if consumed.contains(message.id) { return [] }
       for block in message.blocks {
         if case .toolResult(let callId, let name, let text, let isError, let durationMs) = block {
+          if skipCalls.contains(callId) { return [] }
           return [
             .tool(
               id: "result-\(message.id)-\(callId)",
@@ -925,7 +1013,8 @@ struct BotsPresenter {
           text += value
         case .thinking:
           continue
-        case .toolCall(_, let name, let args):
+        case .toolCall(let callId, let name, let args):
+          if skipCalls.contains(callId) { continue }
           hasTool = true
           flush()
           let result = paired[ToolCallKey(messageId: message.id, block: blockIndex)]

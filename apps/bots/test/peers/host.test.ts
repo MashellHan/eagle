@@ -103,11 +103,16 @@ test("a send admits one message addressed to the recipient, with the peer origin
     assert.equal(result.sent, 1);
     assert.equal(result.remaining, PEER_MAX_TURNS - 1);
     assert.equal(result.exchangeStatus, "open");
-    assert.deepEqual(bench.sent[0]?.origin, {
-      kind: "peer",
-      fromBotId: "b_sender",
-      label: "sender",
-    });
+    const origin = bench.sent[0]?.origin as {
+      kind: string;
+      fromBotId: string;
+      label?: string;
+      exchangeId?: string;
+    };
+    assert.equal(origin.kind, "peer");
+    assert.equal(origin.fromBotId, "b_sender");
+    assert.equal(origin.label, "sender");
+    assert.equal(origin.exchangeId, result.exchangeId, "the origin names its exchange");
     assert.equal(bench.sent[0]?.botId, "b_target");
   } finally {
     await bench.cleanup();
@@ -211,6 +216,19 @@ test("peer_read answers the caller's own receipt and refuses another bot's", asy
   }
 });
 
+test("receipts can be narrowed to one recipient", async () => {
+  const bench = await createBench();
+  try {
+    await bench.host.send({ taskId: "t-1", toBotId: "b_target", message: "one" });
+    await bench.host.send({ taskId: "t-2", toBotId: "b_busy", message: "two" });
+    const narrowed = await bench.host.receipts({ limit: 20, toBotId: "b_busy" });
+    assert.equal(narrowed.length, 1);
+    assert.equal(narrowed[0]?.toBotId, "b_busy");
+  } finally {
+    await bench.cleanup();
+  }
+});
+
 test("receipts list only this bot's messages, newest first, with their status", async () => {
   const bench = await createBench();
   try {
@@ -233,6 +251,36 @@ test("the trace a peer send uses names the request, never a random value", async
     assert.match(sent.requestId, /^pr_[0-9a-f]{16}$/);
     assert.equal(peerRequestId("b_sender", "b_target", "t-1"), sent.requestId);
     assert.equal(trace.length > 0, true);
+  } finally {
+    await bench.cleanup();
+  }
+});
+
+test("a read whose submission the daemon no longer knows answers unknown, not an answer", async () => {
+  const bench = await createBench();
+  try {
+    const sent = await bench.host.send({ taskId: "t-1", toBotId: "b_target", message: "hi" });
+    bench.submissions.delete(`b_target/${sent.requestId}`);
+    const read = await bench.host.read({ requestId: sent.requestId });
+    assert.equal(read.status, "unknown");
+    assert.equal(read.answer, undefined);
+  } finally {
+    await bench.cleanup();
+  }
+});
+
+test("paging walks the catalogue with the cursor, and no page invents a next one", async () => {
+  const bench = await createBench();
+  try {
+    const first = await bench.host.list({ limit: 2 });
+    assert.equal(first.items.length, 2);
+    assert.equal(first.nextCursor, first.items[1]?.botId);
+    const second = await bench.host.list({
+      limit: 2,
+      ...(first.nextCursor === undefined ? {} : { cursor: first.nextCursor }),
+    });
+    assert.equal(second.items.length, 1);
+    assert.equal(second.nextCursor, undefined);
   } finally {
     await bench.cleanup();
   }
