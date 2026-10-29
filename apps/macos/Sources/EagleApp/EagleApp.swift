@@ -10,11 +10,13 @@ struct EagleApp: App {
 
   var body: some Scene {
     WindowGroup("Eagle") {
-      WorkspaceShellView(onShowGallery: { GalleryWindow.show() })
-        .frame(minWidth: 1280, minHeight: 760)
-        .ignoresSafeArea()
-        .background(WindowConfigurator())
-        .preferredColorScheme(scheme)
+      WorkspaceShellView(onShowGallery: { openSettings in
+        GalleryWindow.show(onShowSettings: openSettings)
+      })
+      .frame(minWidth: 1280, minHeight: 760)
+      .ignoresSafeArea()
+      .background(WindowConfigurator())
+      .preferredColorScheme(scheme)
     }
     .defaultSize(width: Theme.Metric.windowWidth, height: Theme.Metric.windowHeight)
     // Immersive: no title bar, traffic lights float over the sidebar.
@@ -87,8 +89,19 @@ struct WindowConfigurator: NSViewRepresentable {
 enum GalleryWindow {
   private static var window: NSWindow?
 
-  static func show() {
+  static func show(
+    onShowSettings: @escaping () -> Void = {
+      NotificationCenter.default.post(name: .eagleToggleSettings, object: nil)
+    }
+  ) {
+    let originWindow = NSApp.keyWindow
+    let content = TemplateGallery {
+      window?.orderOut(nil)
+      originWindow?.makeKeyAndOrderFront(nil)
+      onShowSettings()
+    }
     if let window {
+      window.contentView = NSHostingView(rootView: content)
       window.makeKeyAndOrderFront(nil)
       return
     }
@@ -102,7 +115,7 @@ enum GalleryWindow {
     window.titlebarAppearsTransparent = true
     window.titleVisibility = .hidden
     window.contentView = NSHostingView(
-      rootView: TemplateGallery()
+      rootView: content
     )
     window.center()
     window.makeKeyAndOrderFront(nil)

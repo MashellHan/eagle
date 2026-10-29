@@ -6,6 +6,11 @@ first of six documents; see [ARCHITECTURE.md](ARCHITECTURE.md) for structure,
 pi-durable mapping, [OBSERVABILITY.md](OBSERVABILITY.md) for logging and
 [TESTING.md](TESTING.md) for the test ladder.
 
+The hosted App's in-window menu includes “设置…” beside “会话状态” and “基础控件”.
+The host injects the action that returns to that workspace's real settings; the
+gallery does not own another settings profile. Account menu and ⌘, open the same
+settings, and repeating the open command keeps settings open.
+
 Bots is a **new, isolated product** in this repository. It shares no code,
 protocol, build or dependency with the Eagle website, Worker or Agent. Its only
 shared asset is `apps/macos/Sources/EagleDesign`, a dependency-free SwiftUI

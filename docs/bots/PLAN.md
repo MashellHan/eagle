@@ -11,6 +11,48 @@ in [Extensions and tools](EXTENSIONS-AND-TOOLS.md). That guide also
 specifies planned optional `memory`, `search` and `peers` groups and child-agent
 discovery. Those additions are not implemented or enabled by this plan update.
 
+## 共享设备与配对重构（2026-10-29）
+
+用户最新要求替代旧 M0–M1 的“手填部署信息、每 Bot 机器授权”产品流程：
+安装并首次启动 Eagle 后本机环境自动就绪、默认 All approve；设备由整个 App 共享，
+通过默认 1 小时、最长 24 小时的单次配对码加入设备群。配对成功后的设备身份持续
+有效，直到撤销。App 内 menu 弹窗（含“会话状态、基础控件”等入口）必须能打开
+真实设置，不能只有系统状态栏/菜单栏入口；设置统一提供“设备”、配对和设备级
+权限，Bot 详情展示可用电脑与 agent 实际执行目标。一个群支持 A/B/C/D 等三台以上
+设备；配对自动把未入群设备纳入已有群，不受输入配对码的方向影响。agent 按任务
+和设备信息自主选择目标。配对用 HTTPS，单个 Registry DO 原子保存配对/群成员；
+执行复用出站 Agent 长连接和调用端单次 WSS，多个 Bot 共享目录、身份与访问服务，
+首版按目标设备串行，不做并发调度或连接池。详细行为、
+Orca 固定源码参考、认证/存储边界及旧代码处理见
+[共享设备与配对方案](DEVICE-PAIRING.md)。
+
+2026-10-29：已从 `nocoo/eagle@7101566` 启动实施。Eagle Herdr 团队使用独立
+worktree；旧 `main@c34be59` 只作按需复用来源。当前尚未完成设备群或配对验收。
+
+| 阶段 | 状态 | 范围和退出证据 |
+| --- | --- | --- |
+| D0 — 产品与契约 | in progress | 多成员群、方向无关的新增设备、单 Registry 配对事务、agent 选机和按设备串行已定；所属契约及审批位置随实现固定 |
+| D1 — 本机安装即用 | planned | 签名运行时、自动设备身份与环境初始化、本机默认全部允许、离线可用、系统授权待办；干净 Mac 不用 Node/部署表单 |
+| D2 — 配对与群认证 | planned | 自动注册、设备持有证明、Registry 单事务消费码/入群/记录结果、成员隔离与撤销；A/C 群加入 B/D、回包丢失重试、其他群不可访问 |
+| D3 — 设备设置与 agent 联动 | planned | App 内 menu → 真实设置 → 设备；配对/状态/移除；共享设备 port 与系统引导、agent 明确目标调用；既有/新 Bot 顺序操作群内设备，目标证据可核对，旧逐 Bot 授权随替换删除 |
+| D4 — 设备权限与恢复 | planned | All approve / Always ask / 暂停，设备端真实执行策略、审批绑定与过期、journal 去重及原 ID 恢复；不存在只改 UI 的权限模式 |
+| D5 — 安装与多设备交付 | planned | 完整门禁、签名安装包、真实 Mac A/B 联动与退出 UI 验收、补充 C/D 验证四成员群；真实硬件与隔离实例分别报告，部署/发布按具体操作授权执行 |
+
+首个贯通切片覆盖安装即用、默认 All approve、配对、A/B 双向执行和多 Bot 共享，
+尽早实测两台 Mac；并发执行、多路复用和复杂调度不作为本轮前置工作。
+
+工作分成 App/集成与设备服务两条不重叠的实现线。迭代遵守行为 TDD 并只跑受影响
+检查；完整候选统一执行仓库门禁，不建立额外验收脚本、重复评审或流程任务。
+每个小功能切片通过受影响检查即提交，交同一位只读 reviewer 按明确 base/head
+增量审查；App 与服务分支均如此，阻断项由写入者修复提交并闭环。
+本轮 Lead/reviewer 使用 Astra Max，服务开发按用户会话偏好使用 Sol xhigh。
+部署、发布和日常 App 替换在本地候选完成后按具体授权处理。
+
+已落地的首个 App 切片：menu 的模板导航增加“设置…”，宿主注入当前 workspace
+真实设置动作；重复打开不关闭设置。`GallerySettingsTests` 先实测旧视图缺少入口，
+再通过 AppKit accessibility 点击新按钮并核对宿主回调一次；尚未替代打包 App 的
+设备页点击验收。证据在本地 `.local/device-evidence/menu-{red,green}.log`。
+
 ## Where the code lives
 
 ### Exclusive search providers (2026-10-28)

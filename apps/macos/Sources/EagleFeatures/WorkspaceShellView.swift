@@ -20,14 +20,14 @@ public struct WorkspaceShellView: View {
   @AppStorage("eagle.appearance") private var appearance = "system"
   @AppStorage("eagle.hideToolCalls") private var hideToolCalls = false
   @AppStorage("eagle.loadMockData") private var loadMockData = false
-  private let onShowGallery: () -> Void
+  private let onShowGallery: (@escaping () -> Void) -> Void
 
   public init(
     list: WorkspaceListViewModel = WorkspaceListViewModel(),
     chat: BotChatViewModel = BotChatViewModel(),
     inspector: InspectorViewModel = InspectorViewModel(),
     layout: ShellLayoutViewModel = ShellLayoutViewModel(),
-    onShowGallery: @escaping () -> Void = {}
+    onShowGallery: @escaping (@escaping () -> Void) -> Void = { _ in }
   ) {
     _list = StateObject(wrappedValue: list)
     _chat = StateObject(wrappedValue: chat)
@@ -167,7 +167,7 @@ public struct WorkspaceShellView: View {
           },
           onCollapse: { layout.toggleSidebar() },
           onAccount: { showsAccountMenu = true },
-          onGallery: onShowGallery,
+          onGallery: { onShowGallery { showsSettings = true } },
           onPinItem: { id in chrome.togglePin(id) },
           moveTargets: { id in moveTargets(for: id) },
           onMoveItem: { id, groupId in
@@ -323,7 +323,7 @@ public struct WorkspaceShellView: View {
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSettings)) { _ in
-      showsSettings.toggle()
+      showsSettings = true
     }
   }
 
