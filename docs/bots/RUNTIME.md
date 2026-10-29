@@ -510,6 +510,18 @@ All native coding tools and `list` cross the same local policy/admission seam
 when a device port is configured. Approval requests carry the complete operation;
 only the initiating App can confirm them. No port credentials enter Bot storage.
 
+The shared adapter captures native `output`, `retainedOutput`, diagnostics and
+details in bounded memory. No raw progress is published to pi.live, and native
+shell output does not spill to an unsanitized file. Completion sends retained
+text and diagnostics/details through the host sanitizer and journal; model and
+nested callers receive the same versioned device receipt with output, status,
+exit code and original target/operation ID. Native image blocks are explicitly
+omitted at this textual device boundary. Recovery returns that same receipt.
+Only payload text is shortened to fit the 64 KiB encoded receipt; metadata and
+valid JSON remain intact and truncation is explicit. With a device port injected,
+Herdr currently exposes inspection only; write/control tools stay unavailable
+until they participate in shared admission.
+
 
 | Situation | pi behaviour | Adapter action |
 | --- | --- | --- |

@@ -14,6 +14,25 @@ import {
 } from "../../src/tools/registry.ts";
 import { openWorkspace } from "../../src/tools/workspace.ts";
 
+test("a shared device registry exposes no Herdr writes outside device policy", () => {
+  const registry = createToolRegistry(
+    { root: "/tmp" },
+    {
+      devices: { socketPath: "/tmp/unused.sock", botId: "test" },
+      herdr: { client: {} as HerdrClient, stateDir: "/tmp", botId: "test" },
+    },
+  );
+  const names = registry
+    .snapshot()
+    .tools()
+    .map(({ tool }) => tool.name);
+  assert.deepEqual(names.filter((name) => name.startsWith("herdr_")).sort(), [
+    "herdr_list",
+    "herdr_read",
+    "herdr_wait",
+  ]);
+});
+
 test("an injected shared device port is available to saved and new Bots without an opt-in group", () => {
   const registry = createToolRegistry(
     { root: "/tmp" },

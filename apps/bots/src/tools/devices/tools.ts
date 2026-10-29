@@ -12,10 +12,15 @@ import {
 import { declareEvent } from "../../log/events.ts";
 import type { Log } from "../../log/log.ts";
 import {
+  captureNativeOutput,
+  deviceOutputLimits,
+  deviceReceiptSchema,
+  deviceReceipt as receipt,
+} from "./output.ts";
+import {
   type DeviceDirectory,
   type DeviceOperation,
   type DeviceRequest,
-  type DeviceResult,
   type JSONValue,
   operationDigest,
   type SharedDevicePort,
@@ -53,18 +58,6 @@ const textResult = (value: unknown, isError = false): ToolExecutionResult => ({
   output: [{ type: "text", text: JSON.stringify(value) }],
   ...(isError ? { isError: true } : {}),
 });
-const receipt = (request: DeviceRequest, result: DeviceResult): ToolExecutionResult =>
-  textResult(
-    {
-      type: "device-operation",
-      version: 1,
-      targetDeviceId: request.targetDeviceId,
-      operationId: request.operationId,
-      digest: request.digest,
-      ...result,
-    },
-    ["failed", "denied", "busy", "unknown", "cancelled"].includes(result.status),
-  );
 const safeError = (error: unknown) =>
   error instanceof Error && /^[a-z][a-z0-9_]{0,80}$/.test(error.message)
     ? error.message
@@ -174,7 +167,8 @@ export const deviceExtension = (options: DeviceToolsOptions) =>
           operation: operationParameters,
         }),
         replay: "safe",
-        outputLimits: { maxBytes: 65536, maxLines: 2000, retain: "tail" },
+        outputLimits: deviceOutputLimits,
+        structuredOutputSchema: deviceReceiptSchema,
         async execute(args, api, context) {
           let request: DeviceRequest | undefined;
           try {
@@ -211,7 +205,8 @@ export const deviceExtension = (options: DeviceToolsOptions) =>
           action: Type.Union([Type.Literal("get"), Type.Literal("cancel")]),
         }),
         replay: "safe",
-        outputLimits: { maxBytes: 65536, maxLines: 2000, retain: "tail" },
+        outputLimits: deviceOutputLimits,
+        structuredOutputSchema: deviceReceiptSchema,
         async execute(args, _api, context) {
           const request: DeviceRequest = {
             requestId: randomUUID(),
@@ -248,6 +243,8 @@ export const guardNativeTool = <T extends ToolRegistration>(
 ): T => ({
   ...tool,
   replay: "safe",
+  outputLimits: deviceOutputLimits,
+  structuredOutputSchema: deviceReceiptSchema,
   execute: async (args, api, context) => {
     let request: DeviceRequest | undefined;
     let admission: Awaited<ReturnType<SharedDevicePort["begin"]>> | undefined;
@@ -277,33 +274,23 @@ export const guardNativeTool = <T extends ToolRegistration>(
       await api.memo("device.transmitted.v1", true, context);
       admission = await options.port.begin(request, context.abortSignal);
       if (!admission.accepted) return receipt(request, admission.result);
+      const captured = captureNativeOutput(api);
       let result: ToolExecutionResult;
       try {
-        result = await tool.execute(args, api, withAbortSignal(admission.signal, context));
+        result = await tool.execute(args, captured.api, withAbortSignal(admission.signal, context));
       } catch (error) {
         const settled = await admission.complete({
           status: context.abortSignal?.aborted || admission.signal.aborted ? "cancelled" : "failed",
           error: safeError(error),
+          ...captured.finish(),
         });
         return receipt(request, settled);
       }
-      const output =
-        result.output
-          ?.filter((part) => part.type === "text")
-          .map((part) => part.text)
-          .join("\n") ?? "";
       const settled = await admission.complete({
         status: result.isError ? "failed" : "completed",
-        output,
+        ...captured.finish(result),
       });
-      if (settled.status === "unknown") return receipt(request, settled);
-      return {
-        output: [
-          { type: "text", text: settled.output ?? "" },
-          ...(result.output?.filter((part) => part.type !== "text") ?? []),
-        ],
-        ...(result.isError ? { isError: true } : {}),
-      };
+      return receipt(request, settled);
     } catch (error) {
       const failure = { status: "unknown" as const, error: safeError(error) };
       return request === undefined ? textResult(failure, true) : receipt(request, failure);

@@ -135,8 +135,17 @@ export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistr
     registry.install(
       defineExtension({
         name: HERDR_TOOLS_EXTENSION,
-        tools: createHerdrTools({ ...herdr, workspace }),
-        sections: [section("bots-herdr", () => herdrSection(herdr.botId))],
+        tools: createHerdrTools({ ...herdr, workspace }).filter(
+          (tool) =>
+            devices === undefined || ["herdr_list", "herdr_read", "herdr_wait"].includes(tool.name),
+        ),
+        sections: [
+          section("bots-herdr", () =>
+            devices === undefined
+              ? herdrSection(herdr.botId)
+              : "Herdr inspection is available. Herdr write/control tools are unavailable until they use shared device admission. Use device-governed coding tools for local commands.",
+          ),
+        ],
       }),
     );
   }

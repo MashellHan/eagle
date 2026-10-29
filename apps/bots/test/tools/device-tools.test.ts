@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { boundOutput, OutputBuffer } from "@earendil-works/chord/output";
 import { Type } from "@earendil-works/pi-ai";
 import {
   defineTool,
@@ -12,6 +13,8 @@ import {
   type ToolExecutionResult,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
+import { createBashTool } from "@earendil-works/pi-durable/tools";
 import { Log, type LogRecord } from "../../src/log/log.ts";
 import {
   canonicalJSON,
@@ -102,6 +105,97 @@ const fixture = () => {
 };
 const body = (value: ToolExecutionResult) =>
   JSON.parse(value.output?.find((part) => part.type === "text")?.text ?? "null");
+
+test("real native bash output waits for host sanitation and preserves a replayable structured receipt", async () => {
+  const bench = fixture();
+  const root = await mkdtemp(join(tmpdir(), "native-stream-"));
+  const env = new NodeExecutionEnv({ cwd: root });
+  const live: unknown[] = [];
+  const buffer = new OutputBuffer({ maxBytes: 65536, maxLines: 2000, retain: "tail" });
+  const { api: base } = memoApi();
+  const api: ToolExecutionApi = {
+    ...base,
+    env,
+    outputWindow: undefined,
+    output: (chunk, skip) => {
+      live.push(chunk);
+      buffer.push(chunk, skip);
+    },
+    retainedOutput: () => ({ text: buffer.snapshot().text, truncated: false }),
+    diagnostic: (value) => live.push(value),
+    details: async (value) => {
+      live.push(value);
+    },
+  };
+  let saved: DeviceResult = { status: "unknown" };
+  bench.port.begin = async (request) => {
+    bench.calls.push(request);
+    return {
+      accepted: true,
+      result: { status: "running" },
+      signal: new AbortController().signal,
+      complete: async (value) => {
+        bench.finishes.push(value);
+        saved = {
+          ...value,
+          output: value.output?.replaceAll("synthetic-secret", "[redacted]") ?? "",
+        };
+        return saved;
+      },
+      close: () => {},
+    };
+  };
+  bench.port.request = async (request) => {
+    bench.calls.push(request);
+    return saved;
+  };
+  const tool = guardNativeTool(createBashTool(), { botId: "native-bash", port: bench.port });
+  try {
+    const result = await tool.execute(
+      { command: "printf x >> count; printf 'synthetic-secret 中文'; exit 7" },
+      api,
+      BACKGROUND_CONTEXT,
+    );
+    assert.equal(live.length, 0, "raw SDK progress/diagnostics must not enter pi.live");
+    assert.match(bench.finishes[0]?.output ?? "", /synthetic-secret 中文/);
+    const receipt = body(result);
+    assert.equal(receipt.exitCode, 7);
+    assert.equal(result.isError, true);
+    assert.match(receipt.output, /\[redacted\] 中文/);
+    assert.match(receipt.output, /Command exited with code 7/);
+    assert.deepEqual(result.structuredOutput, receipt);
+    const repeated = body(
+      await tool.execute(
+        { command: "printf x >> count; printf 'synthetic-secret 中文'; exit 7" },
+        api,
+        BACKGROUND_CONTEXT,
+      ),
+    );
+    assert.equal(repeated.operationId, receipt.operationId);
+    assert.equal(repeated.targetDeviceId, receipt.targetDeviceId);
+    assert.equal(await readFile(join(root, "count"), "utf8"), "x");
+  } finally {
+    await env.cleanup(BACKGROUND_CONTEXT);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a maximal escaped output keeps a complete original-ID receipt after the SDK byte budget", async () => {
+  const bench = fixture();
+  bench.port.request = async () => ({ status: "completed", output: '"\\\u0001'.repeat(21000) });
+  const result = await bench.invoke("remote_execute", {
+    deviceId: ids[1],
+    operation: { kind: "command", command: "pwd" },
+  });
+  const text = required(result.output?.find((part) => part.type === "text")).text;
+  const bounded = boundOutput(text, { maxBytes: 65536, maxLines: 2000, retain: "tail" });
+  const receipt = JSON.parse(bounded.text);
+  assert.equal(bounded.droppedBytes, 0);
+  assert.equal(receipt.targetDeviceId, ids[1]);
+  assert.ok(receipt.operationId);
+  assert.equal(receipt.truncated, true);
+  assert.equal(text.includes("\uFFFD"), false);
+});
 
 test("existing and new Bot adapters read the same changing four-member directory", async () => {
   const bench = fixture();
@@ -272,9 +366,10 @@ test("native completion returns host-sanitized output and storage failure is unk
     },
   });
   const tool = guardNativeTool(original, { botId: "bot", port: bench.port });
-  assert.deepEqual((await tool.execute({}, memoApi().api, BACKGROUND_CONTEXT)).output, [
-    { type: "text", text: "[redacted]" },
-  ]);
+  assert.equal(
+    body(await tool.execute({}, memoApi().api, BACKGROUND_CONTEXT)).output,
+    "[redacted]",
+  );
   assert.equal(finishes, 1);
   fail = true;
   const result = body(await tool.execute({}, memoApi().api, BACKGROUND_CONTEXT));
