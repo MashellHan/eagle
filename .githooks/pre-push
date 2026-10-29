@@ -11,12 +11,14 @@ echo "pre-push: browser automation"
 npm run test:browser
 
 if [ -d apps/macos ]; then
+  echo "pre-push: native integration"
+  npm run test:native-integration
   echo "pre-push: swift tests"
   if [ -d /Applications/Xcode.app/Contents/Developer ]; then
     export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
   fi
   if command -v swift >/dev/null 2>&1; then
-    (cd apps/macos && swift test)
+    scripts/swift-gate.sh test --package-path apps/macos
   else
     echo "pre-push: swift not installed, skipping the macOS package tests" >&2
   fi

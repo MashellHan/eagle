@@ -1,6 +1,6 @@
 # 远程访问、机器执行与可选插件
 
-日期：2026-10-28。状态：计划，功能与周期任务尚未启用。
+日期：2026-10-29。状态：主链已实现，交付门禁未闭环；launchd 周期任务已启用。
 统一阶段和进度由 [PLAN.md](PLAN.md) 维护；
 本文描述已确认范围、体验和接口边界，不改变现有运行协议。
 
@@ -30,12 +30,20 @@ flowchart LR
 网络转发会经过云端，不承诺端到端加密。
 
 后续仅聊天的 Mac 可连接远端 Bot；本轮要开放本地资源的机器必须启用在线的执行端。
-B 不需要完整 Bot 或模型 API key。原始 Agent 1.0.0 仍依赖 Herdr，macOS 机器页仍
-有 mock；本轮会改变这些行为，而不是把现状当成已经满足需求。
+B 不需要完整 Bot 或模型 API key。历史基线是依赖 Herdr 的 Agent 1.0.0 和使用 mock
+的 macOS 机器页。2026-10-28 的 alpha.2 候选已支持独立基础执行，原生机器页、每 Bot
+授权与 remote runtime 已接真实接口和私有凭据 helper；Herdr 原生/Bot setup 共用
+provider。精确依赖已恢复，当前验收见 [CHECKPOINTS](../CHECKPOINTS.md)，这些源码和
+本地 fixture 结果不代表完整候选 App 已安装、已发布或已在两台物理 Mac 验证。
+打包层目前只验证了 alpha.2 Agent tgz 的 pack/install/version；完整 App 与个人 feature
+分支尚未交付。现有生产尚未部署本分支的 owner/execution 路由，需要已授权的兼容后端
+或隔离测试环境，Access 边缘另外验收。具体构建命令、UI/CLI 前提和待验清单见
+[交付与复现边界](../NATIVE-ACCESS.md)。
 
 ## 安装 App 后的机器页
 
-基础流程是“安装 App → 启用本机执行 → 配置云端连接 → 选择能力/目录 → 验证在线”。
+基础流程是“安装候选 App → 配置云端连接 → 启用本机执行 → 选择能力/目录 → 验证在线”。
+逐步说明见 [双 Mac 接入指南](../NATIVE-ACCESS.md#two-mac-setup-guide)。
 App 负责引导、配置和服务管理，Agent 独立运行；关闭 UI 不结束执行服务。
 单独安装 CLI 的设备也能接入，使用同样的机器身份和能力协议。
 

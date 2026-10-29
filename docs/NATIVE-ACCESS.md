@@ -1,9 +1,328 @@
 # Native machine access
 
-Native connection/local-service logic and the Herdr execution/panel components
-are delivered independently; machine-page and Bot UI composition follow in their
-own commits. This contract defines their owner identity, observable state and
-independent Agent control. Complete candidate delivery still requires its gates.
+This branch adds deployment-owner access for native machine management. It does
+not add a Web login flow or deploy any Cloudflare configuration.
+
+As of 2026-10-29, the native connection/local-service foundation is committed as
+`1261190` (169 feature + 49 design tests, 93.7% logic coverage). Native grant
+coordination is separately committed as `23f9c99` (197 + 49, 92.9%), and owned Bot
+daemon lifecycle as `b731cd0` (207 + 49, 93.3%). Each exact commit tree passed its
+complete component gate and normal pre-commit. The Herdr client/recovery/panel is
+now committed as `23d3c00`: 220 feature + 49 design, 3269/3473 = 94.1%, strict
+format and normal Biome/Swift hooks using exact dependencies. Its real `.mjs`
+WebSocket fixture and contract remain in that seven-file implementation group;
+the earlier missing-Biome rejection and original patch are retained as history.
+
+The Inspector/settings and verification-profile composition is committed as
+`4ea27f7`, tree `10aa32cd…`: 232 feature + 49 design tests, strict format, and
+3434/3655 = 94.0% logic coverage against the unchanged 90% floor, using exact
+dependencies. Its selected-environment credential P1 and real-HTTP status-auth P2
+are closed. Standalone Bots Swift has also passed 127/127 at 91.7% with the exact
+installation, together with the helper candidate's two real Keychain integration
+tests. These component results do not establish complete App assembly or runtime.
+Xcode 27.1 is ready. At 07:40, exact root and Bots offline installs completed using
+original public-mirror tarballs verified against both locks' SRI. The former 20
+installed version differences are resolved. Complete release gates use this exact
+installation; the earlier observed results remain historical evidence.
+Source hashes, separate candidate results and earlier failures are retained in
+[CHECKPOINTS.md](CHECKPOINTS.md).
+
+At 00:34, a debug raw executable built from all 201 hash/mode-matched `8a8447fe…`
+inputs opened its own on-screen window with a new private profile, automatic Bot
+startup/connection off and no child processes. It remained alive for 8.544 seconds;
+only that owned PID was then terminated with SIGTERM. This proves the limited raw
+executable launch, not normal App-exit cleanup or a complete `.app`. Evidence:
+`/tmp/eagle-root-native-launch-20261029-md7h6el3/evidence.json`.
+
+The earlier retained Agent artifact with pack/install/version evidence is the
+unpublished `nocoo-eagle-agent-1.1.0-alpha.2.tgz`. Current exact root checks also
+pack and install the current Agent source. Complete App assembly/runtime and personal
+feature push remain open. Physical two-Mac acceptance follows delivery of the
+branch and is not a push prerequisite. The recorded tarball SHA256 is
+`66329ae161032d37c5ffdd953751770ddb6a90c4886056c5ac552e08489f62d3`;
+its local provenance is `.local/candidates/20261028-alpha2-herdr/evidence.json`.
+That artifact and the local fixture results do not establish a complete App build.
+
+The current production service has not received this branch's owner-authentication
+and execution routes. These steps require an explicitly authorized compatible
+backend or an isolated local test environment. The Access edge policy needs its
+own verification. Existing production addresses alone cannot complete this guide.
+
+## Prepare an isolated compatible backend
+
+At 07:53, an isolated complete production Worker, all five local D1 migrations and
+two foreground local Agents passed 20 check groups with exact root dependencies.
+Evidence is `/tmp/eagle-root-two-local-20261029-Qd3m9c/evidence.json`, source
+`f7c58a729c…` (81 inputs). Owner rejection, real execution WS, per-machine command/
+file authority, idempotency, DO reports and revocation were exercised; legacy D1
+history stays empty because `historyWrites=false`. All owned processes and state
+were cleaned up. This does not verify the following physical two-Mac SSH steps
+or complete App runtime. Use the complete
+`apps/web/src/worker/index.ts`, including its AI SDK imports, rather than an
+execution-only test fixture. Mac A needs the current checkout, Node.js 24+ and its
+locked Wrangler 4.152.0. Neither machine needs a model key for machine management.
+
+From the checkout root on A, create private test state without reading the daily
+`.dev.vars`:
+
+```sh
+umask 077
+eagle_repo="$PWD"
+eagle_test_root="$(mktemp -d "${TMPDIR:-/tmp}/eagle-two-mac.XXXXXX")"
+EAGLE_TEST_REPO="$eagle_repo" EAGLE_TEST_ROOT="$eagle_test_root" \
+  node --input-type=module <<'JS'
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { randomBytes } from "node:crypto";
+
+const repo = process.env.EAGLE_TEST_REPO;
+const root = process.env.EAGLE_TEST_ROOT;
+const put = (name, value) =>
+  writeFileSync(join(root, name), value, { mode: 0o600, flag: "wx" });
+mkdirSync(join(root, "assets"), { mode: 0o700 });
+put("assets/index.html", "<!doctype html><title>Isolated Eagle API</title>");
+put(".dev.vars",
+  `OWNER_TOKEN="${randomBytes(32).toString("hex")}"\n` +
+  `AGENT_SIGNING_KEY="${randomBytes(32).toString("hex")}"\n`);
+put("wrangler.json", JSON.stringify({
+  name: "eagle-two-mac",
+  main: join(repo, "apps/web/src/worker/index.ts"),
+  compatibility_date: "2026-09-19",
+  compatibility_flags: ["nodejs_compat"],
+  workers_dev: false,
+  preview_urls: false,
+  durable_objects: { bindings: [
+    { name: "MACHINES", class_name: "MachineState" },
+    { name: "DIRECTORY", class_name: "MachineDirectory" }
+  ] },
+  migrations: [
+    { tag: "v1", new_sqlite_classes: ["MachineState"] },
+    { tag: "v2", new_sqlite_classes: ["MachineDirectory"] }
+  ],
+  assets: {
+    directory: join(root, "assets"), binding: "ASSETS", run_worker_first: true
+  },
+  d1_databases: [{
+    binding: "DB", database_name: "eagle-two-mac",
+    database_id: "00000000-0000-0000-0000-000000000001",
+    migrations_dir: join(repo, "apps/web/migrations")
+  }],
+  vars: {
+    LOCAL_DEV: "false", AGENT_TOKENS: "{}",
+    BUILD_REVISION: "two-mac-isolated", ACCESS_TEAM_URL: "", ACCESS_AUD: ""
+  }
+}, null, 2));
+JS
+```
+
+The directory is 0700 and files are 0600. The two independently generated secrets
+have different roles. `LOCAL_DEV=false` requires real owner authentication. The
+D1 UUID is local configuration only; these commands create no remote resource.
+Confirm both A ports below are free and the local Wrangler reports exactly
+4.152.0; otherwise stop. Use the same private config and persistence root for
+migrations and the foreground server:
+
+```sh
+"$eagle_repo/node_modules/.bin/wrangler" --version
+cd "$eagle_test_root"
+"$eagle_repo/node_modules/.bin/wrangler" d1 migrations apply eagle-two-mac \
+  --local --config "$eagle_test_root/wrangler.json" \
+  --persist-to "$eagle_test_root/state"
+"$eagle_repo/node_modules/.bin/wrangler" dev \
+  --local --config "$eagle_test_root/wrangler.json" \
+  --ip 127.0.0.1 --port 17053 --inspector-port 18053 \
+  --local-protocol http --persist-to "$eagle_test_root/state"
+```
+
+Keep that terminal open. Do not substitute the default `db:local` or `dev:api`
+scripts, which use daily development configuration. If A already authorizes the
+chosen account to log in over SSH, run this foreground tunnel on B, with B's
+17053 free and `account@mac-a` replaced by that authorized destination:
+
+```sh
+ssh -NT -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+  -L 127.0.0.1:17053:127.0.0.1:17053 account@mac-a
+```
+
+In another B terminal, `curl --fail --silent --show-error
+http://127.0.0.1:17053/api/live` checks health only. It does not prove owner
+authentication, registration or execution. Both Apps use
+`http://127.0.0.1:17053` as dashboard/API origin; use that same loopback origin
+for this fixture's Agent ingestion. B reaches A through SSH. Do not enter A's
+LAN address as an HTTP origin: the native client permits insecure HTTP only on
+loopback. Leave Access fields empty for this local setup.
+
+Provide only the new test `OWNER_TOKEN` to A/B's native clients through their
+credential fields. Do not copy the complete `.dev.vars` to B: it also contains
+the signing key. Only the registered machine token goes into B's private Agent
+configuration. `execution.commands=false` still allows it to connect; file grants
+and optional Herdr setup are separate permissions.
+
+After verification, stop any test Agent service with its same Node, CLI and
+`EAGLE_CONFIG` before closing the tunnel. A foreground Agent, SSH and Wrangler
+can each be ended in its own terminal. Revoke this run's Bot grants and confirm
+helper credential cleanup before deleting its private directories. Do not remove
+unrelated Keychain items or LaunchAgents. Physical A/B connection, UI-exit survival,
+network recovery and real Access policy require separate results.
+
+## Two-Mac setup guide
+
+These seven steps are acceptance steps after a complete candidate is delivered.
+For the UI route, A and B both need macOS 15+, that candidate App and an external
+Node.js 24+ installation. Node is not bundled; select its actual absolute path
+when Finder's PATH cannot discover it. Local protocol, process and Keychain
+evidence is recorded separately in CHECKPOINTS.md.
+
+1. Machine management and Herdr setup need no model key on either Mac. In normal
+   use, A can use its existing Bot and model configuration. An isolated App profile
+   starts with its own empty Bots root and does not load the checkout `.env`: to
+   test A Bot → B, configure Raven through that profile's normal model settings
+   and create a test Bot there. Do not copy the daily Bot database or credentials.
+   B still needs no model key or Herdr. A CLI-only B can omit the App; use the
+   separate route below.
+2. On each Mac using the UI, open Settings → Machines and save the compatible dashboard/API deployment and
+   owner credential. Supply the Access client ID/secret pair only if this
+   deployment requires it. Test and save the connection. The Agent ingestion
+   address is a separate field; owner and Access credentials never go there.
+3. On B, choose the actual Node executable when Finder cannot discover it, confirm
+   the machine name and ingestion address, then enable the local execution service.
+   Enable commands only when needed. Authorize individual file directories on B
+   using File grants. On A, refresh the real machine list and inspect B's status.
+4. On A, select the intended Bot and open its Inspector → Computer → Manage machine
+   grants. Select B and explicitly select each permitted operation. The App copies
+   the approved saved connection through the private local helper; do not paste
+   credentials into chat. The sheet retains the Bot identity it was opened for.
+5. Separately enable Remote machine tools in the existing Bots tools settings.
+   This switch applies to all Bots, while each Bot still requires its own grants.
+   Turning the group off does not revoke stored grants.
+6. Herdr is optional. In B's Herdr settings, probe the installed CLI or explicitly
+   install it, then select an existing session or create a new named headless
+   session. Confirm CLI, server, session and tools independently before enabling
+   use. A Bot with Herdr setup permission uses the same Agent operations. Existing
+   sessions are preserved; steps requiring OS interaction must be completed locally.
+7. Request one permitted operation on B from A and inspect its result. Quit B's
+   Eagle UI and confirm the independent Agent remains online. Use Stop service to
+   stop it. Revoke a Bot's grant to remove authority; if credential cleanup remains
+   pending, retry cleanup. Changing a shared deployment first revokes and cleans
+   its old Bot credentials, then saves the replacement connection.
+
+For isolated development, EAGLE_CONFIG changes only the Agent configuration;
+it does not isolate App preferences or Keychain. Starting an App from another
+directory also shares those stores under the same bundle identity. The integration
+fixtures inject their own vaults/preferences or use uniquely named Keychain items
+and exact service labels.
+
+## Isolated App verification configuration
+
+The verification entry is an explicit composition of the existing stores and
+clients, not an OS sandbox. Component gates do
+not validate the complete candidate or an active backend. With
+`EAGLE_APP_VERIFICATION_ROOT` set, the App requires an existing directory owned by
+the current user with mode 0700, and an explicit `BOTS_PORT` in 1024–65535 other
+than the daily default 43117. Invalid or partial verification settings stop
+startup; they never fall back to the daily configuration.
+
+This configuration gives preferences and the machine-connection/sharing Keychain
+items their own namespace derived from the canonical verification root. Agent
+configuration, Bots state, provider configuration, outbox and refusal fallback
+use separate children of that root. The private helper's Bot credential accounts
+remain scoped to the selected daemon root. Node, Agent CLI and helper executable
+overrides may select the prepared candidate's programs; secrets are not passed in
+the launch environment. The App-owned daemon does not load a checkout `.env` in
+this mode.
+
+Catalog, gateway settings and machine-grant clients use the selected profile's
+token source. Verification ignores inherited `BOTS_TOKEN` and `BOTS_OPEN`; the
+daemon token is read from its private Bots root. Ordinary launch keeps explicit
+token and initial-Bot overrides from its selected environment.
+
+Automatic daemon startup and Bot connection are both off for verification unless
+`EAGLE_APP_VERIFICATION_CONNECT_BOTS=1` is explicitly supplied. Ordinary startup
+without verification settings retains the existing stores and automatic behavior.
+Opening another window and App exit use the same verification preferences and
+ownership scope. Verification data is retained for reopening; first revoke this
+run's Bot grants and stop its owned services, then clean only its recorded root,
+preferences domain and Keychain items.
+
+After a complete candidate is available, create a separate profile on each Mac
+and choose an unused non-default Bots port. From the checkout root, this example
+opens only the UI; it does not automatically start or connect Bots:
+
+```sh
+umask 077
+eagle_profile_root="$(mktemp -d "${TMPDIR:-/tmp}/eagle-app-verification.XXXXXX")"
+EAGLE_APP_VERIFICATION_ROOT="$eagle_profile_root" BOTS_PORT=52117 \
+  ./apps/macos/.build/Eagle.app/Contents/MacOS/EagleApp
+```
+
+Record the profile root for reopening. To test A Bot → B, reopen A with that same
+root and port plus `EAGLE_APP_VERIFICATION_CONNECT_BOTS=1`, then configure Raven
+and create its test Bot normally. Machine management and Herdr on B do not require
+that switch or a model key. These launch commands still require runtime validation
+of the assembled candidate; the component gates do not certify it.
+
+## Candidate build and CLI-only B
+
+After complete gates and exact dependency installation are available, the source
+supports these commands from the repository root. Full App assembly and this
+launch path remain unverified in this delivery:
+
+```sh
+apps/macos/Scripts/build-app.sh release
+./apps/macos/.build/Eagle.app/Contents/MacOS/EagleApp
+```
+
+The output is `apps/macos/.build/Eagle.app`; the script does not install into
+`/Applications`. Its build packs the current Agent source again, so the old
+verified tgz cannot certify the newly assembled App. The bundled Agent entry is
+`Contents/Resources/Agent/node_modules/@nocoo/eagle-agent/dist/agent/cli.js`.
+Its private wrapper pins production dependencies from the root lock. Before
+`npm ci`, every resolved dependency must match that lock's version and SRI and
+the local Agent tarball must match its actual SHA512. The installed Agent must
+resolve those dependencies inside its own bundle at the locked versions. The
+repository lock is never rewritten by assembly.
+Ordinary startup uses persistent daily settings. For a separate profile use the
+explicit verification configuration above; an alternate App path alone does not
+provide isolation.
+
+For CLI-only B, install the verified local tarball into a dedicated prefix and
+use an explicit executor configuration for every command:
+
+```sh
+npm install --prefix "$HOME/.local/share/eagle-executor" --ignore-scripts /path/to/nocoo-eagle-agent-1.1.0-alpha.2.tgz
+eagle_node="/absolute/path/to/node"
+eagle_cli="$HOME/.local/share/eagle-executor/node_modules/@nocoo/eagle-agent/dist/agent/cli.js"
+eagle_executor_config="$HOME/.config/eagle/executor/agent.json"
+EAGLE_CONFIG="$eagle_executor_config" "$eagle_node" "$eagle_cli" identity
+```
+
+Register that reserved machine ID through the compatible backend. Its create or
+explicit rotate response supplies the machine token. Prepare a private owned
+0600 configuration containing that ID/token, ingestion URL and selected execution
+capabilities; owner and Access credentials do not belong in it. Pass the
+configuration through stdin, then verify the foreground connection:
+
+```sh
+EAGLE_CONFIG="$eagle_executor_config" "$eagle_node" "$eagle_cli" init < /path/to/private-machine-config.json
+EAGLE_CONFIG="$eagle_executor_config" "$eagle_node" "$eagle_cli" serve
+```
+
+After ending the foreground verification, use `service install`, `service start`
+and `service status` with the same Node/CLI/EAGLE_CONFIG prefix. Use `service stop`
+to stop that exact service. Existing configuration repair uses `reconfigure` on
+stdin while stopped; `init` never overwrites it. The CLI's default path remains
+`~/.config/eagle/agent.json`, and a bare invocation defaults to the optional Herdr
+collector's `once`. Always name `serve` or `service` for the executor route.
+
+The following physical two-Mac checks remain pending independently: basic
+execution without Herdr, A Bot receiving B's result, B UI exit with Agent survival,
+real network loss/reconnection/cancellation/deduplication, and both native and
+Bot-assisted Herdr setup. Local socket, Keychain, Harness and SIGKILL fixtures
+prove their stated boundaries only.
+The retained SIGKILL fixture gives its held command an independent deadline and
+a private process receipt. Both fixture and outer runner confirm its cleanup;
+unconfirmed cleanup retains the private state and fails the gate.
 
 ## Authentication and lifecycle contract
 
@@ -81,7 +400,6 @@ Directory grants are managed only on the target Mac through the bundled CLI.
 Choosing a folder authorizes bounded file read/list; revocation takes effect on
 in-flight delivery and cached results. The remote machine row exposes grant
 labels/availability, never absolute roots. This does not restrict command access.
-
 Herdr settings on each machine use the same owner-authenticated execution socket
 as a Bot's remote setup. The target machine is fixed; users choose an existing
 session or explicitly create a new named headless session. CLI/service/session/
@@ -103,55 +421,14 @@ The native coordination contract covers reservation, private credential copying,
 activation, revocation and shared-deployment replacement in
 [Remote access](bots/REMOTE-ACCESS.md#原生授权协调组件). Its model/client checks are
 separate from the helper executable, Inspector composition and complete App bundle.
+The helper is bundled under Contents/Helpers and signed before the host App.
+Only its non-secret absolute path is passed to an App-owned Bots daemon. An
+already-running external daemon is never restarted to install this capability.
+Bots process ownership, shared-window control and App-exit cleanup follow the
+[host supervisor contract](bots/ARCHITECTURE.md#host-daemon-lifecycle). A daemon left by a previous
+App process is external after reopening, even when preferences retain its PID.
+The independent launchd Agent keeps its separate lifetime.
 
-## Isolated App verification configuration
-
-The verification entry is an explicit composition of the existing stores and
-clients, not an OS sandbox. Component gates do
-not validate the complete candidate or an active backend. With
-`EAGLE_APP_VERIFICATION_ROOT` set, the App requires an existing directory owned by
-the current user with mode 0700, and an explicit `BOTS_PORT` in 1024–65535 other
-than the daily default 43117. Invalid or partial verification settings stop
-startup; they never fall back to the daily configuration.
-
-This configuration gives preferences and the machine-connection/sharing Keychain
-items their own namespace derived from the canonical verification root. Agent
-configuration, Bots state, provider configuration, outbox and refusal fallback
-use separate children of that root. The private helper's Bot credential accounts
-remain scoped to the selected daemon root. Node, Agent CLI and helper executable
-overrides may select the prepared candidate's programs; secrets are not passed in
-the launch environment. The App-owned daemon does not load a checkout `.env` in
-this mode.
-
-Catalog, gateway settings and machine-grant clients use the selected profile's
-token source. Verification ignores inherited `BOTS_TOKEN` and `BOTS_OPEN`; the
-daemon token is read from its private Bots root. Ordinary launch keeps explicit
-token and initial-Bot overrides from its selected environment.
-
-Automatic daemon startup and Bot connection are both off for verification unless
-`EAGLE_APP_VERIFICATION_CONNECT_BOTS=1` is explicitly supplied. Ordinary startup
-without verification settings retains the existing stores and automatic behavior.
-Opening another window and App exit use the same verification preferences and
-ownership scope. Verification data is retained for reopening; first revoke this
-run's Bot grants and stop its owned services, then clean only its recorded root,
-preferences domain and Keychain items.
-
-After a complete candidate is available, create a separate profile on each Mac
-and choose an unused non-default Bots port. From the checkout root, this example
-opens only the UI; it does not automatically start or connect Bots:
-
-```sh
-umask 077
-eagle_profile_root="$(mktemp -d "${TMPDIR:-/tmp}/eagle-app-verification.XXXXXX")"
-EAGLE_APP_VERIFICATION_ROOT="$eagle_profile_root" BOTS_PORT=52117 \
-  ./apps/macos/.build/Eagle.app/Contents/MacOS/EagleApp
-```
-
-Record the profile root for reopening. To test A Bot → B, reopen A with that same
-root and port plus `EAGLE_APP_VERIFICATION_CONNECT_BOTS=1`, then configure Raven
-and create its test Bot normally. Machine management and Herdr on B do not require
-that switch or a model key. These launch commands still require runtime validation
-of the assembled candidate; the component gates do not certify it.
-
-Recorded local checks and unresolved release gates are in [CHECKPOINTS.md](CHECKPOINTS.md).
-The complete candidate App, Access edge and a second physical Mac remain unverified.
+Local API/process evidence is recorded in [CHECKPOINTS.md](CHECKPOINTS.md). Real
+Access edge policy, another physical Mac and production deployment require their
+own verification; this document does not claim those checks passed.

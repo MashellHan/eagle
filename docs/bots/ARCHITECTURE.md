@@ -53,7 +53,10 @@ from this package. The bundle includes the daemon source/entry and production
 dependencies from its own lock, using npm's approved offline cache after `npm ci`.
 It excludes development configuration, tests and development dependencies. The
 destination must be absent; an unsuccessful assembly removes only the directory
-it created.
+it created. The host also bundles the independent `BotsCredentialHelper` executable
+and passes only its absolute path to a child it starts. An existing external
+daemon is adopted without restart; a missing helper disables remote grants while
+ordinary chat stays available. The Finder Node selection is read again at start.
 
 ## Host daemon lifecycle
 
