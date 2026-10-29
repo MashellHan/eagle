@@ -1,5 +1,16 @@
 # 用户视角检查点
 
+## 2026-10-29 13:09 +08 — 内置 Bots 启动与共享设备 UI 已集成
+
+- Herdr 三名成员继续原分工；helper origin/retry review 已关闭。UI/model 至 c308033
+  已集成，剩余配对终态收束、停用重入和 Node 故障重试由原写入者补局部回归。
+- 8e264ab 用真实 Swift 监督器启动 Node/Bots（5 项局部通过），固定设备 socket、
+  核对 daemon 的配置摘要并隔离候选数据/端口/provider/outbox；尚未运行签名候选包。
+- 主窗口设备 inspector、全局确认与自动 helper 启动接线已编译；没有新的真实 App
+  点击或 SMAppService 注册证据。App 跨产品回归显式独立运行，根检查仍只依赖根 lock。
+- Registry/relay 本地 SQLite 的既有证据未扩展为物理多 Mac；采集/D1/公网没有新增
+  验收。下一断点是完整候选包与多个 Bot 的真实端口联动，没有发布或日常 App 替换。
+
 ## 2026-10-29 12:54 +08 — 设备页模型集成，候选启动接线中
 
 - Herdr default/w4 三人配置不变，已读 service/reviewer 实际输出；service 独占设备页

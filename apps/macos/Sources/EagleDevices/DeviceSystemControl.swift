@@ -41,9 +41,9 @@ import ServiceManagement
   }
   public func stop() async throws {
     guard let configuration else { throw DeviceHostError.invalidConfiguration }
+    try await SMAppService.agent(plistName: configuration.launchAgentPlist).unregister()
     client?.invalidate()
     client = nil
-    try await SMAppService.agent(plistName: configuration.launchAgentPlist).unregister()
   }
   public func openSystemSettings() { SMAppService.openSystemSettingsLoginItems() }
 }

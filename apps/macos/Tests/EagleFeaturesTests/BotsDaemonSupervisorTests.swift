@@ -89,15 +89,44 @@ struct BotsDaemonSupervisorTests {
     try config.write(
       to: runtime.deletingLastPathComponent().appendingPathComponent("DeviceHost.json"))
     let configuration = try DeviceHostConfiguration.load(bundle: app)
+    let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+      .appendingPathComponent("../../../../").standardizedFileURL
     let command = Process()
     command.executableURL = URL(fileURLWithPath: "/usr/bin/env")
     command.arguments = [
       "node", "--input-type=module", "-e",
-      "import{createServer}from'node:net';const s=createServer();s.listen(0,'127.0.0.1',()=>{console.log(JSON.stringify({node:process.execPath,port:s.address().port}));s.close();});",
+      """
+      import {createServer} from 'node:net';
+      import {readFileSync,mkdirSync,realpathSync,rmSync} from 'node:fs';
+      import {join} from 'node:path';
+      const input=JSON.parse(readFileSync(0,'utf8'));
+      const {lockPort}=await import(input.module);
+      const listen=port=>new Promise((resolve,reject)=>{const s=createServer();s.once('error',reject);s.listen(port,'127.0.0.1',()=>resolve(s));});
+      let root;
+      // Select only our fixture path; an existing daemon's lock is never changed.
+      for(let n=0;n<32;n++){
+        const candidate=join(input.parent,'data-'+n);mkdirSync(candidate);
+        try{const lock=await listen(lockPort(realpathSync(candidate)));await new Promise(r=>lock.close(r));root=candidate;break;}
+        catch(error){rmSync(candidate);if(error.code!=='EADDRINUSE')throw error;}
+      }
+      if(!root)throw new Error('fixture lock ports unavailable');
+      const server=await listen(0);
+      console.log(JSON.stringify({node:process.execPath,port:server.address().port,root}));
+      await new Promise(r=>server.close(r));
+      """,
     ]
     let pipe = Pipe()
+    let input = Pipe()
+    command.standardInput = input
     command.standardOutput = pipe
     try command.run()
+    try input.fileHandleForWriting.write(
+      contentsOf: JSONEncoder().encode([
+        "parent": root.path,
+        "module": repository.appendingPathComponent("apps/bots/src/server/singleton.ts")
+          .absoluteString,
+      ]))
+    try input.fileHandleForWriting.close()
     let info = try JSONDecoder().decode(
       DeviceJSON.self, from: pipe.fileHandleForReading.readDataToEndOfFile())
     command.waitUntilExit()
@@ -105,8 +134,6 @@ struct BotsDaemonSupervisorTests {
     let port = try #require(info["port"]?.number)
     try FileManager.default.createSymbolicLink(
       at: runtime.appendingPathComponent("node"), withDestinationURL: URL(fileURLWithPath: node))
-    let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-      .appendingPathComponent("../../../../").standardizedFileURL
     try FileManager.default.createSymbolicLink(
       at: runtime.appendingPathComponent("bots"),
       withDestinationURL: repository.appendingPathComponent("apps/bots"))
@@ -125,7 +152,7 @@ struct BotsDaemonSupervisorTests {
     #expect(inheritedDaily.rootPath == normal.rootPath)
     #expect(inheritedDaily.port == normal.port)
     let settings = BotsSettings(
-      rootPath: root.appendingPathComponent("data").path, port: String(Int(port)))
+      rootPath: try #require(info["root"]?.string), port: String(Int(port)))
     let daemon = BotsDaemonSupervisor(
       settings: settings, bundle: app,
       environment: [

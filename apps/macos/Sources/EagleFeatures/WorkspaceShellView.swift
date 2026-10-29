@@ -1,3 +1,4 @@
+import AppKit
 import EagleDesign
 import SwiftUI
 
@@ -10,7 +11,8 @@ public struct WorkspaceShellView: View {
   @StateObject private var layout: ShellLayoutViewModel
   @StateObject private var account = AccountMenuViewModel()
   @StateObject private var settings = SettingsViewModel()
-  @StateObject private var daemon = BotsDaemonSupervisor()
+  @StateObject private var daemon = BotsDaemonSupervisor.shared
+  @StateObject private var devices = DeviceSettingsViewModel.shared
   @StateObject private var bots = BotsWorkspaceViewModel()
   @StateObject private var chrome = SidebarChromeViewModel()
   @State private var showsAccountMenu = false
@@ -251,7 +253,12 @@ public struct WorkspaceShellView: View {
           onCommitName: selectedIsBot
             ? { title in Task { await bots.updateSelected(title: title) } } : nil,
           onCommitLabel: selectedIsBot
-            ? { label in Task { await bots.updateSelected(label: label) } } : nil
+            ? { label in Task { await bots.updateSelected(label: label) } } : nil,
+          computerContent: AnyView(
+            DeviceInspectorView(model: devices) {
+              settings.selection = .machines
+              showsSettings = true
+            })
         )
         .sheet(isPresented: $showsBotFaceEditor) {
           if let face = bots.selectedFace {
@@ -274,8 +281,16 @@ public struct WorkspaceShellView: View {
         }
         // The daemon is a prerequisite of the Bots connection, not of the window.
         await daemon.startIfNeeded()
+        guard case .running = daemon.status else { return }
         await bots.start()
         await bots.loadModels()
+      }
+      .task {
+        await devices.startIfNeeded()
+        while !Task.isCancelled {
+          await devices.refresh()
+          do { try await Task.sleep(for: .seconds(5)) } catch { return }
+        }
       }
       .onDisappear {
         // Closing the window must release the bot's connection, or its subscriber slot
@@ -325,6 +340,16 @@ public struct WorkspaceShellView: View {
     .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSettings)) { _ in
       showsSettings = true
     }
+    .sheet(
+      isPresented: Binding(
+        get: { devices.pendingApproval != nil },
+        set: { if !$0 { devices.denyPendingApproval() } })
+    ) {
+      DeviceApprovalView(model: devices)
+    }
+    .onChange(of: devices.pendingApproval?.id) { _, value in
+      if value != nil { NSApp.activate(ignoringOtherApps: true) }
+    }
   }
 
   /// Centred settings card over a blurred, dimmed copy of the window. The
@@ -336,19 +361,21 @@ public struct WorkspaceShellView: View {
         .ignoresSafeArea()
         .onTapGesture { showsSettings = false }
 
-      SettingsView(model: settings, onClose: { showsSettings = false }, daemon: daemon)
-        .frame(width: Theme.Metric.settingsWidth, height: Theme.Metric.settingsHeight)
-        .background(
-          RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Theme.Palette.surface)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-          RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
-        )
-        .shadow(color: .black.opacity(0.28), radius: 40, y: 18)
-        .background(TrafficLights(hidden: true))
+      SettingsView(
+        model: settings, onClose: { showsSettings = false }, daemon: daemon, devices: devices
+      )
+      .frame(width: Theme.Metric.settingsWidth, height: Theme.Metric.settingsHeight)
+      .background(
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+          .fill(Theme.Palette.surface)
+      )
+      .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+      .overlay(
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+          .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+      )
+      .shadow(color: .black.opacity(0.28), radius: 40, y: 18)
+      .background(TrafficLights(hidden: true))
     }
     .transition(.opacity)
   }

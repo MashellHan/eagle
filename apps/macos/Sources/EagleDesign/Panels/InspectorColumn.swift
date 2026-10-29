@@ -56,6 +56,7 @@ public struct InspectorColumn: View {
   private let onEditFace: (() -> Void)?
   private let onCommitName: ((String) -> Void)?
   private let onCommitLabel: ((String) -> Void)?
+  private let computerContent: AnyView?
 
   public init(
     name: String,
@@ -79,7 +80,8 @@ public struct InspectorColumn: View {
     label: String? = nil,
     onEditFace: (() -> Void)? = nil,
     onCommitName: ((String) -> Void)? = nil,
-    onCommitLabel: ((String) -> Void)? = nil
+    onCommitLabel: ((String) -> Void)? = nil,
+    computerContent: AnyView? = nil
   ) {
     self.name = name
     self.subtitle = subtitle
@@ -103,6 +105,7 @@ public struct InspectorColumn: View {
     self.onEditFace = onEditFace
     self.onCommitName = onCommitName
     self.onCommitLabel = onCommitLabel
+    self.computerContent = computerContent
   }
 
   public var body: some View {
@@ -168,16 +171,20 @@ public struct InspectorColumn: View {
     }
   }
 
-  private var content: some View {
-    ForEach(sections) { section in
-      InspectorSectionView(
-        section: section,
-        onToggleJob: onToggleJob,
-        onExpand: onExpand,
-        onRetryTask: onRetryTask,
-        onStopTask: onStopTask,
-        onChoose: onChoose
-      )
+  @ViewBuilder private var content: some View {
+    if tab == .computer, let computerContent {
+      computerContent
+    } else {
+      ForEach(sections) { section in
+        InspectorSectionView(
+          section: section,
+          onToggleJob: onToggleJob,
+          onExpand: onExpand,
+          onRetryTask: onRetryTask,
+          onStopTask: onStopTask,
+          onChoose: onChoose
+        )
+      }
     }
   }
 }
