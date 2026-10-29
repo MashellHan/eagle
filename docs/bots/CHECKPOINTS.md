@@ -543,3 +543,38 @@ effect, and a `../../etc/hosts` read came back as a refusal instead of a run fai
 
 Next broken hop: Slice 2 — the herdr tools (open a space, schedule the controller, monitor,
 fetch results, bidirectional messages), then Codex review at max reasoning.
+
+## 2026-10-29 09:20 — triggers are visible, switchable and firing
+
+Observed: a Bot's triggers now exist as one product surface. The Bot's own model
+creates and manages them with five tools; a schedule fires through the invocation
+port and is batched, retried and delivered by the queue; the window lists the
+selected bot's triggers in a `触发器` sidebar section with a one-click switch on
+each row, and the inspector shows that trigger's plan, next due instant, counters,
+endpoint and prompt read-only. Settings offers the `trigger` group. A message
+whose cause was a trigger carries a small origin line above its text.
+
+Verified:
+
+- `apps/bots`: `npm run check` 599 tests, coverage 95.24 / 87.90 / 90.61. The new
+  suites cover the store journal (idempotency, cap, cursor, restart), the tools'
+  mapping and refusals, the queue (cap, frozen batch, budget cut, envelope), the
+  pump (reconcile, retry with the same key, round-robin), the schedule (zone math,
+  arm/fire/missed, one journal record per decision), the `triggers` event and its
+  budgets, the HTTP detail/switch contract, and the composition end to end with a
+  fake port.
+- `apps/bots-macos`: `swift test` 51 + 43 tests, `./Scripts/coverage.sh` 91.1%.
+- `apps/macos`: `swift test` 134 + 49 tests, `./Scripts/coverage.sh` 95.7%,
+  `./Scripts/build-app.sh` builds `.build/Eagle.app`.
+- Live daemon, real process on a temporary root: `POST /v1/bots` created a bot, a
+  replayed `triggers.journal.jsonl` was read back by `GET /v1/triggers?botId=…`
+  with its prompt, `PATCH …/<trigger>` returned `enabled:false` and appended an
+  `enable` record, re-enabling let the real ticker arm the cursor at
+  `2026-10-30T01:00:00.000Z` (09:00 Asia/Shanghai), which then appeared as
+  `nextDueAt` in the detail — `triggers/<triggerId>.jsonl` held exactly one
+  `cursor` record. A `PATCH` with an extra field returned 400.
+
+Next broken hop: the webhook endpoint (stage 2) — a trigger of kind `webhook`
+cannot receive a delivery yet, so only schedules produce fires. Nothing has
+exercised a real model creating a trigger through `trigger_create` (no gateway key
+in this session), and no image of the new sidebar row has been reviewed.
