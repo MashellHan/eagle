@@ -460,8 +460,10 @@ export class DeviceRegistry extends DurableObject {
         await deviceBody(request),
       );
       const hash = await deviceDigest(code);
+      // Authentication and rate accounting commit independently of business
+      // rollback, so invalid/consumed codes cannot bypass the attempt budget.
+      write(() => this.limit(`redeem:${self.deviceId}`, 30));
       const result = write(() => {
-        this.limit(`redeem:${self.deviceId}`, 30);
         const previous = this.one<{ hash: string; result: string }>(
           "SELECT hash,result FROM pairing_results WHERE deviceId=? AND requestId=?",
           self.deviceId,

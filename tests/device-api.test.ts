@@ -781,3 +781,36 @@ test("relay rechecks Registry at forwarding after a membership change during aut
     await Promise.all([ra.close(), rb.close()]);
   }
 });
+
+test("failed redemption attempts persist their rate budget without changing membership or invitations", async () => {
+  const a = await identity("failed-redemption-rate");
+  const invitation = await code(a.token);
+  const storage = await mf.unsafeGetDurableObjectStorage(
+    "eagle",
+    "DeviceRegistry",
+    { name: "registry" },
+  );
+  const { deviceDigest } = await import("../packages/contracts/src/devices.ts");
+  const hash = await deviceDigest(invitation);
+  const before = (
+    await storage.exec("SELECT * FROM pairings WHERE hash=?", hash)
+  )[0];
+  const directory = (await call("/directory", a.token)).body;
+  for (let attempt = 0; attempt < 30; attempt++)
+    assert.equal((await pair(a.token, "z".repeat(43))).status, 410);
+  assert.equal((await pair(a.token, "z".repeat(43))).status, 429);
+  assert.deepEqual(
+    (await storage.exec("SELECT * FROM pairings WHERE hash=?", hash))[0],
+    before,
+  );
+  assert.deepEqual((await call("/directory", a.token)).body, directory);
+  assert.equal(
+    (
+      await storage.exec(
+        "SELECT count(*) n FROM pairing_results WHERE deviceId=?",
+        a.deviceId,
+      )
+    )[0].n,
+    0,
+  );
+});
