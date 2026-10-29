@@ -521,6 +521,9 @@ Only payload text is shortened to fit the 64 KiB encoded receipt; metadata and
 valid JSON remain intact and truncation is explicit. With a device port injected,
 Herdr currently exposes inspection only; write/control tools stay unavailable
 until they participate in shared admission.
+If native output or its metadata was truncated before the trusted sanitizer,
+the incomplete segment is omitted in full. This includes native SDK truncation;
+an appended marker must never hide a partial credential's original boundary.
 
 
 | Situation | pi behaviour | Adapter action |

@@ -120,6 +120,12 @@ export function captureNativeOutput(api: ToolExecutionApi) {
       if (result.details !== undefined)
         metadata.push(`\n[details] ${JSON.stringify(result.details)}`);
       const structure = result.structuredOutput;
+      outputTruncated ||=
+        result.diagnostics?.some((value) => value.code === "truncated") === true ||
+        (typeof structure === "object" &&
+          structure !== null &&
+          !Array.isArray(structure) &&
+          structure.truncated === true);
       const exitCode =
         typeof structure === "object" &&
         structure !== null &&
@@ -127,9 +133,12 @@ export function captureNativeOutput(api: ToolExecutionApi) {
         typeof structure.exitCode === "number"
           ? structure.exitCode
           : undefined;
-      const truncated = outputTruncated || metadata.snapshot().droppedBytes > 0;
       return {
-        output: outputText + metadata.snapshot().text + (truncated ? "\n[output truncated]" : ""),
+        output:
+          (outputTruncated ? "[native output omitted: incomplete capture]" : outputText) +
+          (metadata.snapshot().droppedBytes > 0
+            ? "\n[native metadata omitted: incomplete capture]"
+            : metadata.snapshot().text),
         ...(exitCode === undefined ? {} : { exitCode }),
       };
     },

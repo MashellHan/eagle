@@ -16,6 +16,7 @@ import {
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { createBashTool } from "@earendil-works/pi-durable/tools";
 import { Log, type LogRecord } from "../../src/log/log.ts";
+import { captureNativeOutput } from "../../src/tools/devices/output.ts";
 import {
   canonicalJSON,
   type DeviceDirectory,
@@ -105,6 +106,23 @@ const fixture = () => {
 };
 const body = (value: ToolExecutionResult) =>
   JSON.parse(value.output?.find((part) => part.type === "text")?.text ?? "null");
+
+test("incomplete raw capture segments cannot carry a credential prefix past host sanitation", () => {
+  const secret = "p".repeat(32);
+  const capture = captureNativeOutput(memoApi().api);
+  capture.api.output("x".repeat(59969) + secret);
+  capture.api.diagnostic({ severity: "info", message: "x".repeat(3960) + secret.repeat(2) });
+  const output = capture.finish().output ?? "";
+  assert.equal(output.includes(secret.slice(0, 31)), false);
+  assert.match(output, /omitted|truncated/);
+  const preTruncated = captureNativeOutput(memoApi().api).finish({
+    output: [{ type: "text", text: secret.slice(0, 31) }],
+    diagnostics: [
+      { severity: "info", code: "truncated", message: "Showing partial native output" },
+    ],
+  });
+  assert.equal(preTruncated.output?.includes(secret.slice(0, 31)), false);
+});
 
 test("real native bash output waits for host sanitation and preserves a replayable structured receipt", async () => {
   const bench = fixture();
