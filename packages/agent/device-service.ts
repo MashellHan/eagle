@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import { connect, createServer, type Socket } from "node:net";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import {
@@ -86,8 +87,9 @@ function jsonLines(
   onError: () => void,
 ): void {
   let pending = "";
+  const decoder = new StringDecoder("utf8");
   input.on("data", (chunk: Buffer | string) => {
-    pending += chunk.toString();
+    pending += typeof chunk === "string" ? chunk : decoder.write(chunk);
     if (Buffer.byteLength(pending) > 1048576) {
       onError();
       return;

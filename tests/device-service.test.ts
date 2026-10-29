@@ -379,10 +379,20 @@ function serviceConfiguration(root: string) {
   };
 }
 
-function serviceProcess() {
-  const child = spawn(process.execPath, ["packages/agent/device-service.ts"], {
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+function serviceProcess(inputReady = false) {
+  const child = spawn(
+    process.execPath,
+    inputReady
+      ? [
+          "--input-type=module",
+          "--eval",
+          'const {runDeviceService}=await import("./packages/agent/device-service.ts"); await runDeviceService(); process.stdout.write(JSON.stringify({type:"input-ready"})+"\\n");',
+        ]
+      : ["packages/agent/device-service.ts"],
+    {
+      stdio: ["pipe", "pipe", "pipe"],
+    },
+  );
   const lines = createInterface({ input: child.stdout });
   const messages: Record<string, unknown>[] = [];
   const listeners = new Set<() => void>();
@@ -492,3 +502,84 @@ test("failed second service never unlinks the first process's live socket", asyn
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+async function fragmentedLine(
+  stream: NodeJS.WritableStream,
+  value: unknown,
+  splitCharacter: string,
+) {
+  const bytes = Buffer.from(`${JSON.stringify(value)}\n`);
+  const boundary = bytes.indexOf(Buffer.from(splitCharacter)) + 1;
+  assert(boundary > 0);
+  await new Promise<void>((resolve, reject) => {
+    stream.write(bytes.subarray(0, boundary), (error) =>
+      error ? reject(error) : resolve(),
+    );
+  });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  stream.write(bytes.subarray(boundary));
+}
+
+for (const transport of ["stdin", "socket"]) {
+  test(`${transport} preserves UTF-8 characters split across chunks`, async () => {
+    const root = mkdtempSync(join(tmpdir(), "device-utf8-"));
+    const configuration = { ...serviceConfiguration(root), name: "中文设备🦅" };
+    const service = serviceProcess(true);
+    try {
+      await service.message("input-ready");
+      if (transport === "stdin")
+        await fragmentedLine(service.child.stdin, configuration, "中");
+      else service.child.stdin.write(`${JSON.stringify(configuration)}\n`);
+      await service.message("ready");
+      const directory = (await portCall(configuration.socketPath, "directory"))
+        .result as { devices: { name: string }[] };
+      assert.equal(
+        directory.devices[0].name,
+        configuration.name,
+        "stdin must preserve a fragmented device name",
+      );
+      if (transport === "stdin") return;
+      const socket = connect(configuration.socketPath);
+      const lines = createInterface({ input: socket });
+      const path = join(root, "中文文件.txt");
+      const content = "中文内容🦅";
+      const operation = { kind: "file.write", path, content };
+      try {
+        const response = new Promise<Record<string, unknown>>(
+          (resolve, reject) => {
+            socket.once("error", reject);
+            lines.once("line", (line) => resolve(JSON.parse(line)));
+          },
+        );
+        await fragmentedLine(
+          socket,
+          {
+            requestId: randomUUID(),
+            method: "execute",
+            params: {
+              requestId: randomUUID(),
+              operationId: randomUUID(),
+              targetDeviceId: configuration.deviceId,
+              action: "run",
+              operation,
+              digest: await deviceDigest(canonicalDeviceJSON(operation)),
+            },
+          },
+          "中",
+        );
+        assert.equal(
+          ((await response).result as { status: string }).status,
+          "completed",
+          "socket must preserve path/content and their operation digest",
+        );
+        assert.equal(readFileSync(path, "utf8"), content);
+      } finally {
+        lines.close();
+        socket.destroy();
+      }
+    } finally {
+      await service.stop();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
