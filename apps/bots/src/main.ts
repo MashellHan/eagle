@@ -312,6 +312,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     },
   };
   const daemon = await startServer({
+    ...(canonical.deviceSocket === undefined ? {} : { deviceSocket: canonical.deviceSocket }),
     token,
     log,
     registry,

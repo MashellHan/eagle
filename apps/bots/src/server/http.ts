@@ -1,5 +1,6 @@
 // The daemon's HTTP surface and its upgrade (docs/bots/PROTOCOL.md "HTTP endpoints"):
 // ready checks and the catalog, with the bearer token checked before anything else runs.
+import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import { DirectoryError } from "../core/BotDirectory.ts";
@@ -30,6 +31,8 @@ const Events = {
 } as const;
 
 export type ServerOptions = {
+  /** Host configuration identity, not a credential or authorization decision. */
+  readonly deviceSocket?: string;
   readonly token: string;
   readonly log: Log;
   readonly registry: BotRegistry;
@@ -305,6 +308,13 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
         instance,
         pid: options.pid ?? process.pid,
         bots: registry.summaries().length,
+        deviceAccess:
+          options.deviceSocket === undefined
+            ? null
+            : {
+                version: 1,
+                binding: createHash("sha256").update(options.deviceSocket).digest("hex"),
+              },
       });
       return;
     }

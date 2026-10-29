@@ -1,5 +1,6 @@
 // The composition root: one daemon over one root, wired from configuration, closed cleanly.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -148,6 +149,26 @@ test("the daemon starts from configuration and closes without leaving work behin
     const again = await startDaemon(readConfig({ argv: ["--root", root, "--port", "0"], env: {} }));
     await again.close();
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("health identifies the configured shared device port even while that service is offline", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-device-health-"));
+  const socket = join(root, "offline.sock");
+  const daemon = await startDaemon(
+    readConfig({ argv: ["--root", root, "--port", "0"], env: { BOTS_DEVICE_SOCKET: socket } }),
+  );
+  try {
+    const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/health`);
+    const health = (await response.json()) as { deviceAccess?: unknown };
+    assert.deepEqual(health.deviceAccess, {
+      version: 1,
+      binding: createHash("sha256").update(socket).digest("hex"),
+    });
+    assert.ok(!JSON.stringify(health).includes(socket));
+  } finally {
+    await daemon.close();
     await rm(root, { recursive: true, force: true });
   }
 });
