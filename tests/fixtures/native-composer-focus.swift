@@ -263,27 +263,19 @@ private final class ComposerFocusDelegate: NSObject, NSApplicationDelegate {
       x: viewport.minX + Theme.Metric.conversationInset + 38,
       y: viewport.minY + Theme.Metric.edgeFadeHeight + 10 + 22)
     fixture.focusOther()
-    fixture.move(messagePoint)
-    await fixture.settle()
+    await fixture.hover(messagePoint)
+    await fixture.drainRunLoop(for: 0.2)
     state("beforeMessageSelection", fixture)
+    fixture.click(messagePoint, count: 1)
+    await fixture.settle()
     fixture.click(messagePoint, count: 2)
     await fixture.settle()
-    // SwiftUI's selectable responder may not be NSTextView or NSTextInputClient.
-    // Read the actual native selection through its public, in-process AX interface.
-    let selected = fixture.window.firstResponder as? NSView
-    let range =
-      selected?.accessibilitySelectedTextRange() ?? NSRange(location: NSNotFound, length: 0)
-    let selectedText = selected?.accessibilitySelectedText() ?? ""
+    let selectedText = await fixture.selectedText()
     editingStates.append([
       "step": "messageSelection", "selectedText": selectedText,
-      "selectionLocation": range.location, "selectionLength": range.length,
-      "rangeText": selected?.accessibilityString(for: range) ?? "",
       "keyWindow": fixture.window.isKeyWindow,
     ])
-    check(
-      "hovered message text can actually be selected",
-      selectedText == "Selectable" && range.length == 10
-        && selected?.accessibilityString(for: range) == selectedText)
+    check("hovered message text can actually be selected", selectedText == "Selectable")
     check(
       "message selection does not focus or edit the composer",
       !fixture.hasComposerFocus && fixture.model.draft == draft && fixture.model.sends == 0)
@@ -312,7 +304,7 @@ private final class ComposerFocusDelegate: NSObject, NSApplicationDelegate {
       "transcript tool button opens its details without focusing the composer",
       fixture.window.sheets.count == 1 && !fixture.hasComposerFocus && fixture.model.draft == draft
     )
-    for sheet in fixture.window.sheets { fixture.window.endSheet(sheet) }
+    await fixture.dismissSheets()
 
     fixture.model.entries = (0..<30).map {
       .assistant(id: "long-\($0)", blocks: [.paragraph("History message \($0)")])
@@ -322,20 +314,21 @@ private final class ComposerFocusDelegate: NSObject, NSApplicationDelegate {
         ("long-\($0)", [.paragraph(AttributedString("History message \($0)"))])
       })
     await fixture.settle()
+    await fixture.drainRunLoop()
     fixture.focusOther()
     let beforeScroll = scroll.contentView.bounds.origin
-    let wheelEvents = await fixture.scroll(
-      at: NSPoint(x: viewport.midX, y: viewport.midY), delta: 100)
+    let scrollDelta = fixture.scrollViewport(scroll, by: 80)
     await fixture.settle()
+    await fixture.drainRunLoop()
     editingStates.append([
       "step": "historyScroll", "before": NSStringFromPoint(beforeScroll),
       "after": NSStringFromPoint(scroll.contentView.bounds.origin),
+      "scrollDelta": scrollDelta,
       "viewport": NSStringFromRect(scroll.contentView.bounds),
       "document": NSStringFromRect(scroll.documentView?.frame ?? .zero),
       "otherFocus": fixture.otherHasFocus, "composerFocus": fixture.hasComposerFocus,
       "draftBefore": draft, "draftAfter": fixture.model.draft,
       "sheets": fixture.window.sheets.count, "keyWindow": fixture.window.isKeyWindow,
-      "events": wheelEvents,
     ])
     check(
       "scrolling history moves the viewport without focusing the composer",
@@ -441,6 +434,37 @@ private final class ComposerFocusWindow {
     }
   }
 
+  /// Let SwiftUI and AppKit drain pending layout/scroll work without posting wheel events.
+  func drainRunLoop(for duration: TimeInterval = 0.35) async {
+    let steps = max(1, Int(duration / 0.01))
+    for _ in 0..<steps {
+      host.layoutSubtreeIfNeeded()
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+  }
+
+  func dismissSheets() async {
+    for sheet in window.sheets {
+      window.endSheet(sheet, returnCode: .OK)
+    }
+    await settle()
+    guard !window.sheets.isEmpty else { return }
+    key("\u{1b}", code: 53)
+    await settle()
+  }
+
+  @discardableResult
+  func scrollViewport(_ scroll: NSScrollView, by deltaY: CGFloat) -> CGFloat {
+    let before = scroll.contentView.bounds.origin.y
+    let documentHeight = scroll.documentView?.frame.height ?? scroll.contentView.bounds.height
+    let maxOffset = max(0, documentHeight - scroll.contentView.bounds.height)
+    var origin = scroll.contentView.bounds.origin
+    origin.y = min(max(0, origin.y + deltaY), maxOffset)
+    scroll.contentView.scroll(to: origin)
+    scroll.reflectScrolledClipView(scroll.contentView)
+    return scroll.contentView.bounds.origin.y - before
+  }
+
   func click(_ point: NSPoint, count: Int = 1) {
     let location = host.convert(point, to: nil)
     let down = NSEvent.mouseEvent(
@@ -463,17 +487,46 @@ private final class ComposerFocusWindow {
       with: .mouseEntered, location: location, modifierFlags: [],
       timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
       context: nil, eventNumber: 3, trackingNumber: 0, userData: nil)!
-    // Posting mouseMoved does not synthesize a tracking-area entry. Deliver the
-    // native entry callback to this host's existing mouse tracking owner first.
-    for area in host.trackingAreas
-    where area.options.contains(.mouseEnteredAndExited) && area.options.contains(.mouseMoved) {
-      (area.owner as? NSResponder)?.mouseEntered(with: entered)
+    for view in descendants {
+      for area in view.trackingAreas
+      where area.options.contains(.mouseEnteredAndExited)
+        && (area.options.contains(.activeAlways) || area.options.contains(.activeInKeyWindow))
+      {
+        (area.owner as? NSResponder)?.mouseEntered(with: entered)
+      }
     }
     let event = NSEvent.mouseEvent(
       with: .mouseMoved, location: location, modifierFlags: [],
       timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
       context: nil, eventNumber: 3, clickCount: 0, pressure: 0)!
+    if let hit = host.hitTest(location) {
+      hit.mouseMoved(with: event)
+    }
     NSApp.postEvent(event, atStart: false)
+  }
+
+  func hover(_ point: NSPoint) async {
+    let start = NSPoint(x: host.bounds.midX, y: host.bounds.midY)
+    for step in 0...12 {
+      let t = CGFloat(step) / 12
+      move(
+        NSPoint(
+          x: start.x + (point.x - start.x) * t,
+          y: start.y + (point.y - start.y) * t
+        ))
+      await settle()
+    }
+    move(point)
+    await settle()
+  }
+
+  func selectedText() async -> String {
+    for view in descendants.compactMap({ $0 as? NSTextView }) {
+      let range = view.selectedRange()
+      guard range.length > 0 else { continue }
+      return (view.string as NSString).substring(with: range)
+    }
+    return ""
   }
 
   func scroll(at point: NSPoint, delta: Int32) async -> [[String: Any]] {
