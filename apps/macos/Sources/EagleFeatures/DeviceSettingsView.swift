@@ -259,21 +259,66 @@ public struct DeviceSettingsView: View {
     Task { await model.redeem(code: code) }
   }
 
+  private var hasLocalDirectoryEntry: Bool {
+    guard let directory = model.directory else { return false }
+    return directory.devices.contains { $0.deviceId == directory.localDeviceId }
+  }
+
+  private var localDevicePlaceholder: some View {
+    HStack(alignment: .top, spacing: 12) {
+      HStack(alignment: .top, spacing: 10) {
+        Image(systemName: "desktopcomputer")
+          .font(.system(size: 16))
+          .foregroundStyle(Theme.Palette.textMuted)
+          .frame(width: 20)
+        VStack(alignment: .leading, spacing: 5) {
+          HStack(spacing: 6) {
+            Text(Host.current().localizedName ?? ProcessInfo.processInfo.hostName)
+              .foregroundStyle(Theme.Palette.textPrimary)
+            Text("本机").foregroundStyle(Theme.Palette.textMuted)
+          }
+          .font(Theme.TypeScale.note)
+          .lineLimit(1)
+          Text(
+            !model.enabled
+              ? "设备服务已关闭"
+              : model.isStarting
+                ? "正在启动"
+                : model.localReady ? "本机可用" : "本机未就绪"
+          )
+          .font(Theme.TypeScale.pill)
+          .foregroundStyle(Theme.Palette.textSecondary)
+        }
+        Spacer(minLength: 0)
+      }
+      .accessibilityElement(children: .combine)
+      policyMenu
+    }
+    .padding(.vertical, 14)
+  }
+
   private var directoryCard: some View {
     VStack(alignment: .leading, spacing: 12) {
       SettingsCaption("我的设备")
-      if model.directoryIsStale {
+      if model.directory != nil && model.directoryIsStale {
         SettingsCaption("以下为上次读取的目录，当前状态尚未确认。")
       }
       SettingsCard {
-        if let directory = model.directory, !directory.devices.isEmpty {
-          VStack(spacing: 0) {
+        VStack(spacing: 0) {
+          if !hasLocalDirectoryEntry {
+            localDevicePlaceholder
+            if let directory = model.directory, !directory.devices.isEmpty {
+              Divider().overlay(Theme.Palette.line)
+            }
+          }
+          if let directory = model.directory {
             ForEach(directory.devices) { device in
               HStack(alignment: .top, spacing: 12) {
                 DeviceSummaryView(
                   device: device, isLocal: device.deviceId == directory.localDeviceId,
                   localReady: model.localReady, stale: model.directoryIsStale,
-                  showsPolicy: device.deviceId != directory.localDeviceId)
+                  showsPolicy: device.deviceId != directory.localDeviceId,
+                  serviceEnabled: model.enabled)
                 VStack(alignment: .trailing, spacing: 10) {
                   if device.deviceId == directory.localDeviceId {
                     policyMenu
@@ -293,11 +338,6 @@ public struct DeviceSettingsView: View {
               if device.id != directory.devices.last?.id { Divider().overlay(Theme.Palette.line) }
             }
           }
-        } else {
-          Text("设备列表尚未就绪。启用设备服务后重试。")
-            .font(Theme.TypeScale.note)
-            .foregroundStyle(Theme.Palette.textSecondary)
-            .padding(.vertical, 18)
         }
       }
     }
@@ -312,6 +352,7 @@ struct DeviceSummaryView: View {
   let stale: Bool
   var compact = false
   var showsPolicy = true
+  var serviceEnabled = true
 
   var body: some View {
     HStack(alignment: .top, spacing: 10) {
@@ -370,6 +411,8 @@ struct DeviceSummaryView: View {
   }
 
   private var statusLabel: String {
+    if isLocal && !serviceEnabled { return "设备服务已关闭" }
+    if isLocal && !localReady { return "本机未就绪" }
     if stale { return isLocal && localReady ? "本机可用 · 云端观察待刷新" : "观察待刷新" }
     return isLocal && localReady ? "本机可用 · \(device.connectionLabel)" : device.connectionLabel
   }

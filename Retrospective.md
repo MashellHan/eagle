@@ -599,3 +599,16 @@ the new path from the fresh inodes. The normal installed copy is the local deliv
 path; no global BTM/LaunchServices reset, weaker code requirement or data deletion
 was used. Evidence is in `gui/application-install.json`, `gui/installed-startup.json`
 and `gui/local-command.json` under `.local/device-evidence/`.
+
+The later settings-only candidate update also encountered amfid -423 and a helper
+launch constraint failure. Temporarily disabling the service exposed a separate UI
+gap: reopening the App with no service directory removed even the local machine
+from the list. The default preference was still enabled; the visible disabled
+state came from the recovery operation. After re-enabling, the installed new
+helper ran and the UI reported local readiness; a staged old-helper recovery
+bundle was not installed. The bounded observations do not establish why the first
+registration failed. Service recovery must restore the previous user preference,
+and the device list must retain the OS-provided local name while making unavailable
+execution explicit. Evidence: `.local/settings-layout/layout-service-recovered.json`;
+the local-row regression covers disabled startup and failed startup without a
+directory, plus disabling an already known device.

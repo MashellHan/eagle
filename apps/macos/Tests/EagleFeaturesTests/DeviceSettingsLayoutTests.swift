@@ -1,4 +1,5 @@
 import AppKit
+import EagleDevices
 import SwiftUI
 import Testing
 
@@ -7,6 +8,49 @@ import Testing
 @Suite("Device settings layout", .serialized)
 @MainActor
 struct DeviceSettingsLayoutTests {
+  @Test("the local machine remains listed before its service starts", arguments: [true, false])
+  func unavailableLocalDevice(disabled: Bool) async throws {
+    let (_, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    defaults.set(disabled, forKey: DeviceSettingsViewModel.disabledKey)
+    control.startError = DevicePortError("background_approval_required")
+    let model = DeviceSettingsViewModel(control: control, defaults: defaults)
+    await model.startIfNeeded()
+    let (host, window) = makeHost(model)
+    defer {
+      window.orderOut(nil)
+      window.contentView = nil
+    }
+    try await Task.sleep(for: .milliseconds(50))
+    host.layoutSubtreeIfNeeded()
+
+    let titles = entries(host).compactMap(title)
+    let name = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+    #expect(titles.contains { $0.contains(name) && $0.contains("本机") })
+    let status = disabled ? "设备服务已关闭" : "本机未就绪"
+    #expect(titles.contains { $0.contains(name) && $0.contains(status) })
+    #expect(!model.localReady)
+  }
+
+  @Test("a known local machine stays visible with its disabled service state")
+  func disabledKnownLocalDevice() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    await model.startIfNeeded()
+    let name = try #require(model.directory?.devices.first?.name)
+    await model.setEnabled(false)
+    let (host, window) = makeHost(model)
+    defer {
+      window.orderOut(nil)
+      window.contentView = nil
+    }
+    try await Task.sleep(for: .milliseconds(50))
+    host.layoutSubtreeIfNeeded()
+
+    let titles = entries(host).compactMap(title)
+    #expect(titles.contains { $0.contains(name) && $0.contains("设备服务已关闭") })
+  }
+
   @Test("pairing inputs stay out of the default device overview")
   func pairingStartsCollapsed() async throws {
     let (model, control, defaults) = deviceSettingsFixture()
@@ -69,14 +113,17 @@ struct DeviceSettingsLayoutTests {
   }
 
   private func title(_ node: NSObject) -> String? {
-    (attribute(node, "AXTitle") ?? attribute(node, "AXDescription")) as? String
+    for name in ["AXTitle", "AXDescription", "AXValue"] {
+      if let value = attribute(node, name) as? String, !value.isEmpty { return value }
+    }
+    return nil
   }
 
   private func attribute(_ node: NSObject, _ name: String) -> Any? {
     let selector = NSSelectorFromString(
       [
         "AXTitle": "accessibilityTitle", "AXDescription": "accessibilityLabel",
-        "AXChildren": "accessibilityChildren",
+        "AXChildren": "accessibilityChildren", "AXValue": "accessibilityValue",
       ][name] ?? name)
     if node.responds(to: selector) { return node.perform(selector)?.takeUnretainedValue() }
     let legacy = NSSelectorFromString("accessibilityAttributeValue:")
