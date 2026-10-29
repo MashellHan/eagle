@@ -12,7 +12,7 @@ type ApiBody = {
   sessionToken: string;
   code: string;
   groupId: string | null;
-  devices: { deviceId: string }[];
+  devices: { deviceId: string; online: boolean | null; policy: unknown }[];
   directory: { devices: { deviceId: string }[] };
 };
 let mf: Miniflare;
@@ -46,6 +46,7 @@ before(async () => {
           compatibilityFlags: ["nodejs_compat"],
           durableObjects: {
             DEVICE_REGISTRY: { className: "DeviceRegistry", useSQLite: true },
+            DEVICE_EXECUTION: { className: "DeviceExecution", useSQLite: true },
             MACHINES: { className: "MachineState", useSQLite: true },
             DIRECTORY: { className: "MachineDirectory", useSQLite: true },
           },
@@ -221,4 +222,132 @@ test("revoked invitations, stale issuance epochs and invalid TTL fail closed", a
   const expired = await code(a.token, 1);
   await new Promise((resolve) => setTimeout(resolve, 1100));
   assert.equal((await pair(b.token, expired)).status, 410);
+});
+
+test("registration challenge binds configured service and directory preserves unknown observations", async () => {
+  const a = await identity("bound-service");
+  const challenge = await call("/register/challenge", undefined, {
+    deviceId: a.deviceId,
+    publicKey: a.publicKey,
+    name: "bound-service",
+    platform: "darwin",
+    arch: "arm64",
+  });
+  const lines = challenge.body.payload.split("\n");
+  assert.equal(lines.length, 7);
+  assert.equal(lines[0], "eagle-device-register-v1");
+  assert.equal(lines[1], "https://devices.test");
+  assert.equal(lines[2], a.deviceId);
+  const directory = await call("/directory", a.token);
+  assert.equal(directory.body.devices[0].online, null);
+  assert.equal(directory.body.devices[0].policy, null);
+});
+
+test("real outbound WebSockets execute bidirectionally with original-ID dedup and live revocation", async () => {
+  const { DeviceCloud } = await import("../packages/agent/device-cloud.ts");
+  const { DeviceRuntime } = await import("../packages/agent/device-runtime.ts");
+  const { canonicalDeviceJSON, deviceDigest } = await import(
+    "../packages/contracts/src/devices.ts"
+  );
+  const [a, b] = await Promise.all([identity("ws-a"), identity("ws-b")]);
+  await pair(a.token, await code(b.token));
+  const stateA = join(root, "agent-a");
+  const stateB = join(root, "agent-b");
+  mkdirSync(stateA, { mode: 0o700 });
+  mkdirSync(stateB, { mode: 0o700 });
+  const deviceA = {
+    deviceId: a.deviceId,
+    publicKey: a.publicKey,
+    name: "ws-a",
+    platform: "darwin",
+    arch: "arm64",
+    groupId: null,
+    membershipEpoch: 0,
+    credentialVersion: 1,
+  };
+  const deviceB = {
+    ...deviceA,
+    deviceId: b.deviceId,
+    publicKey: b.publicKey,
+    name: "ws-b",
+  };
+  const runtimeA = new DeviceRuntime(deviceA, join(stateA, "journal.sqlite"));
+  const runtimeB = new DeviceRuntime(deviceB, join(stateB, "journal.sqlite"));
+  const localBase = (await mf.ready).origin;
+  const cloudA = new DeviceCloud(
+    localBase,
+    deviceA,
+    runtimeA,
+    async (payload) =>
+      sign(null, Buffer.from(payload), a.keys.privateKey).toString("base64url"),
+  );
+  const cloudB = new DeviceCloud(
+    localBase,
+    deviceB,
+    runtimeB,
+    async (payload) =>
+      sign(null, Buffer.from(payload), b.keys.privateKey).toString("base64url"),
+  );
+  try {
+    await Promise.all([cloudA.start(), cloudB.start()]);
+    const directory = await cloudA.directory();
+    assert.equal(
+      directory.devices.find((d) => d.deviceId === b.deviceId)?.online,
+      true,
+    );
+    assert(
+      directory.devices
+        .find((d) => d.deviceId === b.deviceId)
+        ?.capabilities?.includes("command"),
+    );
+    const operation = { kind: "command" as const, command: "printf from-b" };
+    const input = {
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+      targetDeviceId: b.deviceId,
+      action: "run" as const,
+      operation,
+      digest: await deviceDigest(canonicalDeviceJSON(operation)),
+      sourceBotId: "bot-one",
+    };
+    assert.equal((await cloudA.execute(input)).output, "from-b");
+    assert.equal(
+      (
+        await cloudA.execute({
+          ...input,
+          requestId: randomUUID(),
+          action: "get",
+        })
+      ).output,
+      "from-b",
+    );
+    const back = {
+      ...input,
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+      targetDeviceId: a.deviceId,
+    };
+    assert.equal((await cloudB.execute(back)).output, "from-b");
+    assert.equal(
+      (await cloudA.execute({ ...input, requestId: randomUUID() })).output,
+      "from-b",
+    );
+    const removal = await cloudA.manage("/members/remove", {
+      deviceId: b.deviceId,
+    });
+    assert(removal);
+    assert.equal(
+      (
+        await cloudA.execute({
+          ...input,
+          requestId: randomUUID(),
+          action: "get",
+        })
+      ).status,
+      "denied",
+    );
+  } finally {
+    await Promise.all([cloudA.close(), cloudB.close()]);
+    await Promise.all([runtimeA.close(), runtimeB.close()]);
+  }
 });

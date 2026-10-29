@@ -108,11 +108,18 @@ export type Device = z.infer<typeof DeviceRegistration> & {
   membershipEpoch: number;
   credentialVersion: number;
 };
+export type DeviceObservation = {
+  online: boolean | null;
+  lastSeenAt: number | null;
+  capabilities: string[] | null;
+  policy: DevicePolicy | null;
+};
+export type DeviceView = Device & DeviceObservation;
 export type DeviceDirectory = {
   localDeviceId: string;
   groupId: string | null;
   revision: number;
-  devices: Device[];
+  devices: DeviceView[];
 };
 export const DEVICE_PREFIX = "/api/devices/v1";
 export function canonicalDeviceJSON(value: unknown): string {

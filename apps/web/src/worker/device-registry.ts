@@ -154,6 +154,45 @@ export class DeviceRegistry extends DurableObject {
       throw new DeviceHttpError(403, "different_group");
     return { source, target };
   }
+  async check(
+    token: string,
+    targetId?: string,
+  ): Promise<
+    | { ok: true; source: Device; target: Device }
+    | { ok: false; status: number; error: string }
+  > {
+    try {
+      const source = await this.authenticate(token);
+      if (!targetId) return { ok: true, source, target: source };
+      return { ok: true, ...(await this.authorize(token, targetId)) };
+    } catch (error) {
+      return {
+        ok: false,
+        status: error instanceof DeviceHttpError ? error.status : 401,
+        error:
+          error instanceof DeviceHttpError ? error.message : "invalid_session",
+      };
+    }
+  }
+  private async observedDirectory(id: string): Promise<DeviceDirectory> {
+    const directory = this.directory(id);
+    if (!this.env.DEVICE_EXECUTION) return directory;
+    directory.devices = await Promise.all(
+      directory.devices.map(async (device) => {
+        try {
+          return {
+            ...device,
+            ...(await this.env.DEVICE_EXECUTION.getByName(
+              device.deviceId,
+            ).observation()),
+          };
+        } catch {
+          return device;
+        }
+      }),
+    );
+    return directory;
+  }
   directory(id: string): DeviceDirectory {
     const self = this.device(id);
     const devices = self.groupId
@@ -170,7 +209,18 @@ export class DeviceRegistry extends DurableObject {
           self.groupId,
         )?.revision ?? 0)
       : self.membershipEpoch;
-    return { localDeviceId: id, groupId: self.groupId, revision, devices };
+    return {
+      localDeviceId: id,
+      groupId: self.groupId,
+      revision,
+      devices: devices.map((device) => ({
+        ...device,
+        online: null,
+        lastSeenAt: null,
+        capabilities: null,
+        policy: null,
+      })),
+    };
   }
   private result(id: string, result: string): unknown {
     return { ...JSON.parse(result), directory: this.directory(id) };
@@ -223,7 +273,7 @@ export class DeviceRegistry extends DurableObject {
       );
       const challengeId = crypto.randomUUID();
       const expiresAt = Date.now() + 60000;
-      const payload = `eagle-device-register-v1\n${input.deviceId}\n${input.publicKey}\n${challengeId}\n${deviceBase64(crypto.getRandomValues(new Uint8Array(32)))}\n${expiresAt}`;
+      const payload = `eagle-device-register-v1\n${new URL(request.url).origin}\n${input.deviceId}\n${input.publicKey}\n${challengeId}\n${deviceBase64(crypto.getRandomValues(new Uint8Array(32)))}\n${expiresAt}`;
       this.ctx.storage.sql.exec(
         "INSERT INTO challenges VALUES(?,?,?,?)",
         challengeId,
@@ -304,7 +354,7 @@ export class DeviceRegistry extends DurableObject {
     if (!token) throw new DeviceHttpError(401, "session_required");
     const self = await this.authenticate(token);
     if (path === "/directory" && request.method === "GET")
-      return deviceJSON(this.directory(self.deviceId));
+      return deviceJSON(await this.observedDirectory(self.deviceId));
     if (path === "/pairings" && post) {
       const { ttlSeconds } = PairingCreate.parse(await deviceBody(request));
       const code = deviceBase64(crypto.getRandomValues(new Uint8Array(32)));
@@ -466,7 +516,7 @@ export class DeviceRegistry extends DurableObject {
           deviceId,
         );
       });
-      return deviceJSON(this.directory(self.deviceId));
+      return deviceJSON(await this.observedDirectory(self.deviceId));
     }
     throw new DeviceHttpError(404, "not_found");
   }
