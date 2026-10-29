@@ -69,6 +69,20 @@ export class DeviceCloud {
     this.status = status;
     this.onStatus?.(status);
   }
+  private closedSession(
+    token: string,
+    closeCode: number,
+    reason: Buffer,
+  ): void {
+    if (
+      closeCode === 1008 &&
+      this.token === token &&
+      ["unauthorized_agent", "revoked_agent", "unauthorized_caller"].includes(
+        reason.toString("utf8"),
+      )
+    )
+      this.expires = 0;
+  }
   private async http(
     path: string,
     body?: unknown,
@@ -258,7 +272,8 @@ export class DeviceCloud {
             );
         })().catch(() => socket.close(1008, "invalid_agent_frame"));
       });
-      const ended = () => {
+      const ended = (closeCode: number, reason: Buffer) => {
+        this.closedSession(token, closeCode, reason);
         clearTimeout(deadline);
         clearInterval(this.heartbeat);
         if (this.agent === socket) {
@@ -347,12 +362,13 @@ export class DeviceCloud {
           });
         }
       });
-      socket.once("close", () =>
+      socket.once("close", (closeCode, reason) => {
+        this.closedSession(token, closeCode, reason);
         finish({
           status: "unknown",
           error: "connection_lost_query_original_id",
-        }),
-      );
+        });
+      });
       socket.on("error", () => {
         finish({
           status: "unknown",

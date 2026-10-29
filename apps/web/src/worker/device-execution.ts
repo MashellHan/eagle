@@ -49,6 +49,7 @@ type Pending = {
   token: string;
   timer: ReturnType<typeof setTimeout>;
 };
+class DeviceAuthenticationError extends Error {}
 export class DeviceExecution extends DurableObject<Env> {
   private agent?: Agent;
   private pending = new Map<string, Pending>();
@@ -89,6 +90,7 @@ export class DeviceExecution extends DurableObject<Env> {
     socket: WebSocket,
     request: OperationRequest,
     result: OperationResult,
+    unauthorized = false,
   ): void {
     this.send(socket, {
       type: "response",
@@ -98,7 +100,10 @@ export class DeviceExecution extends DurableObject<Env> {
       result,
     });
     try {
-      socket.close(1000, "response");
+      socket.close(
+        unauthorized ? 1008 : 1000,
+        unauthorized ? "unauthorized_caller" : "response",
+      );
     } catch {}
   }
   private failPending(error: string): void {
@@ -187,7 +192,7 @@ export class DeviceExecution extends DurableObject<Env> {
               ).check(auth.sessionToken, targetId);
               if (!live()) return;
               if (!checked.ok || checked.source.deviceId !== targetId)
-                throw new Error("unauthorized_agent");
+                throw new DeviceAuthenticationError("unauthorized_agent");
               if (this.agent) {
                 this.agent.socket.close(1008, "agent_replaced");
                 this.failPending("agent_replaced");
@@ -211,7 +216,8 @@ export class DeviceExecution extends DurableObject<Env> {
               "registry",
             ).check(this.agent.token, targetId);
             if (!live() || this.agent?.socket !== socket) return;
-            if (!checked.ok) throw new Error("revoked_agent");
+            if (!checked.ok)
+              throw new DeviceAuthenticationError("revoked_agent");
             const beat = heartbeat.safeParse(data);
             if (beat.success) {
               this.observe(beat.data.capabilities, beat.data.policy);
@@ -263,10 +269,15 @@ export class DeviceExecution extends DurableObject<Env> {
           ).check(caller.sessionToken, targetId);
           if (!live()) return;
           if (!checked.ok) {
-            this.respond(socket, operation, {
-              status: "denied",
-              error: checked.error,
-            });
+            this.respond(
+              socket,
+              operation,
+              {
+                status: "denied",
+                error: checked.error,
+              },
+              checked.status === 401,
+            );
             return;
           }
           if (!this.agent || this.agent.expires <= Date.now()) {
@@ -343,10 +354,15 @@ export class DeviceExecution extends DurableObject<Env> {
             agent.expires <= Date.now() ||
             final.target.credentialVersion !== agent.credentialVersion
           ) {
-            this.respond(socket, operation, {
-              status: "denied",
-              error: "membership_or_agent_changed",
-            });
+            this.respond(
+              socket,
+              operation,
+              {
+                status: "denied",
+                error: "membership_or_agent_changed",
+              },
+              !final.ok && final.status === 401,
+            );
             return;
           }
           if (
@@ -400,10 +416,15 @@ export class DeviceExecution extends DurableObject<Env> {
             request: { ...operation, requestId: relayId },
           });
         })
-        .catch(() => {
+        .catch((error) => {
           closed();
           try {
-            socket.close(1008, "invalid_or_unauthorized_frame");
+            socket.close(
+              1008,
+              error instanceof DeviceAuthenticationError
+                ? error.message
+                : "invalid_or_unauthorized_frame",
+            );
           } catch {}
         })
         .finally(() => {

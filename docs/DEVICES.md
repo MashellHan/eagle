@@ -66,6 +66,12 @@ opens one WSS `/execution/<targetDeviceId>/request`, sends
 `{type:"request",sessionToken,request:<OperationRequest>}` and receives exactly
 one `{type:"response",requestId,operationId,targetDeviceId,result}` then closes.
 Every run/get/cancel rechecks live Registry source and target membership.
+Authentication/revocation closes use code 1008 with reason `unauthorized_agent`,
+`revoked_agent` or `unauthorized_caller`. Only those reasons invalidate the
+matching cached session and require fresh Keychain proof on the next connection.
+Transport failures, lease expiry and Agent replacement retain a valid session.
+An old socket's rejection cannot invalidate a newer session. Reauthentication
+never resends an operation; an uncertain result still requires querying its ID.
 
 OperationRequest: `{requestId,operationId,targetDeviceId,action:"run"|"get"|"cancel",
 sourceBotId?:string,operation?:{kind:"command",command,cwd?,timeoutMs?}|{kind:"file.read",path}|

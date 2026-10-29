@@ -37,6 +37,7 @@ before(async () => {
     `import worker,{DeviceRegistry as Registry,DeviceExecution as Execution,MachineState,MachineDirectory} from "../../apps/web/src/worker/index.ts";
 export {MachineState,MachineDirectory};
 export class DeviceExecution extends Execution {
+ fetch(request){const url=new URL(request.url);if(url.pathname==='/test-close'){this.agent?.socket.close(Number(url.searchParams.get('code')),url.searchParams.get('reason'));return new Response('closed');}return super.fetch(request);}
  observation(){const observation=super.observation();
   if(this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_observation_delay'").toArray().length){this.ctx.storage.sql.exec("UPDATE test_observation_delay SET started=1");return new Promise(resolve=>setTimeout(()=>resolve(observation),500));}
   return observation;
@@ -319,12 +320,19 @@ test("real outbound WebSockets execute bidirectionally with original-ID dedup an
     async (payload) =>
       sign(null, Buffer.from(payload), a.keys.privateKey).toString("base64url"),
   );
+  let signaturesB = 0;
+  const statesB: string[] = [];
   const cloudB = new DeviceCloud(
     localBase,
     deviceB,
     runtimeB,
-    async (payload) =>
-      sign(null, Buffer.from(payload), b.keys.privateKey).toString("base64url"),
+    async (payload) => {
+      signaturesB++;
+      return sign(null, Buffer.from(payload), b.keys.privateKey).toString(
+        "base64url",
+      );
+    },
+    (status) => statesB.push(status),
   );
   try {
     await Promise.all([cloudA.start(), cloudB.start()]);
@@ -419,6 +427,38 @@ test("real outbound WebSockets execute bidirectionally with original-ID dedup an
     assert.equal((await cloudA.execute(approved)).output, "from-b");
     runtimeB.setPolicy("all-approve");
     cloudB.publishPolicy();
+    const namespace = (await mf.getDurableObjectNamespace(
+      "DEVICE_EXECUTION",
+      "eagle",
+    )) as unknown as DurableObjectNamespace;
+    const agent = namespace.get(namespace.idFromName(b.deviceId));
+    for (const [closeCode, reason] of [
+      [1012, "transport_restart"],
+      [1008, "agent_replaced"],
+    ] as const) {
+      const onlineCount = statesB.filter(
+        (status) => status === "online",
+      ).length;
+      await agent.fetch(
+        `https://test/test-close?code=${closeCode}&reason=${reason}`,
+      );
+      const deadline = Date.now() + 3000;
+      while (
+        statesB.filter((status) => status === "online").length ===
+          onlineCount &&
+        Date.now() < deadline
+      )
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      assert.equal(
+        statesB.filter((status) => status === "online").length,
+        onlineCount + 1,
+      );
+      assert.equal(
+        signaturesB,
+        1,
+        "transport and non-auth policy closure must retain a valid session",
+      );
+    }
     const registry = await mf.unsafeGetDurableObjectStorage(
       "eagle",
       "DeviceRegistry",
@@ -428,7 +468,6 @@ test("real outbound WebSockets execute bidirectionally with original-ID dedup an
       "UPDATE sessions SET expires=0 WHERE deviceId=?",
       b.deviceId,
     );
-    await assert.rejects(cloudB.directory());
     await registry.exec(
       `CREATE TRIGGER transient_registration_failure BEFORE INSERT ON challenges WHEN json_extract(NEW.registration,'$.deviceId')='${b.deviceId}' BEGIN SELECT RAISE(ABORT,'transient fixture failure'); END`,
     );
@@ -446,6 +485,11 @@ test("real outbound WebSockets execute bidirectionally with original-ID dedup an
       cloudB.status,
       "online",
       "agent must continue retrying after refresh temporarily fails",
+    );
+    assert.equal(
+      signaturesB,
+      2,
+      "authentication closure must refresh without a directory HTTP 401",
     );
     assert.equal(
       (
@@ -1117,5 +1161,79 @@ test("directory revalidates the original session after awaited device observatio
     );
   } finally {
     await execution.exec("DROP TABLE test_observation_delay");
+  }
+});
+
+test("caller authentication closure refreshes the cached session without an HTTP probe", async () => {
+  const { DeviceCloud } = await import("../packages/agent/device-cloud.ts");
+  const { DeviceRuntime } = await import("../packages/agent/device-runtime.ts");
+  const { canonicalDeviceJSON, deviceDigest } = await import(
+    "../packages/contracts/src/devices.ts"
+  );
+  const identityA = await identity("caller-refresh");
+  const device = {
+    deviceId: identityA.deviceId,
+    publicKey: identityA.publicKey,
+    name: "caller-refresh",
+    platform: "darwin",
+    arch: "arm64",
+    groupId: null,
+    membershipEpoch: 0,
+    credentialVersion: 1,
+  };
+  const runtime = new DeviceRuntime(
+    device,
+    join(root, "caller-refresh.sqlite"),
+  );
+  let signatures = 0;
+  const cloud = new DeviceCloud(
+    (await mf.ready).origin,
+    device,
+    runtime,
+    async (payload) => {
+      signatures++;
+      return sign(
+        null,
+        Buffer.from(payload),
+        identityA.keys.privateKey,
+      ).toString("base64url");
+    },
+  );
+  try {
+    const operation = {
+      kind: "command" as const,
+      command: "printf fresh-session",
+    };
+    const request = {
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+      targetDeviceId: device.deviceId,
+      action: "run" as const,
+      operation,
+      digest: await deviceDigest(canonicalDeviceJSON(operation)),
+    };
+    assert.equal((await cloud.execute(request)).status, "unknown");
+    const registry = await mf.unsafeGetDurableObjectStorage(
+      "eagle",
+      "DeviceRegistry",
+      { name: "registry" },
+    );
+    await registry.exec(
+      "UPDATE sessions SET expires=0 WHERE deviceId=?",
+      device.deviceId,
+    );
+    assert.equal((await cloud.execute(request)).status, "denied");
+    // Let the received close frame finish; a denied result never retries the run.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const refreshed = await cloud.execute({
+      ...request,
+      requestId: randomUUID(),
+    });
+    assert.equal(refreshed.status, "unknown");
+    assert.equal(refreshed.error, "target_offline");
+    assert.equal(signatures, 2);
+  } finally {
+    await cloud.close();
+    await runtime.close();
   }
 });
