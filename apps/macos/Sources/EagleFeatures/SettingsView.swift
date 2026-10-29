@@ -5,6 +5,7 @@ import SwiftUI
 /// The settings window content, one screen per rail section.
 public struct SettingsView: View {
   @StateObject private var model: SettingsViewModel
+  @ObservedObject private var devices: DeviceSettingsViewModel
   @AppStorage("eagle.appearance") private var appearance = "system"
   @AppStorage("eagle.hideToolCalls") private var hideToolCalls = false
   @AppStorage("eagle.loadMockData") private var loadMockData = false
@@ -14,11 +15,13 @@ public struct SettingsView: View {
   public init(
     model: SettingsViewModel = SettingsViewModel(),
     onClose: @escaping () -> Void = {},
-    daemon: BotsDaemonSupervisor? = nil
+    daemon: BotsDaemonSupervisor? = nil,
+    devices: DeviceSettingsViewModel = .shared
   ) {
     _model = StateObject(wrappedValue: model)
     self.onClose = onClose
     self.daemon = daemon
+    self.devices = devices
   }
 
   public var body: some View {
@@ -31,7 +34,7 @@ public struct SettingsView: View {
       case .providers:
         providersPage
       case .machines:
-        machines
+        DeviceSettingsView(model: devices)
       case .realtime:
         realtime
       case .usage:
@@ -387,60 +390,6 @@ public struct SettingsView: View {
     )
   }
 
-  private var machines: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      SettingsCard {
-        VStack(spacing: 2) {
-          ForEach(model.machines) { machine in
-            DeviceRow(
-              symbol: machine.symbol,
-              name: machine.name,
-              status: machine.status,
-              online: machine.online,
-              permission: machine.permission.rawValue,
-              onPermission: { model.cyclePermission(machine.id) },
-              onRename: machine.renamable ? { model.beginRename(machine.id) } : nil,
-              onMore: { model.remove(machine.id) }
-            )
-          }
-        }
-        .padding(.vertical, 8)
-      }
-
-      SettingsCaption("Eagle 的机器")
-      SettingsCard {
-        VStack(alignment: .leading, spacing: 12) {
-          Text("更新 Eagle 的机器")
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(Theme.Palette.textPrimary)
-          Text("所有机器共用同一个 Agent 版本。文件与登录信息保留，已安装的 Agent 会被替换；每台机器会依次重启采集服务。")
-            .font(.system(size: 13))
-            .foregroundStyle(Theme.Palette.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-          InfoBanner("所有机器的 Agent 均为最新版本")
-        }
-        .padding(.vertical, 16)
-      }
-
-      SettingsCard {
-        HStack(alignment: .center, spacing: 20) {
-          VStack(alignment: .leading, spacing: 6) {
-            Text("重置 Eagle 的机器")
-              .font(.system(size: 15, weight: .semibold))
-              .foregroundStyle(Theme.Palette.textPrimary)
-            Text("当机器卡住时可以重新开始。它会按上一次完整快照重建，最近的改动可能丢失。")
-              .font(.system(size: 13))
-              .foregroundStyle(Theme.Palette.textSecondary)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-          Spacer(minLength: 0)
-          DestructivePill("重置") {}
-        }
-        .padding(.vertical, 16)
-      }
-    }
-  }
-
   private var realtime: some View {
     VStack(alignment: .leading, spacing: 18) {
       SettingsCard {
@@ -460,7 +409,11 @@ public struct SettingsView: View {
           }
         }
       }
-      SettingsCaption("在线机器 \(model.onlineCount) 台")
+      SettingsCaption(
+        devices.directoryIsStale
+          ? "设备目录待刷新"
+          : "设备目录中在线 \(devices.directory?.devices.filter { $0.online == true }.count ?? 0) 台 · 其余状态以设备页为准"
+      )
     }
   }
 

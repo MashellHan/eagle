@@ -5,7 +5,7 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
   case general = "通用"
   case bots = "模型"
   case providers = "服务"
-  case machines = "机器"
+  case machines = "设备"
   case realtime = "实时"
   case usage = "用量与账单"
   case updates = "更新"
