@@ -46,7 +46,9 @@ const EDGES: ReadonlyArray<{
       target.startsWith("src/triggers/") ||
       target === "src/core/Invocation.ts" ||
       target === "src/core/TriggerStore.ts" ||
+      target === "src/core/TriggerSecrets.ts" ||
       target === "src/core/domain.ts" ||
+      target === "src/server/http.ts" ||
       target === "src/tools/types.ts",
   },
   {
@@ -158,7 +160,7 @@ test("the rules reject every forbidden edge", () => {
     { file: "src/triggers/webhook/module.ts", specifier: "../../core/ConversationService.ts" },
     { file: "src/triggers/webhook/module.ts", specifier: "../../core/BotRegistry.ts" },
     { file: "src/triggers/schedule/tick.ts", specifier: "../../runtime/pi/PiDurableRuntime.ts" },
-    { file: "src/triggers/webhook/module.ts", specifier: "../../server/http.ts" },
+    { file: "src/triggers/webhook/module.ts", specifier: "../../runtime/pi/PiDurableRuntime.ts" },
     { file: "src/triggers/webhook/module.ts", specifier: "@earendil-works/pi-durable" },
   ];
   for (const { file, specifier } of cases) {
@@ -181,6 +183,8 @@ test("the rules allow the documented edges", () => {
     { file: "src/triggers/webhook/module.ts", specifier: "../../core/Invocation.ts" },
     { file: "src/triggers/webhook/module.ts", specifier: "../../core/TriggerStore.ts" },
     { file: "src/triggers/schedule/tick.ts", specifier: "../../core/domain.ts" },
+    { file: "src/triggers/ingress.ts", specifier: "../core/TriggerSecrets.ts" },
+    { file: "src/triggers/ingress.ts", specifier: "../server/http.ts" },
     { file: "src/triggers/webhook/module.ts", specifier: "../../tools/types.ts" },
     { file: "src/triggers/webhook/module.ts", specifier: "../../log/log.ts" },
   ];

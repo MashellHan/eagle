@@ -192,3 +192,24 @@ test("a reopened queue resumes its items and its open batch", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("a retry of the batch that just closed is still the same delivery", async () => {
+  const q = await queue();
+  await q.enqueue(item(0));
+  const batch = await q.cut(webhook());
+  await q.close(batch?.batchId as number);
+  assert.deepEqual(
+    await q.enqueue(item(0)),
+    { accepted: false, dropped: 0 },
+    "the closed batch is still inside the producer's retry window",
+  );
+  await q.enqueue(item(1));
+  const next = await q.cut(webhook());
+  await q.close(next?.batchId as number);
+  assert.deepEqual(
+    await q.enqueue(item(1)),
+    { accepted: false, dropped: 0 },
+    "and the window moves with the newest batch",
+  );
+  assert.deepEqual(await q.enqueue(item(0)), { accepted: true, dropped: 0 }, "older is released");
+});

@@ -18,6 +18,7 @@ import {
 import { newFailure } from "./core/failures.ts";
 import { OriginStore, originPath } from "./core/OriginStore.ts";
 import type { RuntimeEvent } from "./core/RuntimePort.ts";
+import { TriggerSecretStore, triggerSecretsPath } from "./core/TriggerSecrets.ts";
 import { TriggerStore, triggerJournalPath } from "./core/TriggerStore.ts";
 import { declareEvent } from "./log/events.ts";
 import { Log } from "./log/log.ts";
@@ -37,7 +38,7 @@ import {
   testGateway,
   writeGateway,
 } from "./server/gateway.ts";
-import { type Daemon, startServer } from "./server/http.ts";
+import { type Daemon, startServer, type TriggerIngress } from "./server/http.ts";
 import {
   PROVIDERS,
   type ProviderApi,
@@ -57,6 +58,7 @@ import type { SearchClient } from "./tools/search/client.ts";
 import { createDeepSeekSearch } from "./tools/search/deepseek.ts";
 import { createTavilySearch } from "./tools/search/tavily.ts";
 import { triggerHost } from "./triggers/host.ts";
+import { createIngress } from "./triggers/ingress.ts";
 import { TriggerProducers } from "./triggers/producers.ts";
 import { fileJournal, TriggerQueue } from "./triggers/queue.ts";
 
@@ -134,9 +136,11 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   let gateway: GatewayConfig | undefined;
   // The log exists before the lock so a refused second start is on record, and it holds
   // the token as a secret for redaction from its first record.
+  // Declared before the log: its redaction closure reads this set on every record.
+  const triggerTokens = new Set<string>();
   const sink = new FileLogSink({ root, minimum: canonical.logLevel });
   const log = new Log(sink.sink, undefined, {
-    secrets: () => [token, gateway?.apiKey ?? "", ...providers.secrets()],
+    secrets: () => [token, gateway?.apiKey ?? "", ...providers.secrets(), ...triggerTokens],
   });
   const startup = "tr_boot_1";
   log.emit("info", "core", StartupEvents.singletonStart, { trace: startup });
@@ -181,6 +185,27 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   const usageStore = new UsageStore(join(root, "usage.sqlite"));
   // One store per bot, opened on demand: a bot that never uses a trigger reads no journal.
   const triggers = new Map<string, Promise<TriggerStore>>();
+  /** Webhook credentials per bot, and every token the log must redact. */
+  const secretStores = new Map<string, Promise<TriggerSecretStore>>();
+  const secretsFor = (botId: string): Promise<TriggerSecretStore> => {
+    const open = secretStores.get(botId);
+    if (open !== undefined) return open;
+    const opened = TriggerSecretStore.open(triggerSecretsPath(directory.botDir(botId)));
+    secretStores.set(botId, opened);
+    opened.catch(() => secretStores.delete(botId));
+    opened.then((store) => {
+      for (const token of store.tokens()) triggerTokens.add(token);
+    });
+    return opened;
+  };
+  /** A webhook trigger is usable the moment it exists, so its token is minted here. */
+  const ensureWebhookTokens = async (botId: string): Promise<void> => {
+    const store = await triggerStoreFor(botId);
+    const webhooks = store.list().filter((trigger) => trigger.kind === "webhook");
+    if (webhooks.length === 0) return;
+    const secrets = await secretsFor(botId);
+    for (const trigger of webhooks) triggerTokens.add(await secrets.tokenFor(trigger.id));
+  };
   /** Set once the service exists: a model's own edit has to reach the sidebar. */
   let refreshTriggers: (botId: string) => void = () => undefined;
   const triggerStoreFor = (botId: string): Promise<TriggerStore> => {
@@ -248,14 +273,24 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   const triggerDetails = async (botId: string): Promise<Record<string, unknown>[]> => {
     const store = await triggerStoreFor(botId);
     const summaries = await summarize(botId);
-    return summaries.map((summary) => {
+    const entries: Record<string, unknown>[] = [];
+    for (const summary of summaries) {
       const definition = store.get(summary.id);
-      return {
+      const endpoint =
+        summary.kind === "webhook" ? `/v1/triggers/${botId}/${summary.id}` : undefined;
+      let token: string | undefined;
+      if (endpoint !== undefined) {
+        token = await (await secretsFor(botId)).tokenFor(summary.id);
+        triggerTokens.add(token);
+      }
+      entries.push({
         ...summary,
         prompt: definition?.prompt ?? "",
-        ...(summary.kind === "webhook" ? { endpoint: `/v1/triggers/${botId}/${summary.id}` } : {}),
-      };
-    });
+        ...(endpoint === undefined ? {} : { endpoint }),
+        ...(token === undefined ? {} : { token }),
+      });
+    }
+    return entries;
   };
   const runtime = new PiDurableRuntime({
     models: () => models,
@@ -352,13 +387,45 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     },
   });
   producers.start();
+  // A webhook trigger that existed before this process must be deliverable immediately:
+  // its token is minted at boot, not on the first time somebody opens the row.
+  for (const summary of registry.summaries()) {
+    void ensureWebhookTokens(summary.id).catch(() => undefined);
+  }
   refreshTriggers = (botId: string) => {
+    void ensureWebhookTokens(botId).catch(() => undefined);
     void summarize(botId)
       .then((list) =>
         service.publishTriggers(botId, list, `tr_trigger_refresh_${Date.now().toString(36)}`),
       )
       .catch(() => undefined);
   };
+  // One inbound delivery: authenticate, dedupe, enqueue; the pump decides when it runs.
+  const ingress: TriggerIngress = createIngress({
+    storeFor: triggerStoreFor,
+    secretsFor,
+    queueFor,
+    drain: (botId) => void producers.pumpFor(botId).drain(),
+    now: () => new Date(),
+    count: (botId, triggerId, delta) => {
+      void triggerStoreFor(botId)
+        .then((store) => {
+          const current = store.get(triggerId);
+          if (current === undefined) return undefined;
+          return store.patch({
+            triggerId,
+            patch: {
+              counters: {
+                fired: current.counters.fired + (delta.fired ?? 0),
+                dropped: current.counters.dropped + (delta.dropped ?? 0),
+                refused: current.counters.refused + (delta.refused ?? 0),
+              },
+            },
+          });
+        })
+        .catch(() => undefined);
+    },
+  });
   const triggerApi = {
     list: triggerDetails,
     setEnabled: async (botId: string, triggerId: string, enabled: boolean, trace: string) => {
@@ -463,6 +530,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     service,
     settings,
     triggers: triggerApi,
+    ingress,
     version: packageVersion(),
     instance: `i_${process.pid}`,
     capabilities,

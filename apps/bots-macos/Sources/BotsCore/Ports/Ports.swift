@@ -146,13 +146,18 @@ public struct TriggerDetail: Sendable, Equatable, Identifiable {
   public var summary: TriggerSummary
   /// The Bot's standing instruction, shown read-only.
   public var prompt: String
-  /// Where a webhook delivers, without its credential; nil for a schedule.
+  /// Where a webhook delivers; nil for a schedule.
   public var endpoint: String?
+  /// The delivery credential. Only the app reads it, and only to copy it once.
+  public var token: String?
 
-  public init(summary: TriggerSummary, prompt: String, endpoint: String? = nil) {
+  public init(
+    summary: TriggerSummary, prompt: String, endpoint: String? = nil, token: String? = nil
+  ) {
     self.summary = summary
     self.prompt = prompt
     self.endpoint = endpoint
+    self.token = token
   }
 
   public var id: String { summary.id }

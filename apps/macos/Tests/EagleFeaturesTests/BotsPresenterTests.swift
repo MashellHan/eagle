@@ -649,3 +649,31 @@ struct BotsTriggerPresenterTests {
       "an unknown zone falls back instead of dropping the row")
   }
 }
+
+@MainActor
+@Suite("Bots webhook detail")
+struct BotsWebhookDetailTests {
+  private let presenter = BotsPresenter()
+
+  @Test("a webhook's detail shows where it delivers and the credential to copy")
+  func endpointAndToken() {
+    let detail = TriggerDetail(
+      summary: TriggerSummary(
+        id: "t_7b1e55aa10", kind: .webhook, name: "deploy notify", enabled: true),
+      prompt: "handle the deploy",
+      endpoint: "/v1/triggers/b_1/t_7b1e55aa10",
+      token: "tok_abc"
+    )
+    let rows = presenter.inspectorTrigger(detail)
+    #expect(rows.first { $0.id == "endpoint" }?.value == "/v1/triggers/b_1/t_7b1e55aa10")
+    #expect(rows.first { $0.id == "token" }?.value == "tok_abc")
+    #expect(
+      presenter.inspectorTrigger(TriggerDetail(summary: detail.summary, prompt: "x"))
+        .tokenRow == nil,
+      "a schedule has no credential to show")
+  }
+}
+
+extension Array where Element == InspectorUsageRow {
+  fileprivate var tokenRow: InspectorUsageRow? { first { $0.id == "token" } }
+}

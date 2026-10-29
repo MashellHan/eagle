@@ -51,6 +51,7 @@ public final class TriggerHTTPClient: TriggerPort, @unchecked Sendable {
     let lastSkipped: TriggerSummary.Skipped?
     let prompt: String?
     let endpoint: String?
+    let token: String?
 
     var detail: TriggerDetail {
       TriggerDetail(
@@ -65,7 +66,8 @@ public final class TriggerHTTPClient: TriggerPort, @unchecked Sendable {
           lastSkipped: lastSkipped
         ),
         prompt: prompt ?? "",
-        endpoint: endpoint
+        endpoint: endpoint,
+        token: token
       )
     }
   }

@@ -257,8 +257,8 @@ Triggers add producers to a process that previously had only a transport:
     not moved.
 
 `test/architecture.test.ts` gains an edge for `src/triggers/**`: it may import
-`core/Invocation.ts`, `core/TriggerStore.ts`, `core/domain.ts` and `log/**`, and
-nothing else. `src/tools/**` keeps its rule (only `src/tools/**`), so trigger DTOs
+`core/Invocation.ts`, `core/TriggerStore.ts`, `core/TriggerSecrets.ts`, `core/domain.ts`,
+`server/http.ts` (the ingress outcome type only) and `log/**`, and nothing else. `src/tools/**` keeps its rule (only `src/tools/**`), so trigger DTOs
 used by tools live in `src/tools/types.ts` and are bound to core shapes by a
 compile-time conformance test, the same discipline as `runtime/pi/limits.ts`.
 

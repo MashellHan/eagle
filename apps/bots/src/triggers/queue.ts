@@ -95,6 +95,8 @@ export class TriggerQueue {
   #nextBatchId = 1;
   /** The absolute next due instant; absent until the first tick arms it. */
   #cursor: string | undefined;
+  /** The batch that just closed: a producer's retry inside the window is the same delivery. */
+  #delivered: readonly string[] = [];
   #queue: Promise<unknown> = Promise.resolve();
 
   private constructor(triggerId: string, journal: QueueJournal) {
@@ -150,10 +152,7 @@ export class TriggerQueue {
     readonly cursorAfter: string | undefined;
   }): Promise<boolean> {
     return this.#serial(async () => {
-      const known =
-        this.#items.some((queued) => queued.itemId === input.item.itemId) ||
-        this.#batch?.items.some((member) => member.itemId === input.item.itemId) === true;
-      if (known) return false;
+      if (this.#known(input.item.itemId)) return false;
       if (this.#items.length >= MAX_QUEUE_ITEMS) {
         this.#items = this.#items.slice(1);
         this.#dropped += 1;
@@ -176,10 +175,7 @@ export class TriggerQueue {
    */
   enqueue(item: QueueItem): Promise<{ readonly accepted: boolean; readonly dropped: number }> {
     return this.#serial(async () => {
-      const known =
-        this.#items.some((queued) => queued.itemId === item.itemId) ||
-        this.#batch?.items.some((member) => member.itemId === item.itemId) === true;
-      if (known) return { accepted: false, dropped: 0 };
+      if (this.#known(item.itemId)) return { accepted: false, dropped: 0 };
       const evicted =
         this.#items.length >= MAX_QUEUE_ITEMS ? this.#items.length - MAX_QUEUE_ITEMS + 1 : 0;
       const keep = evicted === 0 ? this.#items : this.#items.slice(evicted);
@@ -224,9 +220,19 @@ export class TriggerQueue {
   close(batchId: number): Promise<void> {
     return this.#serial(async () => {
       if (this.#batch?.batchId !== batchId) return;
+      this.#delivered = this.#batch.items.map((item) => item.itemId);
       await this.#journal.append({ op: "close", batchId });
       this.#batch = undefined;
     });
+  }
+
+  /** One delivery identity: queued, frozen in the open batch, or in the batch just closed. */
+  #known(itemId: string): boolean {
+    return (
+      this.#items.some((queued) => queued.itemId === itemId) ||
+      this.#batch?.items.some((member) => member.itemId === itemId) === true ||
+      this.#delivered.includes(itemId)
+    );
   }
 
   #apply(record: QueueRecord): void {
@@ -246,7 +252,10 @@ export class TriggerQueue {
         this.#nextBatchId = Math.max(this.#nextBatchId, record.batch.batchId + 1);
         return;
       case "close":
-        if (this.#batch?.batchId === record.batchId) this.#batch = undefined;
+        if (this.#batch?.batchId === record.batchId) {
+          this.#delivered = this.#batch.items.map((item) => item.itemId);
+          this.#batch = undefined;
+        }
         return;
       case "fire": {
         if (this.#items.length >= MAX_QUEUE_ITEMS) {

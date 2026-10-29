@@ -15,7 +15,7 @@ import { captureLog, type LogRecord } from "../../src/log/log.ts";
 import { measureEvent } from "../../src/main.ts";
 import { PiDurableRuntime } from "../../src/runtime/pi/PiDurableRuntime.ts";
 import type { GatewayApi } from "../../src/server/gateway.ts";
-import type { TriggerApi } from "../../src/server/http.ts";
+import type { TriggerApi, TriggerIngress } from "../../src/server/http.ts";
 import { startServer } from "../../src/server/http.ts";
 import { FakeRuntime, type FakeScript } from "../../src/testing/FakeRuntime.ts";
 
@@ -63,6 +63,8 @@ export type StackOptions = {
   readonly maxMessageBytes?: number;
   /** A trigger surface for the HTTP contract; absent means the daemon has no triggers. */
   readonly triggers?: TriggerApi;
+  /** The inbound delivery route; absent means a webhook trigger has no endpoint. */
+  readonly ingress?: TriggerIngress;
   /** The baseline trigger list a bot's view opens with. */
   readonly triggersOf?: readonly TriggerSummary[];
   readonly windowMessages?: number;
@@ -210,6 +212,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
       triggers: true,
     },
     ...(options.triggers === undefined ? {} : { triggers: options.triggers }),
+    ...(options.ingress === undefined ? {} : { ingress: options.ingress }),
     port: 0,
   });
   broadcast = daemon.broadcastCatalog;

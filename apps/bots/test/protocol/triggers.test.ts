@@ -115,7 +115,10 @@ test("eight worst-case triggers fit the page and the frame budget", () => {
     trigger({
       id: `t_${String(index).padStart(10, "a")}`,
       name: "n".repeat(64),
-      schedule: { cron: "* ".repeat(31) + "*", timezone: "America/Argentina/ComodRivadavia" },
+      schedule: {
+        cron: `${"* ".repeat(31)}*`,
+        timezone: "America/Argentina/ComodRivadavia",
+      },
       counters: { fired: 999_999, dropped: 999_999, refused: 999_999 },
     }),
   );

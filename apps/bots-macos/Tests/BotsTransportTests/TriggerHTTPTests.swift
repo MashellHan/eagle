@@ -36,6 +36,7 @@ final class TriggerHTTPTests: XCTestCase {
           "counters":{"fired":2,"dropped":0,"refused":0}},
          {"id":"t_7b1e55aa10","kind":"webhook","name":"deploy notify","enabled":false,
           "prompt":"handle the deploy","endpoint":"/v1/triggers/b_1/t_7b1e55aa10",
+          "token":"tok_abc",
           "counters":{"fired":0,"dropped":0,"refused":0}}]}
         """
       return (200, Data(body.utf8))
@@ -46,6 +47,7 @@ final class TriggerHTTPTests: XCTestCase {
     XCTAssertEqual(details[0].summary.schedule?.nextDueAt, "2026-10-29T01:00:00.000Z")
     XCTAssertEqual(details[0].summary.kind, .schedule)
     XCTAssertEqual(details[1].endpoint, "/v1/triggers/b_1/t_7b1e55aa10")
+    XCTAssertEqual(details[1].token, "tok_abc", "the app reads the credential to copy it")
     XCTAssertNil(details[1].endpoint.flatMap { $0.contains("token") ? $0 : nil })
     XCTAssertEqual(seen?.url?.query, "botId=b_1")
     XCTAssertEqual(seen?.value(forHTTPHeaderField: "Authorization"), "Bearer secret")

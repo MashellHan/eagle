@@ -140,7 +140,10 @@ export class ScheduleTicker {
         if (tick.kind === "fired") {
           await source.store.patch({
             triggerId: trigger.id,
-            patch: { lastFiredAt: now.toISOString() },
+            patch: {
+              lastFiredAt: now.toISOString(),
+              counters: { ...trigger.counters, fired: trigger.counters.fired + 1 },
+            },
           });
         }
         if (tick.kind === "missed") {

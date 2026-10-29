@@ -49,6 +49,8 @@ export type ServerOptions = {
   readonly settings?: GatewayApi;
   /** A bot's triggers: read-only detail for the app, and the person's one switch. */
   readonly triggers?: TriggerApi;
+  /** The inbound side: one webhook delivery, authenticated by its own trigger token. */
+  readonly ingress?: TriggerIngress;
   readonly pid?: number;
   /** 0 asks the kernel for a free port, which is what tests do. */
   readonly port: number;
@@ -98,6 +100,19 @@ const readBody = async (request: IncomingMessage): Promise<unknown> => {
   }
   if (bytes === 0) return undefined;
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+};
+
+/** A delivery's raw body: bytes, not JSON, with the delivery cap instead of the API's. */
+const readDelivery = async (request: IncomingMessage): Promise<Buffer | undefined> => {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of request) {
+    const buffer = chunk as Buffer;
+    bytes += buffer.length;
+    if (bytes > MAX_DELIVERY_BYTES) return undefined;
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks);
 };
 
 /** Only the documented string fields cross; anything else is a malformed request. */
@@ -275,6 +290,29 @@ export type TriggerApi = {
   ) => Promise<Record<string, unknown> | undefined>;
 };
 
+/** What a delivery asked for, and what the daemon did with it. */
+export type IngressOutcome =
+  | { readonly kind: "queued"; readonly queued: number; readonly dropped: number }
+  | { readonly kind: "unknown" }
+  | { readonly kind: "disabled" }
+  | { readonly kind: "queue_full" }
+  | { readonly kind: "invalid"; readonly message: string };
+
+export type TriggerIngress = {
+  readonly deliver: (input: {
+    readonly botId: string;
+    readonly triggerId: string;
+    /** The trigger's own bearer, compared in constant time by the implementation. */
+    readonly token: string;
+    readonly body: Buffer;
+    readonly contentType: string | undefined;
+    readonly idempotencyKey: string | undefined;
+  }) => Promise<IngressOutcome>;
+};
+
+/** PROTOCOL.md, "Limits": a delivery is small; a bigger body is refused, not buffered. */
+export const MAX_DELIVERY_BYTES = 64 * 1024;
+
 export const startServer = async (options: ServerOptions): Promise<Daemon> => {
   const { log, registry, service, token } = options;
   let connections = 0;
@@ -321,6 +359,53 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
         bots: registry.summaries().length,
       });
       return;
+    }
+    const ingressMatch = /^\/v1\/triggers\/([A-Za-z0-9_-]+)\/(t_[A-Za-z0-9_-]{10})$/.exec(path);
+    if (ingressMatch !== null && request.method === "POST") {
+      const [, botId, triggerId] = ingressMatch as unknown as [string, string, string];
+      if (options.ingress === undefined) {
+        json(response, 404, { error: { kind: "unknown_bot", message: "no trigger ingress" } });
+        return;
+      }
+      // A browser never posts here: an Origin header means a page, not a service.
+      if (request.headers.origin !== undefined) {
+        json(response, 403, { error: { kind: "auth_failed", message: "origin is not accepted" } });
+        return;
+      }
+      const body = await readDelivery(request);
+      if (body === undefined) {
+        json(response, 413, { error: { kind: "limit_exceeded", message: "delivery too large" } });
+        return;
+      }
+      const outcome = await options.ingress.deliver({
+        botId,
+        triggerId,
+        token: parseBearer(request.headers.authorization) ?? "",
+        body,
+        contentType: request.headers["content-type"],
+        idempotencyKey:
+          typeof request.headers["idempotency-key"] === "string"
+            ? request.headers["idempotency-key"]
+            : undefined,
+      });
+      switch (outcome.kind) {
+        case "queued":
+          json(response, 202, { queued: outcome.queued, dropped: outcome.dropped });
+          return;
+        case "disabled":
+          json(response, 409, { reason: "disabled" });
+          return;
+        case "queue_full":
+          json(response, 429, { reason: "queue_full" });
+          return;
+        case "invalid":
+          json(response, 422, { reason: outcome.message });
+          return;
+        case "unknown":
+          // One answer for unknown bot, unknown trigger and wrong token: no oracle.
+          json(response, 404, { error: { kind: "unknown_bot", message: "no such trigger" } });
+          return;
+      }
     }
     if (!tokenMatches(token, parseBearer(request.headers.authorization))) {
       log.emit("warn", "transport", Events.authFail, {

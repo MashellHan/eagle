@@ -1085,6 +1085,9 @@ struct BotsPresenter {
     if let endpoint = detail.endpoint {
       rows.append(InspectorUsageRow(id: "endpoint", label: "端点", value: endpoint))
     }
+    if let token = detail.token {
+      rows.append(InspectorUsageRow(id: "token", label: "令牌", value: token))
+    }
     rows.append(
       InspectorUsageRow(
         id: "fired", label: "已触发", value: "\(summary.counters.fired) 次"))
