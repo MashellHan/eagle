@@ -8,11 +8,63 @@ daemon (`apps/bots`), starts it on launch when it can find it, and stops it on
 quit; the sidebar groups, inspector artifacts and settings pages other than the
 Bots ones are still demo content.
 
-## Run
+## Build the pairing candidate on another Mac
+
+Requires **macOS 15+**, Xcode or Command Line Tools, and an **official standalone
+Node 24+** distribution matching the Mac's CPU. Download/extract it from
+[nodejs.org](https://nodejs.org/en/download); Homebrew Node with non-system dynamic
+library dependencies is rejected by the portable-runtime check. Adjust the example
+Node path below (shown for arm64 Node 26.9.0; use the x64 distribution on Intel).
+
+From the `device-groups/eagle` branch of `https://github.com/MashellHan/eagle.git`,
+run in the repository root. Keep the machine's approved npm registry and both locks:
+
+```sh
+export EAGLE_NODE_BINARY="$HOME/Downloads/node-v26.9.0-darwin-arm64/bin/node"
+export PATH="$(dirname "$EAGLE_NODE_BINARY"):$PATH"
+umask 077
+mkdir -p .local
+EAGLE_PAIRING_CACHE="$(mktemp -d "$(pwd)/.local/pairing-npm.XXXXXX")"
+export EAGLE_AGENT_NPM_CACHE="$EAGLE_PAIRING_CACHE/root"
+export EAGLE_BOTS_NPM_CACHE="$EAGLE_PAIRING_CACHE/bots"
+npm ci --cache "$EAGLE_AGENT_NPM_CACHE"
+npm --prefix apps/bots ci --cache "$EAGLE_BOTS_NPM_CACHE"
+export EAGLE_DEVICE_PROFILE=device-candidate
+export EAGLE_DEVICE_SERVICE_URL=https://eagle-devices.mxhan.workers.dev
+export EAGLE_CODESIGN_IDENTITY=-
+apps/macos/Scripts/build-app.sh debug
+open apps/macos/.build/device-candidate
+```
+
+The two normal installs populate task-private caches; assembly verifies locked
+package bytes and installs the bundled Agent/Bots runtime offline. The output is
+`apps/macos/.build/device-candidate/Eagle Device Candidate.app`. Quit an existing
+candidate before replacing its **whole bundle** in `~/Applications` using Finder,
+then open that installed copy. Do not launch the hidden build copy or edit/re-sign
+the installed bundle in place. This is an ad-hoc candidate, not a notarized release.
+
+Omitting the service URL defaults to localhost for local development. **Both Macs
+must explicitly build with the HTTPS origin above for pairing**, including later UI
+updates. Each Mac creates its own identity; do not copy credentials, sessions or
+old localhost state. Bot command checks need a working model configuration on the
+Mac initiating them; credentials are not part of these instructions or the bundle.
+
+1. On both Macs, open `⌘,` → **设备**, enable the service and allow the background
+   item if macOS requests it. Wait for **本机可用** and **云端已连接**.
+2. On B, generate a one-hour pairing code; enter it once on A. If the result is
+   uncertain, use **查询配对结果** to recover the original request.
+3. Refresh both device lists: both Macs should appear online, with distinct device
+   IDs and the correct **本机** label on each. Record each Mac's local `/bin/hostname`.
+4. Ask a Bot on A to read the device list and run `/bin/hostname` explicitly on B's
+   device ID; compare its actual output with B's local result. Repeat B → A. Check
+   the returned target/operation IDs; a local fallback or model-only answer is not a pass.
+
+These are verification steps; physical two-Mac acceptance is not yet claimed.
+
+## Development commands
 
 ```sh
 cd apps/macos
-./Scripts/build-app.sh && open .build/Eagle.app   # normal app window, Dock icon
 swift run EagleApp          # same shell without a bundle; ⌘⇧G opens the gallery
 swift test                 # Swift Testing suites for the logic layer
 ./Scripts/coverage.sh      # same tests plus a 90% logic-coverage gate
@@ -21,7 +73,9 @@ swift run SnapshotRenderer ../../.local/macos-inspector --inspector-only   # sta
 swift run SnapshotRenderer ../../.local/macos-services --services-only   # isolated search-provider fixtures only
 ```
 
-The app supervises the daemon: it walks up from the executable for
+Packaged candidates use their bundled Node/Bots and isolated candidate profile;
+the development overrides below do not select their runtime or data directories.
+For source-only development, the app walks up from the executable for
 `apps/bots/scripts/serve.ts` (or uses `BOTS_DAEMON_DIR`), starts it with the
 machine's Node (`BOTS_NODE`, then Homebrew/`/usr/bin`), shows its state in
 Settings → `模型`, and terminates only the daemon it started when the app
