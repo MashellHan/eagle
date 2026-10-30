@@ -13,8 +13,10 @@ import { DatabaseSync } from "node:sqlite";
 import { isMainThread } from "node:worker_threads";
 import {
   DeviceId,
+  DevicePolicy,
   type OperationRequest,
   type OperationResult,
+  type PolicySetRequest,
 } from "../contracts/src/devices.ts";
 
 export type OperationOutcome = {
@@ -174,6 +176,16 @@ export class OperationJournal {
           id TEXT PRIMARY KEY,target TEXT NOT NULL,digest TEXT,source_bot TEXT,
           state TEXT NOT NULL CHECK(state IN ('sent','retryable'))
         );
+        CREATE TABLE IF NOT EXISTS device_policy (
+          singleton INTEGER PRIMARY KEY CHECK(singleton=1),mode TEXT NOT NULL,version INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS device_policy_requests (
+          source TEXT NOT NULL,id TEXT NOT NULL,target TEXT NOT NULL,mode TEXT NOT NULL,version INTEGER NOT NULL,
+          PRIMARY KEY(source,id)
+        );
+        CREATE TABLE IF NOT EXISTS outgoing_policy_requests (
+          id TEXT PRIMARY KEY,target TEXT NOT NULL,mode TEXT NOT NULL
+        );
         UPDATE operations SET state = 'unknown', exit_code = NULL
           WHERE state = 'running';
         COMMIT;
@@ -303,6 +315,89 @@ export class OperationJournal {
   get(id: string): OperationRecord | null {
     const row = this.row(id);
     return row ? record(row) : null;
+  }
+  policy(initial?: DevicePolicy): DevicePolicy | undefined {
+    if (initial)
+      this.database
+        .prepare("INSERT OR IGNORE INTO device_policy VALUES(1,?,?)")
+        .run(initial.mode, initial.version);
+    const row = this.database
+      .prepare("SELECT mode,version FROM device_policy WHERE singleton=1")
+      .get();
+    return row ? DevicePolicy.parse(row) : undefined;
+  }
+  setPolicy(
+    mode: DevicePolicy["mode"],
+    source?: string,
+    request?: PolicySetRequest,
+  ): DevicePolicy {
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      if (request && source) {
+        const previous = this.database
+          .prepare(
+            "SELECT target,mode,version FROM device_policy_requests WHERE source=? AND id=?",
+          )
+          .get(source, request.requestId) as
+          | { target: string; mode: DevicePolicy["mode"]; version: number }
+          | undefined;
+        if (previous) {
+          if (previous.target !== request.deviceId || previous.mode !== mode)
+            throw new OperationAdmissionError("policy_request_conflict");
+          this.database.exec("COMMIT");
+          return { mode: previous.mode, version: previous.version };
+        }
+        const count = this.database
+          .prepare("SELECT count(*) n FROM device_policy_requests")
+          .get() as { n: number };
+        if (count.n >= this.capacity)
+          throw new OperationAdmissionError("policy_request_capacity");
+      }
+      const current = this.policy();
+      if (!current) throw new Error("policy_missing");
+      const next = DevicePolicy.parse({ mode, version: current.version + 1 });
+      this.database
+        .prepare("UPDATE device_policy SET mode=?,version=? WHERE singleton=1")
+        .run(next.mode, next.version);
+      if (request && source)
+        this.database
+          .prepare("INSERT INTO device_policy_requests VALUES(?,?,?,?,?)")
+          .run(
+            source,
+            request.requestId,
+            request.deviceId,
+            next.mode,
+            next.version,
+          );
+      this.database.exec("COMMIT");
+      return next;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+  preparePolicy(request: PolicySetRequest): void {
+    const previous = this.database
+      .prepare("SELECT target,mode FROM outgoing_policy_requests WHERE id=?")
+      .get(request.requestId) as { target: string; mode: string } | undefined;
+    if (previous) {
+      if (
+        previous.target !== request.deviceId ||
+        previous.mode !== request.mode
+      )
+        throw new OperationAdmissionError("policy_request_conflict");
+      throw new OperationAdmissionError(
+        "policy_request_already_sent_refresh_target",
+      );
+    }
+    const count = this.database
+      .prepare("SELECT count(*) n FROM outgoing_policy_requests")
+      .get() as { n: number };
+    if (count.n >= this.capacity)
+      throw new OperationAdmissionError("policy_request_capacity");
+    this.database
+      .prepare("INSERT INTO outgoing_policy_requests VALUES(?,?,?)")
+      .run(request.requestId, request.deviceId, request.mode);
   }
   getScope(id: string): OperationScope | null {
     const value = this.row(id)?.scope;

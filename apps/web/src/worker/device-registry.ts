@@ -13,6 +13,7 @@ import {
   PairingCode,
   PairingCreate,
   PairingRedeem,
+  PolicySetRequest,
   verifyDeviceSignature,
 } from "../../../../packages/contracts/src/devices.ts";
 
@@ -426,6 +427,17 @@ export class DeviceRegistry extends DurableObject {
     if (token.length > 200) throw new DeviceHttpError(401, "invalid_session");
     const sessionHash = await deviceDigest(token);
     const self = this.sessionDevice(sessionHash);
+    if (path === "/policy" && post) {
+      const input = PolicySetRequest.parse(await deviceBody(request));
+      if (!this.env.DEVICE_EXECUTION)
+        throw new DeviceHttpError(503, "device_service_unavailable");
+      const result = await this.env.DEVICE_EXECUTION.getByName(
+        input.deviceId,
+      ).setPolicy(token, input);
+      return "policy" in result
+        ? deviceJSON(result.policy)
+        : deviceJSON({ error: result.error }, result.status);
+    }
     const write = <T>(action: (current: DeviceRow) => T): T =>
       this.ctx.storage.transactionSync(() => {
         const current = this.sessionDevice(sessionHash);

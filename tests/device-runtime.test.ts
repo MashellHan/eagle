@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { DeviceRuntime } from "../packages/agent/device-runtime.ts";
 import {
@@ -57,6 +58,92 @@ function fixture() {
     },
   };
 }
+
+test("policy upgrades import legacy state once and preserve target-bound request results across restart", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "device-policy-"));
+  const { device } = local();
+  const path = join(directory, "journal.sqlite");
+  const legacy = join(directory, "policy.json");
+  writeFileSync(legacy, JSON.stringify({ mode: "paused", version: 9 }), {
+    mode: 0o600,
+  });
+  let runtime = new DeviceRuntime(device, path);
+  const source = randomUUID();
+  const input = {
+    deviceId: device.deviceId,
+    requestId: randomUUID(),
+    mode: "always-ask" as const,
+  };
+  try {
+    assert.deepEqual(runtime.policy, { mode: "paused", version: 9 });
+    assert.deepEqual(runtime.applyPolicy(input, source), {
+      mode: "always-ask",
+      version: 10,
+    });
+    await runtime.close();
+    writeFileSync(legacy, JSON.stringify({ mode: "all-approve", version: 1 }));
+    runtime = new DeviceRuntime(device, path);
+    assert.deepEqual(runtime.policy, { mode: "always-ask", version: 10 });
+    runtime.setPolicy("paused");
+    assert.deepEqual(runtime.applyPolicy(input, source), {
+      mode: "always-ask",
+      version: 10,
+    });
+    assert.deepEqual(runtime.policy, { mode: "paused", version: 11 });
+    assert.throws(
+      () => runtime.applyPolicy({ ...input, mode: "paused" }, source),
+      /policy_request_conflict/,
+    );
+    await runtime.close();
+    const next = { ...device, deviceId: randomUUID() };
+    runtime = new DeviceRuntime(next, path);
+    assert.throws(
+      () => runtime.applyPolicy({ ...input, deviceId: next.deviceId }, source),
+      /policy_request_conflict/,
+    );
+    assert.deepEqual(runtime.policy, { mode: "paused", version: 11 });
+  } finally {
+    await runtime.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a real SQLite request-record failure rolls policy and version back together", async () => {
+  const f = fixture();
+  const input = {
+    deviceId: f.device.deviceId,
+    requestId: randomUUID(),
+    mode: "paused" as const,
+  };
+  const source = randomUUID();
+  let recovered: DeviceRuntime | undefined;
+  try {
+    const database = (
+      f.runtime.journal as unknown as { database: DatabaseSync }
+    ).database;
+    database.exec(
+      "CREATE TRIGGER policy_failure BEFORE INSERT ON device_policy_requests BEGIN SELECT RAISE(ABORT,'test storage failure'); END",
+    );
+    assert.throws(
+      () => f.runtime.applyPolicy(input, source),
+      /policy_result_unknown_refresh_target/,
+    );
+    database.exec("DROP TRIGGER policy_failure");
+    await f.runtime.close();
+    recovered = new DeviceRuntime(
+      f.device,
+      join(f.directory, "journal.sqlite"),
+    );
+    assert.deepEqual(recovered.policy, { mode: "all-approve", version: 1 });
+    assert.deepEqual(recovered.applyPolicy(input, source), {
+      mode: "paused",
+      version: 2,
+    });
+  } finally {
+    await recovered?.close();
+    await f.close();
+  }
+});
 
 test("journal admits before command side effects and original ID never reruns", async () => {
   const f = fixture();

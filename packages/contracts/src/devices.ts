@@ -56,6 +56,34 @@ export const DevicePolicy = z.strictObject({
   version: z.number().int().positive(),
 });
 export type DevicePolicy = z.infer<typeof DevicePolicy>;
+export const PolicySetRequest = z.strictObject({
+  deviceId: DeviceId,
+  mode: DevicePolicy.shape.mode,
+  requestId: DeviceId,
+});
+export type PolicySetRequest = z.infer<typeof PolicySetRequest>;
+export const PolicySetFrame = z.strictObject({
+  type: z.literal("policy.set"),
+  relayId: DeviceId,
+  sourceDeviceId: DeviceId,
+  request: PolicySetRequest,
+});
+export const PolicyResultFrame = z
+  .strictObject({
+    type: z.literal("policy.result"),
+    relayId: DeviceId,
+    requestId: DeviceId,
+    deviceId: DeviceId,
+    policy: DevicePolicy.optional(),
+    error: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{0,80}$/)
+      .optional(),
+  })
+  .refine((value) => !!value.policy !== !!value.error);
+export type PolicySetResult =
+  | { policy: DevicePolicy }
+  | { error: string; status: number };
 export const DeviceApproval = z.strictObject({
   operationId: DeviceId,
   sourceDeviceId: DeviceId,

@@ -4,8 +4,12 @@ import {
   DEVICE_PREFIX,
   type Device,
   type DeviceDirectory,
+  DevicePolicy,
   OperationRequest,
   OperationResult,
+  PolicyResultFrame,
+  PolicySetFrame,
+  PolicySetRequest,
 } from "../contracts/src/devices.ts";
 import type { DeviceRuntime } from "./device-runtime.ts";
 
@@ -22,6 +26,13 @@ const responseFrame = z.strictObject({
   targetDeviceId: z.uuid(),
   result: OperationResult,
 });
+const capabilities = [
+  "command",
+  "file.read",
+  "file.write",
+  "file.list",
+  "policy.manage",
+];
 export class DeviceCloud {
   readonly device: Device;
   private baseUrl: string;
@@ -171,6 +182,21 @@ export class DeviceCloud {
   async manage(path: string, body?: unknown): Promise<unknown> {
     return this.http(path, body, await this.authenticate());
   }
+  async setPolicy(request: PolicySetRequest): Promise<DevicePolicy> {
+    if (this.stopped) throw new Error("device_cloud_stopped");
+    try {
+      return DevicePolicy.parse(
+        await this.manage("/policy", PolicySetRequest.parse(request)),
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        /^[a-z][a-z0-9_]{0,80}$/.test(error.message)
+      )
+        throw error;
+      throw new Error("policy_result_unknown_refresh_target");
+    }
+  }
   private wsUrl(target: string, role: "agent" | "request"): string {
     const url = new URL(
       `${this.baseUrl}${DEVICE_PREFIX}/execution/${target}/${role}`,
@@ -213,7 +239,7 @@ export class DeviceCloud {
           JSON.stringify({
             type: "authenticate",
             sessionToken: token,
-            capabilities: ["command", "file.read", "file.write", "file.list"],
+            capabilities,
             policy: this.runtime.policy,
           }),
         ),
@@ -240,17 +266,52 @@ export class DeviceCloud {
                 socket.send(
                   JSON.stringify({
                     type: "heartbeat",
-                    capabilities: [
-                      "command",
-                      "file.read",
-                      "file.write",
-                      "file.list",
-                    ],
+                    capabilities,
                     policy: this.runtime.policy,
                   }),
                 );
             }, 10000);
             resolve();
+            return;
+          }
+          const policy = PolicySetFrame.safeParse(frame);
+          if (policy.success) {
+            if (
+              this.stopped ||
+              this.agent !== socket ||
+              socket.readyState !== WebSocket.OPEN
+            )
+              return;
+            const message = policy.data;
+            let reply: { policy: DevicePolicy } | { error: string };
+            try {
+              reply = {
+                policy: this.runtime.applyPolicy(
+                  message.request,
+                  message.sourceDeviceId,
+                ),
+              };
+            } catch (error) {
+              reply = {
+                error:
+                  error instanceof Error &&
+                  /^[a-z][a-z0-9_]{0,80}$/.test(error.message)
+                    ? error.message
+                    : "policy_result_unknown_refresh_target",
+              };
+            }
+            this.publishPolicy();
+            socket.send(
+              JSON.stringify(
+                PolicyResultFrame.parse({
+                  type: "policy.result",
+                  relayId: message.relayId,
+                  requestId: message.request.requestId,
+                  deviceId: this.device.deviceId,
+                  ...reply,
+                }),
+              ),
+            );
             return;
           }
           const operation = operationFrame.parse(frame);
@@ -383,7 +444,7 @@ export class DeviceCloud {
       this.agent.send(
         JSON.stringify({
           type: "heartbeat",
-          capabilities: ["command", "file.read", "file.write", "file.list"],
+          capabilities,
           policy: this.runtime.policy,
         }),
       );

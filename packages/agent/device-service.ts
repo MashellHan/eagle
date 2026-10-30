@@ -18,6 +18,7 @@ import {
   PairingCode,
   PairingCreate,
   PairingRedeem,
+  PolicySetRequest,
   verifyApproval,
 } from "../contracts/src/devices.ts";
 import { DeviceCloud } from "./device-cloud.ts";
@@ -65,7 +66,13 @@ const managementMethods = new Set([
   "pairing.result",
   "member.remove",
 ]);
-const capabilities = ["command", "file.read", "file.write", "file.list"];
+const capabilities = [
+  "command",
+  "file.read",
+  "file.write",
+  "file.list",
+  "policy.manage",
+];
 function code(error: unknown): string {
   return error instanceof Error && /^[a-z][a-z0-9_]{0,80}$/.test(error.message)
     ? error.message
@@ -242,9 +249,20 @@ export async function runDeviceService(): Promise<void> {
         return runtime.policy;
       case "policy.set": {
         const input = z
-          .strictObject({ mode: DevicePolicy.shape.mode })
+          .union([
+            z.strictObject({ mode: DevicePolicy.shape.mode }),
+            PolicySetRequest,
+          ])
           .parse(params);
-        const result = runtime.setPolicy(input.mode);
+        if ("deviceId" in input) {
+          runtime.journal.preparePolicy(input);
+          if (input.deviceId !== runtime.device.deviceId)
+            return cloud.setPolicy(input);
+        }
+        const result =
+          "deviceId" in input
+            ? runtime.applyPolicy(input, runtime.device.deviceId)
+            : runtime.setPolicy(input.mode);
         cloud.publishPolicy();
         return result;
       }

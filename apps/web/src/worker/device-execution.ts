@@ -8,6 +8,9 @@ import {
   deviceDigest,
   OperationRequest,
   OperationResult,
+  PolicyResultFrame,
+  PolicySetRequest,
+  type PolicySetResult,
   verifyApproval,
 } from "../../../../packages/contracts/src/devices.ts";
 import { deviceJSON } from "./device-registry.ts";
@@ -49,10 +52,18 @@ type Pending = {
   token: string;
   timer: ReturnType<typeof setTimeout>;
 };
+type PendingPolicy = {
+  agent: Agent;
+  request: PolicySetRequest;
+  token: string;
+  resolve: (value: PolicySetResult) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
 class DeviceAuthenticationError extends Error {}
 export class DeviceExecution extends DurableObject<Env> {
   private agent?: Agent;
   private pending = new Map<string, Pending>();
+  private policies = new Map<string, PendingPolicy>();
   private lease?: ReturnType<typeof setTimeout>;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -115,6 +126,54 @@ export class DeviceExecution extends DurableObject<Env> {
       });
     }
     this.pending.clear();
+    for (const pending of this.policies.values()) {
+      clearTimeout(pending.timer);
+      pending.resolve({
+        error: "policy_result_unknown_refresh_target",
+        status: 504,
+      });
+    }
+    this.policies.clear();
+  }
+  async setPolicy(
+    token: string,
+    input: PolicySetRequest,
+  ): Promise<PolicySetResult> {
+    const request = PolicySetRequest.parse(input);
+    const registry = this.env.DEVICE_REGISTRY.getByName("registry");
+    const source = await registry.check(token, request.deviceId);
+    if (!source.ok) return { error: source.error, status: source.status };
+    const agent = this.agent;
+    if (!agent || agent.expires <= Date.now())
+      return { error: "target_offline", status: 503 };
+    if (!this.observation().capabilities?.includes("policy.manage"))
+      return { error: "target_management_unsupported", status: 409 };
+    const target = await registry.check(agent.token, request.deviceId);
+    if (!target.ok) return { error: "revoked_agent", status: 403 };
+    const final = await registry.check(token, request.deviceId);
+    if (!final.ok) return { error: final.error, status: final.status };
+    if (
+      this.agent !== agent ||
+      agent.expires <= Date.now() ||
+      final.target.credentialVersion !== agent.credentialVersion
+    )
+      return { error: "target_offline", status: 503 };
+    if (this.pending.size + this.policies.size >= 64)
+      return { error: "policy_management_busy", status: 429 };
+    const relayId = crypto.randomUUID();
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.policies.delete(relayId);
+        resolve({ error: "policy_result_unknown_refresh_target", status: 504 });
+      }, 8000);
+      this.policies.set(relayId, { agent, token, request, resolve, timer });
+      this.send(agent.socket, {
+        type: "policy.set",
+        relayId,
+        sourceDeviceId: final.source.deviceId,
+        request,
+      });
+    });
   }
   async fetch(request: Request): Promise<Response> {
     const match = new URL(request.url).pathname.match(
@@ -221,6 +280,45 @@ export class DeviceExecution extends DurableObject<Env> {
             const beat = heartbeat.safeParse(data);
             if (beat.success) {
               this.observe(beat.data.capabilities, beat.data.policy);
+              return;
+            }
+            const policy = PolicyResultFrame.safeParse(data);
+            if (policy.success) {
+              const message = policy.data;
+              const pending = this.policies.get(message.relayId);
+              if (
+                !pending ||
+                pending.agent.socket !== socket ||
+                pending.request.requestId !== message.requestId ||
+                message.deviceId !== targetId
+              )
+                return;
+              const fresh = await this.env.DEVICE_REGISTRY.getByName(
+                "registry",
+              ).check(pending.token, targetId);
+              if (
+                !live() ||
+                this.agent !== pending.agent ||
+                this.policies.get(message.relayId) !== pending
+              )
+                return;
+              clearTimeout(pending.timer);
+              this.policies.delete(message.relayId);
+              pending.resolve(
+                !fresh.ok
+                  ? { error: fresh.error, status: fresh.status }
+                  : message.policy
+                    ? { policy: message.policy }
+                    : {
+                        error:
+                          message.error ??
+                          "policy_result_unknown_refresh_target",
+                        status:
+                          message.error === "policy_request_conflict"
+                            ? 409
+                            : 503,
+                      },
+              );
               return;
             }
             const message = resultFrame.parse(data);
@@ -379,7 +477,7 @@ export class DeviceExecution extends DurableObject<Env> {
             });
             return;
           }
-          if (this.pending.size >= 64) {
+          if (this.pending.size + this.policies.size >= 64) {
             this.respond(socket, operation, {
               status: "busy",
               error: "relay_busy",

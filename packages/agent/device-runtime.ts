@@ -1,4 +1,4 @@
-import { chmodSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { open, opendir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import {
   deviceDigest,
   OperationRequest,
   OperationResult,
+  PolicySetRequest,
   verifyApproval,
 } from "../contracts/src/devices.ts";
 import { runProcess } from "./device-command.ts";
@@ -48,7 +49,6 @@ export class DeviceRuntime {
   readonly device: Device;
   readonly journal: OperationJournal;
   policy: DevicePolicy;
-  private policyPath: string;
   private active = new Map<
     string,
     { controller: AbortController; promise: Promise<OperationResult> }
@@ -67,25 +67,54 @@ export class DeviceRuntime {
     this.device = device;
     this.journal = new OperationJournal(path, 10_000, bootSessionId);
     this.native = new Set(this.journal.blockedNative());
-    this.policyPath = join(dirname(path), "policy.json");
     try {
-      this.policy = DevicePolicy.parse(
-        JSON.parse(readFileSync(this.policyPath, "utf8")),
-      );
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        this.journal.close();
-        throw new Error("Invalid persisted device policy");
+      const saved = this.journal.policy();
+      if (saved) this.policy = saved;
+      else {
+        let initial: DevicePolicy;
+        try {
+          initial = DevicePolicy.parse(
+            JSON.parse(
+              readFileSync(join(dirname(path), "policy.json"), "utf8"),
+            ),
+          );
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          initial = { mode: "all-approve", version: 1 };
+        }
+        this.policy = this.journal.policy(initial) as DevicePolicy;
       }
-      this.policy = { mode: "all-approve", version: 1 };
+    } catch (error) {
+      this.journal.close();
+      throw new Error("Invalid persisted device policy", { cause: error });
     }
   }
   setPolicy(mode: DevicePolicy["mode"]): DevicePolicy {
-    const next = DevicePolicy.parse({ mode, version: this.policy.version + 1 });
-    writeFileSync(this.policyPath, JSON.stringify(next), { mode: 0o600 });
-    chmodSync(this.policyPath, 0o600);
-    this.policy = next;
-    return next;
+    return this.persistPolicy(mode);
+  }
+  applyPolicy(input: PolicySetRequest, source: string): DevicePolicy {
+    const request = PolicySetRequest.parse(input);
+    if (request.deviceId !== this.device.deviceId)
+      throw new OperationAdmissionError("wrong_target");
+    const result = this.persistPolicy(request.mode, source, request);
+    return result;
+  }
+  private persistPolicy(
+    mode: DevicePolicy["mode"],
+    source?: string,
+    request?: PolicySetRequest,
+  ): DevicePolicy {
+    if (this.closed || this.unhealthy)
+      throw new Error("policy_storage_unavailable");
+    try {
+      const result = this.journal.setPolicy(mode, source, request);
+      this.policy = this.journal.policy() as DevicePolicy;
+      return result;
+    } catch (error) {
+      if (error instanceof OperationAdmissionError) throw error;
+      this.unhealthy = true;
+      throw new Error("policy_result_unknown_refresh_target");
+    }
   }
   private scope(source: Device, request: OperationRequest): OperationScope {
     return {

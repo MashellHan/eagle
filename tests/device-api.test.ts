@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import {
   existsSync,
@@ -9,7 +9,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { request as httpRequest } from "node:http";
+import { connect } from "node:net";
 import { join, resolve } from "node:path";
+import { createInterface } from "node:readline";
 import { after, before, test } from "node:test";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 import NativeWebSocket from "ws";
@@ -100,6 +102,295 @@ after(async () => {
   await mf?.dispose();
   rmSync(root, { recursive: true, force: true });
 });
+
+async function policyService(
+  owner: Awaited<ReturnType<typeof identity>>,
+  stateDirectory: string,
+) {
+  mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
+  const socketPath = join(stateDirectory, "port.sock");
+  const child = spawn(process.execPath, ["packages/agent/device-service.ts"], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const reader = createInterface({ input: child.stdout });
+  const waiters = new Map<string, (message: Record<string, unknown>) => void>();
+  let online!: () => void;
+  const connected = new Promise<void>((resolve) => {
+    online = resolve;
+  });
+  let stderr = "";
+  child.stderr.on("data", (data) => {
+    stderr += data.toString();
+  });
+  reader.on("line", (line) => {
+    const message = JSON.parse(line) as Record<string, unknown>;
+    if (message.type === "sign") {
+      child.stdin.write(
+        `${JSON.stringify({
+          type: "signature",
+          requestId: message.requestId,
+          signature: sign(
+            null,
+            Buffer.from(String(message.payload)),
+            owner.keys.privateKey,
+          ).toString("base64url"),
+        })}\n`,
+      );
+    }
+    if (message.type === "cloud" && message.status === "online") online();
+    if (message.type === "managed" && typeof message.requestId === "string") {
+      waiters.get(message.requestId)?.(message);
+      waiters.delete(message.requestId);
+    }
+  });
+  child.stdin.write(
+    `${JSON.stringify({
+      type: "configure",
+      version: 1,
+      deviceId: owner.deviceId,
+      publicKey: owner.publicKey,
+      name: "policy-process",
+      platform: "darwin",
+      arch: "arm64",
+      stateDirectory,
+      socketPath,
+      baseUrl: (await mf.ready).origin,
+    })}\n`,
+  );
+  const stop = async () => {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    const exited = new Promise<void>((resolve) =>
+      child.once("exit", () => resolve()),
+    );
+    child.kill("SIGTERM");
+    await exited;
+    reader.close();
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      connected,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(new Error(`policy service connection timeout: ${stderr}`)),
+          10000,
+        );
+      }),
+    ]);
+  } catch (error) {
+    await stop();
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+  return {
+    stop,
+    call(method: string, params?: unknown) {
+      const requestId = randomUUID();
+      const response = new Promise<Record<string, unknown>>((resolve) =>
+        waiters.set(requestId, resolve),
+      );
+      child.stdin.write(
+        `${JSON.stringify({ type: "manage", requestId, method, params })}\n`,
+      );
+      return response;
+    },
+    port(method: string, params?: unknown) {
+      const socket = connect(socketPath);
+      const lines = createInterface({ input: socket });
+      return new Promise<Record<string, unknown>>((resolve, reject) => {
+        socket.on("error", reject);
+        lines.once("line", (line) => {
+          lines.close();
+          socket.end();
+          resolve(JSON.parse(line));
+        });
+        socket.write(
+          `${JSON.stringify({ requestId: randomUUID(), method, params })}\n`,
+        );
+      });
+    },
+  };
+}
+
+test("private remote policy management confirms the real target, persists IDs and stays separate from execution", async () => {
+  const [a, b, outsider] = await Promise.all([
+    identity("policy-a"),
+    identity("policy-b"),
+    identity("policy-outsider"),
+  ]);
+  await pair(a.token, await code(b.token));
+  const stateA = join(root, "policy-a");
+  const stateB = join(root, "policy-b");
+  let source = await policyService(a, stateA);
+  let target = await policyService(b, stateB);
+  let legacy: NativeWebSocket | undefined;
+  try {
+    assert.deepEqual(
+      (await target.call("policy.set", { mode: "paused" })).result,
+      { mode: "paused", version: 2 },
+    );
+    const input = {
+      deviceId: b.deviceId,
+      mode: "always-ask",
+      requestId: randomUUID(),
+    };
+    assert.deepEqual(
+      (await source.call("policy.set", input)).result,
+      { mode: "always-ask", version: 3 },
+      "a private remote write must confirm target persistence even when paused",
+    );
+    assert.deepEqual((await source.call("policy.get")).result, {
+      mode: "all-approve",
+      version: 1,
+    });
+    assert.equal(
+      (await source.port("policy.set", input)).error,
+      "management_requires_private_helper",
+    );
+    const invalidExecute = await source.port("execute", {
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+      targetDeviceId: b.deviceId,
+      action: "run",
+      operation: { kind: "policy.set", mode: "all-approve" },
+      digest: "0".repeat(64),
+    });
+    assert.equal(invalidExecute.result, undefined);
+    assert.equal(
+      (await source.call("policy.set", { ...input, mode: "paused" })).error,
+      "policy_request_conflict",
+    );
+    assert.equal(
+      (await source.call("policy.set", { ...input, deviceId: a.deviceId }))
+        .error,
+      "policy_request_conflict",
+    );
+    assert.equal(
+      (await source.call("policy.set", input)).error,
+      "policy_request_already_sent_refresh_target",
+    );
+    assert.deepEqual(
+      (
+        await source.call("policy.set", {
+          ...input,
+          mode: "paused",
+          requestId: randomUUID(),
+        })
+      ).result,
+      { mode: "paused", version: 4 },
+    );
+    assert.deepEqual(
+      (await target.call("policy.set", { mode: "all-approve" })).result,
+      { mode: "all-approve", version: 5 },
+    );
+    await target.stop();
+    target = await policyService(b, stateB);
+    const replay = await call("/policy", a.token, input);
+    assert.equal(replay.status, 200);
+    assert.deepEqual(replay.body, { mode: "always-ask", version: 3 });
+    assert.deepEqual((await target.call("policy.get")).result, {
+      mode: "all-approve",
+      version: 5,
+    });
+    assert.equal(
+      (await call("/policy", a.token, { ...input, mode: "paused" })).status,
+      409,
+    );
+    assert.equal(
+      (
+        await call("/policy", outsider.token, {
+          ...input,
+          requestId: randomUUID(),
+        })
+      ).status,
+      403,
+    );
+    await source.stop();
+    source = await policyService(a, stateA);
+    assert.equal(
+      (await source.call("policy.set", input)).error,
+      "policy_request_already_sent_refresh_target",
+    );
+    const next = { ...input, mode: "paused", requestId: randomUUID() };
+    assert.deepEqual((await source.call("policy.set", next)).result, {
+      mode: "paused",
+      version: 6,
+    });
+    await target.stop();
+    const offline = await source.call("policy.set", {
+      ...next,
+      requestId: randomUUID(),
+    });
+    assert.equal(offline.error, "target_offline");
+    legacy = new NativeWebSocket(
+      `${(await mf.ready).origin.replace("http:", "ws:")}/api/devices/v1/execution/${b.deviceId}/agent`,
+    );
+    await new Promise<void>((resolve) => legacy?.once("open", resolve));
+    legacy.send(
+      JSON.stringify({
+        type: "authenticate",
+        sessionToken: b.token,
+        capabilities: [],
+        policy: { mode: "paused", version: 6 },
+      }),
+    );
+    await new Promise<void>((resolve) =>
+      legacy?.once("message", () => resolve()),
+    );
+    assert.equal(
+      (await source.call("policy.set", { ...next, requestId: randomUUID() }))
+        .error,
+      "target_management_unsupported",
+    );
+    let forwarded = 0;
+    legacy.on("message", () => {
+      forwarded++;
+    });
+    legacy.send(
+      JSON.stringify({
+        type: "heartbeat",
+        capabilities: ["policy.manage"],
+        policy: { mode: "paused", version: 6 },
+      }),
+    );
+    // The following live directory read is ordered after the heartbeat on the same target DO.
+    await call("/directory", a.token);
+    const uncertain = { ...next, requestId: randomUUID() };
+    assert.equal(
+      (await source.call("policy.set", uncertain)).error,
+      "policy_result_unknown_refresh_target",
+    );
+    assert.equal(forwarded, 1);
+    await source.stop();
+    source = await policyService(a, stateA);
+    assert.equal(
+      (await source.call("policy.set", uncertain)).error,
+      "policy_request_already_sent_refresh_target",
+    );
+    assert.equal(forwarded, 1);
+    await call("/members/remove", b.token, { deviceId: a.deviceId });
+    const revoked = await source.call("policy.set", {
+      ...next,
+      requestId: randomUUID(),
+    });
+    assert.equal(revoked.result, undefined);
+    assert.match(
+      String(revoked.error),
+      /invalid_session|revoked_session|different_group/,
+    );
+    assert.equal(
+      forwarded,
+      1,
+      "revoked sources cannot forward management writes",
+    );
+  } finally {
+    legacy?.terminate();
+    await source.stop();
+    await target.stop();
+  }
+});
 async function call(path: string, token?: string, value?: unknown) {
   const response = await mf.dispatchFetch(`${base}${path}`, {
     method: value === undefined ? "GET" : "POST",
@@ -114,6 +405,46 @@ async function call(path: string, token?: string, value?: unknown) {
     body: (await response.json()) as ApiBody,
   };
 }
+
+test("remote policy authorization is rechecked immediately before target side effects", async () => {
+  const [a, b] = await Promise.all([
+    identity("policy-race-a"),
+    identity("policy-race-b"),
+  ]);
+  await pair(a.token, await code(b.token));
+  const target = await policyService(b, join(root, "policy-race-b"));
+  const storage = await mf.unsafeGetDurableObjectStorage(
+    "eagle",
+    "DeviceRegistry",
+    { name: "registry" },
+  );
+  try {
+    await storage.exec(
+      "CREATE TABLE test_revoke_after_check(deviceId TEXT PRIMARY KEY)",
+    );
+    await storage.exec(
+      "INSERT INTO test_revoke_after_check VALUES(?)",
+      a.deviceId,
+    );
+    const response = await call("/policy", a.token, {
+      deviceId: b.deviceId,
+      requestId: randomUUID(),
+      mode: "paused",
+    });
+    assert.equal(response.status, 401);
+    assert.equal(
+      (response.body as unknown as { error: string }).error,
+      "revoked_session",
+    );
+    assert.deepEqual((await target.call("policy.get")).result, {
+      mode: "all-approve",
+      version: 1,
+    });
+  } finally {
+    await storage.exec("DROP TABLE IF EXISTS test_revoke_after_check");
+    await target.stop();
+  }
+});
 async function identity(name: string) {
   const keys = generateKeyPairSync("ed25519");
   const deviceId = randomUUID();

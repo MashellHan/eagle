@@ -238,6 +238,35 @@ Management uses only the trusted helper's parent stdin:
 Methods: `pairing.create` (`ttlSeconds?`), `pairing.revoke` (`code`),
 `pairing.redeem` (`requestId,code`), `pairing.result` (`requestId`),
 `member.remove` (`deviceId`), `policy.get`, `policy.set` (`mode`).
+`policy.set` also accepts exactly `{deviceId,mode,requestId}`. The original
+`{mode}` remains local and works offline. An explicit target uses a durable
+request-ID binding to that target and mode before sending; a reused ID with
+different parameters fails `policy_request_conflict`. An already sent ID is
+never automatically sent again (`policy_request_already_sent_refresh_target`);
+refresh the actual target policy through the directory after uncertainty.
+Remote management uses authenticated `POST /api/devices/v1/policy` with the
+same three fields. Registry/DeviceExecution recheck current sessions and group
+membership before forwarding and before returning success. Target confirmation
+returns its persisted `{mode,version}`, never an optimistic source-side policy.
+The target's current paused/always-ask policy does not gate this private App
+management path. Bot socket management writes remain forbidden, and normal
+execute/approval frames cannot carry policy management.
+
+On the existing target Agent WSS, management uses
+`{type:"policy.set",relayId,sourceDeviceId,request:{deviceId,mode,requestId}}`;
+the target replies `{type:"policy.result",relayId,requestId,deviceId,policy?,error?}`.
+The server generates relayId and pins it to the target connection. Source IDs
+come only from live Registry authorization. Targets advertise `policy.manage` in
+capabilities; older targets fail `target_management_unsupported`, offline targets
+fail `target_offline`. A missing confirmation fails
+`policy_result_unknown_refresh_target`; there is no local fallback or retry.
+Target policy, version and source/request-ID result are committed in one local
+journal transaction. Duplicate target requests return their original result
+without changing policy again, including after restart; request bindings include
+both source and target identity. Legacy policy.json is imported only when no
+journal policy exists. Agent 1.2.0 and the updated Worker are required for remote
+management; no new Cloudflare resource or DO migration is needed. Older Agents
+must not be used to roll back a journal-managed policy.
 The Swift helper verifies its App requester code identity; it never exposes a
 management credential or stdin handle to a Bot.
 
