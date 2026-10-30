@@ -43,6 +43,9 @@ const Events = {
   recoveryBotOk: declareEvent("core.recovery.bot.ok"),
   recoveryBotFail: declareEvent("core.recovery.bot.fail"),
   recoveryOk: declareEvent("core.recovery.ok"),
+  replicaStart: declareEvent("core.replica.start"),
+  replicaOk: declareEvent("core.replica.ok"),
+  replicaFail: declareEvent("core.replica.fail"),
 } as const;
 
 type Entry = {
@@ -127,6 +130,45 @@ const assertTaskId = (taskId: string): void => {
 };
 
 export class BotRegistry {
+  async replica(
+    botId: string,
+    command: Parameters<NonNullable<RuntimeHandle["replica"]>>[0],
+  ): Promise<unknown> {
+    const fields = { botId, trace: command.trace };
+    this.#options.log.emit("info", "core", Events.replicaStart, fields);
+    let leased = false;
+    try {
+      leased = this.touch(botId);
+      if (!leased)
+        throw new ClassifiedFailure(
+          newFailure("unknown_bot"),
+          "not_admitted",
+          "bot is unavailable",
+        );
+      const handle = await this.open(botId, command.trace);
+      if (handle.replica === undefined)
+        throw new ClassifiedFailure(
+          newFailure("invalid_command"),
+          "not_admitted",
+          "runtime has no history handoff",
+        );
+      const result = await handle.replica(command);
+      this.#options.log.emit("info", "core", Events.replicaOk, fields);
+      return result;
+    } catch (error) {
+      const failure =
+        error instanceof ClassifiedFailure ? error.failure : newFailure("storage_failed");
+      this.#options.log.emit(
+        failure.layer === "core" ? "error" : "warn",
+        "core",
+        Events.replicaFail,
+        { ...fields, failure, ...(failure.layer === "core" ? { origin: true } : {}) },
+      );
+      throw error;
+    } finally {
+      if (leased) this.release(botId);
+    }
+  }
   readonly #options: RegistryOptions;
   readonly #entries = new Map<string, Entry>();
   /** The model a newly created bot records; settings can change it at runtime. */

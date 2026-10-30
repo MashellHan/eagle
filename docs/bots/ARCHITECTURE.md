@@ -520,3 +520,21 @@ the innermost layer rather than a generic wrapper.
 - Swift: `ObservableObject` and the `LocalState` shim (no SwiftUI macros), because
   Command Line Tools must build the app; tests and the coverage gate need the
   Xcode toolchain, as in `apps/macos/Scripts`.
+
+
+## P0 local handoff boundary
+
+`server/http` authenticates and bounds the four additive `replica` endpoints;
+`BotRegistry.replica` holds the ordinary Bot lease and delegates through
+`RuntimeHandle.replica`. `runtime/pi/HistoryReplica` uses only public SDK APIs:
+fork-aware entry/task reads and atomic Harness transactions. It preserves the original
+bundle and local entry map in session-scoped SDK documents, creating ownerless passive
+conversations. Original task IDs are provenance, never local scheduler ownership.
+Explicit continuation has a durable head/text/request binding and a fresh local fork.
+The SDK's existing admission/scheduling/recovery executes that new input.
+
+This is the P0 cross-SQLite validation slice. Separate replica logs/outbox and causal
+incremental transport remain P1; resource installation is P2. Task-scoped nested results
+are not archived by P0, so a complete export rejects nested calls in the selected
+conversation or any fork ancestor. No foreign task, ProviderDoc, queue or active database
+is copied, and no SharedDevicePort dependency or general synchronization engine is added.

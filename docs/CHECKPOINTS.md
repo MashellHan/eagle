@@ -1,5 +1,55 @@
 # 用户视角检查点
 
+## 2026-10-30 16:38 +08 — P0 本地候选门禁与独立 timing fixture 修复
+
+- 首轮 642/642 是常规和 coverage 的同一套测试，不累加。run-boundary 的 6 项真实
+  红测已修复，新增入口沿用 8000 code points、8..64 合法 ID 和 f_ 失败身份。
+- 最终源码的 `bots-check-final.log` 普通 649/649、coverage 648/649：既有 bash
+  50ms 测试未观察到预期首输出；`bots-check-serial.log` 在普通轮同处失败。SDK 在
+  spawn 后立即计时，不保证首次输出先于 deadline；尚无已收集字节丢失证据。
+- 独立 test-fix `e690a83` 保留真实 shell/NodeExecutionEnv/SQLite/Harness/onOutput，
+  收到实际输出后推进受控 50ms timer；15/15 局部通过，正常 pre-commit 通过。
+  修后首次 check 因函数签名格式失败，格式修正后 `bots-check-timeout-formatted.log`
+  exit 0：普通与 coverage 各 649/649（同一套），types/lint 通过；coverage
+  行95.20%、分支88.39%、函数90.10%。失败日志均保留，不把失败轮记为绿。
+- `bots-crash-final.log` exit 0、6/6，`eval-final.log` exit 0、新入口 eval 1/1；
+  两者覆盖最终 P0 运行源码，后续仅测试 fixture/文档变化。Bots Swift 首轮
+  40+44+52=136 通过，之后未改任何 Swift 输入，未再次运行该套。
+- P0 本地原子候选收口待独立 Review、正常 pre-push，尚未 push。#109 仍由 Root
+  观察为 open/merged=false，不动基线。网站 Herdr 采集/auth/D1/UI 本片未重验；
+  云、Tailscale、物理双 Mac 未验证；P1 副本日志/outbox、P2 完整资源安装仍 planned。
+
+## 2026-10-30 16:28 +08 — P0 本地候选检查与兼容性收口
+
+- 完整 SDK 原历史/独立重建 context、同 head A/B 各自新 run、A 关闭后的 B 续跑、
+  分支交换及第三 SQLite 再导入已通过。system 验收改用 A 同 head 真实续跑作
+  control，保留原消息顺序并核对有效指令、其他 sections 和完整有序工具声明。
+- 四个真实 SIGKILL 屏障覆盖 output、import、fork intent 与实际 input placed
+  commit；原 ID 恢复不重复接纳/执行。nested 工具真实红绿明确拒绝直接及祖先
+  nested 历史；未安装的指令/skill bytes 也不误报可续跑。
+- `.local/sync-p0/bots-check.log` 实际 exit 0：642/642（测试与 coverage 各一轮）、
+  types/lint 通过，coverage 行95.19%、分支88.41%、函数90.09%；
+  `bots-crash.log` exit 0、6/6；`bots-swift.log` exit 0、136/136，保留既有 Swift
+  async lock 警告；`eval-first.log` exit 0、新本地 run eval 通过。
+- 收口 review 新指出手动 run 未沿用 8000 code points / 8..64 ID 和 f_ 失败身份；
+  `run-boundary-red.log` 已真实 6 失败，正在最小修复并复验后冻结候选。尚未提交/
+  push；正常 hook 与最终 pre-push 门禁待执行。没有 App 操作、Herdr 采集、D1/
+  设备鉴权、云/Tailscale 或物理双 Mac 新验证；P1/P2 及后续阶段仍 planned。
+
+## 2026-10-30 16:13 +08 — P0 本地上下文交接
+
+Observed: 两个隔离 SQLite 可通过已接通的本机 daemon/SDK 入口导出和被动接纳历史。
+原始工具文件字节、工具结果、指令变化、220+ 记录、压缩及引用均由真实 SDK 生成/读取。
+B 重新打开后可从完整 head 创建两个本端分支；导入不创建任务或调用模型。
+
+Verified: Node 26.9.0 的 `.local/sync-p0/http-red.log` 为真实 404→200 入口红；
+`resource-eligibility-red.log` 为未安装资源被错误允许续跑的红；`fidelity-green.log`
+当前 2 项通过。原始 entries 与独立分页读取比较、B 重建 context 与 A 比较，
+不把 receipt 原包自比作为保真证明。没有执行根/browser/Swift 或真实 App 操作。
+
+Next broken hop: SIGKILL 的输出提交/导出与接纳窗口恢复、分支的再次跨库导入、
+必要负例和正常 Bots gate 仍待完成。完整资源安装是 P2，云/物理双 Mac 均未验证。
+
 ## 2026-10-29 16:48 +08 — 设备页刷新与点击修复集成
 
 - Root 对旧 App 做 13 秒只读 AX 采样：156 次中刷新按钮 153 次可用、3 次禁用；

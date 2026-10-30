@@ -14,6 +14,67 @@ transport and no `rev`.
 
 ## Verified facts
 
+### P0 local history handoff
+
+The authenticated loopback daemon exposes `POST /v1/bots/:id/replica/{export,import,run,status}`.
+This is a local P0 entry point, not device authentication, a cloud transport or a UI projection.
+Each request has a dedicated 8 MiB JSON cap; other HTTP limits remain unchanged.
+
+- `export {}` reads **all** fork-aware raw entries in ascending 128-entry pages in a
+  public Harness transaction, together with the agent state. Active/parked tasks prevent
+  declaring a complete head. P0 also rejects `pi.tool` tasks whose input kind is `nested`:
+  their full results live in task-scoped `NestedCallDoc`, not original transcript entries.
+  The scan includes every fork ancestor, conservatively rejecting an ancestor's nested
+  work even if it is newer than the fork point. No bounded `nestedCalls` summary is treated
+  as a full result. The current production registry does not expose nested execution;
+  a future caller needs passive facts archival before this restriction can be removed.
+  `export {branch:requestId}` selects a local continuation;
+  `export {head}` reads an already pinned immutable snapshot.
+- The version-1 bundle fixes `engine:pi-durable@1.4.0`, source replica/Bot/conversation,
+  parent head hashes, original entries (including model/data/head/edits/byTaskId), per-entry
+  original provenance, agent choices and resource bytes. `head` is SHA-256 of canonical
+  JSON of every other field. Resources carry name, kind, SHA-256 and canonical base64;
+  inline model attachments remain intact. P0 preserves supplied resource versions;
+  it does not add AGENTS/skill discovery or installation (P2).
+- `import {bundle}` verifies the complete hash, resource bytes and backward references.
+  One public `commit` creates an ownerless conversation, appends entries with local
+  `head`/`edits.target` mappings, and saves the original bundle/mapping/receipt atomically.
+  **No submit, resume, task creation, queue or ProviderDoc transfer occurs in import.**
+  Original task ownership remains provenance; it is never attached to a local task.
+  Repeated import returns the same `{head}`, including after process restart.
+- `run {head,requestId,text}` creates a fresh local fork from that complete head.
+  Input uses the existing invocation limit of 8000 Unicode code points and request IDs
+  matching `[A-Za-z0-9_-]{8,64}`; the 8 MiB history carrier does not widen these limits.
+  The durable request binding fixes head and text before admission; the same ID cannot
+  change them. Workspace cwd maps to this Bot's local workspace; model credentials and
+  provider session are local. Missing required extensions reject continuation. Bundles
+  containing instructions/skill resources remain blocked until their installation is
+  implemented in P2; retaining bytes alone does not certify that their version is active.
+  It then submits a **new local input** under the same ID and returns `{branch,submission}`.
+  `status {requestId}` queries that local admission after uncertainty. Independent IDs
+  from the same head create independent branches; neither replaces the other.
+- Outputs stay in the SDK's durable original entries. Export scans committed storage,
+  rather than relying on a streaming callback, so an exit after output commit and before
+  export does not lose it. A fork intent committed before admission is retried using the
+  same branch and SDK request ID. Imported active work is never resumed.
+
+P0 does not copy an active database, a provider session, another replica's active
+queue, model credentials or workspace files. Unsupported bundle versions fail closed;
+unknown original entry kinds/data are retained rather than silently removed.
+
+Current P0 evidence uses Node **26.9.0**, independently of the older SDK fact probes
+below: `test/runtime/history-replica.test.ts` checks 220+ raw records, reset, compaction,
+head/edits remapping, independently reconstructed context, same-head A/B runs and branch
+exchange/re-import into a clean third SQLite. Provider requests are compared with an
+actual A continuation from the same head: original messages stay in order; public pi-ai
+system replay checks effective instructions, every section and complete ordered tool
+declarations. Only cwd is mapped; new local system-message creation is distinguished
+from unchanged imported records. `test/e2e/history-replica.test.ts` exercises real daemon
+authentication, leases and the dedicated body cap. `test/crash/history-replica.test.ts`
+uses SIGKILL after output, import, fork-intent and actual input-admission commits.
+The saved local red/green logs are under `.local/sync-p0/`; full gate results are recorded
+in PLAN/checkpoint when run. None of these proves cloud or physical multi-Mac behavior.
+
 Established with `@earendil-works/pi-durable@1.4.0` on Node 26.12.0 unless the
 evidence says upstream source. Probe scripts and inputs are listed in
 [Evidence](#evidence) so each claim can be reproduced or narrowed.

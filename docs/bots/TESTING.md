@@ -364,3 +364,39 @@ Per stage:
 3. No widened limits, silenced log, swallowed error or new `test.only`.
 4. [CHECKPOINTS.md](CHECKPOINTS.md) records what a user can see, what was run, and
    the next broken hop.
+
+
+## P0 history handoff evidence
+
+On Node 26.9.0, `test/runtime/history-replica.test.ts` uses independent real Harnesses
+and SQLite files with only the provider controlled. It checks actual source file bytes,
+`pi.tool-result`, 220+ original records across SDK pages/UI-window size, reset, instruction
+changes, compaction, edits/head references, opaque fields, attachments and resource bytes.
+Raw imports and reconstructed SDK context are compared independently of receipt re-export.
+A same-head source continuation controls system preparation; public pi-ai replay compares
+all effective sections and complete ordered tool declarations without dropping system
+messages. B runs with A closed; A/B also run independently from the same head and exchange
+branches; a third clean SQLite imports fork history and reconstructs its context.
+
+`test/e2e/history-replica.test.ts` drives the real authenticated daemon and registry,
+including unsupported runtimes, methods and a dedicated 8 MiB request cap. The existing
+8 KiB ordinary-body limit is unchanged. `fixtures/bots-sync/history.v1.json` is normative;
+`test/runtime/history-validation.test.ts` checks its exact fields and malformed-message,
+digest, reference, resource and continuation-compatibility refusals.
+
+`test/crash/history-replica.test.ts` SIGKILLs owned child processes at actual SQLite commit
+barriers: output before export, import before reply, fork intent before admission, and
+input placed before reply. Reopen/retry uses the original IDs without duplicate input
+or model execution. The child receives fixture configuration through stdin and inherits
+only an environment allowlist. It never uses a paid/live model or the daily App.
+
+A genuine nested SDK tool call writes a file, then export fails closed both directly
+and through a fork ancestor. Its original entries/byTaskId remain intact. This is a
+compatibility refusal, not nested-result preservation: full nested facts archival is
+outside P0. Instruction/skill bytes not installed in the target similarly prevent
+continuation. Passive import itself remains zero-execution.
+
+Local red/green/gate logs are `.local/sync-p0/`. Normal Bots check/coverage, crash suite,
+local-run eval and Bots-macOS tests are required before the candidate is handed off;
+PLAN/checkpoint record actual results. Cloud, Tailscale, physical Macs and App UI are not
+certified by these tests. Root/browser/macOS release gates run at normal pre-push.

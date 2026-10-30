@@ -17,7 +17,7 @@ discovery. Those additions are not implemented or enabled by this plan update.
 当前方案：**各端独立运行，Tailscale 直连优先、Cloudflare 回退，云端增量最多缓存 3 天（72 小时）**。
 架构与 Orca 机制见 [SYNC-ARCHITECTURE.md](SYNC-ARCHITECTURE.md)，源码证据见
 [SYNC.md](SYNC.md)，设备行为见 [DEVICE-PAIRING.md](DEVICE-PAIRING.md)。
-P0–P6 均为 planned；下方设备阶段和历史验收记录保留其原有范围。
+P0 正在本地实现；P1–P6 均为 planned；下方设备阶段和历史验收记录保留其原有范围。
 
 ### 开发基线与 PR 边界
 
@@ -95,7 +95,7 @@ Tailscale 直连进入本版范围；专用同步入口仅向 Tailscale 网络�
 
 | 阶段 | 状态 | 交付内容 | 退出证据 |
 | --- | --- | --- | --- |
-| P0 — 契约与上下文验证 | planned | 身份、因果关系、被动导入、资源版本、端点/握手、双路径游标与确认语义 | 两个独立 SQLite 重建等价上下文；导入零执行；接纳与导出之间的崩溃可恢复 |
+| P0 — 契约与上下文验证 | in progress | 身份、因果关系、被动导入、资源版本、端点/握手、双路径游标与确认语义 | 两个独立 SQLite 重建等价上下文；导入零执行；接纳与导出之间的崩溃可恢复 |
 | P1 — 本地副本与分支 | planned | 持久来源日志、outbox、ID 映射、缺口补读与本端恢复 | A 停止后 B 可运行；重复/乱序同步保留两支；不恢复其他端任务 |
 | P2 — 指令与技能 | planned | AGENTS 加载、完整技能包、附件、版本冲突和工作区绑定 | 两端实际加载固定版本；原始内容与工具关联无静默丢失 |
 | P3 — 设备底座接入 | planned | 复用 #109 的安装/配对/helper/权限；新增同步身份授权、Tailscale 端点发布和共享访问接口 | 现有设备能力保持有效；无 Tailscale 可走云通道；端点身份、群成员和同步权限真实生效 |
@@ -129,7 +129,20 @@ Bots daemon、Bots Swift、同步服务分别运行正常门禁；最终交付�
 临时对象批量写入，容量按滚动 72 小时新增量估算。Workers Paid $5/月起，
 R2 按用量计费且有独立免费额度，均共享账号额度；详见 [费率依据](SYNC.md#容量与费用基线)。
 
-当前已准备独立开发基线并迁入设计；P0 尚未开始，没有新同步实现或云端部署。
+2026-10-30 16:38 +08：P0 本地候选已接通受认证 daemon/Registry/SDK 入口。
+真实入口红测是 A 已完成工具写入后 export 返回 404（`.local/sync-p0/http-red.log`）；
+资源续跑、nested 兼容性及手动 run 边界均保留独立真实红绿。两份 SQLite、220+ 原记录、
+真实工具文件字节/结果、指令与有序工具声明、SDK 压缩、edits/head 映射、重启、A 关闭后
+B 续跑、A/B 同 head 独立执行与分支交换、第三库重新导入及四个实际 commit/SIGKILL
+窗口已覆盖。nested 历史明确拒绝完整导出；保存但未安装的指令/skill bytes 阻止续跑。
+P1 outbox/副本日志与 P2 AGENTS/skill 加载仍 planned。
+
+首轮 Bots check 642/642；最终收口后保留一次 coverage 与一次普通轮的既有 50ms
+shell 首输出时序失败，以及一次新增测试格式失败。独立 fixture 修复 `e690a83` 后的
+`bots-check-timeout-formatted.log` exit 0：常规与 coverage 各 649/649（不累加）、
+types/lint 通过；最终 P0 源码 crash 6/6、local-run eval 1/1。Bots Swift 首轮
+40+44+52=136 通过，之后 Swift 输入未变且未重复运行。当前尚待独立 Review 和正常
+pre-push；未 push。没有云端、Tailscale、物理双 Mac 或 App/UI 验证。
 通用 LAN 自动发现、Web/手机客户端、云托管运行、整工作区同步及未完成 run 的跨端接管
 留待后续；部署、发布及 App 替换按项目规则另行执行。
 

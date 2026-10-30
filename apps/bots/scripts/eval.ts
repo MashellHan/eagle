@@ -10,6 +10,7 @@ import { dirname, join, resolve } from "node:path";
 import { WebSocket } from "ws";
 import { readConfig } from "../src/config.ts";
 import { type DaemonHandle, startDaemon } from "../src/main.ts";
+import { type HistoryBundle, hash, validateBundle } from "../src/runtime/pi/HistoryReplica.ts";
 
 type ScriptedReply =
   | { readonly text: string }
@@ -54,6 +55,7 @@ type CaseFile = {
 };
 
 type Step =
+  | { readonly kind: "replicaRun"; readonly text: string; readonly contains: string }
   | { readonly kind: "chat"; readonly text: string; readonly timeoutMs?: number }
   | {
       readonly kind: "webhook";
@@ -370,13 +372,13 @@ const wait = async (ms: number): Promise<void> =>
   new Promise((resolve_) => setTimeout(resolve_, ms));
 
 const waitUntil = async (
-  check: () => boolean,
+  check: () => boolean | Promise<boolean>,
   message: string,
   timeoutMs: number,
 ): Promise<void> => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (check()) return;
+    if (await check()) return;
     await wait(50);
   }
   failure(`${message} within ${timeoutMs} ms`);
@@ -496,6 +498,61 @@ const runCase = async (
         "timeoutMs" in step && step.timeoutMs !== undefined ? step.timeoutMs : left;
       if (stepBudget <= 0) failure(`case budget exhausted at a ${step.kind} step`);
       switch (step.kind) {
+        case "replicaRun": {
+          const original = validateBundle(
+            JSON.parse(
+              await readFile(
+                new URL("../../../fixtures/bots-sync/history.v1.json", import.meta.url),
+                "utf8",
+              ),
+            ),
+          );
+          const { head: _sourceHead, ...payload } = original;
+          const localPayload = {
+            ...payload,
+            agent: { ...payload.agent, model: { provider: "magpie", modelId: "eval-model" } },
+          };
+          const bundle = { ...localPayload, head: hash(localPayload) };
+          const path = `/v1/bots/${botId}/replica`;
+          const call = async (method: string, body: unknown) => {
+            const response = await api(running.port, token2, `${path}/${method}`, {
+              method: "POST",
+              body,
+            });
+            if (response.status !== 200) failure(`replica ${method} answered ${response.status}`);
+            return response.json();
+          };
+          const before = model.requests.length;
+          await call("import", { bundle });
+          await call("import", { bundle });
+          if (model.requests.length !== before) failure("passive import executed a model");
+          const requestId = `replica_eval_${++requestSeq}`;
+          const params = { head: bundle.head, requestId, text: step.text };
+          await call("run", params);
+          await waitUntil(
+            async () => {
+              const status = (await call("status", { requestId })) as {
+                submission: { status: string } | null;
+              };
+              return status.submission?.status === "done";
+            },
+            "the local replica run to settle",
+            stepBudget,
+          );
+          await call("run", params);
+          if (model.requests.length !== before + 1)
+            failure("local replica run did not execute exactly once");
+          const result = (await call("export", { branch: requestId })) as HistoryBundle;
+          if (
+            !result.entries.some(
+              (entry) =>
+                entry.kind === "pi.assistant" &&
+                JSON.stringify(entry.model).includes(step.contains),
+            )
+          )
+            failure("replica output was not durably exportable");
+          break;
+        }
         case "chat": {
           requestSeq += 1;
           const requestId = `r_eval_${String(requestSeq).padStart(4, "0")}`;

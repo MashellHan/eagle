@@ -45,6 +45,7 @@ import type { UsageMeter } from "../../tools/usage.ts";
 import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
 import { entryMessageId } from "./convert.ts";
+import { HistoryReplica } from "./HistoryReplica.ts";
 import { convertSubmission, EventMapper } from "./mapEvents.ts";
 
 const Events = {
@@ -74,6 +75,9 @@ const Events = {
   piSessionClosed: declareEvent("pi.session.closed"),
   toolsRefreshOk: declareEvent("runtime.tools.refresh.ok"),
   toolsRefreshFail: declareEvent("runtime.tools.refresh.fail"),
+  replicaStart: declareEvent("runtime.replica.start"),
+  replicaOk: declareEvent("runtime.replica.ok"),
+  replicaFail: declareEvent("runtime.replica.fail"),
 } as const;
 
 /** The subset of `HarnessSettings` the adapter decides; pi fills in the rest. */
@@ -234,6 +238,7 @@ export class PiDurableRuntime implements RuntimePort {
         classifier,
         options: this.#options,
         registry,
+        replica: new HistoryReplica(harness, root.id, spec.id, workspace.root, registry),
       });
       handle.attachTaskGraph(await harness.taskGraph(BACKGROUND_CONTEXT));
       harness.closed.then((end) => handle?.sessionEnd(end));
@@ -283,9 +288,11 @@ type HandleOptions = {
   readonly classifier: FailureClassifier;
   readonly options: PiRuntimeOptions;
   readonly registry: Registry;
+  readonly replica: HistoryReplica;
 };
 
 class PiRuntimeHandle implements RuntimeHandle {
+  readonly #replica: HistoryReplica;
   readonly #registry: Registry;
   #toolGroups: readonly string[];
 
@@ -322,6 +329,7 @@ class PiRuntimeHandle implements RuntimeHandle {
   #resubscribed = false;
 
   constructor(options: HandleOptions) {
+    this.#replica = options.replica;
     this.#spec = options.spec;
     this.#harness = options.harness;
     this.#rootId = options.rootId;
@@ -339,6 +347,29 @@ class PiRuntimeHandle implements RuntimeHandle {
         ? {}
         : { maxMessageBytes: options.options.maxMessageBytes }),
     });
+  }
+
+  async replica(command: Parameters<NonNullable<RuntimeHandle["replica"]>>[0]): Promise<unknown> {
+    const fields = { trace: command.trace, botId: this.#spec.id };
+    this.#options.log.emit("info", "runtime", Events.replicaStart, fields);
+    try {
+      const result = await this.#replica.command(command);
+      this.#options.log.emit("info", "runtime", Events.replicaOk, fields);
+      return result;
+    } catch (cause) {
+      const failure =
+        cause instanceof ClassifiedFailure
+          ? cause.failure
+          : this.#classifier.classify("replica", "storage_failed", "runtime").classification
+              .failure;
+      this.#options.log.emit("error", "runtime", Events.replicaFail, {
+        ...fields,
+        failure,
+        origin: true,
+      });
+      if (cause instanceof ClassifiedFailure) throw cause;
+      throw new ClassifiedFailure(failure, "unknown", "replica storage failed", { cause });
+    }
   }
 
   /** The committed view without publishing anything. */

@@ -280,3 +280,20 @@ recorded in [CHECKPOINTS.md](CHECKPOINTS.md):
    `BotsCore`/`BotsFeatures`/`EagleDesign`.
 8. Isolation holds: root `npm run check`, the Eagle Swift package tests and biome
    do not touch `apps/bots` or `apps/bots-macos`.
+
+
+## P0 local multi-replica history
+
+The daemon's authenticated local history handoff can move a complete immutable head
+between independent SQLite runtimes. Import preserves original history without running
+models/tools or adopting the source's active work. A person/caller explicitly starts a
+new local run from a ready head, under a fixed request ID. Two devices may create sibling
+branches without replacing either; the workspace, provider session and credentials stay
+local. This first slice has no App sync UI, discovery, network sync service or cloud.
+
+Original model/tool records, reset/compaction sources, edits, inline attachments and
+supplied versioned resource bytes are retained. P0 rejects nested tool history because
+its full results are not transcript entries. Saved-but-uninstalled instructions/skill
+resources block continuation; installing/loading complete resources remains P2.
+The current production tools do not expose nested execution. See RUNTIME/TESTING for
+actual local evidence; physical multi-Mac and P1–P6 remain unverified/planned.

@@ -19,6 +19,12 @@ export type Outcome = (typeof OUTCOMES)[number];
 
 /** Declared names, one per emit site. `stage 4` asserts this equals the doc table. */
 export const EVENTS = {
+  "core.replica.start": true,
+  "core.replica.ok": true,
+  "core.replica.fail": true,
+  "runtime.replica.start": true,
+  "runtime.replica.ok": true,
+  "runtime.replica.fail": true,
   "transport.conn.open.ok": true,
   "transport.conn.open.reject": true,
   "transport.conn.close.ok": true,

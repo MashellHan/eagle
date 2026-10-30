@@ -14,6 +14,7 @@ import {
   ClassifiedFailure,
   isThinkingLevel,
 } from "../core/domain.ts";
+import { MAX_REPLICA_BODY_BYTES } from "../core/RuntimePort.ts";
 import { declareEvent } from "../log/events.ts";
 import type { Log } from "../log/log.ts";
 import type { ServerEvent } from "../protocol/frames.ts";
@@ -92,13 +93,13 @@ const json = (response: ServerResponse, status: number, body: unknown): void => 
   response.end(text);
 };
 
-const readBody = async (request: IncomingMessage): Promise<unknown> => {
+const readBody = async (request: IncomingMessage, maxBytes = 8 * 1024): Promise<unknown> => {
   const chunks: Buffer[] = [];
   let bytes = 0;
   for await (const chunk of request) {
     const buffer = chunk as Buffer;
     bytes += buffer.length;
-    if (bytes > 8 * 1024) throw new Error("body too large");
+    if (bytes > maxBytes) throw new Error("body too large");
     chunks.push(buffer);
   }
   if (bytes === 0) return undefined;
@@ -429,6 +430,33 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       return;
     }
     try {
+      const replicaMatch =
+        /^\/v1\/bots\/([A-Za-z0-9_-]+)\/replica\/(export|import|run|status)$/.exec(path);
+      if (replicaMatch !== null && request.method === "POST") {
+        const method = replicaMatch[2] as "export" | "import" | "run" | "status";
+        let params: unknown;
+        try {
+          params = await readBody(request, MAX_REPLICA_BODY_BYTES);
+        } catch {
+          json(response, 400, {
+            error: {
+              kind: "invalid_command",
+              message: "invalid or oversized history request (8 MiB maximum)",
+            },
+          });
+          return;
+        }
+        json(
+          response,
+          200,
+          await registry.replica(replicaMatch[1] as string, {
+            method,
+            params,
+            trace: `tr_http_${++sequence}`,
+          }),
+        );
+        return;
+      }
       if (path === "/v1/settings" && request.method === "GET") {
         json(response, 200, {
           settings: options.settings?.public() ?? {

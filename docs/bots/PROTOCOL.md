@@ -98,6 +98,10 @@ version, the instance id, the pid and a bot count, never bot content.
 | `POST` | `/v1/bots` | `{ "title", "label"?, "appearance"? }` — `appearance` is `{ "shape", "tint" }` | `201 { "bot": BotSummary }` |
 | `PATCH` | `/v1/bots/:id` | `{ "title"?, "label"?, "appearance"?, "groupId"?, "model"?, "thinkingLevel"? }` — a label of `""` and a `groupId` of `null` clear their field | `{ "bot": BotSummary }` |
 | `DELETE` | `/v1/bots/:id` | — | `204` |
+| `POST` | `/v1/bots/:id/replica/export` | `{ "head"?, "branch"?, "resources"? }` | immutable version-1 full history bundle |
+| `POST` | `/v1/bots/:id/replica/import` | `{ "bundle": HistoryBundle }` | `{ "head": SHA256 }`; passive, atomic and idempotent |
+| `POST` | `/v1/bots/:id/replica/run` | `{ "head", "requestId", "text" }` | `{ "branch": requestId, "submission": Submission }`; new local run only |
+| `POST` | `/v1/bots/:id/replica/status` | `{ "requestId" }` | `{ "branch"?, "submission": Submission or null }` |
 | `POST` | `/v1/groups` | `{ "title" }` | `{ "group": BotGroup }` |
 | `PATCH` | `/v1/groups/:id` | `{ "title" }` | `{ "group": BotGroup }` |
 | `PUT` | `/v1/groups/order` | `{ "ids": [string] }` — every group once, in display order | `{ "groups": [BotGroup] }` |
@@ -760,3 +764,23 @@ before attaching it to the same operation; it never treats transport success as
 human confirmation.
 The helper canonicalizes all approval UUID fields to lowercase at decoding, so
 the displayed operation, signed bytes and service verification use the same IDs.
+
+
+### P0 full-history carrier
+
+The four authenticated loopback `replica` endpoints carry full user/model content in
+`HistoryBundle` and `run.text`; they are separate from WebSocket UI carriers (I9).
+Their dedicated body cap is 8 MiB, with malformed/oversized input returning
+`400 invalid_command`; ordinary API and WebSocket limits remain unchanged. Other
+methods are not accepted. New local run input retains the existing 8000-code-point
+limit and `[A-Za-z0-9_-]{8,64}` request ID grammar; failures use the normal `f_` identity.
+The same registry owns runtime opens and holds a lease
+through each request. Failed/runtime-uncertain requests do not change targets or IDs.
+
+[The normative bundle](../../fixtures/bots-sync/history.v1.json) retains original
+SDK entries and provenance with a canonical JSON SHA-256 head. Full validation and
+compatibility rules are in [RUNTIME.md](RUNTIME.md#p0-local-history-handoff).
+No fragment or unsupported bundle may be claimed as a complete runnable head;
+P0 rejects nested SDK tool history, and retained-but-uninstalled instruction/skill
+resources prevent continuation. There are no new WebSocket commands, shared-device
+signing calls, cloud transport or Swift UI in this slice.
