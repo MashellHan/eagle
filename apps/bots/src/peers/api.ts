@@ -24,6 +24,15 @@ const participantsOf = (deps: PeerApiDeps, exchange: PeerExchange): readonly Par
     title: deps.bots().find((bot) => bot.id === id)?.title ?? id,
   }));
 
+const latest = (exchange: PeerExchange): string => {
+  let at = exchange.startedAt;
+  for (const turn of exchange.turns) {
+    if (turn.at > at) at = turn.at;
+    if (turn.answeredAt !== undefined && turn.answeredAt > at) at = turn.answeredAt;
+  }
+  return at;
+};
+
 const countOf = (exchange: PeerExchange): number =>
   exchange.turns.reduce((total, turn) => total + (turn.answer === undefined ? 1 : 2), 0);
 
@@ -39,6 +48,10 @@ export const peerApi = (deps: PeerApiDeps): PeerApi => ({
       count: countOf(exchange),
       status: exchange.status,
       startedAt: exchange.startedAt,
+      // Where the exchange last moved: the transcript keeps its row there, so a round trip
+      // shows up next to the turn that just happened rather than at its first message. A read
+      // answer counts, otherwise the row would sit beside the question while the reply existed.
+      updatedAt: latest(exchange),
     }));
   },
 

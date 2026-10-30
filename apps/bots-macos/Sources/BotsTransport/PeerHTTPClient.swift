@@ -38,6 +38,7 @@ public final class PeerHTTPClient: PeerPort, @unchecked Sendable {
     let count: Int
     let status: String
     let startedAt: String
+    let updatedAt: String?
 
     var summary: PeerExchangeSummary {
       PeerExchangeSummary(
@@ -45,7 +46,8 @@ public final class PeerHTTPClient: PeerPort, @unchecked Sendable {
         participants: participants.map { PeerExchangeParticipant(id: $0.id, title: $0.title) },
         count: count,
         status: status,
-        startedAt: startedAt
+        startedAt: startedAt,
+        updatedAt: updatedAt ?? startedAt
       )
     }
   }

@@ -884,18 +884,18 @@ struct BotsPresenter {
     /// shows it too, so both chats carry the same entry.
     var pending =
       exchanges
-      .compactMap { summary -> (startedAt: String, exchange: PeerExchange)? in
+      .compactMap { summary -> (updatedAt: String, exchange: PeerExchange)? in
         guard
           let row = peerExchangeRow(exchangeId: summary.id, exchanges: exchanges, bots: bots)
         else { return nil }
-        return (summary.startedAt, row)
+        return (summary.updatedAt, row)
       }
-      .sorted { $0.startedAt < $1.startedAt }
+      .sorted { $0.updatedAt < $1.updatedAt }
     var nextExchange = 0
     func flushExchanges(upTo instant: String?) {
       while nextExchange < pending.count {
         let item = pending[nextExchange]
-        guard instant == nil || item.startedAt <= instant! else { return }
+        guard instant == nil || item.updatedAt <= instant! else { return }
         rows.append(.peerExchange(id: item.exchange.id, exchange: item.exchange))
         nextExchange += 1
       }
@@ -904,14 +904,16 @@ struct BotsPresenter {
     /// its tool rows belong to the exchange, not to this chat with the person.
     var insidePeerRun = false
     for (index, message) in state.messages.enumerated() {
-      // An exchange that started before this message takes its place ahead of it.
-      flushExchanges(upTo: message.createdAt)
       if message.role == .user {
-        if let origin = message.origin, origin.kind == .peer {
+        // A person's turn ends the run before it: an exchange that moved in that run belongs
+        // above this message, after the answer the run gave.
+        if message.origin?.kind != .peer {
+          insidePeerRun = false
+          flushExchanges(upTo: message.createdAt)
+        } else {
           insidePeerRun = true
           continue
         }
-        insidePeerRun = false
       }
       if insidePeerRun { continue }
       for row in entries(

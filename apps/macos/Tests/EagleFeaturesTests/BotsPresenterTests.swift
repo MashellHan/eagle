@@ -717,7 +717,7 @@ struct BotsPresenterPeerTests {
     return state
   }
 
-  private var summary: PeerExchangeSummary {
+  private func summary(updatedAt: String = "2026-10-29T12:03:30.000Z") -> PeerExchangeSummary {
     PeerExchangeSummary(
       id: "x_0123456789ab",
       participants: [
@@ -726,7 +726,8 @@ struct BotsPresenterPeerTests {
       ],
       count: 4,
       status: "open",
-      startedAt: "2026-10-29T12:02:30.000Z"
+      startedAt: "2026-10-29T12:00:30.000Z",
+      updatedAt: updatedAt
     )
   }
 
@@ -743,12 +744,12 @@ struct BotsPresenterPeerTests {
         message("e_6", role: .assistant, text: "结论"),
         message("e_7", role: .user, text: "追问", origin: peer),
       ]),
-      exchanges: [summary],
+      exchanges: [summary()],
       bots: []
     )
 
-    // One row for the exchange, placed where it started; the person's own turns and the
-    // answers given to them stay.
+    // One row for the exchange, placed after the turn it last moved in; the person's own turns
+    // and the answers given to them stay.
     let rows = entries.map(\.id)
     #expect(rows == ["e_1", "e_2", "x_0123456789ab", "e_5", "e_6"])
     guard case .peerExchange(_, let exchange) = entries[2] else {
@@ -774,10 +775,10 @@ struct BotsPresenterPeerTests {
           ]),
         message("e_4", role: .assistant, text: "已发出"),
       ]),
-      exchanges: [summary],
+      exchanges: [summary()],
       bots: []
     )
-    #expect(entries.map(\.id) == ["e_1", "x_0123456789ab", "e_4"])
+    #expect(entries.map(\.id) == ["e_1", "e_4", "x_0123456789ab"])
   }
 
   @Test("the answer a peer message caused stays inside the exchange too")
@@ -790,11 +791,11 @@ struct BotsPresenterPeerTests {
         message("e_3", role: .user, text: "人问的话"),
         message("e_4", role: .assistant, text: "给人的回答"),
       ]),
-      exchanges: [summary],
+      exchanges: [summary()],
       bots: []
     )
     // The recipient's own chat keeps the row and the person's turn, never the exchange's answer.
-    #expect(entries.map(\.id) == ["x_0123456789ab", "e_3", "e_4"])
+    #expect(entries.map(\.id) == ["e_3", "e_4", "x_0123456789ab"])
   }
 
   @Test("a peer run stays out of the chat until the daemon can name and count it")
@@ -820,16 +821,32 @@ struct BotsPresenterPeerTests {
         message("e_2", role: .assistant, text: "已发给 B"),
         message("e_3", role: .assistant, text: "结论"),
       ]),
-      exchanges: [summary],
+      exchanges: [summary()],
       bots: []
     )
-    #expect(entries.map(\.id) == ["e_1", "e_2", "x_0123456789ab", "e_3"])
-    guard case .peerExchange(_, let exchange) = entries[2] else {
+    #expect(entries.map(\.id) == ["e_1", "e_2", "e_3", "x_0123456789ab"])
+    guard case .peerExchange(_, let exchange) = entries[3] else {
       Issue.record("the sender's chat has the folded row")
       return
     }
     #expect(exchange.count == 4)
     #expect(exchange.participants.map(\.title) == ["A", "B"])
+  }
+
+  @Test("a send that happened in one run keeps its row under that run's answer")
+  func rowAfterItsRun() {
+    // e_1 → e_2 is the run that sent; e_3 starts the next turn, so the row belongs before it.
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "去和 B 讨论"),
+        message("e_2", role: .assistant, text: "问题已发出，本轮不等待或编造回答。"),
+        message("e_3", role: .user, text: "再说一句"),
+        message("e_4", role: .assistant, text: "好"),
+      ]),
+      exchanges: [summary(updatedAt: "2026-10-29T12:02:30.000Z")],
+      bots: []
+    )
+    #expect(entries.map(\.id) == ["e_1", "e_2", "x_0123456789ab", "e_3", "e_4"])
   }
 
   @Test("a peer message recorded before exchanges had ids leaves no row behind")
@@ -841,9 +858,9 @@ struct BotsPresenterPeerTests {
         message("e_2", role: .assistant, text: "只给 A 的回答"),
         message("e_3", role: .user, text: "人问的话"),
       ]),
-      exchanges: [summary],
+      exchanges: [summary()],
       bots: []
     )
-    #expect(entries.map(\.id) == ["x_0123456789ab", "e_3"])
+    #expect(entries.map(\.id) == ["e_3", "x_0123456789ab"])
   }
 }

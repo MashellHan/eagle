@@ -833,7 +833,9 @@ trip never enters either bot's chat with the person:
   `participants` with titles, `count` = question/answer pairs, `status`, `startedAt`), and
   `GET /v1/bots/:id/exchanges/:exchangeId` returns the turns with their answers. Both are
   owner-scoped: another bot's exchange is a 404.
-- The transcript folds an exchange into **one** row where the first peer message was: the
+- The transcript folds an exchange into **one** row, placed where the exchange last moved
+  and after the run that carried it (`updatedAt` = the last turn or its read answer), so the
+  sender's chat and the recipient's chat show the same entry at the same point: the
   peer messages, the answer a peer message caused, and the `peer_*` tool rows never reach
   the chat. The row is only drawn once the daemon can name and count it, so no invented
   count is ever shown. Opening the row reads the round trip once; both sides' messages are

@@ -191,16 +191,19 @@ public struct PeerExchangeSummary: Sendable, Equatable, Identifiable {
   public var count: Int
   public var status: String
   public var startedAt: String
+  /// When the exchange last moved: the transcript keeps the row beside the latest turn.
+  public var updatedAt: String
 
   public init(
     id: String, participants: [PeerExchangeParticipant], count: Int, status: String,
-    startedAt: String
+    startedAt: String, updatedAt: String
   ) {
     self.id = id
     self.participants = participants
     self.count = count
     self.status = status
     self.startedAt = startedAt
+    self.updatedAt = updatedAt
   }
 }
 

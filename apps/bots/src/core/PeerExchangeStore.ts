@@ -27,6 +27,8 @@ export type PeerTurn = PeerTurnInput & {
   readonly at: string;
   /** The recipient's answer, once it has one. */
   readonly answer?: string;
+  /** When that answer was read and kept, ISO: the exchange's last real movement. */
+  readonly answeredAt?: string;
 };
 
 export type PeerExchangeStatus = "open" | "finished";
@@ -151,10 +153,11 @@ export class PeerExchangeStore {
       if (exchange === undefined) return undefined;
       const turn = exchange.turns.find((item) => item.requestId === requestId);
       if (turn === undefined || turn.answer !== undefined) return exchange;
+      const answeredAt = this.#stamp();
       const next: PeerExchange = {
         ...exchange,
         turns: exchange.turns.map((item) =>
-          item.requestId === requestId ? { ...item, answer } : item,
+          item.requestId === requestId ? { ...item, answer, answeredAt } : item,
         ),
       };
       await this.#write(next);
