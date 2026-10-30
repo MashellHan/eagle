@@ -480,37 +480,26 @@ final class BotsWorkspaceViewModel: ObservableObject {
     }
     var messages: [PeerMessage] = []
     for turn in detail.messages {
+      let at = PeerTimeline.date(turn.at)
       if !turn.text.isEmpty {
-        messages.append(PeerMessage(id: "\(turn.id)-q", senderId: turn.fromBotId, text: turn.text))
+        messages.append(
+          PeerMessage(id: "\(turn.id)-q", senderId: turn.fromBotId, text: turn.text, at: at))
       }
       if let answer = turn.answer, !answer.isEmpty {
-        messages.append(PeerMessage(id: "\(turn.id)-a", senderId: turn.toBotId, text: answer))
+        messages.append(
+          PeerMessage(id: "\(turn.id)-a", senderId: turn.toBotId, text: answer, at: nil))
       }
     }
     openedExchange = PeerExchange(
       id: detail.id,
       participants: refs,
       messages: messages,
-      startedAt: Self.dayLabel(detail.startedAt),
       count: detail.messages.reduce(0) { $0 + 1 + ($1.answer == nil ? 0 : 1) }
     )
   }
 
   func closeExchange() {
     if openedExchange != nil { openedExchange = nil }
-  }
-
-  /// `今天 19:30` for today, `10-28 19:30` otherwise: the divider reads as a moment, not a stamp.
-  static func dayLabel(_ iso: String) -> String? {
-    let parser = ISO8601DateFormatter()
-    parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    guard let date = parser.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else {
-      return nil
-    }
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.dateFormat = Calendar.current.isDateInToday(date) ? "'今天' HH:mm" : "MM-dd HH:mm"
-    return formatter.string(from: date)
   }
 
   func openTrigger(_ triggerId: String) async {
@@ -977,7 +966,6 @@ struct BotsPresenter {
       id: exchangeId,
       participants: summary.participants.map { peerRef(id: $0.id, title: $0.title, bots: bots) },
       messages: [],
-      startedAt: nil,
       count: summary.count
     )
   }

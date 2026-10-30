@@ -34,11 +34,14 @@ public struct PeerMessage: Identifiable, Hashable, Sendable {
   public let id: String
   public let senderId: String
   public let text: String
+  /// When it was sent, when the daemon knows: the dialog divides the round trip by real gaps.
+  public let at: Date?
 
-  public init(id: String, senderId: String, text: String) {
+  public init(id: String, senderId: String, text: String, at: Date? = nil) {
     self.id = id
     self.senderId = senderId
     self.text = text
+    self.at = at
   }
 }
 
@@ -46,10 +49,13 @@ public struct PeerMessage: Identifiable, Hashable, Sendable {
 public struct PeerBurst: Identifiable, Hashable, Sendable {
   public let sender: PeerRef
   public let messages: [PeerMessage]
+  /// The moment this run started, when the gap before it was long enough to say so.
+  public let divider: String?
 
-  public init(sender: PeerRef, messages: [PeerMessage]) {
+  public init(sender: PeerRef, messages: [PeerMessage], divider: String? = nil) {
     self.sender = sender
     self.messages = messages
+    self.divider = divider
   }
 
   public var id: String { messages.first?.id ?? sender.id }
@@ -62,8 +68,6 @@ public struct PeerExchange: Identifiable, Hashable, Sendable {
   /// Both sides, in the order the daemon recorded them. Two: an exchange is always a pair.
   public let participants: [PeerRef]
   public let messages: [PeerMessage]
-  /// When the exchange started, already formatted for the divider.
-  public let startedAt: String?
   /// How many messages the daemon counted, when the row does not carry them all: a folded row
   /// keeps only the count, and opening it reads the messages.
   public let count: Int?
@@ -72,13 +76,11 @@ public struct PeerExchange: Identifiable, Hashable, Sendable {
     id: String,
     participants: [PeerRef],
     messages: [PeerMessage],
-    startedAt: String? = nil,
     count: Int? = nil
   ) {
     self.id = id
     self.participants = participants
     self.messages = messages
-    self.startedAt = startedAt
     self.count = count
   }
 
@@ -89,29 +91,45 @@ public struct PeerExchange: Identifiable, Hashable, Sendable {
     participants.first { $0.id == id }
   }
 
+  /// How long a silence has to be before the dialog says when the conversation resumed.
+  public static let dividerGap: TimeInterval = 5 * 60
+
   /// Consecutive messages from the same bot read as one turn. A sender the exchange does not list
-  /// keeps its own burst under its raw id, so a missing participant never hides a message.
-  public var bursts: [PeerBurst] {
+  /// keeps its own burst under its raw id, so a missing participant never hides a message. A run
+  /// that starts more than `gap` after the previous message carries the moment it started.
+  public func bursts(
+    gap: TimeInterval = PeerExchange.dividerGap,
+    label: (Date) -> String = PeerTimeline.label
+  ) -> [PeerBurst] {
     var bursts: [PeerBurst] = []
     var run: [PeerMessage] = []
+    var runDivider: String?
+    var previous: Date?
+    func flush() {
+      guard let first = run.first else { return }
+      bursts.append(
+        PeerBurst(sender: sender(of: first.senderId), messages: run, divider: runDivider)
+      )
+      run = []
+      runDivider = nil
+    }
     for message in messages {
       if let current = run.first, current.senderId != message.senderId {
-        bursts.append(burst(senderId: current.senderId, messages: run))
-        run = []
+        flush()
+      }
+      if run.isEmpty, let at = message.at {
+        // The first run always says when it began; later ones only after a real silence.
+        let silent = previous.map { at.timeIntervalSince($0) >= gap } ?? true
+        if silent { runDivider = label(at) }
       }
       run.append(message)
+      if let at = message.at { previous = at }
     }
-    if let first = run.first {
-      bursts.append(burst(senderId: first.senderId, messages: run))
-    }
+    flush()
     return bursts
   }
 
-  private func burst(senderId: String, messages: [PeerMessage]) -> PeerBurst {
-    PeerBurst(
-      sender: participant(senderId)
-        ?? PeerRef(id: senderId, title: senderId, face: nil, tintIndex: 0),
-      messages: messages
-    )
+  private func sender(of senderId: String) -> PeerRef {
+    participant(senderId) ?? PeerRef(id: senderId, title: senderId, face: nil, tintIndex: 0)
   }
 }

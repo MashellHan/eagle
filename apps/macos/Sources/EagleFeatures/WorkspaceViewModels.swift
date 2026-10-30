@@ -179,12 +179,13 @@ public enum MockWorkspace {
     messages: [
       PeerMessage(
         id: "x2m1", senderId: "firefly",
-        text: "firefly 的 v3.1.1 补丁版已经在 CI 里了，通过就合并。"),
+        text: "firefly 的 v3.1.1 补丁版已经在 CI 里了，通过就合并。",
+        at: Date(timeIntervalSince1970: 1_790_000_000)),
       PeerMessage(
         id: "x2m2", senderId: "deps",
-        text: "好，合并后我同步给依赖清单，next-ai 接着开始修。"),
-    ],
-    startedAt: "今天 19:34")
+        text: "好，合并后我同步给依赖清单，next-ai 接着开始修。",
+        at: Date(timeIntervalSince1970: 1_790_000_040)),
+    ])
 
   public static let vesExchange = PeerExchange(
     id: "x1",
@@ -192,21 +193,24 @@ public enum MockWorkspace {
     messages: [
       PeerMessage(
         id: "x1m1", senderId: "ves",
-        text: "us2 和 jp1 上 dashboard 的 `tsc --noEmit` 都过不了，帮我看下是不是 `useSearchParams` 可能为 null。"),
+        text: "us2 和 jp1 上 dashboard 的 `tsc --noEmit` 都过不了，帮我看下是不是 `useSearchParams` 可能为 null。",
+        at: Date(timeIntervalSince1970: 1_790_000_000)),
       PeerMessage(
         id: "x1m2", senderId: "deps",
-        text: "收到，已经定位到 `packages/dashboard/sidebar.tsx` 和 `request-table.tsx` 两处没有判空，一共十来个调用点。"),
+        text: "收到，已经定位到 `packages/dashboard/sidebar.tsx` 和 `request-table.tsx` 两处没有判空，一共十来个调用点。",
+        at: Date(timeIntervalSince1970: 1_790_000_055)),
       PeerMessage(
         id: "x1m3", senderId: "ves",
-        text: "要发补丁版吗？两台机器都在等，旧依赖一共占了大概 7G。"),
+        text: "要发补丁版吗？两台机器都在等，旧依赖一共占了大概 7G。",
+        at: Date(timeIntervalSince1970: 1_790_001_400)),
       PeerMessage(
         id: "x1m4", senderId: "deps",
         text: "发 v3.1.1：\n\n"
           + "- 修 `useSearchParams` / `usePathname` 的判空\n"
           + "- 全新 `bun install` 下 `build` 和 `tsc` 都过\n"
-          + "- 合并后我通知你升 us2 / jp1"),
-    ],
-    startedAt: "今天 19:30")
+          + "- 合并后我通知你升 us2 / jp1",
+        at: Date(timeIntervalSince1970: 1_790_001_440)),
+    ])
 
   public static let artifacts: [InspectorArtifact] = [
     InspectorArtifact(id: "d1", title: "deps 2026-10-24 sleepy"),

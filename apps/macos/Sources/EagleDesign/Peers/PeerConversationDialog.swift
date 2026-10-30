@@ -15,13 +15,13 @@ public struct PeerConversationDialog: View {
     VStack(spacing: 0) {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: Theme.Metric.peerGroupGap) {
-          if let startedAt = exchange.startedAt {
-            Text(startedAt)
-              .font(Theme.TypeScale.pill)
-              .foregroundStyle(Theme.Palette.textMuted)
-              .frame(maxWidth: .infinity)
-          }
-          ForEach(exchange.bursts) { burst in
+          ForEach(exchange.bursts(), id: \.id) { burst in
+            if let divider = burst.divider {
+              Text(divider)
+                .font(Theme.TypeScale.pill)
+                .foregroundStyle(Theme.Palette.textMuted)
+                .frame(maxWidth: .infinity)
+            }
             PeerMessageGroup(burst: burst)
           }
         }

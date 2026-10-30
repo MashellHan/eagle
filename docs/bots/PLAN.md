@@ -721,7 +721,8 @@ reads the recipient's answer; ownership and receipts are the sender's only.
 The read path landed the same day: `GET /v1/bots/:id/exchanges` and
 `/exchanges/:exchangeId` (owner-scoped), turns that keep their message and answer, and a
 client that folds a round trip into one row in both chats (`PeerExchangeRow`) and reads the
-dialog's messages on open (`PeerConversationDialog`, each side in its own bot's colour).
+dialog's messages on open (`PeerConversationDialog`, each side in its own bot's colour, a
+centred time divider whenever the conversation resumes after five minutes or more).
 `peers` stays false on the wire: there is no peer frame, the app reads HTTP.
 
 ### Peers UI, as built (2026-10-29, client only)
