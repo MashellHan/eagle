@@ -1,5 +1,21 @@
 # Retrospective
 
+## 2026-10-30 — Synchronize collected-output timeout tests with actual output
+
+The P0 Bots check passed 649 ordinary tests but its coverage run failed the
+unchanged bash timeout fixture: the result contained the 0.05-second timeout
+diagnostic without `before-timeout`. A bounded serial check then failed the same
+assertion in its ordinary run. Both failures remain in `.local/sync-p0/`.
+
+pi-durable 1.4.0 starts that deadline immediately after spawn, before any output
+arrives; it still waits for child exit and flushes before settling. The fixture
+assumed the shell would run its first printf within 50ms. The test now forwards
+the real NodeExecutionEnv output to the real tool collector, then advances the
+controlled 50ms timer after the marker actually arrives. A real watchdog prevents
+a missing-output hang. Harness, SQLite, shell execution, timeout cleanup and all
+original result assertions remain real; no production timeout changed. The
+failures alone did not establish loss of already-collected output.
+
 ## 2026-10-30 — Await consumed events before draining sidebar publication
 
 The sync baseline pre-push failed the sidebar preview test: 60ms after an empty
