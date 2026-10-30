@@ -16,6 +16,16 @@ a missing-output hang. Harness, SQLite, shell execution, timeout cleanup and all
 original result assertions remain real; no production timeout changed. The
 failures alone did not establish loss of already-collected output.
 
+A later full check received the marker followed by bash's legitimate `Killed: 9`
+diagnostic for its sleep child; the added full-string callback assertion rejected
+that output (`section-order-bots-check-verified.log`). An intermediate marker-only
+assertion did not prove complete callback retention. The fixture now uses
+`printf ...; exec sleep 2`, replacing the shell instead of leaving a parent shell
+to report the killed child, and restores the exact callback assertion. It still
+uses the real SDK/SQLite/Harness, real I/O and kill cleanup, the controlled whole
+setTimeout API and the unchanged 50ms deadline. The original model-visible output
+and timeout assertions remain unchanged.
+
 ## 2026-10-30 — Await consumed events before draining sidebar publication
 
 The sync baseline pre-push failed the sidebar preview test: 60ms after an empty

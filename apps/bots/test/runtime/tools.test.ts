@@ -313,7 +313,7 @@ test("native bash timeout keeps collected output and returns a model-visible fai
     const handle = await bench.runtime.open(bench.spec());
     const { events } = await settle(handle, bench, [
       assistant(
-        [toolCall("bash", { command: "printf before-timeout >&2; sleep 2", timeout: 0.05 })],
+        [toolCall("bash", { command: "printf before-timeout >&2; exec sleep 2", timeout: 0.05 })],
         { stopReason: "toolUse" },
       ),
       text("timed out"),
@@ -322,7 +322,7 @@ test("native bash timeout keeps collected output and returns a model-visible fai
       .flatMap((event) => (event.type === "append" ? event.message.blocks : []))
       .find((block) => block.type === "toolResult");
     assert.ok(result?.type === "toolResult");
-    assert.match(received, /before-timeout/, "the real onOutput callback received stderr");
+    assert.equal(received, "before-timeout", "the real onOutput callback received stderr");
     assert.equal(result.isError, true);
     assert.match(result.text, /before-timeout/);
     assert.match(result.text, /timed out/i);
