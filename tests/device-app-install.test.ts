@@ -42,6 +42,7 @@ function fixture() {
   let alive = true;
   const events: string[] = [];
   const system: DeviceInstallerSystem = {
+    candidateServices: () => [],
     serviceLabel: () => "fixture-service",
     helperPath: (bundle) =>
       join(bundle, "Contents/Library/LaunchServices/EagleDeviceHelper"),
@@ -270,6 +271,51 @@ test("first install does not run an unregister command", () => {
   } finally {
     f.cleanup();
   }
+});
+
+test("first install refuses another build's existing candidate service", () => {
+  const f = fixture();
+  rmSync(f.destination, { recursive: true });
+  f.setJob(undefined);
+  f.setAlive(false);
+  f.system.candidateServices = () => [
+    "ai.hexly.eagle.devices.candidate.1793338495710",
+  ];
+  try {
+    assert.throws(
+      () => installDeviceCandidate(f.source, f.destination, f.system),
+      /another candidate service is already registered/,
+    );
+    assert(!existsSync(f.destination));
+    assert(!f.events.includes("quit"));
+    assert.equal(f.payload(f.source), "new");
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("candidate service discovery uses only complete labels in the GUI service table", async () => {
+  const { candidateServiceLabels } = await import(
+    "../apps/macos/Scripts/install-device-app.ts"
+  );
+  assert.deepEqual(
+    candidateServiceLabels(`gui/501 = {
+    services = {
+        42 - ai.hexly.eagle.devices.candidate.1793338495710
+        0 78 ai.hexly.eagle.devices.candidate
+        0 - ai.hexly.eagle.devices
+        0 - ai.hexly.eagle.devices.candidate.unrelated
+    }
+    endpoints = {
+        ai.hexly.eagle.devices.candidate.1793338495709
+    }
+  }`),
+    [
+      "ai.hexly.eagle.devices.candidate.1793338495710",
+      "ai.hexly.eagle.devices.candidate",
+    ],
+  );
+  assert.throws(() => candidateServiceLabels("unrecognized output"));
 });
 
 test("failed installed signature verification restores the old complete bundle", () => {

@@ -2,6 +2,7 @@ export type InstalledDeviceJob = { pid?: number; program?: string };
 
 export interface DeviceInstallerSystem {
   verify(bundle: string): void;
+  candidateServices(): string[];
   serviceLabel(bundle: string): string;
   helperPath(bundle: string): string;
   supportsMaintenance(bundle: string): boolean;
@@ -40,6 +41,10 @@ export function installDeviceCandidate(
     throw new Error("the new App does not support device update preparation");
   const installed = existsSync(destination);
   if (installed) system.verify(destination);
+  const allowedServices = new Set([system.serviceLabel(source)]);
+  if (installed) allowedServices.add(system.serviceLabel(destination));
+  if (system.candidateServices().some((label) => !allowedServices.has(label)))
+    throw new Error("another candidate service is already registered");
   const previousJob = system.job(installed ? destination : source);
   if (!installed && previousJob)
     throw new Error("a device service already belongs to another installation");
@@ -122,6 +127,19 @@ import {
   deviceHelperRelativePath,
 } from "./assemble-device-app.ts";
 
+/** Read the GUI domain's service table without treating endpoint/disabled records as jobs. */
+export function candidateServiceLabels(output: string): string[] {
+  const table = output.match(/^\s*services = \{\n([\s\S]*?)^\s*\}/m)?.[1];
+  if (table === undefined)
+    throw new Error("unable to inspect candidate device services");
+  return table.split("\n").flatMap((line) => {
+    const label = line.match(
+      /\s(ai\.hexly\.eagle\.devices\.candidate(?:\.[0-9]{1,20})?)\s*$/,
+    )?.[1];
+    return label ? [label] : [];
+  });
+}
+
 function macOSSystem(): DeviceInstallerSystem {
   const identifier = "ai.hexly.eagle.macos.device-candidate";
   const run = (program: string, args: string[], timeout = 15_000) =>
@@ -148,6 +166,10 @@ function macOSSystem(): DeviceInstallerSystem {
       join(bundle, "Contents/Info.plist"),
     ]);
   return {
+    candidateServices: () =>
+      candidateServiceLabels(
+        checked("/bin/launchctl", ["print", `gui/${process.getuid?.()}`]),
+      ),
     serviceLabel: deviceCandidateServiceLabel,
     helperPath: (bundle) => join(bundle, deviceHelperRelativePath(bundle)),
     verify(bundle) {

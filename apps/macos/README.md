@@ -49,6 +49,10 @@ previous signed bundle at the backup path it prints. A failed preparation leaves
 the existing bundle in place. Use this installer for upgrades; do not edit or
 re-sign an installed bundle in place. This is an ad-hoc candidate, not a notarized release.
 
+Automatic upgrades are verified between candidates with update-preparation support.
+Earlier preview builds that cannot confirm their old service has stopped are left
+in place; migration across service names is not guaranteed for those builds.
+
 Omitting the service URL defaults to localhost for local development. **Both Macs
 must explicitly build with the HTTPS origin above for pairing**, including later UI
 updates. Each Mac creates its own identity; do not copy credentials, sessions or
