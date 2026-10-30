@@ -1,5 +1,100 @@
 # 用户视角检查点
 
+## 2026-10-30 18:04 +0800 — P1 三项兼容窄修候选待增量Review
+
+- 旧冻结tree c0218665及25路径/所有red/gate收据保留，最终Review确认三项P2，其余
+  分页/隔离/cutoff/prefix/AgentDoc/SIGKILL/fixture范围关闭；ignored补充收据单独记录。
+- compatibility-review-red真实3组/6子断言共9失败：无replica.sqlite的旧P0 receipt
+  直接run被拒；独立完整H1 carrier的父摘要阻断run/export；root后续真实任务仍busy时
+  固定H0的独立完成分支不能发布/导出。没有用export/import暖旧receipt索引或补传H0。
+- 已按需校验完整旧receipt与实际entry映射，保留原映射/零被动执行/同ID幂等；已验证
+  完整carrier可独立重建，新增量真正缺父/事实仍未applied。非terminal回查在已验证固定
+  父边界停止，所有祖先nested拒绝仍保守保留；provider屏障用原waitFor默认5秒且finally释放。
+- 新affected49/49、types/lint exit0；compatibility-bots-check-final普通/coverage各682/682
+  （同套不累加），coverage行95.46%、分支88.70%、函数91.06%。crash8/8，P0/P1对应
+  eval各1/1，perf1/1（既有四项median 3/1/3/10ms），均exit0。旧673只属于旧候选。
+- 正在冻结新tree/逐路径SHA供增量Review；HEAD仍c073ea19，未commit/push，正常hooks/
+  pre-push尚未执行。网站Herdr采集/网站auth/D1/UI本片未验，原生日常App未动；
+  cloud/Tailscale/物理Mac、epoch/tombstone、P2资源安装及后续设备/网络/UI仍planned。
+
+## 2026-10-30 17:57 +0800 — P1 Review 两条兼容调用链待修
+
+- 旧候选c0218665的25路径与SHA已由Lead核对，所有旧red/gate和候选收据保持原位。
+  本轮已解除源码/index冻结，仍HEAD c073ea19、未commit/push。
+- Review确认：全新replica.sqlite不能直接run旧P0 SDK完整receipt；已固定head的独立
+  branch又被root后来未结束任务阻断发布/显式export。正在补真实旧receipt升级与真实
+  provider屏障红测；先恢复所选完整carrier，任务扫描在已验证固定父head边界停止。
+- 旧候选check普通/coverage各673/673、crash8、完整本地eval11、perf1仅代表旧字节；
+  不能作为本轮修后最终绿。新affected/check/crash/eval/perf与最终Review尚待完成。
+- 网站Herdr采集/网站auth/D1/UI本片未验，原生日常App未动；cloud/Tailscale/物理Mac、
+  epoch/tombstone、P2资源安装及后续设备/网络/UI仍planned。下一坏跳为上述两条兼容边界。
+
+## 2026-10-30 17:43 +0800 — P1 compact receipt / prefix 候选待审
+
+- P0 c073ea19 正常push收据不变；P1仍未提交、未推送，正在冻结最终候选供只读Review。
+- 保留第一轮Bots check670/671的10→40重复正文红；没有过滤原compaction SQL或修改5+5。
+  native bounded fork固定原entry，自动SDK receipt只存manifest/ID映射；外来完整prefix只append
+  suffix。真实adopted writes统计原data/工具结果/资源，连续三个head未增加旧正文次数/字节。
+- entry后仅configure v2、pin、源再v3/新增/压缩、旧head run的真实红已绿；pin和run均恢复
+  完整选定AgentDoc后才覆盖本机cwd，ProviderDoc保持独立新会话。受影响40/40、types/lint绿。
+- compact-bots-check-final exit0：普通与coverage各673/673（同套不累加），types/lint绿；
+  coverage行95.46%、分支88.76%、函数90.97%。compact-crash-final exit0、8/8。
+  compact-eval-final实际用了未解析为过滤器的--case=形式，正常完成全部11/11本地case；
+  没有重复跑已通过场景。compact-perf-final exit0、1/1，既有四项median 3/1/4/10ms。
+- 所有红日志保留于.local/sync-p1；最终Review/正常commit/pre-push仍未完成。完整history
+  本地组装/校验、head aliases/metadata增长仍有成本，不称常量空间或完整P1/P1–P6完成。
+- 网站Herdr采集/网站auth/D1/UI本片未验，原生日常App未动；cloud/Tailscale/物理Mac、
+  epoch轮换/tombstone、P2资源安装及后续设备/网络/UI仍planned/未证。下一跳是固定候选Review。
+
+## 2026-10-30 17:36 +0800 — P1 重复正文门禁红，收紧 native/prefix 固定方式
+
+- P0 c073ea19 正常push完成的收据不变；P1未冻结、未提交、未推送。affected修复前
+  36/37为硬编码entry ID，改与真实user append关联后37/37，types/lint绿。
+- 第一轮完整Bots check普通670/671：真实compaction测试全库10→40；只读归属核实
+  原conversation 1仍5 user+5 assistant、4 compaction，另外5份ownerless快照重复旧正文。
+  没有过滤SQL或放宽5+5。首版bounded fork去除append后局部24/24、旧head/恢复16/16绿，
+  但receipt.bundle仍按head重存完整正文，不能称增长问题已解决。
+- 已采纳Lead裁定：自动P1 receipt只存fork/ID映射和manifest引用；正文复用独立facts，
+  按需重建。外来后续head优先复用已验证完整prefix，只append新增事实。正在补写入
+  次数/字节红测以及entry后configure v2、源再v3/新增/压缩、旧head仍v2的强回归。
+- crash首轮7/8：旧P0本端intent重开实际placed而非null，按新本机intent恢复语义补准确
+  一次执行、保留foreign零执行后局部绿；不把旧日志算最终门禁。新入口eval1首轮绿，
+  也尚非收紧后候选。最终check/crash/eval/perf、Review/pre-push仍待完成。
+- 网站Herdr采集/网站auth/D1/UI本片未验，原生日常App未动；cloud/Tailscale/物理Mac、
+  P1 epoch/tombstone及P2–P6仍planned/未证。下一坏跳是自动receipt正文重复和后续prefix
+  材料化增长；不扩大产品流程或放宽carrier/page限额。
+
+## 2026-10-30 17:21 +08 — P1 本地增量局部闭环，质量门禁待跑
+
+- P0 `c073ea19` 已正常 push，exit0 与个人 fork 的远端 ref/tree/clean 收据保留。
+  本轮 P1 仍是未提交 WIP，尚未完整 check、最终 Review 或 pre-push，不能记为 P1 交付。
+- 真实入口404红后已绿；多页累计9MB以上的 SDK 原记录原先使 status400，拆开内部
+  完整性校验与P0公开载体cap后，鉴权HTTP分页→B被动应用→原bytes/context→B新run绿。
+  每个apply包装仍<=8MiB，后续只送新增facts；单条超限保留原seq并明确拒绝。
+- `.local/sync-p1/local-first-complete.log` exit0、9/9；覆盖两SQLite/独立副本库、
+  225+原entries、真实工具/压缩/edits、A/B同head分支交换/重开、A关闭后B运行、
+  A→B→C原来源转发及五个真实SIGKILL屏障。不是物理双机或云传输证明。
+- 新窄红证实坏digest head落库后阻断重开，以及page为83个交付正文先读128份。
+  已按来源保留blocked位置与未确认缺口、改逐行预算读取；
+  `invalid-head-page-green.log` exit0、7/7。后台扫描接入脱敏runtime错误出口，仍补回归。
+- 网站Herdr采集、网站认证/D1/UI本片未重验；App未动。cloud/Tailscale/物理Mac、
+  P1后续epoch轮换/tombstone及P2–P6仍未验证/planned。下一步为所属契约/fixtures、
+  affected/type/lint与正常Bots check/crash/eval/perf，再冻结候选交只读Review。
+
+## 2026-10-30 17:07 +08 — P0 已正常推送，P1 本地增量首轮红
+
+- P0 `c073ea1` 已正常 push 到个人 fork 的 bot-sync/eagle，exit0；远端 full SHA、
+  tree 与 clean 已核对。正常 pre-push root260、browser191/11既有排除、Swift287通过，
+  ignored 汇总在 `.local/sync-p0/push-c073ea1/summary.json`。
+- P1 仅取得真实入口红：工具已写出原字节，replica/pull 返回404而非200，证据
+  `.local/sync-p1/entry-red.log`。首版独立 replica.sqlite store/协议与具体契约已写，
+  仍在接真实Runtime/SDK扫描/HTTP，尚未绿、尚无P1可交付或恢复验收结论。
+- 采用公开 subscribeCommits 只排异步补扫，按 conversation 的 minEntryId 升序分页；
+  SQLite intent/outbox 与 SDK 无联合事务，正在接固定ID恢复。sourceKey 已明确只编码
+  replicaId+epoch；有界page还须计算含apply包装的真实编码字节。
+- 网站Herdr采集/auth/D1/UI本片未重验，cloud/Tailscale/物理Mac未验证；P1后续epoch
+  轮换/tombstone与P2–P6仍planned。没有其他树、App、部署或云资源操作。
+
 ## 2026-10-30 16:50 +08 — P0 ordering / provenance follow-up 最终本地检查
 
 - `section-order-red.log` 为真实 7 失败：初次 export 正确，receipt 与 B/C 导入反转

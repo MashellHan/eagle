@@ -82,14 +82,23 @@ test("SIGKILL after output commit, import commit and fork intent loses no histor
     await b.close(trace, 5000);
 
     await killAtCommit({ dir: bDir, mode: "intent", bundle });
+    bench.faux.setResponses([text("exactly one continuation after intent recovery")]);
     const resumed = await bench.runtime.open({ ...bench.spec(), id: "b_crash", dir: bDir });
     handles.push(resumed);
-    assert.equal(bench.faux.state.callCount, 0, "a fork intent is not a transferred active queue");
-    assert.deepEqual(await replica(resumed, "status", { requestId: "crash-intent" }), {
-      branch: "crash-intent",
-      submission: null,
-    });
-    bench.faux.setResponses([text("exactly one continuation after intent recovery")]);
+    await waitFor(
+      async () =>
+        (
+          (await replica(resumed, "status", { requestId: "crash-intent" })) as {
+            submission: { status: string } | null;
+          }
+        ).submission?.status === "done",
+      "the durable local intent to recover",
+    );
+    assert.equal(
+      bench.faux.state.callCount,
+      1,
+      "only the new local ledger recovers execution; the preceding foreign import stayed passive",
+    );
     const params = { head: bundle.head, requestId: "crash-intent", text: "one local continuation" };
     await replica(resumed, "run", params);
     await waitFor(

@@ -28,7 +28,7 @@ import { convertSubmission } from "./mapEvents.ts";
 const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const requestIdSchema = z.string().regex(INVOCATION_ID);
-const entrySchema = z.strictObject({
+export const entrySchema = z.strictObject({
   id,
   conversationId: id,
   byTaskId: id.optional(),
@@ -80,7 +80,7 @@ export const resourceSchema = z.strictObject({
   sha256: digest,
   base64: z.string(),
 });
-const originSchema = z.strictObject({
+export const originSchema = z.strictObject({
   replicaId: z.uuid(),
   conversationId: id,
   entryId: id,
@@ -97,6 +97,11 @@ const payloadSchema = z.strictObject({
   resources: z.array(resourceSchema),
 });
 export const bundleSchema = payloadSchema.extend({ head: digest });
+export const exportSchema = z.strictObject({
+  head: digest.optional(),
+  branch: requestIdSchema.optional(),
+  resources: z.array(resourceSchema).optional(),
+});
 export type HistoryBundle = z.infer<typeof bundleSchema>;
 
 const identity = defineDoc({
@@ -111,7 +116,12 @@ const imports = defineDocFamily({
   version: 1,
   scope: "session",
   family: true,
-  initial: () => ({ bundle: "", conversationId: 0, entries: {} as Record<string, number> }),
+  initial: () => ({
+    bundle: "",
+    manifest: "",
+    conversationId: 0,
+    entries: {} as Record<string, number>,
+  }),
   checkpointWhen: () => true,
 });
 const runs = defineDocFamily({
@@ -139,9 +149,25 @@ const parsed = <T>(schema: z.ZodType<T>, value: unknown): T => {
   return result.success ? result.data : reject("invalid replica request");
 };
 
+const carrierReceipt = (encoded: string): HistoryBundle => {
+  let value: unknown;
+  try {
+    value = JSON.parse(encoded);
+  } catch (error) {
+    if (error instanceof SyntaxError) reject("invalid history receipt");
+    throw error;
+  }
+  return validateBundle(value);
+};
+
 export const validateBundle = (value: unknown): HistoryBundle => {
   if (Buffer.byteLength(JSON.stringify(value)) > MAX_REPLICA_BODY_BYTES - 32)
     reject("history exceeds local handoff limit");
+  return validateHistory(value);
+};
+
+/** Complete history integrity is independent of the public P0 carrier byte limit. */
+export const validateHistory = (value: unknown): HistoryBundle => {
   const bundle = parsed(bundleSchema, value);
   const { head, ...payload } = bundle;
   if (hash(payload) !== head) reject("history digest mismatch");
@@ -161,15 +187,18 @@ export const validateBundle = (value: unknown): HistoryBundle => {
     Object.keys(bundle.origins).length !== seen.size
   )
     reject("missing entry for original provenance");
-  for (const resource of bundle.resources) {
-    const bytes = Buffer.from(resource.base64, "base64");
-    if (
-      bytes.toString("base64") !== resource.base64 ||
-      createHash("sha256").update(bytes).digest("hex") !== resource.sha256
-    )
-      reject("invalid resource bytes");
-  }
+  for (const resource of bundle.resources) validateResource(resource);
   return bundle;
+};
+
+/** Shared raw resource integrity check; receipt ACKs cannot precede this validation. */
+export const validateResource = (resource: z.infer<typeof resourceSchema>): void => {
+  const bytes = Buffer.from(resource.base64, "base64");
+  if (
+    bytes.toString("base64") !== resource.base64 ||
+    createHash("sha256").update(bytes).digest("hex") !== resource.sha256
+  )
+    reject("invalid resource bytes");
 };
 
 /** Public SDK commits only: imported entries cannot create a submission or a task. */
@@ -192,6 +221,129 @@ export class HistoryReplica {
     this.#botId = botId;
     this.#cwd = cwd;
     this.#registry = registry;
+  }
+
+  async replicaId(): Promise<string> {
+    return this.#harness.commit(async (tx) => (await tx.doc(identity)).replicaId, ctx);
+  }
+
+  async materialize(
+    value: unknown,
+    prefix: { head: string; entries: number[] } | null,
+  ): Promise<{ head: string }> {
+    const bundle = validateHistory(value);
+    await this.#harness.commit(async (tx) => {
+      const receipt = await tx.doc(imports, bundle.head, null);
+      if (receipt.conversationId !== 0) return;
+      const previous = prefix === null ? undefined : await tx.doc(imports, prefix.head, null);
+      const tail = prefix?.entries.at(-1);
+      const at = tail === undefined ? undefined : previous?.entries[String(tail)];
+      if (
+        prefix !== null &&
+        (previous?.conversationId === 0 ||
+          at === undefined ||
+          prefix.entries.length > bundle.entries.length)
+      )
+        reject("missing complete passive prefix");
+      const conversation =
+        prefix === null
+          ? await tx.createConversation({ ownership: { kind: "ownerless" } })
+          : await tx.forkConversation(
+              (previous?.conversationId ?? reject("missing prefix conversation")) as ConversationId,
+              at as EntryId,
+              { ownership: { kind: "ownerless" } },
+            );
+      const agent = await tx.doc(AgentDoc, conversation.id);
+      for (const key of Object.keys(agent) as (keyof AgentState)[]) delete agent[key];
+      Object.assign(agent, bundle.agent);
+      for (let index = 0; index < bundle.entries.length; index += 1) {
+        const original = bundle.entries[index];
+        if (original === undefined) return reject("missing complete entry");
+        if (prefix !== null && index < prefix.entries.length) {
+          receipt.entries[String(original.id)] =
+            previous?.entries[String(prefix.entries[index])] ??
+            reject("missing prefix entry mapping");
+          continue;
+        }
+        const { id: sourceId, head, edits } = original;
+        const draft: EntryDraft = {
+          kind: original.kind,
+          ...(original.model === undefined ? {} : { model: original.model }),
+          ...(original.data === undefined ? {} : { data: original.data }),
+          ...(head === undefined
+            ? {}
+            : { head: head === sourceId ? "self" : (receipt.entries[String(head)] as EntryId) }),
+          ...(edits === undefined
+            ? {}
+            : {
+                edits: edits.map((edit) => ({
+                  ...edit,
+                  target: receipt.entries[String(edit.target)] as EntryId,
+                })),
+              }),
+        };
+        receipt.entries[String(sourceId)] = (await tx.appendEntry(conversation.id, draft)).id;
+      }
+      receipt.conversationId = conversation.id;
+      receipt.manifest = bundle.head;
+    }, ctx);
+    return { head: bundle.head };
+  }
+
+  /** Only the explicit P0 carrier API stores a complete bundle in the SDK receipt. */
+  async carrier(value: unknown): Promise<HistoryBundle> {
+    const bundle = validateBundle(value);
+    await this.#harness.commit(async (tx) => {
+      const receipt = await tx.doc(imports, bundle.head, null);
+      if (receipt.conversationId === 0) return reject("missing carrier receipt");
+      receipt.bundle = JSON.stringify(bundle);
+    }, ctx);
+    return bundle;
+  }
+
+  async exportBranch(parent: HistoryBundle, params: unknown): Promise<HistoryBundle> {
+    return this.#export(params, validateHistory(parent));
+  }
+
+  async runFrom(value: unknown, params: unknown): Promise<unknown> {
+    const bundle = validateHistory(value);
+    return this.#run(params, bundle);
+  }
+
+  /** A bounded SDK fork pins native history without appending duplicate entries. */
+  async pinLocal(value: unknown): Promise<{ head: string }> {
+    const bundle = validateHistory(value);
+    await this.#harness.commit(async (tx) => {
+      if (
+        bundle.source.replicaId !== (await tx.doc(identity)).replicaId ||
+        bundle.source.botId !== this.#botId
+      )
+        reject("cannot pin another source as local");
+      const receipt = await tx.doc(imports, bundle.head, null);
+      if (receipt.conversationId !== 0) return;
+      const tail = bundle.entries.at(-1);
+      if (tail === undefined) return reject("missing local head tail");
+      const fork = await tx.forkConversation(
+        bundle.source.conversationId as ConversationId,
+        tail.id as EntryId,
+        { ownership: { kind: "ownerless" } },
+      );
+      const agent = await tx.doc(AgentDoc, fork.id);
+      for (const key of Object.keys(agent) as (keyof AgentState)[]) delete agent[key];
+      Object.assign(agent, bundle.agent);
+      receipt.conversationId = fork.id;
+      for (const entry of bundle.entries) receipt.entries[String(entry.id)] = entry.id;
+      receipt.manifest = bundle.head;
+    }, ctx);
+    return { head: bundle.head };
+  }
+
+  async receipt(head: string) {
+    return this.#harness.snapshot(imports, head, ctx);
+  }
+
+  async branch(requestId: string) {
+    return this.#harness.snapshot(runs, hash(requestId), ctx);
   }
 
   async command(command: Parameters<NonNullable<RuntimeHandle["replica"]>>[0]): Promise<unknown> {
@@ -224,54 +376,18 @@ export class HistoryReplica {
   }
 
   async #import(bundle: HistoryBundle): Promise<{ head: string }> {
-    await this.#harness.commit(async (tx) => {
-      const receipt = await tx.doc(imports, bundle.head, null);
-      if (receipt.conversationId !== 0) return;
-      const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } });
-      Object.assign(await tx.doc(AgentDoc, conversation.id), bundle.agent);
-      for (const original of bundle.entries) {
-        const { id: sourceId, head, edits } = original;
-        const draft: EntryDraft = {
-          kind: original.kind,
-          ...(original.model === undefined ? {} : { model: original.model }),
-          ...(original.data === undefined ? {} : { data: original.data }),
-          ...(head === undefined
-            ? {}
-            : { head: head === sourceId ? "self" : (receipt.entries[String(head)] as EntryId) }),
-          ...(edits === undefined
-            ? {}
-            : {
-                edits: edits.map((edit) => ({
-                  ...edit,
-                  target: receipt.entries[String(edit.target)] as EntryId,
-                })),
-              }),
-        };
-        const mapped = await tx.appendEntry(conversation.id, draft);
-        receipt.entries[String(sourceId)] = mapped.id;
-      }
-      receipt.conversationId = conversation.id;
-      receipt.bundle = JSON.stringify(bundle);
-    }, ctx);
-    return { head: bundle.head };
+    const result = await this.materialize(bundle, null);
+    await this.carrier(bundle);
+    return result;
   }
 
-  async #export(params: unknown): Promise<HistoryBundle> {
-    const input = parsed(
-      z.strictObject({
-        head: digest.optional(),
-        branch: requestIdSchema.optional(),
-        resources: z.array(resourceSchema).optional(),
-      }),
-      params,
-    );
+  async #export(params: unknown, suppliedParent?: HistoryBundle): Promise<HistoryBundle> {
+    const input = parsed(exportSchema, params);
     if (input.head !== undefined) {
       if (input.branch !== undefined || input.resources !== undefined)
         reject("select one immutable head");
       const receipt = await this.#harness.snapshot(imports, input.head, ctx);
-      return receipt?.bundle
-        ? validateBundle(JSON.parse(receipt.bundle))
-        : reject("unknown history head");
+      return receipt?.bundle ? carrierReceipt(receipt.bundle) : reject("unknown history head");
     }
     const run =
       input.branch === undefined
@@ -281,15 +397,19 @@ export class HistoryReplica {
       reject("unknown local branch");
     const inherited =
       run === undefined ? undefined : await this.#harness.snapshot(imports, run.head, ctx);
-    const parent = inherited?.bundle ? validateBundle(JSON.parse(inherited.bundle)) : undefined;
+    const parent =
+      suppliedParent ?? (inherited?.bundle ? carrierReceipt(inherited.bundle) : undefined);
+    if (run !== undefined && parent?.head !== run.head) reject("missing selected parent manifest");
     const conversationId = (run?.conversationId ?? this.#rootId) as ConversationId;
     const payload = await this.#harness.commit(async (tx) => {
       let cursor: Cursor | undefined;
       let ancestor: ConversationId | undefined = conversationId;
+      let checkBusy = true;
       while (ancestor !== undefined) {
+        if (parent !== undefined && ancestor === inherited?.conversationId) checkBusy = false;
         do {
           const page = await tx.scanTasks({ conversationId: ancestor }, 128, cursor);
-          if (page.items.some((task) => task.state.status !== "terminal"))
+          if (checkBusy && page.items.some((task) => task.state.status !== "terminal"))
             reject("history is not a complete head");
           if (
             page.items.some(
@@ -349,11 +469,11 @@ export class HistoryReplica {
     }, ctx);
     const bundle = validateBundle({ ...payload, head: hash(payload) });
     // Pin it before replying: a lost response or process exit can re-export the same head.
-    await this.#import(bundle);
-    return bundle;
+    await this.pinLocal(bundle);
+    return this.carrier(bundle);
   }
 
-  async #run(params: unknown): Promise<unknown> {
+  async #run(params: unknown, selectedBundle?: HistoryBundle): Promise<unknown> {
     const input = parsed(
       z.strictObject({
         head: digest,
@@ -368,7 +488,8 @@ export class HistoryReplica {
     const receipt = await this.#harness.snapshot(imports, input.head, ctx);
     if (receipt === undefined || receipt.conversationId === 0)
       return reject("unknown history head");
-    const bundle = validateBundle(JSON.parse(receipt.bundle));
+    const bundle = selectedBundle ?? carrierReceipt(receipt.bundle);
+    if (bundle.head !== input.head) reject("run head binding mismatch");
     if (bundle.resources.some((resource) => resource.kind !== "attachment"))
       reject("history resources require installation before continuation");
     const installed = new Set(
@@ -392,7 +513,9 @@ export class HistoryReplica {
       const branch = await tx.forkConversation(receipt.conversationId as ConversationId, at, {
         ownership: { kind: "ownerless" },
       });
-      (await tx.doc(AgentDoc, branch.id)).cwd = this.#cwd;
+      const agent = await tx.doc(AgentDoc, branch.id);
+      for (const key of Object.keys(agent) as (keyof AgentState)[]) delete agent[key];
+      Object.assign(agent, bundle.agent, { cwd: this.#cwd });
       run.head = input.head;
       run.text = input.text;
       run.conversationId = branch.id;

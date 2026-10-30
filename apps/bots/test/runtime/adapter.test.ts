@@ -64,7 +64,8 @@ test("one turn appends exactly one pi.assistant entry", async () => {
     // either is legal, and the settlement follows on the event stream.
     assert.ok(record.status === "placed" || record.status === "done");
     assert.equal(record.requestId, requestId);
-    assert.equal(record.entryId, "e_7");
+    assert.match(record.entryId ?? "", /^e_\d+$/);
+    assert.equal(record.entryId, appends[0]?.message.id);
     const settled = of(events, "submission").at(-1)?.record;
     assert.deepEqual(
       {

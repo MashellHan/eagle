@@ -405,3 +405,71 @@ Local red/green/gate logs are `.local/sync-p0/`. Normal Bots check/coverage, cra
 local-run eval and Bots-macOS tests are required before the candidate is handed off;
 PLAN/checkpoint record actual results. Cloud, Tailscale, physical Macs and App UI are not
 certified by these tests. Root/browser/macOS release gates run at normal pre-push.
+
+
+## P1 local incremental evidence boundary
+
+`test/runtime/replica-sync.test.ts` uses independent real Harness/SQLite and replica.sqlite
+files. It exercises >225 original records, tool bytes/results, compaction/head/edit mapping,
+full raw context plus ordered system/tool replay against A's same-head provider control,
+A/B branch exchange/reopen and A-offline B continuation. Out-of-order 3/1/2, duplicates,
+cross-stream missing dependencies, conflicting IDs, Bot/epoch bindings, resource retention,
+invalid digest/edit aliases, standalone resource SRI and the normative page are explicit cases. Invalid sources
+remain unapplied across reopen while an existing complete local head can still run.
+
+`test/e2e/replica-sync.test.ts` exercises authenticated real daemon calls, including actual
+SDK raw UTF-8 history >8 MiB transferred in multiple pages. Every complete apply wrapper
+is measured, duplicate page application is idempotent, target raw bytes/context are read
+from SDK after daemon close, and target runs through the real provider path. Subsequent
+pulls carry only new facts. A separate oversized-single-entry refusal preserves the source
+sequence. The scan-failure test injects a real SQLite table outage: consecutive failures log once,
+a successful repair closes the episode, and a later failure has a new identity while local
+SDK input continues. A real interleaved entry/AgentDoc commit checks the publication cutoff.
+The original compaction 5+5 assertion remains unchanged. A native head test configures v2
+after the last entry, pins it, then adds v3/entries/compaction: old context remains exact and
+the new run uses v2. SDK adopted-write measurements track representative original data,
+real tool-result and attachment bytes across native/incoming heads. Old entry counts and
+body bytes remain fixed over three increments; automatic imports docs write no old body.
+Only the explicit P0 export in that fixture stores one carrier. Metadata mapping growth
+and full local validation cost remain explicit limits, rather than a constant-space claim.
+The SQLite body-read test counts real returned rows and proves iteration stops
+when the next event will exceed the byte budget.
+
+`test/crash/replica-sync.test.ts` owns children and uses SIGKILL at actual durable intent,
+SDK placed-input, output-entry, incoming-log and passive-SDK commit boundaries. Reopen
+proves original IDs, one execution, complete outbox recovery, no foreign run recovery and
+applied only after passive materialization. Callback barriers block only owned test
+children, never production Session callbacks.
+
+Entry404, cumulative-history400, invalid-head/reopen, eager body-read and edit-alias reds
+are retained under `.local/sync-p1/`, as are the compaction duplicate-body and old-head
+AgentDoc/prefix-growth reds. On Node 26.9.0 the first frozen local candidate passed
+`compact-bots-check-final.log`: ordinary and coverage each 673/673 (the same suite, not
+1346 distinct tests), typecheck/lint, coverage lines 95.46%, branches 88.76%, functions
+90.97%. `compact-crash-final.log` passed 8/8. `compact-eval-final.log` passed all 11 local
+cases: the actual `--case=replica-incremental` argument was not parsed as a filter, so
+the receipt records the full set rather than claiming a targeted-only run.
+`compact-perf-final.log` passed 1/1; its five-sample medians were 3/1/4/10 ms for empty
+open, 400-entry reopen, answered turn and 20-bot open. These are existing local Harness
+measurements, not incremental-sync latency percentiles. Review and normal pre-push remain
+required before delivery. No unchanged Swift gate
+is repeated for these Node-only changes; normal pre-push owns final root/browser/macOS.
+No evidence here covers App UI, website Herdr/auth/D1, cloud/Tailscale, device authorization
+or physical Macs. Local full-history assembly is not a constant-space performance claim.
+
+`test/runtime/replica-compatibility.test.ts` seeds the exact c073 P0 SDK receipt shape
+with public passive commits in a separate SQLite, asserting replica.sqlite is absent.
+Upgrade immediately runs the selected root or standalone complete branch without warmup,
+preserving entry maps, zero passive execution and same-ID admission. A new complete branch
+carrier imported without its summarized parent also runs/re-exports; corrupt/unknown
+receipts refuse. A real, bounded provider-entry barrier holds a later root run busy while
+the fixed-head independent branch completes, publishes and exports without root-later data.
+The original nine failures are retained in `compatibility-review-red.log`; later logs and
+the next candidate receipt, rather than the old 673 result, record the corrected gates.
+The corrected candidate passed `compatibility-affected-final.log` 49/49 and
+`compatibility-bots-check-final.log` ordinary/coverage each 682/682, with typecheck/lint,
+lines 95.46%, branches 88.70%, functions 91.06%. `compatibility-crash-final.log` passed
+8/8; `compatibility-eval-final.log` and `compatibility-p0-eval-final.log` each passed
+their one selected local case. `compatibility-perf-final.log` passed 1/1 with medians
+3/1/3/10 ms. All commands exited zero; incremental Review and normal commit/pre-push
+remain pending. Prior frozen-candidate logs are preserved separately.

@@ -81,6 +81,93 @@ uses SIGKILL after output, import, fork-intent and actual input-admission commit
 The saved local red/green logs are under `.local/sync-p0/`; full gate results are recorded
 in PLAN/checkpoint when run. None of these proves cloud or physical multi-Mac behavior.
 
+### P1 first local incremental slice (in progress)
+
+Each local Bot owns a separate `replica.sqlite` next to `session.sqlite`. Its binding
+contains an immutable local Bot ID, shared Bot UUID, replica UUID and source epoch UUID.
+A new Bot starts a unique shared identity; authenticated `replica/bind {sharedBotId}`
+can join an empty local replica explicitly, never by display name. A populated binding
+cannot be silently reassigned. Epoch rotation and directory tombstones remain planned.
+
+Additive authenticated loopback methods use the existing history body cap:
+
+- `pull {after,limit?,source?}` returns at most 128 original source-log events, with
+  source `{replicaId,epoch}` and the retained sequence range. `after` is an integer
+  position, never a persisted SDK Cursor. Forwarding retains the original stream IDs.
+  Iteration stops at the encoded byte budget: the complete JSON `{page: ...}` apply
+  body, including source/range/wrapper, is at most 8 MiB. `nextAfter` advances only
+  over delivered events. An oversized single event refuses the page, retaining the
+  event and source gap rather than advancing past it.
+- `apply {page}` durably deduplicates bounded incoming pages; the same stream/sequence
+  with different content fails closed. Known maximum, continuous received and continuous
+  applied positions differ. A receipt advances applied only after dependencies and any
+  selected head's passive SDK materialization have actually committed. Remote run intents
+  are facts only; they never enter the local recovery/admission queue.
+- `status {}` returns the explicit binding, stream positions and complete materialized
+  heads. Existing `status {requestId}` and the P0 baseline methods keep their behavior.
+  Local `run {head,requestId,text}` saves its fixed intent and outbox event in one replica
+  transaction before using the same P0 request ID for SDK admission.
+
+`subscribeCommits` only marks dirty and schedules a short asynchronous scan. Durable
+recovery scans committed entries by ascending `minEntryId` in 128-entry pages; SDK
+publication order and callback delivery do not certify outbox persistence. New entry
+facts carry original entry/task provenance once; head manifests reference those facts
+instead of retransmitting full historical model/data. Passive imports retain their source
+mapping and are not republished as new local entries. The SDK and replica databases have
+no joint transaction: durable local intents, idempotent SDK admission/materialization and
+commit rescanning close the gaps. A short commit callback only queues work; scan reads
+all original pages, then checks terminal tasks, tail and AgentDoc in one SDK transaction
+before publishing a head for that same cutoff. Missing references/resources remain
+incomplete. Schema-valid but semantically invalid incoming histories block only their
+source at the rejected sequence (`invalid_history`); raw events remain durable, applied
+never crosses that sequence, and other complete local heads remain runnable after restart.
+Resource base64/SHA-256 integrity is checked before a fact or applied position is shared,
+even without a referencing head. Unverified manifests do not occupy global head keys. SQLite/I/O/SDK failures retain their
+storage/session classification rather than being quarantined as protocol errors.
+
+Native heads use a public SDK bounded fork at the original committed tail, without
+appending source entries. Both pin and run fork explicitly restore the selected complete
+AgentDoc, because SDK `asOf` resolves the tail entry's commit sequence (a later configure
+may have no entry). ProviderDoc and inbox retain SDK `fork: initial`. Automatic P1 SDK
+receipts store only this fixed conversation, original/local ID map and immutable manifest
+reference; full model/data/resource bytes live in ReplicaStore facts. Explicit P0 carrier
+export/import alone retain a complete SDK receipt bundle for the existing API.
+
+A selected complete P0 SDK receipt must remain directly runnable after upgrade when
+replica.sqlite is still empty: validate its carrier and existing ID map on demand,
+then index it without passive re-append or requiring separate parent receipts. A complete
+carrier contains its ancestors even when `parents` only names their heads. Validated
+fixed parent heads bound task checks for a continuation; later source tasks cannot
+invalidate that already-fixed context. The branch's own unverified range still requires
+terminal tasks. The conservative unsupported-nested check still inspects every ancestor,
+including beyond the fixed parent boundary; only the nonterminal-task check is bounded.
+
+Incoming heads reuse the longest already materialized complete prefix whose ordered
+original fact refs and relative head/edit dependencies match. A bounded fork preserves
+that prefix, then public append adds only the suffix with remapped references. The chosen
+head's full agent config is fixed explicitly. This covers sequential history and inherited
+single-prefix branches; there is no generic multi-parent merge. A history without a
+matching prefix must materialize its initial facts once. Per-head aliases/manifest metadata
+still grow with history; no constant-space or arbitrary-merge claim follows.
+
+Internal head integrity checks retain schema, SHA-256, resource SRI, origin and head/edit
+reference validation independently of the P0 public carrier cap. Cumulative raw history
+can exceed 8 MiB through multiple bounded pages, and its passive materialization and local
+continuation have no P0 carrier cap. Public P0 import/export still enforce that cap.
+Local head assembly and validation currently use complete history in memory; this is neither constant-space reconstruction nor P4 chunked baseline transfer.
+Resource bytes can be retained; instruction/skill installation remains P2 and still blocks
+continuation when required. An explicit baseline resource version stays attached to later
+incremental heads until another explicit version is selected.
+
+Current P1 local evidence runs on Node **26.9.0** with pi-durable **1.4.0**:
+`test/{runtime,e2e,crash}/replica-sync.test.ts`. Final gate/review evidence is recorded
+separately in TESTING/PLAN; table or endpoint existence alone does not establish delivery.
+
+This slice is local only. Resource installation (P2), device authorization (P3), cloud,
+Tailscale, encrypted cache (P4), UI/merge experience (P5) and physical Macs are not certified.
+
+### Earlier SDK probe baseline
+
 Established with `@earendil-works/pi-durable@1.4.0` on Node 26.12.0 unless the
 evidence says upstream source. Probe scripts and inputs are listed in
 [Evidence](#evidence) so each claim can be reproduced or narrowed.

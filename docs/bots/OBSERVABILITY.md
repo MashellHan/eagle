@@ -290,3 +290,12 @@ P0 history handoff logs `core.replica` and `runtime.replica` start/outcome with 
 HTTP trace and local botId only. Bundle contents, prompts, resource bytes and provider
 credentials are never log fields. The runtime alone logs an originating error; core
 records propagation. See RUNTIME.md for passive-import and continuation boundaries.
+
+
+P1 local bind/pull/apply/status reuse the `core.replica` / `runtime.replica` crossing
+catalog and request trace. Background entry scans report through `runtime.replica.fail`
+using the Bot-open trace, failure identity and botId only; a repeated failed scan episode
+is logged once until a successful scan. An existing failed SDK session is propagation
+(warn), not a newly minted error. Body text, entry data, model/tool inputs, resources and
+page payloads never enter these logs. A blocked source's status records only sequence and
+stable invalid_history code; durable receipt position still stays before the rejected fact.

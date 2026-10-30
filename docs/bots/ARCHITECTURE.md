@@ -538,3 +538,24 @@ incremental transport remain P1; resource installation is P2. Task-scoped nested
 are not archived by P0, so a complete export rejects nested calls in the selected
 conversation or any fork ancestor. No foreign task, ProviderDoc, queue or active database
 is copied, and no SharedDevicePort dependency or general synchronization engine is added.
+
+
+## P1 local incremental boundary
+
+`ReplicaSync` joins the runtime's existing submission/history calls to a separate per-Bot
+`ReplicaStore` (`replica.sqlite`). The SDK owns session.sqlite; its public commit listener
+only queues an asynchronous, ascending entry-ID scan. Source facts/cursors, local intent+
+outbox and incoming deduplication are replica transactions. There is no transaction spanning
+both databases. Fixed SDK request IDs and passive import receipts repair the intervening
+crash windows; only local intents recover execution. Imported provider/task documents are
+never created, and imported entry provenance is forwarded without a new local origin.
+
+Native heads pin bounded public SDK forks; automatic SDK receipts hold only manifest
+references/ID maps. Incoming matching complete prefixes fork and append only their suffix,
+while initial unrelated history materializes once. Agent config is explicitly restored at
+both pin and run, including configure commits after the tail; ProviderDoc/inbox stay initial.
+Head manifests reference durable facts; dependencies gate passive SDK materialization and
+peer-applied positions. Incoming protocol-invalid sources remain retained/blocked separately
+from other runnable heads. This is a local incremental API, with complete local assembly
+cost, not a cloud baseline/cache or a generic transport. P2 installation, P3 device binding,
+P4 transport/cache, P5 UI/merge and P1 epoch/tombstone follow-ups retain their planned scope.

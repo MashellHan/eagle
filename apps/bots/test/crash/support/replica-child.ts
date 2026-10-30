@@ -1,0 +1,79 @@
+import { createInterface } from "node:readline";
+import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
+import { pageSchema } from "../../../src/runtime/pi/syncProtocol.ts";
+import { text } from "../../support/pi.ts";
+import { openReplica } from "../../support/replica.ts";
+
+const lines = createInterface({ input: process.stdin });
+const line = (await lines[Symbol.asyncIterator]().next()).value as string;
+lines.close();
+const input = JSON.parse(line) as {
+  dir: string;
+  mode: string;
+  sharedBotId?: string;
+  page?: unknown;
+};
+const replica = await openReplica(input.dir);
+// Blocking only in this owned child makes the durable commit/reply boundary exact.
+const barrier = (): never => {
+  process.stdout.write("durable-replica-barrier\n");
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+  throw new Error("unreachable owned child barrier");
+};
+if (input.mode === "intent") {
+  const intent = replica.sync.store.intent.bind(replica.sync.store);
+  replica.sync.store.intent = (value) => {
+    intent(value);
+    barrier();
+  };
+}
+if (input.mode === "admission" || input.mode === "output") {
+  replica.harness.subscribeCommits((publication) => {
+    if (
+      publication.changes.some((change) =>
+        input.mode === "admission"
+          ? change.type === "submission" &&
+            change.value.requestId === "crash-local" &&
+            change.value.status === "placed"
+          : change.type === "entry" && change.value.kind === "pi.assistant",
+      )
+    )
+      barrier();
+  });
+}
+if (input.mode === "incoming") {
+  const receive = replica.sync.store.receive.bind(replica.sync.store);
+  replica.sync.store.receive = (page) => {
+    receive(page);
+    barrier();
+  };
+}
+if (input.mode === "materialized") {
+  const materialize = replica.history.materialize.bind(replica.history);
+  replica.history.materialize = async (value, prefix) => {
+    await materialize(value, prefix);
+    return barrier();
+  };
+}
+if (input.page !== undefined) {
+  await replica.command("bind", { sharedBotId: input.sharedBotId });
+  await replica.command("apply", { page: pageSchema.parse(input.page) });
+} else {
+  replica.faux.setResponses([text("one committed original output")]);
+  await (
+    await replica.sync.root(
+      {
+        requestId: "crash-local",
+        text: "one local input",
+        whenBusy: "followUp",
+        trace: "tr_sync_crash",
+      },
+      () =>
+        replica.root.submit(
+          { type: "input", requestId: "crash-local", content: "one local input" },
+          ctx,
+        ),
+    )
+  ).wait(ctx);
+}
+throw new Error("expected durable barrier was not reached");

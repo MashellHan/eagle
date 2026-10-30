@@ -789,3 +789,61 @@ No fragment or unsupported bundle may be claimed as a complete runnable head;
 P0 rejects nested SDK tool history, and retained-but-uninstalled instruction/skill
 resources prevent continuation. There are no new WebSocket commands, shared-device
 signing calls, cloud transport or Swift UI in this slice.
+
+
+### P1 local incremental replica log
+
+The same authenticated `/v1/bots/:id/replica/*` POST boundary adds `bind`, `pull`,
+`apply`, and `status {}`. Ordinary HTTP/WebSocket limits and client behavior do not
+change. `bind {sharedBotId: UUID}` associates an empty local Bot directory with the
+explicit shared identity; it cannot reassign populated state. There is no name matching.
+
+`pull {after,limit?,source?}` selects a stream `{replicaId,epoch}` (default local source),
+up to 128 events and **8 MiB of UTF-8 JSON including the complete apply `{page}` wrapper**.
+The [normative page](../../fixtures/bots-sync/page.v1.json) contains version1, sharedBotId,
+source, advertised `range {from,to}`, events `{seq,body}`, `nextAfter` and `hasMore`.
+The position advances only for events actually returned. Single-event overflow is an
+explicit refusal; it leaves the source event/gap intact. Forwarding keeps the original
+source/epoch/seq, including A→B→C duplicates. SDK cursors are not wire positions.
+
+Bodies are immutable `entry`, `resource`, `head` or passive `run` facts. Entry facts
+retain original replica/conversation/entry/task provenance, full kind/model/data/edit
+content and dependency references. Their ref is SHA-256 of JSON.stringify({origin});
+resource refs hash JSON.stringify({resource}). Automatic SDK receipts reference these manifests and preserve a bounded fork/ID map;
+they do not embed the old bodies. A validated matching materialized prefix can be forked
+and only the new suffix appended. Explicit P0 carriers keep their full-bundle API.
+Head manifests carry the v1 source/parents/
+agent metadata and ordered entry aliases `{id,conversationId,byTaskId?,head?,ref,targets?}`
+plus resource refs. The parallel targets array must exactly match edits. Reconstructed
+head digests use the P0 validated-envelope encoding; model/data insertion order remains
+semantic. New heads reference old fact bodies instead of retransmitting them in full.
+
+`apply {page}` first commits deduplicated incoming events, then materializes complete
+heads with public SDK passive append. A foreign `run` fact is historical evidence only;
+it never enters local intents, a task queue or provider session. Same stream/sequence or
+original fact ID with different content is refused. Missing dependencies wait without
+advancing applied; semantic protocol errors retain a blocked source position and return
+invalid_command. That source cannot acquire an applied ACK for the bad sequence or block
+other complete local heads. Unverified heads are never globally indexed.
+
+A complete explicit P0 carrier remains self-contained when its `parents` only names
+ancestor summaries; separate parent receipts are unnecessary for its run or re-export.
+After upgrade, a selected complete P0 SDK receipt is validated/indexed on demand without
+re-import, warming export or passive execution. Missing causal parents/facts in a new
+incremental manifest still prevent applied acknowledgment. A validated fixed head also
+bounds nonterminal ancestor checks for its independent continuation; all-ancestor nested
+tool refusal remains unchanged.
+
+`status {}` reports binding, each stream's known maximum, contiguous received/applied
+positions, actual retained intervals, optional `{error:{seq,code:"invalid_history"}}`,
+and validated materialized heads. A received maximum is not an applied receipt. No field
+claims cloud-cached or physical delivery. Epoch replacement/backup rotation, retention
+pruning and directory tombstones remain planned.
+
+Both ordinary local input and `run {head,requestId,text}` persist a fixed local intent
+and source event in one replica transaction before same-ID SDK admission. Retries fix
+mode/head/text/whenBusy, including an original null root head. Recovery uses only this
+local ledger and SDK's idempotent admission; 8000 code points and 8..64 legal ID characters
+remain unchanged. P0 public carrier limits remain enforced while internal reconstructed
+histories can exceed one page. No device, cloud, Swift or automatic peer transport is
+introduced by these local API methods.

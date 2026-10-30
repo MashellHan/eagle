@@ -47,6 +47,7 @@ import { FailureClassifier, type Minted } from "./classify.ts";
 import { entryMessageId } from "./convert.ts";
 import { HistoryReplica } from "./HistoryReplica.ts";
 import { convertSubmission, EventMapper } from "./mapEvents.ts";
+import { ReplicaSync } from "./ReplicaSync.ts";
 
 const Events = {
   openStart: declareEvent("runtime.open.start"),
@@ -231,6 +232,37 @@ export class PiDurableRuntime implements RuntimePort {
         },
       });
       await root.configure({ extensions: installed }, BACKGROUND_CONTEXT);
+      const history = new HistoryReplica(harness, root.id, spec.id, workspace.root, registry);
+      let replicaFailureEpisode = 0;
+      const replica = new ReplicaSync(
+        join(spec.dir, "replica.sqlite"),
+        spec.id,
+        await history.replicaId(),
+        harness,
+        root.id,
+        history,
+        (cause) => {
+          const known = classifier.sessionEpisode();
+          const failure =
+            cause instanceof ClassifiedFailure
+              ? cause.failure
+              : (
+                  known ??
+                  classifier.classify(
+                    `replica:scan:${++replicaFailureEpisode}`,
+                    "storage_failed",
+                    "runtime",
+                  )
+                ).classification.failure;
+          log.emit(known === undefined ? "error" : "warn", "runtime", Events.replicaFail, {
+            trace: spec.trace,
+            botId: spec.id,
+            failure,
+            origin: known === undefined,
+          });
+        },
+      );
+      await replica.start();
       handle = new PiRuntimeHandle({
         spec,
         harness,
@@ -238,7 +270,7 @@ export class PiDurableRuntime implements RuntimePort {
         classifier,
         options: this.#options,
         registry,
-        replica: new HistoryReplica(harness, root.id, spec.id, workspace.root, registry),
+        replica,
       });
       handle.attachTaskGraph(await harness.taskGraph(BACKGROUND_CONTEXT));
       harness.closed.then((end) => handle?.sessionEnd(end));
@@ -288,11 +320,11 @@ type HandleOptions = {
   readonly classifier: FailureClassifier;
   readonly options: PiRuntimeOptions;
   readonly registry: Registry;
-  readonly replica: HistoryReplica;
+  readonly replica: ReplicaSync;
 };
 
 class PiRuntimeHandle implements RuntimeHandle {
-  readonly #replica: HistoryReplica;
+  readonly #replica: ReplicaSync;
   readonly #registry: Registry;
   #toolGroups: readonly string[];
 
@@ -438,14 +470,16 @@ class PiRuntimeHandle implements RuntimeHandle {
     });
     try {
       const root = await this.#harness.root(BACKGROUND_CONTEXT);
-      const admitted = await root.submit(
-        {
-          type: "input",
-          content: input.text,
-          requestId: input.requestId,
-          whenBusy: input.whenBusy,
-        },
-        BACKGROUND_CONTEXT,
+      const admitted = await this.#replica.root(input, () =>
+        root.submit(
+          {
+            type: "input",
+            content: input.text,
+            requestId: input.requestId,
+            whenBusy: input.whenBusy,
+          },
+          BACKGROUND_CONTEXT,
+        ),
       );
       // F24: admission starts the run, so the record read here can already be `done`.
       const record = await admitted.status(BACKGROUND_CONTEXT);
@@ -760,7 +794,13 @@ class PiRuntimeHandle implements RuntimeHandle {
   async close(trace: string, deadlineMs: number): Promise<"closed" | "timeout"> {
     const log = this.#options.log;
     log.emit("info", "runtime", Events.closeStart, { trace, botId: this.#spec.id });
-    this.#closing ??= this.#harness.close(BACKGROUND_CONTEXT);
+    this.#closing ??= (async () => {
+      try {
+        await this.#replica.close();
+      } finally {
+        await this.#harness.close(BACKGROUND_CONTEXT);
+      }
+    })();
     const closing = this.#closing;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<"timeout">((resolve) => {

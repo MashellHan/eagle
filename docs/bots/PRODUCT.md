@@ -297,3 +297,15 @@ its full results are not transcript entries. Saved-but-uninstalled instructions/
 resources block continuation; installing/loading complete resources remains P2.
 The current production tools do not expose nested execution. See RUNTIME/TESTING for
 actual local evidence; physical multi-Mac and P1–P6 remain unverified/planned.
+
+
+## P1 first local incremental slice
+
+A Bot can explicitly associate an empty local replica with a shared Bot UUID, pull/apply
+new committed history and run from a complete locally materialized head without the
+source online. Each machine owns its run intents; received input/run facts are passive.
+Concurrent continuations remain distinct heads, including after restart and forwarding.
+Missing or invalid source data does not claim applied status or prevent another complete
+local head from running. The implementation is currently a local authenticated API, not
+an App sync workflow or physical multi-Mac acceptance; resource installation and device/
+network/UI stages remain planned.

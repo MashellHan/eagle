@@ -11,6 +11,7 @@ import { WebSocket } from "ws";
 import { readConfig } from "../src/config.ts";
 import { type DaemonHandle, startDaemon } from "../src/main.ts";
 import { type HistoryBundle, hash, validateBundle } from "../src/runtime/pi/HistoryReplica.ts";
+import { pageSchema } from "../src/runtime/pi/syncProtocol.ts";
 
 type ScriptedReply =
   | { readonly text: string }
@@ -55,6 +56,7 @@ type CaseFile = {
 };
 
 type Step =
+  | { readonly kind: "replicaSync"; readonly text: string; readonly contains: string }
   | { readonly kind: "replicaRun"; readonly text: string; readonly contains: string }
   | { readonly kind: "chat"; readonly text: string; readonly timeoutMs?: number }
   | {
@@ -498,6 +500,66 @@ const runCase = async (
         "timeoutMs" in step && step.timeoutMs !== undefined ? step.timeoutMs : left;
       if (stepBudget <= 0) failure(`case budget exhausted at a ${step.kind} step`);
       switch (step.kind) {
+        case "replicaSync": {
+          const call = async (target: string, method: string, body: unknown) => {
+            const response = await api(
+              running.port,
+              token2,
+              `/v1/bots/${target}/replica/${method}`,
+              { method: "POST", body },
+            );
+            if (response.status !== 200)
+              failure(`incremental ${method} answered ${response.status}`);
+            return response.json();
+          };
+          const created = await api(running.port, token2, "/v1/bots", {
+            method: "POST",
+            body: { title: "incremental passive peer" },
+          });
+          if (created.status !== 201) failure("could not create incremental peer");
+          const target = ((await created.json()) as { bot: { id: string } }).bot.id;
+          const binding = (await call(botId, "status", {})) as { sharedBotId: string };
+          await call(target, "bind", { sharedBotId: binding.sharedBotId });
+          const before = model.requests.length;
+          let after = 0;
+          let head = "";
+          let hasMore = true;
+          do {
+            const page = pageSchema.parse(await call(botId, "pull", { after, limit: 128 }));
+            await call(target, "apply", { page });
+            await call(target, "apply", { page });
+            for (const event of page.events) if (event.body.kind === "head") head = event.body.head;
+            after = page.nextAfter;
+            hasMore = page.hasMore;
+          } while (hasMore);
+          if (model.requests.length !== before || head.length !== 64)
+            failure("incremental receive executed or failed to materialize");
+          const requestId = `incremental_eval_${++requestSeq}`;
+          const params = { head, requestId, text: step.text };
+          await call(target, "run", params);
+          await waitUntil(
+            async () =>
+              ((await call(target, "status", { requestId })) as { submission?: { status: string } })
+                .submission?.status === "done",
+            "incremental local run",
+            stepBudget,
+          );
+          await call(target, "run", params);
+          if (model.requests.length !== before + 1) failure("incremental run did not execute once");
+          const output = pageSchema.parse(await call(target, "pull", { after: 0, limit: 128 }));
+          if (
+            !output.events.some(
+              (event) =>
+                event.body.kind === "entry" &&
+                event.body.content.kind === "pi.assistant" &&
+                JSON.stringify(event.body.content.model).includes(step.contains),
+            )
+          )
+            failure("incremental output not in durable outbox");
+          const empty = pageSchema.parse(await call(botId, "pull", { after, limit: 128 }));
+          if (empty.events.length !== 0) failure("old source history was published again");
+          break;
+        }
         case "replicaRun": {
           const original = validateBundle(
             JSON.parse(

@@ -80,7 +80,7 @@ export const MAX_REPLICA_BODY_BYTES = 8 * 1024 * 1024;
 export interface RuntimeHandle {
   /** Local P0 history handoff; passive import is distinct from a new local run. */
   replica?(command: {
-    readonly method: "export" | "import" | "run" | "status";
+    readonly method: "export" | "import" | "run" | "status" | "bind" | "pull" | "apply";
     readonly params: unknown;
     readonly trace: string;
   }): Promise<unknown>;
