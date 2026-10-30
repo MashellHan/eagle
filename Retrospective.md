@@ -841,3 +841,13 @@ a fixed filename and omit the duplicate build environment marker. Versioned
 service names, old-bundle path parsing, update preparation and exact peer signing
 requirements remain. The prior failed trials are retained above; local packaging
 tests alone do not establish that the simplified real upgrades work.
+
+That combined simplification passed both complete installed upgrades at `d121736`.
+The second kept the helper path fixed while changing its SHA/CDHash, automatically
+reached local readiness in 12.70 seconds and cloud online in 13.48 seconds, and
+left the old job absent and the new job running once without exit. The first took
+11.55/12.51 seconds. Installed local and physical peer execution/result retrieval
+also passed. This supports deleting those three redundant mechanisms while
+retaining versioned service identities and update preparation. Identity, Raven,
+token and catalogue hashes matched. Both recorded history files exist; the old
+size baseline was not refreshed, so it cannot prove byte-identical histories.

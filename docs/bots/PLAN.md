@@ -192,7 +192,19 @@ to clear the already-failed legacy job and is not counted as automatic upgrade
 acceptance. Identity, Raven, token and catalogue hashes matched, both history files
 remained, and installed local execution plus physical MacMini-2 to MacMini 1
 execution/query by original operation ID passed again. CI SDK compatibility still
-requires the new GitHub run after the normal push gates.
+required a new GitHub run; both Check jobs subsequently passed at `cb55083`,
+including the older SDK, native focus, formatting and coverage gates.
+
+The scope cleanup at `d121736` removes duplicate website device bindings, the
+external registrar subprocess, the helper filename suffix and a redundant build
+environment marker. The standalone service, versioned service names and strict
+signing checks remain. Both complete simplified upgrades passed without manual
+recovery: local/cloud readiness took 11.55/12.51 seconds, then 12.70/13.48 seconds.
+The second changed the helper SHA/CDHash at the same executable path. Installed
+local and physical MacMini-2 to MacMini 1 commands, including an original-ID result
+query, passed. Identity, Raven, token and catalogue hashes matched; both recorded
+history files exist, without a fresh byte-for-byte history comparison. Cleanup
+push gates and its own GitHub run remain pending.
 
 The installed App's menu opens the actual resizable Settings window. Pairing is
 above My Devices and always visible; resizing survives closing/reopening, and an

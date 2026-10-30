@@ -2466,3 +2466,16 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   14:06. No new UI implementation, credential writes or live Herdr collection.
   Next hop: two complete signed upgrades proving the simplified startup, then
   normal push gates and comment monitoring. Source cleanup is not installed proof.
+
+## 2026-10-30 14:15 +0800 — Simplified installed upgrades accepted
+
+- The installed `d121736` runtime passed two complete upgrades without manual
+  recovery. Local/cloud readiness was 11.55/12.51 seconds, then 12.70/13.48 seconds;
+  the second changed helper bytes/signature at the same executable path. Old job
+  absent; new job one run, never exited. Strict authenticated readiness passed.
+- Installed local execution and physical MacMini-2 to MacMini 1 execution plus
+  original-ID result retrieval passed. Identity, Raven, token and catalogue hashes
+  match; both recorded history files exist, without a fresh byte comparison.
+- Astra lead/reviewer closed the bounded source reviews. No further UI change,
+  live Herdr collection, D1 write or deployment. PR has no comments/reviews.
+  Next: normal push gates, this head's GitHub CI and ongoing comment monitoring.
