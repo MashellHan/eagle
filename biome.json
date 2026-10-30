@@ -13,7 +13,8 @@
       "!**/.wrangler",
       "!test-results",
       "!playwright-report",
-      "!.local"
+      "!.local",
+      "!**/.local"
     ]
   },
   "formatter": {
