@@ -699,6 +699,15 @@ when combined with distinct build identity. Detailed observations remain in
 `simplified-upgrade/` under the same evidence root; the OS cache mechanism is still
 unproven, and release signing requirements are unchanged.
 
+Restoring that exact combination at `67a0029` also failed the 11:48:25 upgrade:
+the registrar completed and SM submission succeeded, but the helper never became
+usable and launchd again reported `EX_CONFIG` 78. The successful `fa1d1cd` run
+therefore cannot certify the combination as a reliable fix. The next narrow change
+recreates the `SMAppService` instance after bundle refresh, rather than registering
+through the instance constructed before that refresh. Whether that earlier object
+retained stale registration metadata remains a hypothesis; the installed upgrade
+is again the acceptance check. Evidence: `combined-upgrade/`.
+
 ## 2026-10-30 — Cron acceptance observed admission before completion
 
 After integrating upstream `d69359b`, the complete Bots evaluation suite reported

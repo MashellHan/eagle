@@ -12,12 +12,14 @@ protocol DeviceBackgroundService: Sendable {
 
 /// ServiceManagement and LaunchServices may block; keep their IPC off the UI actor.
 actor SystemDeviceBackgroundService: DeviceBackgroundService {
-  private let service: SMAppService
+  private var service: SMAppService
+  private let plistName: String
   private let bundle: URL
   private let isCandidate: Bool
   private let candidateRegistration = DeviceCandidateRegistration()
 
   init(plistName: String, bundle: URL, isCandidate: Bool = false) {
+    self.plistName = plistName
     service = SMAppService.agent(plistName: plistName)
     self.bundle = bundle
     self.isCandidate = isCandidate
@@ -31,6 +33,8 @@ actor SystemDeviceBackgroundService: DeviceBackgroundService {
       throw DevicePortError("background_registration_failed")
     }
     try Task.checkCancellation()
+    // Bind registration to the refreshed bundle instead of reusing its earlier SM object.
+    service = SMAppService.agent(plistName: plistName)
     try service.register()
   }
   func unregister() async throws { try await service.unregister() }
