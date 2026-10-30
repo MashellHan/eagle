@@ -98,7 +98,10 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
     CFBundleName: name,
     CFBundleDisplayName: name,
     CFBundleShortVersionString: version,
-    CFBundleVersion: version,
+    // Candidate rebuilds have different signatures even when the release version is unchanged.
+    // Give ServiceManagement a distinct parent build instead of reusing an old launch constraint.
+    CFBundleVersion:
+      profile === "device-candidate" ? String(Date.now()) : version,
   }))
     info = info.replace(
       new RegExp(`(<key>${key}</key>\\s*)<string>[^<]*</string>`),

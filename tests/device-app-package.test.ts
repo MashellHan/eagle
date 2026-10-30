@@ -133,6 +133,28 @@ test("candidate assembly honors and normalizes an explicit HTTPS origin while re
   }
 });
 
+test("rebuilding a candidate changes its build identity while keeping the release version", () => {
+  const f = fixture();
+  const version = JSON.parse(readFileSync("package.json", "utf8")).version;
+  const readVersion = (key: string) => {
+    const info = readFileSync(join(f.app, "Contents/Info.plist"), "utf8");
+    return info.match(
+      new RegExp(`<key>${key}</key>\\s*<string>([^<]+)</string>`),
+    )?.[1];
+  };
+  try {
+    assert.equal(prepare(f).status, 0);
+    const first = readVersion("CFBundleVersion");
+    assert.equal(readVersion("CFBundleShortVersionString"), version);
+    rmSync(f.app, { recursive: true });
+    assert.equal(prepare(f).status, 0);
+    assert.notEqual(readVersion("CFBundleVersion"), first);
+    assert.equal(readVersion("CFBundleShortVersionString"), version);
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
 test("candidate assembly retains localhost when the CLI service URL is empty", () => {
   const f = fixture();
   try {
