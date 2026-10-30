@@ -923,3 +923,20 @@ Runtime open and tool-group reconfiguration retain the resource extension alongs
 selected tool extensions; an unselected legacy round renders no resource section. This
 preserves the active version after tool children and crash reopen without changing queue
 modes, failure policy, restart limits or task recovery.
+
+
+## First package on a fresh empty root
+
+Resource-only export/import uses immutable resource facts plus one ordered resource_manifest
+fact in replica.sqlite, with existing source events/outbox and no SDK history receipt,
+conversation fork, user/model entry, submission or queue work. A complete manifest is the
+first resourceHead resolution path; existing ready history heads remain the fallback.
+The installer accepts resources alone and the original per-input selection, section and
+startup preflight remain shared with ordinary root admission. No local cwd, model, credentials
+or permissions are supplied by the carrier. Re-export is content-stable across replicas.
+
+Only a real local input installs/selects the package and creates the first user turn.
+Missing refs are unapplied gaps; corrupt packages and installation I/O refuse admission
+under the existing not_admitted/rejected-intent boundary. Active/Inbox/true pending versions
+still preflight before any submit/global resume; actual SDK duplicates keep their established
+shortcut. Full bodies remain immutable facts rather than being copied into run intents.

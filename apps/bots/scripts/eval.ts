@@ -16,7 +16,11 @@ import {
   resourceSchema,
   validateBundle,
 } from "../src/runtime/pi/HistoryReplica.ts";
-import { pageSchema } from "../src/runtime/pi/syncProtocol.ts";
+import {
+  pageSchema,
+  type ResourceCarrier,
+  validateResourceCarrier,
+} from "../src/runtime/pi/syncProtocol.ts";
 
 type ScriptedReply =
   | { readonly text: string }
@@ -68,6 +72,7 @@ type Step =
       readonly contains: string;
       readonly resources?: true;
       readonly root?: true;
+      readonly fresh?: true;
     }
   | { readonly kind: "chat"; readonly text: string; readonly timeoutMs?: number }
   | {
@@ -584,34 +589,6 @@ const runCase = async (
           break;
         }
         case "replicaRun": {
-          const original = validateBundle(
-            JSON.parse(
-              await readFile(
-                new URL("../../../fixtures/bots-sync/history.v1.json", import.meta.url),
-                "utf8",
-              ),
-            ),
-          );
-          const { head: _sourceHead, ...payload } = original;
-          const localPayload = {
-            ...payload,
-            agent: { ...payload.agent, model: { provider: "magpie", modelId: "eval-model" } },
-            ...(step.resources === true
-              ? {
-                  resources: resourceSchema
-                    .array()
-                    .parse(
-                      JSON.parse(
-                        await readFile(
-                          new URL("../../../fixtures/bots-sync/resources.v1.json", import.meta.url),
-                          "utf8",
-                        ),
-                      ),
-                    ),
-                }
-              : {}),
-          };
-          const bundle = { ...localPayload, head: hash(localPayload) };
           const path = `/v1/bots/${botId}/replica`;
           const call = async (method: string, body: unknown) => {
             const response = await api(running.port, token2, `${path}/${method}`, {
@@ -621,6 +598,68 @@ const runCase = async (
             if (response.status !== 200) failure(`replica ${method} answered ${response.status}`);
             return response.json();
           };
+          let bundle: HistoryBundle | ResourceCarrier;
+          if (step.fresh === true) {
+            if (step.root !== true || step.resources !== true)
+              failure("fresh resources require ordinary root selection");
+            if (view.rows.length !== 0 || model.requests.length !== 0)
+              failure("fresh resource fixture already has chat history or provider work");
+            const status = (await call("status", {})) as { sharedBotId: string; heads: unknown[] };
+            if (status.heads.length !== 0) failure("fresh root already has history heads");
+            await call("bind", { sharedBotId: status.sharedBotId });
+            const resources = resourceSchema
+              .array()
+              .parse(
+                JSON.parse(
+                  await readFile(
+                    new URL("../../../fixtures/bots-sync/resources.v1.json", import.meta.url),
+                    "utf8",
+                  ),
+                ),
+              );
+            for (const resource of resources) {
+              const path = join(root, "bots", botId, "workspace", resource.name);
+              await mkdir(dirname(path), { recursive: true });
+              await writeFile(path, Buffer.from(resource.base64, "base64"));
+              if (!(await readFile(path)).equals(Buffer.from(resource.base64, "base64")))
+                failure("fresh original file bytes changed");
+            }
+            bundle = validateResourceCarrier(
+              await call("export", { kind: "resources", resources }),
+            );
+          } else {
+            const original = validateBundle(
+              JSON.parse(
+                await readFile(
+                  new URL("../../../fixtures/bots-sync/history.v1.json", import.meta.url),
+                  "utf8",
+                ),
+              ),
+            );
+            const { head: _sourceHead, ...payload } = original;
+            const localPayload = {
+              ...payload,
+              agent: { ...payload.agent, model: { provider: "magpie", modelId: "eval-model" } },
+              ...(step.resources === true
+                ? {
+                    resources: resourceSchema
+                      .array()
+                      .parse(
+                        JSON.parse(
+                          await readFile(
+                            new URL(
+                              "../../../fixtures/bots-sync/resources.v1.json",
+                              import.meta.url,
+                            ),
+                            "utf8",
+                          ),
+                        ),
+                      ),
+                  }
+                : {}),
+            };
+            bundle = { ...localPayload, head: hash(localPayload) };
+          }
           const before = model.requests.length;
           await call("import", { bundle });
           await call("import", { bundle });
@@ -628,9 +667,11 @@ const runCase = async (
             items: { id: number; head: string }[];
           };
           if (
-            !inventory.items.some(
-              (item) => item.head === bundle.head && Number.isSafeInteger(item.id),
-            )
+            step.fresh === true
+              ? inventory.items.length !== 0
+              : !inventory.items.some(
+                  (item) => item.head === bundle.head && Number.isSafeInteger(item.id),
+                )
           )
             failure("saved full carrier missing from recovery inventory");
           if (model.requests.length !== before)

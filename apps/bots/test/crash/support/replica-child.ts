@@ -58,6 +58,8 @@ if (input.mode === "materialized") {
   };
 }
 if (input.mode === "root-resource-intent" || input.mode === "root-resource-queued") {
+  if (input.sharedBotId !== undefined)
+    await replica.command("bind", { sharedBotId: input.sharedBotId });
   const first = (await replica.command("import", { bundle: input.bundle })) as { head: string };
   const second = (await replica.command("import", { bundle: input.secondBundle })) as {
     head: string;

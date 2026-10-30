@@ -927,8 +927,8 @@ selection is introduced. Existing no-resource bundle encoding/head digests stay 
 
 ## Ordinary root resource selection (P2 local slice)
 
-`send` adds optional `resourceHead`, a lowercase SHA256 digest of a locally ready history
-head. Invocation/SubmitInput carry the same selector. It selects only that head's complete
+`send` adds optional `resourceHead`, a lowercase SHA256 digest of a complete local resource
+manifest or locally ready history head. Invocation/SubmitInput carry the same selector. It selects only that head's complete
 resource manifest, retaining this root's history, agent/model, local cwd and credentials.
 No selector on a new ID means legacy unselected resources. A same-ID retry omitting the
 selector reuses its durable choice; an explicitly different selector is a binding conflict.
@@ -939,8 +939,7 @@ this binding before returning a known SDK admission. A matching retry keeps the 
 choice and can retry a refused input once its original mode permits admission.
 The ordinary frame/text/queue limits and replica page limits do not change. Local edits
 are captured through existing export{resources} as a new immutable head; no global latest.
-This slice requires an existing ready head; first package selection on an empty Bot remains
-planned, without synthetic history. Resource metadata never becomes user display content.
+Resource metadata never becomes user display content.
 
 For local edits while the root is busy, replica export accepts `{head, resources}` with
 a complete fixed ready head and a complete ordered replacement resource manifest. It
@@ -950,3 +949,24 @@ The same base and ordered files re-export deterministically. `head+branch`, unkn
 incomplete bases are refused. Existing compact facts and complete legacy P0 receipts
 are supported; the explicit full carrier retains its 8MiB limit. New facts/manifests
 publish under the local source, preserving the original entry/task origins.
+
+
+### First resources on an empty Bot
+
+Replica export accepts strict `{kind:"resources",resources:[...]}` for a nonempty complete
+ordered package, or `{kind:"resources",head}` to re-export it. The complete carrier is
+`{version:1,kind:"resources",head,resources}`. It contains no history, Agent, source runtime
+or local device binding. Its head is SHA256 of `{kind:"resource_manifest",resources:[refs]}`;
+each ordered ref is the existing resource fact key. Resource bytes retain their original
+base64/SHA integrity and the existing 8MiB explicit-carrier limit. Branch/history selectors
+and replacement resources cannot be combined with resource-only re-export.
+
+Import accepts this explicitly tagged carrier through the existing `{bundle}` envelope.
+Capture publishes resource facts followed by one immutable `resource_manifest` fact on
+the bound local source. Passive import stores the same complete facts; incremental apply
+cannot apply a manifest until every ordered ref resolves to a valid resource fact. Repeated
+capture/import and duplicate/reordered pages are idempotent and never admit work. Bind an
+empty replica to its intended sharedBotId before capture/outbox. Resource-only heads select
+packages for ordinary send/Invocation; they cannot be used as history run/fork parents or
+weaken P0 entries.min(1), tail or missing-history-dependency checks. Empty/malformed carriers
+are invalid_command. Existing history formats, caps, tombstones and queue rules are unchanged.

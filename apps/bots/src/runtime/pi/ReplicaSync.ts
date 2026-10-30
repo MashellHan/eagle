@@ -22,6 +22,7 @@ import {
   hash,
   validateBundle,
   validateHistory,
+  validateResource,
 } from "./HistoryReplica.ts";
 import {
   inputResources,
@@ -40,11 +41,15 @@ import {
   type Manifest,
   pageSchema,
   parse,
+  type ResourceManifest,
+  resourceExportSchema,
+  resourceManifest,
   runSchema,
   type Source,
   sourceKey,
   sourceSchema,
   syncReject,
+  validateResourceCarrier,
 } from "./syncProtocol.ts";
 
 type Command = Parameters<NonNullable<RuntimeHandle["replica"]>>[0];
@@ -185,7 +190,27 @@ export class ReplicaSync {
     }
   }
 
-  #resourceBundle(head: string): HistoryBundle {
+  #manifestResources(manifest: ResourceManifest): HistoryBundle["resources"] | undefined {
+    const resources: HistoryBundle["resources"] = [];
+    for (const ref of manifest.resources) {
+      const fact = this.store.fact(ref);
+      if (fact === undefined) return undefined;
+      if (fact.kind !== "resource" || keyOf(fact) !== ref)
+        return syncReject("invalid resource manifest reference");
+      validateResource(fact.resource);
+      resources.push(fact.resource);
+    }
+    return resources;
+  }
+
+  #resourceBundle(head: string): Pick<HistoryBundle, "resources"> {
+    const fact = this.store.fact(head);
+    if (fact?.kind === "resource_manifest") {
+      if (keyOf(fact) !== head) return syncReject("resource manifest digest mismatch");
+      return {
+        resources: this.#manifestResources(fact) ?? syncReject("incomplete resource manifest"),
+      };
+    }
     if (!this.store.ready(head)) return syncReject("resource head is not ready");
     const manifest = this.store.head(head) ?? syncReject("missing resource manifest");
     return this.#bundle(manifest) ?? syncReject("incomplete resource manifest");
@@ -387,7 +412,30 @@ export class ReplicaSync {
           return this.#run(input);
         }
         case "export": {
-          const input = parse(exportSchema, command.params);
+          const input = parse(z.union([resourceExportSchema, exportSchema]), command.params);
+          if ("kind" in input) {
+            if ("head" in input) {
+              const manifest = this.store.fact(input.head);
+              if (manifest?.kind !== "resource_manifest")
+                return syncReject("missing resource manifest");
+              return validateResourceCarrier({
+                version: 1,
+                kind: "resources",
+                head: input.head,
+                resources:
+                  this.#manifestResources(manifest) ?? syncReject("incomplete resource manifest"),
+              });
+            }
+            const manifest = resourceManifest(input.resources);
+            const carrier = validateResourceCarrier({
+              version: 1,
+              kind: "resources",
+              head: keyOf(manifest),
+              resources: input.resources,
+            });
+            this.#indexResources(carrier.resources, true);
+            return carrier;
+          }
           let bundle: HistoryBundle;
           if (input.head !== undefined) {
             if (input.branch !== undefined) syncReject("select one immutable head");
@@ -421,6 +469,16 @@ export class ReplicaSync {
         }
         case "import": {
           const { bundle: value } = parse(z.strictObject({ bundle: z.unknown() }), command.params);
+          if (
+            value !== null &&
+            typeof value === "object" &&
+            "kind" in value &&
+            value.kind === "resources"
+          ) {
+            const carrier = validateResourceCarrier(value);
+            this.#indexResources(carrier.resources, false);
+            return { head: carrier.head };
+          }
           const bundle = validateBundle(value);
           const result = await this.#history.command(command);
           this.#index(bundle, false);
@@ -486,6 +544,19 @@ export class ReplicaSync {
       },
       dependencies,
     };
+  }
+
+  #indexResources(resources: HistoryBundle["resources"], publish: boolean): void {
+    this.store.transaction(() => {
+      for (const resource of resources) {
+        const fact = { kind: "resource" as const, resource };
+        const ref = this.store.putFact(fact);
+        if (publish) this.store.append(`resource:${ref}`, fact);
+      }
+      const manifest = resourceManifest(resources);
+      const ref = this.store.putFact(manifest);
+      if (publish) this.store.append(`resource_manifest:${ref}`, manifest);
+    });
   }
 
   #header(entry: HistoryBundle["entries"][number], ref: string): Header {
@@ -663,7 +734,13 @@ export class ReplicaSync {
               body.dependencies.some((ref) => this.store.fact(ref) === undefined)
             )
               break;
-            if (body.kind === "entry" || body.kind === "resource")
+            if (body.kind === "resource_manifest") {
+              if (this.#manifestResources(body) === undefined) break;
+              this.store.transaction(() => {
+                this.store.putFact(body);
+                this.store.applied(source, next);
+              });
+            } else if (body.kind === "entry" || body.kind === "resource")
               this.store.transaction(() => {
                 this.store.putFact(body);
                 this.store.applied(source, next);

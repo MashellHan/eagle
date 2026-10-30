@@ -6,7 +6,14 @@ import {
   MAX_REPLICA_BODY_BYTES,
 } from "../../core/RuntimePort.ts";
 import { FailureClassifier } from "./classify.ts";
-import { bundleSchema, entrySchema, hash, originSchema, resourceSchema } from "./HistoryReplica.ts";
+import {
+  bundleSchema,
+  entrySchema,
+  hash,
+  originSchema,
+  resourceSchema,
+  validateResource,
+} from "./HistoryReplica.ts";
 
 export const integer = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const digest = z.string().regex(/^[a-f0-9]{64}$/);
@@ -38,7 +45,25 @@ export const resourceFactSchema = z.strictObject({
   kind: z.literal("resource"),
   resource: resourceSchema,
 });
-export const factSchema = z.discriminatedUnion("kind", [entryFactSchema, resourceFactSchema]);
+export const resourceManifestSchema = z.strictObject({
+  kind: z.literal("resource_manifest"),
+  resources: z.array(digest).min(1),
+});
+export const resourceCarrierSchema = z.strictObject({
+  version: z.literal(1),
+  kind: z.literal("resources"),
+  head: digest,
+  resources: z.array(resourceSchema).min(1),
+});
+export const resourceExportSchema = z.union([
+  z.strictObject({ kind: z.literal("resources"), resources: z.array(resourceSchema).min(1) }),
+  z.strictObject({ kind: z.literal("resources"), head: digest }),
+]);
+export const factSchema = z.discriminatedUnion("kind", [
+  entryFactSchema,
+  resourceFactSchema,
+  resourceManifestSchema,
+]);
 export const headerSchema = entrySchema
   .pick({ id: true, conversationId: true, byTaskId: true, head: true })
   .extend({
@@ -66,6 +91,7 @@ export const intentSchema = z.strictObject({
 export const bodySchema = z.discriminatedUnion("kind", [
   entryFactSchema,
   resourceFactSchema,
+  resourceManifestSchema,
   manifestSchema,
   intentSchema,
 ]);
@@ -82,13 +108,34 @@ export const pageSchema = z.strictObject({
 export type Source = z.infer<typeof sourceSchema>;
 export type Fact = z.infer<typeof factSchema>;
 export type EntryFact = z.infer<typeof entryFactSchema>;
+export type ResourceManifest = z.infer<typeof resourceManifestSchema>;
+export type ResourceCarrier = z.infer<typeof resourceCarrierSchema>;
 export type Header = z.infer<typeof headerSchema>;
 export type Manifest = z.infer<typeof manifestSchema>;
 export type Body = z.infer<typeof bodySchema>;
 export type Intent = z.infer<typeof intentSchema>;
 export type Page = z.infer<typeof pageSchema>;
 export const keyOf = (fact: Fact): string =>
-  hash(fact.kind === "entry" ? { origin: fact.origin } : { resource: fact.resource });
+  hash(
+    fact.kind === "entry"
+      ? { origin: fact.origin }
+      : fact.kind === "resource"
+        ? { resource: fact.resource }
+        : fact,
+  );
+export const resourceManifest = (resources: ResourceCarrier["resources"]): ResourceManifest => ({
+  kind: "resource_manifest",
+  resources: resources.map((resource) => keyOf({ kind: "resource", resource })),
+});
+export const validateResourceCarrier = (value: unknown): ResourceCarrier => {
+  if (Buffer.byteLength(JSON.stringify(value)) > MAX_REPLICA_BODY_BYTES - 32)
+    syncReject("resource carrier exceeds local handoff limit");
+  const carrier = parse(resourceCarrierSchema, value);
+  for (const resource of carrier.resources) validateResource(resource);
+  if (keyOf(resourceManifest(carrier.resources)) !== carrier.head)
+    syncReject("resource carrier digest mismatch");
+  return carrier;
+};
 export const sourceKey = (source: Source): string =>
   JSON.stringify({ replicaId: source.replicaId, epoch: source.epoch });
 export const syncReject = (message: string): never => {

@@ -19,18 +19,15 @@ discovery. Those additions are not implemented or enabled by this plan update.
 [SYNC.md](SYNC.md)，设备行为见 [DEVICE-PAIRING.md](DEVICE-PAIRING.md)。
 P0 本地闭环已推 `c073ea19`；P1 首个本地增量切片已验证并正常推送 `c8d8fd4`；
 P1 恢复身份切片已正常推送 fdb8973；目录 tombstone 已验收并正常推送 60fa5e2；
-P2 fixed-head完整资源首片已正常推送696f649；普通root聊天/排队/编辑版本选择本地切片in progress，P3–P6 planned。
-下方设备阶段和历史验收记录保留其原有范围。
-本片最新本地候选：普通root同一SDK Inbox已接resourceHead和原intent/outbox固定引用，busy本地编辑由
-固定base+有序manifest派生；双daemon/真实工具、队列规则、compaction child/handOver、SIGKILL恢复均有实证。
-旧19d9929候选的786/786等门禁保留原scope。Review两项窄修已真实红→绿：所有durable intent固定whenBusy，
-core checked lookup不能旁路；startup先查实际SDK接纳再预检真正pending，已done丢本地回执不重装。
-上述两项已关闭；271eb439/2f34ac68和796/crash13/四eval保留原scope。最后一项lookup原始SQLite读错
-漏runtime归属已真实红→绿，仅retry-check catch复用既有submit classifier/unknown/cause。
-最新affected134/134、types/check-only lint203、新Bots普通/coverage各802/802同套及exact root-resources1例通过。
-lookup-read-source619fa989已交仅3路径增量Review，正在冻结最终docs/tree/收据；仍未验收commit/push。
-crash13仅复用此前未改恢复窗口证据，无新crash/perf/platform声明，不称完整P2。
-fresh空Bot首次选包为紧接必须完成边界；cloud/网络/UI/物理Mac未验。旧失败/旧门禁范围保留。
+P2 fixed-head完整资源首片已正常推送696f649；普通root/排队/编辑版本选择已正常交付Bots265b0db/tree d70，
+独立根测试repair9475e2e/tree4b17随后正常交付，远端已核9475e2e、clean。
+fresh空Bot首次完整资源包入口现为in progress；P3–P6 planned，cloud/网络/UI/物理Mac未验。
+普通root交付收据.local/sync-p2-root-resources/ordinary-root-delivery.json SHA31d8ccef保留：
+attempt1真实exit1/root259of260；独立fixture修复后attempt2完整root/browser/Swift正常hook通过。
+fresh已在9475e2e未改生产上取得真实空Bot入口红并最小实现；source795e6556冻结13路径，
+新普通/coverage各810、crash16及三个精确eval通过，最终候选待独立Review/Lead接受，尚未commit/push。
+不造历史，不宣称完整P2。
+下方按时间保留历史候选/Review/gate范围；它们不覆盖当前交付结论。
 
 本轮19:45 +0800：旧019ab/720候选与证据保留；Review新增无关identity quarantine污染DELETE的P2
 已取得真实HTTP红→绿，remove仅按主目标close后的实际binding清理同身份alias。新affected173/173、
@@ -137,7 +134,7 @@ Tailscale 直连进入本版范围；专用同步入口仅向 Tailscale 网络�
 | --- | --- | --- | --- |
 | P0 — 契约与上下文验证 | local verified | 身份、因果关系、被动导入、资源版本、端点/握手、双路径游标与确认语义 | 两个独立 SQLite 重建等价上下文；导入零执行；接纳与导出之间的崩溃可恢复 |
 | P1 — 本地副本与分支 | in progress | 持久来源日志、outbox、ID 映射、缺口补读与本端恢复 | A 停止后 B 可运行；重复/乱序同步保留两支；不恢复其他端任务 |
-| P2 — 指令与技能 | in progress | fixed-head首片已交付696f649；普通root及最后lookup归属窄修本地gate绿，待最终Review/验收 | 两端实际加载固定版本；原始内容与工具关联无静默丢失 |
+| P2 — 指令与技能 | in progress | fixed-head696f649及普通root265b0db已交付；独立repair9475e2e已推，fresh空Bot首包已红→绿/新810门禁通过，待Review与正常交付 | 两端实际加载固定版本；原始内容与工具关联无静默丢失 |
 | P3 — 设备底座接入 | planned | 复用 #109 的安装/配对/helper/权限；新增同步身份授权、Tailscale 端点发布和共享访问接口 | 现有设备能力保持有效；无 Tailscale 可走云通道；端点身份、群成员和同步权限真实生效 |
 | P4 — 直连、中转与 3 天缓存 | planned | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
 | P5 — 原生多端流程 | planned | 共享目录、各端运行状态、直连/中继状态、分支选择/合并、同步覆盖范围与资源冲突 | 从 App 完成双端执行、错峰补齐、过期恢复；路径切换不打断本地 run，缺口不误报完整 |

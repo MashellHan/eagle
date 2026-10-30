@@ -237,7 +237,7 @@ export class HistoryReplica {
     await this.#resources.validatePins(this.#harness);
   }
 
-  async installResources(bundle: HistoryBundle): Promise<string> {
+  async installResources(bundle: Pick<HistoryBundle, "resources">): Promise<string> {
     try {
       return await this.#resources.install(bundle.resources);
     } catch (cause) {

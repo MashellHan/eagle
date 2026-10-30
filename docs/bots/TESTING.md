@@ -817,3 +817,60 @@ new crash run or unchanged perf/platform run is claimed. Preserve both older can
 all red/type-intermediate logs and source receipts. Independent final delta Review/Lead
 acceptance and normal commit/pre-push/push remain pending; fresh-empty first resources,
 cloud/transport/UI and physical-Mac acceptance remain outside this candidate.
+
+
+## Fresh empty first-package acceptance (in progress)
+
+Before implementation, two real independent daemons bind empty replicas and prove zero
+provider calls, SDK user/model entries, submissions and history receipts. Actual AGENTS,
+complete relative skill scripts/references/assets and attachment bytes then cross public
+kind:resources export/import and incremental pull/apply, without a placeholder turn.
+The first real ordinary WS/Invocation input must obtain paths from its production section
+and execute native read/bash in the target local cwd, including with the source offline.
+Duplicate/reordered pages stay passive; missing refs never receive a complete/applied ACK.
+Edited queued versions, reopen, same-ID/mode binding, rejected I/O and unchanged history
+continuation refusals keep their existing strict oracles. New evidence is isolated in
+.local/sync-p2-fresh-resources; prior delivery/push and gate scopes remain historical.
+
+The actual first entry-red uses unchanged production9475e2e (all production hashes
+verified against base), passes fresh SQLite/SDK/binding/original-byte preconditions and
+fails public resource-only export400. Its original test is archived alongside the log.
+The later imported-facts rebind regression genuinely fails before facts are added to the
+existing populated-binding query. These are product reds. Intermediate invalid Invocation
+origin, consumed append accounting, strict types/import lint and a crash-loop formatting
+parse error are retained separately; they are fixture/editing failures, not product reds.
+
+`test/e2e/fresh-resources.test.ts` proves empty SDK entries/submissions/tasks and no history
+receipt, then stable full carrier re-export, reversed/duplicate pages and passive import
+with provider0. A's first Invocation and B's first WS input run native read/bash from
+production section paths; the script reads nested package references/assets and writes
+exact original bytes in each local workspace. A closes before B executes. Independent
+user labels assert every initial/tool-after request's version, complete selected skill
+and instructions. Busy local edits queue v1 then v2 on the original root; FIFO user/done
+events, raw tool results, exact installed bytes and source-offline execution are checked.
+Reopen same-ID omitted-selector retries add no execution, changed modes conflict, and
+resource facts/manifests remain one immutable copy rather than bodies in each intent.
+
+Runtime/protocol cases refuse history export/run from a resource-only head, malformed
+carrier combinations and empty manifests. Missing refs on another stream keep applied0
+until actual facts arrive; foreign input stays passive. Invalid SRI never applies. Path,
+incomplete-skill, invalid UTF-8 and actual EACCES failures are not_admitted with one runtime
+origin and original classification/cause, persisted rejected intent, and no execution after
+repair/reopen. Owned SIGKILL tests cover incoming log commit before drain, fresh intent
+before SDK, and queued version recovery/preflight before any global resume. Existing active,
+true-pending, known-SDK duplicate and history recovery oracles remain unchanged.
+
+Final evidence is under `.local/sync-p2-fresh-resources`. Source receipt795e6556 freezes13
+source/test/fixture/eval paths. Affected-final122/122 and standalone types/lint passed before
+the final crash-loop formatting; the final normal bots-check-final, crash-final and exact
+eval-fresh-final/eval-root-final/eval-replica-final all bind13/13 frozen paths before/after.
+Normal check passes fixtures32, ordinary810/810 and coverage810/810 on the same deterministic
+suite, types and check-only Biome206 with zero fixes; coverage95.95% lines/89.31% branches/
+91.69% functions. Crash is16/16; each exact eval is one case. Earlier affected/crash8/eval
+evidence retains its actual prior byte scope. All original red/intermediate logs remain.
+
+No unchanged perf or root/browser/Swift gate was repeated for this local slice; normal
+platform hooks follow formal candidate acceptance. Prior delivery receipt31d8ccef retains
+the distinct failed push attempt1 and successful attempt2. Current fresh evidence awaits
+independent Review/Lead acceptance and normal commit/push; cloud/transport/UI/physical-Mac
+acceptance and complete P2 remain outside this candidate.

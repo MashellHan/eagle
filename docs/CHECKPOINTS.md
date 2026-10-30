@@ -1,5 +1,30 @@
 # 用户视角检查点
 
+## 2026-10-30 22:19 +0800 — fresh空Bot首包真实红→绿，冻结source与新门禁完成待Review
+
+- 普通Bots265b0db/tree d70及独立repair9475e2e/tree4b17正常交付不变，own fork最后核9475e2e；
+  本片base9475e2e，尚未commit/push。原attempt1失败/attempt2成功及delivery31d8ccef保持原scope。
+- entry-red在未改生产的基线上，真实双daemon空SDK/SQLite、绑定/原文件前置后export400；
+  另import-facts rebind真实红后仅将facts纳入既有populated绑定保护。最小实现复用有序resource_manifest
+  与facts/source_events/outbox，不造user历史/receipt/分支，不改SDK、队列、cwd/凭据/权限。
+- 双端首Invocation/WS实际section提供本机目录，native read/bash保留原bytes/相对脚本；A离线后B可用。
+  busy编辑queued v1/v2、重开同ID/mode绑定、坏包/真实EACCES拒绝不自动执行均通过。
+- source receipt795e6556冻结13路径；affected122/122、types/check-only lint通过，中间fixture/type/编辑
+  失败原样保留。新正常Bots check普通/coverage各810/810同套、fixtures32、types/Biome206通过，
+  coverage95.95/89.31/91.69；owned crash16/16及fresh/root-resources/replica-local-run三个精确eval各1通过。
+  五个最终gate均逐路径匹配13/13 source。正在收最终docs/index/tree，等待独立Review/Lead接受。
+- 未重跑未改perf/root/browser/Swift；正常平台hook留验收后交付。网站实际Herdr采集、live auth/D1/UI、
+  CF/cloud/传输及物理Mac未验，本地首包证据不等于完整P2或跨设备验收。
+
+## 2026-10-30 22:06 +0800 — 普通root已正常交付，fresh空Bot首包开始契约与真实红
+
+- Bots265b0db/tree d70及独立根测试repair9475e2e/tree4b17正常交付，HEAD/own fork均9475e2e、clean基线。
+  delivery31d8ccef保留attempt1失败与attempt2完整hooks成功；当前不改这些已审字节/历史证据。
+- 本片以显式kind:resources完整载体+有序refs resource_manifest事实复用facts/source_events/outbox，
+  不造user历史，不放宽HistoryBundle min1/tail/缺依赖。普通首输入沿原root/Inbox/安装/section/pin。
+- 正在未改生产的基线上建立独立空SQLite/daemon红；新证据.local/sync-p2-fresh-resources。
+  暂无本片绿/Review/云/App/物理设备声明；PLAN当前摘要/P2行已更正交付及fresh in progress。
+
 ## 2026-10-30 21:54 +0800 — Bots已commit未推，根lost-response测试屏障修复待增量Review
 
 - Bots提交265b0db/tree d70原样保留；首次正常push因根测试259/260失败exit1，远端仍为上次核实的696f649。

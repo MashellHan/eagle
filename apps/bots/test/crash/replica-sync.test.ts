@@ -16,7 +16,7 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { ClassifiedFailure } from "../../src/core/domain.ts";
 import { type HistoryBundle, HistoryReplica } from "../../src/runtime/pi/HistoryReplica.ts";
 import { ResourcePin } from "../../src/runtime/pi/HistoryResources.ts";
-import { pageSchema } from "../../src/runtime/pi/syncProtocol.ts";
+import { pageSchema, type ResourceCarrier } from "../../src/runtime/pi/syncProtocol.ts";
 import { createToolRegistry } from "../../src/tools/registry.ts";
 import { openWorkspace } from "../../src/tools/workspace.ts";
 import { assistant, createBench, text, toolCall, waitFor } from "../support/pi.ts";
@@ -59,26 +59,105 @@ const killAtCommit = async (input: unknown) => {
   assert.equal(child.signalCode, "SIGKILL");
 };
 
-for (const mode of ["root-resource-intent", "root-resource-queued"] as const) {
-  test(`SIGKILL at ${mode} keeps original root IDs/versions and resumes only local work`, async () => {
+test("SIGKILL after incoming resource-only log commit replays complete refs without a foreign admission", async () => {
+  const bench = await createBench();
+  const source = await openReplica(join(bench.dir, "fresh-source"));
+  let target: Awaited<ReturnType<typeof openReplica>> | undefined;
+  try {
+    const resources = JSON.parse(
+      await readFile(
+        new URL("../../../../fixtures/bots-sync/resources.v1.json", import.meta.url),
+        "utf8",
+      ),
+    ) as HistoryBundle["resources"];
+    const carrier = (await source.command("export", {
+      kind: "resources",
+      resources,
+    })) as ResourceCarrier;
+    const page = await pull(source);
+    await killAtCommit({
+      dir: join(bench.dir, "fresh-target"),
+      mode: "incoming",
+      sharedBotId: page.sharedBotId,
+      page,
+    });
+    await source.close();
+    target = await openReplica(join(bench.dir, "fresh-target"));
+    assert.equal(target.sync.store.stream(page.source).applied, page.range.to);
+    assert.deepEqual(
+      await target.command("export", { kind: "resources", head: carrier.head }),
+      carrier,
+    );
+    assert.deepEqual((await target.root.entries({}, 128, undefined, ctx)).items, []);
+    assert.deepEqual(target.sync.store.pending(), []);
+    assert.equal(target.faux.state.callCount, 0);
+    target.faux.setResponses([
+      (request) => {
+        const section =
+          getCurrentSystemMessage(request.messages)?.sections?.["bots-resources"] ?? "";
+        assert.match(section, /resource-version-one instructions/);
+        return text("first real input after resource-only replay");
+      },
+    ]);
+    const local = target;
+    await (
+      await local.sync.root(
+        {
+          requestId: "fresh-after-incoming",
+          text: "first local input",
+          resourceHead: carrier.head,
+          whenBusy: "followUp",
+          trace: "tr_fresh_crash",
+        },
+        (entry) =>
+          local.root.submit(
+            {
+              type: "input",
+              requestId: "fresh-after-incoming",
+              content: "first local input",
+              ...(entry === undefined ? {} : { entry }),
+            },
+            ctx,
+          ),
+      )
+    ).wait(ctx);
+    assert.equal(local.faux.state.callCount, 1);
+  } finally {
+    await source.close();
+    await target?.close();
+    await bench.cleanup();
+  }
+});
+
+for (const [mode, fresh] of [
+  ["root-resource-intent", false],
+  ["root-resource-queued", false],
+  ["root-resource-intent", true],
+  ["root-resource-queued", true],
+] as const) {
+  test(`SIGKILL at ${mode} ${fresh ? "fresh resources" : "history resources"} keeps original root IDs/versions and resumes only local work`, async () => {
     const bench = await createBench();
     const source = await openReplica(join(bench.dir, "root-source"));
     const spec = { ...bench.spec(), id: "b_replica" };
     let handle: Awaited<ReturnType<typeof bench.runtime.open>> | undefined;
     try {
-      await source.root.commit(async (tx) => {
-        await tx.appendEntry(source.root.id, {
-          kind: "pi.user",
-          model: [{ role: "user", content: "passive source history", timestamp: 0 }],
-        });
-      }, ctx);
+      if (!fresh)
+        await source.root.commit(async (tx) => {
+          await tx.appendEntry(source.root.id, {
+            kind: "pi.user",
+            model: [{ role: "user", content: "passive source history", timestamp: 0 }],
+          });
+        }, ctx);
       const resources = JSON.parse(
         await readFile(
           new URL("../../../../fixtures/bots-sync/resources.v1.json", import.meta.url),
           "utf8",
         ),
       ) as HistoryBundle["resources"];
-      const one = (await source.command("export", { resources })) as HistoryBundle;
+      const one = (await source.command("export", {
+        resources,
+        ...(fresh ? { kind: "resources" } : {}),
+      })) as HistoryBundle | ResourceCarrier;
       const second = resources.map((file) => {
         const bytes =
           file.kind === "instructions" || file.name.endsWith("/input.txt")
@@ -92,9 +171,18 @@ for (const mode of ["root-resource-intent", "root-resource-queued"] as const) {
           sha256: createHash("sha256").update(bytes).digest("hex"),
         };
       });
-      const two = (await source.command("export", { resources: second })) as HistoryBundle;
+      const two = (await source.command("export", {
+        resources: second,
+        ...(fresh ? { kind: "resources" } : {}),
+      })) as HistoryBundle | ResourceCarrier;
       await source.close();
-      await killAtCommit({ dir: spec.dir, mode, bundle: one, secondBundle: two });
+      await killAtCommit({
+        dir: spec.dir,
+        mode,
+        bundle: one,
+        secondBundle: two,
+        ...(fresh ? { sharedBotId: source.sync.store.binding.sharedBotId } : {}),
+      });
       const secondVersion = createHash("sha256").update(JSON.stringify(second)).digest("hex");
       if (mode === "root-resource-queued") {
         const path = join(spec.dir, "resources", secondVersion, "AGENTS.md");

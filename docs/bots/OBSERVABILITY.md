@@ -353,3 +353,11 @@ original cause. The first occurrence owns the single error origin; a repeated ep
 propagates the same failure ID at warn. Existing ClassifiedFailure identity/cause remain
 intact. No raw SQLite message, table name, package text or local path is logged. This
 boundary covers only the retry-binding read, not pure status or later SDK lookups.
+
+
+Resource-only capture/import/apply keeps the existing runtime.replica start/outcome and
+core.replica crossings; it adds no event or history/admission log. First ordinary input
+uses the same runtime.submit failure boundary as history-backed resource selection.
+Missing refs remain an unapplied gap, never a successful complete manifest. Integrity or
+install refusal preserves the original classification/cause and sole error origin; logs
+do not include ordered refs, manifest bodies, resource bytes or full installation paths.

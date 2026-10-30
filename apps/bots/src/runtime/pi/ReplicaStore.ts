@@ -119,7 +119,7 @@ export class ReplicaStore {
       if (
         this.db
           .prepare(
-            "SELECT 1 FROM source_events UNION ALL SELECT 1 FROM heads UNION ALL SELECT 1 FROM local_runs LIMIT 1",
+            "SELECT 1 FROM source_events UNION ALL SELECT 1 FROM heads UNION ALL SELECT 1 FROM local_runs UNION ALL SELECT 1 FROM facts LIMIT 1",
           )
           .get() !== undefined
       )

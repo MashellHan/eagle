@@ -334,5 +334,15 @@ An explicit local run selects the complete resources manifest from its immutable
 Bot-specific AGENTS instructions, every file of each selected skill package and attachments
 are installed in that Bot's state, never over the local workspace. Each branch retains
 its selected version through completion/restart while another branch uses another version.
-Imports/pages stay passive. Ordinary root-chat queued version selection is a later P2 slice;
-this does not certify complete P2, device transport, cloud or physical-Mac acceptance.
+Imports/pages stay passive. Ordinary root-chat version selection is delivered: each input
+selects an explicit ready resourceHead on the original root/queue, including fixed queued
+versions after local edits. No selector on a new round preserves legacy empty resources.
+This does not certify complete P2, device transport, cloud or physical-Mac acceptance.
+
+A fresh empty Bot can capture a complete ordered package with replica export
+`{kind:"resources",resources}` and passively import the explicit resource-only carrier.
+Its immutable head selects the package for the first real ordinary input; no placeholder
+chat/history is needed. All selected skill files and attachments retain their original
+bytes and relative hierarchy. Model sections provide this Bot's installed paths; tools
+write in its own local workspace. The package supplies no cwd, credentials or permissions.
+Incomplete/invalid packages or failed installation admit no work; empty carriers are refused.
