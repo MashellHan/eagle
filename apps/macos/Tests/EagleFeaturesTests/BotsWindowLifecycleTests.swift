@@ -25,12 +25,6 @@ struct BotsWindowLifecycleTests {
       outbox: outbox)
   }
 
-  private func waitUntil(_ condition: () -> Bool) async throws {
-    let deadline = Date().addingTimeInterval(2)
-    while !condition(), Date() < deadline { try await Task.sleep(for: .milliseconds(5)) }
-    #expect(condition())
-  }
-
   @Test("concurrent readiness notifications share one connection attempt")
   func concurrentStarts() async throws {
     let factory = PendingApps()
@@ -39,17 +33,20 @@ struct BotsWindowLifecycleTests {
       gatewayProbe: { true })
     defer { bots.disconnect() }
     let first = Task { await bots.start() }
-    try await waitUntil { factory.calls == 1 }
-    var secondEntered = false
-    let second = Task {
-      secondEntered = true
-      await bots.start()
+    await factory.waitForCalls(1)
+    var secondTask: Task<Void, Never>?
+    await withCheckedContinuation { entered in
+      secondTask = Task {
+        entered.resume()
+        await bots.start()
+      }
     }
-    try await waitUntil { secondEntered }
+    let second = try #require(secondTask)
     #expect(factory.calls == 1)
     factory.finishAll(model("b_shared"))
     await first.value
     await second.value
+    #expect(factory.calls == 1)
     #expect(bots.isConnected)
     #expect(bots.items.map(\.id) == ["b_shared"])
   }
@@ -61,7 +58,7 @@ struct BotsWindowLifecycleTests {
       settings: BotsSettings(environment: [:]), makeApp: { _ in try await factory.make() },
       gatewayProbe: { true })
     let start = Task { await bots.start() }
-    try await waitUntil { factory.calls == 1 }
+    await factory.waitForCalls(1)
     bots.disconnect()
     factory.finishAll(model("b_closed"))
     await start.value
@@ -78,10 +75,10 @@ struct BotsWindowLifecycleTests {
       gatewayProbe: { true })
     defer { bots.disconnect() }
     let old = Task { await bots.start() }
-    try await waitUntil { factory.calls == 1 }
+    await factory.waitForCalls(1)
     bots.disconnect()
     let current = Task { await bots.start() }
-    try await waitUntil { factory.calls == 2 }
+    await factory.waitForCalls(2)
     factory.finish(1, model("b_current"))
     await current.value
     factory.finish(0, model("b_old"))
@@ -116,11 +113,27 @@ struct BotsWindowLifecycleTests {
 private final class PendingApps {
   private(set) var calls = 0
   private var pending: [Int: CheckedContinuation<AppViewModel, Error>] = [:]
+  private var callWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+  private var releasedModel: AppViewModel?
+
+  func waitForCalls(_ count: Int) async {
+    if calls < count {
+      await withCheckedContinuation { callWaiters[count] = $0 }
+    }
+    #expect(calls == count)
+  }
 
   func make() async throws -> AppViewModel {
     let index = calls
     calls += 1
-    return try await withCheckedThrowingContinuation { pending[index] = $0 }
+    return try await withCheckedThrowingContinuation { continuation in
+      if let releasedModel {
+        continuation.resume(returning: releasedModel)
+      } else {
+        pending[index] = continuation
+      }
+      callWaiters.removeValue(forKey: calls)?.resume()
+    }
   }
 
   func finish(_ index: Int, _ model: AppViewModel) {
@@ -128,6 +141,7 @@ private final class PendingApps {
   }
 
   func finishAll(_ model: AppViewModel) {
+    releasedModel = model
     for index in Array(pending.keys) { finish(index, model) }
   }
 }

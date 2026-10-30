@@ -851,3 +851,16 @@ also passed. This supports deleting those three redundant mechanisms while
 retaining versioned service identities and update preparation. Identity, Raven,
 token and catalogue hashes matched. Both recorded history files exist; the old
 size baseline was not refreshed, so it cannot prove byte-identical histories.
+
+PR #109's Check run `41013306952` failed one of 287 Swift tests at `d68e210`:
+`BotsWindowLifecycleTests.waitUntil` expired its two-second wall-clock deadline
+while other MainActor tests took about 14.5 seconds. This was a test failure before
+coverage calculation, not a coverage percentage failure. The lifecycle fixture
+now signals factory calls and entry of the second start task with continuations,
+keeping the factory result suspended until the test releases it. The existing
+connection-count, close, replacement and retry assertions remain, with an added
+final count assertion. Product connection logic and test concurrency are unchanged;
+the original CI log remains in `.local/device-evidence/pr109-scope/github-macos-d68e210.log`.
+The fixture retains the result of releasing all calls, so a late duplicate factory
+call still increments the count and completes instead of hanging before the final
+assertion. Individually released old/new calls remain independently controlled.
