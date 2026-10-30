@@ -778,7 +778,12 @@ The same registry owns runtime opens and holds a lease
 through each request. Failed/runtime-uncertain requests do not change targets or IDs.
 
 [The normative bundle](../../fixtures/bots-sync/history.v1.json) retains original
-SDK entries and provenance with a canonical JSON SHA-256 head. Full validation and
+SDK entries and provenance. Its head is SHA-256 of UTF-8 `JSON.stringify` of the
+validated v1 envelope without `head`: the schema fixes known field order while
+original model/data object insertion order is retained. There is no recursive
+key sorting; SDK section order changes prompt text and therefore changes the head.
+Receipt re-export retains that order. The earlier unpublished sorted P0 encoding
+is not accepted through a compatibility path. Full validation and
 compatibility rules are in [RUNTIME.md](RUNTIME.md#p0-local-history-handoff).
 No fragment or unsupported bundle may be claimed as a complete runnable head;
 P0 rejects nested SDK tool history, and retained-but-uninstalled instruction/skill

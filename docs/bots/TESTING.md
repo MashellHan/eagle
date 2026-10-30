@@ -377,6 +377,11 @@ A same-head source continuation controls system preparation; public pi-ai replay
 all effective sections and complete ordered tool declarations without dropping system
 messages. B runs with A closed; A/B also run independently from the same head and exchange
 branches; a third clean SQLite imports fork history and reconstructs its context.
+An actual core+Herdr SDK run checks section insertion order, complete prompt text and
+mid-conversation update rendering across initial export, pinned receipt and passive B/C
+imports. Different section orders must have different heads. Comparisons preserve order
+without the production hash encoder; fork exports and third-library receipts also check
+original entry/task provenance through the one-time reverse mapping.
 
 `test/e2e/history-replica.test.ts` drives the real authenticated daemon and registry,
 including unsupported runtimes, methods and a dedicated 8 MiB request cap. The existing

@@ -32,8 +32,14 @@ Each request has a dedicated 8 MiB JSON cap; other HTTP limits remain unchanged.
   `export {head}` reads an already pinned immutable snapshot.
 - The version-1 bundle fixes `engine:pi-durable@1.4.0`, source replica/Bot/conversation,
   parent head hashes, original entries (including model/data/head/edits/byTaskId), per-entry
-  original provenance, agent choices and resource bytes. `head` is SHA-256 of canonical
-  JSON of every other field. Resources carry name, kind, SHA-256 and canonical base64;
+  original provenance, agent choices and resource bytes. `head` is SHA-256 of the UTF-8
+  `JSON.stringify` encoding of the **validated v1 envelope without head**. The schema
+  fixes known envelope/entry/agent/resource field order; original objects inside model
+  and data retain their insertion order. Keys are never recursively sorted: SDK system
+  sections render in insertion order, and different section orders require different
+  heads. Pinned receipts use the same order-preserving JSON encoding. The normative
+  fixture follows this schema order; the earlier unpublished, sorted P0 format has no
+  compatibility layer. Resources carry name, kind, SHA-256 and canonical base64;
   inline model attachments remain intact. P0 preserves supplied resource versions;
   it does not add AGENTS/skill discovery or installation (P2).
 - `import {bundle}` verifies the complete hash, resource bytes and backward references.

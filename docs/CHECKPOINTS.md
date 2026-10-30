@@ -1,5 +1,36 @@
 # 用户视角检查点
 
+## 2026-10-30 16:50 +08 — P0 ordering / provenance follow-up 最终本地检查
+
+- `section-order-red.log` 为真实 7 失败：初次 export 正确，receipt 与 B/C 导入反转
+  SDK sections/prompt 顺序，不同 section 顺序还共用 head。修复移除递归排序，摘要
+  使用验证后的 v1 envelope JSON.stringify；schema 固定已知字段，model/data 内对象
+  插入顺序保留。规范 fixture 同步新 head，未发布旧格式不加兼容层。
+- 来源映射在循环前构建一次反向 Map；现有 branch→C 保真测试补原 entry/task
+  provenance 断言。局部 runtime/API 21/21；冻结七路径哈希与 tree 在
+  `.local/sync-p0/section-order-review.json`，后续未修改这些路径。
+- 完整检查先保留两次新测试 readonly 类型错误（普通各657/657），修好 type/lint 后
+  又捕获真实 shell 的额外 Killed 诊断。中间 marker-only 断言不算最终保真证据；
+  独立 test-only `d8f3bfe` 用 exec sleep 2 替换父 shell 并恢复全串等值断言，附
+  Retrospective。控制的是整个 setTimeout API，真实 I/O/SQLite/Harness/kill 与50ms未改。
+- `section-order-bots-check-exec.log` exit 0：普通与 coverage 各657/657（同一套，
+  不累加），types/lint 通过；coverage 行95.19%、分支88.43%、函数90.07%。
+  `section-order-crash.log` exit 0、6/6；`section-order-eval.log` exit 0、新入口eval1。
+  `timeout-exec-green.log` exit 0、15/15；旧失败全部保留。Swift 输入未变且未重复跑。
+- 准备独立原子提交供 Review 窄闭；最终 Review/正常 pre-push 仍待完成，未 push。
+  网站 Herdr 采集/auth/D1/UI 本片未重验，P1–P6、cloud/Tailscale/物理双 Mac 未证。
+
+## 2026-10-30 16:43 +08 — P0 Review 顺序语义与来源索引收口
+
+- 已冻结 `965afc5`，独立 fixture 修复 `e690a83` 与 P0 提交保持分离，未 push。
+  Review 新确认递归排序改变 SDK system sections 的插入/渲染顺序，同时让不同顺序
+  共用 head；正在补实际 export、receipt、B/C 导入及 SDK prompt 渲染红测。
+- 最小修复方向为保留原始 JSON 对象顺序的序列化/哈希，核对 schema 和规范 fixture；
+  分支来源映射改成一次反向 Map，保留原始 provenance 断言。尚未声称修复或新 gate 通过。
+- 上一候选 check 常规/coverage 同套各649、crash6、eval1 与首轮 Swift136 的真实结果及
+  旧失败均保留；这些不自动作为本轮 follow-up 字节的成功门禁。最终 Review/pre-push
+  待完成。网站 Herdr 采集/auth/D1/UI 本片未重验，P1–P6、云/Tailscale/物理 Mac 未证。
+
 ## 2026-10-30 16:38 +08 — P0 本地候选门禁与独立 timing fixture 修复
 
 - 首轮 642/642 是常规和 coverage 的同一套测试，不累加。run-boundary 的 6 项真实

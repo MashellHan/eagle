@@ -1,13 +1,10 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { getSystemMessageText } from "@earendil-works/pi-ai";
 import { ClassifiedFailure } from "../../src/core/domain.ts";
-import {
-  canonical,
-  type HistoryBundle,
-  hash,
-  validateBundle,
-} from "../../src/runtime/pi/HistoryReplica.ts";
+import { type HistoryBundle, hash, validateBundle } from "../../src/runtime/pi/HistoryReplica.ts";
 import { createBench, text, trace, waitFor } from "../support/pi.ts";
 
 const fixture = JSON.parse(
@@ -22,7 +19,44 @@ const rehash = (value: Record<string, unknown>) => {
 };
 test("the normative history fixture retains all original JSON fields", () => {
   assert.deepEqual(validateBundle(fixture), fixture);
-  assert.equal(canonical({ b: 2, a: "字节" }), canonical({ a: "字节", b: 2 }));
+  const { head, entries, ...rest } = fixture;
+  const { head: _digest, ...payload } = fixture;
+  assert.equal(head, createHash("sha256").update(JSON.stringify(payload)).digest("hex"));
+  assert.deepEqual(
+    validateBundle({ entries, head, ...rest }),
+    fixture,
+    "validation normalizes known envelope fields while retaining original model/data key order",
+  );
+});
+
+test("different SDK section prompt orders cannot share a history head", () => {
+  const first = fixture.entries[0];
+  assert.ok(first);
+  const sections = [
+    ["bots-tools", "core instructions"],
+    ["bots-herdr", "Herdr instructions"],
+  ];
+  const system = (ordered: string[][]) => ({
+    role: "system" as const,
+    content: "base prompt",
+    timestamp: 0,
+    sections: Object.fromEntries(ordered),
+  });
+  const forward = system(sections);
+  const backward = system(sections.toReversed());
+  assert.notEqual(getSystemMessageText(forward), getSystemMessageText(backward));
+  const bundle = (message: typeof forward) =>
+    rehash({
+      ...fixture,
+      entries: fixture.entries.map((entry) =>
+        entry === first ? { ...entry, model: [message] } : entry,
+      ),
+    });
+  const a = bundle(forward);
+  const b = bundle(backward);
+  assert.notEqual(a.head, b.head, "the digest binds section insertion order used by the SDK");
+  validateBundle(a);
+  validateBundle(b);
 });
 
 for (const [name, params] of [

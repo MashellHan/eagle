@@ -123,19 +123,9 @@ const runs = defineDocFamily({
   checkpointWhen: () => true,
 });
 
-/** Hash JSON values, independently of object field order. Array order is history order. */
-export const canonical = (value: unknown): string => {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-};
+/** SDK prompt sections use object insertion order, so sorting JSON changes history semantics. */
 export const hash = (value: unknown): string =>
-  createHash("sha256").update(canonical(value)).digest("hex");
+  createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const reject = (message: string): never => {
   throw new ClassifiedFailure(
     new FailureClassifier().classify("replica:preflight", "invalid_command", "runtime")
@@ -150,7 +140,7 @@ const parsed = <T>(schema: z.ZodType<T>, value: unknown): T => {
 };
 
 export const validateBundle = (value: unknown): HistoryBundle => {
-  if (Buffer.byteLength(canonical(value)) > MAX_REPLICA_BODY_BYTES - 32)
+  if (Buffer.byteLength(JSON.stringify(value)) > MAX_REPLICA_BODY_BYTES - 32)
     reject("history exceeds local handoff limit");
   const bundle = parsed(bundleSchema, value);
   const { head, ...payload } = bundle;
@@ -261,7 +251,7 @@ export class HistoryReplica {
         receipt.entries[String(sourceId)] = mapped.id;
       }
       receipt.conversationId = conversation.id;
-      receipt.bundle = canonical(bundle);
+      receipt.bundle = JSON.stringify(bundle);
     }, ctx);
     return { head: bundle.head };
   }
@@ -331,10 +321,11 @@ export class HistoryReplica {
         JSON.stringify(await tx.doc(AgentDoc, conversationId)),
       ) as AgentState;
       const origins: HistoryBundle["origins"] = {};
+      const originalIds = new Map(
+        Object.entries(inherited?.entries ?? {}).map(([original, local]) => [local, original]),
+      );
       for (const entry of entries) {
-        const originalId = Object.entries(inherited?.entries ?? {}).find(
-          ([, local]) => local === entry.id,
-        )?.[0];
+        const originalId = originalIds.get(entry.id);
         origins[String(entry.id)] =
           originalId === undefined
             ? {

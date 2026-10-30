@@ -110,19 +110,22 @@
       "id": 50,
       "conversationId": 1,
       "kind": "pi.reset",
-      "head": 50,
       "model": [
         {
           "role": "user",
           "content": "explicit handoff",
           "timestamp": 4
         }
-      ]
+      ],
+      "head": 50
     },
     {
       "id": 60,
       "conversationId": 1,
       "kind": "example.edit",
+      "data": {
+        "original": "still available"
+      },
       "edits": [
         {
           "target": 20,
@@ -135,16 +138,12 @@
             }
           ]
         }
-      ],
-      "data": {
-        "original": "still available"
-      }
+      ]
     },
     {
       "id": 70,
       "conversationId": 1,
       "kind": "pi.compaction",
-      "head": 50,
       "model": [
         {
           "role": "user",
@@ -154,7 +153,8 @@
       ],
       "data": {
         "reason": "manual"
-      }
+      },
+      "head": 50
     }
   ],
   "origins": {
@@ -206,5 +206,5 @@
     "cwd": "/source/workspace"
   },
   "resources": [],
-  "head": "42228b75355665cd1ab372f0fbadcc716933d43f24ca09e2f71e70768f3e8bf1"
+  "head": "cbeba3a2c5b8c77e286d0629bf4c81a6f3d8f11de0f08fb655d5bba170848e2f"
 }

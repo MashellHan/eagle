@@ -143,6 +143,16 @@ shell 首输出时序失败，以及一次新增测试格式失败。独立 fixt
 types/lint 通过；最终 P0 源码 crash 6/6、local-run eval 1/1。Bots Swift 首轮
 40+44+52=136 通过，之后 Swift 输入未变且未重复运行。当前尚待独立 Review 和正常
 pre-push；未 push。没有云端、Tailscale、物理双 Mac 或 App/UI 验证。
+
+2026-10-30 16:50 +08 follow-up：Review 的 sections 顺序/hash P1 与二次来源扫描 P2 已修。
+真实 receipt/B/C prompt 反转与不同顺序同 head 红测7失败，修后 runtime/API21通过；
+摘要改为验证后的 v1 envelope JSON.stringify，已知字段按schema、原model/data对象保留
+插入顺序；来源循环前仅建一次反向Map，branch→C断言原entry/task归属。保留两轮新测试
+readonly类型失败与一轮真实shell附加诊断红；独立test-only `d8f3bfe` 用exec sleep并保留
+全串断言。最终 `section-order-bots-check-exec.log` exit0、常规/coverage同套各657，
+types/lint通过；crash6、local-run eval1通过。Swift输入未变不重跑；独立Review与正常
+pre-push尚待完成、未push；P1–P6及云/物理Mac边界不变。
+
 通用 LAN 自动发现、Web/手机客户端、云托管运行、整工作区同步及未完成 run 的跨端接管
 留待后续；部署、发布及 App 替换按项目规则另行执行。
 

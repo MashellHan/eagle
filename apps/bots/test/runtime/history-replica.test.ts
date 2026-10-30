@@ -10,6 +10,8 @@ import {
   fauxProvider,
   getCurrentSystemMessage,
   getCurrentTools,
+  getSystemMessageText,
+  renderSystemMessageUpdate,
   type TranscriptContext,
   Type,
 } from "@earendil-works/pi-ai";
@@ -26,18 +28,23 @@ import {
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { type HistoryBundle, HistoryReplica } from "../../src/runtime/pi/HistoryReplica.ts";
+import { createHerdrClient } from "../../src/tools/herdr/client.ts";
 import {
-  canonical,
-  type HistoryBundle,
-  HistoryReplica,
-} from "../../src/runtime/pi/HistoryReplica.ts";
-import { createToolRegistry, selectToolExtensions } from "../../src/tools/registry.ts";
+  createToolRegistry,
+  selectToolExtensions,
+  type ToolRegistryOptions,
+} from "../../src/tools/registry.ts";
 import { openWorkspace } from "../../src/tools/workspace.ts";
 import { assistant, text, toolCall, trace } from "../support/pi.ts";
 
-const open = async (dir: string, storage?: (path: string) => Promise<Storage>) => {
+const open = async (
+  dir: string,
+  storage?: (path: string) => Promise<Storage>,
+  tools: ToolRegistryOptions = {},
+) => {
   const workspace = await openWorkspace(join(dir, "workspace"));
-  const registry = createToolRegistry(workspace);
+  const registry = createToolRegistry(workspace, tools);
   const faux = fauxProvider();
   const models = createModels();
   models.setProvider(faux.provider);
@@ -84,6 +91,88 @@ const resource = (name: string, kind: "attachment" | "instructions" | "skill", v
   kind,
   sha256: createHash("sha256").update(value).digest("hex"),
   base64: Buffer.from(value).toString("base64"),
+});
+
+test("SDK section order and rendered prompts survive export, pinned receipt and B/C passive import", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "bots-section-history-"));
+  const openWithHerdr = (name: string) =>
+    open(join(dir, name), undefined, {
+      herdr: {
+        client: createHerdrClient({ binary: join(dir, "must-not-execute-herdr") }),
+        stateDir: join(dir, name, "herdr"),
+        botId: "b_shared",
+      },
+    });
+  const a = await openWithHerdr("a");
+  const b = await openWithHerdr("b");
+  const c = await openWithHerdr("c");
+  try {
+    await a.root.configure(
+      { extensions: selectToolExtensions(a.registry, ["core", "herdr"]) },
+      ctx,
+    );
+    a.faux.setResponses([text("source complete")]);
+    await (
+      await a.root.submit(
+        { type: "input", content: "keep prompt order", requestId: "sections" },
+        ctx,
+      )
+    ).wait(ctx);
+    await a.harness.waitForIdle(ctx);
+    const source = (await a.root.context(ctx)).messages;
+    const system = getCurrentSystemMessage(source);
+    assert.ok(system);
+    const order = Object.keys(system.sections ?? {});
+    assert.ok(order.includes("bots-tools") && order.includes("bots-herdr"));
+    assert.ok(order.indexOf("bots-tools") < order.indexOf("bots-herdr"));
+    const views = (messages: Readonly<TranscriptContext["messages"]>) =>
+      messages.flatMap((message) =>
+        message.role !== "system"
+          ? []
+          : [
+              {
+                sections: Object.entries(message.sections ?? {}),
+                prompt: getSystemMessageText(message),
+                update: renderSystemMessageUpdate(message),
+              },
+            ],
+      );
+    const bundle = (await a.command("export", {})) as HistoryBundle;
+    const receipt = (await a.command("export", { head: bundle.head })) as HistoryBundle;
+    const cases: { name: string; messages: Readonly<TranscriptContext["messages"]> }[] = [
+      { name: "initial export", messages: bundle.entries.flatMap((entry) => entry.model ?? []) },
+      { name: "pinned receipt", messages: receipt.entries.flatMap((entry) => entry.model ?? []) },
+    ];
+    let transfer = receipt;
+    for (const [name, target] of [
+      ["B", b],
+      ["C", c],
+    ] as const) {
+      await target.command("import", { bundle: transfer });
+      const conversations = await target.harness.commit((tx) => tx.scanConversations({}, 20), ctx);
+      const importedId = conversations.items.find((item) => item.id !== target.root.id)?.id;
+      assert.ok(importedId);
+      const imported = await target.harness.conversation(importedId, ctx);
+      assert.ok(imported);
+      cases.push({
+        name: `${name} imported context`,
+        messages: (await imported.context(ctx)).messages,
+      });
+      transfer = (await target.command("export", { head: bundle.head })) as HistoryBundle;
+      cases.push({
+        name: `${name} receipt`,
+        messages: transfer.entries.flatMap((entry) => entry.model ?? []),
+      });
+      assert.equal(target.faux.state.callCount, 0);
+      assert.deepEqual((await target.harness.inspect(ctx)).tasks, []);
+    }
+    for (const item of cases) {
+      await t.test(item.name, () => assert.deepEqual(views(item.messages), views(source)));
+    }
+  } finally {
+    await Promise.all([a.harness.close(ctx), b.harness.close(ctx), c.harness.close(ctx)]);
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("full raw history, compaction references and resource versions survive passive import, restart and local branches", async () => {
@@ -277,12 +366,13 @@ test("full raw history, compaction references and resource versions survive pass
     ]);
     await b.harness.waitForIdle(ctx);
     assert.equal(requests.length, 2);
-    const expectedText = canonical(expected.messages).replaceAll(a.workspace, b.workspace);
+    const expectedText = JSON.stringify(expected.messages).replaceAll(a.workspace, b.workspace);
     for (const request of requests) {
       const originalMessages = JSON.parse(expectedText) as TranscriptContext["messages"];
       let originalIndex = 0;
       for (const message of request.messages.slice(0, -1)) {
-        if (canonical(message) === canonical(originalMessages[originalIndex])) originalIndex += 1;
+        if (JSON.stringify(message) === JSON.stringify(originalMessages[originalIndex]))
+          originalIndex += 1;
         else
           assert.equal(
             message.role,
@@ -298,11 +388,11 @@ test("full raw history, compaction references and resource versions survive pass
       const sourceSystem = getCurrentSystemMessage(reference.messages);
       const targetSystem = getCurrentSystemMessage(request.messages);
       assert.equal(
-        canonical({ content: targetSystem?.content, sections: targetSystem?.sections }),
-        canonical({ content: sourceSystem?.content, sections: sourceSystem?.sections }).replaceAll(
-          a.workspace,
-          b.workspace,
-        ),
+        JSON.stringify({ content: targetSystem?.content, sections: targetSystem?.sections }),
+        JSON.stringify({
+          content: sourceSystem?.content,
+          sections: sourceSystem?.sections,
+        }).replaceAll(a.workspace, b.workspace),
         "ordered system replay matches an actual A continuation from the same head, with only cwd mapped",
       );
       assert.match(targetSystem?.sections?.instructions ?? "", /second instruction 保留变化/);
@@ -331,12 +421,25 @@ test("full raw history, compaction references and resource versions survive pass
     assert.notEqual(branch1.head, branch2.head);
     assert.deepEqual(branch1.parents, [runnable.head]);
     assert.deepEqual(branch2.parents, [runnable.head]);
-    assert.ok(canonical(branch1).includes("B first branch"));
-    assert.ok(canonical(branch2).includes("B concurrent sibling"));
+    for (const branch of [branch1, branch2]) {
+      for (const [index, original] of runnable.entries.entries()) {
+        const inherited = branch.entries[index];
+        assert.ok(inherited);
+        assert.deepEqual(
+          branch.origins[String(inherited.id)],
+          runnable.origins[String(original.id)],
+          "fork ancestors retain original source entry/task provenance through the reverse map",
+        );
+      }
+    }
+    assert.ok(JSON.stringify(branch1).includes("B first branch"));
+    assert.ok(JSON.stringify(branch2).includes("B concurrent sibling"));
     const c = await open(join(dir, "c"));
     try {
       for (const branch of [branch2, branch1]) {
         await c.command("import", { bundle: branch });
+        const receipt = (await c.command("export", { head: branch.head })) as HistoryBundle;
+        assert.deepEqual(receipt.origins, branch.origins);
         const view = await c.harness.commit((tx) => tx.scanConversations({}, 20), ctx);
         const matching: Conversation[] = [];
         for (const record of view.items) {
@@ -356,7 +459,7 @@ test("full raw history, compaction references and resource versions survive pass
         const expectedBranch = (await source.context(ctx)).messages;
         assert.ok(
           (await Promise.all(matching.map((conversation) => conversation.context(ctx)))).some(
-            (context) => canonical(context.messages) === canonical(expectedBranch),
+            (context) => JSON.stringify(context.messages) === JSON.stringify(expectedBranch),
           ),
           "a clean third SQLite reconstructs fork ancestors, head and edits from branch export",
         );
