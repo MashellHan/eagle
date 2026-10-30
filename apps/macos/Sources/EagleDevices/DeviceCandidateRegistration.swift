@@ -4,16 +4,28 @@ import OSLog
 
 /// Ad-hoc updates need the Apple registrar's forced bundle refresh before SM registration.
 /// This touches only the complete current App; it never resets an LS or BTM database.
-struct DeviceCandidateRegistration {
-  var executable = URL(
+final class DeviceCandidateRegistration {
+  static let systemExecutable = URL(
     fileURLWithPath:
       "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
   )
-  var timeout: TimeInterval = 3
+  private let executable: URL
+  private let timeout: TimeInterval
+  private var ownedProcess: Process?
+
+  init(executable: URL = systemExecutable, timeout: TimeInterval = 3) {
+    self.executable = executable
+    self.timeout = timeout
+  }
 
   /// Called by the background service actor, never the App's main actor.
   func refresh(_ bundle: URL, process: Process = Process()) throws {
     try Task.checkCancellation()
+    guard ownedProcess?.isRunning != true else {
+      throw DevicePortError("background_registration_failed")
+    }
+    ownedProcess = process
+    defer { if !process.isRunning { ownedProcess = nil } }
     process.executableURL = executable
     process.arguments = ["-f", bundle.path]
     process.standardOutput = FileHandle.nullDevice
@@ -30,7 +42,9 @@ struct DeviceCandidateRegistration {
       if finished.wait(timeout: .now() + 0.25) != .success, process.isRunning {
         // Only this owned short-lived registrar process may be terminated.
         kill(process.processIdentifier, SIGKILL)
+        _ = finished.wait(timeout: .now() + 0.25)
       }
+      // An unconfirmed exit retains ownership and blocks a later registration attempt.
       log.error("candidate bundle registrar timed out")
       throw DevicePortError("background_registration_failed")
     }

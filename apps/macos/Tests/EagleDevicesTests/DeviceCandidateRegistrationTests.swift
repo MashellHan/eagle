@@ -51,6 +51,27 @@ struct DeviceCandidateRegistrationTests {
     #expect(errno == ESRCH)
   }
 
+  @Test("forced termination finishes before another refresh can start")
+  func forcedTermination() throws {
+    let root = try fixture("trap '' TERM\nexec /bin/sleep 10\n")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let process = Process()
+    let registrar = DeviceCandidateRegistration(
+      executable: root.appendingPathComponent("registrar"), timeout: 1)
+    do {
+      try registrar.refresh(root.appendingPathComponent("Candidate.app"), process: process)
+      Issue.record("a stalled registrar must reject startup")
+    } catch let error as DevicePortError {
+      #expect(error.code == "background_registration_failed")
+    }
+    #expect(!process.isRunning)
+    #expect(kill(process.processIdentifier, 0) == -1)
+    #expect(errno == ESRCH)
+    try "#!/bin/sh\nexit 0\n".write(
+      to: root.appendingPathComponent("registrar"), atomically: false, encoding: .utf8)
+    try registrar.refresh(root.appendingPathComponent("Candidate.app"))
+  }
+
   private func fixture(_ script: String) throws -> URL {
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent("eagle-registrar-\(UUID().uuidString)")
