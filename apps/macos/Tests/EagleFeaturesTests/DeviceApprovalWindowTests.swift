@@ -6,21 +6,17 @@ import Testing
 @Suite("Device approval window", .serialized)
 @MainActor
 struct DeviceApprovalWindowTests {
-  @Test("a settings-only App shows a confirmation window and closing it denies the request")
-  func settingsOnlyApproval() async throws {
+  @Test("a confirmation window opens by itself and closing it denies the request")
+  func independentApproval() async throws {
     NSApplication.shared.setActivationPolicy(.prohibited)
     let (model, control, defaults) = deviceSettingsFixture()
     defer { defaults.removePersistentDomain(forName: control.domain) }
     await model.startIfNeeded()
-    let settings = SettingsWindowController()
-    let settingsModel = SettingsViewModel()
-    settingsModel.selection = .machines
-    settings.show(model: settingsModel, devices: model)
-    settings.window?.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+    // The confirmation belongs to the App, not to any workspace or settings surface.
+    DeviceApprovalWindowController.shared.observe(model)
     defer {
       model.denyPendingApproval()
       DeviceApprovalWindowController.shared.stopObserving()
-      settings.window?.close()
     }
     let request = try deviceApproval(
       expiresAt: Int64(Date().timeIntervalSince1970 * 1000) + 60000)
