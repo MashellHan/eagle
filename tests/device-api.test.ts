@@ -54,6 +54,14 @@ export class DeviceRegistry extends Registry {
   if(result.ok&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_check_delay'").toArray().length){
    const delayed=this.ctx.storage.sql.exec("SELECT deviceId FROM test_check_delay WHERE deviceId=?",result.source.deviceId).toArray()[0];
    if(delayed){this.ctx.storage.sql.exec("UPDATE test_check_delay SET started=1 WHERE deviceId=?",delayed.deviceId);await new Promise(resolve=>setTimeout(resolve,500));}
+  }
+  if(result.ok&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_policy_confirmation'").toArray().length){
+   const delayed=this.ctx.storage.sql.exec("SELECT sourceId FROM test_policy_confirmation WHERE sourceId=? AND targetId=?",result.source.deviceId,targetId??'').toArray()[0];
+   if(delayed){this.ctx.storage.sql.exec("UPDATE test_policy_confirmation SET started=1 WHERE sourceId=?",delayed.sourceId);
+    const deadline=Date.now()+5000;
+    while(!this.ctx.storage.sql.exec("SELECT released FROM test_policy_confirmation WHERE sourceId=?",delayed.sourceId).toArray()[0]?.released){if(Date.now()>deadline)throw new Error('test confirmation gate timeout');await new Promise(resolve=>setTimeout(resolve,10));}
+    return super.check(token,targetId);
+   }
   }return result;
  }
 }
@@ -443,6 +451,111 @@ test("remote policy authorization is rechecked immediately before target side ef
   } finally {
     await storage.exec("DROP TABLE IF EXISTS test_revoke_after_check");
     await target.stop();
+  }
+});
+
+test("remote policy confirmation rejects a target removed and rejoined during source authorization without resending", async () => {
+  const [a, b] = await Promise.all([
+    identity("policy-confirm-a"),
+    identity("policy-confirm-b"),
+  ]);
+  await pair(a.token, await code(b.token));
+  const source = await policyService(a, join(root, "policy-confirm-a"));
+  const target = await rawSocket(b.deviceId, "agent");
+  const storage = await mf.unsafeGetDurableObjectStorage(
+    "eagle",
+    "DeviceRegistry",
+    { name: "registry" },
+  );
+  try {
+    const ready = frame<{ type: string }>(target);
+    target.send(
+      JSON.stringify({
+        ...authentication(b.token),
+        capabilities: ["policy.manage"],
+      }),
+    );
+    assert.equal((await ready).type, "ready");
+    let forwarded = 0;
+    target.on("message", (data) => {
+      if (JSON.parse(data.toString()).type === "policy.set") forwarded++;
+    });
+    const input = {
+      deviceId: b.deviceId,
+      requestId: randomUUID(),
+      mode: "paused",
+    };
+    const forwardedRequest = frame<{ relayId: string }>(target);
+    const response = source.call("policy.set", input);
+    const request = await forwardedRequest;
+    await storage.exec(
+      "CREATE TABLE test_policy_confirmation(sourceId TEXT PRIMARY KEY,targetId TEXT,started INTEGER DEFAULT 0,released INTEGER DEFAULT 0)",
+    );
+    await storage.exec(
+      "INSERT INTO test_policy_confirmation(sourceId,targetId) VALUES(?,?)",
+      a.deviceId,
+      b.deviceId,
+    );
+    target.send(
+      JSON.stringify({
+        type: "policy.result",
+        relayId: request.relayId,
+        requestId: input.requestId,
+        deviceId: b.deviceId,
+        policy: { mode: "paused", version: 2 },
+      }),
+    );
+    let started = false;
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      const rows = await storage.exec(
+        "SELECT started FROM test_policy_confirmation",
+      );
+      if (rows[0].started === 1) {
+        started = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(started, true, "source authorization must reach the gate");
+    assert.equal(
+      (await call("/members/remove", a.token, { deviceId: b.deviceId })).status,
+      200,
+    );
+    const challenge = await call("/register/challenge", undefined, {
+      deviceId: b.deviceId,
+      publicKey: b.publicKey,
+      name: "policy-confirm-b",
+      platform: "darwin",
+      arch: "arm64",
+    });
+    assert.equal(challenge.status, 200);
+    const refreshed = await call("/register/complete", undefined, {
+      challengeId: challenge.body.challengeId,
+      signature: sign(
+        null,
+        Buffer.from(challenge.body.payload),
+        b.keys.privateKey,
+      ).toString("base64url"),
+    });
+    assert.equal(refreshed.status, 200);
+    assert.equal(
+      (await pair(refreshed.body.sessionToken, await code(a.token))).status,
+      200,
+    );
+    await storage.exec("UPDATE test_policy_confirmation SET released=1");
+    const result = await response;
+    assert.equal(result.result, undefined, "revoked target cannot confirm");
+    assert.equal(result.error, "revoked_agent");
+    assert.equal(
+      (await source.call("policy.set", input)).error,
+      "policy_request_already_sent_refresh_target",
+    );
+    assert.equal(forwarded, 1, "uncertain policy writes must not be resent");
+  } finally {
+    await storage.exec("DROP TABLE IF EXISTS test_policy_confirmation");
+    target.terminate();
+    await source.stop();
   }
 });
 async function identity(name: string) {

@@ -307,17 +307,20 @@ export class DeviceExecution extends DurableObject<Env> {
               pending.resolve(
                 !fresh.ok
                   ? { error: fresh.error, status: fresh.status }
-                  : message.policy
-                    ? { policy: message.policy }
-                    : {
-                        error:
-                          message.error ??
-                          "policy_result_unknown_refresh_target",
-                        status:
-                          message.error === "policy_request_conflict"
-                            ? 409
-                            : 503,
-                      },
+                  : fresh.target.credentialVersion !==
+                      pending.agent.credentialVersion
+                    ? { error: "revoked_agent", status: 403 }
+                    : message.policy
+                      ? { policy: message.policy }
+                      : {
+                          error:
+                            message.error ??
+                            "policy_result_unknown_refresh_target",
+                          status:
+                            message.error === "policy_request_conflict"
+                              ? 409
+                              : 503,
+                        },
               );
               return;
             }
