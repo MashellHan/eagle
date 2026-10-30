@@ -5,7 +5,7 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
   case general = "通用"
   case bots = "模型"
   case providers = "服务"
-  case machines = "机器"
+  case machines = "设备"
   case realtime = "实时"
   case usage = "用量与账单"
   case updates = "更新"
@@ -74,15 +74,18 @@ public struct SettingsScaffold<Content: View>: View {
   @Binding private var selection: SettingsSection
   private let content: Content
   private let onClose: () -> Void
+  private let showsCloseButton: Bool
 
   public init(
     selection: Binding<SettingsSection>,
     onClose: @escaping () -> Void = {},
+    showsCloseButton: Bool = true,
     @ViewBuilder content: () -> Content
   ) {
     self._selection = selection
     self.content = content()
     self.onClose = onClose
+    self.showsCloseButton = showsCloseButton
   }
 
   public var body: some View {
@@ -97,13 +100,15 @@ public struct SettingsScaffold<Content: View>: View {
             .font(.system(size: 22, weight: .semibold))
             .foregroundStyle(Theme.Palette.textPrimary)
           Spacer(minLength: 0)
-          IconButton(
-            systemName: "xmark",
-            label: "关闭设置",
-            size: Theme.Metric.headerControlHeight,
-            style: .circled,
-            action: onClose
-          )
+          if showsCloseButton {
+            IconButton(
+              systemName: "xmark",
+              label: "关闭设置",
+              size: Theme.Metric.headerControlHeight,
+              style: .circled,
+              action: onClose
+            )
+          }
         }
         .padding(.horizontal, Theme.Metric.settingsContentInset)
         .padding(.top, 16)

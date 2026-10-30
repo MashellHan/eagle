@@ -1,3 +1,4 @@
+import AppKit
 import EagleDesign
 import SwiftUI
 
@@ -10,24 +11,24 @@ public struct WorkspaceShellView: View {
   @StateObject private var layout: ShellLayoutViewModel
   @StateObject private var account = AccountMenuViewModel()
   @StateObject private var settings = SettingsViewModel()
-  @StateObject private var daemon = BotsDaemonSupervisor()
+  @StateObject private var daemon = BotsDaemonSupervisor.shared
+  @StateObject private var devices = DeviceSettingsViewModel.shared
   @StateObject private var bots = BotsWorkspaceViewModel()
   @StateObject private var chrome = SidebarChromeViewModel()
   @State private var showsAccountMenu = false
   @State private var showsBotCreate = false
   @State private var showsBotFaceEditor = false
-  @State private var showsSettings = false
   @AppStorage("eagle.appearance") private var appearance = "system"
   @AppStorage("eagle.hideToolCalls") private var hideToolCalls = false
   @AppStorage("eagle.loadMockData") private var loadMockData = false
-  private let onShowGallery: () -> Void
+  private let onShowGallery: (@escaping () -> Void) -> Void
 
   public init(
     list: WorkspaceListViewModel = WorkspaceListViewModel(),
     chat: BotChatViewModel = BotChatViewModel(),
     inspector: InspectorViewModel = InspectorViewModel(),
     layout: ShellLayoutViewModel = ShellLayoutViewModel(),
-    onShowGallery: @escaping () -> Void = {}
+    onShowGallery: @escaping (@escaping () -> Void) -> Void = { _ in }
   ) {
     _list = StateObject(wrappedValue: list)
     _chat = StateObject(wrappedValue: chat)
@@ -167,7 +168,7 @@ public struct WorkspaceShellView: View {
           },
           onCollapse: { layout.toggleSidebar() },
           onAccount: { showsAccountMenu = true },
-          onGallery: onShowGallery,
+          onGallery: { onShowGallery { showSettings() } },
           onPinItem: { id in chrome.togglePin(id) },
           moveTargets: { id in moveTargets(for: id) },
           onToggleItem: { id in
@@ -257,7 +258,12 @@ public struct WorkspaceShellView: View {
           onCommitName: selectedIsBot
             ? { title in Task { await bots.updateSelected(title: title) } } : nil,
           onCommitLabel: selectedIsBot
-            ? { label in Task { await bots.updateSelected(label: label) } } : nil
+            ? { label in Task { await bots.updateSelected(label: label) } } : nil,
+          computerContent: AnyView(
+            DeviceInspectorView(model: devices) {
+              settings.selection = .machines
+              showSettings()
+            })
         )
         .sheet(isPresented: $showsBotFaceEditor) {
           if let face = bots.selectedFace {
@@ -276,13 +282,21 @@ public struct WorkspaceShellView: View {
         bots.onSelect = { id in list.selection = id }
         bots.onOpenSettings = {
           settings.selection = .bots
-          showsSettings = true
+          showSettings()
         }
-        // The daemon is a prerequisite of the Bots connection, not of the window.
         await daemon.startIfNeeded()
+      }
+      .task(id: daemon.status) {
+        // Every window follows readiness, including a shared start or a Settings retry.
+        guard case .running = daemon.status else {
+          bots.disconnect()
+          return
+        }
         await bots.start()
+        guard !Task.isCancelled else { return }
         await bots.loadModels()
       }
+      .task { await devices.observe() }
       .onDisappear {
         // Closing the window must release the bot's connection, or its subscriber slot
         // stays taken for as long as the process lives.
@@ -312,7 +326,7 @@ public struct WorkspaceShellView: View {
           .onTapGesture { showsAccountMenu = false }
         AccountMenu(rows: account.rows) { row in
           showsAccountMenu = false
-          if row.id == "settings" { showsSettings = true }
+          if row.id == "settings" { showSettings() }
         }
         .padding(.leading, Theme.Metric.contentInset)
         .padding(.bottom, Theme.Metric.footerHeight + Theme.Metric.footerBottom + 6)
@@ -320,42 +334,12 @@ public struct WorkspaceShellView: View {
       }
     }
     .animation(.snappy(duration: 0.18), value: showsAccountMenu)
-    // A small blur under the settings card: the window stays recognisable, only softened.
-    .blur(radius: showsSettings ? 5 : 0)
-    .animation(.easeOut(duration: 0.18), value: showsSettings)
-    .overlay {
-      if showsSettings {
-        settingsOverlay
-      }
-    }
     .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSettings)) { _ in
-      showsSettings.toggle()
+      showSettings()
     }
   }
 
-  /// Centred settings card over a blurred, dimmed copy of the window. The
-  /// traffic lights are hidden while it is open so the card owns the chrome.
-  private var settingsOverlay: some View {
-    ZStack {
-      // The blur lives on the window itself (a few points); this layer only dims.
-      Color.black.opacity(0.32)
-        .ignoresSafeArea()
-        .onTapGesture { showsSettings = false }
-
-      SettingsView(model: settings, onClose: { showsSettings = false }, daemon: daemon)
-        .frame(width: Theme.Metric.settingsWidth, height: Theme.Metric.settingsHeight)
-        .background(
-          RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Theme.Palette.surface)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-          RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
-        )
-        .shadow(color: .black.opacity(0.28), radius: 40, y: 18)
-        .background(TrafficLights(hidden: true))
-    }
-    .transition(.opacity)
+  private func showSettings() {
+    SettingsWindowController.shared.show(model: settings, daemon: daemon, devices: devices)
   }
 }

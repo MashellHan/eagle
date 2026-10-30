@@ -19,6 +19,7 @@
     "lint": "biome check . --error-on-warnings",
     "format": "biome check --write .",
     "test": "node --test tests/*.test.ts",
+    "test:devices": "node --test tests/device-integration/*.test.ts",
     "test:browser": "playwright test",
     "test:focus": "node --test tests/native/composer-focus.test.ts",
     "check": "npm run test && npm run typecheck && npm run lint && npm run build",

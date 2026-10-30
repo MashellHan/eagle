@@ -110,3 +110,19 @@ unsupported cursor modes fail closed. Explicit Ctrl+P/N remain separate actions,
 not automatic substitutes. Deploy the matching Worker before restarting existing
 bridges. Preserve the machine configuration and spool;
 installing the package does not start or restart services automatically.
+
+## Unpublished shared-device candidate
+
+The source candidate additionally bundles `dist/agent/device-service.js`, an
+App/helper-managed entrypoint separate from the existing collector CLI. The App
+supplies its bundled Node runtime and private JSONL bootstrap; users do not install
+Node, copy owner secrets, or configure per-Bot credentials. The helper uses its
+private file identity to sign exact registration challenges and typed operation
+approvals through the private parent pipe. Multiple Bots share a 0600 Unix socket whose execution/read methods cannot
+change policy or pairing. Local command/file/native admission works offline;
+Herdr is optional for this path. See `docs/DEVICES.md` in the repository for wire,
+policy, journal, native ownership and error semantics.
+
+This candidate is not an npm publication. Its independent Agent manifest version
+must be advanced and its installed artifact verified before release; website
+onboarding keeps the last verified published Agent version until then.

@@ -6,6 +6,8 @@ import { join } from "node:path";
 import type { Level } from "./log/log.ts";
 
 export type DaemonConfig = {
+  /** Optional host-owned, version-1 private device port. No credentials. */
+  readonly deviceSocket?: string;
   /** Canonical root: the catalog, the token, the logs and every bot directory. */
   readonly root: string;
   /** Loopback service port. */
@@ -73,6 +75,7 @@ export const readConfig = (input: ConfigInput = {}): DaemonConfig => {
     }
   }
   return {
+    ...(env.BOTS_DEVICE_SOCKET === undefined ? {} : { deviceSocket: env.BOTS_DEVICE_SOCKET }),
     root,
     port,
     idleCloseMs: integer(env.BOTS_IDLE_CLOSE_MS, DEFAULT_IDLE_CLOSE_MS),

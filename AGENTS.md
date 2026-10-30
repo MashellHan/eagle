@@ -104,8 +104,11 @@ multi-bot chat product backed by `@earendil-works/pi-durable`. It is a separate
 product that lives in this repository:
 
 - No code, protocol or build coupling with the website, Worker, Agent or
-  contracts. `apps/bots` is not a root workspace member, root `check` and CI do
-  not run it, and root `biome.json` must exclude it. The client logic is the
+  contracts. `apps/bots` is not a root workspace member; root `check` and its Linux
+  CI job install only the root lock, and root `biome.json` must exclude it. The
+  macOS App integration job explicitly installs both independent locks and runs
+  `npm run test:devices` through process/port boundaries before the Swift checks;
+  Bots retains its own `npm run check`. The client logic is the
   separate SPM package `apps/bots-macos` (BotsCore, BotsTransport, BotsFeatures),
   which depends on nothing from Eagle; the Eagle app depends on it and hosts the
   Bots group in the main window (`apps/macos/Sources/EagleFeatures/BotsWorkspace.swift`).

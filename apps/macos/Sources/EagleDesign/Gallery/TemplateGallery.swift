@@ -13,9 +13,11 @@ public struct TemplateGallery: View {
   @State private var draftFilled = "把 sleepy 那个 PR 一起并掉"
   @State private var previewRunning = true
   @State private var previewInspector = false
+  private let onShowSettings: () -> Void
 
-  public init(darkPreview: Bool = false) {
+  public init(darkPreview: Bool = false, onShowSettings: @escaping () -> Void = {}) {
     _darkPreview = State(initialValue: darkPreview)
+    self.onShowSettings = onShowSettings
   }
 
   public var body: some View {
@@ -77,6 +79,21 @@ public struct TemplateGallery: View {
           .buttonStyle(.plain)
           .accessibilityAddTraits(section == item ? .isSelected : [])
         }
+        Divider().overlay(Theme.Palette.line)
+        Button(action: onShowSettings) {
+          HStack(spacing: 12) {
+            Image(systemName: "gearshape").frame(width: 20)
+            Text("设置…").font(Theme.TypeScale.cardTitle)
+            Spacer(minLength: 0)
+            Text("⌘,").font(Theme.TypeScale.note)
+          }
+          .foregroundStyle(Theme.Palette.textSecondary)
+          .padding(12)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("设置…")
+        .accessibilityIdentifier("eagle.gallery.settings")
       }
       Spacer(minLength: 24)
       VStack(alignment: .leading, spacing: 6) {

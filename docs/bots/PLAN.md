@@ -12,7 +12,215 @@ in [Extensions and tools](EXTENSIONS-AND-TOOLS.md). That guide also
 specifies planned optional `memory`, `search` and `peers` groups and child-agent
 discovery. Those additions are not implemented or enabled by this plan update.
 
+## 共享设备与配对重构（2026-10-29）
+
+用户最新要求替代旧 M0–M1 的“手填部署信息、每 Bot 机器授权”产品流程：
+安装并首次启动 Eagle 后本机环境自动就绪、默认 All approve；设备由整个 App 共享，
+通过默认 1 小时、最长 24 小时的单次配对码加入设备群。配对成功后的设备身份持续
+有效，直到撤销。App 内 menu 弹窗（含“会话状态、基础控件”等入口）必须能打开
+真实设置，不能只有系统状态栏/菜单栏入口；设置统一提供“设备”、配对和设备级
+权限，Bot 详情展示可用电脑与 agent 实际执行目标。一个群支持 A/B/C/D 等三台以上
+设备；配对自动把未入群设备纳入已有群，不受输入配对码的方向影响。agent 按任务
+和设备信息自主选择目标。配对用 HTTPS，单个 Registry DO 原子保存配对/群成员；
+执行复用出站 Agent 长连接和调用端单次 WSS，多个 Bot 共享目录、身份与访问服务，
+首版按目标设备串行，不做并发调度或连接池。详细行为、
+Orca 固定源码参考、认证/存储边界及旧代码处理见
+[共享设备与配对方案](DEVICE-PAIRING.md)。
+
+本轮只聚焦安装即执行、跨 Mac 自动注册/配对/设备群与明确目标执行。共享设备目录
+由内部自动接线提供，不新增 Bot 分享链接、Bot 互联/共享开关或额外配置流程。
+
+配对后端选为个人账户的长期独立服务 `https://eagle-devices.mxhan.workers.dev`，
+复用现有 Registry/relay，只带两个 SQLite DO 和新服务的 v1 migration，不改既有
+个人或上游网站/ingest。c0b4942 的完整 root check/browser 已通过；独立入口 5 项
+红绿及增量审查完成，28f4aef 的最终 check 235/235、types/lint/build、绝对路径 dry-run
+通过。Root 已部署该 SHA，公网 health exact revision 与匿名目录 401 已验证。
+之后的配对包和独立 UI 更新包都须显式使用此 HTTPS build origin，保持相同 candidate
+profile/data。本机真实执行已验；真实 App 公网注册/WSS 和物理 A/B 配对仍待验。
+本轮合入已批准的 settings-layout `1d1fd31` 与设备页 polish：添加设备整行展开，
+多个视图共用一次周期观察，无变化不发布、不闪禁用，旧读取不能覆盖较新操作。
+局部 Swift 红绿及增量 review 已完成；最终门禁和唯一 push 由 Root 执行。
+当前安装仍由原 UI/思考等级入口持有；后续完整 HTTPS 包须保留它已授权的 thinking
+改动，待完整来源/安装权交接，或由原拥有者统一组装，不能以纯设备包覆盖。
+
+2026-10-29：已从 `nocoo/eagle@7101566` 启动实施。Eagle Herdr 团队使用独立
+worktree；旧 `main@c34be59` 只作按需复用来源。当前尚未完成设备群或配对验收。
+
+| 阶段 | 状态 | 范围和退出证据 |
+| --- | --- | --- |
+| D0 — 产品与契约 | in progress | 多成员群、方向无关的新增设备、单 Registry 配对事务、agent 选机和按设备串行已定；所属契约及审批位置随实现固定 |
+| D1 — 本机安装即用 | in progress | 当前 Mac 常规安装、文件身份、真实 Bot 写读及同包重开已通过；干净 Mac 和分发签名尚未验证，不要求用户 Node/部署表单 |
+| D2 — 配对与群认证 | in progress | Registry/relay 本地协议与独立入口已验，28f4aef 已部署个人产品服务；真实 App 公网注册和物理 A/B 配对待验，A/C 群加入 B/D、回包丢失及跨群拒绝的本地证据不替代实机 |
+| D3 — 设备设置与 agent 联动 | planned | App 内 menu → 真实设置 → 设备；配对/状态/移除；共享设备 port 与系统引导、agent 明确目标调用；既有/新 Bot 顺序操作群内设备，目标证据可核对，旧逐 Bot 授权随替换删除 |
+| D4 — 设备权限与恢复 | planned | All approve / Always ask / 暂停，设备端真实执行策略、审批绑定与过期、journal 去重及原 ID 恢复；不存在只改 UI 的权限模式 |
+| D5 — 安装与多设备交付 | planned | 完整门禁、签名安装包、真实 Mac A/B 联动与退出 UI 验收、补充 C/D 验证四成员群；真实硬件与隔离实例分别报告，部署/发布按具体操作授权执行 |
+
+首个贯通切片覆盖安装即用、默认 All approve、配对、A/B 双向执行和多 Bot 共享，
+尽早实测两台 Mac；并发执行、多路复用和复杂调度不作为本轮前置工作。
+
+工作分成 App/集成与设备服务两条不重叠的实现线。迭代遵守行为 TDD 并只跑受影响
+检查；完整候选统一执行仓库门禁，不建立额外验收脚本、重复评审或流程任务。
+每个小功能切片通过受影响检查即提交，交同一位只读 reviewer 按明确 base/head
+增量审查；App 与服务分支均如此，阻断项由写入者修复提交并闭环。
+本轮 Lead/reviewer 使用 Astra Max，服务开发按用户会话偏好使用 Sol xhigh。
+部署、发布和日常 App 替换在本地候选完成后按具体授权处理。
+
+检查边界：根 `npm run check` 和 Linux CI 仅安装根 lock，不加载 Bots 源码/依赖。
+独立 Bots 继续运行自己的 `npm run check`。App/设备联动使用显式 `npm run test:devices`
+（`tests/device-integration/`），需要两边各自 `npm ci` 后经真实进程/port 验证；macOS
+CI 同样显式准备两边和 Agent 构建，再执行此检查及原 Swift 门禁。不跳过依赖缺失，
+不把 Bots 并入 root workspace，也不让跨产品回归隐式进入根 `tests/*.test.ts`。
+
+已落地的首个 App 切片：menu 的模板导航增加“设置…”，宿主注入当前 workspace
+真实设置动作；重复打开不关闭设置。`GallerySettingsTests` 先实测旧视图缺少入口，
+再通过 AppKit accessibility 点击新按钮并核对宿主回调一次；尚未替代打包 App 的
+设备页点击验收。证据在本地 `.local/device-evidence/menu-{red,green}.log`。
+
+设置入口及窗口重开路由经 `b399936` 修复和只读 review 已关闭。Bots 共享 v1 socket
+与工具切片已接入 daemon 配置：新旧 Bot 自动获得目录/明确目标的执行和查询取消，
+durable memo 在发送前固定 ID/目标/参数，native 工具经同设备接纳与完成接缝。
+局部 30 项测试、类型和 Biome 检查通过；真实 Unix socket 测试与真实文件 native
+策略测试均已执行，但整 App/helper 启动及 native 租约跨实际 daemon 的贯通仍待下片。
+本次有效行为红测是已有 Registry 不给注入 port 的 Bot 提供 `remote_status`；最初
+socket 新模块缺失只算构建缺口，不作为行为红测。证据 `shared-bots-red.log`、
+`shared-tools-green.log` 位于 `.local/device-evidence/`。
+
+身份核心已实现 Ed25519 Keychain 持久化、精确七行注册验签输入和完整 typed approval
+校验；Swift/Bots 共用独立 canonical fixture。先复现缺失参数仍被签名，再通过
+7 项 Swift 身份测试（含真实隔离 Keychain 写入/读取/清理）及 9 项 Bots 适配器测试。
+这片未接 helper 代码身份验证、SMAppService 或人工确认 UI，尚不能签发实际用户审批。
+
+Swift 私有进程宿主已用实际 Node 服务验证：自动 configure、本地离线就绪、中文
+文件写入、Bot 管理拒绝与 parent 管理策略生效。完整 typed approval 由宿主确认
+回调后签名；未连接/拒绝不签。3 项宿主测试包括真实内核 boot UUID 读取，审批
+回调未接线的行为红测已保留。代码身份 XPC、后台注册和人工确认页面仍在接线。
+
+XPC 与独立 EagleDeviceHelper 可执行目标已加入：XPC 在每条消息上执行双向代码
+签名 requirement，管理方还需同 UID；发行 helper 校验 App 与自身签名团队一致。
+真实错误代码身份的管理写入先红后拒绝，4 项 pipe/XPC 测试通过。SMAppService
+注册适配器已写，尚待完整候选包启动；本地 ad-hoc 签名不作为发行身份验证证据。
+
+宿主 origin 大小写/默认端口与 Node 对齐，并接受发行 Mach service 名称；并发 retry
+合并且等待旧 Node 实际退出才允许替换。真实延迟退出进程先复现多个新子进程及
+初始化失败，修复后 6 项宿主测试通过；设备页 model 已独立集成，尚在增量审查。
+
+App 监督器已从 bundle 解析 Node/Bots 并固定注入 v1 设备 socket；本机未就绪或停用
+也不删除接线。接管既有 daemon 前核对 health 的设备配置摘要。候选使用独立数据、
+端口、provider 配置与 outbox，真实 Node/Bots 子进程经 Swift 监督器启动的 5 项局部
+测试通过（测试用 runtime 链接，不是发行装配）；主窗口和实际候选包仍待贯通。
+
+窗口连接跟随共享 daemon 的实际 running 状态；打开第二个窗口或在设置重试成功后，
+无需重开窗口即可加载 Bots。同一窗口合并并发连接，关闭时取消连接并使旧代次失效，
+迟到的工厂/目录结果不能复活已关闭窗口或覆盖新连接。局部模型回归先复现重复连接、
+关闭后复活和旧连接覆盖，再验证修复；此证据不替代实际多窗口点击验收。
+
+本阶段交用户试用的功能构建为 `259614a`，独立候选在
+`apps/macos/.build/device-candidate/Eagle Device Candidate.app`。真实首次启动、本机
+离线执行、本地 API 自动认证和退出 App 后 helper 持续执行已有证据，必要门禁通过。
+最终 ad-hoc 包更新后遇到旧 SMAppService 启动约束，需通过现有设备开关完成关闭后
+重新开启来刷新注册；此恢复尚待用户操作，不能把此前 online 证据当作当前就绪。
+隔离本地 API 与 Raven 偏好保留；本阶段停在用户试用，下一功能只在收到反馈后推进。
+物理多 Mac、真实 UI 点击及发行签名/公证仍为未完成边界。
+
+首次用户试用发现 helper 更新后 macOS 保留旧启动约束：App/XPC 超时、Bot socket
+ECONNREFUSED，未发生本地 Registry 配对。当前修复在包指纹变化（或旧安装无指纹）时
+由真实 App 串行注销/重新注册；同一包重开不停止 helper，系统审批仍须满足。状态读取
+期间保留停用入口；仅确有原配对请求时显示配对恢复提示，不修改任何原 ID 或历史。
+后台注册、延迟注销、失败回滚以及 UI 超时文案已有局部行为红绿，真实候选恢复待重签启动。
+
+14:40 当前收尾：注册审批 P2 已关闭；真实 GUI 已确认聊天、两个窗口与关窗重开后的
+两个 Bot/历史保留。LWCR 刷新后暴露 login Keychain 读取阻塞，用户明确选择私有文件
+凭据；FileVault 以 0700/0600 和无扩展 ACL 为边界，16 项局部测试通过，ACL review
+已关闭。旧 Keychain 与 journal 原位保留，固定 socket 不变；原 journal 的 source/target
+scope 隔离新身份、原 ID 不挪目标、native 阻断仍覆盖旧行，真实进程/运行时 27 项通过。
+当前设备保持停用，正从新目录完整装配并签名独立候选；下一证据仅为 Root GUI 启用后
+的本机真实执行。物理多 Mac 与发行验证仍待后续授权和实际环境，不作为当前本机交付前置。
+
+本机交付改用 `~/Applications/Eagle Device Candidate.app`，保留 `.build` 装配产物。
+整包原字节复制、没有重新签名；实际 GUI 启用后 helper running、文件身份自动创建、
+本机可用且连接隔离本地 API。真实 Bot 已完成 `remote_status → bash 写文件 → read`
+读回，Root 独立核对磁盘内容、两个 Bot 与私有配置保留。同包关闭/重开已通过：
+App/Bots 实际退出，helper PID 不变，身份摘要/0700/0600 保留、历史恢复、本机可用，
+没有 Keychain 提示。当前“云端已连接”仅指本机 127.0.0.1:17053；公网和第二台 Mac 未验。
+candidate 构建期 HTTPS service origin 小片已实现并增量审查通过，相关装配检查 15/15；
+显式非空值校验并规范化，未传或空值仍使用本地 origin。候选身份和数据继续隔离，
+不加用户配置表单、Bot 分享链接、Bot 互联或共享开关，不引入新的迁移框架。
+当时交付的 c0b4942 产物使用默认本地 origin。后续用户已选择独立
+`eagle-devices.mxhan.workers.dev` 产品服务；新配对包及之后的 UI 包改用该 HTTPS
+构建输入。28f4aef 服务现已部署并通过公网 health/匿名鉴权检查；真实 App 注册/WSS
+和物理双 Mac 验收仍待执行。
+
 ## Where the code lives
+
+### Helper startup recovery (2026-10-30)
+
+Installing `20b13f0` reproduced a signed helper launch-constraint rejection after
+the automatic unregister/register had already run. The installed App recovered
+through its device switch and a targeted LaunchServices refresh; its private
+device adapter executed a read-only command, with local readiness and the public
+cloud connection verified. Identity, Raven configuration and histories remained.
+
+The follow-up moves registration/signature work off the UI actor, adds an
+authenticated helper handshake and one bounded registration recovery, starts from
+App launch as well as the shared view lifecycle, and observes cold local readiness
+promptly before waiting for cloud directory data. Regression tests reproduced
+unreachable-but-registered startup, delayed readiness and missing retry controls;
+the handshake has a real XPC regression with Node not started. Candidate assembly
+also gives both the bundle and LaunchAgent configuration the same distinct build
+identity. Earlier registration-only approaches failed real upgrades; the final
+`fef7203` candidate passed two consecutive complete signed upgrades without manual
+retry, reaching local readiness in 12.83/11.39 seconds and cloud online in
+13.53/12.17 seconds. Both jobs ran once and had never exited when checked.
+
+The `4cbeb98` SDK-compatibility follow-up exposed an additional upgrade boundary:
+those two successful packages had identical helper bytes, while the relinked
+helper again failed launch constraints after replacement. The candidate installer
+now prepares unregistration before moving the old App, using a maintenance entry
+that runs before SwiftUI or Bots initialization. It checks the old job and PID
+independently and preserves the old bundle on preparation failure. A legacy
+candidate may use the new signed maintenance process once, subject to the same
+postconditions. The fixed identifier and versioned executable path alone still
+failed live upgrades, as retained in the retrospective.
+
+The candidate now versions its service Label, MachService and plist filename by
+the same build, while retaining its profile, socket and data paths. At `2bea0d6`,
+a complete debug-to-release upgrade changed the helper SHA/CDHash, automatically
+removed the old service, reached local readiness in 10.60 seconds and cloud online
+in 11.77 seconds. The new job ran once and had never exited; the old job was gone.
+The first adoption of versioned names used the installed App's maintenance entry
+to clear the already-failed legacy job and is not counted as automatic upgrade
+acceptance. Identity, Raven, token and catalogue hashes matched, both history files
+remained, and installed local execution plus physical MacMini-2 to MacMini 1
+execution/query by original operation ID passed again. CI SDK compatibility still
+required a new GitHub run; both Check jobs subsequently passed at `cb55083`,
+including the older SDK, native focus, formatting and coverage gates.
+
+The scope cleanup at `d121736` removes duplicate website device bindings, the
+external registrar subprocess, the helper filename suffix and a redundant build
+environment marker. The standalone service, versioned service names and strict
+signing checks remain. Both complete simplified upgrades passed without manual
+recovery: local/cloud readiness took 11.55/12.51 seconds, then 12.70/13.48 seconds.
+The second changed the helper SHA/CDHash at the same executable path. Installed
+local and physical MacMini-2 to MacMini 1 commands, including an original-ID result
+query, passed. Identity, Raven, token and catalogue hashes matched; both recorded
+history files exist, without a fresh byte-for-byte history comparison. Cleanup
+push gates and its own GitHub run remain pending.
+
+The installed App's menu opens the actual resizable Settings window. Pairing is
+above My Devices and always visible; resizing survives closing/reopening, and an
+input draft survived twelve seconds of status refresh. Each row keeps its policy
+and Remove controls visible, with inline Details expanding/collapsing correctly.
+With only Settings open, one approval window appeared, closing it denied the exact
+request, and allowing a second read-only command completed successfully. The local
+policy was restored to All approve. Identity, Raven configuration, daemon token,
+catalogue and both histories were preserved.
+
+The installed Bots adapter executed a hostname command from physical MacMini-2 on
+physical MacMini 1 and queried the identical result by its original operation ID.
+The second Mac still runs an older Agent without remote policy-management capability;
+changing that physical peer's policy requires updating it. Reverse-direction and
+fresh-machine installation acceptance remain distinct from the verified A-to-B
+operation. No npm publication or distribution-signing/notarization is claimed.
 
 ### Exclusive search providers (2026-10-28)
 

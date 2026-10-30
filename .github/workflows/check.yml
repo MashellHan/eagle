@@ -25,10 +25,19 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      # Swift builds independently. Real App/device integration tests also exercise
+      # the separately installed Node Agent and Bots product through their ports.
       - uses: actions/setup-node@v4
         with:
           node-version: 26
-      # The focus probe uses Node built-ins and system AppKit, without npm packages.
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/bots/package-lock.json
+      - run: npm ci
+      - run: npm --prefix apps/bots ci
+      - run: npm --workspace @nocoo/eagle-agent run build
+      - run: npm run test:devices
       - run: swift build --package-path apps/macos
       - run: npm run test:focus
       - run: cd apps/macos && swift format lint --strict --recursive Sources Scripts Tests

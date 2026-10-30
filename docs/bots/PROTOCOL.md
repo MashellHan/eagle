@@ -81,13 +81,19 @@ marshalling it with generation counters.
 
 ## HTTP endpoints
 
+`health.deviceAccess` is `null` without a host device port, or
+`{version:1,binding:<lowercase SHA256 of the configured socket path UTF-8>}`.
+The App checks this configuration binding before connecting to an existing daemon;
+a mismatch must not silently use tools outside the shared device policy. It carries
+no path, token or permission decision. An offline configured port still has a binding.
+
 All require the bearer token, except `/v1/health`, which answers liveness so a
 supervisor can check the process before any client has a token. It exposes the
 version, the instance id, the pid and a bot count, never bot content.
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/v1/health` | — | `{ "version", "protocolVersion", "instance", "pid", "bots" }` |
+| `GET` | `/v1/health` | — | `{ "version", "protocolVersion", "instance", "pid", "bots", "deviceAccess" }` |
 | `GET` | `/v1/bots` | — | `{ "bots": [BotSummary] }` |
 | `POST` | `/v1/bots` | `{ "title", "label"?, "appearance"? }` — `appearance` is `{ "shape", "tint" }` | `201 { "bot": BotSummary }` |
 | `PATCH` | `/v1/bots/:id` | `{ "title"?, "label"?, "appearance"?, "groupId"?, "model"?, "thinkingLevel"? }` — a label of `""` and a `groupId` of `null` clear their field | `{ "bot": BotSummary }` |
@@ -738,3 +744,19 @@ Rules enforced by `test/protocol/fixtures.test.ts`:
 2. A protocol change and the affected fixtures land in the same commit as this
    document, and the file set must match this table exactly.
 3. No real user data, tokens or paths.
+
+## External shared device port v1
+
+The optional host integration uses the independent JSONL contract in
+[DEVICES.md](../DEVICES.md); it does not change conversation v1 fields or
+capabilities. Normative cross-language canonical parameter vectors are in
+`fixtures/bots-protocol/device-access-v1/`, checked by the Bot adapter and App
+identity tests. The Keychain signer accepts registration payloads only at its
+registration seam; typed approvals require complete, validated operation data
+and a matching digest before a trusted App confirmation can be signed.
+`approval.request` sends `{request,policyVersion,expiresAt}` as JSONL params and
+returns `result:{approval:<signed envelope>}`. The adapter unwraps that envelope
+before attaching it to the same operation; it never treats transport success as
+human confirmation.
+The helper canonicalizes all approval UUID fields to lowercase at decoding, so
+the displayed operation, signed bytes and service verification use the same IDs.

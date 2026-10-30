@@ -1,6 +1,7 @@
 import AppKit
 import BotsCore
 import EagleDesign
+import EagleDevices
 import EagleFeatures
 import SwiftUI
 
@@ -14,7 +15,7 @@ import SwiftUI
 @main
 struct SnapshotRenderer {
   @MainActor
-  static func main() {
+  static func main() async {
     let output =
       CommandLine.arguments.count > 1
       ? CommandLine.arguments[1]
@@ -24,6 +25,13 @@ struct SnapshotRenderer {
 
     let app = NSApplication.shared
     app.setActivationPolicy(.prohibited)
+    if CommandLine.arguments.contains("--devices-only") {
+      do { try await captureDevices(in: directory) } catch {
+        print("device snapshot fixture failed: \(error)")
+      }
+      print("wrote device snapshots to \(directory.path)")
+      return
+    }
     if CommandLine.arguments.contains("--services-only") {
       captureSearchProviders(in: directory)
       print("wrote service snapshots to \(directory.path)")
@@ -91,10 +99,15 @@ struct SnapshotRenderer {
       in: directory
     )
 
+    let deviceFixture = SnapshotDeviceControl()
+    let deviceDefaults = UserDefaults(suiteName: "EagleDeviceSnapshots")!
+    defer { deviceDefaults.removePersistentDomain(forName: "EagleDeviceSnapshots") }
+    let devices = DeviceSettingsViewModel(control: deviceFixture, defaults: deviceDefaults)
+    await devices.startIfNeeded()
     let machines = SettingsViewModel()
     machines.selection = .machines
     capture(
-      SettingsView(model: machines).preferredColorScheme(.light),
+      SettingsView(model: machines, devices: devices).preferredColorScheme(.light),
       size: CGSize(width: 920, height: 720),
       named: "settings-machines",
       in: directory
@@ -153,6 +166,50 @@ struct SnapshotRenderer {
     )
 
     print("wrote snapshots to \(directory.path)")
+  }
+
+  @MainActor
+  private static func captureDevices(in directory: URL) async throws {
+    let control = SnapshotDeviceControl()
+    let domain = "EagleDeviceSnapshots.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: domain)!
+    defer { defaults.removePersistentDomain(forName: domain) }
+    let model = DeviceSettingsViewModel(control: control, defaults: defaults)
+    await model.startIfNeeded()
+    for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
+      let settings = SettingsViewModel()
+      settings.selection = .machines
+      capture(
+        SettingsView(model: settings, devices: model, showsCloseButton: false)
+          .preferredColorScheme(scheme),
+        size: CGSize(width: 1120, height: 820), named: "devices-settings-\(name)", in: directory,
+        appearance: scheme == .dark ? .darkAqua : .aqua)
+      capture(
+        DeviceInspectorView(model: model, onManage: {})
+          .padding(Theme.Metric.panelInset).background(Theme.Palette.surface)
+          .preferredColorScheme(scheme),
+        size: CGSize(width: 300, height: 530), named: "devices-inspector-\(name)", in: directory,
+        appearance: scheme == .dark ? .darkAqua : .aqua)
+      let operation: DeviceJSON = .object([
+        "kind": .string("command"), "command": .string("printf '%s\\n' '设备已连接'"),
+        "cwd": .string("/Users/demo/Projects"), "timeoutMs": .number(30000),
+      ])
+      let request = try DeviceJSON.object([
+        "requestId": .string(UUID().uuidString), "operationId": .string(UUID().uuidString),
+        "sourceDeviceId": .string(SnapshotDeviceControl.localID),
+        "targetDeviceId": .string(SnapshotDeviceControl.remoteID), "operation": operation,
+        "digest": .string(try DeviceApprovalRequest.digest(operation)), "policyVersion": .number(1),
+        "expiresAt": .number(Double(Int64(Date().timeIntervalSince1970 * 1000) + 120000)),
+      ]).decoded(DeviceApprovalRequest.self)
+      let pending = Task { await control.confirm?(request) }
+      while model.pendingApproval == nil { await Task.yield() }
+      capture(
+        DeviceApprovalView(model: model).preferredColorScheme(scheme),
+        size: CGSize(width: 640, height: 640), named: "devices-approval-\(name)", in: directory,
+        appearance: scheme == .dark ? .darkAqua : .aqua)
+      model.denyPendingApproval()
+      _ = await pending.value
+    }
   }
 
   @MainActor
@@ -372,4 +429,53 @@ final class SnapshotHTTPStub: URLProtocol {
   }
 
   override func stopLoading() {}
+}
+
+/// A standalone UI fixture: never registers SMAppService or contacts a real helper.
+@MainActor private final class SnapshotDeviceControl: DeviceControl {
+  static let localID = "11111111-1111-4111-8111-111111111111"
+  static let remoteID = "22222222-2222-4222-8222-222222222222"
+  var socketPath: String? { nil }
+  var confirm: (@MainActor @Sendable (DeviceApprovalRequest) async -> Bool)?
+  func start(
+    confirm: @escaping @MainActor @Sendable (DeviceApprovalRequest) async -> Bool
+  ) async throws {
+    self.confirm = confirm
+  }
+  func stop() async throws {}
+  func openSystemSettings() {}
+  func call(_ method: String, params: DeviceJSON?) async throws -> DeviceJSON {
+    switch method {
+    case "service.status":
+      return .object([
+        "deviceId": .string(Self.localID), "localReady": .bool(true),
+        "cloudStatus": .string("online"),
+      ])
+    case "policy.get": return .object(["mode": .string("all-approve"), "version": .number(1)])
+    case "directory":
+      let rows: [(String, String, DeviceJSON, DeviceJSON)] = [
+        (Self.localID, "工作 Mac", .bool(true), .string("all-approve")),
+        (Self.remoteID, "实验室 Mac", .bool(true), .string("always-ask")),
+        ("33333333-3333-4333-8333-333333333333", "Mac mini", .bool(false), .string("paused")),
+        ("44444444-4444-4444-8444-444444444444", "备用 Mac", .null, .null),
+      ]
+      return .object([
+        "localDeviceId": .string(Self.localID), "groupId": .string("snapshot-group"),
+        "revision": .number(4), "observationRevision": .string("snapshot-observed"),
+        "devices": .array(
+          rows.map { id, name, online, mode in
+            .object([
+              "deviceId": .string(id), "name": .string(name), "platform": .string("darwin"),
+              "arch": .string("arm64"), "groupId": .string("snapshot-group"), "online": online,
+              "lastSeenAt": .null,
+              "capabilities": online == .null
+                ? .null
+                : .array([.string("command"), .string("file.read"), .string("policy.manage")]),
+              "policy": mode == .null ? .null : .object(["mode": mode, "version": .number(1)]),
+            ])
+          }),
+      ])
+    default: throw DeviceHostError.forbidden
+    }
+  }
 }

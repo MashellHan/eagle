@@ -112,3 +112,13 @@ launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.hexly.eagle-agent.plist
 These commands are for this machine's user ID 501. Other machines need their own token, identity, checkout path and service configuration. A valid success acknowledgement is required before a queued report is removed; malformed responses preserve the report for an idempotent retry.
 
 The Eagle LaunchAgent on this Mac uses direct connections by default. Proxying is an explicit per-machine option through `NODE_USE_ENV_PROXY=1` and a verified `HTTPS_PROXY` URL; no proxy host or port is fixed. See [optional reporting proxy](../packages/agent/README.md#optional-reporting-proxy) for enabling it or returning to direct connections. Preserve the spool when reloading services.
+
+## Shared device identity candidate
+
+The new [shared device wire](DEVICES.md) is independent of report collection and
+owner/v1 authentication. Keychain holds the Ed25519 private key; Node asks the
+private App helper to sign bound challenges and stores only session hashes in the
+cloud. Registration alone leaves `groupId` null and local tools available.
+Pairing changes membership atomically in Registry SQLite; old session group
+claims are never execution authority. App/Agent packaging and the independent
+Agent version must be integrated and verified before publication or onboarding.

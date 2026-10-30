@@ -509,6 +509,33 @@ None of them may change v1 semantics for existing fields.
 
 ## Recovery semantics
 
+Shared device access uses `remote_status`, `remote_execute(deviceId, operation)`
+and `remote_operation(deviceId, operationId, action)` from the injected v1 port.
+The model reads current names, online evidence and capabilities before choosing
+a remote target; local coding tools keep the local execution environment. A
+durable tool memo records the target, full operation, digest and operation ID
+before transmission. Retries query that ID; they never resend unknown effects or
+substitute a local target. A busy response is unaccepted and creates no queue.
+All native coding tools and `list` cross the same local policy/admission seam
+when a device port is configured. Approval requests carry the complete operation;
+only the initiating App can confirm them. No port credentials enter Bot storage.
+
+The shared adapter captures native `output`, `retainedOutput`, diagnostics and
+details in bounded memory. No raw progress is published to pi.live, and native
+shell output does not spill to an unsanitized file. Completion sends retained
+text and diagnostics/details through the host sanitizer and journal; model and
+nested callers receive the same versioned device receipt with output, status,
+exit code and original target/operation ID. Native image blocks are explicitly
+omitted at this textual device boundary. Recovery returns that same receipt.
+Only payload text is shortened to fit the 64 KiB encoded receipt; metadata and
+valid JSON remain intact and truncation is explicit. With a device port injected,
+Herdr currently exposes inspection only; write/control tools stay unavailable
+until they participate in shared admission.
+If native output or its metadata was truncated before the trusted sanitizer,
+the incomplete segment is omitted in full. This includes native SDK truncation;
+an appended marker must never hide a partial credential's original boundary.
+
+
 | Situation | pi behaviour | Adapter action |
 | --- | --- | --- |
 | Process killed mid-run | Committed entries survive; the generation task is still `running` on disk; on resume the interrupted partial becomes a committed `aborted` assistant entry (F22) | `open()` resumes; the client shows the aborted attempt followed by the final answer |

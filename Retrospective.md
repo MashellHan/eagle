@@ -550,3 +550,342 @@ closure created in a MainActor test inherited isolation but ran inside URLProtoc
 background callback. The crash report identified the executor assertion. Replacing the
 nested callback with ordinary decoding exposed the intended red test (both providers
 remained selected). A crashed or uncompilable test is not behavioral red evidence.
+
+## 2026-10-29 — device-service worktree dependency installation
+
+At base `7101566`, normal `npm ci` failed with proxy E404 for locked
+`wrangler@4.152.0`. The independent service worktree verified 215 cached original
+artifact bodies against its own committed root lock SRI; missing entries were
+optional artifacts for other platforms. A task-private cache then completed
+normal offline `npm ci`, including prepare/hook installation. The lock remained
+unchanged. This is local dependency recovery evidence, not release validation or
+a permanent registry exception. Receipts stay in ignored `.local/device-npm/`.
+
+## 2026-10-29 — Re-signing a candidate does not update its registered helper
+
+The first signed device candidate registered through SMAppService and worked locally
+and against the isolated API. Quitting the App left the same helper and socket alive;
+a fresh write and original-ID query both completed. After staging and replacing that
+candidate with the final window fix, deep/strict verification still passed, but killing
+the old helper did not refresh its registration. launchd rejected the replacement with
+`OS_REASON_CODESIGNING / Launch Constraint Violation` and then reported `EX_CONFIG`.
+
+The ServiceManagement SDK requires re-registering an updated LaunchAgent executable
+and recommends unregistering it first. The existing App device switch already awaits
+unregister before committing the disabled state; enabling it then registers the signed
+bundle again. An external `swift -e` process has the wrong calling bundle context.
+The pending local recovery uses that existing App switch, not a global BTM reset,
+weaker signature requirement, identity deletion or repeated helper kills. Future
+candidate updates must account for this registration boundary as well as file signing.
+Logs remain under `.local/device-evidence/candidate-update-system.log`; this is an
+observed local ad-hoc update failure, not evidence of a distribution-signed update.
+
+The later `d32ea1a` candidate was fully assembled and signed in a fresh staging
+directory. Its `.build` copy still failed after a successful SM submission:
+amfid reported -423 and launchd rejected the current helper's launch constraint.
+The running App and on-disk App CDHashes matched; the live job's expected hash
+could not be extracted from the public dump. A forced registration of only this
+bundle with LaunchServices returned zero but did not recover the existing job.
+Do not reduce these observations to an old-inode diagnosis or infer that every
+ad-hoc helper is unsupported.
+
+Root then stopped the service, quit the App and copied the signed bundle unchanged
+to `~/Applications/Eagle Device Candidate.app`. App/helper/Node hashes were identical,
+inodes were new, deep/strict verification passed and no re-signing occurred. Normal
+GUI registration there started the helper and created the file-vault identity;
+the page showed local readiness and the isolated API connection. A real Bot wrote
+and read a marker, with independent disk verification. This does not distinguish
+the new path from the fresh inodes. The normal installed copy is the local delivery
+path; no global BTM/LaunchServices reset, weaker code requirement or data deletion
+was used. Evidence is in `gui/application-install.json`, `gui/installed-startup.json`
+and `gui/local-command.json` under `.local/device-evidence/`.
+
+The later settings-only candidate update also encountered amfid -423 and a helper
+launch constraint failure. Temporarily disabling the service exposed a separate UI
+gap: reopening the App with no service directory removed even the local machine
+from the list. The default preference was still enabled; the visible disabled
+state came from the recovery operation. After re-enabling, the installed new
+helper ran and the UI reported local readiness; a staged old-helper recovery
+bundle was not installed. The bounded observations do not establish why the first
+registration failed. Service recovery must restore the previous user preference,
+and the device list must retain the OS-provided local name while making unavailable
+execution explicit. Evidence: `.local/settings-layout/layout-service-recovered.json`;
+the local-row regression covers disabled startup and failed startup without a
+directory, plus disabling an already known device.
+
+## 2026-10-29 — Upstream Croner dependency missing from the npm proxy
+
+Preparing the device-group PR against upstream `4eefe0a` introduced the locked
+`croner@11.0.0` dependency. Normal `npm --prefix apps/bots ci` failed with a
+tarball 404 from the configured proxy. Inventory of the task cache found every
+required artifact except Croner; a retained local cache held its original bytes.
+The bytes matched the committed SHA512 and the archive's package name/version.
+After normal `npm cache add` into the private device-task cache, offline `npm ci`
+completed with the unchanged Bots lock. All 102 installed package versions
+matched; 28 optional packages for other platforms were absent. No package was
+repacked and no registry or TLS setting changed. Evidence is retained under
+`.local/device-evidence/upstream-pr/npm-recovery/`; installation success alone
+does not establish the subsequent build, push or two-Mac acceptance results.
+
+## 2026-10-30 — Installed helper update rejected before execution
+
+The `20b13f0` candidate was assembled, verified with deep/strict codesign and
+installed intact in `~/Applications`. Its automatic unregister/register ran,
+but launchd rejected the helper with `OS_REASON_CODESIGNING / Launch Constraint
+Violation` at 09:57:38, followed by `EX_CONFIG`. The helper file existed; the later
+"could not find and/or execute" messages did not establish a missing-file cause.
+The App and Bots daemon remained alive while device tools returned unavailable.
+
+Normal App unregister, a forced LaunchServices refresh for this App only, and
+App re-enable recovered the same installed signed bytes at 10:09:58. The UI showed
+local readiness and the public cloud connection; the installed Bots device
+adapter completed `/bin/df -k /` with exit 0. Identity, Raven configuration,
+daemon token and catalogue hashes matched, and both Bot histories remained.
+This establishes recovery, not which cached OS record caused the first rejection.
+Evidence: `.local/device-evidence/reinstall-20261030-mm44r90m/`.
+
+The follow-up distinguishes authenticated helper contact from Node readiness:
+`service.ping` never waits for the Node socket or cloud. A bounded failed-handshake
+recovery refreshes only this App and preserves pairing IDs and user preferences.
+Ordinary management timeouts keep their uncertainty semantics. The local status
+and policy publish before cloud directory reads so a slow network cannot hold the
+local controls in their startup state.
+
+The first follow-up's real upgrade (`bda3ef8`, 11:07:37) still produced two launch
+constraint crashes before connecting at 11:08:53. The trigger for that eventual
+recovery was not observed; its final 1.139-second handshake is not evidence of a
+fast initial launch. The internal `LSRegisterURL` refresh had not reproduced the
+earlier external registrar recovery. Inspection confirmed that Apple's `lsregister`
+uses a different private registration entry point and has Apple-only entitlements;
+the two paths must not be treated as equivalent.
+
+The next candidate-only change runs that Apple registrar with `-f` and the exact
+current App path, after asynchronous unregister finishes and before registering
+the helper. Its completion is bounded and a failed refresh prevents registration.
+Healthy same-bundle openings and status reads do not invoke it. No signature rule,
+Keychain policy or system database is relaxed or reset. Real upgrade verification,
+including local readiness and an installed command, remains the decisive check.
+
+The bounded external registrar in `b13030d` still failed the real 11:23 upgrade:
+launchd again rejected the helper and no helper became available during the
+20-second startup observation. The extra process and its cleanup did not establish
+a fix. A subsequent complete assembly at `fa1d1cd` gave the candidate a distinct
+`CFBundleVersion`, preserving its product version, identity and signing rules.
+That upgrade started the helper in about 4.95 seconds, reported local readiness
+in 15.50 seconds and cloud online in 16.40 seconds without a manual retry; the
+installed Bots adapter then completed `/bin/df -k /` with exit 0.
+
+The job's parent build version now matched the new bundle. This supports distinct
+candidate build identities but does not prove macOS's internal cache key. The next
+trial removed the external registrar and checked a further complete upgrade with
+only the public LaunchServices refresh and distinct build version. Earlier failed
+observations remain under
+`.local/device-evidence/device-settings-ui-20261030/`; do not recast eventual
+recovery as fast startup.
+
+The simplification trial at `05b3099` disproved that a distinct candidate build
+version alone was sufficient on this Mac. The full signed upgrade launched at
+11:45:35 with build `1793331893645`, but neither the first registration nor its
+one automatic recovery reached a usable helper. The 20-second observation saw
+only a transient process, and launchd subsequently reported `EX_CONFIG` 78.
+That transient PID is not a successful start. No manual retry or registration
+tool was used during this observation.
+
+The observed successful combination at `fa1d1cd` included both a distinct build
+version and the bounded Apple registrar. Restore that already-reviewed candidate
+path and verify the combination in a further complete signed upgrade. The earlier
+same-version registrar failure does not establish that the registrar is unnecessary
+when combined with distinct build identity. Detailed observations remain in
+`simplified-upgrade/` under the same evidence root; the OS cache mechanism is still
+unproven, and release signing requirements are unchanged.
+
+Restoring that exact combination at `67a0029` also failed the 11:48:25 upgrade:
+the registrar completed and SM submission succeeded, but the helper never became
+usable and launchd again reported `EX_CONFIG` 78. The successful `fa1d1cd` run
+therefore cannot certify the combination as a reliable fix. The next narrow change
+recreates the `SMAppService` instance after bundle refresh, rather than registering
+through the instance constructed before that refresh. Whether that earlier object
+retained stale registration metadata remains a hypothesis; the installed upgrade
+is again the acceptance check. Evidence: `combined-upgrade/`.
+
+The fresh-instance trial `872a31b` also failed automatic upgrade. The same signed
+bytes recovered after the existing UI Retry at 12:00:27; a 12:00:47 probe found
+local readiness, cloud online, both devices and both Bots. This is manual recovery
+evidence. BTM logs for the failed 11:51 registration reused the same item and the
+unchanged LaunchAgent configuration checksum, with invalidation occurring after
+both attempted registrations. This points to registration propagation, without
+proving that the hidden LWCR contained a stale hash.
+
+Candidate assembly now writes its unique bundle build into the LaunchAgent's
+`EAGLE_DEVICE_BUNDLE_BUILD` environment field, so BTM sees a changed configuration
+alongside the changed signed bundle. Labels, Mach services, identity and signature
+requirements stay fixed. The packaging regression failed first because the two
+builds reused an identical launch configuration; the actual upgrade remains the
+decisive check. The recovered `872a31b` also completed a real command from MacMini-2
+to MacMini 1 and returned the identical result when queried by its original ID.
+
+The final `fef7203` candidate passed two consecutive complete signed upgrades at
+12:06:18 and 12:08:20 with no manual retry. Local readiness was observed at
+12.83/11.39 seconds and cloud online at 13.53/12.17 seconds. Each job reported one
+run and no exit; each installed adapter completed a local read-only command. The
+two LaunchAgent configuration checksums differed and their build markers matched
+their enclosing bundle versions. Identity, gateway, daemon token and catalogue
+hashes matched the pre-install records, and both histories remained. This verifies
+the final combination on this Mac, not Apple's internal cache key or notarized
+distribution behavior. Evidence: `versioned-launch-upgrade/` and
+`versioned-launch-repeat/` under the same evidence root.
+
+## 2026-10-30 — Cron acceptance observed admission before completion
+
+After integrating upstream `d69359b`, the complete Bots evaluation suite reported
+two scheduled inputs but only one assistant reply in `trigger-cron`. Its wait
+condition ended as soon as the second input appeared, then immediately asserted
+that the second reply had also arrived. The assertion raced normal asynchronous
+generation; the failure was not evidence that the second schedule failed to fire.
+The case now waits for both assistant replies before making the existing schedule
+origin and message assertions. The 240-second step and 300-second case budgets
+are unchanged. The first failing run is retained in
+`.local/device-evidence/device-settings-ui-20261030/final/bots-eval-serial.log`.
+
+The preceding parallel Bots check and Swift compile also exposed the existing
+50-millisecond shell-timeout fixture before its initial output arrived. Running
+the unchanged complete Bots check without the concurrent compile passed both
+636-test runs and coverage. Both observations are preserved; no timeout, coverage
+threshold, test selection or project hook was weakened.
+
+## 2026-10-30 — ServiceManagement async import differs across SDKs
+
+PR #109's first macOS CI run passed dependency installation and the real device
+integration suite, then rejected the async call to `SMAppService.unregister()`:
+the CI SDK treats the service object as non-Sendable, so its synthesized async
+method would send an actor-owned object to another executor. The local Xcode
+build and normal push gates had accepted that import. The build failure is
+retained in the ignored final `ci-macos-job.log` for run `41001859266`.
+
+The wrapper now calls the system's completion-handler API synchronously on its
+own actor and resumes a checked continuation after that callback. It preserves
+the documented process-exit boundary before re-registration without adding an
+unchecked Sendable declaration or disabling concurrency checks. The subsequent
+CI build, rather than local compilation alone, verifies the older SDK path.
+
+## 2026-10-30 — Repeated same-binary upgrades missed the helper update boundary
+
+The complete `4cbeb98` SDK-fix package again hit a Launch Constraint Violation
+and EX_CONFIG after installation. Its app and LaunchAgent build markers matched
+and changed, but the helper identifier and CDHash also changed. Comparison of the
+two successful `fef7203` packages showed identical helper bytes and CDHashes, so
+those passes do not establish an upgrade across helper signatures. BTM's new
+configuration still reused an existing item; its hidden hash set was not read.
+
+The installation script quit the UI and moved the old App before the new App
+unregistered the old service. The next change makes installation preparation
+explicit: a signed App capability and a maintenance entry before SwiftUI, with
+successful unregister completion and independent old job/PID disappearance before
+whole-bundle replacement. The installer retains the previous bundle and refuses
+replacement on an ambiguous preparation. For older candidates it may try the new
+maintenance process once, but the same bundle ID or its status alone is never
+accepted as proof that the old service stopped. Actual cross-signature upgrade
+verification remains necessary; no signature constraint or user policy is relaxed.
+
+The first prepared installer refused before quitting or replacing the old App:
+`ps comm` returned SMAppService's relative `BundleProgram` as argv[0], not the
+executable's absolute path. The guard stayed closed. The adapter now reads that
+PID's executable path through the kernel's `proc_pidpath`, preserving the exact
+installed-bundle comparison rather than accepting a relative name.
+
+The prepared legacy migration to `7ed57d4` debug passed automatically and preserved
+the existing data. It reused the helper bytes. The following debug-to-release
+upgrade changed the helper, awaited the old installed App's unregister callback,
+confirmed the old job and PID absent, then replaced the bundle; launch constraints
+still rejected the new helper. Earlier unregistration is therefore an installer
+safeguard, not a demonstrated complete fix for the cached constraint.
+
+The next candidate-only trial puts its build version in the actual helper filename
+and points BundleProgram at it. Signing, the App's code-identity lookup and installer
+ownership checks read that same signed plist. The label, Mach service, code-signing
+requirements and device data do not change. Its real changed-helper installation
+remains the deciding check; no successful upgrade is inferred from the new layout.
+
+The `1034f43` versioned-helper trial also failed twice with explicit Launch
+Constraint Violation before execution. The observed PID was transient and did
+not establish readiness. Changing the executable path did not close the cached
+constraint issue. The next narrow signing trial assigns only the candidate helper
+a stable reverse-DNS identifier, retaining its exact ad-hoc CDHash requirement.
+
+The `59e6b37` fixed-identifier package still failed twice at launch. Its actual
+identifier and exact CDHash were verified, so this is not a missing signing flag.
+The next bounded trial versions the candidate's Label, MachService and plist name
+together, preserving its profile and data paths, and selects the old service for
+installer cleanup from the old signed bundle. This targets the observed reuse of
+the older BTM item rather than adding another delay. Live acceptance remains open.
+
+The versioned-service trial passed a real changed-helper upgrade at `2bea0d6`:
+debug-to-release changed its SHA/CDHash; the normal installer removed the old job,
+then the new job ran once and reached local readiness in 10.60 seconds and cloud
+online in 11.77 seconds. No manual retry was used for that upgrade. First adoption
+had explicitly cleared the previously failed legacy job through the old signed
+App and is recorded separately. Identity/configuration hashes and both history
+files were preserved; installed local execution and physical A-to-B execution
+with an original-ID query passed. This demonstrates the candidate upgrade path;
+it does not claim knowledge of Apple's private cache key or distribution signing.
+
+The subsequent scope review found the website still exposing the device routes
+and provisioning duplicate DO bindings after the product had moved to its own
+Worker. The redundant website changes were restored to main, and the same API
+and process tests now use the actual standalone entry. A website isolation
+regression first returned 503 instead of 404; all 67 affected cases then passed.
+
+Root is also validating a combined startup simplification: use the existing
+background `LSRegisterURL` API instead of a registrar subprocess, give new helpers
+a fixed filename and omit the duplicate build environment marker. Versioned
+service names, old-bundle path parsing, update preparation and exact peer signing
+requirements remain. The prior failed trials are retained above; local packaging
+tests alone do not establish that the simplified real upgrades work.
+
+That combined simplification passed both complete installed upgrades at `d121736`.
+The second kept the helper path fixed while changing its SHA/CDHash, automatically
+reached local readiness in 12.70 seconds and cloud online in 13.48 seconds, and
+left the old job absent and the new job running once without exit. The first took
+11.55/12.51 seconds. Installed local and physical peer execution/result retrieval
+also passed. This supports deleting those three redundant mechanisms while
+retaining versioned service identities and update preparation. Identity, Raven,
+token and catalogue hashes matched. Both recorded history files exist; the old
+size baseline was not refreshed, so it cannot prove byte-identical histories.
+
+PR #109's Check run `41013306952` failed one of 287 Swift tests at `d68e210`:
+`BotsWindowLifecycleTests.waitUntil` expired its two-second wall-clock deadline
+while other MainActor tests took about 14.5 seconds. This was a test failure before
+coverage calculation, not a coverage percentage failure. The lifecycle fixture
+now signals factory calls and entry of the second start task with continuations,
+keeping the factory result suspended until the test releases it. The existing
+connection-count, close, replacement and retry assertions remain, with an added
+final count assertion. Product connection logic and test concurrency are unchanged;
+the original CI log remains in `.local/device-evidence/pr109-scope/github-macos-d68e210.log`.
+The fixture retains the result of releasing all calls, so a late duplicate factory
+call still increments the count and completes instead of hanging before the final
+assertion. Individually released old/new calls remain independently controlled.
+
+The next run at `2a28287` passed Linux but timed out while executing the native
+focus fixture, before reaching coverage. Compilation, signing and cursor lookup
+had succeeded; the unchanged 60-second process deadline stopped the fixture.
+The probe, its Swift fixture, all EagleDesign inputs and CI configuration match
+`d68e210`, whose focus check passed. This does not yet establish a transient cause.
+The requested single macOS-job rerun returned HTTP 403 because the personal
+account lacks upstream repository admin rights; no rerun started. The failure log
+and rejected request remain in `.local/device-evidence/pr109-scope/`. The next
+verification follows the normal checkpoint/documentation push to the owned fork;
+no timeout, assertion, hook or account permission was changed.
+
+The documentation-only head `82b4cfd` failed the same native fixture execution
+deadline in run `41016561875`; Linux passed again. The second log is retained in
+`.local/device-evidence/pr109-scope/github-macos-82b4cfd.log`. Neither failure
+identified an internal stage: the fixture wrote its report only after closing
+all windows, and the parent threw on the process error before printing captured
+output. The fixture now writes elapsed time, completed-check count and stage
+entry/return markers directly to stderr, including layout, hover, sheet and
+window cleanup boundaries. The parent prints status, signal, error and captured
+streams before preserving the original assertion. This is diagnostic evidence
+collection, not a demonstrated timeout fix; the 60-second CI limit, all 42 checks,
+execution mode and gates remain unchanged. The local verification compiles the
+fixture and checks formatting without running the interactive probe while the
+user tests the installed App. The next normal CI run supplies runtime evidence.

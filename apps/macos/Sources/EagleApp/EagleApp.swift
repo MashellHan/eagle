@@ -3,18 +3,19 @@ import EagleDesign
 import EagleFeatures
 import SwiftUI
 
-@main
 struct EagleApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
   @AppStorage("eagle.appearance") private var appearance = "system"
 
   var body: some Scene {
     WindowGroup("Eagle") {
-      WorkspaceShellView(onShowGallery: { GalleryWindow.show() })
-        .frame(minWidth: 1280, minHeight: 760)
-        .ignoresSafeArea()
-        .background(WindowConfigurator())
-        .preferredColorScheme(scheme)
+      WorkspaceShellView(onShowGallery: { openSettings in
+        GalleryWindowController.shared.show(onShowSettings: openSettings)
+      })
+      .frame(minWidth: 1280, minHeight: 760)
+      .ignoresSafeArea()
+      .background(WindowConfigurator())
+      .preferredColorScheme(scheme)
     }
     .defaultSize(width: Theme.Metric.windowWidth, height: Theme.Metric.windowHeight)
     // Immersive: no title bar, traffic lights float over the sidebar.
@@ -27,7 +28,7 @@ struct EagleApp: App {
       }
       CommandGroup(after: .newItem) {
         Button("模板库") {
-          GalleryWindow.show()
+          GalleryWindowController.shared.show()
         }
         .keyboardShortcut("g", modifiers: [.command, .shift])
 
@@ -51,6 +52,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
     NSApp.activate(ignoringOtherApps: true)
+    DeviceApprovalWindowController.shared.observe(DeviceSettingsViewModel.shared)
+    Task { @MainActor in await DeviceSettingsViewModel.shared.startIfNeeded() }
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -79,35 +82,6 @@ struct WindowConfigurator: NSViewRepresentable {
   }
 
   func updateNSView(_ view: NSView, context: Context) {}
-}
-
-/// Small AppKit window so the gallery can be opened next to the shell without
-/// turning it into a second primary scene.
-@MainActor
-enum GalleryWindow {
-  private static var window: NSWindow?
-
-  static func show() {
-    if let window {
-      window.makeKeyAndOrderFront(nil)
-      return
-    }
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 1180, height: 900),
-      styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
-      backing: .buffered,
-      defer: false
-    )
-    window.title = "Eagle 模板库"
-    window.titlebarAppearsTransparent = true
-    window.titleVisibility = .hidden
-    window.contentView = NSHostingView(
-      rootView: TemplateGallery()
-    )
-    window.center()
-    window.makeKeyAndOrderFront(nil)
-    Self.window = window
-  }
 }
 
 extension EagleApp {

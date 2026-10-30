@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "operation": {
+    "kind": "native",
+    "tool": "write",
+    "args": {
+      "path": "/tmp/device-test",
+      "content": "书/房\n",
+      "numbers": [1e-7, 0.000001, 100000000000000000000, 1e21, 0, true, null]
+    },
+    "cwd": "/tmp"
+  },
+  "canonical": "{\"args\":{\"content\":\"书/房\\n\",\"numbers\":[1e-7,0.000001,100000000000000000000,1e+21,0,true,null],\"path\":\"/tmp/device-test\"},\"cwd\":\"/tmp\",\"kind\":\"native\",\"tool\":\"write\"}",
+  "digest": "6c102b42ea59f0a437faaacd9f220bcec54cd764a6d0afc9e283166972e183e3"
+}

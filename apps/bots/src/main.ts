@@ -293,6 +293,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     return entries;
   };
   const runtime = new PiDurableRuntime({
+    ...(canonical.deviceSocket === undefined ? {} : { deviceSocket: canonical.deviceSocket }),
     models: () => models,
     log,
     compaction,
@@ -527,6 +528,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     },
   };
   const daemon = await startServer({
+    ...(canonical.deviceSocket === undefined ? {} : { deviceSocket: canonical.deviceSocket }),
     token,
     log,
     registry,

@@ -1,5 +1,225 @@
 # 用户视角检查点
 
+## 2026-10-29 16:48 +08 — 设备页刷新与点击修复集成
+
+- Root 对旧 App 做 13 秒只读 AX 采样：156 次中刷新按钮 153 次可用、3 次禁用；
+  证据 `gui/device-controls-before.json`。独立 Swift 宿主另复现展开按钮仅 85.5×16pt、
+  右侧空白无法点击，1 项红测有 4 处失败；不把测试宿主当作新版 App GUI 验收。
+- Sol 已提交无变化不发布/不闪禁用、单一 5 秒观察源、“添加设备”整行 44pt 点击，
+  并保护输入、原 pending ID 和较新用户结果。局部 38 项/5 suites 通过；review 指出的
+  前置输入错误覆盖问题另有 18 处红断言，修后 30 项/3 模型 suites 通过，P2 与增量
+  review 已关闭，无新增实质问题。
+  strict format 与正常提交 hook 通过；日志在 settings-polish worktree 的
+  `.local/settings-polish-evidence/`。Lead 合入固定 UI `1d1fd31`，不取其后的其他工作。
+- 安装仍由原 UI/思考等级入口独占；新版需要保留其已授权 thinking 改动，不能用纯设备
+  包覆盖。Root 负责最终门禁和唯一 push，代码交付不等待安装；本轮未替换或重启 App。
+- 公网设备服务仍为 `28f4aef`，未改 Worker、身份、原 journal、Bot/历史或 Raven。
+  没有新增 Herdr 采集、认证/D1/live 验证；实际 HTTPS App 注册/WSS、物理双 Mac
+  配对与指定目标执行仍待验收。
+
+## 2026-10-29 16:16 +08 — 设备布局更新与本机目录回退
+
+- `f62095a` 已显示精简设备页。更新期间 helper 曾被 amfid -423/launch constraint
+  拒绝；临时停用服务后，16:15 实际 App 已重新显示启用、本机 MacMini-2 可用与
+  始终允许。当前新 helper 已运行，准备的旧 helper 回退包没有安装。
+- 用户指出停用服务后重开页面，本机也从列表消失。新增本机名称/未就绪占位，
+  不虚构身份、在线或权限；先复现失败，相关 26 Swift 测试通过，待独立提交和重启。
+- Herdr `default/w4` 的 lead 正整理另一 Mac 构建交接，reviewer 正只读审查本片。
+  此 UI 会话仍独占候选安装；原设备身份、聊天、策略与 localhost profile 保留。
+- 本轮云端显示仍指隔离 API `127.0.0.1:17053`，不是公网验收。没有新的 Herdr
+  采集、D1/公网或物理第二台 Mac 证据。下一断点为新本机行安装后再启动验证。
+
+## 2026-10-29 16:03 +08 — 个人设备产品服务已部署
+
+- Root 在个人账户部署独立 `eagle-devices`，源码 `28f4aef`，Cloudflare 版本
+  `51174415-6140-4347-8f88-584ec7cff0b8`。未改已有网站/ingest 或 D1。
+- 最终 check 235/235、types/lint/build、绝对路径 dry-run 通过，Astra 增量 review
+  无阻塞。Node 公网 health 200/revision 完全一致，匿名目录 401 session_required，
+  均 no-store；证据 `.local/device-evidence/own-device-release/`。
+- Lead 的同 SHA HTTPS 候选已完成正常装配/签名，Node 字节保持；Root 已提供 arm64
+  配对 ZIP。现有 Applications 和 UI 早期构建仍 localhost，安装拥有者需从独立 UI
+  分支正常重建 HTTPS 整包后更新，不能原位改签名包。交接记录为 `device-origin-handoff.md`。
+- UI 协作入口独占安装，Root 只读观察；下一跳是已安装 App 的真实公网注册/WSS，
+  然后物理第二 Mac 配对/指定目标执行。尚无这两项成功证据，不重复后端测试。
+- Bot/历史、私有文件身份、原 journal/pending、Raven 和本地 API 保留；无新增采集验收。
+
+## 2026-10-29 15:50 +08 — 独立设备后端准备
+
+- 用户将配对后端选为个人账户的长期服务 `eagle-devices.mxhan.workers.dev`。
+  不再以 hexly.ai 为本轮目标，也不覆盖个人同名 `eagle/eagle-ingest`；没有远端写入。
+- c0b4942 在官方 Node 26.9.0 下完整 check 230/230、types/lint/build 通过，浏览器
+  191 通过、11 个既有 viewport skip。Root 保留两次环境/生成物失败日志，没有降门禁。
+- Service 从该基线准备两 DO 的独立入口/config 和局部红绿；Lead 负责集成、文档、
+  dry-run 与 HTTPS 候选包，现有 reviewer 仅审增量。下一跳仍是实际产品服务部署/注册。
+- 当前安装版的 Bot、历史、文件身份、journal、Raven 和本地 API 保留；本机 GUI
+  执行证据沿用已验结果。没有新增采集、D1、公网或物理双 Mac 验收。
+- 另一协作入口已收回 settings-layout UI 写入，独占其工作树；该 UI 不混入本片。
+
+## 2026-10-29 15:08 +08 — 本机安装与真实执行闭环
+
+- Root 将 `d32ea1a` 原签名字节安装到 `~/Applications/Eagle Device Candidate.app`，
+  helper 正常运行、私有文件身份自动创建；不把路径与新 inode 的影响强行归为单一根因。
+- 真实 GUI 完成 remote_status、bash 写标记、read 读回，磁盘内容独立核对。同包关闭
+  重开后 App/Bots 确实退出再启动，helper PID 93874 不变、身份摘要/0700/0600 不变，
+  历史恢复且本机可用，无 Keychain 提示。证据 `gui/local-command.json`、`installed-reopen.json`。
+- 当前已连接的是隔离本地 API 127.0.0.1:17053；旧 journal、两个 Bot/历史与 Raven 保留。
+  采集、D1、公网、第二台 Mac 和分发签名仍无新增验收。
+- 本机阶段收束。当前安装包保留体验；源码仅清理多余共享 Bot 文案并同步凭据/部署现状。
+  candidate 构建期 HTTPS origin 已通过 15 项局部装配检查与增量审查，未传仍本地；
+  本轮新产物保持本地默认，不加配置 UI、不部署。
+
+## 2026-10-29 14:55 +08 — 标准装包后仍阻断于系统启动约束
+
+- `d32ea1a` 已从新 staging 完整装配并签名；最终路径 deep/strict 通过，内置 Node
+  原字节保留，Agent 1.1.0 含目标 scope 守卫。注册、ACL、journal 三片 review 均关闭。
+- Root 在真实 GUI 开启后仍未就绪，FileVault 目录尚未创建。系统先记录 SM 提交成功，
+  再以 amfid -423 与 Launch Constraint Violation 拒绝当前 helper；后续 EX_CONFIG
+  不能当作缺文件或 Keychain 失败。当前 App 的运行/磁盘 CDHash 一致。
+- 仅对该候选强制更新 LaunchServices 登记返回 0，但现有 job 下一调度仍失败；没有
+  删除全局 BTM/LS、关闭签名校验或改身份记录。Root 正将同一签名字节安装到
+  `~/Applications/Eagle Device Candidate.app` 后做正常注册验证，尚待其实际结果。
+- GUI 仅由外部 Root 操作；误投到 w1 的预检未执行任何 GUI/状态修改，不计验收。
+  用户数据、隔离 API/Raven 保留；采集/D1/公网与物理多 Mac 没有新增证据。
+
+## 2026-10-29 14:40 +08 — 文件凭据候选准备重新装包
+
+- FileVault 及扩展 ACL 拒绝已集成；默认不访问 Keychain，原私钥/设备记录不删除。
+  原作者 16 项真实文件/权限/跨语言验签测试通过，ACL P1 与注册审批 P2 已增量审查关闭。
+- 采用原 journal 与固定 socket，不拆目录。真实新旧身份 Node 进程证明旧 ID/目标绑定、
+  旧行与 native 阻断保留；另复现并修复远端同来源 get/cancel 读旧目标结果，局部 27/27。
+- Root 真实 GUI 已验证两个窗口共享同一 Bot 历史、全部关窗后正常重开恢复两个 Bot/历史。
+  设备仍停用，下一跳是从新 staging 目录装配/签名后，通过真实 GUI 启用免 Keychain
+  候选并执行本机命令。新增诊断草稿未提交，不扩成安装前置或额外配置流程。
+- 隔离本地 API、Raven 与用户数据保留；不新增 Bot 分享链接/互联设置。
+  采集、D1、公网和物理多 Mac 尚无新增验收。
+
+## 2026-10-29 14:26 +08 — 免 Keychain 决策与本机 GUI 证据
+
+- 新注册已通过真实 GUI off/on 生效；之后 helper 卡在旧 login Keychain 的私钥读取，
+  与先前 LWCR 拒绝不同。用户明确改用 0700/0600 私有文件凭据，不再尝试旧 Keychain。
+  旧 Keychain/设备 journal 留原位，候选将使用新身份；两个 Bot、聊天和 Raven 配置保留。
+- Root 真实 GUI 已验证新超时文案、可用停用开关，以及键盘输入/发送/Raven 回复；证据
+  `gui/local-reenable.json`、`gui/chat.json`。设备服务现保持停用，无在途操作。
+- 注册审批 P2 已有行为红绿：成功注册待系统审批时保存单独 pending 指纹，批准同包后
+  不重复注销；12 项局部测试通过，先独立提交/review。Service 专写 FileVault，Lead
+  继续 helper 启动和身份/历史边界，仍不改设备服务协议或放宽代码身份检查。
+- Root 只读旧 journal 为两条 succeeded、native_blocked=0；旧 outgoing 目标/原 ID 保留。
+  物理多 Mac、采集/D1/公网与发行验证仍未新增。
+
+## 2026-10-29 14:06 +08 — 用户反馈后的本机注册修复
+
+- 当前 App/Bots/API 均活跃，但旧 helper 注册仍因 Launch Constraint Violation 无法启动，
+  stale socket 实测 ECONNREFUSED。Registry 无配对/结果，App 无 pending pairing；服务超时
+  不能被描述为已发生配对。用户新 Bot/历史、设备身份及所有原记录保持原位。
+- Root 已获 AX 权限并用 candidate bundle ID 定位 PID 14747，真实进入设备页复现
+  “未就绪/未知/配对超时”、停用开关被状态轮询禁用；录屏权限仍为 false。
+- Lead 修复包指纹变化后的 SMAppService 串行注销/重新注册，并保留同包 helper、系统
+  审批和失败记录。只在确有 pending 时显示配对恢复提示，状态等待期间可发起停用。
+  后台注册 10 项、既有 host 6 项及 UI/model 22 项均通过；正常重签启动是下一跳。
+- 只读 service 已完成运行链路归因，reviewer 待明确修复提交。采集/D1/公网未变化，
+  不清状态、不替换日常 App，也不让用户反复手动排错。
+
+## 2026-10-29 13:47 +08 — 本阶段候选收尾与后台注册更新待办
+
+- 已报源码问题全部增量 review 关闭，功能构建 SHA 为 `259614a`。最终独立候选通过
+  deep/strict 签名，内置 Node 原签名及字节保留，Agent 1.1.0、onboarding 仍为 1.0.0。
+- 根 215 项、类型/lint/build、显式设备集成 7 项、独立 Bots 530 项已通过；浏览器
+  191 通过、11 个既有平台条件跳过。App 224 项与 93.4% 逻辑覆盖率、Bots 客户端
+  126 项与 91.5% 覆盖率通过，原阈值均未变。Swift 依赖的既有编译警告未宣称消失。
+- 原候选已自动经 Keychain/helper 注册本地 API 并 online；退出 App 后同 helper PID
+  与 socket inode 仍可完成新写入和原 ID get。随后更新候选产生 macOS Launch Constraint
+  Violation，当前 helper 未恢复；新包签名有效并不自动刷新旧 SMAppService 注册。
+- App 与 Bots 已重新打开，隔离 17053 API 与 Raven 网关可用（gpt-6.1-sol / medium、
+  私有配置 0600）。用户通过已有设备服务开关先关闭、待完成后开启即可由真实 App
+  注销/重新注册；正在等待此手动操作，不重置身份或全局后台数据库。
+- 本阶段在用户试用处停下，不扩展新功能。采集/D1/公网、实际多窗口点击、物理双 Mac、
+  发行签名/公证仍无新增验收；不替换日常 App。具体更新事故保留在根 Retrospective。
+
+## 2026-10-29 13:36 +08 — 候选后台自动启动与本机执行
+
+- 修复首次 `notFound` 分支后，真实 ad-hoc 候选由 SMAppService 注册，launchd 自动启动
+  helper 与内置 Node；0600 socket 返回 localReady=true、All approve。本机文件写入
+  completed，原 ID 查询一致。此次证据仍为 cloud offline，不把本机成功写成云端认证成功。
+- 根门禁余下类型、lint、构建通过；浏览器 191 通过、11 个既有平台条件跳过。独立
+  Bots 全检查 530/530 已通过，App/客户端 Swift 门禁待窗口生命周期修复后集中执行。
+- Service 已按授权启动隔离 17053 API，报告自动注册 challenge 200；最终注册/WS 仍在
+  采证。Lead 继续窗口 P2、App 退出后 helper 生命周期与 Raven 安全配置复制。
+- 采集/D1/公网无新增验收；无发布、日常 App 替换、辅助功能/录屏授权或双物理 Mac 证据。
+
+## 2026-10-29 13:26 +08 — 真实候选启动暴露首次后台注册分支
+
+- 完整 Swift 候选已装配并通过嵌套签名验证；实际启动独立 candidate App 后，内置
+  Bots health 200、设备配置摘要一致。helper 尚未注册，socket ENOENT，没有假报本机就绪。
+- 真实 App 的系统诊断给出 SMAppService status=3（notFound）；原代码未调用 register。
+  Lead 已修注册分支，正重新签名/启动验证。辅助功能和窗口录屏不可用，未完成真实 UI 点击。
+- 集成 `test:devices` 已运行 7/7；根检查在移开 Bots node_modules 后 215/215，通过的
+  范围确实不依赖 Bots。随后全局类型声明触发新测试 TS2740，原写入者正做白名单环境兼容。
+- Herdr 三人仍按当前范围协作；采集/D1/公网没有新增验收。物理多 Mac、分发签名未验证，
+  没有部署、发布或替换日常 App。Raven 网关偏好待整包/必要检查完成后安全复制。
+
+## 2026-10-29 13:09 +08 — 内置 Bots 启动与共享设备 UI 已集成
+
+- Herdr 三名成员继续原分工；helper origin/retry review 已关闭。UI/model 至 c308033
+  已集成，剩余配对终态收束、停用重入和 Node 故障重试由原写入者补局部回归。
+- 8e264ab 用真实 Swift 监督器启动 Node/Bots（5 项局部通过），固定设备 socket、
+  核对 daemon 的配置摘要并隔离候选数据/端口/provider/outbox；尚未运行签名候选包。
+- 主窗口设备 inspector、全局确认与自动 helper 启动接线已编译；没有新的真实 App
+  点击或 SMAppService 注册证据。App 跨产品回归显式独立运行，根检查仍只依赖根 lock。
+- Registry/relay 本地 SQLite 的既有证据未扩展为物理多 Mac；采集/D1/公网没有新增
+  验收。下一断点是完整候选包与多个 Bot 的真实端口联动，没有发布或日常 App 替换。
+
+## 2026-10-29 12:54 +08 — 设备页模型集成，候选启动接线中
+
+- Herdr default/w4 三人配置不变，已读 service/reviewer 实际输出；service 独占设备页
+  model/view，Lead 负责 helper 生命周期、App/Bots 启动与集成。
+- helper/XPC 源码与局部真实传输的 review 已关闭；运行时和候选签名装配 fixture
+  通过，fixture 的 App/helper 是占位可执行文件，未作为真实 Swift App 启动证据。
+- 共享设备 model 已集成 6063beb，7 项局部测试为作者证据；原 host 的 origin/retry
+  两项 P2 正修复。实际 App/SMAppService 和多个 Bot 经设备群执行仍是下一断点。
+- Herdr 采集、D1、公网没有新增运行验收；未部署、发布、替换日常 App 或验证物理双 Mac。
+
+## 2026-10-29 12:37 +08 — 私有 Swift 宿主已接真实本机执行
+
+- Herdr default/w4 仍是三人：Lead/reviewer Astra Max，service Sol xhigh；已读实际
+  工作输出。service 现独占装配脚本/Support，Lead 接 helper 与设备页。
+- 设备服务至 de65780 的作者组合为 42/42，Registry/执行 SQLite、WS、Node 进程及
+  包外 Agent 入口均有本地证据；D1/Herdr 采集/公网服务没有新的运行验收。
+- Swift 真实 Keychain 隔离测试、跨语言审批 UUID 验签及真实 kernel boot UUID 读取
+  通过。d059566 的私有管道已自动启动 Node，离线写入中文文件，Bot 管理被拒绝，
+  parent 切暂停生效；确认回调红绿已闭环。
+- Bots 输出审查修复已提交，截断秘密残片由 83d5876 整段省略；service 补了独立
+  Bot 子进程 → 实际 sanitizer/journal 回归。下一断点是受信 XPC/后台启动和设备页。
+- 内置运行时装配已用空 PATH/NODE_PATH 在仓库外运行，保留 Node 原签名；尚未运行
+  完整候选 App、SMAppService 登录项、物理第二台 Mac 或真正重启。没有发布或替换日常 App。
+
+## 2026-10-29 12:08 +08 — 共享 port 已提交，App 身份接线中
+
+- 实际 Herdr 三人协作继续；菜单入口与原窗口路由的 `b399936` review 已关闭。
+  本轮未启动真实 Herdr 采集、未操作旧工作树，也未访问公网部署资源。
+- 服务认证、Registry/DeviceExecution 本地 SQLite 已集成至 `bb707bc`；四成员、
+  WS 关联/撤销、原 ID 目标持久绑定有作者本地运行证据，最终集成门禁尚未执行。
+  现有 D1 报表未因此取得新的运行验收结论。
+- Bots 共享工具 `3365c64` 已提交 review，30 项相关测试及类型/严格 lint 通过。
+  覆盖真实 Unix socket、native 文件副作用前的接纳、失败后查询原 ID；尚不等同于
+  实际 App 启动两个 Bot 通过 helper 的端到端证据。
+- 当前断点：Swift 身份与审批核心已写，完整参数缺失时仍会签名的行为红测已复现，
+  正收紧校验；随后接独立宿主、设备页与应用装配。私钥真实 Keychain/SMAppService
+  启动、实际打包 UI、第二台物理 Mac 和分发签名尚未验证。
+
+## 2026-10-29 11:43 +08 — device-groups 本地候选
+
+- Herdr：default/w4 的 Lead、service、reviewer 已读实际输出并协调提交；本轮没有运行
+  已安装 Agent 的真实采集，也没有触碰旧 w1 团队或旧工作树。
+- 认证与群：服务分支真实本地 Miniflare/Registry SQLite 覆盖四成员、方向无关配对、
+  撤销、慢请求事务重验；集成已 cherry-pick 至 `9074cec`。未向公网写入或部署。
+- D1：本轮新设备权威是本地 Registry/DeviceExecution SQLite；现有 D1 报表路径
+  尚未跑完整候选门禁，不能据此声称线上报表或真实采集已通过。
+- 渲染：`2650fc5` 增加 App 内 menu 的真实设置动作，NSHostingView 的入口查找红测
+  和 AXPress 回调绿测已完成；打包 App 的设备页交互尚未验收。
+- 下个断点：Swift Keychain 独立宿主、真实设备页、Bots 共享 port 正接线。
+  native 心跳失联不能证明副作用已停止，修复须阻断新接纳直至原执行终止可确认。
+  无第二台已连接 Mac，无发布签名 identity；不把隔离进程当物理双 Mac 验收。
+
 ## 2026-10-21 09:57 +08 — v0.12.0 published
 
 - Published GitHub Release [v0.12.0](https://github.com/nocoo/eagle/releases/tag/v0.12.0).
@@ -1891,3 +2111,391 @@ its own fixture root, and never opens the live daemon. The app bundle builds and
 ad-hoc signature verifies. The running old app is connected with no running tasks;
 restart of the built bundle follows the commit. No real provider calls or key writes
 were used for acceptance; live DeepSeek/Tavily verification remains unperformed.
+
+## 2026-10-29 — shared-device service worktree
+
+Local Node Agent A/B instances authenticated with ephemeral test Ed25519 keys,
+paired through the real Miniflare Registry SQLite DO, opened outbound Agent WS
+connections and completed commands in both directions. Original-ID query/replay
+and member revocation passed; 6 device API tests and 5 runtime tests passed.
+These are isolated processes, not two physical Macs. D1 is unused by this new
+path; daily-dev/production data and resources were untouched. No App rendering,
+Keychain, installed runtime, Herdr collection or public endpoint was verified.
+Next broken hop: trusted helper stdin management/approval and shared local Unix
+socket are not connected yet. Lead owns App/Bots integration and full gates.
+
+## 2026-10-29 — service review corrections
+
+Registry slow-body revocation/expiry, metadata revision, completion-time quota and
+seven-day pairing recovery passed 10 real local API/SQLite tests at cde96a0.
+Native disconnect/lease loss now persists an unknown admission block across
+restart (7063a01), pending explicit original-owner completion evidence; there is
+no automatic timer unlock or trusted administrative recovery yet. Output and
+storage/approval races passed 12 affected runtime/process tests at 5f65972.
+The private Node process exposed real local command tools while cloud was down;
+Bot socket management writes were denied, helper stdin management and typed
+approval were exercised with ephemeral test keys. No real Keychain, App rendering,
+Herdr collection, D1 write, public deployment or physical second Mac was verified.
+Next broken hop: bounded cloud reconnect recovery and authorization immediately
+before relay forwarding are under fault-injection tests; Lead owns integration.
+
+
+## 2026-10-29 17:57 +0800 — Device PR opened; upstream focus gate remains blocked
+
+- User delivery: draft https://github.com/nocoo/eagle/pull/109 points to the already
+  published device head `a96ee48`. Physical two-Mac pairing/execution remains pending.
+- Herdr: the existing Astra reviewer cleared local merge `def775d` against `4eefe0a`;
+  device wiring, approvals and shared observation remain intact. No App was replaced.
+- Authentication/storage: personal GitHub authentication created the PR; root checks
+  passed, including local Miniflare/D1 fixtures. No new live cloud/device-auth claim.
+- Rendering/checks: browser 191 passed with 11 existing viewport skips; Bots checks
+  (633 normal and coverage), Swift client 134, device integration 7 and eval 9 passed.
+- Broken hop: normal push stopped when the inherited native composer-focus fixture
+  exceeded its local 15-second deadline. The local merge is not published; the final
+  macOS Swift push stage was not reached. Preserve limits and hooks when recovering.
+  Evidence: `.local/device-evidence/upstream-pr/`.
+
+## 2026-10-29 18:40 +0800 — Merged thinking update integrated locally
+
+- GitHub confirmed PR #108 merged at 18:32:37 +08 as
+  `b75816156d5b558f40ec73fd715e34c399f5512f`. Lead fetched that actual commit and
+  merged it into the device worktree without conflicts; earlier test-merge SHAs
+  were not used. The existing Catalog trigger expectation needed no extra change.
+- The 17-file increment updates only agent configuration through the typed event;
+  device wiring, native admission, shared observation, history and pending state
+  remain intact. Astra reviewed fixed tree `b15b6b2` with no substantive findings.
+- Affected headless checks passed: Bots normal and coverage each 636/636,
+  types/Biome, and Bots Swift 136/136. Evidence:
+  `.local/device-evidence/upstream-pr/lead-followup-jdtkrxaq/pr108-integration/`.
+- This sync is local. PR #109 remains a draft at published `a96ee48`; its update
+  still awaits the independent focus fix and normal push gate. That candidate's
+  Services selection and all 42 native checks await unlock and test-window
+  coordination. Browser port 27053 is released, but no native test or App update
+  was performed here. Physical two-Mac acceptance remains pending.
+
+## 2026-10-30 10:29 +0800 — Helper automatic startup repair
+
+- User view: installed `20b13f0` was recovered through normal App registration;
+  the device page showed local readiness and public cloud online, and the installed
+  Bots adapter completed `/bin/df -k /`. Identity, Raven settings and histories
+  were preserved. This is one-Mac evidence, not a two-Mac acceptance result.
+- Herdr: Root remains the only writer/installer; the existing Astra lead and
+  reviewer inspect the startup changes read-only, without duplicating tests.
+- Authentication/storage: exact XPC signing requirements remain; no Keychain,
+  device identity, cloud deployment or D1 change. Existing public registration
+  and local Bots health were verified; new code has not yet been installed.
+- Implementation: dedicated helper ping, bounded re-registration, background
+  system IPC, early local readiness and an App launch entry are implemented.
+  Full macOS tests and the 90% coverage gate passed (95.2%). Review found a
+  partial-registration recovery-budget edge and a stop waiting on a cloud read;
+  both are fixed with regressions. The remaining late pairing-recovery result
+  after disabling was also reproduced and fixed; affected suites passed 32 tests.
+- Next broken hop: build and install the corrected candidate, then measure real
+  automatic startup with no manual device-service toggle. The user then requested
+  a simpler, resizable device settings UI and per-device policy controls; complete
+  that increment before local delivery, and wait for their test confirmation before PR.
+
+## 2026-10-30 10:48 +0800 — Device settings simplification
+
+- User view: current installed App remains the recovered `20b13f0`. Startup fix
+  `b4f581f` is committed; Astra reviewer closed its remaining late pairing result
+  finding. No new install, public deployment or PR has been performed.
+- Root's next increment replaces the fixed settings overlay with a resizable
+  window, removes manual service controls, shows pairing input immediately, and
+  keeps per-device policy/removal beside an inline detail link and status icon.
+- Authentication/storage: the existing identity, Raven settings and Bot data
+  stay in place. No D1 or production fixture writes. The service worker is adding
+  authenticated remote policy management in its separate worktree; the Bot socket
+  remains unable to issue management writes.
+- Herdr/checks: one Root writer for Swift/UI, one service developer for the device
+  protocol, Astra lead/reviewer read-only. UI behavior regressions failed first;
+  stable per-device identifiers resolved the AX menu assertion. The final full
+  macOS run passed 284 tests and 94.5% logic coverage; four-device light/dark
+  snapshots were reviewed. Remote policy uncertainty has a failing-then-passing
+  regression and tells the user to refresh the target rather than resubmit.
+- Next broken hop: finish the UI check, integrate and review the remote policy
+  commit, then install once and exercise the actual window and automatic startup.
+
+## 2026-10-30 11:03 +0800 — Device UI and management integration
+
+- User view: installed App still runs the recovered `20b13f0`; identity/Raven/token/
+  catalog fingerprints and two existing histories were recorded for the replacement.
+  Root owns the next complete signed build and installation, followed by user testing.
+- Herdr: existing Astra lead closed the remote policy credential-version finding;
+  its fix is integrated as `11b1ed1`. The UI reviewer identified a settings-only
+  App with no approval presenter. A real NSWindow regression failed first and now
+  passes with one App-owned confirmation window, retaining exact request-ID denial.
+- Authentication/storage: remote policies use the trusted App path, authenticated
+  same-group relay and target journal confirmation. No live server update or D1
+  mutation was performed. Root's 240-test check passed, including isolated local
+  Miniflare/D1, types, check-only lint and the production build.
+- Rendering: the final Swift packages passed 285 tests; four-device light/dark
+  snapshots were reviewed. Browser gate is running. The latest window fix is under
+  incremental review; no installed-GUI or physical two-Mac pass is claimed yet.
+- Next broken hop: finish this bounded review/check, build and install, verify
+  automatic helper startup and actual settings/approval interactions. No PR until
+  the user confirms the installed result.
+
+## 2026-10-30 11:17 +0800 — Real upgrade exposed a remaining registration failure
+
+- User view: `bda3ef8` is installed and its larger settings window is visible. The
+  user requested pairing/add-device above the device list; that small follow-up
+  is committed as `92c4f56` and will be included in the next complete package.
+- Live authentication/storage: the existing device Worker was updated to
+  `bda3ef8`; its exact public revision and anonymous-directory 401 were verified.
+  Both existing devices and Bots remain. No new cloud resource, D1 migration or
+  remote fixture was created.
+- The first automatic upgrade still failed helper launch constraints twice;
+  it connected at least 76 seconds after launch, with the recovery trigger not
+  observed. A subsequent installed `/bin/df -k /` completed with exit 0. This is
+  recovery evidence and does not close the fast-start requirement.
+- Herdr: Astra confirmed the Apple registrar and internal LS API are different
+  paths, and is reviewing a bounded candidate-only forced registration step.
+  Its 21 affected Swift tests pass. Root preserves the real failing startup logs
+  and owns the next installation; reviewers do not change system registrations.
+- Next broken hop: verify this correction with another complete signed upgrade,
+  then exercise the installed window controls and settings-only approval. The
+  existing 240-test root and 191-pass browser gates (11 existing viewport skips)
+  passed; no duplicate run is needed for this Swift-only follow-up. User testing
+  still precedes any PR.
+
+## 2026-10-30 11:40 +0800 — Candidate build identity and final delivery scope
+
+- User view: installed `fa1d1cd` automatically started the helper, reached local
+  readiness in 15.50 seconds and cloud online in 16.40 seconds without a manual
+  retry. Its installed Bots adapter completed `/bin/df -k /`; both existing Bots
+  and both physical device memberships remain. Pairing is above the device list.
+- The preceding external registrar candidate `b13030d` still failed the actual
+  upgrade. Root is removing that ineffective process path, keeping distinct
+  candidate build versions and the public LS refresh, then checking another full
+  signed install. No Keychain, weaker signature or system database reset is used.
+- Herdr: existing Astra lead/reviewer remain read-only; Root owns integration and
+  installation. Latest upstream `d69359b` merged without conflict, including its
+  trigger refresh and upstream decision to keep native focus in CI only.
+- Authentication/storage: existing public Worker is still verified `bda3ef8`;
+  no new cloud deployment, identity, D1 mutation or remote fixture. The second
+  physical Mac is online but has an older Agent without `policy.manage`, so its
+  remote policy change has not been accepted as verified.
+- Next broken hop: verify the simplified startup and actual App menu, resizing,
+  pairing draft stability and settings-only approval. The user's latest instruction
+  authorizes completing the work and publishing a formal PR; it supersedes the
+  earlier wait-for-user-test condition. Normal push gates and Astra increment
+  review remain required; PR #109 has not yet been updated.
+
+## 2026-10-30 11:55 +0800 — Installed upgrade still blocks delivery
+
+- User view: the full signed `05b3099`, `67a0029` and `872a31b` upgrades did not
+  reach a usable device helper in their first 20 seconds; subsequent launchd
+  observations reported `EX_CONFIG` 78. Crash reports identify a launch constraint
+  violation. Neither restoring the Apple registrar nor recreating SMAppService
+  after refresh established a reliable fix. The single `fa1d1cd` success is not
+  generalized into a passing upgrade claim.
+- Root is exercising the actual App UI through Accessibility: the in-App gallery
+  contains session/base-control navigation and its Settings button opens the real
+  resizable settings window. Pairing is above My Devices; draft and resize checks
+  are in progress. Policy/approval and installed commands require helper recovery.
+- Herdr: the existing Astra lead is doing one targeted read-only comparison of
+  system registration/signature metadata; the reviewer closed the small code and
+  evaluation increments. Root alone writes and installs. No other team, live
+  Herdr collection or unrelated process is modified.
+- Checks: unchanged Bots check passed both 636-test runs and coverage after one
+  recorded 50-ms fixture failure during parallel Swift compilation. All nine eval
+  scenarios passed after correcting the cron case to await both committed replies,
+  retaining its original budgets and assertions. Registration tests passed 22/22.
+- Authentication/storage: no Keychain, weaker signature, global registration reset,
+  new cloud resource, D1 write or remote fixture. Identity, provider configuration
+  and histories remain protected through complete staged installs. The public
+  Worker remains at the previously verified revision.
+- Next broken hop: reliable installed helper startup, then policy/approval and
+  remote read-only command acceptance. Normal push gates and formal PR #109 remain
+  authorized but have not yet been executed for this head.
+
+## 2026-10-30 12:11 +0800 — Installed device acceptance complete; publishing next
+
+- User view: `fef7203` is installed in `~/Applications/Eagle Device Candidate.app`.
+  Its final LaunchAgent build marker passed two consecutive signed upgrades with
+  no manual retry: local readiness 12.83/11.39 seconds, cloud online 13.53/12.17
+  seconds, one helper run and no exit for each package. The App is restored to
+  the device settings page with its original window dimensions.
+- Actual Accessibility interactions verified in-App Settings discovery, pairing
+  above My Devices, persistent resize, a twelve-second stable input draft, row
+  policy/removal controls, Details, and a unique settings-only approval window.
+  Closing denied the request; accepting a second `/bin/df -k /` completed. The
+  local policy is restored to All approve, version 3.
+- The installed adapter completed a real MacMini-2 to MacMini 1 hostname command,
+  confirmed a result different from the local hostname, and queried the identical
+  result using its original ID. The peer still lacks `policy.manage`; its physical
+  remote-policy update and reverse-direction acceptance are not claimed.
+- Authentication/storage: identity, Raven/gateway, daemon-token and catalogue
+  hashes matched the pre-install records; both histories remain. The existing
+  public Worker was not redeployed for App-only changes. No D1 mutation, remote
+  test resource, Keychain access or signature-policy weakening.
+- Herdr/review: existing Astra lead/reviewer closed the focused code increments;
+  Root remains sole writer/installer. Bots 636-test check and coverage, nine eval
+  scenarios, 22 registration tests and 14 package tests passed; earlier failures
+  remain in the retrospective and ignored evidence.
+- Next hop: run the normal pre-push gates, update the existing fork branch and
+  make PR #109 ready for review under the user's explicit authorization.
+
+## 2026-10-30 12:25 +0800 — Formal PR published; fixing CI SDK compatibility
+
+- User view: PR #109 is ready for review on the existing `device-groups/eagle`
+  fork branch. The installed App remains the previously verified `fef7203`
+  candidate with pairing above My Devices and its local policy at All approve.
+- The normal push gates passed 241 root tests, 191 browser journeys (11 existing
+  viewport skips), and 289 macOS package tests at `85c00e5`. The first GitHub
+  macOS job passed the device integration suite but rejected the SDK's async
+  `SMAppService.unregister()` import as a non-Sendable actor crossing.
+- Root replaced that import with its completion-handler API and a checked
+  continuation, preserving the system's completed-unregistration boundary.
+  All 22 affected registration tests passed. The existing Herdr Astra reviewer
+  found no blocking issue; lead/reviewer remain read-only. No live Herdr
+  collection was performed for this App-only follow-up.
+- Authentication/storage: no additional cloud deployment, D1 mutation, remote
+  fixture or Keychain access. The two existing device identities and histories
+  remain on their existing paths; their last installed verification is unchanged.
+- Next hop: commit, complete one signed upgrade of the SDK fix, verify installed
+  local readiness and data preservation, then push normally and check the new
+  GitHub macOS job. The older SDK compile is not claimed fixed until CI confirms it.
+
+## 2026-10-30 12:41 +0800 — Cross-signature upgrade remains unresolved
+
+- User view: the complete `4cbeb98` SDK-fix candidate installed but did not make
+  its helper usable within 20 seconds. launchd reported a launch constraint
+  violation and then EX_CONFIG. Prior `fef7203` successes used identical helper
+  bytes; they do not establish reliability when the helper signature changes.
+- Herdr: existing Astra lead/reviewer compared the signed packages and system
+  evidence, remaining read-only. The install script moved the old App before
+  unregistering its service. Root is adding an App maintenance entry and guarded
+  installer so unregister completion and disappearance of the old job/PID precede
+  replacement. Regression cases first failed on the missing installer/capability.
+- A recorded indexed AX Retry did not produce an unregister in system logs; a
+  second retry used a stable button selector. Neither is automatic-upgrade proof.
+- Authentication/storage: no additional Worker deployment, D1 write, credential
+  reset, Keychain access, signature weakening or live Herdr collection. Existing
+  data paths remain in place. PR #109 is formal; its current macOS CI failure and
+  this installed upgrade gap still require closure before claiming completion.
+
+## 2026-10-30 12:57 +0800 — Prepared upgrade did not solve changed helper signatures
+
+- The new installer migrated the old candidate using the new signed maintenance
+  entry, with independent old job/PID disappearance before replacement. `7ed57d4`
+  debug then reached local readiness in 12.76 seconds and cloud online in 13.91
+  seconds, with no manual retry. A local command completed and identity, Raven,
+  token and catalogue hashes matched. This installation reused the helper bytes.
+- A subsequent same-source release build changed the helper bytes and passed the
+  old installed App's maintenance callback and process/job checks, but again
+  failed automatic startup. Therefore preparing unregistration earlier does not
+  by itself solve the cross-signature case. Both outcomes remain in evidence.
+- Root is testing a candidate-only versioned helper filename with matching
+  BundleProgram, signing and identity lookup. Service label/Mach name, private
+  device data and signature requirements stay fixed. Existing Herdr Astra review
+  closed the installer safeguards; no additional team or live collection is used.
+- No Worker deployment, D1 mutation, identity reset or Keychain access. PR #109's
+  macOS CI and the changed-helper installed upgrade remain the next broken hops.
+
+## 2026-10-30 13:12 +0800 — Versioned executable path also failed live acceptance
+
+- `1034f43` changed the real helper path and its CDHash, after verified old-service
+  preparation. Both launch attempts still hit a Launch Constraint Violation in
+  17/19 milliseconds; the brief observed PID was not readiness. No automatic
+  upgrade pass is claimed from this package.
+- All 26 Node packaging/installer regressions and 24 affected Swift tests passed,
+  with the new path behavior first failing its assertions. Existing Astra
+  reviewers found no code-path or signature-guard issue; the live failure remains.
+- Root is testing one narrower signing change: give only the candidate helper a
+  stable signing identifier instead of inheriting the linker's UUID identifier.
+  Its actual ad-hoc designated requirement must still pin its current CDHash.
+- No new cloud deployment, D1 write, Keychain access, identity reset or live Herdr
+  collection. UI and cross-Mac operation evidence remains distinct from automatic
+  update acceptance. CI SDK confirmation is still pending the final normal push.
+
+## 2026-10-30 13:30 +0800 — Candidate service identity trial
+
+- `59e6b37` really applied the fixed helper signing identifier and retained its
+  exact CDHash requirement, but the signed upgrade still hit Launch Constraint
+  Violation twice. Waiting longer left EX_CONFIG rather than a usable helper.
+- The existing Astra lead's read-only system inspection found a new helper
+  registration reusing an older BTM item. Root is isolating each candidate's
+  Label, MachService and plist name by the bundle build. The installer queries
+  the old signed bundle's job before and after unregistering it; profile,
+  socket, identity, pairing and persistent paths remain stable.
+- Five packaging/installer assertions failed first; all 28 cases now pass.
+  That is local regression evidence, not a successful installed upgrade.
+- PR #109 is formal at `85c00e5`; its macOS job failed the older SDK's actor
+  crossing, already corrected locally. Normal push and renewed CI remain.
+  No live Herdr collection, new Worker deployment, D1 writes, Keychain access
+  or device credential changes. Prior UI and cross-Mac evidence is unchanged.
+
+## 2026-10-30 13:37 +0800 — Changed-helper upgrade and commands pass
+
+- The installed `2bea0d6` candidate passed a normal debug-to-release upgrade with
+  different helper SHA/CDHash: 10.60 seconds to local readiness, 11.77 seconds to
+  cloud online. Old versioned job absent; new job one run, never exited. The
+  separate first adoption cleared the already-failed legacy job through the old
+  signed App; only the subsequent upgrade is counted as automatic acceptance.
+- Identity, Raven/gateway, daemon token and catalogue hashes match their
+  pre-install values; both recorded history files still exist. The installed
+  adapter completed `/bin/df -k /` locally and `/bin/hostname` on the physical
+  peer, then retrieved the identical remote result by the original operation ID.
+- Herdr lead remains read-only; Astra reviewer is closing the two small service
+  name/ownership commits. Packaging/installer regressions passed after their
+  failing cases. The existing installed UI evidence still applies; no UI code
+  changed in this follow-up and no live Herdr collection was invoked.
+- No new Worker deployment, D1 writes, Keychain access or credential resets.
+  Next: normal push gates, update PR #109 and confirm its macOS CI SDK fix.
+
+## 2026-10-30 14:06 +0800 — PR scope cleanup
+
+- User requested a PR summary, removal of unnecessary changes, then comment
+  monitoring. At `cb55083`, both GitHub Check jobs passed, including the older
+  macOS SDK, native focus, strict formatting and coverage. No PR comments or
+  reviews had been posted at the scope review's last remote check.
+- The website's duplicated device entry/bindings/types were restored to current
+  `main`; the device DOs now use their standalone environment type. All original
+  device API/process cases run through the standalone entry/config, with only
+  its two DOs. The new website isolation assertion failed 503 versus 404 first;
+  all 67 affected API/process cases and typecheck then passed. Existing deployment
+  records target only `eagle-devices`; no cloud resources or D1 were changed.
+- Existing Astra lead/reviewer performed bounded read-only scope reviews. Root
+  removed the registrar subprocess and duplicate build marker, and restored a
+  fixed helper filename in new packages while retaining old-bundle path parsing.
+  Packaging regressions failed first; all 32 packaging/installer cases now pass.
+  The removed registrar's four tests apply only to that removed class.
+- The installed `2bea0d6` App still reported local readiness and cloud online at
+  14:06. No new UI implementation, credential writes or live Herdr collection.
+  Next hop: two complete signed upgrades proving the simplified startup, then
+  normal push gates and comment monitoring. Source cleanup is not installed proof.
+
+## 2026-10-30 14:15 +0800 — Simplified installed upgrades accepted
+
+- The installed `d121736` runtime passed two complete upgrades without manual
+  recovery. Local/cloud readiness was 11.55/12.51 seconds, then 12.70/13.48 seconds;
+  the second changed helper bytes/signature at the same executable path. Old job
+  absent; new job one run, never exited. Strict authenticated readiness passed.
+- Installed local execution and physical MacMini-2 to MacMini 1 execution plus
+  original-ID result retrieval passed. Identity, Raven, token and catalogue hashes
+  match; both recorded history files exist, without a fresh byte comparison.
+- Astra lead/reviewer closed the bounded source reviews. No further UI change,
+  live Herdr collection, D1 write or deployment. PR has no comments/reviews.
+  Next: normal push gates, this head's GitHub CI and ongoing comment monitoring.
+
+## 2026-10-30 14:48 +0800 — PR cleanup and current CI boundary
+
+- PR #109's scope cleanup and installed acceptance remain complete. At `2a28287`,
+  the lifecycle test waits for explicit events and still rejects late duplicate
+  connections. Astra's bounded review closed its only fixture finding; normal
+  push gates passed 260 root, 191 browser and 287 Swift tests, with the existing
+  11 viewport skips unchanged.
+- Linux CI passed. The macOS job timed out in the native focus fixture before
+  coverage, despite identical probe inputs to the prior passing run. The cause
+  remains unproven. A single upstream job-rerun request returned HTTP 403 and
+  started nothing; this documentation checkpoint uses the normal fork push path.
+- The existing Herdr lead monitors ordinary comments, inline comments, reviews
+  and current-head CI every 180 seconds. Observed comments/reviews remain empty.
+  Root owns this documentation push; lead/reviewer remain read-only for it.
+- No new App install, UI rendering change, live Herdr collection, authentication
+  change, D1 write or deployment. The installed `d121736` runtime and its two
+  successful upgrades plus physical peer-command evidence remain applicable.
+  Next: observe the new CI run; diagnose a repeated focus failure rather than
+  cycling retries or adding unrelated implementation changes.

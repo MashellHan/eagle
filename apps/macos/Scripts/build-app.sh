@@ -1,37 +1,78 @@
 #!/bin/sh
-# Assemble an ad-hoc signed .app so the client launches like a normal macOS
-# application (Dock icon, menu bar, reliable activation).
+# Assemble an isolated device candidate. Never installs or launches the App.
 #
 #     ./Scripts/build-app.sh [debug|release]
+#
+# Build inputs (never runtime settings):
+# EAGLE_NODE_BINARY        verified, host-compatible Node 24+ executable
+# EAGLE_AGENT_NPM_CACHE    private cache verified against the root lock
+# EAGLE_BOTS_NPM_CACHE     private cache verified against the Bots lock
+# EAGLE_DEVICE_PROFILE     device-candidate (default) or device-release
+# EAGLE_DEVICE_SERVICE_URL HTTPS origin override; candidate defaults to localhost,
+#                         required for device-release
+# EAGLE_CODESIGN_IDENTITY  '-' for local candidate, real identity for release
 set -eu
 cd "$(dirname "$0")/.."
 
-# SwiftUI macros need the Xcode toolchain; fall back to the selected one.
+# Use the same Xcode toolchain as macOS checks when it is available.
 if [ -d /Applications/Xcode.app/Contents/Developer ]; then
   export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 fi
 
 CONFIG="${1:-debug}"
+case "$CONFIG" in debug|release) ;; *) echo "Expected debug or release" >&2; exit 1 ;; esac
+PROFILE="${EAGLE_DEVICE_PROFILE:-device-candidate}"
+case "$PROFILE" in
+  device-candidate) APP_NAME="Eagle Device Candidate.app" ;;
+  device-release) APP_NAME="Eagle.app" ;;
+  *) echo "Expected device-candidate or device-release profile" >&2; exit 1 ;;
+esac
+NODE_BINARY="${EAGLE_NODE_BINARY:-$(command -v node)}"
+AGENT_CACHE="${EAGLE_AGENT_NPM_CACHE:-${npm_config_cache:-}}"
+BOTS_CACHE="${EAGLE_BOTS_NPM_CACHE:-$AGENT_CACHE}"
+IDENTITY="${EAGLE_CODESIGN_IDENTITY:--}"
+if [ -z "$AGENT_CACHE" ] || [ -z "$BOTS_CACHE" ]; then
+  echo "Set EAGLE_AGENT_NPM_CACHE and EAGLE_BOTS_NPM_CACHE to verified private build caches" >&2
+  exit 1
+fi
+if [ "$PROFILE" = device-release ]; then
+  if [ -z "${EAGLE_DEVICE_SERVICE_URL:-}" ] || [ "$IDENTITY" = - ]; then
+    echo "Release needs EAGLE_DEVICE_SERVICE_URL and an explicit signing identity" >&2
+    exit 1
+  fi
+fi
 swift build -c "$CONFIG"
-BINARY="$(swift build -c "$CONFIG" --show-bin-path)/EagleApp"
-APP=".build/Eagle.app"
+BINARY_DIRECTORY="$(swift build -c "$CONFIG" --show-bin-path)"
+BINARY="$BINARY_DIRECTORY/EagleApp"
+HELPER="$BINARY_DIRECTORY/EagleDeviceHelper"
+if [ ! -x "$HELPER" ]; then
+  echo "Build requires the EagleDeviceHelper SPM executable target" >&2
+  exit 1
+fi
+OUTPUT_DIRECTORY=".build/$PROFILE"
+APP="$OUTPUT_DIRECTORY/$APP_NAME"
+mkdir -p "$OUTPUT_DIRECTORY"
+STAGING="$(mktemp -d "$OUTPUT_DIRECTORY/.stage.XXXXXX")"
+trap 'rm -rf "$STAGING"' EXIT HUP INT TERM
+STAGED_APP="$STAGING/$APP_NAME"
 
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BINARY" "$APP/Contents/MacOS/EagleApp"
 if [ ! -f Support/AppIcon.icns ]; then
   swift Scripts/make-icon.swift
 fi
-VERSION="$(node -p "require('../../package.json').version" 2>/dev/null || echo 0.0.0)"
-sed "s|<string>0.0.0</string>|<string>${VERSION}</string>|" Support/Info.plist \
-  > "$APP/Contents/Info.plist"
-cp Support/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
-# SwiftUI resource bundles must ship next to the binary.
-BUNDLE_DIR="$(dirname "$BINARY")"
-for bundle in "$BUNDLE_DIR"/*.bundle; do
-  [ -d "$bundle" ] || continue
-  cp -R "$bundle" "$APP/Contents/Resources/"
-done
-codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+"$NODE_BINARY" Scripts/assemble-device-app.ts --app "$STAGED_APP" \
+  --binary "$BINARY" --helper "$HELPER" --profile "$PROFILE" \
+  --service-url "${EAGLE_DEVICE_SERVICE_URL:-}" >/dev/null
+"$NODE_BINARY" Scripts/assemble-device-runtime.ts \
+  --destination "$STAGED_APP/Contents/Resources/DeviceRuntime" \
+  --node "$NODE_BINARY" --agent-cache "$AGENT_CACHE" --bots-cache "$BOTS_CACHE" >/dev/null
+if [ "$IDENTITY" = - ]; then
+  echo "Signing: ad-hoc candidate (local verification only)" >&2
+else
+  echo "Signing: configured identity" >&2
+fi
+"$NODE_BINARY" Scripts/assemble-device-app.ts --mode sign --app "$STAGED_APP" \
+  --identity "$IDENTITY" >/dev/null
 
+rm -rf "$APP"
+mv "$STAGED_APP" "$APP"
 echo "$APP"

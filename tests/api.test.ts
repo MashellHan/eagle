@@ -407,6 +407,19 @@ function request(path: string, body?: unknown, bearer = token) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
+test("the dashboard does not expose or provision the independent device service", async () => {
+  for (const path of ["/api/devices/v1", "/api/devices/v1/directory"]) {
+    const response = await request(path, undefined, viewer);
+    assert.equal(response.status, 404);
+  }
+  const config = JSON.parse(readFileSync("apps/web/wrangler.jsonc", "utf8"));
+  assert.equal(
+    config.durable_objects.bindings.some((binding: { name: string }) =>
+      binding.name.startsWith("DEVICE_"),
+    ),
+    false,
+  );
+});
 test("AI settings require viewer auth, reject invalid keys, and unconfigured daily runs skip", async () => {
   assert.equal((await request("/api/v1/settings")).status, 401);
   const initial = await request("/api/v1/settings", undefined, viewer);
