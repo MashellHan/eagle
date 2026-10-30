@@ -19,7 +19,7 @@
     "repeatLast": true
   },
   "steps": [
-    { "kind": "waitFor", "origin": "schedule", "count": 2, "timeoutMs": 240000 }
+    { "kind": "waitFor", "role": "assistant", "count": 2, "timeoutMs": 240000 }
   ],
   "expect": {
     "atLeast": [

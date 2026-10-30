@@ -682,3 +682,21 @@ with only the public LaunchServices refresh and distinct build version. Retain
 the earlier failed observations under
 `.local/device-evidence/device-settings-ui-20261030/`; do not recast eventual
 recovery as fast startup.
+
+## 2026-10-30 — Cron acceptance observed admission before completion
+
+After integrating upstream `d69359b`, the complete Bots evaluation suite reported
+two scheduled inputs but only one assistant reply in `trigger-cron`. Its wait
+condition ended as soon as the second input appeared, then immediately asserted
+that the second reply had also arrived. The assertion raced normal asynchronous
+generation; the failure was not evidence that the second schedule failed to fire.
+The case now waits for both assistant replies before making the existing schedule
+origin and message assertions. The 240-second step and 300-second case budgets
+are unchanged. The first failing run is retained in
+`.local/device-evidence/device-settings-ui-20261030/final/bots-eval-serial.log`.
+
+The preceding parallel Bots check and Swift compile also exposed the existing
+50-millisecond shell-timeout fixture before its initial output arrived. Running
+the unchanged complete Bots check without the concurrent compile passed both
+636-test runs and coverage. Both observations are preserved; no timeout, coverage
+threshold, test selection or project hook was weakened.
