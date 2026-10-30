@@ -309,3 +309,10 @@ Missing or invalid source data does not claim applied status or prevent another 
 local head from running. The implementation is currently a local authenticated API, not
 an App sync workflow or physical multi-Mac acceptance; resource installation and device/
 network/UI stages remain planned.
+
+Saved history can be passively restored into a new local Bot directory while retaining
+its explicit shared identity. The runtime generates a new stable replica identity/epoch;
+source facts keep their old identities and unsent branches. A local carrier inventory
+covers legacy imported heads absent from source pages. Only a new user request runs on
+the restored instance; pending/active work in saved facts stays passive. This does not
+provide automatic directory rollback detection, resource installation or a backup service.

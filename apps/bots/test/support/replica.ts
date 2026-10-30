@@ -24,8 +24,9 @@ export const openReplica = async (
   faux.setResponses(responses);
   const models = createModels();
   models.setProvider(faux.provider);
+  const database = await storage(join(dir, "session.sqlite"));
   const harness = await Harness.open(
-    await storage(join(dir, "session.sqlite")),
+    database,
     {
       models,
       registry,
@@ -41,7 +42,7 @@ export const openReplica = async (
       extensions: selectToolExtensions(registry, ["core", "coding"]),
     },
   });
-  const history = new HistoryReplica(harness, root.id, botId, workspace.root, registry);
+  const history = new HistoryReplica(harness, root.id, botId, workspace.root, registry, database);
   const sync = new ReplicaSync(
     join(dir, "replica.sqlite"),
     botId,

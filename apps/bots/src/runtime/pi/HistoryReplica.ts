@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
+import { type Context, BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import {
   AgentDoc,
   type AgentState,
@@ -12,6 +12,8 @@ import {
   type EntryRecord,
   type Harness,
   type Registry,
+  type Storage,
+  StorageRequestError,
 } from "@earendil-works/pi-durable";
 import { z } from "zod";
 import { ClassifiedFailure } from "../../core/domain.ts";
@@ -28,6 +30,7 @@ import { convertSubmission } from "./mapEvents.ts";
 const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const requestIdSchema = z.string().regex(INVOCATION_ID);
+const receiptSchema = z.object({ conversationId: id, entries: z.record(z.string(), id) });
 export const entrySchema = z.strictObject({
   id,
   conversationId: id,
@@ -208,6 +211,7 @@ export class HistoryReplica {
   readonly #botId: string;
   readonly #cwd: string;
   readonly #registry: Registry;
+  readonly #storage: Pick<Storage, "scanDocuments" | "document">;
 
   constructor(
     harness: Harness,
@@ -215,12 +219,14 @@ export class HistoryReplica {
     botId: string,
     cwd: string,
     registry: Registry,
+    storage: Pick<Storage, "scanDocuments" | "document">,
   ) {
     this.#harness = harness;
     this.#rootId = rootId;
     this.#botId = botId;
     this.#cwd = cwd;
     this.#registry = registry;
+    this.#storage = storage;
   }
 
   async replicaId(): Promise<string> {
@@ -340,6 +346,122 @@ export class HistoryReplica {
 
   async receipt(head: string) {
     return this.#harness.snapshot(imports, head, ctx);
+  }
+
+  async checkedEntries(bundle: HistoryBundle, value: unknown) {
+    const receipt = parsed(receiptSchema, value);
+    return this.#harness.commit(async (tx) => {
+      if ((await tx.conversation(receipt.conversationId as ConversationId)) === undefined)
+        return reject("missing receipt conversation");
+      const entries: HistoryBundle["entries"] = [];
+      for (const original of bundle.entries) {
+        const local =
+          receipt.entries[String(original.id)] ?? reject("missing receipt entry mapping");
+        const page = await tx.scanEntries(
+          {
+            conversationId: receipt.conversationId as ConversationId,
+            minEntryId: local as EntryId,
+            maxEntryId: local as EntryId,
+            order: "ascending",
+          },
+          1,
+        );
+        const record = page.items[0] ?? reject("missing visible receipt entry");
+        const mapped = parsed(entrySchema, record);
+        const { id: _id, conversationId: _conversation, byTaskId: _task, ...content } = original;
+        const {
+          id: _local,
+          conversationId: _localConversation,
+          byTaskId: _localTask,
+          ...actual
+        } = mapped;
+        const expected = {
+          ...content,
+          ...(original.head === undefined ? {} : { head: receipt.entries[String(original.head)] }),
+          ...(original.edits === undefined
+            ? {}
+            : {
+                edits: original.edits.map((edit) => ({
+                  ...edit,
+                  target: receipt.entries[String(edit.target)],
+                })),
+              }),
+        };
+        if (JSON.stringify(actual) !== JSON.stringify(expected))
+          reject("history receipt entry content mismatch");
+        entries.push(mapped);
+      }
+      return { conversationId: receipt.conversationId, entries };
+    }, ctx);
+  }
+
+  async #readReceipt<T>(read: () => Promise<T>, context: Context): Promise<T> {
+    await this.#harness.commit(() => undefined, context);
+    let value: T;
+    try {
+      value = await read();
+    } catch (cause) {
+      if (!(cause instanceof StorageRequestError) && context.abortSignal?.aborted !== true) {
+        // Public close seals immediately; the SDK reports any secondary close failure.
+        void this.#harness.close(ctx).catch(() => undefined);
+      }
+      throw cause;
+    }
+    await this.#harness.commit(() => undefined, context);
+    return value;
+  }
+
+  async receipts(params: unknown, context: Context = ctx) {
+    const integer = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+    const input = parsed(
+      z.strictObject({ after: integer, limit: integer.min(1).max(128).default(128) }),
+      params,
+    );
+    const items: { id: number; head: string }[] = [];
+    let cursor: Cursor | undefined;
+    let nextAfter = input.after;
+    let checked = 0;
+    do {
+      const page = await this.#readReceipt(
+        () =>
+          this.#storage.scanDocuments(
+            { scope: { kind: "session" }, at: "current", kind: imports.definition.kind },
+            128,
+            cursor,
+            context,
+          ),
+        context,
+      );
+      for (let index = 0; index < page.items.length; index += 1) {
+        const record = page.items[index];
+        if (record === undefined || record.id <= input.after) continue;
+        const head = parsed(digest, record.key);
+        const stored = await this.#readReceipt(
+          () => this.#storage.document(record.id, "current", context),
+          context,
+        );
+        if (stored === undefined || stored.version !== 1)
+          return reject("missing or unsupported history receipt");
+        const encoded = stored.value.bundle;
+        if (encoded !== "") {
+          if (typeof encoded !== "string") return reject("invalid history receipt carrier");
+          const bundle = carrierReceipt(encoded);
+          if (bundle.head !== head) reject("history receipt head mismatch");
+          await this.checkedEntries(bundle, stored.value);
+          items.push({ id: record.id, head });
+        }
+        nextAfter = record.id;
+        checked += 1;
+        if (checked === input.limit)
+          return {
+            items,
+            nextAfter,
+            hasMore: index + 1 < page.items.length || page.next !== undefined,
+          };
+      }
+      cursor = page.next;
+    } while (cursor !== undefined);
+    return { items, nextAfter, hasMore: false };
   }
 
   async branch(requestId: string) {

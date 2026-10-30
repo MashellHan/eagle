@@ -299,3 +299,15 @@ is logged once until a successful scan. An existing failed SDK session is propag
 (warn), not a newly minted error. Body text, entry data, model/tool inputs, resources and
 page payloads never enter these logs. A blocked source's status records only sequence and
 stable invalid_history code; durable receipt position still stays before the rejected fact.
+
+Saved-history `receipts` inventory uses the same replica crossing trace and origin/error
+classification; it adds no body-bearing log event. Its output is head/DocumentId metadata,
+not an applied ACK. Storage read failures propagate instead of being logged as missing
+history or silently returning an empty inventory.
+
+Receipt enumeration raw I/O errors retain one runtime storage_failed identity. Public
+close seals this instance without inventing a pi session_failed report (SDK reports
+SessionEnd.closed); later command failures propagate at warn, including cleanup. Existing
+SDK-guarded failures still use their original pi/runtime session episode. No raw error
+message is logged. Invalid protocol/cursor reads and actual cancellation do not close a
+healthy Session or claim a new SDK failed state.

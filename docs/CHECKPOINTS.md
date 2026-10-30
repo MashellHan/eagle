@@ -1,5 +1,94 @@
 # 用户视角检查点
 
+## 2026-10-30 19:03 +0800 — recovery 最后close队列P2已过新门禁，待窄审
+
+- P0 c073ea19/P1首片c8d8fd4已正常push的结论不变；当前HEAD仍c8d8fd4，本恢复片未commit/push。
+  旧eb874d/receipt-io-candidate及697 gate、所有早期red完整保留，未复用为新byte通过证据。
+- receipt-close-queue-red以真实runtime同轮排队receipts与handle.close，再合并等待；
+  scanDocuments/document两分支均在cleanup后出现2个error origin，14项12过2败，exit1。
+  无人为sleep/异步磁盘屏障，原始I/O/failure身份断言保持。
+- 最小修复只加独立Session-close通知bool；末次scan执行时判断真实通知，区别于自己停止scanner。
+  同轮/顺序cleanup都只保留原storage_failed identity、内层唯一error与正确warn传播/脱敏。
+  健康close仍把后台扫描尚未读取的真实SDK committed entry原ID/body持久化一次。
+- 新局部15/15、affected54/54、typecheck与check-only lint均exit0；最终Bots check普通/coverage
+  各700/700（同套不累加），types/lint绿；coverage行95.50%、分支88.88%、函数91.13%。
+  crash8/8，两精确--case eval各1/1，perf1/1且四项五样本median 3/1/4/11ms，所有exit0。
+- source/test hash已先交Lead供Reviewer并行窄审；新receipt-close-queue-candidate绑定相对
+  eb874d的最小delta和实际gate。仍待唯一剩余P2 Review、Lead验收与正常commit/pre-push。
+  本片没有重跑不变root/browser/Swift，没有操作daily App；网站Herdr采集/网站auth/D1/UI、
+  云/网络/Tailscale/物理Mac仍未验。tombstone与P2资源/P3接入后续范围仍planned。
+
+## 2026-10-30 18:49 +0800 — receipt raw I/O Review窄修已过新门禁，待增量Review
+
+- HEAD仍c8d8fd4，旧冻结tree4de501/receipt SHA68475d及其八份688 gate全部保留；本片仍未commit/push。
+- receipt-io-review-red证实scanDocuments/document首错后实际receipts命令仍触后端；
+  receipt-io-and-log-red另证重复origin，receipt-close-cleanup-red包含cleanup后的第二error。
+  没有用旧checkedEntries guard或旧688绿覆盖这个缺陷。
+- SDK1.4公开Session/Tx缺guarded raw doc scan/read，storage protected/fail internal；Lead明确
+  接受公开close封闭路径。现在每次raw读前后过Session guard，原I/O原样抛出并立即seal；
+  SessionEnd.closed语义明确，不伪称SDK reason failed。StorageRequestError、协议校验和
+  真实取消不误关健康Session；空/compact在途结果丢弃，后续命令新增backend读取0。
+- 复用ReplicaSync既有closed生命周期，subscribeClose停掉已排队scanner；关闭后不再末次扫描
+  已封闭SDK。运行时复用原failure身份/trace，cleanup也只有一个内层error、其余warn传播且脱敏。
+  Reviewer P3重复notes合并成单字段；未扩SDK/依赖/通用health框架或其他同步语义。
+- 新receipt-close-boundaries-first12/12，receipt-review-affected51/51，types/lint exit0；
+  receipt-review-check普通/coverage各697/697（同套不累加），types/lint绿；coverage行95.51%、
+  分支88.88%、函数91.13%。receipt-review-crash8/8，两对应eval各1/1，perf1/1，所有exit0。
+  perf既有四项五样本median 3/1/4/11ms，不称恢复网络性能。新收据绑定新byte，不套旧gate。
+- 五个稳定源码/测试/fixture路径哈希在.local/sync-p1-recovery/receipt-io-source.json，
+  正冻结新tree/相对4de501的delta与八份新gate到receipt-io-candidate.json供Lead/Review。
+  最终Review、正常commit/pre-commit及push/pre-push尚待验收；本片未重跑不变root/browser/Swift。
+  网站Herdr采集/网站auth/D1/UI、日常App、云/网络/Tailscale/物理Mac未验或未动；
+  自动整目录回滚识别、tombstone/P2资源加载及后续设备/UI仍planned。
+
+## 2026-10-30 18:38 +0800 — P1 被动恢复候选门禁完成，待最终Review
+
+- HEAD仍c8d8fd436bde7d26877d101ecd9acd0e60d23b7e；首片正常push结论不变，本恢复片未commit/push。
+- corrected-final-baseline-red.log在c8d生产快照/最终fixture字节上仅缺receipts两处404失败，
+  实际>8MiB恢复case通过；它替代旧路径前置不足/旧provider位置假设的日志作为完整入口红证据。
+  所有旧red/empty/probe日志保留，未改变公开kind/family key或SDK私有实现。
+- 新鉴权receipts逐个完整载体校验并只返回DocumentId/head；128限制计已检查doc，compact/empty
+  也推进after。原map与新枚举共用公开Harness.commit/Tx可见entry读取；首个I/O错误传播，
+  后续SessionFailed不再到Storage。旧P0无索引branch、备份前未上传branch与active/pending事实均覆盖。
+- affected-final42/42、types-final/lint-final exit0；bots-check-final普通/coverage各688/688
+  （同套不累加），types/lint绿；coverage行95.49%、分支88.76%、函数91.15%。crash-final8/8，
+  eval-local-final和eval-incremental-final各1/1，perf-final1/1，所有exit0。perf既有四项
+  五样本median 3/1/3/11ms，不称恢复网络性能。源码/测试稳定后未重复旧门禁。
+- 准备冻结本片路径SHA/staged tree与日志收据于.local/sync-p1-recovery/candidate.json；
+  最终Review、正常commit/pre-commit及push/pre-push仍待Lead验收。未重跑不变Swift/root/browser。
+  网站Herdr采集/网站auth/D1/UI本片未验，原生日常App未动；云/网络/Tailscale/物理Mac、
+  自动整目录回滚识别、tombstone/P2资源加载及后续设备/UI仍planned，不能称完整P1完成。
+
+## 2026-10-30 18:34 +0800 — P1 恢复身份局部闭环，最终检查待跑
+
+- P1首片c8d8fd4已正常推送；本片仍在该HEAD上未提交/未推送，旧候选/失败日志均保留。
+- 原legacy-inventory-red/paths-first/空页测试把旧SDK库seed到错误目录，前置不足；它们
+  只能证明路由404，不能证明SDK扫描缺陷。已改为directory.botDir直接public SDK seed/close，
+  真实HTTP export另一个head预检相等，第二个head仍无索引；隔离c8d生产源码重取
+  corrected-baseline-red.log，receipts确实404。未改kind编码、未复制活动DB。
+- 新receipts仅用公开Storage逐条读摘要/载体；共享entry校验已恢复Harness.commit/Tx可见读取。
+  session-guard-red真实Missing rejection，修后首个I/O错误传播、后续SessionFailed不再到Storage。
+- assertions-third.log局部6/6绿：旧未索引完整P0 branch独立恢复/run/export、实际>8MiB
+  原fact多页/乱序/重开/重复、fresh身份稳定、备份前未上传branch、外来pending/active零执行、
+  B provider原消息顺序/有效instructions及完整有序tool声明。先前provider断言错误是假设
+  新user总在末尾，实际SDK可在其后插入system；已保留原消息并按实际语义核对，未改生产行为。
+- 当前补充断言后尚待新affected/types/lint、Bots完整check/crash/eval与最终Review，不能沿用
+  旧slice门禁或局部绿宣称恢复交付。网站Herdr采集/网站auth/D1/UI本片未验，原生日常App未动；
+  网络/云/Tailscale/物理Mac、tombstone、P2资源安装及后续设备/UI仍planned。
+
+## 2026-10-30 18:20 +0800 — P1 首片已正常推送，恢复身份切片查证中
+
+- c8d8fd436bde7d26877d101ecd9acd0e60d23b7e/tree9cbac731已正常commit/push，
+  pre-commit/pre-push exit0；root260、browser191/11既有排除、Swift287通过，远端ref等于HEAD，
+  clean收据在.local/sync-p1/push-c8d8fd4。其Review三项P2关闭，旧red/候选/日志完整保留。
+- 当前新片只做被动恢复到全新本地运行库：保留sharedBotId，fresh replicaId+epoch，
+  原pages/事实/序号保持，外来run不进入本端队列。已补短契约，正在用现有API查证最小路径。
+- 一个待验证边界是旧SDK完整receipt未入source_events/replica索引：仅保存来源pages
+  无法覆盖它；已核公开Storage.scanDocuments及family key，正在验证是否需要最小枚举入口。
+  没有靠私有Harness storage cast、复制活动DB或更换旧身份。本片尚无恢复门禁绿/交付结论。
+- 网站Herdr采集/网站auth/D1/UI本片未验，原生日常App未动；云/Tailscale/物理Mac、
+  目录tombstone、P2资源安装及后续设备/网络/UI仍planned。下一坏跳是保存记录覆盖与旧receipt枚举。
+
 ## 2026-10-30 18:04 +0800 — P1 三项兼容窄修候选待增量Review
 
 - 旧冻结tree c0218665及25路径/所有red/gate收据保留，最终Review确认三项P2，其余

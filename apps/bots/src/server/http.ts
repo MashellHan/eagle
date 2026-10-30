@@ -431,7 +431,7 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
     }
     try {
       const replicaMatch =
-        /^\/v1\/bots\/([A-Za-z0-9_-]+)\/replica\/(export|import|run|status|bind|pull|apply)$/.exec(
+        /^\/v1\/bots\/([A-Za-z0-9_-]+)\/replica\/(export|import|run|status|bind|pull|apply|receipts)$/.exec(
           path,
         );
       if (replicaMatch !== null && request.method === "POST") {
@@ -442,7 +442,8 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
           | "status"
           | "bind"
           | "pull"
-          | "apply";
+          | "apply"
+          | "receipts";
         let params: unknown;
         try {
           params = await readBody(request, MAX_REPLICA_BODY_BYTES);

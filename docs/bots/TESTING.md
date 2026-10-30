@@ -473,3 +473,93 @@ lines 95.46%, branches 88.70%, functions 91.06%. `compatibility-crash-final.log`
 their one selected local case. `compatibility-perf-final.log` passed 1/1 with medians
 3/1/3/10 ms. All commands exited zero; incremental Review and normal commit/pre-push
 remain pending. Prior frozen-candidate logs are preserved separately.
+
+
+### Passive saved-history recovery
+
+On Node 26.9.0, `test/e2e/replica-recovery.test.ts` uses real independent SQLite runtimes,
+public SDK seeding and authenticated daemon requests. Two legacy full receipts are seeded
+at the actual `directory.botDir`: export of one head is a visible storage precondition,
+while the second remains absent from P1 heads/source pages until inventory. The selected
+complete P0 branch is restored alone without a separate parent receipt, then re-exported
+and run; invalid carrier hashes cannot damage the complete head. Saved bytes/source DBs
+remain unchanged. No active session database is copied into the target.
+
+The page path saves actual SDK facts with cumulative raw UTF-8 bytes >8 MiB, a real tool
+result/resource, a branch created before backup without peer upload, and both unadmitted
+and genuinely active run facts. Fresh identity/epoch survives restart. Last-page-first
+reception leaves an honest gap; repeated pages/reopen retain every original sequence/body.
+A separate passive SDK open checks raw entries and full context. B's actual provider request
+keeps all original message categories in order and replays effective instructions/sections
+and complete ordered tools against A's same-head control; only the effective cwd maps and
+new local system messages/new input are allowed. The SDK may insert a system update after
+the new user input. B and a saved-record holder exchange distinct branches and B reopens
+with all heads; saved pending/active work is never executed on the fresh instance.
+
+`test/runtime/replica-receipts.test.ts` checks >128 full receipts with interleaved compact
+and empty records, checked-document limits/empty-page progress, one-body-at-a-time reads,
+repeat/restart continuation, malformed/key/map/version rejection and storage-error
+propagation. Entry validation runs on public Harness.commit/Tx reads: the first actual
+storage error propagates, and later calls get SessionFailed without reaching Storage.
+HTTP tests cover auth, Bot isolation, strict fields/limits and summary-only output/logs.
+The existing SIGKILL suites continue to own real same-instance and passive-import commit
+recovery; this slice's new tests do not claim a new SIGKILL window or whole-directory
+rollback detection. The existing local-run eval now also exercises receipts before run.
+
+Evidence is under `.local/sync-p1-recovery`. Original legacy-inventory/paths red/empty logs
+had an incorrect seed directory and do not prove a scan defect. `corrected-baseline-red.log`
+fixes the directory/export precondition but retains an unrelated old provider-position
+assertion failure. `corrected-final-baseline-red.log` uses the final test assertions with
+c8d8fd4 production sources: only the missing receipts route fails, while the >8 MiB
+recovery path passes as existing capability verification. Final affected/gate receipts
+record current source bytes separately. No website/Herdr/auth/D1, daily App/Swift, cloud,
+network transport, physical-Mac or P2 resource-installation acceptance is claimed here.
+
+The current recovery candidate's `affected-final.log` passed 42/42; `types-final.log`
+and `lint-final.log` exited zero. `bots-check-final.log` passed ordinary/coverage each
+688/688 (one suite, not 1376 unique tests), typecheck/lint; coverage lines 95.49%, branches
+88.76%, functions 91.15%. `crash-final.log` passed 8/8; `eval-local-final.log` and
+`eval-incremental-final.log` each passed its one selected case using `--case name`.
+`perf-final.log` passed 1/1, five-sample medians 3/1/3/11 ms for the existing four Harness
+operations. All exited zero. Frozen path/tree/log hashes are in the candidate receipt;
+final Review and normal commit/pre-push are still pending for this recovery increment.
+
+
+Receipt I/O Review follow-up preserves the frozen 4de501/68475d candidate and its green
+logs. `receipt-io-review-red.log` proves both scanDocuments/document errors re-entered the
+backend through actual ReplicaSync receipts commands. `receipt-io-and-log-red.log` also
+proves duplicate origin errors; `receipt-close-cleanup-red.log` includes the cleanup path.
+The accepted public-close solution is deliberately different from SDK Session failure:
+first I/O rejects the identical raw error, public close ends with reason closed, and later
+commands perform zero new backend reads. The pre-existing checkedEntries test still proves
+true SDK SessionFailed semantics. Real held backend results for empty/compact inventories
+are discarded after close. Invalid protocol, StorageRequestError and an actually aborted
+Context leave the Session usable. Runtime assertions include cleanup, original trace/layer,
+one error identity, propagated warnings and redaction. The duplicate eval notes are merged.
+New final gate logs/tree hashes, rather than the old 688 result, bind this follow-up.
+
+The receipt-I/O follow-up passed `receipt-review-affected.log` 51/51 and
+`receipt-review-types.log` / `receipt-review-lint.log`, all exit0. Its new
+`receipt-review-check.log` passed ordinary/coverage each 697/697 (one suite), types/lint;
+coverage lines 95.51%, branches 88.88%, functions 91.13%. `receipt-review-crash.log` passed
+8/8; `receipt-review-eval-local.log` / `receipt-review-eval-incremental.log` each passed
+one selected case. `receipt-review-perf.log` passed 1/1 with medians 3/1/4/11 ms. All
+commands exited zero. `receipt-io-candidate.json` binds new path/tree/log hashes relative
+to the preserved 4de501 candidate; incremental Review and normal hooks remain pending.
+
+The remaining close-queue Review regression calls real runtime receipts and handle.close
+in the same turn, then joins both promises. Synchronous scanDocuments/document I/O failures
+first produced two error origins (`receipt-close-queue-red.log`: 12/14 pass); no sleep or
+held disk call is needed. The unchanged raw-I/O, identity, propagated-warning and redaction
+assertions now pass for both queued and sequential cleanup. A separate healthy-close test
+commits a real SDK entry before the scheduled scanner runs and reads replica.sqlite after
+close to prove the final scan persisted that exact entry/body once. The first green is
+15/15; the affected suite is 54/54 with typecheck/check-only lint exit0. New final gate and
+candidate receipts bind this delta; the previous eb874d/697 evidence is retained separately.
+
+`receipt-close-queue-check.log` passed ordinary/coverage each 700/700 (one suite), types/lint;
+coverage lines 95.50%, branches 88.88%, functions 91.13%. The new crash log passed 8/8,
+the two exact `--case replica-local-run` / `--case replica-incremental` evals each passed
+one case, and perf passed 1/1 with five-sample medians 3/1/4/11 ms. All eight final
+affected/type/lint/check/crash/eval/perf commands exited zero. The new candidate receipt
+binds the delta to eb874d; narrow Review and normal commit/push hooks remain pending.

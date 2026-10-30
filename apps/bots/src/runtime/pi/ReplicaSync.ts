@@ -50,6 +50,7 @@ export class ReplicaSync {
   #unsubscribe: (() => void) | undefined;
   #scheduled = false;
   #closed = false;
+  #sessionClosed = false;
 
   constructor(
     path: string,
@@ -69,6 +70,11 @@ export class ReplicaSync {
   }
 
   async start(): Promise<void> {
+    this.#harness.subscribeClose(() => {
+      this.#sessionClosed = true;
+      this.#closed = true;
+      this.#unsubscribe?.();
+    });
     await this.#drain();
     for (const intent of this.store.pending()) {
       if (intent.mode === "branch") await this.#run(intent);
@@ -103,6 +109,7 @@ export class ReplicaSync {
         this.#scheduled = false;
         if (!this.#closed)
           void this.#serial(async () => {
+            if (this.#closed) return;
             await this.#scan();
             this.#reported = false;
           }).catch((cause) => this.#backgroundFailure(cause));
@@ -127,7 +134,9 @@ export class ReplicaSync {
     this.#closed = true;
     this.#unsubscribe?.();
     try {
-      await this.#serial(() => this.#scan());
+      await this.#serial(async () => {
+        if (!this.#sessionClosed) await this.#scan();
+      });
     } catch (cause) {
       this.#backgroundFailure(cause);
     } finally {
@@ -164,7 +173,10 @@ export class ReplicaSync {
   command(command: Command): Promise<unknown> {
     return this.#serial(async () => {
       bounded(command.params);
+      await this.#harness.commit(() => undefined, ctx);
       switch (command.method) {
+        case "receipts":
+          return this.#history.receipts(command.params);
         case "bind": {
           const { sharedBotId } = parse(z.strictObject({ sharedBotId: z.uuid() }), command.params);
           return this.store.bind(sharedBotId);
@@ -377,55 +389,25 @@ export class ReplicaSync {
   }
 
   async #map(bundle: HistoryBundle): Promise<void> {
-    const receipt = await this.#history.receipt(bundle.head);
-    if (receipt === undefined || receipt.conversationId === 0)
-      return syncReject("missing passive materialization receipt");
-    const aliases = await this.#harness.commit(async (tx) => {
-      const headers: Header[] = [];
-      for (const original of bundle.entries) {
-        const local =
-          receipt.entries[String(original.id)] ?? syncReject("missing passive entry mapping");
-        const record = await tx.entry(local as EntryId);
-        if (record === undefined) return syncReject("missing committed mapped entry");
-        const { id: _id, conversationId: _conversation, byTaskId: _task, ...content } = original;
-        const mapped = entrySchema.parse(record);
-        const {
-          id: _local,
-          conversationId: _localConversation,
-          byTaskId: _localTask,
-          ...actual
-        } = mapped;
-        const expected = {
-          ...content,
-          ...(original.head === undefined ? {} : { head: receipt.entries[String(original.head)] }),
-          ...(original.edits === undefined
-            ? {}
-            : {
-                edits: original.edits.map((edit) => ({
-                  ...edit,
-                  target: receipt.entries[String(edit.target)],
-                })),
-              }),
-        };
-        if (JSON.stringify(actual) !== JSON.stringify(expected))
-          syncReject("history receipt entry content mismatch");
-        headers.push(
-          this.#header(
-            mapped,
-            keyOf({
-              kind: "entry",
-              origin: bundle.origins[String(original.id)] ?? syncReject("missing origin"),
-              content: { kind: "unused" },
-              dependencies: [],
-            }),
-          ),
-        );
-      }
-      return headers;
-    }, ctx);
+    const mapped = await this.#history.checkedEntries(
+      bundle,
+      await this.#history.receipt(bundle.head),
+    );
+    const aliases = mapped.entries.map((entry, index) => {
+      const original = bundle.entries[index] ?? syncReject("missing original receipt entry");
+      return this.#header(
+        entry,
+        keyOf({
+          kind: "entry",
+          origin: bundle.origins[String(original.id)] ?? syncReject("missing origin"),
+          content: { kind: "unused" },
+          dependencies: [],
+        }),
+      );
+    });
     this.store.transaction(() => {
       for (const header of aliases) this.store.remember(header);
-      this.store.finishMaterialization(bundle.head, receipt.conversationId);
+      this.store.finishMaterialization(bundle.head, mapped.conversationId);
     });
   }
 

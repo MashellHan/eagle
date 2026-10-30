@@ -17,7 +17,8 @@ discovery. Those additions are not implemented or enabled by this plan update.
 当前方案：**各端独立运行，Tailscale 直连优先、Cloudflare 回退，云端增量最多缓存 3 天（72 小时）**。
 架构与 Orca 机制见 [SYNC-ARCHITECTURE.md](SYNC-ARCHITECTURE.md)，源码证据见
 [SYNC.md](SYNC.md)，设备行为见 [DEVICE-PAIRING.md](DEVICE-PAIRING.md)。
-P0 本地闭环已验证并正常推送 `c073ea19`；P1 首个本地增量切片 in progress，尚未交付；
+P0 本地闭环已推 `c073ea19`；P1 首个本地增量切片已验证并正常推送 `c8d8fd4`；
+P1 恢复身份切片 in progress，尚未交付；
 P2–P6 均为 planned；下方设备阶段和历史验收记录保留其原有范围。
 
 ### 开发基线与 PR 边界
@@ -118,13 +119,37 @@ replica.sqlite、committed entry补扫描、固定ID本地intent/outbox与鉴权
 types/lint、crash8/8、完整本地eval11/11、perf1/1均exit0。Review随后确认三项P2兼容缺陷：
 旧P0 receipt直接run、独立完整branch carrier、root后来busy阻断固定head的独立分支。
 真实9失败后窄修，18:03 +0800 新affected49/49、check普通/coverage各682/682、types/lint、
-crash8/8、对应P0/P1 eval各1/1、perf1/1均exit0；最终增量Review/提交/pre-push仍待完成，
-不称完整P1完成。自动head采用bounded fork与紧凑receipt，连续外来head复用完整prefix；
+crash8/8、对应P0/P1 eval各1/1、perf1/1均exit0。上述18:03候选随后完成最终Review，
+三项P2关闭；c8d8fd4/tree9cbac731已正常commit/pre-commit及push/pre-push exit0，远端已核对。
+首片已交付，不称完整P1完成。自动head采用bounded fork与紧凑receipt，连续外来head复用完整prefix；
 原compaction 5+5保持不变，旧正文/工具结果/资源写入次数未随三个增量增长。
 epoch轮换、目录tombstone、P2资源
 安装及后续云/设备/UI条件仍planned。本轮不重复网站、Swift或物理Mac的旧证据。
 
-先完成 P0：在隔离目录创建两个真实 SQLite，用受控 provider 生成包含工具结果、
+当前恢复身份片只在fresh本地运行库组合bind/import/apply/run，保留sharedBotId并生成
+新replicaId/epoch；新增鉴权receipts摘要枚举覆盖无source_events的旧完整P0载体。
+证据位于.local/sync-p1-recovery；原fixture目录前置不足的红/空页日志保留并注明，
+正确directory.botDir种库、独立head真实export预检后在c8d生产快照重取路由红。
+局部恢复/枚举/Session guard六项绿，最终affected42/42、types/lint exit0；最终Bots check普通/
+coverage各688/688（同套不累加），crash8/8、对应eval各1/1、perf1/1全exit0。
+旧22路径候选tree4de501/receipt68475d已冻结保留。Review确认receipt枚举raw I/O未进入
+Session保护的P2，当前以公开close封闭实例做窄修：原I/O不变、后续/在途结果拒绝，
+不伪称SDK SessionEnd.failed；空/compact、取消/StorageRequestError、唯一日志身份与cleanup
+均补回归。旧688仅属旧候选；新receipt-review-affected51/51、types/lint、
+check普通/coverage各697/697、crash8/8、两对应eval各1/1、perf1/1均exit0。
+新receipt-io-candidate收据绑定相对4de501的tree/路径SHA和新日志，待增量Review；
+本片未提交/未push，正常hooks尚待验收后执行。大于8MiB用原分页，不放宽请求cap，
+不复制活动库；备份前未上传branch与独立P0 branch、原始system/provider顺序直接断言。
+
+eb874d最终Review仅余close队列交错P2：同轮排队receipts/close的真实red为14项12过2败，
+cleanup另铸第二error。现以独立Session-close通知状态在末次scan执行时判断；健康close仍
+把尚未进入后台扫描的committed原entry/body准确持久化一次。source/test已冻结并单独交窄审。
+19:03 +0800 新affected54/54、types/lint、Bots check普通/coverage各700/700（同套不累加）、
+crash8/8、两对应eval各1/1、perf1/1全exit0。receipt-close-queue-candidate记录相对eb874d
+的路径/tree/日志hash；旧eb874d/receipt-io-candidate及697 gate全部保留。仍未commit/push，
+等待此唯一P2增量Review及Lead验收；不编码下一tombstone切片或新增原生/网络验收。
+
+先完成 P0（以下为当时验证合同，交付状态以上方明确结论为准）：在隔离目录创建两个真实 SQLite，用受控 provider 生成包含工具结果、
 指令变化与压缩记录的历史，验证 B 被动导入、A 停止后 B 发起新 run、重启恢复及
 并发分支。仅允许明确的本地 ID、工作区路径和 provider 会话身份映射；
 不能用复制活动 SQLite、最近消息窗口或删除不支持内容来替代上下文保真。

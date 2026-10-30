@@ -48,8 +48,9 @@ const open = async (
   const faux = fauxProvider();
   const models = createModels();
   models.setProvider(faux.provider);
+  const database = await (storage ?? openNodeSqliteStorage)(join(dir, "session.sqlite"));
   const harness = await Harness.open(
-    await (storage ?? openNodeSqliteStorage)(join(dir, "session.sqlite")),
+    database,
     {
       models,
       registry,
@@ -65,9 +66,17 @@ const open = async (
       extensions: selectToolExtensions(registry, ["core", "coding"]),
     },
   });
-  const replica = new HistoryReplica(harness, root.id, "b_shared", workspace.root, registry);
+  const replica = new HistoryReplica(
+    harness,
+    root.id,
+    "b_shared",
+    workspace.root,
+    registry,
+    database,
+  );
   return {
     harness,
+    storage: database,
     registry,
     root,
     faux,
@@ -577,6 +586,7 @@ test("a real SDK nested tool call cannot be exported as a complete P0 head, incl
       "b_shared",
       source.workspace,
       source.registry,
+      source.storage,
     );
     await assert.rejects(
       replica.command({ method: "export", params: {}, trace }),

@@ -587,7 +587,17 @@ const runCase = async (
           const before = model.requests.length;
           await call("import", { bundle });
           await call("import", { bundle });
-          if (model.requests.length !== before) failure("passive import executed a model");
+          const inventory = (await call("receipts", { after: 0, limit: 128 })) as {
+            items: { id: number; head: string }[];
+          };
+          if (
+            !inventory.items.some(
+              (item) => item.head === bundle.head && Number.isSafeInteger(item.id),
+            )
+          )
+            failure("saved full carrier missing from recovery inventory");
+          if (model.requests.length !== before)
+            failure("passive import/inventory executed a model");
           const requestId = `replica_eval_${++requestSeq}`;
           const params = { head: bundle.head, requestId, text: step.text };
           await call("run", params);

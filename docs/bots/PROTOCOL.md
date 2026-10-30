@@ -102,6 +102,7 @@ version, the instance id, the pid and a bot count, never bot content.
 | `POST` | `/v1/bots/:id/replica/import` | `{ "bundle": HistoryBundle }` | `{ "head": SHA256 }`; passive, atomic and idempotent |
 | `POST` | `/v1/bots/:id/replica/run` | `{ "head", "requestId", "text" }` | `{ "branch": requestId, "submission": Submission }`; new local run only |
 | `POST` | `/v1/bots/:id/replica/status` | `{ "requestId" }` | `{ "branch"?, "submission": Submission or null }` |
+| `POST` | `/v1/bots/:id/replica/receipts` | `{ "after": safe nonnegative integer, "limit"?: 1..128 }` | `{ "items": [{ "id": DocumentId, "head": SHA256 }], "nextAfter", "hasMore" }`; local full-carrier inventory |
 | `POST` | `/v1/groups` | `{ "title" }` | `{ "group": BotGroup }` |
 | `PATCH` | `/v1/groups/:id` | `{ "title" }` | `{ "group": BotGroup }` |
 | `PUT` | `/v1/groups/order` | `{ "ids": [string] }` — every group once, in display order | `{ "groups": [BotGroup] }` |
@@ -847,3 +848,34 @@ local ledger and SDK's idempotent admission; 8000 code points and 8..64 legal ID
 remain unchanged. P0 public carrier limits remain enforced while internal reconstructed
 histories can exceed one page. No device, cloud, Swift or automatic peer transport is
 introduced by these local API methods.
+
+### Saved-history recovery inventory
+
+`receipts {after,limit?}` enumerates complete `bots.replica.import` P0 carriers in the
+current Bot's session. `limit` defaults to 128 and bounds newly **checked documents**,
+including compact/empty records with no full carrier. Metadata is scanned with the public
+SDK API; bodies are read and validated one at a time. `nextAfter` advances to the last
+checked persistent DocumentId even for an empty result page. SDK cursors stay inside the
+request. This position is neither source sequence nor peer-applied acknowledgment.
+
+Each returned family key must equal the validated complete carrier's head, with a supported
+receipt version and visible conversation/entry mappings. Malformed carriers fail closed;
+SQLite/SDK failures propagate. A raw enumeration I/O failure seals that local Harness via
+public close (SDK SessionEnd.closed); the original error remains storage_failed at the
+runtime boundary. Subsequent commands and in-flight raw results are refused before further
+consumption, including empty/compact pages. Protocol errors, StorageRequestError and real
+caller cancellation do not close a healthy instance. The response exposes only document
+IDs/heads, never carrier bodies. The existing Bearer auth, Bot isolation, strict request fields and 8 MiB boundary
+apply. The [normative summary](../../fixtures/bots-sync/receipts.v1.json) includes a checked
+compact record after its returned complete carrier; a nextAfter beyond an item is expected.
+Multiple inventory requests do not freeze a Bot snapshot.
+
+To restore saved history, create a fresh local Bot, bind its saved sharedBotId, import the
+explicitly selected complete carriers (including standalone P0 branches with summarized
+parents), and apply the retained original source pages/ranges. A new replicaId/epoch is
+stable across target restart; old facts retain their original identities and sequences.
+Pages alone cannot cover legacy complete SDK receipts without source events. Missing pages
+remain gaps; bad carriers cannot replace a complete head. Neither foreign pending nor active
+run facts enter local queues. A user starts continuation with a new request ID only after
+the selected head is ready. This is explicit passive recovery, not detection of an unannounced
+live-directory rollback or permission to copy/resume an active session database.

@@ -559,3 +559,11 @@ peer-applied positions. Incoming protocol-invalid sources remain retained/blocke
 from other runnable heads. This is a local incremental API, with complete local assembly
 cost, not a cloud baseline/cache or a generic transport. P2 installation, P3 device binding,
 P4 transport/cache, P5 UI/merge and P1 epoch/tombstone follow-ups retain their planned scope.
+
+Passive recovery composes bind/import/apply/run in a newly created local runtime. The only
+new surface is a full-carrier summary inventory: HistoryReplica receives public Storage
+scanDocuments/document from PiDurableRuntime's existing owner. Entry-map validation stays
+on Harness.commit/Tx.scanEntries so it observes conversation visibility and the Session's
+serial/failure guard. Metadata cursors remain request-local; HTTP after uses DocumentId.
+No database/queue/provider session is copied, no new epoch setter is introduced, and legacy
+carriers without source events are exported explicitly rather than reissued as local facts.

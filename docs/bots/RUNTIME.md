@@ -87,7 +87,8 @@ Each local Bot owns a separate `replica.sqlite` next to `session.sqlite`. Its bi
 contains an immutable local Bot ID, shared Bot UUID, replica UUID and source epoch UUID.
 A new Bot starts a unique shared identity; authenticated `replica/bind {sharedBotId}`
 can join an empty local replica explicitly, never by display name. A populated binding
-cannot be silently reassigned. Epoch rotation and directory tombstones remain planned.
+cannot be silently reassigned. Explicit passive restoration to a fresh incarnation is described below; in-place epoch
+rotation, unannounced rollback detection and directory tombstones remain planned.
 
 Additive authenticated loopback methods use the existing history body cap:
 
@@ -165,6 +166,51 @@ separately in TESTING/PLAN; table or endpoint existence alone does not establish
 
 This slice is local only. Resource installation (P2), device authorization (P3), cloud,
 Tailscale, encrypted cache (P4), UI/merge experience (P5) and physical Macs are not certified.
+
+### Passive recovery from saved records
+
+The supported recovery target is a newly created local Bot directory with a fresh
+session.sqlite and replica.sqlite. Keep the saved database/records unchanged; never
+open a copied active session and then change its identity. The normal fresh-runtime
+identity supplies a new replicaId and epoch, stable after restart. Bind this empty
+target to the saved sharedBotId, import selected complete P0 carriers (including legacy
+SDK receipts without source-log events), then apply saved original source pages through
+the existing authenticated methods. Preserve all original stream/epoch/seq/provenance;
+incoming run facts remain passive and never become local recovery intents.
+
+The authenticated `receipts {after,limit?}` endpoint enumerates legacy full carriers via
+public Storage.scanDocuments/document at the existing storage-owner boundary. It reports
+persistent DocumentId/head summaries only. The limit bounds checked documents, including
+compact/empty receipts; continuation advances over them without a persisted SDK cursor.
+`export {head}` reads the selected full carrier. Enumeration validates hash/SRI, family key,
+supported version and actual visible entry mapping through Harness.commit/Tx reads;
+Session failure guards and storage errors are retained. Raw metadata/body reads check the
+public Session before and after each read, including empty/compact pages. An I/O error
+is rethrown unchanged and immediately seals this Harness via public close; no later or
+in-flight read result is consumed. SDK 1.4.0 exposes no public guarded raw-document scan
+or fail method: this path ends as SessionEnd.closed, not a fabricated SDK failed reason.
+The adapter retains one storage_failed origin/identity and propagates later rejections;
+queued/background scans stop when the Session closes and reopen can fill committed facts.
+Cleanup checks the actual Session-close notification when its queued final scan executes,
+so an earlier queued receipt I/O failure cannot trigger another scan/failure origin.
+A healthy normal close still performs the final committed-fact scan.
+Protocol validation, StorageRequestError and a read's actual canceled Context do not seal
+a healthy Harness. Only the raw call is caught; integrity errors remain protocol errors.
+It does not create source events for compact/P0-only receipts or promise a multi-request
+frozen inventory.
+
+Pages alone need not cover P0-imported history. The caller must retain complete carriers
+for those selected heads and all necessary original pages, including unsent branches;
+do not invent missing sequence numbers. Each page keeps the 128-event/8 MiB limit;
+cumulative history may be larger. Use applied positions and readiness of the explicitly
+selected heads to identify gaps. Duplicate import/apply is idempotent, and a partial new
+target can reopen and continue receiving records. Only a new user request runs locally;
+ordinary crash restart of the original instance retains same-ID intent recovery.
+
+This composes existing local APIs, not a general backup format or automatic detection
+of unannounced directory rollback. Directory tombstones, shared catalogue recovery and
+resource installation remain later slices. Tests distinguish existing-path verification
+from any actual failure requiring implementation.
 
 ### Earlier SDK probe baseline
 

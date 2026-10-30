@@ -232,7 +232,14 @@ export class PiDurableRuntime implements RuntimePort {
         },
       });
       await root.configure({ extensions: installed }, BACKGROUND_CONTEXT);
-      const history = new HistoryReplica(harness, root.id, spec.id, workspace.root, registry);
+      const history = new HistoryReplica(
+        harness,
+        root.id,
+        spec.id,
+        workspace.root,
+        registry,
+        storage,
+      );
       let replicaFailureEpisode = 0;
       const replica = new ReplicaSync(
         join(spec.dir, "replica.sqlite"),
@@ -389,18 +396,24 @@ class PiRuntimeHandle implements RuntimeHandle {
       this.#options.log.emit("info", "runtime", Events.replicaOk, fields);
       return result;
     } catch (cause) {
-      const failure =
-        cause instanceof ClassifiedFailure
-          ? cause.failure
-          : this.#classifier.classify("replica", "storage_failed", "runtime").classification
-              .failure;
-      this.#options.log.emit("error", "runtime", Events.replicaFail, {
-        ...fields,
-        failure,
-        origin: true,
-      });
-      if (cause instanceof ClassifiedFailure) throw cause;
-      throw new ClassifiedFailure(failure, "unknown", "replica storage failed", { cause });
+      if (cause instanceof ClassifiedFailure) {
+        this.#options.log.emit("error", "runtime", Events.replicaFail, {
+          ...fields,
+          failure: cause.failure,
+          origin: true,
+        });
+        throw cause;
+      }
+      const minted =
+        this.#classifier.sessionEpisode() ??
+        this.#classifier.classify("replica", "storage_failed", "runtime");
+      this.#logFailure(minted, command.trace, Events.replicaFail, "runtime");
+      throw new ClassifiedFailure(
+        minted.classification.failure,
+        "unknown",
+        "replica storage failed",
+        { cause },
+      );
     }
   }
 
