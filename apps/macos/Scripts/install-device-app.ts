@@ -6,7 +6,7 @@ export interface DeviceInstallerSystem {
   supportsMaintenance(bundle: string): boolean;
   copy(source: string, destination: string): void;
   quit(bundle: string): void;
-  job(): InstalledDeviceJob | undefined;
+  job(bundle: string): InstalledDeviceJob | undefined;
   prepare(bundle: string): void;
   processExists(pid: number): boolean;
   open(bundle: string): void;
@@ -39,7 +39,7 @@ export function installDeviceCandidate(
     throw new Error("the new App does not support device update preparation");
   const installed = existsSync(destination);
   if (installed) system.verify(destination);
-  const previousJob = system.job();
+  const previousJob = system.job(installed ? destination : source);
   if (!installed && previousJob)
     throw new Error("a device service already belongs to another installation");
   if (
@@ -68,7 +68,7 @@ export function installDeviceCandidate(
         system.supportsMaintenance(destination) ? destination : staged,
       );
       if (
-        system.job() ||
+        system.job(destination) ||
         (previousJob?.pid && system.processExists(previousJob.pid))
       )
         throw new Error(
@@ -102,7 +102,6 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -111,11 +110,13 @@ import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { deviceHelperRelativePath } from "./assemble-device-app.ts";
+import {
+  deviceCandidateServiceLabel,
+  deviceHelperRelativePath,
+} from "./assemble-device-app.ts";
 
 function macOSSystem(): DeviceInstallerSystem {
   const identifier = "ai.hexly.eagle.macos.device-candidate";
-  const label = "ai.hexly.eagle.devices.candidate";
   const run = (program: string, args: string[], timeout = 15_000) =>
     spawnSync(program, args, {
       encoding: "utf8",
@@ -148,19 +149,8 @@ function macOSSystem(): DeviceInstallerSystem {
         30_000,
       );
       const bundleID = info(bundle, "CFBundleIdentifier");
-      const config = JSON.parse(
-        readFileSync(
-          join(bundle, "Contents/Resources/DeviceHost.json"),
-          "utf8",
-        ),
-      );
-      if (
-        bundleID.status !== 0 ||
-        bundleID.stdout.trim() !== identifier ||
-        config.profile !== "device-candidate" ||
-        config.machServiceName !== label ||
-        config.launchAgentPlist !== `${label}.plist`
-      )
+      deviceCandidateServiceLabel(bundle);
+      if (bundleID.status !== 0 || bundleID.stdout.trim() !== identifier)
         throw new Error("the bundle is not an Eagle device candidate");
     },
     supportsMaintenance(bundle) {
@@ -181,7 +171,8 @@ function macOSSystem(): DeviceInstallerSystem {
         30_000,
       );
     },
-    job() {
+    job(bundle) {
+      const label = deviceCandidateServiceLabel(bundle);
       const result = run("/bin/launchctl", [
         "print",
         `gui/${process.getuid?.()}/${label}`,

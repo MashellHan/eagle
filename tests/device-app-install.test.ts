@@ -100,6 +100,22 @@ test("candidate upgrade unregisters through the old bundle before replacing it",
   }
 });
 
+test("upgrade checks the old bundle's job before and after unregistering", () => {
+  const f = fixture();
+  const job = f.system.job;
+  const inspected: (string | undefined)[] = [];
+  f.system.job = (bundle?: string) => {
+    inspected.push(bundle);
+    return job(f.destination);
+  };
+  try {
+    installDeviceCandidate(f.source, f.destination, f.system);
+    assert.deepEqual(inspected, [f.destination, f.destination]);
+  } finally {
+    f.cleanup();
+  }
+});
+
 test("legacy migration uses the new signed bundle and confirms the old job is gone", () => {
   const f = fixture();
   f.system.supportsMaintenance = (bundle) => bundle !== f.destination;

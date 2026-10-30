@@ -2409,3 +2409,20 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - No new cloud deployment, D1 write, Keychain access, identity reset or live Herdr
   collection. UI and cross-Mac operation evidence remains distinct from automatic
   update acceptance. CI SDK confirmation is still pending the final normal push.
+
+## 2026-10-30 13:30 +0800 — Candidate service identity trial
+
+- `59e6b37` really applied the fixed helper signing identifier and retained its
+  exact CDHash requirement, but the signed upgrade still hit Launch Constraint
+  Violation twice. Waiting longer left EX_CONFIG rather than a usable helper.
+- The existing Astra lead's read-only system inspection found a new helper
+  registration reusing an older BTM item. Root is isolating each candidate's
+  Label, MachService and plist name by the bundle build. The installer queries
+  the old signed bundle's job before and after unregistering it; profile,
+  socket, identity, pairing and persistent paths remain stable.
+- Five packaging/installer assertions failed first; all 28 cases now pass.
+  That is local regression evidence, not a successful installed upgrade.
+- PR #109 is formal at `85c00e5`; its macOS job failed the older SDK's actor
+  crossing, already corrected locally. Normal push and renewed CI remain.
+  No live Herdr collection, new Worker deployment, D1 writes, Keychain access
+  or device credential changes. Prior UI and cross-Mac evidence is unchanged.

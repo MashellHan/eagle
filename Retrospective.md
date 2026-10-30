@@ -811,3 +811,10 @@ Constraint Violation before execution. The observed PID was transient and did
 not establish readiness. Changing the executable path did not close the cached
 constraint issue. The next narrow signing trial assigns only the candidate helper
 a stable reverse-DNS identifier, retaining its exact ad-hoc CDHash requirement.
+
+The `59e6b37` fixed-identifier package still failed twice at launch. Its actual
+identifier and exact CDHash were verified, so this is not a missing signing flag.
+The next bounded trial versions the candidate's Label, MachService and plist name
+together, preserving its profile and data paths, and selects the old service for
+installer cleanup from the old signed bundle. This targets the observed reuse of
+the older BTM item rather than adding another delay. Live acceptance remains open.

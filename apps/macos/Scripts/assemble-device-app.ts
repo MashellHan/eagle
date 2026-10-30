@@ -88,6 +88,12 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
   ).version as string;
   const buildVersion =
     profile === "device-candidate" ? String(Date.now()) : version;
+  const templatePlist = config.launchAgentPlist;
+  const templateService = config.machServiceName;
+  if (profile === "device-candidate") {
+    config.machServiceName = `${templateService}.${buildVersion}`;
+    config.launchAgentPlist = `${config.machServiceName}.plist`;
+  }
   const helperRelative = `Contents/Library/LaunchServices/EagleDeviceHelper${
     profile === "device-candidate" ? `.${buildVersion}` : ""
   }`;
@@ -128,11 +134,13 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
   writeFileSync(join(contents, "Info.plist"), info);
   copyFileSync(join(support, "AppIcon.icns"), join(resources, "AppIcon.icns"));
   save(join(resources, "DeviceHost.json"), config);
-  let launchConfiguration = readFileSync(
-    join(support, config.launchAgentPlist),
-    "utf8",
-  );
+  let launchConfiguration = readFileSync(join(support, templatePlist), "utf8");
   if (profile === "device-candidate") {
+    // A new service name prevents BTM from reusing a previous helper's launch constraint.
+    launchConfiguration = launchConfiguration.replaceAll(
+      templateService,
+      config.machServiceName,
+    );
     const program = /(<key>BundleProgram<\/key>\s*)<string>[^<]*<\/string>/;
     if (!program.test(launchConfiguration))
       throw new Error(
@@ -164,6 +172,26 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
         recursive: true,
         verbatimSymlinks: true,
       });
+}
+/** Resolve only the signed candidate's own job, including pre-versioning installs. */
+export function deviceCandidateServiceLabel(app: string): string {
+  const config = JSON.parse(
+    readFileSync(join(app, "Contents/Resources/DeviceHost.json"), "utf8"),
+  ) as HostConfig;
+  const build = readFileSync(join(app, "Contents/Info.plist"), "utf8").match(
+    /<key>CFBundleVersion<\/key>\s*<string>([^<]+)<\/string>/,
+  )?.[1];
+  const legacy = "ai.hexly.eagle.devices.candidate";
+  if (
+    config.profile !== "device-candidate" ||
+    config.launchAgentPlist !== `${config.machServiceName}.plist` ||
+    (config.machServiceName !== legacy &&
+      (!build ||
+        !/^[0-9]{1,20}$/.test(build) ||
+        config.machServiceName !== `${legacy}.${build}`))
+  )
+    throw new Error("invalid candidate device service");
+  return config.machServiceName;
 }
 /** The signed launch plist is the common source for signing and installer ownership checks. */
 export function deviceHelperRelativePath(app: string): string {

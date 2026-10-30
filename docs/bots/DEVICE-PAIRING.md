@@ -80,7 +80,10 @@ App 启动检测到包更新时，完成旧注册的异步注销后，由后台 
 服务配置也随候选包更新。该字段不作为设备身份或用户设置，也不参与命令执行权限。
 候选 helper 的实际文件名同时包含该 build，`BundleProgram` 指向本次文件；签名、
 App 的 helper 身份验证和安装器的进程归属检查均从签名包内同一 plist 读取真实路径。
-这不改变服务 label、Mach service 或设备身份。正式发布和旧候选的固定 helper 路径仍受支持。
+候选服务 label、Mach service 与 plist 文件名也包含同一次 build，避免新的 helper 签名复用
+旧服务的启动约束。安装器从旧签名包读取旧名称并确认该 job 消失，再安装新名称；
+`device-candidate` profile、socket、设备身份和持久化目录保持不变。
+正式发布与旧候选的固定服务名、固定 helper 路径仍受支持。
 候选 helper 使用固定的签名 identifier，避免继承链接器每次变化的 UUID 标识；ad-hoc
 产物的 designated requirement 仍精确绑定当前 CDHash，不能用同名程序替代。
 显示用的 `CFBundleShortVersionString` 仍取产品版本，正式发布包保留发布版本规则。

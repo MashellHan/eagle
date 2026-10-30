@@ -50,6 +50,21 @@ function prepare(f: ReturnType<typeof fixture>, args: string[] = []) {
     { encoding: "utf8" },
   );
 }
+function hostConfig(app: string) {
+  return JSON.parse(
+    readFileSync(join(app, "Contents/Resources/DeviceHost.json"), "utf8"),
+  );
+}
+function launchConfiguration(app: string) {
+  return readFileSync(
+    join(
+      app,
+      "Contents/Library/LaunchAgents",
+      hostConfig(app).launchAgentPlist,
+    ),
+    "utf8",
+  );
+}
 
 test("candidate bundle fixes isolated host configuration and SMAppService helper paths", () => {
   const f = fixture();
@@ -57,6 +72,9 @@ test("candidate bundle fixes isolated host configuration and SMAppService helper
     const result = prepare(f);
     assert.equal(result.status, 0, result.stderr);
     const contents = join(f.app, "Contents");
+    const build = readFileSync(join(contents, "Info.plist"), "utf8").match(
+      /<key>CFBundleVersion<\/key>\s*<string>([^<]+)<\/string>/,
+    )?.[1];
     assert.deepEqual(
       JSON.parse(
         readFileSync(join(contents, "Resources/DeviceHost.json"), "utf8"),
@@ -65,32 +83,23 @@ test("candidate bundle fixes isolated host configuration and SMAppService helper
         version: 1,
         profile: "device-candidate",
         baseUrl: "http://127.0.0.1:17053",
-        machServiceName: "ai.hexly.eagle.devices.candidate",
-        launchAgentPlist: "ai.hexly.eagle.devices.candidate.plist",
+        machServiceName: `ai.hexly.eagle.devices.candidate.${build}`,
+        launchAgentPlist: `ai.hexly.eagle.devices.candidate.${build}.plist`,
       },
     );
-    const plist = readFileSync(
-      join(
-        contents,
-        "Library/LaunchAgents/ai.hexly.eagle.devices.candidate.plist",
-      ),
-      "utf8",
-    );
+    const plist = launchConfiguration(f.app);
     assert.match(
       plist,
       /<key>BundleProgram<\/key>\s*<string>Contents\/Library\/LaunchServices\/EagleDeviceHelper\.\d+<\/string>/,
     );
     assert.match(
       plist,
-      /<key>MachServices<\/key>\s*<dict>\s*<key>ai.hexly.eagle.devices.candidate<\/key>\s*<true\/>/,
+      /<key>MachServices<\/key>\s*<dict>\s*<key>ai.hexly.eagle.devices.candidate\.\d+<\/key>\s*<true\/>/,
     );
     assert.match(plist, /<key>RunAtLoad<\/key>\s*<true\/>/);
     assert.match(plist, /<key>KeepAlive<\/key>\s*<true\/>/);
     const helper = plist.match(
       /<key>BundleProgram<\/key>\s*<string>([^<]+)<\/string>/,
-    )?.[1];
-    const build = readFileSync(join(contents, "Info.plist"), "utf8").match(
-      /<key>CFBundleVersion<\/key>\s*<string>([^<]+)<\/string>/,
     )?.[1];
     assert.equal(
       helper,
@@ -123,6 +132,7 @@ test("candidate assembly honors and normalizes an explicit HTTPS origin while re
   try {
     const result = prepare(f, ["--service-url", "https://DEVICES.TEST:443/"]);
     assert.equal(result.status, 0, result.stderr);
+    const config = hostConfig(f.app);
     assert.deepEqual(
       JSON.parse(
         readFileSync(join(f.app, "Contents/Resources/DeviceHost.json"), "utf8"),
@@ -131,9 +141,13 @@ test("candidate assembly honors and normalizes an explicit HTTPS origin while re
         version: 1,
         profile: "device-candidate",
         baseUrl: "https://devices.test",
-        machServiceName: "ai.hexly.eagle.devices.candidate",
-        launchAgentPlist: "ai.hexly.eagle.devices.candidate.plist",
+        machServiceName: config.machServiceName,
+        launchAgentPlist: `${config.machServiceName}.plist`,
       },
+    );
+    assert.match(
+      config.machServiceName,
+      /^ai\.hexly\.eagle\.devices\.candidate\.\d+$/,
     );
     assert.match(
       readFileSync(join(f.app, "Contents/Info.plist"), "utf8"),
@@ -153,17 +167,11 @@ test("rebuilding a candidate changes its build and launch configuration while ke
       new RegExp(`<key>${key}</key>\\s*<string>([^<]+)</string>`),
     )?.[1];
   };
-  const readLaunchConfiguration = () =>
-    readFileSync(
-      join(
-        f.app,
-        "Contents/Library/LaunchAgents/ai.hexly.eagle.devices.candidate.plist",
-      ),
-      "utf8",
-    );
+  const readLaunchConfiguration = () => launchConfiguration(f.app);
   try {
     assert.equal(prepare(f).status, 0);
     const first = readVersion("CFBundleVersion");
+    const firstHost = hostConfig(f.app);
     const firstLaunch = readLaunchConfiguration();
     assert.match(
       firstLaunch,
@@ -175,6 +183,17 @@ test("rebuilding a candidate changes its build and launch configuration while ke
     rmSync(f.app, { recursive: true });
     assert.equal(prepare(f).status, 0);
     assert.notEqual(readVersion("CFBundleVersion"), first);
+    const secondHost = hostConfig(f.app);
+    assert.notEqual(secondHost.machServiceName, firstHost.machServiceName);
+    assert.notEqual(secondHost.launchAgentPlist, firstHost.launchAgentPlist);
+    assert.equal(secondHost.profile, firstHost.profile);
+    assert.equal(secondHost.baseUrl, firstHost.baseUrl);
+    assert.match(
+      readLaunchConfiguration(),
+      new RegExp(
+        `<key>Label</key>\\s*<string>${secondHost.machServiceName.replaceAll(".", "\\.")}</string>`,
+      ),
+    );
     assert.notEqual(readLaunchConfiguration(), firstLaunch);
     assert.match(
       readLaunchConfiguration(),
@@ -197,6 +216,46 @@ test("candidate assembly retains localhost when the CLI service URL is empty", (
       readFileSync(join(f.app, "Contents/Resources/DeviceHost.json"), "utf8"),
     );
     assert.equal(config.baseUrl, "http://127.0.0.1:17053");
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+test("candidate job lookup accepts only its own build or the legacy service", async () => {
+  const { deviceCandidateServiceLabel } = await import(
+    "../apps/macos/Scripts/assemble-device-app.ts"
+  );
+  const f = fixture();
+  try {
+    assert.equal(prepare(f).status, 0);
+    const config = hostConfig(f.app);
+    const path = join(f.app, "Contents/Resources/DeviceHost.json");
+    assert.equal(deviceCandidateServiceLabel(f.app), config.machServiceName);
+    for (const label of [
+      "ai.hexly.eagle.devices.candidate.0",
+      "ai.hexly.eagle.devices.candidate/../unrelated",
+      "ai.hexly.eagle.devices",
+    ]) {
+      writeFileSync(
+        path,
+        JSON.stringify({
+          ...config,
+          machServiceName: label,
+          launchAgentPlist: `${label}.plist`,
+        }),
+      );
+      assert.throws(() => deviceCandidateServiceLabel(f.app));
+    }
+    const legacy = "ai.hexly.eagle.devices.candidate";
+    writeFileSync(
+      path,
+      JSON.stringify({
+        ...config,
+        machServiceName: legacy,
+        launchAgentPlist: `${legacy}.plist`,
+      }),
+    );
+    assert.equal(deviceCandidateServiceLabel(f.app), legacy);
   } finally {
     rmSync(f.root, { recursive: true, force: true });
   }
@@ -286,13 +345,9 @@ test("nested signing preserves Node, signs helper before App, and propagates ver
       calls.some((args) => args.includes("--force") && args.at(-1) === node),
       false,
     );
-    const helperPath = readFileSync(
-      join(
-        f.app,
-        "Contents/Library/LaunchAgents/ai.hexly.eagle.devices.candidate.plist",
-      ),
-      "utf8",
-    ).match(/<key>BundleProgram<\/key>\s*<string>([^<]+)<\/string>/)?.[1];
+    const helperPath = launchConfiguration(f.app).match(
+      /<key>BundleProgram<\/key>\s*<string>([^<]+)<\/string>/,
+    )?.[1];
     const signed = calls
       .filter((args) => args.includes("--sign"))
       .map((args) => args.at(-1));
