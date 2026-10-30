@@ -197,6 +197,8 @@ before(async () => {
           INGEST_HOST: "ingest.example.com",
           LOCAL_DEV: "false",
           BUILD_REVISION: "test-build-sha",
+          MACOS_VERSION: "1.2.3",
+          MACOS_RELEASE_URL: "https://github.com/example/eagle/releases/latest",
         },
       },
     ],
@@ -823,6 +825,11 @@ test("public health identifies the deployed revision without exposing inventory"
   );
   assert.equal(result.revision, "test-build-sha");
   assert(!("machines" in result));
+  // The app has its own release line; the check reads it from here.
+  assert.deepEqual(result.macos, {
+    latest: "1.2.3",
+    releaseUrl: "https://github.com/example/eagle/releases/latest",
+  });
 });
 
 test("an ordinary heartbeat and old retry cannot clear a collector failure warning", async () => {

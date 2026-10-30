@@ -36,6 +36,8 @@ type PrepareOptions = {
   helper: string;
   profile: Profile;
   serviceUrl?: string;
+  /** Where the app links a person for the code, the releases and the version check. */
+  links?: { github?: string; release?: string; updates?: string };
 };
 type Execute = (program: string, args: string[]) => unknown;
 const save = (path: string, value: unknown) =>
@@ -83,8 +85,10 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
     config.baseUrl = origin(options.serviceUrl, profile);
   if (!existsSync(binary) || !existsSync(helper))
     throw new Error("EagleApp and EagleDeviceHelper binaries are required");
+  // The app's version is its own: releases of the website, the Agent and the app are
+  // independent, so this file is the single source for every bundle the app is built into.
   const version = JSON.parse(
-    readFileSync(join(sourceRoot, "package.json"), "utf8"),
+    readFileSync(join(sourceRoot, "apps/macos/Support/Version.json"), "utf8"),
   ).version as string;
   const buildVersion =
     profile === "device-candidate" ? String(Date.now()) : version;
@@ -106,6 +110,20 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
     "</dict>",
     "  <key>EagleDeviceMaintenanceVersion</key>\n  <integer>1</integer>\n</dict>",
   );
+  const linkKeys: Record<string, string | undefined> = {
+    EagleGitHubURL: options.links?.github,
+    EagleReleaseURL: options.links?.release,
+    EagleUpdatesURL: options.links?.updates,
+  };
+  const linkPlist = Object.entries(linkKeys)
+    .filter(([, value]) => value !== undefined && value !== "")
+    .map(
+      ([key, value]) =>
+        `  <key>${key}</key>\n  <string>${xml(value as string)}</string>`,
+    )
+    .join("\n");
+  if (linkPlist.length > 0)
+    info = info.replace("</dict>", `${linkPlist}\n</dict>`);
   for (const [key, value] of Object.entries({
     CFBundleIdentifier: identifier,
     CFBundleName: name,
@@ -333,6 +351,9 @@ if (
         helper: { type: "string" },
         profile: { type: "string", default: "device-candidate" },
         "service-url": { type: "string" },
+        "github-url": { type: "string" },
+        "release-url": { type: "string" },
+        "updates-url": { type: "string" },
         identity: { type: "string", default: "-" },
         "source-root": {
           type: "string",
@@ -360,6 +381,11 @@ if (
         helper: resolve(values.helper),
         profile: values.profile as Profile,
         serviceUrl: values["service-url"],
+        links: {
+          github: values["github-url"],
+          release: values["release-url"],
+          updates: values["updates-url"],
+        },
       });
     }
     process.stdout.write(`${values.app}\n`);

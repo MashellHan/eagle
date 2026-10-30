@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const git = (...args: string[]) =>
@@ -9,6 +9,18 @@ if (git("status", "--porcelain"))
     "Commit the release before deploying; the health endpoint must identify the exact source revision.",
   );
 const revision = git("rev-parse", "HEAD");
+// The published app version is the app's own file; the release page is one link for both
+// the Worker's answer and the App's prompt.
+const macosVersion = (
+  JSON.parse(readFileSync("apps/macos/Support/Version.json", "utf8")) as {
+    version: string;
+  }
+).version;
+const macosReleaseUrl = (
+  JSON.parse(readFileSync("package.json", "utf8")) as {
+    config?: { macosReleaseUrl?: string };
+  }
+).config?.macosReleaseUrl;
 // The tracked repository carries only an example. A deployment names its own configuration:
 // the local file when one exists, otherwise the JSON in EAGLE_WRANGLER_CONFIG (CI secret).
 const configPath = "apps/web/wrangler.jsonc";
@@ -27,6 +39,17 @@ execFileSync("npm", ["--workspace", "@eagle/web", "run", "build"], {
 });
 execFileSync(
   "node_modules/.bin/wrangler",
-  ["deploy", "--config", configPath, "--var", `BUILD_REVISION:${revision}`],
+  [
+    "deploy",
+    "--config",
+    configPath,
+    "--var",
+    `BUILD_REVISION:${revision}`,
+    "--var",
+    `MACOS_VERSION:${macosVersion}`,
+    ...(macosReleaseUrl === undefined
+      ? []
+      : ["--var", `MACOS_RELEASE_URL:${macosReleaseUrl}`]),
+  ],
   { stdio: "inherit" },
 );

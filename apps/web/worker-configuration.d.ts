@@ -13,6 +13,9 @@ interface __BaseEnv_Env {
   DEV_HOSTS?: string;
   /** The ingest hostname whose path allowlist is enforced, when this deployment has one. */
   INGEST_HOST?: string;
+  /** The published macOS app version and where to download it; absent hides the check. */
+  MACOS_VERSION?: string;
+  MACOS_RELEASE_URL?: string;
   LOCAL_USER_EMAIL: string;
   AGENT_SIGNING_KEY: string;
   MACHINES: DurableObjectNamespace<import("./src/worker/index").MachineState>;
@@ -45,6 +48,8 @@ declare namespace NodeJS {
         | "LOCAL_DEV"
         | "DEV_HOSTS"
         | "INGEST_HOST"
+        | "MACOS_VERSION"
+        | "MACOS_RELEASE_URL"
         | "LOCAL_USER_EMAIL"
         | "AGENT_SIGNING_KEY"
       >

@@ -74,6 +74,10 @@ public enum UpdateState: Hashable, Sendable {
   case idle
   case checking
   case current(String)
+  /// A newer published build exists; the person downloads it from the release page.
+  case available(latest: String, release: URL?)
+  /// Nothing to ask: a development build, or no published version to compare with.
+  case unavailable
 }
 
 public enum MockSettings {

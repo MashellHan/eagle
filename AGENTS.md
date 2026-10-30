@@ -7,7 +7,13 @@ Durable Objects/D1 and a standalone Node Agent. Human overview: [README.md](READ
 
 Maintain project instructions only in this root AGENTS.md; do not create a
 CLAUDE.md alias or copy. Root `package.json` is the npm workspace root and owns
-the website/Worker release version; keep its lockfile synchronized. `packages/agent/package.json` owns the independent
+the website/Worker release version; keep its lockfile synchronized. Releases are
+independent per surface: the website/Worker take the root version, the Agent takes
+`packages/agent/package.json`, and the macOS app takes
+`apps/macos/Support/Version.json` (a release bumps only the surface it ships).
+`scripts/deploy.ts` publishes that app version as `MACOS_VERSION`, so `/api/live`
+answers `macos.latest`; only a release-profile app build asks that endpoint, and a
+newer answer is a link to the release page, never an automatic replacement. `packages/agent/package.json` owns the independent
 Agent version; CLI output and packed artifacts derive from it. Website onboarding
 uses root `config.publishedAgentVersion`, which must reference a verified published
 Agent version and can differ from an unpublished source candidate.

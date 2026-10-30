@@ -46,6 +46,8 @@ public struct SettingsView: View {
         usage
       case .updates:
         updates
+      case .about:
+        about
       }
     }
     .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
@@ -580,31 +582,208 @@ public struct SettingsView: View {
     VStack(alignment: .leading, spacing: 18) {
       SettingsCard {
         VStack(alignment: .leading, spacing: 12) {
-          switch model.updateState {
-          case .idle:
-            HStack {
-              Text("检查 Eagle 的新版本")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Theme.Palette.textPrimary)
-              Spacer()
-              Button("检查更新") { model.checkForUpdates() }
-            }
-          case .checking:
-            HStack(spacing: 10) {
-              SpinnerArc()
-              Text("正在检查更新…")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.Palette.textSecondary)
-            }
-          case .current(let version):
-            Text("Eagle \(version)")
+          HStack(spacing: 10) {
+            Text("Eagle \(model.appVersion.display)")
               .font(.system(size: 15, weight: .semibold))
               .foregroundStyle(Theme.Palette.textPrimary)
-            InfoBanner("当前已是最新版本")
+            Spacer(minLength: 0)
+            SettingsActionButton("检查更新") {
+              Task { await model.checkForUpdates() }
+            }
+          }
+          .padding(.vertical, 4)
+          updateSummary
+        }
+        .padding(.vertical, 14)
+      }
+    }
+    .task { await model.checkForUpdatesIfNeeded() }
+  }
+
+  /// What one check found: the newest published build, the current one, or why it is silent.
+  @ViewBuilder private var updateSummary: some View {
+    switch model.updateState {
+    case .idle:
+      Text("没有检查过。检查会读取公开的版本信息，不会上传本机数据。")
+        .font(Theme.TypeScale.note)
+        .foregroundStyle(Theme.Palette.textSecondary)
+    case .checking:
+      HStack(spacing: 10) {
+        SpinnerArc()
+        Text("正在检查更新…")
+          .font(Theme.TypeScale.note)
+          .foregroundStyle(Theme.Palette.textSecondary)
+      }
+    case .current(let version):
+      InfoBanner("已是最新版本 \(version)")
+    case .available(let latest, let release):
+      HStack(spacing: 12) {
+        Image(systemName: "arrow.down.circle.fill")
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(Theme.Palette.accentStrong)
+        VStack(alignment: .leading, spacing: 2) {
+          Text("有新版本 \(latest)")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Theme.Palette.textPrimary)
+          Text("下载安装包后手动安装；Eagle 不会自行替换。")
+            .font(Theme.TypeScale.note)
+            .foregroundStyle(Theme.Palette.textSecondary)
+        }
+        Spacer(minLength: 0)
+        if let release {
+          SettingsActionButton("去 GitHub 下载", prominent: true) {
+            NSWorkspace.shared.open(release)
           }
         }
-        .padding(.vertical, 16)
       }
+      .padding(12)
+      .background(
+        RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
+          .fill(Theme.Palette.accentStrong.opacity(0.10))
+      )
+    case .unavailable:
+      Text(
+        model.appVersion.isRelease
+          ? "这一版没有可用的版本信息。"
+          : "开发版不检查更新。"
+      )
+      .font(Theme.TypeScale.note)
+      .foregroundStyle(Theme.Palette.textSecondary)
+    }
+  }
+
+  /// Identity, where to get the code, and what the app is made of.
+  private var about: some View {
+    VStack(alignment: .leading, spacing: 18) {
+      SettingsCard {
+        HStack(alignment: .center, spacing: 18) {
+          aboutMark
+          VStack(alignment: .leading, spacing: 4) {
+            Text("Eagle")
+              .font(.system(size: 20, weight: .semibold))
+              .foregroundStyle(Theme.Palette.textPrimary)
+            Text("多机工作态势 · 本地优先")
+              .font(Theme.TypeScale.note)
+              .foregroundStyle(Theme.Palette.textSecondary)
+            HStack(spacing: 8) {
+              Text(model.appVersion.display)
+                .font(Theme.TypeScale.mono)
+                .foregroundStyle(Theme.Palette.textSecondary)
+                .textSelection(.enabled)
+              if !model.appVersion.isRelease {
+                Text("开发版")
+                  .font(.system(size: 11, weight: .medium))
+                  .foregroundStyle(Theme.Palette.textMuted)
+                  .padding(.horizontal, 6)
+                  .padding(.vertical, 2)
+                  .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                      .fill(Theme.Palette.canvas)
+                  )
+              }
+            }
+          }
+          Spacer(minLength: 0)
+        }
+        .padding(.vertical, 20)
+      }
+
+      if model.updateState != .idle, model.appVersion.isRelease {
+        SettingsCard { updateSummary.padding(.vertical, 14) }
+      }
+
+      if let github = model.links.github {
+        SettingsCard {
+          VStack(spacing: 0) {
+            SettingsRow("GitHub", detail: github.absoluteString) {
+              SettingsActionButton("打开") { NSWorkspace.shared.open(github) }
+            }
+            .padding(.vertical, 12)
+            if let release = model.links.release {
+              Divider().overlay(Theme.Palette.line)
+              SettingsRow("版本发布", detail: release.absoluteString) {
+                SettingsActionButton("打开") { NSWorkspace.shared.open(release) }
+              }
+              .padding(.vertical, 12)
+            }
+          }
+        }
+      }
+
+      SettingsCard {
+        VStack(spacing: 0) {
+          SettingsRow("应用", detail: "界面、设备与 Bot 的控制台") {
+            Text(model.appVersion.display)
+              .font(Theme.TypeScale.mono)
+              .foregroundStyle(Theme.Palette.textPrimary)
+          }
+          .padding(.vertical, 12)
+          Divider().overlay(Theme.Palette.line)
+          SettingsRow("Bot 服务", detail: botServiceDetail) {
+            Text(botServiceVersion)
+              .font(Theme.TypeScale.mono)
+              .foregroundStyle(Theme.Palette.textPrimary)
+          }
+          .padding(.vertical, 12)
+          Divider().overlay(Theme.Palette.line)
+          SettingsRow("设备服务", detail: "本机执行与配对；身份只存放在本机") {
+            Text(devices.localReady ? "已就绪" : "未就绪")
+              .font(Theme.TypeScale.note)
+              .foregroundStyle(
+                devices.localReady ? Theme.Palette.accentStrong : Theme.Palette.textMuted)
+          }
+          .padding(.vertical, 12)
+        }
+      }
+
+      Text("\(String(Calendar.current.component(.year, from: Date()))) Eagle · 数据保留在这台机器上")
+        .font(Theme.TypeScale.note)
+        .foregroundStyle(Theme.Palette.textMuted)
+    }
+    .task { await model.checkForUpdatesIfNeeded() }
+  }
+
+  /// The app's own icon, so the about card carries the product rather than a placeholder.
+  @ViewBuilder private var aboutMark: some View {
+    if let icon = Self.bundledIcon {
+      Image(nsImage: icon)
+        .resizable()
+        .interpolation(.high)
+        .frame(width: 64, height: 64)
+    } else {
+      Image(systemName: "bird")
+        .font(.system(size: 44, weight: .semibold))
+        .foregroundStyle(Theme.Palette.textPrimary)
+        .frame(width: 64, height: 64)
+    }
+  }
+
+  /// The product mark shipped in the bundle; a source run draws the glyph instead.
+  private static var bundledIcon: NSImage? {
+    if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+      let image = NSImage(contentsOf: url)
+    {
+      return image
+    }
+    let image = NSApplication.shared.applicationIconImage
+    guard let image, image.size.width >= 128 else { return nil }
+    return image
+  }
+
+  private var botServiceVersion: String {
+    switch daemon?.status {
+    case .running(let version, _, _): return "v\(version)"
+    case .stopped: return "未运行"
+    case .failed: return "启动失败"
+    case .starting: return "启动中"
+    case nil: return "未知"
+    }
+  }
+
+  private var botServiceDetail: String {
+    switch daemon?.status {
+    case .running(_, _, let external): return external ? "外部启动的 daemon" : "由这个 App 启动"
+    default: return "本机 Bots daemon"
     }
   }
 }

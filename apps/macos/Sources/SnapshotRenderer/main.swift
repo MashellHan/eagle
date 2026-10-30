@@ -138,6 +138,29 @@ struct SnapshotRenderer {
     defer { deviceDefaults.removePersistentDomain(forName: "EagleDeviceSnapshots") }
     let devices = DeviceSettingsViewModel(control: deviceFixture, defaults: deviceDefaults)
     await devices.startIfNeeded()
+    // The about page, with an update available: the only state a person cannot reach by
+    // building a development copy, so it is reviewed as an image instead.
+    let about = SettingsViewModel(
+      appVersion: AppVersion(short: "0.15.0", build: "1761000000", isRelease: true),
+      links: ProductLinks(
+        github: URL(string: "https://github.com/nocoo/eagle"),
+        release: URL(string: "https://github.com/nocoo/eagle/releases/latest"),
+        updates: URL(string: "https://eagle.example.com/api/live")
+      )
+    )
+    about.selection = .about
+    about.updateState = .available(
+      latest: "0.16.0",
+      release: URL(string: "https://github.com/nocoo/eagle/releases/latest")
+    )
+    capture(
+      SettingsView(model: about).preferredColorScheme(.light),
+      size: CGSize(
+        width: CGFloat(Theme.Metric.settingsWidth), height: CGFloat(Theme.Metric.settingsHeight)),
+      named: "settings-about",
+      in: directory
+    )
+
     let machines = SettingsViewModel()
     machines.selection = .machines
     capture(

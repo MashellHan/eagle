@@ -151,6 +151,11 @@ node_modules/.bin/wrangler deploy --config apps/web/wrangler.devices.jsonc \
 ```
 
 No D1 apply, shared-secret upload, website build or npm publication is required.
+`scripts/deploy.ts` also publishes the app version: it reads
+`apps/macos/Support/Version.json` into `MACOS_VERSION` and the release link from the root
+`package.json` `config.macosReleaseUrl`, so `/api/live` answers `macos.latest` without the
+site and the app sharing a number.
+
 After deployment, verify the exact `/api/live` revision and anonymous device directory
 401 response, then build the isolated candidate with
 `EAGLE_DEVICE_SERVICE_URL=<your device origin>`. There is no address

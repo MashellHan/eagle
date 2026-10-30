@@ -34,6 +34,8 @@ npm --prefix apps/bots ci --cache "$EAGLE_BOTS_NPM_CACHE"
 export EAGLE_DEVICE_PROFILE=device-candidate
 export EAGLE_DEVICE_SERVICE_URL=https://devices.example.com   # the origin you deployed
 export EAGLE_CODESIGN_IDENTITY=-
+# Where the About page asks which macOS version is published (optional; unset = never ask).
+export EAGLE_UPDATES_URL=https://app.example.com/api/live
 apps/macos/Scripts/build-app.sh debug
 node apps/macos/Scripts/install-device-app.ts \
   "apps/macos/.build/device-candidate/Eagle Device Candidate.app"
@@ -83,6 +85,10 @@ swift run SnapshotRenderer ../../.local/macos-snapshots   # PNGs for review
 swift run SnapshotRenderer ../../.local/macos-inspector --inspector-only   # static inspector fixtures only
 swift run SnapshotRenderer ../../.local/macos-services --services-only   # isolated search-provider fixtures only
 ```
+
+The app's own version lives in `apps/macos/Support/Version.json`; bump that file for an app
+release and leave the root, Agent and Bots versions alone. A release-profile build links to
+`config.repositoryUrl` and `config.macosReleaseUrl` from the root `package.json`.
 
 Packaged candidates use their bundled Node/Bots and isolated candidate profile;
 the development overrides below do not select their runtime or data directories.
