@@ -11,8 +11,13 @@ import type {
 } from "../packages/contracts/src/connect.ts";
 import type { Overview } from "../packages/contracts/src/schema.ts";
 
-// Deliberately local: this acceptance check creates and disables a real test identity.
-const origin = "https://eagle.dev.hexly.ai";
+// This acceptance check creates and disables a real test identity on the named deployment.
+const origin = process.env.EAGLE_VERIFY_ORIGIN?.trim();
+if (origin === undefined || origin === "") {
+  throw new Error(
+    "set EAGLE_VERIFY_ORIGIN to the development origin being verified",
+  );
+}
 const id = "connect-check";
 const directory = resolve(".local/connect-check");
 const configPath = `${directory}/agent.json`;

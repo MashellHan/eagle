@@ -4,8 +4,9 @@ Status: implementation contract, 2026-10-29. Independent of owner/v1 and Bots wi
 Base path `/api/devices/v1`; JSON UTF-8, strict objects, camelCase. All responses
 use `Cache-Control: no-store`; errors `{error: code}`. Credentials never use URLs.
 
-The selected product origin is `https://eagle-devices.hexly.ai`, served by the independent
-`eagle-devices` Worker on its own custom domain. Both Macs use this same HTTPS/WSS origin;
+The product origin is whatever custom domain the deployment's ignored
+`apps/web/wrangler.devices.jsonc` names; it is served by the independent `eagle-devices`
+Worker. Examples in this repository use `devices.example.com`. Both Macs use this same HTTPS/WSS origin;
 the localhost Registry remains separate. The service reuses `DeviceRegistry` and
 `DeviceExecution`, exposes read-only `/api/live` health/version/revision, and rejects
 unrelated paths. It has no website, legacy machine API, D1, assets or scheduled jobs.

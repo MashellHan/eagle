@@ -6,16 +6,30 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "preview_urls": false,
-  "triggers": { "crons": ["59 15 * * *"] },
+  "triggers": {
+    "crons": ["59 15 * * *"]
+  },
   "durable_objects": {
     "bindings": [
-      { "name": "MACHINES", "class_name": "MachineState" },
-      { "name": "DIRECTORY", "class_name": "MachineDirectory" }
+      {
+        "name": "MACHINES",
+        "class_name": "MachineState"
+      },
+      {
+        "name": "DIRECTORY",
+        "class_name": "MachineDirectory"
+      }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["MachineState"] },
-    { "tag": "v2", "new_sqlite_classes": ["MachineDirectory"] }
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MachineState"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["MachineDirectory"]
+    }
   ],
   "assets": {
     "directory": "./dist",
@@ -25,11 +39,11 @@
   },
   "routes": [
     {
-      "pattern": "eagle.hexly.ai",
+      "pattern": "app.example.com",
       "custom_domain": true
     },
     {
-      "pattern": "eagle-ingest.hexly.ai",
+      "pattern": "ingest.example.com",
       "custom_domain": true
     }
   ],
@@ -37,7 +51,7 @@
     {
       "binding": "DB",
       "database_name": "eagle",
-      "database_id": "23d72296-f25a-4a65-9187-4994f42ca39a",
+      "database_id": "00000000-0000-4000-8000-000000000000",
       "migrations_dir": "migrations"
     }
   ],
@@ -47,14 +61,16 @@
   },
   "dev": {
     "ip": "127.0.0.1",
-    "host": "eagle.dev.hexly.ai",
+    "host": "dev.example.com",
     "port": 37053,
     "inspector_port": 38053
   },
   "vars": {
     "BUILD_REVISION": "development",
     "LOCAL_DEV": "false",
-    "ACCESS_TEAM_URL": "https://nocoo.cloudflareaccess.com",
-    "ACCESS_AUD": "d1ffdb7fe2787e2a9e8f957a68ed5feec2b944c44c6fdbfd54341887eab6f873"
+    "ACCESS_TEAM_URL": "https://team.cloudflareaccess.com",
+    "ACCESS_AUD": "0000000000000000000000000000000000000000000000000000000000000000",
+    "DEV_HOSTS": "dev.example.com",
+    "INGEST_HOST": "ingest.example.com"
   }
 }

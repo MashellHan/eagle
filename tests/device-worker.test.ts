@@ -6,7 +6,7 @@ import { basename, join, resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 
-const configuration = "apps/web/wrangler.devices.jsonc";
+const configuration = "apps/web/wrangler.devices.example.jsonc";
 const config = JSON.parse(readFileSync(configuration, "utf8")) as {
   name: string;
   main: string;
@@ -104,7 +104,7 @@ test("the standalone deployment builds only device code and binds only its two S
     compatibility_flags: ["nodejs_compat"],
     workers_dev: false,
     preview_urls: false,
-    routes: [{ pattern: "eagle-devices.hexly.ai", custom_domain: true }],
+    routes: [{ pattern: "devices.example.com", custom_domain: true }],
     durable_objects: {
       bindings: [
         { name: "DEVICE_REGISTRY", class_name: "DeviceRegistry" },

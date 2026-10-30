@@ -1,3 +1,12 @@
+const requireOrigin = (): string => {
+  const value = process.env.EAGLE_VERIFY_ORIGIN?.trim();
+  if (value === undefined || value === "") {
+    // No origin in the source: a verification run names its own deployment.
+    throw new Error("set EAGLE_VERIFY_ORIGIN to the origin being verified");
+  }
+  return value;
+};
+
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
@@ -6,7 +15,7 @@ import {
   DailySettingsSchema,
 } from "../packages/contracts/src/daily.ts";
 
-const origin = process.env.EAGLE_VERIFY_ORIGIN || "https://eagle.dev.hexly.ai";
+const origin = requireOrigin();
 const production = !origin.includes(".dev.");
 const browser = await chromium.launch();
 try {

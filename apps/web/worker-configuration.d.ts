@@ -4,11 +4,15 @@
 interface __BaseEnv_Env {
   DB: D1Database;
   ASSETS: Fetcher;
-  BUILD_REVISION: "development";
-  ACCESS_TEAM_URL: "https://nocoo.cloudflareaccess.com";
-  ACCESS_AUD: "d1ffdb7fe2787e2a9e8f957a68ed5feec2b944c44c6fdbfd54341887eab6f873";
+  BUILD_REVISION: string;
+  ACCESS_TEAM_URL: string;
+  ACCESS_AUD: string;
   AGENT_TOKENS: string;
   LOCAL_DEV: string;
+  /** Hosts that are allowed to skip Access while LOCAL_DEV is on, comma separated. */
+  DEV_HOSTS?: string;
+  /** The ingest hostname whose path allowlist is enforced, when this deployment has one. */
+  INGEST_HOST?: string;
   LOCAL_USER_EMAIL: string;
   AGENT_SIGNING_KEY: string;
   MACHINES: DurableObjectNamespace<import("./src/worker/index").MachineState>;
@@ -39,6 +43,8 @@ declare namespace NodeJS {
         | "ACCESS_AUD"
         | "AGENT_TOKENS"
         | "LOCAL_DEV"
+        | "DEV_HOSTS"
+        | "INGEST_HOST"
         | "LOCAL_USER_EMAIL"
         | "AGENT_SIGNING_KEY"
       >

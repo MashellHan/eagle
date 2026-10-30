@@ -1,6 +1,11 @@
 # Deployment and live verification
 
-Commands run from the repository root. Website commands use `apps/web/wrangler.jsonc`.
+Commands run from the repository root. Deployment configuration is never tracked: the
+repository carries `apps/web/wrangler.example.jsonc` and
+`apps/web/wrangler.devices.example.jsonc`, and both real files are ignored. A new machine
+creates them from the examples, and CI supplies `EAGLE_WRANGLER_CONFIG` (the JSON config as a
+secret) with `EAGLE_INGEST_ORIGIN` (a repository variable) for the post-deploy check.
+Website commands use `apps/web/wrangler.jsonc`.
 The independent device service uses `apps/web/wrangler.devices.jsonc` and the separate
 procedure below; `npm run deploy` is not its deployment command. See
 [local setup](../README.md#开发) before verifying the development origin.
@@ -8,16 +13,16 @@ procedure below; `npm run deploy` is not its deployment command. See
 ## Local frontend, Local or Prod backend
 
 `npm run dev` exposes a Local / Prod segment in the header at
-`https://eagle.dev.hexly.ai`. Local is the default; it uses the local Worker
+`<your dev origin>`. Local is the default; it uses the local Worker
 on port 37053. Prod keeps the local frontend and proxies viewer API requests
-and realtime WebSockets to `https://eagle.hexly.ai`. **Prod has full production
+and realtime WebSockets to `<your production origin>`. **Prod has full production
 read/write access**, including settings, machine credentials and terminal input.
 It is not a preview or a read-only mode. Automated checks use synthetic upstreams.
 
 Before selecting Prod, authenticate the local proxy in your terminal:
 
 ```sh
-cloudflared access login --quiet https://eagle.hexly.ai
+cloudflared access login --quiet <your production origin>
 ```
 
 The proxy retrieves the cached application token using `cloudflared access token`;
@@ -30,7 +35,7 @@ discards unsaved forms and closes existing realtime connections. Terminal drafts
 are separated by environment and are never sent automatically. Previously
 submitted production operations may still finish; switching does not undo them.
 Each request has a fixed environment path, so another tab cannot retarget it.
-Production onboarding uses `eagle-ingest.hexly.ai`; Local uses the local origin.
+Production onboarding uses `<your ingest origin>`; Local uses the local origin.
 The gateway is dev-server-only and does not add a production Worker route.
 
 ## Verify the live path
@@ -39,7 +44,7 @@ The gateway is dev-server-only and does not add a production Worker route.
 NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" node scripts/verify-live.ts
 ```
 
-`verify-live.ts` reads `.local/agent-dev.json` by default; local viewing needs no credentials. For production, set `EAGLE_VERIFY_ORIGIN=https://eagle.hexly.ai`, `EAGLE_CONFIG` to the production agent configuration and `EAGLE_ACCESS_JWT_FILE` to a mode-0600 file containing a genuine Access application JWT. Obtain it through `cloudflared access login --quiet https://eagle.hexly.ai`; never paste credentials into commands or logs. Screenshots and sanitized receipts remain in ignored `.local/`. The script checks anonymous Access redirection, authenticated viewing, idempotency, every real Space, automatic updates, history and mobile layout.
+`verify-live.ts` reads `.local/agent-dev.json` by default; local viewing needs no credentials. For production, set `EAGLE_VERIFY_ORIGIN=<your production origin>`, `EAGLE_CONFIG` to the production agent configuration and `EAGLE_ACCESS_JWT_FILE` to a mode-0600 file containing a genuine Access application JWT. Obtain it through `cloudflared access login --quiet <your production origin>`; never paste credentials into commands or logs. Screenshots and sanitized receipts remain in ignored `.local/`. The script checks anonymous Access redirection, authenticated viewing, idempotency, every real Space, automatic updates, history and mobile layout.
 
 ## Website-only releases
 
@@ -88,7 +93,7 @@ deploys every green `Check` on main through the `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` secrets, then polls `/api/live` for the exact revision
 and skips with a notice when the secrets are absent.
 
-The Worker owns `eagle.hexly.ai` as a custom domain. `https://eagle-ingest.hexly.ai/api/live` publicly probes the first configured machine DO and returns no inventory. The read-only reviewers are advisory; the integrator commits on `main`. See [checkpoints](CHECKPOINTS.md) for real data verification and [API](API.md) for ingestion/query semantics.
+The Worker owns `<your production origin>` as a custom domain. `<your ingest origin>/api/live` publicly probes the first configured machine DO and returns no inventory. The read-only reviewers are advisory; the integrator commits on `main`. See [checkpoints](CHECKPOINTS.md) for real data verification and [API](API.md) for ingestion/query semantics.
 
 ## AI daily reports
 
@@ -105,9 +110,11 @@ Run `scripts/verify-daily.ts` with the same origin/Access settings as `verify-li
 ## Independent device service
 
 The independent `/api/devices/v1` contract is in [DEVICES.md](DEVICES.md).
-The product target is the `eagle-devices` Worker in the owner's account, at its custom
-domain `https://eagle-devices.hexly.ai` (no `workers.dev` hostname: `workers_dev` is off and
-the config carries no `account_id`, so `wrangler` uses the authenticated account).
+The product target is one `eagle-devices` Worker on its own custom domain. The repository
+carries **only** `apps/web/wrangler.devices.example.jsonc`: copy it to
+`apps/web/wrangler.devices.jsonc` (ignored) and put your hostname in `routes`. No
+`workers.dev` hostname is served and the config carries no `account_id`, so `wrangler`
+deploys into the account it is logged into.
 A second-level host such as `eagle-devices.worker.hexly.ai` is outside the zone's Universal
 SSL wildcard and answers a TLS handshake failure until the zone enables Total TLS.
 This is a persistent product service, not a remote test fixture. The existing personal
@@ -146,7 +153,7 @@ node_modules/.bin/wrangler deploy --config apps/web/wrangler.devices.jsonc \
 No D1 apply, shared-secret upload, website build or npm publication is required.
 After deployment, verify the exact `/api/live` revision and anonymous device directory
 401 response, then build the isolated candidate with
-`EAGLE_DEVICE_SERVICE_URL=https://eagle-devices.hexly.ai`. There is no address
+`EAGLE_DEVICE_SERVICE_URL=<your device origin>`. There is no address
 form in the App; both Macs must use the same origin for registration, pairing and WSS.
 Use the complete signed bundle and candidate installer described in
 `apps/macos/README.md`; the installer prepares the old service before replacing it.

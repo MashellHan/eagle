@@ -99,9 +99,14 @@ export async function viewerIdentity(
   env: Env,
 ): Promise<Viewer | null> {
   const host = new URL(request.url).hostname;
+  const devHosts = (env.DEV_HOSTS ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0);
   if (
     env.LOCAL_DEV === "true" &&
-    ["localhost", "127.0.0.1", "[::1]", "eagle.dev.hexly.ai"].includes(host)
+    (["localhost", "127.0.0.1", "[::1]"].includes(host) ||
+      devHosts.includes(host))
   )
     return {
       email: env.LOCAL_USER_EMAIL?.trim().toLowerCase() || "",

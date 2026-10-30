@@ -700,7 +700,8 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (
-      url.hostname === "eagle-ingest.hexly.ai" &&
+      env.INGEST_HOST !== undefined &&
+      url.hostname === env.INGEST_HOST &&
       ![
         "/api/v1/reports",
         "/api/v1/heartbeat",

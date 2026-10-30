@@ -1,3 +1,12 @@
+const requireOrigin = (): string => {
+  const value = process.env.EAGLE_VERIFY_ORIGIN?.trim();
+  if (value === undefined || value === "") {
+    // No origin in the source: a verification run names its own deployment.
+    throw new Error("set EAGLE_VERIFY_ORIGIN to the origin being verified");
+  }
+  return value;
+};
+
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -9,7 +18,7 @@ import {
   sendReport,
 } from "../packages/agent/collector.ts";
 
-const origin = process.env.EAGLE_VERIFY_ORIGIN || "https://eagle.dev.hexly.ai";
+const origin = requireOrigin();
 const config: AgentConfig = JSON.parse(
   await readFile(process.env.EAGLE_CONFIG || ".local/agent-dev.json", "utf8"),
 );

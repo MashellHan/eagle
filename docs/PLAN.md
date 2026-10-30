@@ -8,7 +8,7 @@ Owner: Codex integrates on main; Grok/Pi in this Space provide read-only researc
 - Transactional, content-checked idempotency; stale delivery cannot rewind current state. Independent heartbeat and stale-machine indicator.
 - Executive overview, topology, pane evidence drilldown, DO current changes and existing paginated D1 history. Raw snapshot D1 writes remain paused. AI daily reports run at 23:59 Beijing with hourly sections; see DAILY-REPORTS.md. Browser refresh every five seconds with failure and freshness visibility.
 - Node agent with durable retry spool and reusable Skill, secrets in a 0600 config. No arbitrary commands from remote reports.
-- Local HTTPS eagle.dev.hexly.ai → Vite 7053 → Worker 37053. Tests use 17053/27053. Publish eagle.hexly.ai.
+- Local HTTPS `<dev host>` → Vite 7053 → Worker 37053. Tests use 17053/27053. Publish `<prod host>`.
 
 ## Test-first slices
 
@@ -22,7 +22,7 @@ Owner: Codex integrates on main; Grok/Pi in this Space provide read-only researc
 
 Every 15 minutes from 2026-09-19 13:43 Asia/Shanghai, record what a user can actually see, the first broken hop and the next correction in CHECKPOINTS.md. No milestone is considered complete solely from a pane badge.
 
-Device pairing uses the independent product service `https://eagle-devices.hexly.ai` (its own
-custom domain; no `workers.dev` hostname is served).
+Device pairing uses the independent product service on its own custom domain (the ignored
+deployment config names it; no `workers.dev` hostname is served).
 Its current delivery scope and evidence live in [the device plan](bots/PLAN.md#共享设备与配对重构2026-10-29);
 it does not deploy or alter the existing website/ingest services.

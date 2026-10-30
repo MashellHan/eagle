@@ -6,6 +6,11 @@ import { createServer as createViteServer } from "vite";
 import { WebSocket, WebSocketServer } from "ws";
 import { productionProxy } from "../scripts/environment-proxy.ts";
 
+const proxyOrFail = (value: unknown) => {
+  assert(value !== undefined, "a named target yields a proxy entry");
+  return value as NonNullable<ReturnType<typeof productionProxy>>;
+};
+
 test("production proxy scopes HTTP writes and websocket traffic to authenticated same-origin viewers", async (context) => {
   const requests: {
     path?: string;
@@ -69,10 +74,12 @@ test("production proxy scopes HTTP writes and websocket traffic to authenticated
       host: "127.0.0.1",
       port: 0,
       proxy: {
-        "/__local/prod/": productionProxy(target, async () => {
-          if (!authenticated) throw new Error("credential unavailable");
-          return "synthetic-access-token";
-        }),
+        "/__local/prod/": proxyOrFail(
+          productionProxy(target, async () => {
+            if (!authenticated) throw new Error("credential unavailable");
+            return "synthetic-access-token";
+          }),
+        ),
       },
     },
   });

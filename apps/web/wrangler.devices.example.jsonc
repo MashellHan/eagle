@@ -8,7 +8,7 @@
   "preview_urls": false,
   "routes": [
     {
-      "pattern": "eagle-devices.hexly.ai",
+      "pattern": "devices.example.com",
       "custom_domain": true
     }
   ],
