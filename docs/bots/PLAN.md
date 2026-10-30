@@ -172,6 +172,15 @@ identity. Earlier registration-only approaches failed real upgrades; the final
 retry, reaching local readiness in 12.83/11.39 seconds and cloud online in
 13.53/12.17 seconds. Both jobs ran once and had never exited when checked.
 
+The `4cbeb98` SDK-compatibility follow-up exposed an additional upgrade boundary:
+those two successful packages had identical helper bytes, while the relinked
+helper again failed launch constraints after replacement. The candidate installer
+now prepares unregistration before moving the old App, using a maintenance entry
+that runs before SwiftUI or Bots initialization. It checks the old job and PID
+independently and preserves the old bundle on preparation failure. A legacy
+candidate may use the new signed maintenance process once, subject to the same
+postconditions. Cross-signature installed verification is still pending.
+
 The installed App's menu opens the actual resizable Settings window. Pairing is
 above My Devices and always visible; resizing survives closing/reopening, and an
 input draft survived twelve seconds of status refresh. Each row keeps its policy

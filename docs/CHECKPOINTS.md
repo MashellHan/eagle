@@ -2357,3 +2357,21 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Next hop: commit, complete one signed upgrade of the SDK fix, verify installed
   local readiness and data preservation, then push normally and check the new
   GitHub macOS job. The older SDK compile is not claimed fixed until CI confirms it.
+
+## 2026-10-30 12:41 +0800 — Cross-signature upgrade remains unresolved
+
+- User view: the complete `4cbeb98` SDK-fix candidate installed but did not make
+  its helper usable within 20 seconds. launchd reported a launch constraint
+  violation and then EX_CONFIG. Prior `fef7203` successes used identical helper
+  bytes; they do not establish reliability when the helper signature changes.
+- Herdr: existing Astra lead/reviewer compared the signed packages and system
+  evidence, remaining read-only. The install script moved the old App before
+  unregistering its service. Root is adding an App maintenance entry and guarded
+  installer so unregister completion and disappearance of the old job/PID precede
+  replacement. Regression cases first failed on the missing installer/capability.
+- A recorded indexed AX Retry did not produce an unregister in system logs; a
+  second retry used a stable button selector. Neither is automatic-upgrade proof.
+- Authentication/storage: no additional Worker deployment, D1 write, credential
+  reset, Keychain access, signature weakening or live Herdr collection. Existing
+  data paths remain in place. PR #109 is formal; its current macOS CI failure and
+  this installed upgrade gap still require closure before claiming completion.

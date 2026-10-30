@@ -95,6 +95,10 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
   const name =
     profile === "device-candidate" ? "Eagle Device Candidate" : "Eagle";
   let info = readFileSync(join(support, "Info.plist"), "utf8");
+  info = info.replace(
+    "</dict>",
+    "  <key>EagleDeviceMaintenanceVersion</key>\n  <integer>1</integer>\n</dict>",
+  );
   for (const [key, value] of Object.entries({
     CFBundleIdentifier: identifier,
     CFBundleName: name,

@@ -101,6 +101,10 @@ test("candidate bundle fixes isolated host configuration and SMAppService helper
       readFileSync(join(contents, "Info.plist"), "utf8"),
       /<string>ai.hexly.eagle.macos.device-candidate<\/string>/,
     );
+    assert.match(
+      readFileSync(join(contents, "Info.plist"), "utf8"),
+      /<key>EagleDeviceMaintenanceVersion<\/key>\s*<integer>1<\/integer>/,
+    );
     assert.equal(existsSync(join(f.root, "Eagle.app")), false);
   } finally {
     rmSync(f.root, { recursive: true, force: true });

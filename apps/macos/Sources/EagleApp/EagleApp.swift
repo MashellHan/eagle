@@ -3,7 +3,6 @@ import EagleDesign
 import EagleFeatures
 import SwiftUI
 
-@main
 struct EagleApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
   @AppStorage("eagle.appearance") private var appearance = "system"

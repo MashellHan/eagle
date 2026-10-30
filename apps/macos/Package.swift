@@ -31,7 +31,7 @@ let package = Package(
     ),
     .executableTarget(
       name: "EagleApp",
-      dependencies: ["EagleDesign", "EagleFeatures"]
+      dependencies: ["EagleDesign", "EagleDevices", "EagleFeatures"]
     ),
     .executableTarget(
       name: "SnapshotRenderer",

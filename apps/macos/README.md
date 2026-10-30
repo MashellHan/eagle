@@ -5,8 +5,9 @@ third-party dependencies: Foundation, SwiftUI, AppKit only.
 
 Status: **Bots and device services are integrated**. The App connects to the local
 Bots daemon (`apps/bots`) and bundled device service, with real settings for device
-readiness, execution policy and pairing. Local command execution has been verified
-on the current test Mac; physical two-Mac pairing and execution remain unverified.
+readiness, execution policy and pairing. Local command execution and a physical
+MacMini-2 → MacMini 1 command with original-ID result retrieval have been verified.
+Fresh-Mac installation and reverse-direction acceptance remain unverified.
 Other overview and inspector content still includes demos.
 
 ## Build the pairing candidate on another Mac
@@ -34,15 +35,19 @@ export EAGLE_DEVICE_PROFILE=device-candidate
 export EAGLE_DEVICE_SERVICE_URL=https://eagle-devices.mxhan.workers.dev
 export EAGLE_CODESIGN_IDENTITY=-
 apps/macos/Scripts/build-app.sh debug
-open apps/macos/.build/device-candidate
+node apps/macos/Scripts/install-device-app.ts \
+  "apps/macos/.build/device-candidate/Eagle Device Candidate.app"
 ```
 
 The two normal installs populate task-private caches; assembly verifies locked
 package bytes and installs the bundled Agent/Bots runtime offline. The output is
-`apps/macos/.build/device-candidate/Eagle Device Candidate.app`. Quit an existing
-candidate before replacing its **whole bundle** in `~/Applications` using Finder,
-then open that installed copy. Do not launch the hidden build copy or edit/re-sign
-the installed bundle in place. This is an ad-hoc candidate, not a notarized release.
+`apps/macos/.build/device-candidate/Eagle Device Candidate.app`. The installer
+verifies it, quits the installed UI, and waits for the old device service to
+unregister before replacing the **whole bundle** in `~/Applications` and opening
+the new App. It verifies that the old job and process are gone and retains the
+previous signed bundle at the backup path it prints. A failed preparation leaves
+the existing bundle in place. Use this installer for upgrades; do not edit or
+re-sign an installed bundle in place. This is an ad-hoc candidate, not a notarized release.
 
 Omitting the service URL defaults to localhost for local development. **Both Macs
 must explicitly build with the HTTPS origin above for pairing**, including later UI
@@ -50,8 +55,8 @@ updates. Each Mac creates its own identity; do not copy credentials, sessions or
 old localhost state. Bot command checks need a working model configuration on the
 Mac initiating them; credentials are not part of these instructions or the bundle.
 
-1. On both Macs, open `⌘,` → **设备**, enable the service and allow the background
-   item if macOS requests it. Wait for **本机可用** and **云端已连接**.
+1. On both Macs, open `⌘,` → **设备**. The service starts automatically; allow the
+   background item if macOS requests it. Wait for **本机可用** and **云端已连接**.
 2. On B, generate a one-hour pairing code; enter it once on A. If the result is
    uncertain, use **查询配对结果** to recover the original request.
 3. Refresh both device lists: both Macs should appear online, with distinct device
@@ -60,7 +65,8 @@ Mac initiating them; credentials are not part of these instructions or the bundl
    device ID; compare its actual output with B's local result. Repeat B → A. Check
    the returned target/operation IDs; a local fallback or model-only answer is not a pass.
 
-These are verification steps; physical two-Mac acceptance is not yet claimed.
+These steps cover fresh pairing and both execution directions; the observed
+physical A-to-B command does not establish every step on a clean machine.
 
 ## Development commands
 

@@ -767,3 +767,22 @@ own actor and resumes a checked continuation after that callback. It preserves
 the documented process-exit boundary before re-registration without adding an
 unchecked Sendable declaration or disabling concurrency checks. The subsequent
 CI build, rather than local compilation alone, verifies the older SDK path.
+
+## 2026-10-30 — Repeated same-binary upgrades missed the helper update boundary
+
+The complete `4cbeb98` SDK-fix package again hit a Launch Constraint Violation
+and EX_CONFIG after installation. Its app and LaunchAgent build markers matched
+and changed, but the helper identifier and CDHash also changed. Comparison of the
+two successful `fef7203` packages showed identical helper bytes and CDHashes, so
+those passes do not establish an upgrade across helper signatures. BTM's new
+configuration still reused an existing item; its hidden hash set was not read.
+
+The installation script quit the UI and moved the old App before the new App
+unregistered the old service. The next change makes installation preparation
+explicit: a signed App capability and a maintenance entry before SwiftUI, with
+successful unregister completion and independent old job/PID disappearance before
+whole-bundle replacement. The installer retains the previous bundle and refuses
+replacement on an ambiguous preparation. For older candidates it may try the new
+maintenance process once, but the same bundle ID or its status alone is never
+accepted as proof that the old service stopped. Actual cross-signature upgrade
+verification remains necessary; no signature constraint or user policy is relaxed.
