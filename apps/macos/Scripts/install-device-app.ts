@@ -195,13 +195,18 @@ function macOSSystem(): DeviceInstallerSystem {
       const match = result.stdout.match(/^\s*pid = (\d+)\s*$/m);
       if (!match) return {};
       const pid = Number(match[1]);
-      const path = checked("/bin/ps", [
-        "-ww",
-        "-p",
-        String(pid),
-        "-o",
-        "comm=",
-      ]).trim();
+      // SMAppService supplies a relative argv[0]; only the kernel's path identifies the bundle.
+      const path = checked(
+        "/usr/bin/xcrun",
+        [
+          "swift",
+          fileURLToPath(
+            new URL("./device-process-path.swift", import.meta.url),
+          ),
+          String(pid),
+        ],
+        30_000,
+      ).trim();
       return {
         pid,
         program: path.startsWith("/") ? realpathSync(path) : undefined,

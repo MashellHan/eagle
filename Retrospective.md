@@ -786,3 +786,9 @@ replacement on an ambiguous preparation. For older candidates it may try the new
 maintenance process once, but the same bundle ID or its status alone is never
 accepted as proof that the old service stopped. Actual cross-signature upgrade
 verification remains necessary; no signature constraint or user policy is relaxed.
+
+The first prepared installer refused before quitting or replacing the old App:
+`ps comm` returned SMAppService's relative `BundleProgram` as argv[0], not the
+executable's absolute path. The guard stayed closed. The adapter now reads that
+PID's executable path through the kernel's `proc_pidpath`, preserving the exact
+installed-bundle comparison rather than accepting a relative name.
