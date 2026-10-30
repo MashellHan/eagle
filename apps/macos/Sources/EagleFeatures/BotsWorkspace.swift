@@ -502,27 +502,6 @@ final class BotsWorkspaceViewModel: ObservableObject {
     if openedExchange != nil { openedExchange = nil }
   }
 
-  func openTrigger(_ triggerId: String) async {
-    guard let app, let botId = selectedId else { return }
-    do {
-      guard let detail = try await app.triggerDetail(botId: botId, triggerId: triggerId) else {
-        self.error = "触发器 \(triggerId) 已不存在"
-        return
-      }
-      triggerDialog = TriggerDialog(
-        id: triggerId,
-        title: detail.summary.name,
-        subtitle: presenter.triggerSubtitle(detail.summary),
-        rows: presenter.triggerDialogRows(detail))
-    } catch {
-      self.error = (error as? ClientError)?.message ?? error.localizedDescription
-    }
-  }
-
-  func closeTrigger() {
-    if triggerDialog != nil { triggerDialog = nil }
-  }
-
   /// The selected bot as the catalog describes it, for the inspector's profile.
   var selectedBot: BotSummary? {
     guard let app, let selectedId else { return nil }
