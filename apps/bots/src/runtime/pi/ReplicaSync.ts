@@ -75,6 +75,7 @@ export class ReplicaSync {
       this.#closed = true;
       this.#unsubscribe?.();
     });
+    await this.prepareResources();
     await this.#drain();
     for (const intent of this.store.pending()) {
       if (intent.mode === "branch") await this.#run(intent);
@@ -122,6 +123,10 @@ export class ReplicaSync {
       this.#reported = true;
       this.#report(cause);
     }
+  }
+
+  async prepareResources(): Promise<void> {
+    await this.#history.prepareResources();
   }
 
   #serial<T>(action: () => Promise<T>): Promise<T> {

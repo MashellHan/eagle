@@ -620,3 +620,78 @@ and unrelated-crash passed 9/9, all exit0. Coverage is 95.71% lines / 89.18% bra
 change in this predicate fix; their prior evidence remains scoped to 019abfdc and was
 not independently repeated or labeled a new-candidate run. unrelated-delete-candidate
 binds the new tree/path/delta/log hashes; Review and normal commit/hooks remain pending.
+
+
+## P2 fixed-head resources acceptance
+
+Use two independent real daemons/SQLite runtimes and a controlled provider. Preserve the
+initial run-rejected red, then assert original AGENTS/SKILL/scripts/references/binary and
+attachment bytes, passive zero admission/execution, source-offline continuation, effective
+ordered system/tools and native read/bash results. Interleave two heads with same-named
+versioned files behind a real provider barrier; each branch and restart retains its pin.
+Reject unsafe/incomplete/conflicting manifests, corrupt installs, invalid selected UTF-8
+and real installation I/O with zero provider/tool work and one originating failure.
+An owned SIGKILL covers complete installation before pin/admission; incomplete packages
+never become ready. Start preflight precedes all pending submits, including root intents.
+Affected checks/types/lint, normal Bots check, corresponding invocation eval and necessary
+crash checks bind final source bytes; keep old failures and distinguish prior evidence.
+
+The original 20:22 candidate (tree 766f101) evidence is `.local/sync-p2-resources/`. `entry-red`
+reached the real imported head and rejected continuation before installation. The verified
+installation-I/O red exposed a non-rejected intent and execution after disk repair, plus
+an opened SDK owner left behind by failed startup. `rename-race-red` retained the real
+ENOTEMPTY race; the earlier affected red retained mkdir EEXIST. The final implementation
+uses standard filesystem collision checks, without an installation queue. Concurrent
+version expectations come from independent user inputs, including post-tool requests.
+
+`affected-third` passed 46/46. The first normal `bots-check-final` failed 733/734 because
+an older concurrent-branch fixture assigned different answers by provider arrival order.
+Its two factories now answer by actual user input; every original branch/provenance and
+system assertion remains. `branch-input-verified` passed 9/9, and final types/check-only
+lint passed. `bots-check-verified` passed ordinary and coverage 734/734 each (one shared
+test list), with 95.84% lines / 89.28% branches / 91.42% functions. `crash-final` passed
+10/10, including actual SIGKILL after complete installation but before pin/admission.
+`eval-local-final`, `eval-incremental-final` and `eval-resources-verified` each passed
+their one exact selected case. The new resource eval asserts the real provider's version
+and complete skill section; native relative script/file results are asserted by the dual
+daemon and crash tests. Its JSON fixture received only whitespace formatting after the
+Bots gate; the final resource eval and root check-only fixture formatter bind those bytes.
+`perf-final` passed 1/1 with five-sample medians 3/1/3/10 ms for the existing four Harness
+measurements, not a resource-installation, network or device benchmark. Old red logs and
+type/format failures remain separate. Final documentation changes do not reuse old gate
+bytes as new executions. Review, normal commit and pre-push are still pending; no extra
+root/browser/Swift or cloud/physical-Mac acceptance is claimed.
+
+Resource retry regression uses the real RuntimeHandle replica command and SQLite/SDK:
+completed and active admitted runs retain their status, execution/results and admitted
+ledger after resource damage or EACCES. A failed replica admission-receipt write leaves a
+real SDK submission with local admitted=false; retry must find that SDK record. In contrast,
+an owned SIGKILL after branch pin but before SDK admission must still reject damaged
+resources without executing. New IDs and conflicting head/text keep their original refusal
+semantics. The old 766f101 candidate and its 734/10 gates remain prior evidence; new source
+requires its own affected/check/crash/eval logs, while unchanged Harness perf remains scoped
+to that old candidate.
+
+Warm HTTP task-retry regression uses an already open real daemon handle, a pinned resource
+branch and a committed native bash task. Damaged installed bytes, invalid manifest and real
+EACCES each reach the resource preflight with no new provider/tool work. Each produces
+exactly one runtime.task.retry.fail error with the HTTP trace/Bot and original failure
+identity/cause, no retry.ok and no resource text/manifest/full local path in logs. The
+catch covers this newly added preflight only, leaving later SDK retry errors unchanged.
+
+The two Review fixes retain `admitted-retry-red` (31 tests, 11 pass/20 fail) and
+`warm-task-retry-red` (10 tests, 1 pass/9 fail). The first fixed-head retry affected run
+passed 60/60; the warm HTTP/log run passed 27/27. The final combined
+`review-fixes-affected` passed 87/87; `review-fixes-types` and `review-fixes-lint` passed.
+`review-fixes-bots-check` passed ordinary and coverage 763/763 each (one shared list),
+with 95.89% lines / 89.27% branches / 91.57% functions. `review-fixes-crash` passed 11/11,
+including the real committed pin without SDK submission. `review-fixes-eval-local`,
+`review-fixes-eval-incremental` and `review-fixes-eval-resources` each passed their one
+exact selected case. New crash-fixture options, paused-state and wrapped-cause oracle
+failures are retained separately from product reds. All final implementation/tests match
+these new gate source hashes; only final evidence documentation follows the runs. Perf
+was not rerun: the unchanged Harness measurements remain prior 766f101 evidence, without
+claiming a new resource performance measurement. `review-fixes-candidate.json` binds the
+new tree, path/delta SHA and original log/exit files. Independent delta Review/Lead
+acceptance and normal commit/pre-push remain pending; ordinary root-chat resource
+selection, cloud/network and physical-device acceptance remain outside this slice.

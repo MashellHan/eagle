@@ -1,5 +1,66 @@
 # 用户视角检查点
 
+## 2026-10-30 20:38 +0800 — P2 Review两项窄修实跑红→局部绿，最终gate待收
+
+- P1已推60fa5e2不变；P2旧766f101/734/10及全部原红保留，尚未commit/push。Review除同ID资源重试、
+  warm HTTP task retry资源预检缺failure origin外的旧候选范围已关闭；不写普通root下一片。
+- admitted-retry-red真实31项11过20败：SDK已接纳后损坏bytes/EACCES，同ID重试错误拒绝并污染ledger；
+  另覆盖实际SDK已有submission但replica admitted回执写失败。最小修仅公开Tx核head/text与实际submission，
+  已接纳直接返回原branch/status，无安装/submit/resume。affected60/60绿；定向crash4/4核真实pin无submission
+  仍拒绝坏资源。新fixture的options类型、公开paused状态与open cause断言失败均单列保留，不当产品红。
+- warm-task-retry-red真实10项1过9败：暖handle、已pin资源、原生工具实际task前置通过，bytes/manifest/EACCES
+  三类均无runtime失败origin。新增边界仅包retry资源预检，原ClassifiedFailure/cause保留，裸fs I/O归storage_failed，
+  runtime.task.retry.fail记录同HTTP trace/Bot且不含正文/完整路径；修后连日志catalog/origin/shape共27/27。
+- review-fixes-types及check-only lint均exit0；正在收新源码对应affected、正常Bots check/crash和三个对应eval。
+  perf不受本修影响，仅保留旧766f Harness基线原scope；root/browser/Swift仍留正常hook，不重复standalone。
+- 20:40实际补记：review-fixes-affected87/87、正常Bots普通/coverage各763/763同套、crash11/11、
+  三个精确对应eval各1例均exit0，coverage95.89/89.27/91.57；source/test SHA已交Lead供并行Review。
+  当前仅补最终证据docs/tree/candidate，仍未commit/push，不称完整P2。
+- Herdr仅向Lead报进展，未验网站实际采集、live auth/D1/UI、cloud/网络/物理Mac，不操作App或其他树。
+  下一步绑定新source/path SHA与最终tree/log/exit，冻结交增量Review；不称完整P2或多机交付。
+
+## 2026-10-30 20:22 +0800 — P2 fixed-head资源本地门禁绿，准备冻结Review
+
+- P1已推60fa5e2不变；P2首片未commit/push。完整AGENTS、skill相对scripts/references/binary asset和
+  附件经双真实daemon/独立SQLite被动导入，provider从实际生产section取得本地路径，native read/bash
+  核原bytes及本机cwd结果，A关闭后B续跑；双版本交错每请求按独立user输入核版本，重开pin不变。
+- 原install I/O/owner红、mkdir EEXIST与rename ENOTEMPTY红全部保留。安装采用标准fs幂等竞争校验，
+  不用安装队列；known preflight I/O拒绝持久intent，修盘重开零provider/tool，startup失败释放原SDK owner。
+- affected-third46/46；types-final三处类型红保留，最终types/lint通过。首轮正常check733/734，旧P0并发
+  fixture按provider到达顺序分配回答导致branch身份断言失败；改由实际user输入回答，原全部分支断言保留，
+  定点9/9。bots-check-verified普通/coverage各734/734（同套不累加），exit0，coverage95.84/89.28/91.42。
+- crash-final10/10含完整安装后、pin/admission前真实owned SIGKILL；两既有精确--case及新replica-resources
+  eval各1例exit0。新eval核实际provider资源版本/完整skill section，脚本执行证据在e2e/crash，不虚称eval有tool。
+  perf1/1，原四项Harness五样本median3/1/3/10ms；新增JSON fixture格式红已修且check-only通过。
+- .local/sync-p2-resources保留原始日志/真实exit与source路径SHA，最终只补docs/tree/candidate交Lead/Review。
+  root/browser/Swift留正常hook，未额外standalone；网站Herdr采集、live auth/D1/UI、cloud/网络/物理Mac仍未验。
+  普通root聊天排队/编辑版本选择仍为下一片；不操作daily App、不称完整P2/多机交付。
+
+## 2026-10-30 20:10 +0800 — P2首入口绿，安装I/O与启动owner真实红→窄修
+
+- P1 tombstone已交付60fa5e2不变；P2仍in progress，尚未freeze/commit/push。entry-red真实双daemon
+  B run400（资源未安装），entry-green-first1/1已证完整包落盘、model接收本机路径、原生read/bash和
+  A关闭后B续跑；双版本provider屏障/重开及路径冲突/UTF-8/symlink拒绝局部通过。
+- install-io-owner-red-verified真实9项2过7败：EACCES后intent未rejected，修盘重开provider从1变3；
+  startup preflight失败后的Storage close计数1!=2、修好再开关后2!=3。窄修仅将安装前置I/O标为
+  storage_failed+not_admitted/保留cause，复用ledger拒绝；open失败先SDK close再replica close，不铸新origin。
+- affected-first42/44、types exit0；两处失败为并行P0同版本安装mkdir竞态、旧effective-system仅映射cwd
+  未映射新增资源本机路径，当时先修串行安装及路径映射；随后按Lead改为标准fs竞争校验，不用安装队列。lint-first有import/format错误，保留原log。
+  定向资源crash3/3已过（含完整安装后、pin/admission前SIGKILL），尚非最终Bots gate/Review通过。
+- 本轮未验网站Herdr采集、live auth/D1/UI、Swift新行为、cloud/网络/物理Mac；未操作App。
+  下一步：半包/已安装symlink补断言，收affected/type/lint，再正常Bots check/必要crash与invocation eval。
+
+## 2026-10-30 19:59 +0800 — P1 tombstone已交付，P2 fixed-head资源首片开始
+
+- 60fa5e2/tree3b0ee58e已正常commit/pre-commit及一次push/pre-push exit0，own fork远端同SHA、clean。
+  实际hook为root260/260+types/lint/build、browser191 passed/11既有条件排除、Swift194+43+50=287通过。
+  最终收据在.local/sync-p1-tombstones/tombstones-delivery.json；旧红/候选未覆盖。
+- P2首片只接immutable head资源的完整安装、branch pin与实际AGENTS/skill/附件加载；当前先写所属契约和
+  双独立daemon真实红。尚无P2绿证据。公开section/hook普通异常不能阻止请求，因此preflight必须早于
+  ReplicaSync.start任何pending submit触发的全局resume；不只放显式resume前。
+- 未重验网站Herdr采集、live auth/D1/UI、Swift客户端新行为、cloud/网络/物理双Mac；不操作daily App。
+  下一坏跳：已保存的instructions/skill资源仍使fixed-head run返回拒绝，随后以完整文件安装接通。
+
 ## 2026-10-30 19:45 +0800 — 无关identity删除P2红→绿，新候选门禁通过
 
 - HEAD仍fdb8973，旧019abfdc staged候选/全部720日志及tombstones-candidate保持原样留证；

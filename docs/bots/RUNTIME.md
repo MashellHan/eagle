@@ -835,3 +835,47 @@ excluded from every number here.
    (`pi.live`), §9.3–9.4 (views, agent events) and `CHANGELOG.md`.
 4. Update the fact table if any of F1–F21 changed; the pin bump commit names the
    facts that changed.
+
+
+## Fixed-head resource installation and loading (P2 first slice contract)
+
+Before a fixed-head run is admitted, validate its complete ordered manifest, write every
+file to a private staging directory under the Bot's resource root, then atomically rename
+the complete directory into a content-addressed version. Never overwrite workspace files
+or follow a symlink. An installation failure admits no model/tool work. Reuse an existing
+version only after verifying its original bytes; preserve failed/incomplete installations
+as non-ready rather than consuming substituted/truncated contents. Temp+rename does not
+claim power-loss durability.
+
+A public conversation document pins only the immutable version reference for each local
+branch; resource facts remain the original byte store and shared versions are not copied
+per head/run. A public extension section reads the branch pin via PromptInput.read and
+adds selected AGENTS/skill text plus local file paths, retaining original instructions
+and ordered system/tool history. Before **any** start-time pending submit (which resumes
+the whole SDK scheduler), validate every existing local branch pin and installed version.
+Explicit recover/retry also checks readiness before scheduler work is enabled. Ordinary
+renderer/hook exceptions are not a fail-closed gate: SDK reports them and may keep shown
+text. The renderer consumes only a prevalidated pinned version. Foreign run facts never
+create local pins, queues or tasks. Ordinary root-chat/edit/queued selection is next.
+
+Concurrent directory creation accepts only EEXIST followed by lstat confirming a real
+directory. A staging rename collision (EEXIST/ENOTEMPTY) is accepted only after validating
+the complete winner's exact file set, original hashes and no symlinks. No global installation
+queue coordinates versions. Known installation I/O before branch pin/admission retains its
+original cause as storage_failed + not_admitted and rejects the durable local intent; disk
+repair/reopen cannot turn that refused request into work. Startup resource preflight failure
+closes this newly opened SDK owner first, then its replica store, preserving the original
+failure instead of logging a cleanup origin.
+
+A same-head/requestId/text retry first checks the fixed run mapping and the actual SDK
+submission on the public Session transaction line. An existing submission returns its
+current branch/status without installation, submit or scheduler resume, even if resource
+files were damaged after admission or the replica admitted receipt was lost. A branch pin
+alone is not admission: without an SDK submission, recovery and new requests still pass
+the complete resource preflight. Conflicting head/text for the same ID is refused before
+any retry can change that binding.
+
+Warm task retry verifies resources before asking the SDK to retry. A preflight failure
+crosses runtime.task.retry.fail once with the command trace: existing classified errors
+are rethrown intact, filesystem I/O is storage_failed with the original cause. This does
+not reclassify errors from the later SDK retry operation or alter HTTP retry semantics.

@@ -596,3 +596,14 @@ actual shared binding read after close. An unrelated tombstoned/quarantined owne
 not change this delete's result or catalog broadcast. An unbound legacy target has no
 shared aliases to clean. Same-identity aliases still retain the ordinary close/failure
 and trash-preservation rules.
+
+
+## Fixed-head resources (P2 first local slice)
+
+History resources remain immutable replica facts. The runtime alone installs complete
+selected manifests into per-Bot content-addressed version directories and pins a version
+reference with the public SDK conversation-document API. The extension's ordered section
+uses committed branch reads; installation/readiness validation happens before run admission
+and before any startup pending-submit/global scheduler resume. It does not install code
+extensions from packages, change local cwd/credentials/permissions or add network services.
+Ordinary chat resource selection and local editing remain a following P2 slice.

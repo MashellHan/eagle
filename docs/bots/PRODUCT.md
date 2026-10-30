@@ -326,3 +326,13 @@ daemons. Old pages, imports, bindings and saved execution intents cannot restore
 identity. A new Bot has a new identity; there is no undelete or automatic trash cleanup.
 Trash retains original history and unuploaded branches. This local API slice adds no
 cloud transport, App workflow or physical-device acceptance.
+
+
+## P2 fixed-head resource loading (first local slice)
+
+An explicit local run selects the complete resources manifest from its immutable head.
+Bot-specific AGENTS instructions, every file of each selected skill package and attachments
+are installed in that Bot's state, never over the local workspace. Each branch retains
+its selected version through completion/restart while another branch uses another version.
+Imports/pages stay passive. Ordinary root-chat queued version selection is a later P2 slice;
+this does not certify complete P2, device transport, cloud or physical-Mac acceptance.

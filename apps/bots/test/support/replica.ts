@@ -42,7 +42,15 @@ export const openReplica = async (
       extensions: selectToolExtensions(registry, ["core", "coding"]),
     },
   });
-  const history = new HistoryReplica(harness, root.id, botId, workspace.root, registry, database);
+  const history = new HistoryReplica(
+    harness,
+    root.id,
+    botId,
+    workspace.root,
+    registry,
+    database,
+    dir,
+  );
   const sync = new ReplicaSync(
     join(dir, "replica.sqlite"),
     botId,

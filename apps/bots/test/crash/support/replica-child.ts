@@ -12,6 +12,7 @@ const input = JSON.parse(line) as {
   mode: string;
   sharedBotId?: string;
   page?: unknown;
+  bundle?: unknown;
 };
 const replica = await openReplica(input.dir);
 // Blocking only in this owned child makes the durable commit/reply boundary exact.
@@ -55,7 +56,34 @@ if (input.mode === "materialized") {
     return barrier();
   };
 }
-if (input.page !== undefined) {
+if (input.mode === "resources" || input.mode === "resource-pin") {
+  const saved = (await replica.command("import", { bundle: input.bundle })) as { head: string };
+  if (input.mode === "resource-pin")
+    replica.harness.subscribeCommits((publication) => {
+      if (
+        publication.changes.some(
+          (change) =>
+            change.type === "document" &&
+            change.record.kind === "bots.replica.run" &&
+            typeof change.value?.conversationId === "number" &&
+            change.value.conversationId > 0,
+        )
+      )
+        barrier();
+    });
+  else {
+    const install = replica.history.installResources.bind(replica.history);
+    replica.history.installResources = async (bundle) => {
+      await install(bundle);
+      return barrier();
+    };
+  }
+  await replica.command("run", {
+    head: saved.head,
+    requestId: "crash-resource-run",
+    text: "continue the selected package",
+  });
+} else if (input.page !== undefined) {
   await replica.command("bind", { sharedBotId: input.sharedBotId });
   await replica.command("apply", { page: pageSchema.parse(input.page) });
 } else {

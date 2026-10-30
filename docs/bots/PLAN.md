@@ -18,12 +18,35 @@ discovery. Those additions are not implemented or enabled by this plan update.
 架构与 Orca 机制见 [SYNC-ARCHITECTURE.md](SYNC-ARCHITECTURE.md)，源码证据见
 [SYNC.md](SYNC.md)，设备行为见 [DEVICE-PAIRING.md](DEVICE-PAIRING.md)。
 P0 本地闭环已推 `c073ea19`；P1 首个本地增量切片已验证并正常推送 `c8d8fd4`；
-P1 恢复身份切片已验收并正常推送 fdb8973；目录 tombstone 切片 in progress，尚未交付；
-P2–P6 均为 planned；下方设备阶段和历史验收记录保留其原有范围。
+P1 恢复身份切片已正常推送 fdb8973；目录 tombstone 已验收并正常推送 60fa5e2；
+P2 fixed-head完整资源加载首片 in progress；普通聊天排队/编辑版本选择仍为后片，P3–P6 planned。
+下方设备阶段和历史验收记录保留其原有范围。
 本轮19:45 +0800：旧019ab/720候选与证据保留；Review新增无关identity quarantine污染DELETE的P2
 已取得真实HTTP红→绿，remove仅按主目标close后的实际binding清理同身份alias。新affected173/173、
 types/lint、Bots普通/coverage各722/722及crash9/9均exit0；不重复未改的eval/perf，其旧范围单列。
-正冻结新候选，待增量Review/Lead验收与正常提交/push，不称完整P1完成。
+该19:45候选随后已Review/Lead接受；60fa5e2正常commit/push exit0，root260、browser191/11既有条件排除、
+Swift287全绿并核远端clean。19:59起P2先补契约/真实双daemon红，不称完整P1/P2完成。
+
+P2 20:10过程记录：首HTTP红→绿1/1，版本交错/安全边界局部绿；安装I/O误留pending与
+启动owner泄漏已取真实red并窄修。affected首轮42/44、type绿、lint格式红、资源定向crash3/3；
+正在收并行安装与显式本机资源路径断言，不沿旧gate宣称本片最终绿。详见根CHECKPOINTS和.local/sync-p2-resources。
+
+P2 20:22候选：标准fs mkdir/rename竞争校验、独立run输入版本oracle和完整system本机路径映射
+已收口；affected46/46及分支fixture定点9/9，最终types/lint、Bots普通/coverage各734/734同套、
+crash10/10、三个对应eval各1例、perf1/1均exit0。首轮check733/734的并发provider序号假设红保留，
+fixture改按实际user输入回答，原分支断言不变。正冻结候选交独立Review；未commit/push，
+普通root聊天排队/编辑版本选择仍planned，不称完整P2或云/物理设备完成。
+
+P2 20:38 Review窄修：旧766f101与734/10证据保留；同ID已接纳重试的真实红已最小修为公开Tx
+核实际SDK submission，affected60/60、定向crash4/4绿。warm HTTP task retry资源预检无failure origin
+亦已实跑红，最小runtime.task.retry.fail边界及日志契约27/27绿；types/check-only lint通过。
+新生产字节的正常check/crash/三个对应eval待收，不借旧gate称最终绿；未commit/push，下一root片不写。
+
+P2 20:40最终窄修候选：同ID实际SDK接纳查询与warm retry资源预检唯一origin两项均真实红→绿。
+review-fixes-affected87/87、types/check-only lint、Bots普通/coverage各763/763同套、crash11/11、
+三个精确对应eval各1例均exit0，coverage95.89/89.27/91.57。最终source/test冻结，正绑定新tree与
+原log/exit交增量Review；旧766f/734/10及perf保留原scope，不虚称新跑。当前未commit/push，
+首片仍in progress；普通root后片、cloud/网络/物理设备未交付。
 
 ### 开发基线与 PR 边界
 
@@ -103,7 +126,7 @@ Tailscale 直连进入本版范围；专用同步入口仅向 Tailscale 网络�
 | --- | --- | --- | --- |
 | P0 — 契约与上下文验证 | local verified | 身份、因果关系、被动导入、资源版本、端点/握手、双路径游标与确认语义 | 两个独立 SQLite 重建等价上下文；导入零执行；接纳与导出之间的崩溃可恢复 |
 | P1 — 本地副本与分支 | in progress | 持久来源日志、outbox、ID 映射、缺口补读与本端恢复 | A 停止后 B 可运行；重复/乱序同步保留两支；不恢复其他端任务 |
-| P2 — 指令与技能 | planned | AGENTS 加载、完整技能包、附件、版本冲突和工作区绑定 | 两端实际加载固定版本；原始内容与工具关联无静默丢失 |
+| P2 — 指令与技能 | in progress | fixed-head首片本地门禁绿、增量Review待收；普通root排队/编辑版本选择未写 | 两端实际加载固定版本；原始内容与工具关联无静默丢失 |
 | P3 — 设备底座接入 | planned | 复用 #109 的安装/配对/helper/权限；新增同步身份授权、Tailscale 端点发布和共享访问接口 | 现有设备能力保持有效；无 Tailscale 可走云通道；端点身份、群成员和同步权限真实生效 |
 | P4 — 直连、中转与 3 天缓存 | planned | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
 | P5 — 原生多端流程 | planned | 共享目录、各端运行状态、直连/中继状态、分支选择/合并、同步覆盖范围与资源冲突 | 从 App 完成双端执行、错峰补齐、过期恢复；路径切换不打断本地 run，缺口不误报完整 |

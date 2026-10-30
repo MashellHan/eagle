@@ -24,6 +24,7 @@ import {
   type RuntimeHandle,
 } from "../../core/RuntimePort.ts";
 import { FailureClassifier } from "./classify.ts";
+import { HistoryResources, RESOURCE_EXTENSION, ResourcePin } from "./HistoryResources.ts";
 import { historyMessage } from "./historyMessages.ts";
 import { convertSubmission } from "./mapEvents.ts";
 
@@ -212,6 +213,7 @@ export class HistoryReplica {
   readonly #cwd: string;
   readonly #registry: Registry;
   readonly #storage: Pick<Storage, "scanDocuments" | "document">;
+  readonly #resources: HistoryResources;
 
   constructor(
     harness: Harness,
@@ -220,6 +222,7 @@ export class HistoryReplica {
     cwd: string,
     registry: Registry,
     storage: Pick<Storage, "scanDocuments" | "document">,
+    stateDir: string,
   ) {
     this.#harness = harness;
     this.#rootId = rootId;
@@ -227,6 +230,27 @@ export class HistoryReplica {
     this.#cwd = cwd;
     this.#registry = registry;
     this.#storage = storage;
+    this.#resources = new HistoryResources(`${stateDir}/resources`, registry);
+  }
+
+  async prepareResources(): Promise<void> {
+    await this.#resources.validatePins(this.#harness);
+  }
+
+  async installResources(bundle: HistoryBundle): Promise<string> {
+    try {
+      return await this.#resources.install(bundle.resources);
+    } catch (cause) {
+      if (cause instanceof ClassifiedFailure) throw cause;
+      if (!(cause instanceof Error) || !("code" in cause)) throw cause;
+      throw new ClassifiedFailure(
+        new FailureClassifier().classify("replica:resources:install", "storage_failed", "runtime")
+          .classification.failure,
+        "not_admitted",
+        "resource installation failed",
+        { cause },
+      );
+    }
   }
 
   async replicaId(): Promise<string> {
@@ -607,13 +631,19 @@ export class HistoryReplica {
       }),
       params,
     );
+    const admitted = await this.#harness.commit(async (tx) => {
+      const run = await tx.doc(runs, hash(input.requestId), null);
+      if (run.conversationId === 0) return undefined;
+      if (run.head !== input.head || run.text !== input.text) reject("run request id conflict");
+      return tx.submissionByRequest(run.conversationId as ConversationId, input.requestId);
+    }, ctx);
+    if (admitted !== undefined)
+      return { branch: input.requestId, submission: convertSubmission(admitted) };
     const receipt = await this.#harness.snapshot(imports, input.head, ctx);
     if (receipt === undefined || receipt.conversationId === 0)
       return reject("unknown history head");
     const bundle = selectedBundle ?? carrierReceipt(receipt.bundle);
     if (bundle.head !== input.head) reject("run head binding mismatch");
-    if (bundle.resources.some((resource) => resource.kind !== "attachment"))
-      reject("history resources require installation before continuation");
     const installed = new Set(
       this.#registry
         .snapshot()
@@ -624,6 +654,7 @@ export class HistoryReplica {
     const required = Array.isArray(selected) ? selected : (selected?.add ?? []);
     if (required.some((name) => !installed.has(name)))
       reject("history requires unavailable extensions");
+    const version = await this.installResources(bundle);
     const conversationId = await this.#harness.commit(async (tx) => {
       const run = await tx.doc(runs, hash(input.requestId), null);
       if (run.conversationId !== 0) {
@@ -638,6 +669,20 @@ export class HistoryReplica {
       const agent = await tx.doc(AgentDoc, branch.id);
       for (const key of Object.keys(agent) as (keyof AgentState)[]) delete agent[key];
       Object.assign(agent, bundle.agent, { cwd: this.#cwd });
+      if (version !== "") {
+        const selected = agent.extensions;
+        agent.extensions = Array.isArray(selected)
+          ? [...new Set([...selected, RESOURCE_EXTENSION])]
+          : {
+              ...selected,
+              add: [...new Set([...(selected?.add ?? []), RESOURCE_EXTENSION])],
+              ...(selected?.remove === undefined
+                ? {}
+                : { remove: selected.remove.filter((name) => name !== RESOURCE_EXTENSION) }),
+            };
+      }
+      if (version !== "" || required.includes(RESOURCE_EXTENSION))
+        (await tx.doc(ResourcePin, branch.id)).version = version;
       run.head = input.head;
       run.text = input.text;
       run.conversationId = branch.id;

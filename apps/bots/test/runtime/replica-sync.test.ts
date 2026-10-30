@@ -366,7 +366,7 @@ test("one oversized committed entry stays in its source log and prevents skippin
   }
 });
 
-test("incremental heads retain explicit resource versions and refuse continuation until resources are installed", async () => {
+test("incremental heads retain explicit resource versions and install them before continuation", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bots-resource-log-"));
   const a = await openReplica(join(dir, "a"));
   const b = await openReplica(join(dir, "b"));
@@ -405,16 +405,25 @@ test("incremental heads retain explicit resource versions and refuse continuatio
       ((await b.command("export", { head: head.head })) as HistoryBundle).resources,
       [resource],
     );
-    await assert.rejects(
-      b.command("run", { head: head.head, requestId: "resource-run", text: "cannot execute" }),
-      /resources require installation/,
-    );
-    assert.equal(
-      b.sync.store.pending().length,
-      0,
-      "a definitive preflight refusal cannot execute on reopen",
-    );
-    assert.equal(b.faux.state.callCount, 0);
+    assert.equal(b.faux.state.callCount, 0, "incremental resource application stays passive");
+    b.faux.setResponses([
+      (request) => {
+        assert.match(
+          getCurrentSystemMessage(request.messages)?.sections?.["bots-resources"] ?? "",
+          /original instructions bytes/,
+        );
+        return text("installed resources continued");
+      },
+    ]);
+    await b.command("run", {
+      head: head.head,
+      requestId: "resource-run",
+      text: "execute the installed selected version",
+    });
+    await b.harness.waitForIdle(ctx);
+    assert.equal(b.sync.store.pending().length, 0);
+    assert.equal(b.sync.store.run("resource-run")?.admitted, true);
+    assert.equal(b.faux.state.callCount, 1);
   } finally {
     await Promise.all([a.close(), b.close()]);
     await rm(dir, { recursive: true, force: true });

@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
-import { text, waitFor } from "../support/pi.ts";
+import { createModels, getCurrentSystemMessage } from "@earendil-works/pi-ai";
+import { type ConversationId, Harness } from "@earendil-works/pi-durable";
+import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { ClassifiedFailure } from "../../src/core/domain.ts";
+import { type HistoryBundle, HistoryReplica } from "../../src/runtime/pi/HistoryReplica.ts";
+import { ResourcePin } from "../../src/runtime/pi/HistoryResources.ts";
+import { createToolRegistry } from "../../src/tools/registry.ts";
+import { openWorkspace } from "../../src/tools/workspace.ts";
+import { assistant, createBench, text, toolCall, waitFor } from "../support/pi.ts";
 import { openReplica, pull } from "../support/replica.ts";
 
 const childEnvironment = (): NodeJS.ProcessEnv => {
@@ -108,6 +116,90 @@ test("SIGKILL across local intent/admission/output commits restores original IDs
   }
 });
 
+test("a committed resource branch pin without an SDK submission still fails closed before recovery admission", async () => {
+  const bench = await createBench();
+  const spec = { ...bench.spec(), id: "b_replica" };
+  const source = await openReplica(join(bench.dir, "source"));
+  try {
+    await source.root.commit(async (tx) => {
+      await tx.appendEntry(source.root.id, {
+        kind: "pi.user",
+        model: [{ role: "user", content: "resource source", timestamp: 0 }],
+      });
+    }, ctx);
+    const resources = JSON.parse(
+      await readFile(
+        new URL("../../../../fixtures/bots-sync/resources.v1.json", import.meta.url),
+        "utf8",
+      ),
+    ) as HistoryBundle["resources"];
+    const bundle = (await source.command("export", { resources })) as HistoryBundle;
+    await source.close();
+    await killAtCommit({ dir: spec.dir, mode: "resource-pin", bundle });
+    const storage = await openNodeSqliteStorage(join(spec.dir, "session.sqlite"));
+    const workspace = await openWorkspace(join(spec.dir, "workspace"));
+    const registry = createToolRegistry(workspace);
+    const harness = await Harness.open(storage, { models: createModels(), registry }, ctx);
+    try {
+      const root = await harness.root(ctx);
+      const history = new HistoryReplica(
+        harness,
+        root.id,
+        spec.id,
+        workspace.root,
+        registry,
+        storage,
+        spec.dir,
+      );
+      const branch = await history.branch("crash-resource-run");
+      assert.ok(branch?.conversationId);
+      const conversationId = branch.conversationId as ConversationId;
+      assert.equal(
+        await harness.commit(
+          (tx) => tx.submissionByRequest(conversationId, "crash-resource-run"),
+          ctx,
+        ),
+        undefined,
+        "the real pin commit precedes SDK admission",
+      );
+      const pin = await harness.snapshot(ResourcePin, conversationId, ctx);
+      assert.ok(pin?.version);
+      const agents = join(spec.dir, "resources", pin.version, "AGENTS.md");
+      await chmod(agents, 0o600);
+      await writeFile(agents, "damaged before any SDK admission");
+      await assert.rejects(
+        history.runFrom(bundle, {
+          head: bundle.head,
+          requestId: "crash-resource-run",
+          text: "continue the selected package",
+        }),
+        /installed resource digest mismatch/,
+      );
+      assert.equal(
+        await harness.commit(
+          (tx) => tx.submissionByRequest(conversationId, "crash-resource-run"),
+          ctx,
+        ),
+        undefined,
+      );
+      assert.equal((await harness.inspect(ctx)).scheduling, "paused");
+    } finally {
+      await harness.close(ctx);
+    }
+    await assert.rejects(bench.runtime.open(spec), (cause: unknown) => {
+      assert.ok(cause instanceof ClassifiedFailure);
+      assert.ok(cause.cause instanceof ClassifiedFailure);
+      assert.match(cause.cause.message, /installed resource digest mismatch/);
+      return true;
+    });
+    assert.equal(bench.faux.state.callCount, 0);
+    await assert.rejects(readFile(join(spec.dir, "workspace/result.bin")), { code: "ENOENT" });
+  } finally {
+    await source.close();
+    await bench.cleanup();
+  }
+});
+
 test("SIGKILL after incoming log save or SDK passive commit confirms only durable materialization and never executes foreign input", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bots-incoming-crash-"));
   const source = await openReplica(join(dir, "source"));
@@ -157,6 +249,91 @@ test("SIGKILL after incoming log save or SDK passive commit confirms only durabl
       } finally {
         await replica.close();
       }
+    }
+  } finally {
+    await source.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("SIGKILL after complete resource installation before branch pin/admission recovers the same local intent exactly once", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bots-resource-crash-"));
+  const source = await openReplica(join(dir, "source"));
+  try {
+    await source.root.commit(async (tx) => {
+      await tx.appendEntry(source.root.id, {
+        kind: "pi.user",
+        model: [{ role: "user", content: "resource source", timestamp: 0 }],
+      });
+    }, ctx);
+    const resources = JSON.parse(
+      await readFile(
+        new URL("../../../../fixtures/bots-sync/resources.v1.json", import.meta.url),
+        "utf8",
+      ),
+    ) as HistoryBundle["resources"];
+    const bundle = (await source.command("export", { resources })) as HistoryBundle;
+    await source.close();
+    const target = join(dir, "target");
+    await killAtCommit({ dir: target, mode: "resources", bundle });
+    assert.equal(
+      (await readdir(join(target, "resources"))).filter((name) => /^[a-f0-9]{64}\.json$/.test(name))
+        .length,
+      1,
+    );
+    const replica = await openReplica(target, "b_replica", [
+      (request) => {
+        const section =
+          getCurrentSystemMessage(request.messages)?.sections?.["bots-resources"] ?? "";
+        assert.match(section, /resource-version-one/);
+        const path = /^Skill directory: (.+)$/m.exec(section)?.[1];
+        assert.ok(path);
+        return assistant([toolCall("bash", { command: `bash '${path}/scripts/nested/run.sh'` })], {
+          stopReason: "toolUse",
+        });
+      },
+      text("recovered complete selected resource version"),
+    ]);
+    try {
+      await replica.harness.waitForIdle(ctx);
+      assert.equal(replica.faux.state.callCount, 2);
+      assert.equal(replica.sync.store.run("crash-resource-run")?.admitted, true);
+      const branch = (await replica.command("export", {
+        branch: "crash-resource-run",
+      })) as HistoryBundle;
+      assert.equal(
+        branch.entries.filter(
+          (entry) =>
+            entry.kind === "pi.user" &&
+            JSON.stringify(entry.model).includes("continue the selected package"),
+        ).length,
+        1,
+      );
+      assert.ok(branch.entries.some((entry) => entry.kind === "pi.tool-result"));
+      assert.deepEqual(branch.resources, resources);
+      assert.deepEqual(
+        await readFile(join(replica.workspace, "result.bin")),
+        Buffer.concat(
+          resources
+            .filter(
+              (file) =>
+                file.name.endsWith("/input.txt") || file.name === "skills/fixture/assets/raw.bin",
+            )
+            .map((file) => Buffer.from(file.base64, "base64")),
+        ),
+      );
+      await replica.command("run", {
+        head: bundle.head,
+        requestId: "crash-resource-run",
+        text: "continue the selected package",
+      });
+      assert.equal(
+        replica.faux.state.callCount,
+        2,
+        "retry does not regenerate committed tool work",
+      );
+    } finally {
+      await replica.close();
     }
   } finally {
     await source.close();

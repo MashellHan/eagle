@@ -66,6 +66,7 @@ const Events = {
   recoverStart: declareEvent("runtime.recover.start"),
   recoverOk: declareEvent("runtime.recover.ok"),
   taskRetryOk: declareEvent("runtime.task.retry.ok"),
+  taskRetryFail: declareEvent("runtime.task.retry.fail"),
   taskAbortOk: declareEvent("runtime.task.abort.ok"),
   recoverFail: declareEvent("runtime.recover.fail"),
   closeStart: declareEvent("runtime.close.start"),
@@ -174,6 +175,7 @@ export class PiDurableRuntime implements RuntimePort {
     log.emit("info", "runtime", Events.openStart, { trace: spec.trace, botId: spec.id });
     const classifier = new FailureClassifier({ now: this.#options.now ?? Date.now });
     let handle: PiRuntimeHandle | undefined;
+    let starting: { harness: Harness; replica: ReplicaSync } | undefined;
     // A park discovered by `open()`'s recovery has no handle yet, so its report is
     // buffered and replayed rather than dropped.
     const pending: ReportInfo[] = [];
@@ -244,6 +246,7 @@ export class PiDurableRuntime implements RuntimePort {
         workspace.root,
         registry,
         storage,
+        spec.dir,
       );
       let replicaFailureEpisode = 0;
       const replica = new ReplicaSync(
@@ -274,6 +277,7 @@ export class PiDurableRuntime implements RuntimePort {
           });
         },
       );
+      starting = { harness, replica };
       await replica.start();
       handle = new PiRuntimeHandle({
         spec,
@@ -290,6 +294,18 @@ export class PiDurableRuntime implements RuntimePort {
       // `open()` already recovered; resuming only enables scheduling (RUNTIME.md).
       harness.resume();
     } catch (cause) {
+      if (starting !== undefined) {
+        // Seal the SDK before closing its replica; failure cleanup must retain the original cause.
+        const closed = [
+          ...(await Promise.allSettled([starting.harness.close(BACKGROUND_CONTEXT)])),
+          ...(await Promise.allSettled([starting.replica.close()])),
+        ];
+        const cleanupErrors = closed.flatMap((result) =>
+          result.status === "rejected" ? [result.reason] : [],
+        );
+        if (cleanupErrors.length > 0 && cause instanceof Error)
+          Object.defineProperty(cause, "cleanupErrors", { value: cleanupErrors });
+      }
       const minted = classifier.classify("open", "storage_failed", "runtime");
       log.emit("error", "runtime", Events.openFail, {
         trace: spec.trace,
@@ -685,6 +701,7 @@ class PiRuntimeHandle implements RuntimeHandle {
     const log = this.#options.log;
     log.emit("info", "runtime", Events.recoverStart, { trace, botId: this.#spec.id });
     try {
+      await this.#replica.prepareResources();
       // An escalated listener stops reattaching itself; `recover` is the explicit retry,
       // and it re-attaches before it retries parked work.
       for (const state of this.#subscriptions.values()) {
@@ -728,6 +745,29 @@ class PiRuntimeHandle implements RuntimeHandle {
 
   /** Runs one parked task again; the graph then reports it as live work. */
   async retryTask(taskId: string, trace: string): Promise<void> {
+    try {
+      await this.#replica.prepareResources();
+    } catch (cause) {
+      if (cause instanceof ClassifiedFailure) {
+        this.#options.log.emit("error", "runtime", Events.taskRetryFail, {
+          trace,
+          botId: this.#spec.id,
+          failure: cause.failure,
+          origin: true,
+        });
+        throw cause;
+      }
+      const minted =
+        this.#classifier.sessionEpisode() ??
+        this.#classifier.classify(`retry:resources:${trace}`, "storage_failed", "runtime");
+      this.#logFailure(minted, trace, Events.taskRetryFail, "runtime");
+      throw new ClassifiedFailure(
+        minted.classification.failure,
+        "runtime",
+        minted.classification.message,
+        { cause },
+      );
+    }
     // The caller validated the wire id; crossing to TaskId is the only work left here.
     await this.#harness.retryTask(taskIdOf(taskId), BACKGROUND_CONTEXT);
     this.#options.log.emit("info", "runtime", Events.taskRetryOk, {

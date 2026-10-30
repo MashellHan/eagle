@@ -904,3 +904,23 @@ their earlier behavior. A subscribed WebSocket can hold deletion in quarantine u
 its original lease ends. Apply returns failure in that case, retains the mark and does
 not move an owned database. Its subsequent recover command cannot execute or reopen the
 deleted identity; the existing unknown-Bot refusal/close semantics apply.
+
+
+## Fixed-head resource manifest (P2 local slice)
+
+The existing ordered `HistoryBundle.resources` array is the complete selected file manifest;
+no endpoint or body/page limit changes. `name` is a nonempty relative POSIX file path.
+Instructions entries contain valid UTF-8 AGENTS text; skill entries use
+`skills/<package>/SKILL.md` and the complete selected package files below that directory
+(scripts, references, assets, including binary files). Every selected package needs a
+nonempty UTF-8 SKILL.md. Attachments retain arbitrary bytes. Manifest order determines
+instruction/skill presentation order; relative package dependencies must be supplied in
+this manifest, with no automatic workspace discovery, remote fetch or dependency install.
+
+Duplicate paths, file/directory conflicts, traversal/absolute paths, symlink escapes,
+missing skill descriptors and invalid selected text reject **run**, while a structurally
+valid original history carrier remains retainable/exportable. Base64/SHA integrity remains
+validated on import/apply. Files are immutable version data, not executable authorization;
+script bytes can be invoked explicitly with native bash and an interpreter. Selected
+versions coexist at local paths exposed in the model's resource section. No global latest
+selection is introduced. Existing no-resource bundle encoding/head digests stay unchanged.

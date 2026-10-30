@@ -71,7 +71,7 @@ asserts bidirectional equality between constants and uses; before that it assert
 | transport | `transport.conn.open.ok`, `transport.conn.open.reject`, `transport.conn.close.ok`, `transport.conn.close.end`, `transport.auth.fail`, `transport.frame.recv.ok`, `transport.frame.send.ok`, `transport.frame.send.drop` — a frame that cannot be decoded is `protocol.*`, not a second transport record |
 | protocol | `protocol.decode.fail`, `protocol.encode.fail`, `protocol.limit.fail`, `protocol.version.fail`, `protocol.command.start`, `protocol.command.ok`, `protocol.command.fail` — `ok` means decoded, validated and dispatched (not "succeeded"); `fail` is a propagated refusal after dispatch, or the origin record when no layer below classified the failure |
 | core | `core.replica.start`, `core.replica.ok`, `core.replica.fail`, `core.catalog.load.ok`, `core.catalog.load.fail`, `core.catalog.write.ok`, `core.catalog.write.fail`, `core.bot.resolve.fail`, `core.bot.open.start`, `core.bot.open.ok`, `core.bot.open.fail`, `core.bot.close.ok`, `core.bot.close.fail`, `core.bot.close.degrade` (quarantine), `core.subscribe.start`, `core.subscribe.ok`, `core.subscribe.fail`, `core.submit.start`, `core.submit.ok`, `core.submit.fail`, `core.history.start`, `core.history.ok`, `core.history.fail`, `core.hub.publish.ok`, `core.hub.coalesce.ok`, `core.hub.snapshot.ok`, `core.hub.degrade`, `core.singleton.start`, `core.singleton.ok`, `core.singleton.fail`, `core.origin.replay.degrade` (an unreadable origin record line), `core.recovery.start`, `core.recovery.bot.ok`, `core.recovery.bot.fail`, `core.recovery.ok`, `core.delete.start`, `core.delete.ok`, `core.delete.fail`, `core.reconcile.ok`, `core.group.write.ok` |
-| runtime | `runtime.replica.start`, `runtime.replica.ok`, `runtime.replica.fail`, `runtime.device.start`, `runtime.device.ok`, `runtime.device.fail`, `runtime.open.start`, `runtime.open.ok`, `runtime.open.fail`, `runtime.subscribe.start`, `runtime.subscribe.ok`, `runtime.subscribe.fail`, `runtime.submit.start`, `runtime.submit.ok`, `runtime.submit.fail`, `runtime.abort.start`, `runtime.abort.ok`, `runtime.abort.fail`, `runtime.recover.start`, `runtime.task.retry.ok`, `runtime.task.abort.ok`, `runtime.recover.ok`, `runtime.recover.fail`, `runtime.tools.refresh.ok`, `runtime.tools.refresh.fail`, `runtime.close.start`, `runtime.close.ok`, `runtime.close.fail`, `runtime.watch.end.ok`, `runtime.failure.classify` |
+| runtime | `runtime.replica.start`, `runtime.replica.ok`, `runtime.replica.fail`, `runtime.device.start`, `runtime.device.ok`, `runtime.device.fail`, `runtime.open.start`, `runtime.open.ok`, `runtime.open.fail`, `runtime.subscribe.start`, `runtime.subscribe.ok`, `runtime.subscribe.fail`, `runtime.submit.start`, `runtime.submit.ok`, `runtime.submit.fail`, `runtime.abort.start`, `runtime.abort.ok`, `runtime.abort.fail`, `runtime.recover.start`, `runtime.task.retry.ok`, `runtime.task.retry.fail`, `runtime.task.abort.ok`, `runtime.recover.ok`, `runtime.recover.fail`, `runtime.tools.refresh.ok`, `runtime.tools.refresh.fail`, `runtime.close.start`, `runtime.close.ok`, `runtime.close.fail`, `runtime.watch.end.ok`, `runtime.failure.classify` |
 | pi | `pi.report`, `pi.session.closed` |
 
 `*.start` pairs with exactly one `*.ok|fail` per layer reached. A layer that is
@@ -320,3 +320,18 @@ catalog I/O remains core.catalog.load.fail and stops startup. A cached socket's 
 recover uses core.bot.resolve.fail and the original command trace, followed by the same
 failure identity at protocol.command.fail warn. Shared IDs, paths and history stay out
 of these records.
+
+
+Fixed-head resource preflight uses existing runtime.replica.fail / runtime.open.fail
+crossings. Invalid selected manifests are invalid_command + not_admitted; known install
+I/O before pin/admission is storage_failed + not_admitted with the original I/O cause.
+The runtime is the sole error origin, outer crossings retain that failure identity, and
+resource text, bytes, full file paths and package bodies are never log details. Closing a
+failed startup owner does not mint a second cleanup failure or claim SDK reason failed.
+
+A warm task-retry resource preflight refusal records runtime.task.retry.fail at its sole
+runtime error origin, with the HTTP command trace and Bot identity. Existing classified
+validation failures retain their identity and cause; raw filesystem I/O becomes
+storage_failed with its original cause. No package text, manifest or full local path is
+logged. This boundary covers resource preflight only; the existing SDK task-retry behavior
+is otherwise unchanged.

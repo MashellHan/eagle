@@ -73,6 +73,7 @@ const open = async (
     workspace.root,
     registry,
     database,
+    dir,
   );
   return {
     harness,
@@ -328,7 +329,7 @@ test("full raw history, compaction references and resource versions survive pass
     assert.deepEqual(await b.command("export", { head: bundle.head }), bundle);
     await assert.rejects(
       b.command("run", { head: bundle.head, requestId: "unloaded-resource", text: "must not run" }),
-      /resource.*install/,
+      /conflicting resource path/,
     );
     const runnable = (await a.command("export", {
       resources: resources.filter((item) => item.kind === "attachment"),
@@ -359,16 +360,14 @@ test("full raw history, compaction references and resource versions survive pass
     assert.deepEqual(await b.command("import", { bundle }), received);
     assert.equal(b.faux.state.callCount, 0, "reopen plus duplicate import stays passive");
     const requests: TranscriptContext[] = [];
-    b.faux.setResponses([
-      (...args) => {
-        requests.push(args[0]);
-        return text("B first branch");
-      },
-      (...args) => {
-        requests.push(args[0]);
-        return text("B concurrent sibling");
-      },
-    ]);
+    const respond = (request: TranscriptContext) => {
+      requests.push(request);
+      const input = request.messages.findLast((message) => message.role === "user");
+      assert.ok(input?.role === "user" && typeof input.content === "string");
+      assert.ok(["continue first", "continue sibling"].includes(input.content));
+      return text(input.content === "continue first" ? "B first branch" : "B concurrent sibling");
+    };
+    b.faux.setResponses([respond, respond]);
     await Promise.all([
       b.command("run", { head: runnable.head, requestId: "branch-1", text: "continue first" }),
       b.command("run", { head: runnable.head, requestId: "branch-2", text: "continue sibling" }),
@@ -396,13 +395,32 @@ test("full raw history, compaction references and resource versions survive pass
       );
       const sourceSystem = getCurrentSystemMessage(reference.messages);
       const targetSystem = getCurrentSystemMessage(request.messages);
+      assert.ok(runnable.resources.every((file) => file.kind === "attachment"));
+      const version = createHash("sha256").update(JSON.stringify(runnable.resources)).digest("hex");
+      const resourceSection = (directory: string) =>
+        `<bots-resources>\n${[
+          `Resource version: ${version}`,
+          `Resource directory: ${directory}`,
+          ...runnable.resources.map((file) => `Attachment: ${join(directory, file.name)}`),
+        ].join("\n\n")}\n</bots-resources>`;
+      assert.equal(
+        sourceSystem?.sections?.["bots-resources"],
+        resourceSection(join(dir, "a/resources", version)),
+      );
+      const expectedSections = Object.fromEntries(
+        Object.entries(sourceSystem?.sections ?? {}).map(([key, value]) => [
+          key,
+          key === "bots-resources"
+            ? resourceSection(join(dir, "b/resources", version))
+            : value === null
+              ? null
+              : value.replaceAll(a.workspace, b.workspace),
+        ]),
+      );
       assert.equal(
         JSON.stringify({ content: targetSystem?.content, sections: targetSystem?.sections }),
-        JSON.stringify({
-          content: sourceSystem?.content,
-          sections: sourceSystem?.sections,
-        }).replaceAll(a.workspace, b.workspace),
-        "ordered system replay matches an actual A continuation from the same head, with only cwd mapped",
+        JSON.stringify({ content: sourceSystem?.content, sections: expectedSections }),
+        "all ordered sections match, with only explicit cwd and manifest metadata paths bound locally",
       );
       assert.match(targetSystem?.sections?.instructions ?? "", /second instruction 保留变化/);
       assert.deepEqual(
@@ -587,6 +605,7 @@ test("a real SDK nested tool call cannot be exported as a complete P0 head, incl
       source.workspace,
       source.registry,
       source.storage,
+      join(source.workspace, ".."),
     );
     await assert.rejects(
       replica.command({ method: "export", params: {}, trace }),

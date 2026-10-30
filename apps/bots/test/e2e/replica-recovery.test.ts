@@ -445,12 +445,34 @@ test("existing bounded source pages restore a fresh incarnation without old pend
     );
     const sourceSystem = getCurrentSystemMessage(reference.messages);
     const targetSystem = getCurrentSystemMessage(request.messages);
+    assert.ok(parent.resources.every((file) => file.kind === "attachment"));
+    const resourceVersion = createHash("sha256")
+      .update(JSON.stringify(parent.resources))
+      .digest("hex");
+    const resourceSection = (directory: string) =>
+      `<bots-resources>\n${[
+        `Resource version: ${resourceVersion}`,
+        `Resource directory: ${directory}`,
+        ...parent.resources.map((file) => `Attachment: ${join(directory, file.name)}`),
+      ].join("\n\n")}\n</bots-resources>`;
+    assert.equal(
+      sourceSystem?.sections?.["bots-resources"],
+      resourceSection(join(a.dir, "resources", resourceVersion)),
+    );
+    const expectedSections = Object.fromEntries(
+      Object.entries(sourceSystem?.sections ?? {}).map(([key, value]) => [
+        key,
+        key === "bots-resources"
+          ? resourceSection(join(b.directory.botDir(id), "resources", resourceVersion))
+          : value === null
+            ? null
+            : value.replaceAll(a.workspace, targetWorkspace),
+      ]),
+    );
     assert.equal(
       JSON.stringify({ content: targetSystem?.content, sections: targetSystem?.sections }),
-      JSON.stringify({
-        content: sourceSystem?.content,
-        sections: sourceSystem?.sections,
-      }).replaceAll(a.workspace, targetWorkspace),
+      JSON.stringify({ content: sourceSystem?.content, sections: expectedSections }),
+      "all system fields and section order remain exact; only cwd and explicit local attachment metadata paths differ",
     );
     assert.match(
       targetSystem?.sections?.instructions ?? "",

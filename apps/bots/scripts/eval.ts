@@ -10,7 +10,12 @@ import { dirname, join, resolve } from "node:path";
 import { WebSocket } from "ws";
 import { readConfig } from "../src/config.ts";
 import { type DaemonHandle, startDaemon } from "../src/main.ts";
-import { type HistoryBundle, hash, validateBundle } from "../src/runtime/pi/HistoryReplica.ts";
+import {
+  type HistoryBundle,
+  hash,
+  resourceSchema,
+  validateBundle,
+} from "../src/runtime/pi/HistoryReplica.ts";
 import { pageSchema } from "../src/runtime/pi/syncProtocol.ts";
 
 type ScriptedReply =
@@ -57,7 +62,12 @@ type CaseFile = {
 
 type Step =
   | { readonly kind: "replicaSync"; readonly text: string; readonly contains: string }
-  | { readonly kind: "replicaRun"; readonly text: string; readonly contains: string }
+  | {
+      readonly kind: "replicaRun";
+      readonly text: string;
+      readonly contains: string;
+      readonly resources?: true;
+    }
   | { readonly kind: "chat"; readonly text: string; readonly timeoutMs?: number }
   | {
       readonly kind: "webhook";
@@ -95,7 +105,12 @@ const failure = (message: string): never => {
 
 /** A local OpenAI Responses endpoint: streams the case's replies, in order. */
 const scriptedModel = (script: readonly ScriptedReply[], repeatLast: boolean) => {
-  const requests: { readonly lastInput: string; readonly tools: number }[] = [];
+  const requests: {
+    readonly lastInput: string;
+    readonly tools: number;
+    readonly resourceVersion: string | undefined;
+    readonly completeSkill: boolean;
+  }[] = [];
   let index = 0;
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
@@ -115,9 +130,15 @@ const scriptedModel = (script: readonly ScriptedReply[], repeatLast: boolean) =>
       if (process.env.EVAL_TRACE === "1") {
         process.stdout.write(`model request ${requests.length + 1}\n`);
       }
+      const inputText = JSON.stringify(body.input);
       requests.push({
         lastInput: JSON.stringify(body.input?.at(-1) ?? null).slice(0, 2_000),
         tools: body.tools?.length ?? 0,
+        resourceVersion: /Resource version: ([a-f0-9]{64})/.exec(inputText)?.[1],
+        completeSkill:
+          inputText.includes("resource-version-one instructions") &&
+          inputText.includes("Skill directory:") &&
+          inputText.includes("scripts/nested/run.sh"),
       });
       const reply = index < script.length ? script[index] : repeatLast ? script.at(-1) : undefined;
       index += 1;
@@ -573,6 +594,20 @@ const runCase = async (
           const localPayload = {
             ...payload,
             agent: { ...payload.agent, model: { provider: "magpie", modelId: "eval-model" } },
+            ...(step.resources === true
+              ? {
+                  resources: resourceSchema
+                    .array()
+                    .parse(
+                      JSON.parse(
+                        await readFile(
+                          new URL("../../../fixtures/bots-sync/resources.v1.json", import.meta.url),
+                          "utf8",
+                        ),
+                      ),
+                    ),
+                }
+              : {}),
           };
           const bundle = { ...localPayload, head: hash(localPayload) };
           const path = `/v1/bots/${botId}/replica`;
@@ -614,6 +649,13 @@ const runCase = async (
           await call("run", params);
           if (model.requests.length !== before + 1)
             failure("local replica run did not execute exactly once");
+          if (step.resources === true) {
+            const request = model.requests[before];
+            if (request?.resourceVersion !== hash(bundle.resources) || !request.completeSkill)
+              failure(
+                "the provider did not receive the selected AGENTS and complete skill binding",
+              );
+          }
           const result = (await call("export", { branch: requestId })) as HistoryBundle;
           if (
             !result.entries.some(
