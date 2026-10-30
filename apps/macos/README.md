@@ -32,7 +32,7 @@ export EAGLE_BOTS_NPM_CACHE="$EAGLE_PAIRING_CACHE/bots"
 npm ci --cache "$EAGLE_AGENT_NPM_CACHE"
 npm --prefix apps/bots ci --cache "$EAGLE_BOTS_NPM_CACHE"
 export EAGLE_DEVICE_PROFILE=device-candidate
-export EAGLE_DEVICE_SERVICE_URL=https://eagle-devices.mxhan.workers.dev
+export EAGLE_DEVICE_SERVICE_URL=https://eagle-devices.hexly.ai
 export EAGLE_CODESIGN_IDENTITY=-
 apps/macos/Scripts/build-app.sh debug
 node apps/macos/Scripts/install-device-app.ts \

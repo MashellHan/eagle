@@ -97,12 +97,14 @@ test("the standalone deployment builds only device code and binds only its two S
   assert.deepEqual(JSON.parse(readFileSync(configuration, "utf8")), {
     $schema: "node_modules/wrangler/config-schema.json",
     name: "eagle-devices",
-    account_id: "e369b6206bd9481c027e1974c45756a2",
+    // The deployment is the owner's account (whatever wrangler is logged into) on its own
+    // custom domain, never a `workers.dev` hostname and never a committed account id.
     main: "src/worker/device-service.ts",
     compatibility_date: "2026-09-19",
     compatibility_flags: ["nodejs_compat"],
-    workers_dev: true,
+    workers_dev: false,
     preview_urls: false,
+    routes: [{ pattern: "eagle-devices.hexly.ai", custom_domain: true }],
     durable_objects: {
       bindings: [
         { name: "DEVICE_REGISTRY", class_name: "DeviceRegistry" },

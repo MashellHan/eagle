@@ -269,6 +269,54 @@ struct DeviceSettingsRefreshTests {
     #expect(model.pendingRedeemRequestId == nil)
   }
 
+  @Test("a machine added by pairing starts out asking before anything runs on it")
+  func addedDeviceAsks() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    await model.startIfNeeded()
+    let peer = UUID().uuidString
+    let paired = DeviceJSON.object([
+      "localDeviceId": .string(deviceSettingsLocalID), "groupId": .string(UUID().uuidString),
+      "revision": .number(2), "observationRevision": .string("paired"),
+      "devices": .array([
+        .object([
+          "deviceId": .string(deviceSettingsLocalID), "name": .string("This Mac"),
+          "platform": .string("darwin"), "arch": .string("arm64"),
+          "groupId": .null, "membershipEpoch": .number(0), "credentialVersion": .number(1),
+          "online": .bool(true), "lastSeenAt": .number(1), "capabilities": .null,
+          "policy": .object(["mode": .string("all-approve"), "version": .number(1)]),
+        ]),
+        .object([
+          "deviceId": .string(peer), "name": .string("Other Mac"),
+          "platform": .string("darwin"), "arch": .string("arm64"),
+          "groupId": .null, "membershipEpoch": .number(1), "credentialVersion": .number(1),
+          "online": .bool(true), "lastSeenAt": .number(1),
+          "capabilities": .array([.string("command"), .string("policy.manage")]),
+          "policy": .object(["mode": .string("all-approve"), "version": .number(1)]),
+        ]),
+      ]),
+    ])
+    control.handler = { method, params in
+      if method == "pairing.redeem" {
+        return .object(["requestId": params?["requestId"] ?? .null, "directory": paired])
+      }
+      return nil
+    }
+    await model.redeem(code: String(repeating: "a", count: 43))
+    // The request is sent after the pairing settles; wait for it rather than sleep.
+    for _ in 0..<80
+    where !control.calls.contains(where: { method, params in
+      method == "policy.set" && params?["deviceId"]?.string == peer
+    }) {
+      await Task.yield()
+    }
+    let asked = control.calls.first { method, params in
+      method == "policy.set" && params?["deviceId"]?.string == peer
+    }
+    #expect(asked?.1?["mode"]?.string == "always-ask")
+    #expect(control.calls.contains { $0.0 == "policy.set" && $0.1?["deviceId"] == nil } == false)
+  }
+
   @Test(
     "late reads after stop cannot revive readiness, directory or errors",
     arguments: ["service.status", "directory", "policy.get"])

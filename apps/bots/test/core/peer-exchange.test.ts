@@ -1,7 +1,7 @@
 // The exchange record (docs/bots/TRIGGERS.md §10): durability, the request-keyed receipt and the
 // turn budget that stops two bots from talking forever.
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -136,4 +136,36 @@ test("a turn keeps the message it carried, and the first answer is the one kept"
     const missing = await store.answer(exchange.id, "pr_missing00000000", "x");
     assert.equal(missing?.turns[0]?.answer, "第一份回答", "an unknown request changes nothing");
   });
+});
+
+test("a malformed or unaddressable record is refused instead of trusted", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-peers-"));
+  try {
+    const store = new PeerExchangeStore(join(root, "peers"));
+    await store.open();
+    // An id that cannot name a record never touches the filesystem.
+    assert.equal(await store.get("../../etc/passwd"), undefined);
+    assert.equal(await store.get("x_000000000000"), undefined);
+    // A record that lost its shape is not half-read.
+    await writeFile(
+      join(root, "peers", "x_0123456789ab.json"),
+      JSON.stringify({ id: "x_0123456789ab" }),
+      "utf8",
+    );
+    assert.equal(await store.get("x_0123456789ab"), undefined);
+    assert.deepEqual(await store.list(), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a store whose directory was never opened reads as empty, not as an error", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-peers-"));
+  try {
+    const store = new PeerExchangeStore(join(root, "missing"));
+    assert.deepEqual(await store.list(), []);
+    assert.deepEqual(await store.receipts("b_a", 10), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

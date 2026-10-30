@@ -120,18 +120,58 @@ public struct DeviceSettingsView: View {
     .help(canEdit ? "设置这台设备如何执行请求" : "设备就绪且支持权限设置后可修改")
   }
 
+  /// The validity of a new code. It is the same control grid as every button beside it: 30 pt,
+  /// radius 8, canvas fill and a hairline, with the chevron inside the tap target.
+  private var validityMenu: some View {
+    Menu {
+      ForEach(Self.validityChoices, id: \.self) { seconds in
+        Button(Self.validityTitle(seconds)) { ttlSeconds = seconds }
+      }
+    } label: {
+      HStack(spacing: 6) {
+        Text("有效期 \(Self.validityTitle(ttlSeconds))")
+        Image(systemName: "chevron.down")
+      }
+      .font(.system(size: 13, weight: .medium))
+      .foregroundStyle(Theme.Palette.textPrimary)
+      .padding(.horizontal, 14)
+      .frame(height: 30)
+      .background(
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .fill(Theme.Palette.canvas)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+      )
+    }
+    .menuStyle(.button)
+    .buttonStyle(.plain)
+    .menuIndicator(.hidden)
+    .fixedSize()
+    .disabled(model.controlsBusy || !model.localReady)
+    .accessibilityLabel("配对码有效期")
+    .accessibilityIdentifier("devices.pairing.validity")
+  }
+
+  static let validityChoices = [3600, 86400]
+
+  static func validityTitle(_ seconds: Int) -> String {
+    seconds >= 86400 ? "24 小时" : "1 小时"
+  }
+
   private var pairingContent: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: 12) {
       if let invitation = model.invitation {
         TimelineView(.periodic(from: .now, by: 1)) { context in
           let expiry = Date(timeIntervalSince1970: Double(invitation.expiresAt) / 1000)
-          VStack(alignment: .leading, spacing: 10) {
+          VStack(alignment: .leading, spacing: 8) {
             Text(invitation.code)
               .font(Theme.TypeScale.mono)
               .foregroundStyle(Theme.Palette.textPrimary)
               .textSelection(.enabled)
               .accessibilityLabel("本机配对码")
-            HStack {
+            HStack(spacing: 10) {
               Text(
                 context.date < expiry
                   ? "有效至 \(expiry.formatted(date: .omitted, time: .shortened)) · 仅可使用一次"
@@ -151,17 +191,13 @@ public struct DeviceSettingsView: View {
           }
         }
       } else {
-        HStack(spacing: 12) {
-          Picker("有效期", selection: $ttlSeconds) {
-            Text("1 小时").tag(3600)
-            Text("24 小时").tag(86400)
-          }
-          .frame(width: 160)
-          SettingsActionButton("生成本机配对码") {
+        HStack(spacing: 10) {
+          validityMenu
+          Spacer(minLength: 0)
+          SettingsActionButton("生成本机配对码", prominent: true) {
             Task { await model.createPairing(ttlSeconds: ttlSeconds) }
           }
           .disabled(model.controlsBusy || !model.localReady)
-          Spacer(minLength: 0)
         }
       }
       Divider().overlay(Theme.Palette.line)
@@ -183,6 +219,7 @@ public struct DeviceSettingsView: View {
         .disabled(model.controlsBusy || !model.localReady)
         HStack(spacing: 10) {
           SettingsTextField("重新输入原配对码", text: $pairingCode)
+            .frame(maxWidth: .infinity)
             .accessibilityLabel("原请求的配对码")
             .onSubmit { redeem() }
           SettingsActionButton("用原请求重试", action: redeem)
@@ -193,6 +230,7 @@ public struct DeviceSettingsView: View {
       } else {
         HStack(spacing: 10) {
           SettingsTextField("输入另一台设备的配对码", text: $pairingCode)
+            .frame(maxWidth: .infinity)
             .accessibilityLabel("另一台设备的配对码")
             .onSubmit { redeem() }
           SettingsActionButton("添加设备", prominent: true, action: redeem)

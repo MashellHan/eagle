@@ -1,20 +1,41 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "eagle-devices",
-  "account_id": "e369b6206bd9481c027e1974c45756a2",
   "main": "src/worker/device-service.ts",
   "compatibility_date": "2026-09-19",
-  "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true,
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": false,
   "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "eagle-devices.hexly.ai",
+      "custom_domain": true
+    }
+  ],
   "durable_objects": {
     "bindings": [
-      { "name": "DEVICE_REGISTRY", "class_name": "DeviceRegistry" },
-      { "name": "DEVICE_EXECUTION", "class_name": "DeviceExecution" }
+      {
+        "name": "DEVICE_REGISTRY",
+        "class_name": "DeviceRegistry"
+      },
+      {
+        "name": "DEVICE_EXECUTION",
+        "class_name": "DeviceExecution"
+      }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["DeviceRegistry", "DeviceExecution"] }
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "DeviceRegistry",
+        "DeviceExecution"
+      ]
+    }
   ],
-  "vars": { "BUILD_REVISION": "development" }
+  "vars": {
+    "BUILD_REVISION": "development"
+  }
 }

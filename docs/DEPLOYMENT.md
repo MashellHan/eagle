@@ -105,8 +105,11 @@ Run `scripts/verify-daily.ts` with the same origin/Access settings as `verify-li
 ## Independent device service
 
 The independent `/api/devices/v1` contract is in [DEVICES.md](DEVICES.md).
-The product target is `eagle-devices` in the user's Cloudflare account
-`e369b6206bd9481c027e1974c45756a2`, at `https://eagle-devices.mxhan.workers.dev`.
+The product target is the `eagle-devices` Worker in the owner's account, at its custom
+domain `https://eagle-devices.hexly.ai` (no `workers.dev` hostname: `workers_dev` is off and
+the config carries no `account_id`, so `wrangler` uses the authenticated account).
+A second-level host such as `eagle-devices.worker.hexly.ai` is outside the zone's Universal
+SSL wildcard and answers a TLS handshake failure until the zone enables Total TLS.
 This is a persistent product service, not a remote test fixture. The existing personal
 `eagle`/`eagle-ingest` deployments and upstream hexly.ai services are outside this deployment.
 
@@ -143,7 +146,7 @@ node_modules/.bin/wrangler deploy --config apps/web/wrangler.devices.jsonc \
 No D1 apply, shared-secret upload, website build or npm publication is required.
 After deployment, verify the exact `/api/live` revision and anonymous device directory
 401 response, then build the isolated candidate with
-`EAGLE_DEVICE_SERVICE_URL=https://eagle-devices.mxhan.workers.dev`. There is no address
+`EAGLE_DEVICE_SERVICE_URL=https://eagle-devices.hexly.ai`. There is no address
 form in the App; both Macs must use the same origin for registration, pairing and WSS.
 Use the complete signed bundle and candidate installer described in
 `apps/macos/README.md`; the installer prepares the old service before replacing it.
