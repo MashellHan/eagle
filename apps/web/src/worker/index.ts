@@ -29,8 +29,6 @@ import {
   viewerIdentity,
 } from "./auth.ts";
 
-export { DeviceExecution } from "./device-execution.ts";
-export { DeviceRegistry } from "./device-registry.ts";
 export { MachineDirectory } from "./directory.ts";
 export { MachineState } from "./machine.ts";
 
@@ -701,24 +699,6 @@ export default {
   },
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (
-      url.pathname === "/api/devices/v1" ||
-      url.pathname.startsWith("/api/devices/v1/")
-    ) {
-      if (!env.DEVICE_REGISTRY)
-        return json({ error: "device_service_unavailable" }, 503);
-      const execution = url.pathname.match(
-        /^\/api\/devices\/v1\/execution\/([0-9a-fA-F-]{36})\/(agent|request)$/,
-      );
-      if (execution) {
-        if (!env.DEVICE_EXECUTION)
-          return json({ error: "device_service_unavailable" }, 503);
-        return env.DEVICE_EXECUTION.getByName(execution[1].toLowerCase()).fetch(
-          request,
-        );
-      }
-      return env.DEVICE_REGISTRY.getByName("registry").fetch(request);
-    }
     if (
       url.hostname === "eagle-ingest.hexly.ai" &&
       ![

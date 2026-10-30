@@ -115,14 +115,16 @@ Root deployed `28f4aefb92106e8299d7269fb4b0e2fb7bbb289a` on 2026-10-29, after th
 Cloudflare version: `51174415-6140-4347-8f88-584ec7cff0b8`. Public Node requests verified
 `GET /api/live` 200 with that exact revision and anonymous device directory 401
 `session_required`, both `no-store`. Receipts are in `.local/device-evidence/own-device-release/`.
-This does not yet prove real App registration/WSS or physical A/B pairing.
+Those initial health checks did not establish App registration or physical pairing;
+later installed and cross-Mac evidence is tracked in `docs/bots/PLAN.md`.
 
 `apps/web/wrangler.devices.jsonc` binds only `DEVICE_REGISTRY` → `DeviceRegistry` and
 `DEVICE_EXECUTION` → `DeviceExecution`, with a new service's SQLite migration `v1`.
 It reuses the existing implementations: Registry uses `getByName("registry")` and
 execution uses the normalized device ID. It has no D1, assets, cron, old machine DOs
-or custom-domain routes. The original monolith configuration and its `v3` migration
-remain unchanged. Do not route device identities through owner tokens or copy
+or custom-domain routes. The website configuration keeps only its machine/directory
+bindings and migrations; device routes and SQLite classes belong solely to this
+standalone service. Do not route device identities through owner tokens or copy
 localhost Registry data into the product service.
 
 After confirming the account and service name, use a clean committed revision and
@@ -143,11 +145,8 @@ After deployment, verify the exact `/api/live` revision and anonymous device dir
 401 response, then build the isolated candidate with
 `EAGLE_DEVICE_SERVICE_URL=https://eagle-devices.mxhan.workers.dev`. There is no address
 form in the App; both Macs must use the same origin for registration, pairing and WSS.
-Keep the current installed App until its replacement is explicitly coordinated.
-The separate settings-layout installation owner must rebuild its complete signed UI
-bundle with this origin; its earlier localhost bundle is not the public pairing package.
-Coordinate via `.local/device-evidence/device-origin-handoff.md`, then report the
-installed source/origin and real registration evidence; Root observes without parallel installation.
+Use the complete signed bundle and candidate installer described in
+`apps/macos/README.md`; the installer prepares the old service before replacing it.
 An uncertain operation is recovered by its original ID, never by resubmission with
 a new ID. New DO state is persistent; do not delete classes or migration state as a rollback shortcut.
 

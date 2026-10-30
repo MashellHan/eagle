@@ -14,6 +14,7 @@ import {
   verifyApproval,
 } from "../../../../packages/contracts/src/devices.ts";
 import { deviceJSON } from "./device-registry.ts";
+import type { DeviceServiceEnv } from "./device-service.ts";
 
 const authFrame = z.strictObject({
   type: z.literal("authenticate"),
@@ -60,12 +61,12 @@ type PendingPolicy = {
   timer: ReturnType<typeof setTimeout>;
 };
 class DeviceAuthenticationError extends Error {}
-export class DeviceExecution extends DurableObject<Env> {
+export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
   private agent?: Agent;
   private pending = new Map<string, Pending>();
   private policies = new Map<string, PendingPolicy>();
   private lease?: ReturnType<typeof setTimeout>;
-  constructor(ctx: DurableObjectState, env: Env) {
+  constructor(ctx: DurableObjectState, env: DeviceServiceEnv) {
     super(ctx, env);
   }
   observation(): DeviceObservation {

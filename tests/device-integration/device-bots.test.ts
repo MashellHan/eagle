@@ -222,15 +222,14 @@ async function localCall(path: string, method: string): Promise<unknown> {
 }
 
 async function workerFixture(directory: string) {
-  writeFileSync(join(directory, "index.html"), "device process integration");
   // Only a test transport fault: the real target finishes and the real relay
   // authorizes its result, then the caller loses that one response. No executor,
   // registry, SDK or device-port implementation is replaced.
   writeFileSync(
     join(directory, "entry.ts"),
     `
-import worker,{DeviceRegistry,DeviceExecution as Execution,MachineState,MachineDirectory} from "../../apps/web/src/worker/index.ts";
-export {DeviceRegistry,MachineState,MachineDirectory};
+import worker,{DeviceRegistry,DeviceExecution as Execution} from "../../apps/web/src/worker/device-service.ts";
+export {DeviceRegistry};
 export class DeviceExecution extends Execution {
  respond(socket,request,result,unauthorized=false) {
   if(request.action==='run'&&request.operation?.command?.includes('device-integration-drop-response')&&result.status==='completed') {
@@ -249,11 +248,9 @@ export default worker;
       join(directory, "entry.ts"),
       "--dry-run",
       "--config",
-      "apps/web/wrangler.jsonc",
+      "apps/web/wrangler.devices.jsonc",
       "--outdir",
       join(directory, "worker"),
-      "--assets",
-      directory,
     ],
     { stdio: "pipe" },
   );
@@ -269,10 +266,8 @@ export default worker;
           durableObjects: {
             DEVICE_REGISTRY: { className: "DeviceRegistry", useSQLite: true },
             DEVICE_EXECUTION: { className: "DeviceExecution", useSQLite: true },
-            MACHINES: { className: "MachineState", useSQLite: true },
-            DIRECTORY: { className: "MachineDirectory", useSQLite: true },
           },
-          bindings: { LOCAL_DEV: "false" },
+          bindings: { BUILD_REVISION: "local-device-integration" },
         },
       ],
     }),

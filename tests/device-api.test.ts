@@ -32,12 +32,10 @@ mkdirSync(".local", { recursive: true });
 const root = mkdtempSync(resolve(".local/device-api-"));
 const base = "https://devices.test/api/devices/v1";
 before(async () => {
-  writeFileSync(join(root, "index.html"), "devices test");
   const entry = join(root, "entry.ts");
   writeFileSync(
     entry,
-    `import worker,{DeviceRegistry as Registry,DeviceExecution as Execution,MachineState,MachineDirectory} from "../../apps/web/src/worker/index.ts";
-export {MachineState,MachineDirectory};
+    `import worker,{DeviceRegistry as Registry,DeviceExecution as Execution} from "../../apps/web/src/worker/device-service.ts";
 export class DeviceExecution extends Execution {
  fetch(request){const url=new URL(request.url);if(url.pathname==='/test-close'){this.agent?.socket.close(Number(url.searchParams.get('code')),url.searchParams.get('reason'));return new Response('closed');}return super.fetch(request);}
  observation(){const observation=super.observation();
@@ -75,11 +73,9 @@ export default worker;
       entry,
       "--dry-run",
       "--config",
-      "apps/web/wrangler.jsonc",
+      "apps/web/wrangler.devices.jsonc",
       "--outdir",
       join(root, "worker"),
-      "--assets",
-      root,
     ],
     { stdio: "pipe" },
   );
@@ -95,10 +91,8 @@ export default worker;
           durableObjects: {
             DEVICE_REGISTRY: { className: "DeviceRegistry", useSQLite: true },
             DEVICE_EXECUTION: { className: "DeviceExecution", useSQLite: true },
-            MACHINES: { className: "MachineState", useSQLite: true },
-            DIRECTORY: { className: "MachineDirectory", useSQLite: true },
           },
-          bindings: { LOCAL_DEV: "false" },
+          bindings: { BUILD_REVISION: "local-device-api" },
         },
       ],
     }),

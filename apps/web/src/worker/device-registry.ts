@@ -16,6 +16,7 @@ import {
   PolicySetRequest,
   verifyDeviceSignature,
 } from "../../../../packages/contracts/src/devices.ts";
+import type { DeviceServiceEnv } from "./device-service.ts";
 
 export class DeviceHttpError extends Error {
   constructor(
@@ -88,8 +89,8 @@ type Pairing = {
   result: string | null;
   committed: number | null;
 };
-export class DeviceRegistry extends DurableObject {
-  constructor(ctx: DurableObjectState, env: Env) {
+export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
+  constructor(ctx: DurableObjectState, env: DeviceServiceEnv) {
     super(ctx, env);
     this.ctx.storage.sql.exec(`
     CREATE TABLE IF NOT EXISTS devices(deviceId TEXT PRIMARY KEY,publicKey TEXT NOT NULL,name TEXT NOT NULL,platform TEXT NOT NULL,arch TEXT NOT NULL,groupId TEXT,membershipEpoch INTEGER NOT NULL DEFAULT 0,credentialVersion INTEGER NOT NULL DEFAULT 1,localRevision INTEGER NOT NULL DEFAULT 0);

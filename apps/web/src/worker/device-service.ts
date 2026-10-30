@@ -5,7 +5,7 @@ import { DeviceRegistry, deviceJSON } from "./device-registry.ts";
 
 export { DeviceExecution, DeviceRegistry };
 
-type DeviceServiceEnv = {
+export type DeviceServiceEnv = {
   DEVICE_REGISTRY: DurableObjectNamespace<DeviceRegistry>;
   DEVICE_EXECUTION: DurableObjectNamespace<DeviceExecution>;
   BUILD_REVISION: string;

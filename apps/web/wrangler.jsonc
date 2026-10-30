@@ -10,15 +10,12 @@
   "durable_objects": {
     "bindings": [
       { "name": "MACHINES", "class_name": "MachineState" },
-      { "name": "DIRECTORY", "class_name": "MachineDirectory" },
-      { "name": "DEVICE_REGISTRY", "class_name": "DeviceRegistry" },
-      { "name": "DEVICE_EXECUTION", "class_name": "DeviceExecution" }
+      { "name": "DIRECTORY", "class_name": "MachineDirectory" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["MachineState"] },
-    { "tag": "v2", "new_sqlite_classes": ["MachineDirectory"] },
-    { "tag": "v3", "new_sqlite_classes": ["DeviceRegistry", "DeviceExecution"] }
+    { "tag": "v2", "new_sqlite_classes": ["MachineDirectory"] }
   ],
   "assets": {
     "directory": "./dist",
