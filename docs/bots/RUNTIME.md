@@ -879,3 +879,47 @@ Warm task retry verifies resources before asking the SDK to retry. A preflight f
 crosses runtime.task.retry.fail once with the command trace: existing classified errors
 are rethrown intact, filesystem I/O is storage_failed with the original cause. This does
 not reclassify errors from the later SDK retry operation or alter HTTP retry semantics.
+
+## Ordinary root queued resource versions
+
+Ordinary input remains on the original root and SDK Inbox. Before first local admission,
+resolve a ready resourceHead, completely validate/install its manifest, and persist the
+selector/version in the original local intent/outbox. Each SDK input carries only the
+immutable selection/version in SubmissionDraft.entry kind/data. Do not change root
+ResourcePin when queueing: the production section derives the current run's fixed version
+from public LiveDoc, Harness.submission and Tx placed-entry reads, using only prevalidated content.
+
+Active and queued versions survive edits, later version admissions and restart. Startup
+prevalidates all active/queued selections before any pending submit or global resume.
+For ledger-pending root intents, first query public Tx.submissionByRequest: a real SDK
+receipt is reconciled without reinstalling its now-idle resources. Genuine unsubmitted
+intents still all preflight before any submit; active/Inbox versions always preflight.
+Known accepted same-ID retries return the real SDK record without installation, submit or
+resume; genuine pending/new IDs still preflight and known refusal rejects the intent.
+Root intent `whenBusy` remains immutable after refusal or admission (legacy omission
+means `followUp`). Both root admission and core admission lookup check the persisted mode
+before querying/returning an existing SDK record; plain status lookup remains read-only.
+A changed mode cannot queue work while the original intent/outbox still names another mode.
+The admission-only retry-binding read has the submit failure boundary: an existing
+ClassifiedFailure is rethrown intact; raw ReplicaStore/SQLite failures reuse the submit
+session episode or operation classifier and retain the original cause with unknown
+disposition. This does not change pure status or the subsequent SDK record lookup.
+Steer inherits the active version when omitted; explicit different versions are refused,
+as are queued steer/followUp combinations that the unchanged default SDK boundary could
+merge with different versions. Distinct followUp versions remain FIFO one-at-a-time.
+User append/live/history/snapshot projection recognizes the selected user entry kind and
+exposes only the original user text/request mapping. No resource body is copied per input.
+
+Root section resolution reads LiveDoc.run.inputs[0], calls the public
+Harness.submission(id).status() outside a transaction, then reads its immutable entry
+through a separate Harness.commit/Tx.entry. It never uses internal methods, a nested
+Harness call in Tx, or wait/resume. The first input survives tool/compaction children.
+After async installation, root admission re-reads current Live/Inbox on the serial line;
+if the observed first input changed while resolving metadata, read it again before
+checking. New steer matches the active version and every queued input; new followUp
+matches every queued steer, including legacy empty resource versions in both directions.
+
+Runtime open and tool-group reconfiguration retain the resource extension alongside the
+selected tool extensions; an unselected legacy round renders no resource section. This
+preserves the active version after tool children and crash reopen without changing queue
+modes, failure policy, restart limits or task recovery.

@@ -4,10 +4,14 @@ import { lstat, mkdir, open, readdir, rename, rm, writeFile } from "node:fs/prom
 import { dirname, join, posix } from "node:path";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import {
+  type ConversationId,
   type Cursor,
   defineDoc,
   defineExtension,
   type Harness,
+  InboxDoc,
+  type InputEntry,
+  LiveDoc,
   type Registry,
   section,
 } from "@earendil-works/pi-durable";
@@ -17,6 +21,33 @@ import { FailureClassifier } from "./classify.ts";
 import type { HistoryBundle } from "./HistoryReplica.ts";
 
 export const RESOURCE_EXTENSION = "bots-resources";
+export const RESOURCE_USER_KIND = "bots.user.resources";
+const selectionSchema = z.strictObject({
+  resourceHead: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
+  resourceVersion: z.union([z.literal(""), z.string().regex(/^[a-f0-9]{64}$/)]),
+});
+export type ResourceSelection = z.infer<typeof selectionSchema>;
+export const inputResources = (entry?: InputEntry): ResourceSelection | undefined => {
+  if (entry?.kind !== RESOURCE_USER_KIND) return undefined;
+  const parsed = selectionSchema.safeParse(entry.data);
+  return parsed.success ? parsed.data : reject("invalid input resource selection");
+};
+/** Live input IDs survive tool/compaction children; the placed entry is immutable. */
+export const runResources = async (harness: Harness, id: ConversationId) => {
+  const live = await harness.snapshot(LiveDoc, id, ctx);
+  const first = live?.run?.inputs[0];
+  if (first === undefined) return undefined;
+  const submission = await harness.submission(first, ctx);
+  const record = await submission?.status(ctx);
+  if (record?.entry === undefined) return reject("missing resource run input");
+  const entryId = record.entry;
+  const entry = await harness.commit((tx) => tx.entry(entryId), ctx);
+  if (entry === undefined) return reject("missing resource input entry");
+  return { id: first, selection: inputResources(entry) };
+};
 export const ResourcePin = defineDoc({
   kind: "bots.replica.resources",
   version: 1,
@@ -69,7 +100,7 @@ export class HistoryResources {
   readonly #root: string;
   readonly #loaded = new Map<string, string>();
 
-  constructor(root: string, registry: Registry) {
+  constructor(root: string, registry: Registry, harness?: Harness) {
     this.#root = root;
     registry.install(
       defineExtension({
@@ -77,9 +108,12 @@ export class HistoryResources {
         sections: [
           section(RESOURCE_EXTENSION, async ({ conversationId, read }, context) => {
             const pin = await read.snapshot(ResourcePin, conversationId, context);
-            if (pin === undefined || pin.version === "") return undefined;
+            const selected =
+              harness === undefined ? undefined : await runResources(harness, conversationId);
+            const version = selected?.selection?.resourceVersion ?? pin?.version ?? "";
+            if (version === "") return undefined;
             // Admission/start/retry validate first: renderer errors are not an execution gate.
-            return this.#loaded.get(pin.version) ?? reject("resource version was not prepared");
+            return this.#loaded.get(version) ?? reject("resource version was not prepared");
           }),
         ],
       }),
@@ -277,6 +311,14 @@ export class HistoryResources {
       for (const conversation of page.items) {
         const pin = await harness.snapshot(ResourcePin, conversation.id, ctx);
         if (pin !== undefined && pin.version !== "") versions.add(pin.version);
+        const active = await runResources(harness, conversation.id);
+        if (active?.selection?.resourceVersion) versions.add(active.selection.resourceVersion);
+        const inbox = await harness.snapshot(InboxDoc, conversation.id, ctx);
+        for (const item of inbox?.items ?? []) {
+          if (item.mode === "write") continue;
+          const selection = inputResources(item.entry);
+          if (selection?.resourceVersion) versions.add(selection.resourceVersion);
+        }
       }
       cursor = page.next;
     } while (cursor !== undefined);

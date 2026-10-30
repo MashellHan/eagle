@@ -67,6 +67,7 @@ type Step =
       readonly text: string;
       readonly contains: string;
       readonly resources?: true;
+      readonly root?: true;
     }
   | { readonly kind: "chat"; readonly text: string; readonly timeoutMs?: number }
   | {
@@ -372,12 +373,13 @@ const viewer = async (port: number, token: string, botId: string) => {
     errors,
     triggers,
     settled: (requestId: string): string | undefined => submissions.get(requestId),
-    send: (text: string, requestId: string): void => {
+    send: (text: string, requestId: string, resourceHead?: string): void => {
       socket.send(
         JSON.stringify({
           type: "send",
           requestId,
           text,
+          ...(resourceHead === undefined ? {} : { resourceHead }),
           whenBusy: "followUp",
           trace: `tr_eval_${requestId}`,
         }),
@@ -635,9 +637,12 @@ const runCase = async (
             failure("passive import/inventory executed a model");
           const requestId = `replica_eval_${++requestSeq}`;
           const params = { head: bundle.head, requestId, text: step.text };
-          await call("run", params);
+          const run = () =>
+            step.root === true ? view.send(step.text, requestId, bundle.head) : call("run", params);
+          await run();
           await waitUntil(
             async () => {
+              if (step.root === true) return view.settled(requestId) === "done";
               const status = (await call("status", { requestId })) as {
                 submission: { status: string } | null;
               };
@@ -646,7 +651,7 @@ const runCase = async (
             "the local replica run to settle",
             stepBudget,
           );
-          await call("run", params);
+          if (step.root !== true) await call("run", params);
           if (model.requests.length !== before + 1)
             failure("local replica run did not execute exactly once");
           if (step.resources === true) {
@@ -656,7 +661,10 @@ const runCase = async (
                 "the provider did not receive the selected AGENTS and complete skill binding",
               );
           }
-          const result = (await call("export", { branch: requestId })) as HistoryBundle;
+          const result = (await call(
+            "export",
+            step.root === true ? {} : { branch: requestId },
+          )) as HistoryBundle;
           if (
             !result.entries.some(
               (entry) =>

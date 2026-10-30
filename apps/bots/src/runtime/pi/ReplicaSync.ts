@@ -5,6 +5,10 @@ import {
   type Cursor,
   type EntryId,
   type Harness,
+  InboxDoc,
+  type InputEntry,
+  LiveDoc,
+  type Submission,
 } from "@earendil-works/pi-durable";
 import { z } from "zod";
 import { ClassifiedFailure } from "../../core/domain.ts";
@@ -19,6 +23,13 @@ import {
   validateBundle,
   validateHistory,
 } from "./HistoryReplica.ts";
+import {
+  inputResources,
+  RESOURCE_EXTENSION,
+  RESOURCE_USER_KIND,
+  type ResourceSelection,
+  runResources,
+} from "./HistoryResources.ts";
 import { ReplicaStore } from "./ReplicaStore.ts";
 import {
   bounded,
@@ -77,20 +88,45 @@ export class ReplicaSync {
     });
     await this.prepareResources();
     await this.#drain();
+    // Every pending version is prepared before the first submit can resume the scheduler.
+    for (const intent of this.store.pending()) {
+      if (intent.mode === "root" && intent.resourceHead !== undefined) {
+        const existing = await this.#harness.commit(
+          (tx) => tx.submissionByRequest(this.#rootId, intent.requestId),
+          ctx,
+        );
+        if (existing !== undefined) continue;
+        if (
+          (await this.#history.installResources(this.#resourceBundle(intent.resourceHead))) !==
+          intent.resourceVersion
+        )
+          syncReject("resource selection version mismatch");
+      }
+    }
     for (const intent of this.store.pending()) {
       if (intent.mode === "branch") await this.#run(intent);
       else {
         const root = await this.#harness.root(ctx);
-        await root.submit(
+        await this.root(
           {
-            type: "input",
             requestId: intent.requestId,
-            content: intent.text,
+            text: intent.text,
             whenBusy: intent.whenBusy ?? "followUp",
+            trace: "tr_replica_recovery",
+            ...(intent.resourceHead === undefined ? {} : { resourceHead: intent.resourceHead }),
           },
-          ctx,
+          (entry) =>
+            root.submit(
+              {
+                type: "input",
+                requestId: intent.requestId,
+                content: intent.text,
+                whenBusy: intent.whenBusy ?? "followUp",
+                ...(entry === undefined ? {} : { entry }),
+              },
+              ctx,
+            ),
         );
-        this.store.admitted(intent.requestId);
       }
     }
     await this.#scan();
@@ -149,19 +185,133 @@ export class ReplicaSync {
     }
   }
 
-  root<T>(input: SubmitInput, admit: () => Promise<T>): Promise<T> {
+  #resourceBundle(head: string): HistoryBundle {
+    if (!this.store.ready(head)) return syncReject("resource head is not ready");
+    const manifest = this.store.head(head) ?? syncReject("missing resource manifest");
+    return this.#bundle(manifest) ?? syncReject("incomplete resource manifest");
+  }
+
+  checkRootRetry(input: Pick<SubmitInput, "requestId" | "whenBusy">) {
+    const prior = this.store.run(input.requestId);
+    if (
+      prior !== undefined &&
+      (prior.intent.mode !== "root" || (prior.intent.whenBusy ?? "followUp") !== input.whenBusy)
+    )
+      syncReject("local run request ID binding conflict");
+    return prior;
+  }
+
+  root(
+    input: SubmitInput,
+    admit: (entry?: InputEntry) => Promise<Submission>,
+  ): Promise<Submission> {
     return this.#serial(async () => {
-      const prior = this.store.run(input.requestId);
-      this.store.intent({
-        kind: "run",
-        mode: "root",
-        requestId: input.requestId,
-        head: prior === undefined ? this.store.latestHead(this.#rootId) : prior.intent.head,
-        text: input.text,
-        whenBusy: input.whenBusy,
-      });
+      const prior = this.checkRootRetry(input);
+      if (
+        prior !== undefined &&
+        (prior.intent.text !== input.text ||
+          (input.resourceHead !== undefined && input.resourceHead !== prior.intent.resourceHead))
+      )
+        syncReject("local run request ID binding conflict");
+      let selection: ResourceSelection | undefined;
+      if (prior !== undefined) {
+        if (prior.intent.resourceVersion !== undefined)
+          selection = {
+            resourceVersion: prior.intent.resourceVersion,
+            ...(prior.intent.resourceHead === undefined
+              ? {}
+              : { resourceHead: prior.intent.resourceHead }),
+          };
+      } else if (input.resourceHead !== undefined) {
+        const bundle = this.#resourceBundle(input.resourceHead);
+        selection = {
+          resourceHead: input.resourceHead,
+          resourceVersion: bundle.resources.length === 0 ? "" : hash(bundle.resources),
+        };
+      } else if (input.whenBusy === "steer")
+        selection = (await runResources(this.#harness, this.#rootId))?.selection;
+      this.store.intent(
+        prior?.intent ?? {
+          kind: "run",
+          mode: "root",
+          requestId: input.requestId,
+          head: prior === undefined ? this.store.latestHead(this.#rootId) : prior.intent.head,
+          text: input.text,
+          whenBusy: input.whenBusy,
+          ...selection,
+        },
+      );
       try {
-        const result = await admit();
+        const existing = await this.#harness.commit(
+          (tx) => tx.submissionByRequest(this.#rootId, input.requestId),
+          ctx,
+        );
+        if (existing !== undefined) {
+          const submission = await this.#harness.submission(existing.id, ctx);
+          if (submission === undefined) return syncReject("missing admitted root input");
+          this.store.admitted(input.requestId);
+          return submission;
+        }
+        if (selection?.resourceHead !== undefined)
+          if (
+            (await this.#history.installResources(this.#resourceBundle(selection.resourceHead))) !==
+            selection.resourceVersion
+          )
+            syncReject("resource selection version mismatch");
+        // SDK boundaries run while installation awaits: read current state after preflight.
+        let checked = false;
+        while (!checked) {
+          const active = await runResources(this.#harness, this.#rootId);
+          checked = await this.#harness.commit(async (tx) => {
+            const live = await tx.doc(LiveDoc, this.#rootId);
+            if (live.run?.inputs[0] !== active?.id) return false;
+            const inbox = await tx.doc(InboxDoc, this.#rootId);
+            const version = selection?.resourceVersion ?? "";
+            if (
+              input.whenBusy === "steer" &&
+              live.run !== undefined &&
+              version !== (active?.selection?.resourceVersion ?? "")
+            )
+              syncReject("steer resource version differs from active run");
+            for (const item of inbox.items) {
+              if (item.mode === "write") continue;
+              if (
+                (input.whenBusy === "steer" || item.mode === "steer") &&
+                version !== (inputResources(item.entry)?.resourceVersion ?? "")
+              )
+                syncReject("queued resource versions would share one run");
+            }
+            if (selection !== undefined) {
+              const agent = await tx.doc(AgentDoc, this.#rootId);
+              const extensions = agent.extensions;
+              agent.extensions = Array.isArray(extensions)
+                ? [...new Set([...extensions, RESOURCE_EXTENSION])]
+                : {
+                    ...extensions,
+                    add: [...new Set([...(extensions?.add ?? []), RESOURCE_EXTENSION])],
+                    ...(extensions?.remove === undefined
+                      ? {}
+                      : {
+                          remove: extensions.remove.filter((name) => name !== RESOURCE_EXTENSION),
+                        }),
+                  };
+            }
+            return true;
+          }, ctx);
+        }
+        const result = await admit(
+          selection === undefined
+            ? undefined
+            : {
+                kind: RESOURCE_USER_KIND,
+                data: {
+                  resourceVersion: selection.resourceVersion,
+                  ...(selection.resourceHead === undefined
+                    ? {}
+                    : { resourceHead: selection.resourceHead }),
+                },
+              },
+        );
         this.store.admitted(input.requestId);
         return result;
       } catch (error) {
@@ -240,15 +390,20 @@ export class ReplicaSync {
           const input = parse(exportSchema, command.params);
           let bundle: HistoryBundle;
           if (input.head !== undefined) {
-            if (input.branch !== undefined || input.resources !== undefined)
-              syncReject("select one immutable head");
+            if (input.branch !== undefined) syncReject("select one immutable head");
             const manifest = this.store.head(input.head);
+            if (manifest !== undefined && !this.store.ready(input.head))
+              syncReject("history head is not ready");
             bundle =
               manifest === undefined
-                ? validateBundle(await this.#history.command(command))
+                ? validateBundle(
+                    await this.#history.command({ ...command, params: { head: input.head } }),
+                  )
                 : await this.#history.carrier(
                     this.#bundle(manifest) ?? syncReject("incomplete history head"),
                   );
+            if (input.resources !== undefined)
+              bundle = await this.#history.exportResources(bundle, input.resources);
           } else if (input.branch !== undefined) {
             const branch = await this.#history.branch(input.branch);
             const manifest = branch === undefined ? undefined : this.store.head(branch.head);

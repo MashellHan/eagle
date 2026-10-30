@@ -428,6 +428,7 @@ export class ConversationService implements InvocationPort {
       const record = await this.#admit(botId, {
         requestId: input.requestId,
         text: input.text,
+        ...(input.resourceHead === undefined ? {} : { resourceHead: input.resourceHead }),
         whenBusy: input.whenBusy ?? "followUp",
         trace: input.trace,
       });
@@ -525,6 +526,8 @@ export class ConversationService implements InvocationPort {
     if (!INVOCATION_ID.test(input.requestId)) {
       throw this.#refuse("the request id is malformed", input.requestId);
     }
+    if (input.resourceHead !== undefined && !/^[a-f0-9]{64}$/.test(input.resourceHead))
+      throw this.#refuse("the resource head is malformed", input.requestId);
     if (Array.from(input.text).length > MAX_INVOCATION_TEXT) {
       throw this.#refuse(`text exceeds ${MAX_INVOCATION_TEXT} characters`, input.requestId);
     }
@@ -696,7 +699,10 @@ export class ConversationService implements InvocationPort {
       const handle = this.#handleOfBot(bot, input.requestId);
       let stored: Submission | undefined;
       try {
-        stored = await handle.submission({ requestId: input.requestId });
+        stored = await handle.submission({
+          requestId: input.requestId,
+          retry: { whenBusy: input.whenBusy, trace: input.trace },
+        });
       } catch (cause) {
         if (cause instanceof ClassifiedFailure) throw cause;
         throw new CommandError(
@@ -713,7 +719,7 @@ export class ConversationService implements InvocationPort {
         if (stored.status === "done" || stored.status === "unanswered") {
           bot.reserved.delete(input.requestId);
         }
-        return stored;
+        return input.resourceHead === undefined ? stored : handle.submit(input);
       }
       // A reservation already visible as pending is the same admission, not a second one.
       // An expired one is released only after the runtime says it is not outstanding:

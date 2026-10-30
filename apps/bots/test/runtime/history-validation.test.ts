@@ -208,8 +208,28 @@ test("malformed history, model content and missing dependencies fail before pass
       await handle.replica({ method: "export", params: { head: fixture.head }, trace }),
       fixture,
     );
+    const edited = (await handle.replica({
+      method: "export",
+      params: { head: fixture.head, resources: [] },
+      trace,
+    })) as HistoryBundle;
+    assert.deepEqual(edited.parents, [fixture.head]);
+    assert.deepEqual(edited.resources, []);
+    assert.deepEqual(edited.agent, fixture.agent);
+    assert.deepEqual(
+      await handle.replica({
+        method: "export",
+        params: { head: fixture.head, resources: [] },
+        trace,
+      }),
+      edited,
+    );
     await assert.rejects(
-      handle.replica({ method: "export", params: { head: fixture.head, resources: [] }, trace }),
+      handle.replica({
+        method: "export",
+        params: { head: fixture.head, branch: "unknown-id", resources: [] },
+        trace,
+      }),
       /select/,
     );
     const unavailable = rehash({

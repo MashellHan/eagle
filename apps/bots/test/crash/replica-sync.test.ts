@@ -1,16 +1,22 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
-import { createModels, getCurrentSystemMessage } from "@earendil-works/pi-ai";
+import {
+  createModels,
+  getCurrentSystemMessage,
+  type TranscriptContext,
+} from "@earendil-works/pi-ai";
 import { type ConversationId, Harness } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { ClassifiedFailure } from "../../src/core/domain.ts";
 import { type HistoryBundle, HistoryReplica } from "../../src/runtime/pi/HistoryReplica.ts";
 import { ResourcePin } from "../../src/runtime/pi/HistoryResources.ts";
+import { pageSchema } from "../../src/runtime/pi/syncProtocol.ts";
 import { createToolRegistry } from "../../src/tools/registry.ts";
 import { openWorkspace } from "../../src/tools/workspace.ts";
 import { assistant, createBench, text, toolCall, waitFor } from "../support/pi.ts";
@@ -52,6 +58,199 @@ const killAtCommit = async (input: unknown) => {
   }
   assert.equal(child.signalCode, "SIGKILL");
 };
+
+for (const mode of ["root-resource-intent", "root-resource-queued"] as const) {
+  test(`SIGKILL at ${mode} keeps original root IDs/versions and resumes only local work`, async () => {
+    const bench = await createBench();
+    const source = await openReplica(join(bench.dir, "root-source"));
+    const spec = { ...bench.spec(), id: "b_replica" };
+    let handle: Awaited<ReturnType<typeof bench.runtime.open>> | undefined;
+    try {
+      await source.root.commit(async (tx) => {
+        await tx.appendEntry(source.root.id, {
+          kind: "pi.user",
+          model: [{ role: "user", content: "passive source history", timestamp: 0 }],
+        });
+      }, ctx);
+      const resources = JSON.parse(
+        await readFile(
+          new URL("../../../../fixtures/bots-sync/resources.v1.json", import.meta.url),
+          "utf8",
+        ),
+      ) as HistoryBundle["resources"];
+      const one = (await source.command("export", { resources })) as HistoryBundle;
+      const second = resources.map((file) => {
+        const bytes =
+          file.kind === "instructions" || file.name.endsWith("/input.txt")
+            ? Buffer.from(
+                Buffer.from(file.base64, "base64").toString("utf8").replaceAll("one", "two"),
+              )
+            : Buffer.from(file.base64, "base64");
+        return {
+          ...file,
+          base64: bytes.toString("base64"),
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+        };
+      });
+      const two = (await source.command("export", { resources: second })) as HistoryBundle;
+      await source.close();
+      await killAtCommit({ dir: spec.dir, mode, bundle: one, secondBundle: two });
+      const secondVersion = createHash("sha256").update(JSON.stringify(second)).digest("hex");
+      if (mode === "root-resource-queued") {
+        const path = join(spec.dir, "resources", secondVersion, "AGENTS.md");
+        await chmod(path, 0o600);
+        await writeFile(path, "bad queued version before startup");
+        await assert.rejects(bench.runtime.open(spec));
+        assert.equal(
+          bench.faux.state.callCount,
+          0,
+          "queued preflight runs before any pending submit/global resume",
+        );
+        const original = second.find((file) => file.name === "AGENTS.md");
+        assert.ok(original);
+        await writeFile(path, Buffer.from(original.base64, "base64"));
+      }
+      const rounds = new Map<string, number>();
+      const seen: string[] = [];
+      const providerErrors: unknown[] = [];
+      const reply = (request: TranscriptContext) => {
+        try {
+          const user = [...request.messages].reverse().find((message) => message.role === "user");
+          const label = String(user?.content);
+          assert.ok(label === "root-resource-active" || label === "root-resource-queued");
+          const wanted = label === "root-resource-active" ? one : two;
+          const version = createHash("sha256")
+            .update(JSON.stringify(wanted.resources))
+            .digest("hex");
+          const section =
+            getCurrentSystemMessage(request.messages)?.sections?.["bots-resources"] ?? "";
+          assert.match(section, new RegExp(`Resource version: ${version}`));
+          const skill = /^Skill directory: (.+)$/m.exec(section)?.[1];
+          assert.ok(skill);
+          seen.push(label);
+          const round = (rounds.get(label) ?? 0) + 1;
+          rounds.set(label, round);
+          return round === 1
+            ? assistant(
+                [
+                  toolCall("bash", {
+                    command: `bash '${skill}/scripts/nested/run.sh' && mv result.bin '${label}.bin'`,
+                  }),
+                ],
+                { stopReason: "toolUse" },
+              )
+            : text(`${label} done once`);
+        } catch (cause) {
+          providerErrors.push(
+            cause instanceof Error ? { message: cause.message, stack: cause.stack } : cause,
+          );
+          throw cause;
+        }
+      };
+      bench.faux.setResponses(Array.from({ length: 4 }, () => reply));
+      handle = await bench.runtime.open(spec);
+      try {
+        await waitFor(
+          async () =>
+            (await handle?.submission({ requestId: "root-resource-queued" }))?.status === "done",
+          "the original queued input to recover",
+        );
+      } catch (cause) {
+        console.error(
+          JSON.stringify({
+            mode,
+            seen,
+            providerErrors,
+            calls: bench.faux.state.callCount,
+            active: await handle.submission({ requestId: "root-resource-active" }),
+            queued: await handle.submission({ requestId: "root-resource-queued" }),
+            records: bench.records.slice(-20),
+          }),
+        );
+        throw cause;
+      }
+      assert.deepEqual(
+        seen,
+        mode === "root-resource-queued"
+          ? [
+              "root-resource-active",
+              "root-resource-active",
+              "root-resource-queued",
+              "root-resource-queued",
+            ]
+          : ["root-resource-queued", "root-resource-queued"],
+      );
+      for (const [label, bundle] of [
+        ["root-resource-active", one],
+        ["root-resource-queued", two],
+      ] as const) {
+        if (mode === "root-resource-intent" && label === "root-resource-active") continue;
+        assert.deepEqual(
+          await readFile(join(spec.dir, "workspace", `${label}.bin`)),
+          Buffer.concat(
+            bundle.resources
+              .filter(
+                (file) =>
+                  file.name.endsWith("/input.txt") || file.name === "skills/fixture/assets/raw.bin",
+              )
+              .map((file) => Buffer.from(file.base64, "base64")),
+          ),
+        );
+        assert.equal((await handle.submission({ requestId: label }))?.status, "done");
+      }
+      const before = bench.faux.state.callCount;
+      await handle.submit({
+        requestId: "root-resource-queued",
+        text: "root-resource-queued",
+        whenBusy: "followUp",
+        trace: "tr_root_crash",
+      });
+      assert.equal(bench.faux.state.callCount, before);
+      const raw = (await handle.replica?.({
+        method: "export",
+        params: {},
+        trace: "tr_root_crash",
+      })) as HistoryBundle;
+      assert.equal(
+        raw.entries.filter(
+          (entry) => entry.kind === "bots.user.resources" && entry.model?.[0]?.role === "user",
+        ).length,
+        mode === "root-resource-queued" ? 2 : 1,
+      );
+      const passive = await openReplica(join(bench.dir, "foreign-after-root-crash"));
+      try {
+        let after = 0;
+        let page = pageSchema.parse(
+          await handle.replica?.({ method: "pull", params: { after }, trace: "tr_root_crash" }),
+        );
+        await passive.command("bind", { sharedBotId: page.sharedBotId });
+        await passive.command("import", { bundle: one });
+        await passive.command("import", { bundle: two });
+        for (;;) {
+          await passive.command("apply", { page });
+          after = page.nextAfter;
+          if (!page.hasMore) break;
+          page = pageSchema.parse(
+            await handle.replica?.({ method: "pull", params: { after }, trace: "tr_root_crash" }),
+          );
+        }
+        assert.equal(passive.sync.store.run("root-resource-active"), undefined);
+        assert.equal(passive.sync.store.run("root-resource-queued"), undefined);
+        assert.equal(
+          passive.faux.state.callCount,
+          0,
+          "foreign root intent/admission facts never resume tools or queued work",
+        );
+      } finally {
+        await passive.close();
+      }
+    } finally {
+      await source.close();
+      await handle?.close("tr_root_crash", 5_000);
+      await bench.cleanup();
+    }
+  });
+}
 
 test("SIGKILL across local intent/admission/output commits restores original IDs and fills the durable outbox", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bots-outbox-crash-"));

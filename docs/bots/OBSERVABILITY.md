@@ -335,3 +335,21 @@ validation failures retain their identity and cause; raw filesystem I/O becomes
 storage_failed with its original cause. No package text, manifest or full local path is
 logged. This boundary covers resource preflight only; the existing SDK task-retry behavior
 is otherwise unchanged.
+
+Ordinary root resource selection uses existing runtime.submit start/outcome and core/protocol
+crossings with the original trace/Bot. Manifest/install refusal is not_admitted; pre-admission
+filesystem I/O is storage_failed with its cause. Exactly one error origin is recorded and
+outer layers propagate the same failure. Selector metadata, manifests, text and full local
+package paths are absent from log details. An accepted same-ID lookup emits no new failure.
+
+Ordinary admission's checked request-ID lookup validates the durable `whenBusy` binding
+before the core stored-record shortcut. A conflict uses `runtime.submit.fail` once with
+the incoming command trace/Bot/request and the original classified failure identity;
+outer layers propagate it. Pure status lookup does not perform admission validation.
+
+Raw SQLite failures while checking an admission retry binding use the existing submit
+classifier/session episode and runtime.submit.fail, keeping the command trace/Bot and
+original cause. The first occurrence owns the single error origin; a repeated episode
+propagates the same failure ID at warn. Existing ClassifiedFailure identity/cause remain
+intact. No raw SQLite message, table name, package text or local path is logged. This
+boundary covers only the retry-binding read, not pure status or later SDK lookups.

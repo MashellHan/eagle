@@ -60,6 +60,8 @@ export const intentSchema = z.strictObject({
   head: digest.nullable(),
   text: z.string(),
   whenBusy: z.enum(["followUp", "steer", "reject"]).optional(),
+  resourceHead: digest.optional(),
+  resourceVersion: z.union([z.literal(""), digest]).optional(),
 });
 export const bodySchema = z.discriminatedUnion("kind", [
   entryFactSchema,

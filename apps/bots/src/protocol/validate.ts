@@ -42,6 +42,8 @@ export function validateCommand(command: ClientCommand): ClientCommand {
       check(command.requestId, REQUEST_ID, "requestId");
       check(command.trace, TRACE_ID, "trace");
       // Characters, not bytes: the contract caps user text in code points.
+      if (command.resourceHead !== undefined)
+        check(command.resourceHead, /^[a-f0-9]{64}$/, "resourceHead");
       if (Array.from(command.text).length > MAX_SEND_TEXT) {
         throw new FrameError("invalid_command", `text exceeds ${MAX_SEND_TEXT} characters`);
       }

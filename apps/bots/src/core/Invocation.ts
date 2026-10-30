@@ -16,6 +16,7 @@ export type Invocation = {
   /** Caller-owned and durable: pi dedupes by it inside one conversation, across restarts. */
   readonly requestId: string;
   readonly text: string;
+  readonly resourceHead?: string;
   readonly origin: InvocationOrigin;
   readonly whenBusy?: BusyMode;
   readonly trace: string;

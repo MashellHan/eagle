@@ -230,7 +230,7 @@ export class HistoryReplica {
     this.#cwd = cwd;
     this.#registry = registry;
     this.#storage = storage;
-    this.#resources = new HistoryResources(`${stateDir}/resources`, registry);
+    this.#resources = new HistoryResources(`${stateDir}/resources`, registry, harness);
   }
 
   async prepareResources(): Promise<void> {
@@ -333,6 +333,37 @@ export class HistoryReplica {
 
   async exportBranch(parent: HistoryBundle, params: unknown): Promise<HistoryBundle> {
     return this.#export(params, validateHistory(parent));
+  }
+
+  /** Explicit edits derive from a fixed receipt, never the active root's tail. */
+  async exportResources(
+    value: unknown,
+    resources: HistoryBundle["resources"],
+  ): Promise<HistoryBundle> {
+    const base = validateBundle(value);
+    const mapped = await this.checkedEntries(base, await this.receipt(base.head));
+    const origins: HistoryBundle["origins"] = {};
+    mapped.entries.forEach((entry, index) => {
+      const original = base.entries[index] ?? reject("missing resource base entry");
+      origins[String(entry.id)] =
+        base.origins[String(original.id)] ?? reject("missing resource base origin");
+    });
+    const { head: _baseHead, ...original } = base;
+    const payload = parsed(payloadSchema, {
+      ...original,
+      source: {
+        replicaId: await this.replicaId(),
+        botId: this.#botId,
+        conversationId: mapped.conversationId,
+      },
+      parents: [base.head],
+      entries: mapped.entries,
+      origins,
+      resources,
+    });
+    const bundle = validateBundle({ ...payload, head: hash(payload) });
+    await this.pinLocal(bundle);
+    return this.carrier(bundle);
   }
 
   async runFrom(value: unknown, params: unknown): Promise<unknown> {
@@ -530,10 +561,12 @@ export class HistoryReplica {
   async #export(params: unknown, suppliedParent?: HistoryBundle): Promise<HistoryBundle> {
     const input = parsed(exportSchema, params);
     if (input.head !== undefined) {
-      if (input.branch !== undefined || input.resources !== undefined)
-        reject("select one immutable head");
+      if (input.branch !== undefined) reject("select one immutable head");
       const receipt = await this.#harness.snapshot(imports, input.head, ctx);
-      return receipt?.bundle ? carrierReceipt(receipt.bundle) : reject("unknown history head");
+      const base = receipt?.bundle
+        ? carrierReceipt(receipt.bundle)
+        : reject("unknown history head");
+      return input.resources === undefined ? base : this.exportResources(base, input.resources);
     }
     const run =
       input.branch === undefined

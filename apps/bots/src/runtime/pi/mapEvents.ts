@@ -28,6 +28,7 @@ import {
   provisionalMessageId,
   stopReasonOf,
 } from "./convert.ts";
+import { RESOURCE_USER_KIND } from "./HistoryResources.ts";
 import { MAX_MESSAGE_BYTES, OVERSIZED_NOTICE, WINDOW_MESSAGES } from "./limits.ts";
 
 export type EventMapperOptions = {
@@ -372,6 +373,7 @@ export class EventMapper {
   #messageEnd(entry: EntryRecord, trace: string): RuntimeEvent[] {
     if (
       entry.kind !== "pi.user" &&
+      !(entry.kind === RESOURCE_USER_KIND && entry.model?.[0]?.role === "user") &&
       entry.kind !== "pi.assistant" &&
       entry.kind !== "pi.tool-result"
     ) {
@@ -467,6 +469,7 @@ export class EventMapper {
     if (model === undefined) return undefined;
     if (
       entry.kind !== "pi.user" &&
+      !(entry.kind === RESOURCE_USER_KIND && model.role === "user") &&
       entry.kind !== "pi.assistant" &&
       entry.kind !== "pi.tool-result"
     ) {

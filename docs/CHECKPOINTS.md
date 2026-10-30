@@ -1,5 +1,77 @@
 # 用户视角检查点
 
+## 2026-10-30 21:42 +0800 — 最后lookup读错归属真实红→绿，新802门禁通过待最终验收
+
+- HEAD/已推696f649保持；旧19d9929/b857247a、271eb439/2f34ac68及全部红/796门禁原样保留。
+  whenBusy与SDK-done重开两项已关闭；fresh不写，本片仍未commit/push。Review只读最后3个source/test delta。
+- lookup-read-attribution-red真实38项32过6败（4子断言+2父）：自有真实SQLite保留原行并rename local_runs，
+  actual checkRootRetry→ReplicaStore.run读错，direct裸错、两暖WS+Invocation铸3个core错误/不同identity。
+  修复仅PiDurableRuntime.submission retry-check catch14行，保留Classified原对象，raw复用submit现有
+  sessionEpisode/operationFailed/#logFailure，以unknown保留原cause；纯status/后续SDK lookup不变。
+- 38/38局部绿；最终affected134/134、types/check-only lint203均exit0；中间replies隐式数组类型红保留，
+  仅用已有Frame[]收紧。无新SDK/provider/task/entry，原intent行不变、恢复表后matching可用；唯一origin、
+  重复warn、同failure/trace/Bot及原SQLite cause有真实断言，日志无原表错误文本/本地路径。
+- source receipt619fa989已交Lead/Review；新正常Bots普通/coverage各802/802同套exit0，
+  coverage95.93/89.34/91.65，exact root-resources eval1例exit0。全部5个新最终gate匹配21/21冻结source。
+  正在绑定最终docs/index/tree/收据；仍待正式Review/Lead接受。
+- prior crash13只按未改startup/submit/recovery/owned窗口复用，不虚称新跑；旧796/其余eval/perf保持原scope。
+  root/browser/Swift仍留正常push hook。网站实际Herdr采集、live auth/D1/UI、CF/cloud/网络及物理Mac未验。
+  fresh空Bot完整资源首入口为紧接必须完成的P2边界，未伪造历史或声称完整P2。
+
+## 2026-10-30 21:32 +0800 — 普通root Review两项真实红→绿，新源完整gate通过待增量Review
+
+- fixed-head696f649已推不变；旧tree19d9929/root-candidate b857247a/source-v2及全部786门禁/失败原样保留。
+  本片尚未commit/push，fresh不编码。新增窄修仅whenBusy绑定与done SDK/本地丢回执启动预检。
+- whenbusy-startup-red-verified真实31项18过13败（含父项）：active屏障下reject改followUp/steer，
+  actualSDK admitted/丢UPDATE窗口改mode，WS/Invocation省selector快捷返回，均越过有效前置复现；
+  done/无忙碌后损坏bytes或真实EACCES，close/reopen错误重装。此前busy predicate及tuple类型fixture错单列保留。
+- 最小修复共享durable whenBusy检查（旧省略仅followUp），core admission lookup携可选retry模式/trace，
+  冲突runtime.submit.fail唯一origin；匹配known SDK结果仍不install/submit/resume。startup先公开Tx核SDK，
+  真pending/active/Inbox完整预检仍在任何submit/global resume前。无新SDK/队列/health框架。
+- 最终source receipt63c7205e已交Lead供独立Review：21源路径中6个delta（4生产+2test）。
+  affected-final180/180、types/check-only lint203、Bots普通/coverage各796/796同套均exit0，
+  coverage95.93/89.30/91.65；crash13/13及四精确eval各1例exit0。仅收最终docs/tree/candidate。
+- 不重复未改perf/platform；root/browser/Swift仍留正常push hook。网站实际Herdr采集、live auth/D1/UI、
+  CF/cloud/网络及物理Mac未验。fresh空Bot首次包入口仍是紧接必须完成的P2边界，不伪造历史或称完整P2。
+
+## 2026-10-30 21:16 +0800 — 普通root资源选择本地gate绿，冻结待独立Review
+
+- 696f649 fixed-head首片已推不变；本片仍未commit/push。ready前置后的普通WS缺资源、busyv1编辑组合拒绝、
+  queued SIGKILL重开/tool后资源扩展丢失，以及真实warm tool-group刷新丢失均保留原红；最小修仅原root/Inbox
+  持久selector/version、公开placed输入读取和runtime-owned资源扩展保留，未改队列/compaction/failure/restart策略。
+- 双daemon busy v1→真实本地文件编辑→固定base派生v2→两端queued v2，原生read/bash按生产section路径执行，
+  每个初次/tool后请求按独立user标记核版本；原history/Agent/provenance、文件/附件bytes及core/Invocation冲突保留。
+  真实overflow compaction child及distinct handOver owner仍v1，随后queued v2才切换；retention保持SDK20k默认。
+- affected-fixed131/131、protocol-verified100/100、validation-compatibility-fixed10/10、types/check-only lint通过。
+  首轮正常check785/786仅旧fixture仍拒绝本轮已批准head+resources；必要适配保持head+branch拒绝，原失败不覆盖。
+  bots-check-verified普通/coverage各786/786同套exit0，coverage95.92%lines/89.22%branches/91.64%functions；
+  crash-final13/13（含root intent/queued owned SIGKILL、坏queued启动前拒绝/foreign零执行）exit0。
+  四个精确eval各1例exit0：replica-local-run / replica-incremental / replica-resources / root-resources。
+- source-v2 SHA9e2155fc已交Lead供只读Review；仅必要history-validation fixture在source-v1后补齐，生产SHA未变。
+  正在绑定最终docs/index/tree/原log与exit；不重复未改perf/platform。root/browser/Swift仍留正常push hook。
+- 网站Herdr采集、live auth/D1/UI、CF/cloud/网络及物理Mac未验。fresh空Bot首次选包仍是紧接必须完成的P2边界，
+  不造历史、不称完整P2；本地版本选择仅从ready head取resources，cwd/凭据/权限维持本机。
+
+## 2026-10-30 21:07 +0800 — 普通root首入口/busy编辑绿，queued crash发现资源扩展重配边界
+
+- 696f649已推保持；本片entry-red真实ready/import后普通WS缺资源，接线后1/1绿。
+  busy-capture-red在真实active/queued v1屏障后固定head+resources被原组合限制拒绝；窄实现后9/9，
+  含P0未索引独立branch、本端source发布与foreign零执行共11/11局部绿。旧所有红/exit保留。
+- root-crash-first及两个诊断均5/6：intent窗口通过，queued窗口重开后的首请求含v1，tool后请求资源段消失，
+  provider断言转model_error，queued未完成；已定位open重配root extensions覆盖资源扩展的实际边界，继续最小修。
+  坏queued包在任何provider前拒绝的前置已过，不扩大timeout。types-second是此前字节局部绿，非最终gate。
+- 完整affected/Bots/crash/eval与独立Review尚待，不freeze/commit/push。网站采集/live auth/D1/UI、CF/cloud、
+  网络及物理Mac未验；fresh空Bot首次选包仍是紧接必须完成的P2边界，普通root当前in progress。
+
+## 2026-10-30 20:53 +0800 — P2 fixed-head已推，普通root资源选择开始
+
+- 696f649/treea94c5f3已正常commit/push exit0；root260、browser191/11既有条件排除、Swift287通过，
+  实际远端同HEAD且clean。旧.local/sync-p2-resources全部候选/红/52份gate证据保持。
+- 本片先补契约并以ready head→普通WS send建立真实行为红；沿原root/SDK Inbox，不开独立branch。
+  新证据在.local/sync-p2-root-resources；当前尚无本片绿，不称普通root资源已交付。
+- 未验网站Herdr采集、live auth/D1/UI、CF/cloud/网络/物理Mac；不操作App或其他树。
+  fresh空Bot首次选包仍planned；当前仅本地已有ready head选择/编辑捕获/排队版本固定。
+
 ## 2026-10-30 20:38 +0800 — P2 Review两项窄修实跑红→局部绿，最终gate待收
 
 - P1已推60fa5e2不变；P2旧766f101/734/10及全部原红保留，尚未commit/push。Review除同ID资源重试、

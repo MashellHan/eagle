@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import { pageSchema } from "../../../src/runtime/pi/syncProtocol.ts";
-import { text } from "../../support/pi.ts";
+import { text, waitFor } from "../../support/pi.ts";
 import { openReplica } from "../../support/replica.ts";
 
 const lines = createInterface({ input: process.stdin });
@@ -13,6 +13,7 @@ const input = JSON.parse(line) as {
   sharedBotId?: string;
   page?: unknown;
   bundle?: unknown;
+  secondBundle?: unknown;
 };
 const replica = await openReplica(input.dir);
 // Blocking only in this owned child makes the durable commit/reply boundary exact.
@@ -56,7 +57,64 @@ if (input.mode === "materialized") {
     return barrier();
   };
 }
-if (input.mode === "resources" || input.mode === "resource-pin") {
+if (input.mode === "root-resource-intent" || input.mode === "root-resource-queued") {
+  const first = (await replica.command("import", { bundle: input.bundle })) as { head: string };
+  const second = (await replica.command("import", { bundle: input.secondBundle })) as {
+    head: string;
+  };
+  const submit = (requestId: string, head: string) =>
+    replica.sync.root(
+      {
+        requestId,
+        text: requestId,
+        resourceHead: head,
+        whenBusy: "followUp",
+        trace: "tr_root_crash",
+      },
+      (entry) =>
+        replica.root.submit(
+          {
+            type: "input",
+            requestId,
+            content: requestId,
+            whenBusy: "followUp",
+            ...(entry === undefined ? {} : { entry }),
+          },
+          ctx,
+        ),
+    );
+  if (input.mode === "root-resource-intent") {
+    const intent = replica.sync.store.intent.bind(replica.sync.store);
+    replica.sync.store.intent = (value) => {
+      intent(value);
+      if (value.requestId === "root-resource-queued") barrier();
+    };
+  } else {
+    let entered = false;
+    const hold = Promise.withResolvers<void>();
+    replica.faux.setResponses([
+      async () => {
+        entered = true;
+        await hold.promise;
+        return text("must remain blocked");
+      },
+    ]);
+    await submit("root-resource-active", first.head);
+    await waitFor(() => entered, "the real child provider barrier");
+    replica.harness.subscribeCommits((publication) => {
+      if (
+        publication.changes.some(
+          (change) =>
+            change.type === "submission" &&
+            change.value.requestId === "root-resource-queued" &&
+            change.value.status === "queued",
+        )
+      )
+        barrier();
+    });
+  }
+  await submit("root-resource-queued", second.head);
+} else if (input.mode === "resources" || input.mode === "resource-pin") {
   const saved = (await replica.command("import", { bundle: input.bundle })) as { head: string };
   if (input.mode === "resource-pin")
     replica.harness.subscribeCommits((publication) => {

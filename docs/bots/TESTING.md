@@ -695,3 +695,125 @@ claiming a new resource performance measurement. `review-fixes-candidate.json` b
 new tree, path/delta SHA and original log/exit files. Independent delta Review/Lead
 acceptance and normal commit/pre-push remain pending; ordinary root-chat resource
 selection, cloud/network and physical-device acceptance remain outside this slice.
+
+## Ordinary root resource admission and queue acceptance
+
+First prove a ready resource head through real authenticated import/export, then ordinary
+WS send and Invocation on independent real daemon/SQLite roots. Provider scripts consume
+the production section's local paths and run native relative package tools; preserve local
+root history/cwd, raw tool results and original file bytes. A controlled provider barrier
+separates active v1, queued v1 and edited/captured v2; independent user/request inputs name
+the expected version for every initial/post-tool request. Assert FIFO and single user
+append/settlement/history, retry conflicts, preflight refusal, steer and queue mix rejection.
+An owned SIGKILL covers durable admission/queue recovery with stable IDs/versions and zero
+foreign execution. Startup preflight precedes any pending submit/resume. Preserve every
+actual red; run affected/types/check-only lint, normal Bots check, necessary crash and
+invocation eval. Prior fixed-head gates remain prior evidence; no new perf/platform claim.
+
+
+The ordinary-root fixtures additionally cover a real SDK overflow compaction child with
+unchanged retention/queue/failure settings and distinct generation handOver owners: the
+first placed v1 submission remains fixed through compaction/tool rounds, then queued v2
+runs. Warm tool-group changes and crash reopen retain the runtime resource extension.
+The dual-daemon busy test edits real source files, derives v2 from a fixed base while both
+v1 providers are blocked, and checks every initial/post-tool request by its user marker,
+local native read/bash outputs and raw tool results. Invocation and WS stored-ID conflicts
+reach the runtime; live/resync/history render only user text. Empty-version queue mixtures
+are exercised in both enqueue orders at final and postTools. Resource inputs hold only
+references; immutable resource facts are checked for unique count and exact byte total.
+
+The existing eval runner's replicaRun step can select `root:true` after passive import;
+root-resources uses ordinary WS send on the original Inbox, checks the actual provider's
+version/complete skill binding and exports the resulting root history. It does not claim
+native execution (the daemon/e2e/crash fixtures do). Run it with the three existing replica
+evals after this invocation change; unchanged Harness perf remains prior evidence.
+
+
+Ordinary-root candidate evidence is saved under .local/sync-p2-root-resources. The final
+production bytes pass affected-fixed 131/131, protocol-verified 100/100, crash-final 13/13
+and four exact selected eval cases (replica-local-run, replica-incremental,
+replica-resources, root-resources). The first normal check passed 785/786: its only old
+fixture still required head+resources to reject. The necessary contract adaptation now
+asserts deterministic parent/agent/empty-manifest export and keeps head+branch rejection;
+validation-compatibility-fixed passes 10/10. bots-check-verified then passes ordinary and
+coverage 786/786 each (one suite, not 1572 distinct tests), types and check-only lint,
+with coverage 95.92% lines, 89.22% branches and 91.64% functions. Original reds, the
+intermediate fixture/strict-JSON errors and all receipts remain; they are not relabeled
+as final green. No new perf, root/browser/Swift or physical-device claim is made here.
+The final candidate binds exact source/path/tree and actual log/exit hashes for Review;
+commit/push and the fresh empty-Bot package entrance remain pending.
+
+
+## Ordinary-root Review: mode binding and lost done receipt
+
+Preserve tree19d9929/root-candidate/source-v2 and their786-test evidence unchanged.
+The two narrow Review findings are demonstrated on those production bytes in
+.local/sync-p2-root-resources/whenbusy-startup-red-verified.log:31 items,18 passed and
+13 failed (12 leaf failures plus the parent). Real provider barriers first establish a
+busy refusal, then selected/legacy reject→followUp/steer retries incorrectly admit.
+Actual SDK-admitted and lost-local-UPDATE receipts also allow changed modes. Real WS
+and Invocation stored-record lookups return success when the selector is omitted.
+Separate done/no-busy/lost-UPDATE fixtures damage bytes or cause real EACCES, then fail
+reopen in startup's unnecessary pending installation. Earlier red logs remain mixed
+with a test predicate mistaking failure.reason for failure.kind; those predicate failures
+are fixture errors, not additional product reds. The intermediate tuple type error is
+also retained. No skip/focus, queue-policy or timeout change was used.
+
+The shared durable intent check fixes whenBusy for refused/admitted IDs; legacy omitted
+mode means followUp. Admission-only request-ID lookup carries retry{whenBusy,trace};
+pure status and SDK-only legacy records retain their behavior. Tests assert unchanged
+intent/outbox, no extra SDK entries/tasks/submissions/provider execution, matching retries
+without installation, and one runtime.submit.fail origin with the incoming trace and the
+same failure ID through WS/Invocation. Startup uses public Tx.submissionByRequest before
+installing ledger-pending root resources. Existing active/Inbox and genuinely unsubmitted
+resource preflight remains mandatory before any submit/global resume. Reopened done IDs
+recover the original answer/version/mode and fill admitted without reinstalling bytes.
+
+Final new-source gates: whenbusy-startup-affected-final180/180, types-final and check-only
+lint-final203 pass. whenbusy-startup-bots-check passes ordinary and coverage796/796 each
+(one suite), fixtures32, types and check-only Biome203; coverage95.93% lines/89.30% branches/
+91.65% functions. whenbusy-startup-crash13/13 retains owned SIGKILL and bad pending/queued
+preflight assertions. The four exact evals each pass one selected case: replica-local-run,
+replica-incremental, replica-resources and root-resources. All final21 source/test/eval/
+fixture hashes match these new gates. Only final evidence docs follow the runs; the new
+candidate binds their tree/path hashes separately. Prior perf/platform evidence keeps its
+original scope; no new root/browser/Swift, cloud, physical-Mac or fresh-empty-Bot claim.
+Independent delta Review/Lead acceptance and normal commit/pre-push/push remain pending.
+
+
+## Final lookup failure-attribution Review delta
+
+The accepted whenBusy/startup fixes remain frozen in historical tree271eb439 and
+whenbusy-startup-candidate2f34ac68. This remaining delta changes only the admission
+retry-check catch in PiDurableRuntime.submission. Existing ClassifiedFailure objects,
+failure identities and causes are rethrown intact; raw read errors reuse submit's
+sessionEpisode/operationFailed/#logFailure with unknown disposition and original cause.
+Plain status and the later SDK lookup are untouched.
+
+lookup-read-attribution-red demonstrates the actual SQLite boundary:38 items,32 pass,
+6 fail (four child assertions plus two parents). Each fixture first admits and completes
+a real SDK request, then renames only its owned replica.sqlite local_runs table while
+preserving all rows. Direct checked lookup exposes an unclassified error; two warm WS
+retries and Invocation mint three core origins/identities. The fix yields one runtime
+origin with each command's trace/Bot, a shared failure ID and warn-only repetitions.
+Direct/Invocation failures retain the original ERR_SQLITE_ERROR read cause and stack.
+Pure status remains readable, no SDK entries/tasks/submissions/provider work is added,
+and restoring the original table preserves every intent and makes matching retry usable.
+Business-conflict and matching resource retry tests remain unchanged. No runtime, SDK,
+admission or store.run mock is used. The first green is38/38; an intermediate Frame[]
+inference type failure is retained, fixed only by the existing Frame type.
+
+Final lookup-read-attribution-affected-final passes134/134; types-final and check-only
+lint-final203 pass. lookup-read-attribution-bots-check passes ordinary/coverage802/802
+(one suite), fixtures32, types and check-only Biome203, coverage95.93% lines/89.34%
+branches/91.65% functions. lookup-read-attribution-eval-root passes its exact root-resources
+case. All five final new gates match all21 frozen source/test/fixture/eval paths. Final
+evidence docs are bound separately by the new candidate tree/path hashes.
+
+The prior796 gate and three other replica evals remain prior271eb439 evidence. Prior
+whenbusy-startup-crash13/13 is reused only for unchanged startup/submit/recovery/owned
+SIGKILL windows; the new raw-error catch is exercised by these real SQLite tests. No
+new crash run or unchanged perf/platform run is claimed. Preserve both older candidates,
+all red/type-intermediate logs and source receipts. Independent final delta Review/Lead
+acceptance and normal commit/pre-push/push remain pending; fresh-empty first resources,
+cloud/transport/UI and physical-Mac acceptance remain outside this candidate.

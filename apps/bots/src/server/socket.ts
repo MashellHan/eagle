@@ -456,6 +456,7 @@ export const attachConnection = (
       const record = await service.send(connId, {
         requestId: command.requestId,
         text: command.text,
+        ...(command.resourceHead === undefined ? {} : { resourceHead: command.resourceHead }),
         whenBusy: command.whenBusy,
         trace,
       });

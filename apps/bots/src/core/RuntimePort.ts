@@ -60,6 +60,7 @@ export type RuntimeBotSpec = {
 export type SubmitInput = {
   readonly requestId: string;
   readonly text: string;
+  readonly resourceHead?: string;
   readonly whenBusy: BusyMode;
   readonly trace: string;
 };
@@ -98,7 +99,9 @@ export interface RuntimeHandle {
   /** Idempotent by requestId; returns the submission's current record. */
   submit(input: SubmitInput): Promise<Submission>;
   submission(
-    key: { submissionId: string } | { requestId: string },
+    key:
+      | { submissionId: string }
+      | { requestId: string; retry?: Pick<SubmitInput, "whenBusy" | "trace"> },
   ): Promise<Submission | undefined>;
   /** Older messages, oldest first. The trace names the command that asked for them. */
   history(input: {

@@ -33,6 +33,7 @@ export type ClientCommand =
       readonly type: "send";
       readonly requestId: string;
       readonly text: string;
+      readonly resourceHead?: string;
       readonly whenBusy: "followUp" | "steer" | "reject";
       readonly trace: string;
     }
@@ -302,6 +303,9 @@ export function decodeCommand(raw: Record<string, unknown>): ClientCommand {
         type,
         requestId: str(ctx, raw.requestId, "requestId"),
         text: anyStr(ctx, required(ctx, raw, "text"), "text"),
+        ...(raw.resourceHead === undefined
+          ? {}
+          : { resourceHead: str(ctx, raw.resourceHead, "resourceHead") }),
         whenBusy,
         trace: str(ctx, raw.trace, "trace"),
       };

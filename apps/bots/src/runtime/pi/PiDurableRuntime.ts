@@ -46,6 +46,7 @@ import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
 import { entryMessageId } from "./convert.ts";
 import { HistoryReplica } from "./HistoryReplica.ts";
+import { RESOURCE_EXTENSION } from "./HistoryResources.ts";
 import { convertSubmission, EventMapper } from "./mapEvents.ts";
 import { readReplicaBinding } from "./ReplicaStore.ts";
 import { ReplicaSync } from "./ReplicaSync.ts";
@@ -238,7 +239,6 @@ export class PiDurableRuntime implements RuntimePort {
             : { thinkingLevel: spec.thinkingLevel as ModelThinkingLevel }),
         },
       });
-      await root.configure({ extensions: installed }, BACKGROUND_CONTEXT);
       const history = new HistoryReplica(
         harness,
         root.id,
@@ -247,6 +247,18 @@ export class PiDurableRuntime implements RuntimePort {
         registry,
         storage,
         spec.dir,
+      );
+      await root.configure(
+        {
+          extensions: [
+            ...installed,
+            ...registry
+              .snapshot()
+              .installed()
+              .filter((extension) => extension.name === RESOURCE_EXTENSION),
+          ],
+        },
+        BACKGROUND_CONTEXT,
       );
       let replicaFailureEpisode = 0;
       const replica = new ReplicaSync(
@@ -504,13 +516,14 @@ class PiRuntimeHandle implements RuntimeHandle {
     });
     try {
       const root = await this.#harness.root(BACKGROUND_CONTEXT);
-      const admitted = await this.#replica.root(input, () =>
+      const admitted = await this.#replica.root(input, (entry) =>
         root.submit(
           {
             type: "input",
             content: input.text,
             requestId: input.requestId,
             whenBusy: input.whenBusy,
+            ...(entry === undefined ? {} : { entry }),
           },
           BACKGROUND_CONTEXT,
         ),
@@ -548,7 +561,16 @@ class PiRuntimeHandle implements RuntimeHandle {
       });
       return converted;
     } catch (cause) {
-      if (cause instanceof ClassifiedFailure) throw cause;
+      if (cause instanceof ClassifiedFailure) {
+        log.emit("error", "runtime", Events.submitFail, {
+          trace: input.trace,
+          botId: this.#spec.id,
+          reqId: input.requestId,
+          failure: cause.failure,
+          origin: true,
+        });
+        throw cause;
+      }
       const busy = cause instanceof Error && cause.name === "ConversationBusy";
       const minted = busy
         ? this.#classifier.refusedBusy()
@@ -575,8 +597,33 @@ class PiRuntimeHandle implements RuntimeHandle {
    * settled key from duplicate detection (TRIGGERS.md §3.2).
    */
   async submission(
-    key: { submissionId: string } | { requestId: string },
+    key: Parameters<RuntimeHandle["submission"]>[0],
   ): Promise<Submission | undefined> {
+    if ("requestId" in key && key.retry !== undefined) {
+      try {
+        this.#replica.checkRootRetry({ requestId: key.requestId, whenBusy: key.retry.whenBusy });
+      } catch (cause) {
+        if (cause instanceof ClassifiedFailure) {
+          this.#options.log.emit("error", "runtime", Events.submitFail, {
+            trace: key.retry.trace,
+            botId: this.#spec.id,
+            reqId: key.requestId,
+            failure: cause.failure,
+            origin: true,
+          });
+          throw cause;
+        }
+        const minted =
+          this.#classifier.sessionEpisode() ?? this.#classifier.operationFailed("submit", cause);
+        this.#logFailure(minted, key.retry.trace, Events.submitFail, "runtime");
+        throw new ClassifiedFailure(
+          minted.classification.failure,
+          "unknown",
+          minted.classification.message,
+          { cause },
+        );
+      }
+    }
     const id = "submissionId" in key ? key.submissionId : this.#submissionIds.get(key.requestId);
     if (id !== undefined) {
       const found = await this.#harness.submission(Number(id) as never, BACKGROUND_CONTEXT);
@@ -814,7 +861,13 @@ class PiRuntimeHandle implements RuntimeHandle {
 
   async refreshTools(trace: string): Promise<void> {
     try {
-      const extensions = selectToolExtensions(this.#registry, this.#toolGroups);
+      const extensions = [
+        ...selectToolExtensions(this.#registry, this.#toolGroups),
+        ...this.#registry
+          .snapshot()
+          .installed()
+          .filter((extension) => extension.name === RESOURCE_EXTENSION),
+      ];
       const root = await this.#harness.root(BACKGROUND_CONTEXT);
       await root.configure({ extensions }, BACKGROUND_CONTEXT);
       this.#options.log.emit("info", "runtime", Events.toolsRefreshOk, {

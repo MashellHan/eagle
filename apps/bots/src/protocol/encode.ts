@@ -289,6 +289,7 @@ export const encodeCommand = (command: ClientCommand): Wire => {
         type: "send",
         requestId: command.requestId,
         text: command.text,
+        ...(command.resourceHead === undefined ? {} : { resourceHead: command.resourceHead }),
         whenBusy: command.whenBusy,
         trace: command.trace,
       };

@@ -738,7 +738,7 @@ sides.
 | `agent.server.json` | live agent configuration |
 | `status.server.json`, `submission.server.json`, `submission.connection.server.json` | run state and the connection-scoped duplicate reply |
 | `bots.server.json`, `error.server.json`, `error-rejected.server.json`, `version-mismatch.server.json` | catalog, runtime failure, definite rejection, exempt handshake failure |
-| `send.client.json`, `abort.client.json`, `recover.client.json`, `resync.client.json` | commands |
+| `send.client.json`, `send.resources.client.json`, `abort.client.json`, `recover.client.json`, `resync.client.json` | commands |
 | `ping.client.json`, `pong.server.json` | liveness |
 | `entities.json` | `BotSummary`, `Message` (user, assistant with a tool call, tool), `InboxItem` samples |
 
@@ -924,3 +924,29 @@ validated on import/apply. Files are immutable version data, not executable auth
 script bytes can be invoked explicitly with native bash and an interpreter. Selected
 versions coexist at local paths exposed in the model's resource section. No global latest
 selection is introduced. Existing no-resource bundle encoding/head digests stay unchanged.
+
+## Ordinary root resource selection (P2 local slice)
+
+`send` adds optional `resourceHead`, a lowercase SHA256 digest of a locally ready history
+head. Invocation/SubmitInput carry the same selector. It selects only that head's complete
+resource manifest, retaining this root's history, agent/model, local cwd and credentials.
+No selector on a new ID means legacy unselected resources. A same-ID retry omitting the
+selector reuses its durable choice; an explicitly different selector is a binding conflict.
+Every persisted root intent binds `whenBusy`, including refused and already admitted IDs.
+Retries must keep that mode even when omitting `resourceHead`; only a legacy omitted
+mode normalizes to the existing `followUp` default. Core stored-record lookups validate
+this binding before returning a known SDK admission. A matching retry keeps the original
+choice and can retry a refused input once its original mode permits admission.
+The ordinary frame/text/queue limits and replica page limits do not change. Local edits
+are captured through existing export{resources} as a new immutable head; no global latest.
+This slice requires an existing ready head; first package selection on an empty Bot remains
+planned, without synthetic history. Resource metadata never becomes user display content.
+
+For local edits while the root is busy, replica export accepts `{head, resources}` with
+a complete fixed ready head and a complete ordered replacement resource manifest. It
+derives a new local head with that fixed head as parent, preserving immutable history,
+Agent and original provenance; it neither reads the current busy tail nor executes work.
+The same base and ordered files re-export deterministically. `head+branch`, unknown or
+incomplete bases are refused. Existing compact facts and complete legacy P0 receipts
+are supported; the explicit full carrier retains its 8MiB limit. New facts/manifests
+publish under the local source, preserving the original entry/task origins.
