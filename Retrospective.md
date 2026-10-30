@@ -875,3 +875,17 @@ account lacks upstream repository admin rights; no rerun started. The failure lo
 and rejected request remain in `.local/device-evidence/pr109-scope/`. The next
 verification follows the normal checkpoint/documentation push to the owned fork;
 no timeout, assertion, hook or account permission was changed.
+
+The documentation-only head `82b4cfd` failed the same native fixture execution
+deadline in run `41016561875`; Linux passed again. The second log is retained in
+`.local/device-evidence/pr109-scope/github-macos-82b4cfd.log`. Neither failure
+identified an internal stage: the fixture wrote its report only after closing
+all windows, and the parent threw on the process error before printing captured
+output. The fixture now writes elapsed time, completed-check count and stage
+entry/return markers directly to stderr, including layout, hover, sheet and
+window cleanup boundaries. The parent prints status, signal, error and captured
+streams before preserving the original assertion. This is diagnostic evidence
+collection, not a demonstrated timeout fix; the 60-second CI limit, all 42 checks,
+execution mode and gates remain unchanged. The local verification compiles the
+fixture and checks formatting without running the interactive probe while the
+user tests the installed App. The next normal CI run supplies runtime evidence.

@@ -82,6 +82,15 @@ test("the native Chat composer focuses on entry and whitespace while preserving 
       killSignal: "SIGKILL",
       maxBuffer: 1024 * 1024,
     });
+    context.diagnostic(
+      JSON.stringify({
+        status: run.status,
+        signal: run.signal,
+        error: run.error?.message ?? null,
+        stdout: run.stdout,
+        stderr: run.stderr,
+      }),
+    );
     assert.ifError(run.error);
     const report = JSON.parse(run.stdout.trim() || "null") as {
       complete: boolean;

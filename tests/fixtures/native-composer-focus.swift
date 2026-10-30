@@ -1,6 +1,19 @@
 import AppKit
 import SwiftUI
 
+@MainActor
+private enum ComposerFocusTrace {
+  static var completedChecks = 0
+  private static let startedAt = ProcessInfo.processInfo.systemUptime
+
+  static func mark(_ event: String) {
+    let start = startedAt
+    let elapsed = String(format: "%.3f", ProcessInfo.processInfo.systemUptime - start)
+    let line = "[native-focus +\(elapsed)s checks=\(completedChecks)] \(event)\n"
+    FileHandle.standardError.write(Data(line.utf8))
+  }
+}
+
 @main
 private enum ComposerFocusMain {
   @MainActor static func main() {
@@ -17,11 +30,14 @@ private enum ComposerFocusMain {
       exit(CGWarpMouseCursorPosition(CGPoint(x: x, y: y)) == .success ? 0 : 1)
     }
     guard arguments.count == 1 else { exit(2) }
+    ComposerFocusTrace.mark("startup.enter")
     let app = NSApplication.shared
     app.setActivationPolicy(.regular)
     let delegate = ComposerFocusDelegate()
     app.delegate = delegate
+    ComposerFocusTrace.mark("application.run.enter")
     app.run()
+    ComposerFocusTrace.mark("application.run.return")
     withExtendedLifetime(delegate) {}
   }
 }
@@ -33,18 +49,28 @@ private final class ComposerFocusDelegate: NSObject, NSApplicationDelegate {
   private var windows: [ComposerFocusWindow] = []
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    ComposerFocusTrace.mark("application.didFinishLaunching")
     NSApp.activate(ignoringOtherApps: true)
+    ComposerFocusTrace.mark("application.activate.return")
     Task { @MainActor in
+      ComposerFocusTrace.mark("conversation.enter")
       await conversation()
+      ComposerFocusTrace.mark("conversation.return")
+      ComposerFocusTrace.mark("editing.enter")
       await editing()
+      ComposerFocusTrace.mark("editing.return")
+      ComposerFocusTrace.mark("transcript.enter")
       await transcript()
+      ComposerFocusTrace.mark("transcript.return")
       for fixture in windows { fixture.close() }
       let passed = checks.allSatisfy { $0["passed"] as? Bool == true }
       let result: [String: Any] = [
         "complete": true, "checks": checks, "editingStates": editingStates,
       ]
       let data = try! JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
+      ComposerFocusTrace.mark("report.write.enter")
       FileHandle.standardOutput.write(data + Data("\n".utf8))
+      ComposerFocusTrace.mark("report.write.return passed=\(passed)")
       exit(passed ? 0 : 1)
     }
   }
@@ -53,6 +79,8 @@ private final class ComposerFocusDelegate: NSObject, NSApplicationDelegate {
 
   private func check(_ name: String, _ passed: Bool) {
     checks.append(["name": name, "passed": passed])
+    ComposerFocusTrace.completedChecks = checks.count
+    ComposerFocusTrace.mark("check passed=\(passed) \(name)")
   }
 
   private func state(_ name: String, _ fixture: ComposerFocusWindow) {
@@ -298,8 +326,10 @@ private final class ComposerFocusDelegate: NSObject, NSApplicationDelegate {
     ]
     await fixture.settle()
     fixture.focusOther()
+    ComposerFocusTrace.mark("sheet.open.enter")
     fixture.click(NSPoint(x: messagePoint.x, y: messagePoint.y - 10))
     await fixture.settle()
+    ComposerFocusTrace.mark("sheet.open.return count=\(fixture.window.sheets.count)")
     check(
       "transcript tool button opens its details without focusing the composer",
       fixture.window.sheets.count == 1 && !fixture.hasComposerFocus && fixture.model.draft == draft
@@ -388,6 +418,7 @@ private final class ComposerFocusWindow {
   let host: NSHostingView<ComposerFocusView>
 
   init(conversation: Bool) {
+    ComposerFocusTrace.mark("window.init.enter conversation=\(conversation)")
     let height: CGFloat = conversation ? 360 : Theme.Metric.composerHeight
     window = NSWindow(
       contentRect: NSRect(x: 100, y: 100, width: 360, height: height + 40),
@@ -404,7 +435,8 @@ private final class ComposerFocusWindow {
     host = NSHostingView(rootView: ComposerFocusView(model: model, conversation: conversation))
     host.frame = NSRect(x: 0, y: 0, width: 360, height: height)
     container.addSubview(host)
-    host.layoutSubtreeIfNeeded()
+    layout("window.init")
+    ComposerFocusTrace.mark("window.init.return window=\(window.windowNumber)")
   }
 
   var hasComposerFocus: Bool {
@@ -426,9 +458,17 @@ private final class ComposerFocusWindow {
     return "\(type(of: hit)) \(NSStringFromRect(host.convert(hit.bounds, from: hit)))"
   }
 
+  private func layout(_ context: String) {
+    ComposerFocusTrace.mark("\(context).layout.enter")
+    host.layoutSubtreeIfNeeded()
+    ComposerFocusTrace.mark("\(context).layout.return")
+  }
+
   func settle(until condition: () -> Bool = { false }) async {
-    for _ in 0..<20 {
-      host.layoutSubtreeIfNeeded()
+    ComposerFocusTrace.mark("settle.enter")
+    defer { ComposerFocusTrace.mark("settle.return") }
+    for step in 0..<20 {
+      layout("settle[\(step)]")
       if condition() { return }
       try? await Task.sleep(for: .milliseconds(10))
     }
@@ -436,16 +476,22 @@ private final class ComposerFocusWindow {
 
   /// Let SwiftUI and AppKit drain pending layout/scroll work without posting wheel events.
   func drainRunLoop(for duration: TimeInterval = 0.35) async {
+    ComposerFocusTrace.mark("drainRunLoop.enter")
+    defer { ComposerFocusTrace.mark("drainRunLoop.return") }
     let steps = max(1, Int(duration / 0.01))
-    for _ in 0..<steps {
-      host.layoutSubtreeIfNeeded()
+    for step in 0..<steps {
+      layout("drainRunLoop[\(step)]")
       try? await Task.sleep(for: .milliseconds(10))
     }
   }
 
   func dismissSheets() async {
+    ComposerFocusTrace.mark("sheets.dismiss.enter count=\(window.sheets.count)")
+    defer { ComposerFocusTrace.mark("sheets.dismiss.return count=\(window.sheets.count)") }
     for sheet in window.sheets {
+      ComposerFocusTrace.mark("sheet.end.enter")
       window.endSheet(sheet, returnCode: .OK)
+      ComposerFocusTrace.mark("sheet.end.return")
     }
     await settle()
     guard !window.sheets.isEmpty else { return }
@@ -480,6 +526,8 @@ private final class ComposerFocusWindow {
   }
 
   func move(_ point: NSPoint) {
+    ComposerFocusTrace.mark("move.enter")
+    defer { ComposerFocusTrace.mark("move.return") }
     let screen = window.convertPoint(toScreen: host.convert(point, to: nil))
     CGWarpMouseCursorPosition(CGPoint(x: screen.x, y: NSScreen.screens[0].frame.maxY - screen.y))
     let location = host.convert(point, to: nil)
@@ -492,7 +540,9 @@ private final class ComposerFocusWindow {
       where area.options.contains(.mouseEnteredAndExited)
         && (area.options.contains(.activeAlways) || area.options.contains(.activeInKeyWindow))
       {
+        ComposerFocusTrace.mark("move.mouseEntered.enter")
         (area.owner as? NSResponder)?.mouseEntered(with: entered)
+        ComposerFocusTrace.mark("move.mouseEntered.return")
       }
     }
     let event = NSEvent.mouseEvent(
@@ -500,12 +550,16 @@ private final class ComposerFocusWindow {
       timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
       context: nil, eventNumber: 3, clickCount: 0, pressure: 0)!
     if let hit = host.hitTest(location) {
+      ComposerFocusTrace.mark("move.mouseMoved.enter")
       hit.mouseMoved(with: event)
+      ComposerFocusTrace.mark("move.mouseMoved.return")
     }
     NSApp.postEvent(event, atStart: false)
   }
 
   func hover(_ point: NSPoint) async {
+    ComposerFocusTrace.mark("hover.enter")
+    defer { ComposerFocusTrace.mark("hover.return") }
     let start = NSPoint(x: host.bounds.midX, y: host.bounds.midY)
     for step in 0...12 {
       let t = CGFloat(step) / 12
@@ -598,9 +652,15 @@ private final class ComposerFocusWindow {
   }
 
   func close() {
+    ComposerFocusTrace.mark("close.responder.enter window=\(window.windowNumber)")
     window.makeFirstResponder(nil)
+    ComposerFocusTrace.mark("close.responder.return")
+    ComposerFocusTrace.mark("close.content.enter")
     window.contentView = nil
+    ComposerFocusTrace.mark("close.content.return")
+    ComposerFocusTrace.mark("close.window.enter")
     window.close()
+    ComposerFocusTrace.mark("close.window.return")
   }
 }
 
