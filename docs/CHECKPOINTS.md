@@ -1,5 +1,73 @@
 # 用户视角检查点
 
+## 2026-10-30 19:45 +0800 — 无关identity删除P2红→绿，新候选门禁通过
+
+- HEAD仍fdb8973，旧019abfdc staged候选/全部720日志及tombstones-candidate保持原样留证；
+  本片没有commit/push。Review新增remove在B完成后遍历所有deleted owner，A的quarantine会
+  让B真实DELETE失败并漏catalog broadcast；此前静态结论现已用HTTP证实。
+- unrelated-delete-red 8项6过2败：A实际WS订阅→根tombstone持久化→lease quarantine的前置均成立；
+  B实际trash/原文件、A原目录/mark/SDK entries/source事实无变均先过，随后409!=204失败。
+  不同identity一例为真实SDK/SQLite+write工具；legacy一例为现有fake runtime+无replica库目录。
+- 最小生产修复只有remove 4增1减：#removeEntry后capture实际sharedBotId，无binding直接结束，
+  后续只清理同身份alias。unrelated-delete-green-first8/8；最终断言仍保留同身份B alias的trash、
+  catalog广播、原bytes/history、零新增provider执行及A唯一origin。
+- 新unrelated-affected173/173、types/lint均exit0；unrelated-check普通与coverage各722/722（同套），
+  fixtures/types/check-only lint绿，coverage95.71/89.18/91.39；unrelated-crash9/9 exit0。
+  eval/perf实现与被测SDK路径未改，未额外独立重复，旧019ab两eval/perf仅保留其原scope证据。
+- .local/sync-p1-tombstones/unrelated-source与新candidate将绑定相对019ab的实际delta与新tree、
+  完整path/log/exit SHA；source/index随后继续冻结，等待Lead/Review关闭与正常提交/hooks。
+- 未重跑root/browser/Swift/macOS，不操作daily App、其他树、云/设备/网络/物理Mac；网站Herdr
+  采集/auth/D1/UI本片仍未验。不提前实现P2资源包，不宣称完整P1/多机交付。
+
+
+## 2026-10-30 19:36 +0800 — tombstone最终本地gate绿，冻结交Review
+
+- 基线main@fdb8973保持；本片未commit/push。startup-recover-red的3项实际失败已最小关闭，
+  failed cleanup只隔离该Bot并保留mapping，根catalog读/写仍fail closed；socket recover在串行
+  回调内取lease/finally释放，已删身份零新增recover调用且日志唯一origin/同failure warn传播。
+- 扩大affected首次171项170过1败，旧invocation-stack等待handle缺失把尚在warm-up也当cold。
+  改为实际close计数+handle缺失屏障，无新增sleep/限额变动，全部原冷启动/lease/唯一close断言保留。
+  修后affected-verified171/171及lint-verified exit0；所有旧红/types/lint原输出保留。
+- bots-check-final普通与coverage各720/720（同套不累加），fixtures/types/check-only lint均绿，
+  exit0；coverage行95.71%、分支89.15%、函数91.39%，门槛未变。crash-final9/9包含真实
+  标记保存后move前SIGKILL、重启零SDK open/数据原bytes；两精确--case eval各1/1；perf1/1，
+  五样本median 3/1/5/10ms，均exit0。不把本地API/SDK测量当真实网络/物理机性能。
+- .local/sync-p1-tombstones保留完整red/green/gate与source路径哈希；最终candidate绑定实际stage
+  tree与全部path/log SHA，正冻结交Lead/Review，正常pre-commit/pre-push尚未执行，不提前提交。
+- 未重跑root/browser/Swift/macOS，不操作daily App；网站Herdr采集、网站auth/D1/UI、云/设备/
+  网络/Tailscale/物理双Mac仍未验。P2资源/P3授权/P4传输及P1其他planned条件没有借本片宣称完成。
+
+
+## 2026-10-30 19:32 +0800 — tombstone实际边界红已窄修，尚待最终gate/Review
+
+- HEAD仍fdb8973，恢复片已正常push；本tombstone切片未提交/推送，其他树与daily App不动。
+- entry-green-second 51/51是既有affected范围（含新子断言/父项），不是51项新功能。
+  A/B删除前及trash中实际工具文件bytes、原entry/tool-result与source stream全等已补齐。
+- binding-ownership-red实际证明坏binding令整start抛出和post-open owner未close；最小修复后
+  binding-and-bytes-first 6/6绿。boundaries-first保留move失败重复error，bind-origin-red保留
+  未记录的拒绝；已改同failure warn传播并保持唯一内层error。SIGKILL标记落盘/move前、
+  真正quarantine close retry、只读坏绑定/owner校验均有局部绿。
+- 本轮首次affected81/81、types/check-only lint已exit0；之后Lead新增两项可达边界，
+  startup-recover-red 17项14过3败，分别为持续pending move、已删alias启动阻断及实际WS recover
+  调用1次。最小修复按Bot隔离cleanup且保留mapping，recover在串行回调内取lease/finally释放；
+  root catalog读/写仍fail closed。startup-recover-green-first 19/19 exit0。
+- 上述81与19均为各自局部byte证据，不能套为新最终gate。下一步受影响service/lifecycle与
+  types/lint、正常Bots check/crash/eval/perf，冻结新候选交Lead/Review；未commit/push。
+- 网站Herdr采集、网站auth/D1/UI、原生/Swift、云/设备/网络/Tailscale/物理双Mac本片未验；
+  没有部署/安装/锁变更，不宣称完整P1/P2或多机同步交付。
+
+
+## 2026-10-30 19:17 +0800 — P1 tombstone 首份真实双daemon红，正在接线
+
+- fdb8973恢复片已正常commit/push，远端已核对；本片从clean fdb开始，尚未提交。
+- entry-red在两个独立真实daemon/SQLite完成工具历史与B未上传branch后，A真实DELETE成功，
+  根catalog缺tombstone、根pull/apply各404；三个行为子断言及父项失败，exit1，非缺文件/前置红。
+- 短契约已落PRODUCT/ARCHITECTURE/PROTOCOL/RUNTIME/TESTING，PLAN顶部更正fdb已交付。
+  正接只读binding、根catalog永久事实/本地cleanup、Registry绑定/删除排序与根HTTP路由。
+  尚未取得实现绿或最终gate；下一坏跳为永久标记和双端封入口。
+- 未操作daily App、网站Herdr采集/网站auth/D1/UI、云/设备/网络/Tailscale/物理Mac；这些仍未验。
+  不修改旧证据/锁/依赖，不称完整P1/P2或真实网络同步已交付。
+
 ## 2026-10-30 19:03 +0800 — recovery 最后close队列P2已过新门禁，待窄审
 
 - P0 c073ea19/P1首片c8d8fd4已正常push的结论不变；当前HEAD仍c8d8fd4，本恢复片未commit/push。

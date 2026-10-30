@@ -563,3 +563,60 @@ the two exact `--case replica-local-run` / `--case replica-incremental` evals ea
 one case, and perf passed 1/1 with five-sample medians 3/1/4/11 ms. All eight final
 affected/type/lint/check/crash/eval/perf commands exited zero. The new candidate receipt
 binds the delta to eb874d; narrow Review and normal commit/push hooks remain pending.
+
+
+## P1 tombstone slice contract
+
+Two real independent daemon/runtime SQLite roots exercise delete, passive root metadata
+transfer, old-page/import/bind/run refusal and restart before SDK recovery. Actual original
+trash data and an unuploaded peer branch stay intact, with no deletion/import model or
+tool execution. Root pagination/forwarding/duplicates, strict auth/Origin/schema/caps,
+group writes and legacy Bots without replica.sqlite are covered. Existing fault-injection
+and owned SIGKILL children cover saved-mark-before-move, failed move, failed mark and
+close timeout. Evidence belongs to .local/sync-p1-tombstones; no cloud/App assertion follows.
+The original entry-red has missing root marks and two HTTP 404s; later tests assert the
+actual tool files, original SDK entry/tool-result rows and source stream bytes both before
+delete and in trash. binding-ownership-red proves whole-daemon startup failure and a
+leaked post-open SDK owner before the per-Bot isolation/close fix. boundaries-first retains
+the duplicate cleanup origin failure, and bind-origin-red retains an unlogged refusal.
+startup-recover-red contains three actual failures: persistent pending cleanup, a newly
+discovered deleted alias and a subscribed socket invoking recover after lease quarantine.
+The narrow green covers those cases plus root catalog read/write still failing closed;
+its 19/19 result is not the final complete Bots gate. A real owned child is SIGKILLed
+after marking and before moving; restart opens zero SDK owners and preserves the trash
+bytes. Quarantine tests execute the close retry itself and verify the fence remains.
+The first expanded affected run retains one invocation-stack fixture failure: handle
+absence also described a warm-up still awaiting binding discovery. Its cold-admission
+barrier now waits for an actual counted idle close and handle absence together; the
+original lease/one-open/one-close assertions and timer bounds are unchanged.
+
+Final local gate evidence at 2026-10-30 19:36 +0800: affected-verified 171/171 and
+lint-verified exited zero. bots-check-final passed ordinary/coverage each 720/720
+(one suite), fixtures, strict types and check-only lint, exit0; coverage lines 95.71%,
+branches 89.15%, functions 91.39% over the unchanged 90/85/90 gates. crash-final passed
+9/9 including the new marked-before-move SIGKILL. eval-local-final and
+eval-incremental-final each ran exactly one existing local case, exit0; tombstone-specific
+acceptance is the real dual-daemon e2e/crash suite, not a new scripted-model eval case.
+perf-final passed 1/1 with five-sample medians 3/1/5/10 ms under the documented bounds.
+The candidate receipt binds these logs and all path hashes to the staged tree, not a
+commit; final Review/Lead acceptance and normal commit/pre-push remain pending. Website,
+browser, macOS/Swift, cloud, networking and physical Macs were not re-tested here.
+
+The 19:45 +0800 unrelated-delete Review follow-up preserves the frozen 019abfdc tree,
+tombstones-candidate receipt and all 720-test logs. unrelated-delete-red runs the real
+HTTP DELETE after A's subscribed socket reaches persistent tombstone/lease quarantine.
+Both different-shared-identity and legacy-unbound B already reached trash, with A's
+directory/mark/history unchanged, before their 409 versus 204 assertions failed (6/8 pass).
+The bound case uses real SDK SQLite and a real write tool; the legacy case uses the
+existing fake runtime and a real directory without replica.sqlite. The smallest fix
+reads B's actual binding after its primary cleanup and only cleans that identity's
+aliases. The first local green is 8/8; added assertions keep the same-identity B alias,
+catalog broadcast, original file/raw entry/source facts, zero extra provider execution
+and A's single originating failure intact.
+New unrelated-affected passed 173/173, unrelated-types and unrelated-lint passed,
+unrelated-check passed ordinary/coverage each 722/722 (one suite), fixtures/types/lint,
+and unrelated-crash passed 9/9, all exit0. Coverage is 95.71% lines / 89.18% branches /
+91.39% functions. Existing eval/perf implementation and SDK measurement paths did not
+change in this predicate fix; their prior evidence remains scoped to 019abfdc and was
+not independently repeated or labeled a new-candidate run. unrelated-delete-candidate
+binds the new tree/path/delta/log hashes; Review and normal commit/hooks remain pending.

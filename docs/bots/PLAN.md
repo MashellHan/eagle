@@ -18,8 +18,12 @@ discovery. Those additions are not implemented or enabled by this plan update.
 架构与 Orca 机制见 [SYNC-ARCHITECTURE.md](SYNC-ARCHITECTURE.md)，源码证据见
 [SYNC.md](SYNC.md)，设备行为见 [DEVICE-PAIRING.md](DEVICE-PAIRING.md)。
 P0 本地闭环已推 `c073ea19`；P1 首个本地增量切片已验证并正常推送 `c8d8fd4`；
-P1 恢复身份切片 in progress，尚未交付；
+P1 恢复身份切片已验收并正常推送 fdb8973；目录 tombstone 切片 in progress，尚未交付；
 P2–P6 均为 planned；下方设备阶段和历史验收记录保留其原有范围。
+本轮19:45 +0800：旧019ab/720候选与证据保留；Review新增无关identity quarantine污染DELETE的P2
+已取得真实HTTP红→绿，remove仅按主目标close后的实际binding清理同身份alias。新affected173/173、
+types/lint、Bots普通/coverage各722/722及crash9/9均exit0；不重复未改的eval/perf，其旧范围单列。
+正冻结新候选，待增量Review/Lead验收与正常提交/push，不称完整P1完成。
 
 ### 开发基线与 PR 边界
 

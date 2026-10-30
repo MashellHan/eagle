@@ -312,6 +312,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   const registry = new BotRegistry({
     directory,
     openRuntime: (spec) => runtime.open(spec),
+    readReplicaBinding: (spec) => runtime.readReplicaBinding(spec),
     model: defaultModel,
     ...(gateway === undefined
       ? {}

@@ -567,3 +567,32 @@ on Harness.commit/Tx.scanEntries so it observes conversation visibility and the 
 serial/failure guard. Metadata cursors remain request-local; HTTP after uses DocumentId.
 No database/queue/provider session is copied, no new epoch setter is introduced, and legacy
 carriers without source events are exported explicitly rather than reissued as local facts.
+
+
+## P1 directory tombstones
+
+Root catalog.json owns an append-only deduplicated tombstone set of {sharedBotId}.
+Local cleanup mappings stay beside it, never on the wire. All catalog/group mutations
+preserve both. After the ordinary lease drain/close succeeds, deletion reads the actual
+replica binding through RuntimePort.readReplicaBinding without opening an SDK runtime.
+It atomically saves the tombstone/cleanup mapping before moving the directory to trash.
+Mark failure cannot move data; a saved mark fences all aliases even when cleanup fails.
+Startup reconciles pending cleanup before opening/resuming any runtime. Existing rename
+atomicity is process-crash protection, not an explicit fsync/power-loss guarantee.
+Root tombstone pull/apply is independent of a deleted local Bot ID. Bind and deletion
+are ordered at the registry boundary; incoming deletion closes the entry door before
+waiting for existing leases/close, retaining the existing timeout/quarantine rules.
+An existing WebSocket holds its lease until it closes; apply can therefore time out
+honestly with a saved tombstone and an unmoved active database. A later successful
+quarantine close does not remove that tombstone. Socket recover acquires the same owner
+lease inside its serialized callback, before reopening or retrying any work, and releases
+it in finally. Cached subscriptions cannot revive a deleted Bot.
+Reconciliation isolates individual pending directory-move failures, keeps their cleanup
+mappings hidden from runtime startup and reports only successful deletes as finished.
+Newly discovered bound aliases follow that same path. Root catalog read/validation/write
+failures still stop startup; they are not classified as individual cleanup failures.
+After the requested local delete succeeds, alias cleanup is limited to that target's
+actual shared binding read after close. An unrelated tombstoned/quarantined owner must
+not change this delete's result or catalog broadcast. An unbound legacy target has no
+shared aliases to clean. Same-identity aliases still retain the ordinary close/failure
+and trash-preservation rules.

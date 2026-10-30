@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { MAX_REPLICA_BODY_BYTES } from "../../core/RuntimePort.ts";
@@ -38,6 +39,29 @@ const localRunSchema = z.object({
   rejected: z.boolean().optional(),
 });
 export type Binding = z.infer<typeof bindingSchema>;
+
+export const readReplicaBinding = async (
+  path: string,
+  localBotId: string,
+): Promise<Binding | undefined> => {
+  try {
+    await stat(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+  const db = new DatabaseSync(path, { readOnly: true });
+  try {
+    const saved = db.prepare("SELECT value FROM binding WHERE id=1").get();
+    if (saved === undefined) throw new Error("missing replica binding");
+    const binding = bindingSchema.parse(JSON.parse(String(saved.value)));
+    if (binding.localBotId !== localBotId)
+      throw new Error("replica binding belongs to another Bot");
+    return binding;
+  } finally {
+    db.close();
+  }
+};
 
 /** Local durable facts/outbox. No SDK call or asynchronous work occurs in a transaction. */
 export class ReplicaStore {

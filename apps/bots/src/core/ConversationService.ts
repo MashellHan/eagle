@@ -34,6 +34,7 @@ const Events = {
   subscribeStart: declareEvent("core.subscribe.start"),
   subscribeOk: declareEvent("core.subscribe.ok"),
   subscribeFail: declareEvent("core.subscribe.fail"),
+  resolveFail: declareEvent("core.bot.resolve.fail"),
   submitStart: declareEvent("core.submit.start"),
   submitOk: declareEvent("core.submit.ok"),
   submitFail: declareEvent("core.submit.fail"),
@@ -152,7 +153,11 @@ type Connection = {
   hub: HubSubscription | undefined;
 };
 
-type FailEvent = typeof Events.subscribeFail | typeof Events.submitFail | typeof Events.historyFail;
+type FailEvent =
+  | typeof Events.subscribeFail
+  | typeof Events.submitFail
+  | typeof Events.historyFail
+  | typeof Events.resolveFail;
 
 export class ConversationService implements InvocationPort {
   readonly #open: OpenBot;
@@ -550,35 +555,51 @@ export class ConversationService implements InvocationPort {
     // Concurrent recovers must not attach a second watch to one handle: one serial
     // section per bot re-checks the state it saw before it acts.
     await this.#serializeView(bot.snapshot.botId, async () => {
-      if (bot.degraded !== undefined && bot.handle === undefined) {
-        const rebuilt = await this.#reopen(bot, connection.botId, trace);
-        // The snapshot first, then the catalog: a client learns the recovery from the
-        // frame that carries its content (PROTOCOL I1/I3).
-        bot.hub.publishSnapshot(rebuilt, trace);
-        bot.hub.drain();
-        // A second failure during the recovery must leave the catalog unavailable.
-        if (bot.degraded === undefined) {
-          this.#onRecovered?.(bot.snapshot.botId, rebuilt.running);
+      const botId = bot.snapshot.botId;
+      const leased = this.#lease?.acquire(botId);
+      if (leased === false)
+        throw this.#refuseWith(
+          Events.resolveFail,
+          trace,
+          botId,
+          connectionId,
+          "unknown_bot",
+          "not_admitted",
+          "the bot cannot recover right now",
+        );
+      try {
+        if (bot.degraded !== undefined && bot.handle === undefined) {
+          const rebuilt = await this.#reopen(bot, connection.botId, trace);
+          // The snapshot first, then the catalog: a client learns the recovery from the
+          // frame that carries its content (PROTOCOL I1/I3).
+          bot.hub.publishSnapshot(rebuilt, trace);
+          bot.hub.drain();
+          // A second failure during the recovery must leave the catalog unavailable.
+          if (bot.degraded === undefined) {
+            this.#onRecovered?.(bot.snapshot.botId, rebuilt.running);
+          }
+          return;
         }
-        return;
-      }
-      // A degraded-but-owned bot still has its handle: recover must ask that owner.
-      const handle = bot.handle ?? this.#handle(connectionId);
-      await handle.recover(trace);
-      if (bot.degraded !== undefined) {
-        // The harness survived; its watch was re-attached by the runtime. Re-render from
-        // the same owner rather than opening a second Harness over one sqlite file.
-        bot.detach?.();
-        const attached = await this.#attach(handle, bot.hub, trace, bot);
-        attached.release();
-        if (bot.degraded === undefined) {
-          this.#onRecovered?.(bot.snapshot.botId, bot.snapshot.running);
+        // A degraded-but-owned bot still has its handle: recover must ask that owner.
+        const handle = bot.handle ?? this.#handle(connectionId);
+        await handle.recover(trace);
+        if (bot.degraded !== undefined) {
+          // The harness survived; its watch was re-attached by the runtime. Re-render from
+          // the same owner rather than opening a second Harness over one sqlite file.
+          bot.detach?.();
+          const attached = await this.#attach(handle, bot.hub, trace, bot);
+          attached.release();
+          if (bot.degraded === undefined) {
+            this.#onRecovered?.(bot.snapshot.botId, bot.snapshot.running);
+          }
         }
+        // The retry ran: the snapshot no longer asks for one.
+        const { parked: _parked, ...rest } = bot.snapshot;
+        bot.snapshot = rest;
+        bot.hub.publishSnapshot(bot.snapshot, trace);
+      } finally {
+        if (leased === true) this.#lease?.release(botId);
       }
-      // The retry ran: the snapshot no longer asks for one.
-      const { parked: _parked, ...rest } = bot.snapshot;
-      bot.snapshot = rest;
-      bot.hub.publishSnapshot(bot.snapshot, trace);
     });
   }
 

@@ -87,9 +87,11 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
   let faux: FauxProviderHandle | undefined;
   let model = options.model ?? { provider: "faux", modelId: "faux-1" };
   let openRuntime: RegistryOptions["openRuntime"];
+  let readReplicaBinding: RuntimePort["readReplicaBinding"];
   if (options.runtime !== undefined) {
     const runtime = options.runtime;
     openRuntime = (spec) => runtime.open(spec);
+    readReplicaBinding = runtime.readReplicaBinding?.bind(runtime);
   } else if (options.real === true) {
     faux = fauxProvider(
       options.tokensPerSecond === undefined ? {} : { tokensPerSecond: options.tokensPerSecond },
@@ -109,6 +111,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
       ...(options.windowMessages === undefined ? {} : { windowMessages: options.windowMessages }),
     });
     openRuntime = (spec) => adapter.open(spec);
+    readReplicaBinding = (spec) => adapter.readReplicaBinding(spec);
   } else {
     const runtime = fake as FakeRuntime;
     openRuntime = (spec) => runtime.open(spec);
@@ -145,6 +148,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
       opens += 1;
       return openRuntime(spec);
     },
+    ...(readReplicaBinding === undefined ? {} : { readReplicaBinding }),
     model,
     log,
     idleCloseMs: options.idleCloseMs ?? 10 * 60 * 1000,

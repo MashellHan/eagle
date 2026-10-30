@@ -316,3 +316,13 @@ source facts keep their old identities and unsent branches. A local carrier inve
 covers legacy imported heads absent from source pages. Only a new user request runs on
 the restored instance; pending/active work in saved facts stays passive. This does not
 provide automatic directory rollback detection, resource installation or a backup service.
+
+
+## P1 permanent shared-Bot deletion
+
+Deleting a bound Bot permanently deletes its sharedBotId. Root catalog tombstones
+survive removal/restart and can be passed explicitly between authenticated local
+daemons. Old pages, imports, bindings and saved execution intents cannot restore that
+identity. A new Bot has a new identity; there is no undelete or automatic trash cleanup.
+Trash retains original history and unuploaded branches. This local API slice adds no
+cloud transport, App workflow or physical-device acceptance.

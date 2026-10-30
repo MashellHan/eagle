@@ -127,5 +127,8 @@ export interface RuntimeHandle {
 }
 
 export interface RuntimePort {
+  readReplicaBinding?(
+    spec: Pick<RuntimeBotSpec, "id" | "dir">,
+  ): Promise<{ sharedBotId: string } | undefined>;
   open(spec: RuntimeBotSpec): Promise<RuntimeHandle>;
 }

@@ -311,3 +311,12 @@ SessionEnd.closed); later command failures propagate at warn, including cleanup.
 SDK-guarded failures still use their original pi/runtime session episode. No raw error
 message is logged. Invalid protocol/cursor reads and actual cancellation do not close a
 healthy Session or claim a new SDK failed state.
+
+Root tombstone commands reuse core.replica start/outcome without a local Bot ID or body.
+A directory cleanup failure originates at core.delete.fail; the root command propagates
+the same identity at warn. Startup records each failed Bot cleanup at core.delete.fail
+with reason startup while reporting only successful moves in core.reconcile.ok. Root
+catalog I/O remains core.catalog.load.fail and stops startup. A cached socket's refused
+recover uses core.bot.resolve.fail and the original command trace, followed by the same
+failure identity at protocol.command.fail warn. Shared IDs, paths and history stay out
+of these records.

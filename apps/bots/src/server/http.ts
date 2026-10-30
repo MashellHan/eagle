@@ -430,6 +430,29 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       return;
     }
     try {
+      const tombstones = /^\/v1\/replica\/tombstones\/(pull|apply)$/.exec(path);
+      if (tombstones !== null && request.method === "POST") {
+        if (request.headers.origin !== undefined) {
+          json(response, 403, {
+            error: { kind: "auth_failed", message: "origin is not accepted" },
+          });
+          return;
+        }
+        let params: unknown;
+        try {
+          params = await readBody(request, MAX_REPLICA_BODY_BYTES);
+        } catch {
+          json(response, 400, {
+            error: { kind: "invalid_command", message: "invalid or oversized tombstone request" },
+          });
+          return;
+        }
+        const method = tombstones[1] as "pull" | "apply";
+        const result = await registry.tombstones(method, params, `tr_http_${++sequence}`);
+        if (method === "apply") broadcastCatalog();
+        json(response, 200, result);
+        return;
+      }
       const replicaMatch =
         /^\/v1\/bots\/([A-Za-z0-9_-]+)\/replica\/(export|import|run|status|bind|pull|apply|receipts)$/.exec(
           path,

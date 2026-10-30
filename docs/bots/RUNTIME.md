@@ -212,6 +212,31 @@ of unannounced directory rollback. Directory tombstones, shared catalogue recove
 resource installation remain later slices. Tests distinguish existing-path verification
 from any actual failure requiring implementation.
 
+
+### Shared deletion lifecycle
+
+RuntimePort.readReplicaBinding({id,dir}) reads existing replica.sqlite read-only,
+validates its local owner and binding, and never opens Harness or constructs ReplicaStore.
+Missing file means uninitialized; corrupt/mismatched bindings and I/O fail closed.
+Successful close (including the healthy final fact scan) precedes local mark/move.
+A known root tombstone prevents runtime open/recovery and all replica operations on
+the destination binding; incoming run facts never revive it. Active handles retain
+the ordinary lease-drain deadline and quarantine until actually closed.
+
+Binding read failures isolate the affected Bot before SDK recovery; a post-open read
+failure closes or quarantines the newly acquired owner instead of leaking it. A saved
+cleanup mapping stays hidden when its move keeps failing, including newly discovered
+aliases; healthy Bots still open. Root catalog failures retain the global fail-closed
+boundary. Existing WS leases may delay cleanup to quarantine, with no active DB move.
+Recover checks the owner lease at serialized execution time; a close retry cannot
+unseal the immutable shared identity. This slice proves local behavior only.
+Current tombstone evidence uses Node 26.9.0/pi-durable 1.4.0, independently of the
+earlier SDK probe baseline below: authenticated dual-daemon history/trash comparisons,
+per-Bot startup isolation, actual socket recover refusal and owned SIGKILL recovery.
+Its complete Bots/check/crash/eval/perf counts and candidate hashes live in TESTING
+and .local/sync-p1-tombstones; no network, UI or physical-Mac claim follows.
+
+
 ### Earlier SDK probe baseline
 
 Established with `@earendil-works/pi-durable@1.4.0` on Node 26.12.0 unless the

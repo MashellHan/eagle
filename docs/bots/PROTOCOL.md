@@ -879,3 +879,28 @@ remain gaps; bad carriers cannot replace a complete head. Neither foreign pendin
 run facts enter local queues. A user starts continuation with a new request ID only after
 the selected head is ready. This is explicit passive recovery, not detection of an unannounced
 live-directory rollback or permission to copy/resume an active session database.
+
+
+### P1 permanent directory tombstones
+
+Authenticated POST /v1/replica/tombstones/pull accepts strict
+{after: nonnegative safe integer, limit?: 1..128}, default128, and returns
+{items:[{sharedBotId: UUID}],nextAfter,hasMore}. The cursor is this daemon root's
+append-only deduplicated set position, never a history source/epoch/sequence or ACK.
+POST /v1/replica/tombstones/apply accepts strict {items:[{sharedBotId: UUID}]} with
+1..128 items, validates every item before writing, and idempotently retains/forwards
+the facts. No local Bot ID, path or credentials are accepted. Both use the existing
+Bearer/Origin checks and 8 MiB body cap; malformed/oversized input is invalid_command.
+Apply success means marks are saved and affected local runtime entry points are sealed;
+close/cleanup failure is an honest failure, while saved marks remain irreversible.
+Deletion wins over bind, old pages, P0 import and run for the destination binding;
+P0 carrier content cannot supply or infer sharedBotId. New shared identities remain usable.
+Local DELETE cleans only aliases of the target's actual shared binding after close;
+an unbound legacy Bot has none. Another identity's pending deletion/quarantine cannot
+turn that successful DELETE into failure or suppress its catalog broadcast.
+The normative tombstones.v1.json fixture contains only immutable shared identity facts.
+Only these new root routes reject any Origin header; existing replica routes retain
+their earlier behavior. A subscribed WebSocket can hold deletion in quarantine until
+its original lease ends. Apply returns failure in that case, retains the mark and does
+not move an owned database. Its subsequent recover command cannot execute or reopen the
+deleted identity; the existing unknown-Bot refusal/close semantics apply.

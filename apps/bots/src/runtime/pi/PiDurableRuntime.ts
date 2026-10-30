@@ -47,6 +47,7 @@ import { FailureClassifier, type Minted } from "./classify.ts";
 import { entryMessageId } from "./convert.ts";
 import { HistoryReplica } from "./HistoryReplica.ts";
 import { convertSubmission, EventMapper } from "./mapEvents.ts";
+import { readReplicaBinding } from "./ReplicaStore.ts";
 import { ReplicaSync } from "./ReplicaSync.ts";
 
 const Events = {
@@ -161,6 +162,10 @@ export class PiDurableRuntime implements RuntimePort {
 
   constructor(options: PiRuntimeOptions) {
     this.#options = options;
+  }
+
+  readReplicaBinding(spec: Pick<RuntimeBotSpec, "id" | "dir">) {
+    return readReplicaBinding(join(spec.dir, "replica.sqlite"), spec.id);
   }
 
   async open(spec: RuntimeBotSpec): Promise<RuntimeHandle> {
