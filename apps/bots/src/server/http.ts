@@ -6,6 +6,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { DirectoryError } from "../core/BotDirectory.ts";
 import type { BotRegistry } from "../core/BotRegistry.ts";
 import type { ConversationService } from "../core/ConversationService.ts";
+import { deviceSyncInput } from "../core/DeviceSyncPort.ts";
 import {
   BOT_SHAPES,
   BOT_TINTS,
@@ -430,6 +431,54 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       return;
     }
     try {
+      const syncMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/sync\/access$/.exec(path);
+      if (syncMatch !== null && request.method === "POST") {
+        if (request.headers.origin !== undefined) {
+          json(response, 403, {
+            error: { kind: "auth_failed", message: "origin is not accepted" },
+          });
+          return;
+        }
+        let body: unknown;
+        try {
+          body = await readBody(request);
+        } catch {
+          json(response, 400, {
+            error: { kind: "invalid_command", message: "invalid sync access request" },
+          });
+          return;
+        }
+        const parsed = deviceSyncInput.safeParse(body);
+        if (!parsed.success) {
+          json(response, 400, {
+            error: { kind: "invalid_command", message: "invalid sync access request" },
+          });
+          return;
+        }
+        const trace = `tr_http_${++sequence}`;
+        try {
+          json(
+            response,
+            200,
+            await registry.syncAccess(syncMatch[1] as string, parsed.data, trace),
+          );
+        } catch (error) {
+          if (!(error instanceof ClassifiedFailure)) throw error;
+          const kind = error.failure.kind;
+          json(
+            response,
+            kind === "auth_failed"
+              ? 403
+              : kind === "unknown_bot"
+                ? 404
+                : kind === "invalid_command"
+                  ? 400
+                  : 503,
+            { error: { kind, message: error.message, failure: error.failure.id }, trace },
+          );
+        }
+        return;
+      }
       const tombstones = /^\/v1\/replica\/tombstones\/(pull|apply)$/.exec(path);
       if (tombstones !== null && request.method === "POST") {
         if (request.headers.origin !== undefined) {

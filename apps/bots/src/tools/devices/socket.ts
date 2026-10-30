@@ -4,6 +4,8 @@ import { connect, type Socket } from "node:net";
 import { dirname, isAbsolute } from "node:path";
 
 const METHODS = new Set([
+  "sync.identity",
+  "sync.access",
   "status",
   "directory",
   "execute",

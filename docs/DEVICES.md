@@ -343,3 +343,58 @@ target; no network reconnect automatically resends a run. Explicit busy/denied
 responses to an actual run record unaccepted state and allow an explicit retry
 with the same binding. Pins survive service restart and never store tokens or
 operation parameter plaintext.
+
+
+## P3 synchronization metadata slice (in progress)
+
+The first local slice reuses the actual registered device session, Registry SQLite
+current membership/epoch/credential state and private helper/socket. A Bots-owned
+versioned port exposes synchronization identity, explicit sharedBotId/purpose
+access and this device's Tailscale candidates. Group membership and execution policy
+alone never grant Bot-history access. No caller-supplied group/name/IP is an identity.
+
+Authorization must fail closed on Registry/session failure; the existing offline
+local-directory fallback is for device presentation only. Private keys and session
+tokens stay behind the helper/service boundary. Registration signing remains strictly
+limited; metadata access does not imply a direct transport proof, E2EE or connectivity.
+The following interfaces are approved for this first slice. No payload
+history/resources, new execution scheduler, installation or pairing rewrite is in scope.
+
+Public metadata responses carry version:1. GET /sync/identity returns {version,identity};
+identity is {deviceId,publicKey,groupId,membershipEpoch,credentialVersion} read from the
+current session's Registry row. POST /sync/access takes strictly
+{sharedBotId,peerDeviceId,purpose:"replica.read"}. Source is the session device; peer is
+the history-granting target. Both must currently share a nonempty group, and the target
+must have explicitly granted this source for that sharedBotId at both current epoch/
+credential versions. The response binds source, target, sharedBotId/purpose and target
+endpoint metadata. Authentication, missing grant or Registry failure refuses access;
+no cached identity or offline-local fallback grants access.
+
+Trusted parent manage sync.share takes {sharedBotId,peerDeviceId,enabled}. It forwards
+to authenticated POST /sync/share. Granting device is derived from session. A grant
+allows peer to read this device, not the reverse; mutual access needs two grants.
+The minimal persisted key is (grantingDeviceId,sharedBotId,peerDeviceId), with current
+group and both epoch/credential bindings. Same-parameter retries are idempotent. Removal
+and re-pair invalidate old grants; only a new explicit management action rebinds them.
+Disabling deletes only the authenticated device's matching grant. Execution policy does
+not participate and creator/owner online status is never required for local execution.
+
+Trusted parent manage sync.endpoints.publish takes strictly {syncPort:1..65535|null}.
+The Node service probes installed Tailscale status for its own Self IPs; callers cannot
+provide addresses, IDs or groups. Missing installation or logged-out status yields [].
+Null withdraws existing candidates. Authenticated POST /sync/endpoints stores only the
+publisher's current group/epoch/credential binding, syncPort, bounded Tailscale IP list
+and server publishedAt. Returned candidates are metadata, not connectivity/authentication
+proof. No listener or management HTTP is opened/automatically published in this slice.
+
+Bot socket permits only sync.identity and sync.access reads. All new management writes
+remain trusted-parent-only, including endpoint withdrawal. Host permits exactly these two added management methods;
+its pending-32 bound and unknown-method refusal remain. Swift registration signer is unchanged:
+existing restricted registration obtains the service bearer; direct proof/E2EE is P4.
+
+This P3 implementation is a local unpublished source candidate on Agent1.2.0.
+Onboarding remains pinned to verified published1.0.0; no package/release configuration
+or lockfile changes, npm publication, deployment or installed App replacement occur.
+A future actual Agent release must choose its version and pass publication/onboarding
+requirements separately. Local CLI fixtures prove discovery parsing and process wiring,
+not installed/physical Tailscale reachability or availability in the published Agent.

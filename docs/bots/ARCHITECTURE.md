@@ -606,4 +606,21 @@ reference with the public SDK conversation-document API. The extension's ordered
 uses committed branch reads; installation/readiness validation happens before run admission
 and before any startup pending-submit/global scheduler resume. It does not install code
 extensions from packages, change local cwd/credentials/permissions or add network services.
-Ordinary chat resource selection and local editing remain a following P2 slice.
+Ordinary chat resource selection/local edits and fresh first-package loading are delivered
+as recorded in PLAN; they reuse these immutable resources and per-input pins.
+
+
+## P3 device synchronization port
+
+Core owns DeviceSyncPort version1 and metadata domain types. A daemon-owned adapter
+uses the private DeviceChannel JSONL transport and its own strict codec, importing no
+Eagle source/contracts. Composition injects the optional port into BotRegistry; its
+metadata HTTP operation reads the actual local binding without starting the SDK and
+uses existing deletion guards. RuntimeHandle, pi-durable and execution journals do not
+participate. Device service/Registry own authenticated membership/grant decisions;
+private helper management owns grant and candidate publication writes. No synchronization
+request uses the device directory's offline-local presentation fallback.
+
+Sync access snapshots the real binding under the existing directory serialization, releases
+that serialization during the private-service request, then rechecks binding and deletion
+under it before returning. It never leases/opens a Harness or blocks ordinary local input.

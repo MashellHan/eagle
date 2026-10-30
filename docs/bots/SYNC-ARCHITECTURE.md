@@ -1,6 +1,6 @@
 # 多端 Bot 同步架构
 
-2026-10-30 · 架构提案，尚未实现。
+2026-10-30 · 整体网络/云端架构仍为提案；本地P0-P2已交付，P3元数据基础片进行中。
 
 **历史长期保存在各设备，Tailscale 直连优先、Cloudflare 中转兜底；共享对话保留并发分支。**
 同一个 Bot 在 A、B 各有独立副本与运行时；A 离线或云端不可达时，
@@ -149,3 +149,14 @@ Worker/DO 承接接入与中转，R2 仅作最多 3 天的临时存储；不采�
 [orca-relay]: https://github.com/stablyai/orca/blob/6b937c7e5f5a8d2cfcb755c6708ac38a632b3012/cloud/apps/relay/src/splice-forwarder.ts#L47
 [orca-stream]: https://github.com/stablyai/orca/blob/6b937c7e5f5a8d2cfcb755c6708ac38a632b3012/src/shared/structured-agent-session-coalescer.ts#L8
 [orca-skills]: https://github.com/stablyai/orca/blob/6b937c7e5f5a8d2cfcb755c6708ac38a632b3012/src/shared/skill-package-manifest.ts#L14
+
+## P3 first metadata foundation (local candidate)
+
+The online Registry reuses registered sessions for version1 identity, directional
+sharedBot grants and endpoint metadata; it never grants sync from the local directory
+fallback or execution policy. The current slice adds no listener, direct proof, E2EE
+or transport fallback. Trusted parent publication takes a bound syncPort, discovers
+Tailscale Self IPs and can withdraw them; candidate metadata is not reachability.
+The Bot-owned read port and `/v1/bots/:id/sync/access` use the actual local binding,
+then recheck binding/tombstone after the remote request. See DEVICES/PROTOCOL for the
+exact contract and PLAN/CHECKPOINTS for actual evidence. P4-P6 remain planned.

@@ -874,3 +874,41 @@ platform hooks follow formal candidate acceptance. Prior delivery receipt31d8cce
 the distinct failed push attempt1 and successful attempt2. Current fresh evidence awaits
 independent Review/Lead acceptance and normal commit/push; cloud/transport/UI/physical-Mac
 acceptance and complete P2 remain outside this candidate.
+
+
+## P3 device identity/access metadata - first red contract
+
+On unchanged production264cc9e, register two independent real Ed25519 identities
+against an owned Miniflare DeviceRegistry SQLite and pair them through existing
+public/private helper interfaces. Start two owned Node services with private sockets;
+prove current shared group, valid identities and local readiness before requesting the
+new sync.identity metadata interface. Record the actual refusal, not static reachability.
+
+The completed slice must independently check explicit sharedBotId/purpose access,
+revocation/epochs/credentials, identity/scope spoofing and self-only Tailscale publication,
+without treating All approve or local-directory fallback as authorization. Bots owns
+its port codec, imports no Eagle contracts, and local model/tool runs remain independent
+of cloud. Source/gates and physical Tailscale/cloud claims stay separate. Evidence uses
+.local/sync-p3-device-access; prior P2 delivery/gates are not rerun as P3 evidence.
+
+P3 source freeze: `source-v1.json` binds22 changed non-document paths at base264cc9e.
+Real public Host forbidden and uppercase-peer response mismatch reds are separate
+from the first identity red. The Bot process suite holds a real Registry response,
+then rebinds/deletes the local Bot before release; it asserts stale scope is refused.
+Positive endpoint discovery crosses owned Node -> Registry -> peer access with a
+controlled CLI emitting Self plus unrelated Peer data. Self-only dedup, chosen port,
+server timestamp and identity binding are asserted; this is not physical Tailscale.
+Current affected checks distinguish whole root device tests, Bots core/adapter/codec/
+log dependency tests and normal platform gates. No runtime invocation/source-event/
+recovery code changes in P3: prior P2 eval/crash/perf results remain explicitly prior.
+
+Final P3 local gates: affected root27/27 + Bots64/64; root264/264 plus types/lint/build;
+Bots fixtures33, ordinary813/813 and coverage813/813 from the same deterministic suite,
+types/check-only Biome210 (95.73 lines/89.31 branches/91.68 functions); real device
+integration8/8 including counted parent/subassertions; normal Swift194/44/50 plus strict
+format. Six final gate receipts bind all22 source paths before/after. The first normal
+Bots run812/813 failed the documentation fixture inventory only, retained verbatim;
+a bare normative table entry fixes it without source changes. Browser/platform hooks
+remain for accepted normal delivery; physical network/cloud/installed App are unverified.
+Agent1.2.0 is unpublished source, onboarding1.0.0 remains unchanged. No new crash/eval/
+perf result is claimed for this metadata-only slice.

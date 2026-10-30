@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { declareEvent } from "../log/events.ts";
 import type { Log } from "../log/log.ts";
 import type { BotConfig, BotDirectory } from "./BotDirectory.ts";
+import type { DeviceSyncPort } from "./DeviceSyncPort.ts";
 import {
   type BotAppearance,
   type BotGroup,
@@ -30,6 +31,9 @@ import {
 } from "./Tombstones.ts";
 
 const Events = {
+  syncStart: declareEvent("core.sync.start"),
+  syncOk: declareEvent("core.sync.ok"),
+  syncFail: declareEvent("core.sync.fail"),
   catalogLoadOk: declareEvent("core.catalog.load.ok"),
   catalogWriteOk: declareEvent("core.catalog.write.ok"),
   catalogWriteFail: declareEvent("core.catalog.write.fail"),
@@ -82,6 +86,7 @@ type Entry = {
 };
 
 export type RegistryOptions = {
+  readonly deviceSync?: DeviceSyncPort;
   readonly directory: BotDirectory;
   readonly openRuntime: (spec: RuntimeBotSpec) => Promise<RuntimeHandle>;
   readonly readReplicaBinding?: RuntimePort["readReplicaBinding"];
@@ -140,6 +145,69 @@ const assertTaskId = (taskId: string): void => {
 };
 
 export class BotRegistry {
+  async syncAccess(
+    botId: string,
+    input: Omit<Parameters<DeviceSyncPort["access"]>[0], "sharedBotId">,
+    trace: string,
+  ): Promise<unknown> {
+    const fields = { botId, trace };
+    this.#options.log.emit("info", "core", Events.syncStart, fields);
+    try {
+      const binding = async () => {
+        const entry = this.#entry(botId, trace);
+        const result = await this.#options.readReplicaBinding?.({
+          id: botId,
+          dir: this.#options.directory.botDir(botId),
+        });
+        if (result === undefined)
+          throw new ClassifiedFailure(
+            newFailure("invalid_command"),
+            "not_admitted",
+            "Bot has no shared identity binding",
+          );
+        if (await this.#options.directory.isDeleted(result.sharedBotId))
+          throw this.#unresolved(botId, trace);
+        if (this.#entry(botId, trace) !== entry) throw this.#unresolved(botId, trace);
+        return result.sharedBotId;
+      };
+      const sharedBotId = await this.#directorySerial(binding);
+      const port = this.#options.deviceSync;
+      if (port === undefined)
+        throw new ClassifiedFailure(
+          newFailure("invalid_command"),
+          "not_admitted",
+          "device synchronization is not configured",
+        );
+      const result = await port.access({ ...input, sharedBotId }, fields);
+      await this.#directorySerial(async () => {
+        if ((await binding()) !== sharedBotId)
+          throw new ClassifiedFailure(
+            newFailure("invalid_command"),
+            "not_admitted",
+            "Bot shared identity changed",
+          );
+      });
+      this.#options.log.emit("info", "core", Events.syncOk, fields);
+      return result;
+    } catch (error) {
+      const classified =
+        error instanceof ClassifiedFailure
+          ? error
+          : new ClassifiedFailure(
+              newFailure("storage_failed"),
+              "not_admitted",
+              "sync binding could not be read",
+              { cause: error },
+            );
+      const own = classified.failure.layer === "core" && classified.failure.kind !== "unknown_bot";
+      this.#options.log.emit(own ? "error" : "warn", "core", Events.syncFail, {
+        ...fields,
+        failure: classified.failure,
+        ...(own ? { origin: true } : { detail: { propagated: true } }),
+      });
+      throw classified;
+    }
+  }
   async replica(
     botId: string,
     command: Parameters<NonNullable<RuntimeHandle["replica"]>>[0],

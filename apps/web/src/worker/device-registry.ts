@@ -1,6 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 import {
+  SyncAccess,
+  SyncCandidate,
+  SyncIdentity,
+  SyncShare,
+} from "../../../../packages/contracts/src/device-sync.ts";
+import {
   canonicalDeviceJSON,
   DEVICE_PREFIX,
   type Device,
@@ -73,6 +79,20 @@ type DeviceRow = {
   credentialVersion: number;
   localRevision: number;
 };
+const syncIdentity = ({
+  deviceId,
+  publicKey,
+  groupId,
+  membershipEpoch,
+  credentialVersion,
+}: DeviceRow) =>
+  SyncIdentity.parse({
+    deviceId,
+    publicKey,
+    groupId,
+    membershipEpoch,
+    credentialVersion,
+  });
 type Challenge = {
   id: string;
   payload: string;
@@ -100,6 +120,8 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
     CREATE TABLE IF NOT EXISTS pairings(hash TEXT PRIMARY KEY,issuer TEXT NOT NULL,epoch INTEGER NOT NULL,expires INTEGER NOT NULL,revoked INTEGER NOT NULL DEFAULT 0,redeemer TEXT,result TEXT,committed INTEGER);
     CREATE TABLE IF NOT EXISTS pairing_results(deviceId TEXT NOT NULL,requestId TEXT NOT NULL,hash TEXT NOT NULL,result TEXT NOT NULL,created INTEGER NOT NULL,PRIMARY KEY(deviceId,requestId));
     CREATE TABLE IF NOT EXISTS rates(key TEXT PRIMARY KEY,count INTEGER NOT NULL,until INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS sync_grants(grantingDeviceId TEXT NOT NULL,sharedBotId TEXT NOT NULL,peerDeviceId TEXT NOT NULL,binding TEXT NOT NULL,PRIMARY KEY(grantingDeviceId,sharedBotId,peerDeviceId));
+    CREATE TABLE IF NOT EXISTS sync_endpoints(deviceId TEXT PRIMARY KEY,binding TEXT NOT NULL,publishedAt INTEGER NOT NULL,candidates TEXT NOT NULL);
   `);
     for (const [table, column, definition] of [
       ["devices", "localRevision", "INTEGER NOT NULL DEFAULT 0"],
@@ -445,6 +467,105 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
         this.sweep();
         return action(current);
       });
+    if (path === "/sync/identity" && request.method === "GET")
+      return deviceJSON({
+        version: 1,
+        identity: syncIdentity(this.sessionDevice(sessionHash)),
+      });
+    if ((path === "/sync/share" || path === "/sync/access") && post) {
+      const input =
+        path === "/sync/share"
+          ? SyncShare.parse(await deviceBody(request))
+          : SyncAccess.parse(await deviceBody(request));
+      return deviceJSON(
+        write((current) => {
+          if ("enabled" in input && !input.enabled) {
+            this.ctx.storage.sql.exec(
+              "DELETE FROM sync_grants WHERE grantingDeviceId=? AND sharedBotId=? AND peerDeviceId=?",
+              current.deviceId,
+              input.sharedBotId,
+              input.peerDeviceId,
+            );
+            return { enabled: false };
+          }
+          const peer = this.device(input.peerDeviceId);
+          if (
+            current.deviceId === peer.deviceId ||
+            !current.groupId ||
+            current.groupId !== peer.groupId
+          )
+            throw new DeviceHttpError(403, "different_group");
+          const localIdentity = syncIdentity(current);
+          const peerIdentity = syncIdentity(peer);
+          if ("enabled" in input) {
+            const binding = JSON.stringify([localIdentity, peerIdentity]);
+            this.ctx.storage.sql.exec(
+              "INSERT INTO sync_grants VALUES(?,?,?,?) ON CONFLICT(grantingDeviceId,sharedBotId,peerDeviceId) DO UPDATE SET binding=excluded.binding",
+              current.deviceId,
+              input.sharedBotId,
+              peer.deviceId,
+              binding,
+            );
+            return { enabled: true };
+          }
+          const grant = this.one<{ binding: string }>(
+            "SELECT binding FROM sync_grants WHERE grantingDeviceId=? AND sharedBotId=? AND peerDeviceId=?",
+            peer.deviceId,
+            input.sharedBotId,
+            current.deviceId,
+          );
+          if (grant?.binding !== JSON.stringify([peerIdentity, localIdentity]))
+            throw new DeviceHttpError(403, "sync_not_shared");
+          const endpoints = this.one<{
+            binding: string;
+            publishedAt: number;
+            candidates: string;
+          }>(
+            "SELECT binding,publishedAt,candidates FROM sync_endpoints WHERE deviceId=?",
+            peer.deviceId,
+          );
+          return {
+            version: 1,
+            sharedBotId: input.sharedBotId,
+            purpose: input.purpose,
+            local: localIdentity,
+            peer: peerIdentity,
+            endpoints:
+              endpoints?.binding === JSON.stringify(peerIdentity)
+                ? {
+                    identity: peerIdentity,
+                    publishedAt: endpoints.publishedAt,
+                    candidates: JSON.parse(endpoints.candidates),
+                  }
+                : null,
+          };
+        }),
+      );
+    }
+    if (path === "/sync/endpoints" && post) {
+      const input = z
+        .strictObject({ candidates: z.array(SyncCandidate).max(8) })
+        .parse(await deviceBody(request));
+      return deviceJSON(
+        write((current) => {
+          const identity = syncIdentity(current);
+          const publishedAt = Date.now();
+          this.ctx.storage.sql.exec(
+            "INSERT INTO sync_endpoints VALUES(?,?,?,?) ON CONFLICT(deviceId) DO UPDATE SET binding=excluded.binding,publishedAt=excluded.publishedAt,candidates=excluded.candidates",
+            current.deviceId,
+            JSON.stringify(identity),
+            publishedAt,
+            JSON.stringify(input.candidates),
+          );
+          return {
+            version: 1,
+            identity,
+            publishedAt,
+            candidates: input.candidates,
+          };
+        }),
+      );
+    }
     if (path === "/directory" && request.method === "GET") {
       const directory = await this.observedDirectory(self.deviceId);
       const current = this.sessionDevice(sessionHash);

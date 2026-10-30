@@ -1,6 +1,7 @@
 // The daemon entry point (docs/bots/ARCHITECTURE.md "Process model"): one root, one lock,
 // one token, one log, one registry and one server. Everything here is composition; the
 // behaviour lives in the modules it wires.
+
 import { readFileSync } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
@@ -20,6 +21,7 @@ import { OriginStore, originPath } from "./core/OriginStore.ts";
 import type { RuntimeEvent } from "./core/RuntimePort.ts";
 import { TriggerSecretStore, triggerSecretsPath } from "./core/TriggerSecrets.ts";
 import { TriggerStore, triggerJournalPath } from "./core/TriggerStore.ts";
+import { SocketDeviceSyncPort } from "./device-sync.ts";
 import { declareEvent } from "./log/events.ts";
 import { Log } from "./log/log.ts";
 import { FileLogSink } from "./log/sink.ts";
@@ -310,6 +312,9 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       ? canonical.model
       : { provider: gateway.provider, modelId: gateway.model };
   const registry = new BotRegistry({
+    ...(canonical.deviceSocket === undefined
+      ? {}
+      : { deviceSync: new SocketDeviceSyncPort(canonical.deviceSocket, log) }),
     directory,
     openRuntime: (spec) => runtime.open(spec),
     readReplicaBinding: (spec) => runtime.readReplicaBinding(spec),

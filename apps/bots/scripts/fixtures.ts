@@ -2,6 +2,7 @@
 // the codec; `write` regenerates them after a documented protocol change.
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { deviceSyncAccess, deviceSyncInput } from "../src/core/DeviceSyncPort.ts";
 import { encodeCommand, encodeServerEvent, serialize } from "../src/protocol/encode.ts";
 import { decodeCommand, decodeServerEvent } from "../src/protocol/frames.ts";
 
@@ -14,6 +15,22 @@ const files = readdirSync(dir)
 
 let failures = 0;
 for (const name of files) {
+  if (name === "sync-access.http.json") {
+    const text = readFileSync(join(dir, name), "utf8");
+    const wire = JSON.parse(text);
+    try {
+      const value = {
+        request: deviceSyncInput.parse(wire.request),
+        response: deviceSyncAccess.parse(wire.response),
+      };
+      if (JSON.stringify(value) !== JSON.stringify(wire))
+        throw new Error("sync metadata does not round-trip");
+    } catch (error) {
+      failures += 1;
+      console.error(`fixtures:check: ${name}: ${(error as Error).message}`);
+    }
+    continue;
+  }
   if (name === "entities.json") {
     // Entity samples are decoded through their enclosing frames, never skipped.
     const entities = JSON.parse(readFileSync(join(dir, name), "utf8")) as Record<string, unknown>;

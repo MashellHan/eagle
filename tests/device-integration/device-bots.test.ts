@@ -10,6 +10,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -228,8 +229,21 @@ async function workerFixture(directory: string) {
   writeFileSync(
     join(directory, "entry.ts"),
     `
-import worker,{DeviceRegistry,DeviceExecution as Execution} from "../../apps/web/src/worker/device-service.ts";
-export {DeviceRegistry};
+import worker,{DeviceRegistry as Registry,DeviceExecution as Execution} from "../../apps/web/src/worker/device-service.ts";
+export class DeviceRegistry extends Registry {
+ async fetch(request) {
+  const response=await super.fetch(request);
+  if(request.url.endsWith('/sync/access')&&response.ok&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_sync_reply'").toArray().length) {
+   this.ctx.storage.sql.exec("UPDATE test_sync_reply SET started=1");
+   const deadline=Date.now()+5000;
+   while(!this.ctx.storage.sql.exec("SELECT released FROM test_sync_reply").toArray()[0].released) {
+    if(Date.now()>deadline)throw new Error('test sync reply gate timeout');
+    await new Promise(resolve=>setTimeout(resolve,10));
+   }
+  }
+  return response;
+ }
+}
 export class DeviceExecution extends Execution {
  respond(socket,request,result,unauthorized=false) {
   if(request.action==='run'&&request.operation?.command?.includes('device-integration-drop-response')&&result.status==='completed') {
@@ -254,8 +268,8 @@ export default worker;
     ],
     { stdio: "pipe" },
   );
-  const mf = new Miniflare(
-    convertV4MiniflareOptions({
+  const mf = new Miniflare({
+    ...convertV4MiniflareOptions({
       workers: [
         {
           name: "eagle",
@@ -271,7 +285,8 @@ export default worker;
         },
       ],
     }),
-  );
+    unsafeInspectDurableObjects: true,
+  });
   try {
     return { mf, origin: (await mf.ready).origin };
   } catch (error) {
@@ -800,6 +815,265 @@ test("existing and new Bots share real paired devices, native tools and original
     for (const client of clients) client.socket.terminate();
     if (!stopped)
       await Promise.allSettled([daemon?.stop(), a?.stop(), b?.stop()]);
+    await worker?.mf.dispose();
+    await closeServer(model.server);
+    rmSync(workerRoot, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Bot sync access traverses private service and current Registry grants without opening the SDK", {
+  timeout: 90000,
+}, async () => {
+  mkdirSync(".local", { recursive: true });
+  const workerRoot = mkdtempSync(resolve(".local/device-sync-bots-worker-"));
+  const root = mkdtempSync("/tmp/eagle-device-sync-bots-");
+  const key = randomBytes(32).toString("base64url");
+  const model = await modelFixture(key);
+  let worker: Awaited<ReturnType<typeof workerFixture>> | undefined;
+  let a: ReturnType<typeof deviceProcess> | undefined;
+  let b: ReturnType<typeof deviceProcess> | undefined;
+  let daemon: Awaited<ReturnType<typeof daemonProcess>> | undefined;
+  let client: Awaited<ReturnType<typeof botConnection>> | undefined;
+  try {
+    worker = await workerFixture(workerRoot);
+    a = deviceProcess(join(root, "a"), worker.origin);
+    b = deviceProcess(join(root, "b"), worker.origin);
+    await Promise.all([a.ready(), b.ready()]);
+    const invitation = await a.manage("pairing.create", {});
+    await b.manage("pairing.redeem", {
+      requestId: randomUUID(),
+      code: invitation.code,
+    });
+    daemon = await daemonProcess(
+      join(root, "bots"),
+      a.socketPath,
+      model.baseUrl,
+      key,
+    );
+    const botId = await daemon.createBot("Sync metadata only");
+    const sharedBotId = randomUUID();
+    const request = async (
+      path: string,
+      body: unknown,
+      extra: Record<string, string> = {},
+    ) => {
+      assert(daemon);
+      const response = await fetch(`${daemon.origin}${path}`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${daemon.token}`,
+          "content-type": "application/json",
+          ...extra,
+        },
+        body: JSON.stringify(body),
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as JSONRecord,
+      };
+    };
+    const path = `/v1/bots/${botId}/sync/access`;
+    const input = { peerDeviceId: b.deviceId, purpose: "replica.read" };
+    const logs = () =>
+      readdirSync(join(root, "bots/logs")).flatMap((file) =>
+        readFileSync(join(root, "bots/logs", file), "utf8")
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line) as JSONRecord),
+      );
+    const opens = () =>
+      logs().filter((r) => r.evt === "runtime.open.start").length;
+    await until(
+      async () =>
+        logs().some((r) => r.evt === "runtime.open.ok" && r.botId === botId)
+          ? true
+          : undefined,
+      "existing create warm-up",
+    );
+    const initialOpens = opens();
+    assert.equal(
+      (await request(path, input)).status,
+      403,
+      "the existing auto-bound local identity has no explicit grant",
+    );
+    assert.equal(opens(), initialOpens);
+    assert.equal(
+      (await request(`/v1/bots/${botId}/replica/bind`, { sharedBotId })).status,
+      200,
+    );
+    const boundOpens = opens();
+    const refused = await request(path, input);
+    assert.equal(refused.status, 403, JSON.stringify(refused));
+    const err = refused.body.error as { failure: string };
+    const failureLogs = logs().filter((r) => r.trace === refused.body.trace);
+    const origins = failureLogs.filter((r) => r.level === "error");
+    assert.equal(origins.length, 1);
+    assert.equal(origins[0].evt, "runtime.sync.fail");
+    assert.equal(origins[0].botId, botId);
+    assert.equal((origins[0].err as { failure: string }).failure, err.failure);
+    assert.equal(
+      (origins[0].detail as { providerCode: string }).providerCode,
+      "sync_not_shared",
+    );
+    assert.ok(
+      failureLogs.some(
+        (r) =>
+          r.evt === "core.sync.fail" &&
+          (r.err as { failure: string }).failure === err.failure,
+      ),
+    );
+    await b.manage("sync.share", {
+      sharedBotId,
+      peerDeviceId: a.deviceId,
+      enabled: true,
+    });
+    await b.manage("sync.endpoints.publish", { syncPort: null });
+    const allowed = await request(path, input);
+    assert.equal(allowed.status, 200, JSON.stringify(allowed));
+    const uppercase = await request(path, {
+      ...input,
+      peerDeviceId: b.deviceId.toUpperCase(),
+    });
+    assert.equal(uppercase.status, 200, JSON.stringify(uppercase));
+    assert.deepEqual(uppercase.body, allowed.body);
+    assert.equal(allowed.body.sharedBotId, sharedBotId);
+    assert.equal(
+      (allowed.body.local as { deviceId: string }).deviceId,
+      a.deviceId,
+    );
+    assert.equal(
+      (allowed.body.peer as { deviceId: string }).deviceId,
+      b.deviceId,
+    );
+    assert.deepEqual(
+      (allowed.body.endpoints as { candidates: unknown[] }).candidates,
+      [],
+    );
+    assert.equal(
+      (await request(path, input, { origin: "http://hostile.test" })).status,
+      403,
+    );
+    assert.equal(
+      (await request(path, { ...input, sharedBotId: randomUUID() })).status,
+      400,
+    );
+    assert.equal(
+      (await request(path, { ...input, purpose: "execute" })).status,
+      400,
+    );
+    assert.equal(opens(), boundOpens, "metadata never creates a Harness");
+    assert.equal(model.verify(), 0);
+    const storage = await worker.mf.unsafeGetDurableObjectStorage(
+      "eagle",
+      "DeviceRegistry",
+      { name: "registry" },
+    );
+    await storage.exec(
+      "CREATE TABLE test_sync_reply(started INTEGER,released INTEGER); INSERT INTO test_sync_reply VALUES(0,0)",
+    );
+    const inFlight = request(path, input);
+    await until(
+      async () =>
+        (await storage.exec("SELECT started FROM test_sync_reply"))[0]
+          .started === 1
+          ? true
+          : undefined,
+      "actual Registry access reply barrier",
+    );
+    const otherScope = randomUUID();
+    assert.equal(
+      (
+        await request(`/v1/bots/${botId}/replica/bind`, {
+          sharedBotId: otherScope,
+        })
+      ).status,
+      200,
+    );
+    await storage.exec("UPDATE test_sync_reply SET released=1");
+    assert.equal(
+      (await inFlight).status,
+      400,
+      "in-flight old scope cannot authorize rebound Bot",
+    );
+    await storage.exec("DROP TABLE test_sync_reply");
+    await request(`/v1/bots/${botId}/replica/bind`, { sharedBotId });
+    await storage.exec(
+      "CREATE TABLE test_sync_reply(started INTEGER,released INTEGER); INSERT INTO test_sync_reply VALUES(0,0)",
+    );
+    const deletedFlight = request(path, input);
+    await until(
+      async () =>
+        (await storage.exec("SELECT started FROM test_sync_reply"))[0]
+          .started === 1
+          ? true
+          : undefined,
+      "actual access before tombstone",
+    );
+    assert.equal(
+      (
+        await request("/v1/replica/tombstones/apply", {
+          items: [{ sharedBotId }],
+        })
+      ).status,
+      200,
+    );
+    await storage.exec("UPDATE test_sync_reply SET released=1");
+    assert.equal(
+      (await deletedFlight).status,
+      404,
+      "tombstone invalidates in-flight access",
+    );
+    await storage.exec("DROP TABLE test_sync_reply");
+    const localBot = await daemon.createBot(
+      "Local execution independent of Registry",
+    );
+    const localShared = randomUUID();
+    await request(`/v1/bots/${localBot}/replica/bind`, {
+      sharedBotId: localShared,
+    });
+    await b.manage("sync.share", {
+      sharedBotId: localShared,
+      peerDeviceId: a.deviceId,
+      enabled: true,
+    });
+    await b.stop();
+    b = undefined;
+    assert.equal(
+      (await request(`/v1/bots/${localBot}/sync/access`, input)).status,
+      200,
+      "granting device need not be online",
+    );
+    await worker.mf.dispose();
+    worker = undefined;
+    const offline = await request(`/v1/bots/${localBot}/sync/access`, input);
+    assert.equal(offline.status, 503, JSON.stringify(offline));
+    assert.notEqual(
+      offline.body.local,
+      a.deviceId,
+      "no offline directory authorization",
+    );
+    client = await botConnection(daemon.origin, daemon.token, localBot);
+    const output = join(root, "local-native-proof");
+    const native = await client.run("bash", model, {
+      command: `printf p3-local > '${output}'; cat '${output}'`,
+    });
+    assert.equal(native.isError, false);
+    assert.equal((native.value as unknown as Receipt).status, "completed");
+    assert.match((native.value as unknown as Receipt).output ?? "", /p3-local/);
+    assert.equal(readFileSync(output, "utf8"), "p3-local");
+    assert.equal(model.verify(), 2);
+    assert.equal(
+      JSON.stringify(logs()).includes(a.socketPath),
+      false,
+      "sync logs do not disclose the private socket path",
+    );
+  } finally {
+    client?.socket.close();
+    await daemon?.stop();
+    await a?.stop();
+    await b?.stop();
     await worker?.mf.dispose();
     await closeServer(model.server);
     rmSync(workerRoot, { recursive: true, force: true });

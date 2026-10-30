@@ -6,6 +6,13 @@ import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import {
+  SyncAccess,
+  SyncAccessResult,
+  SyncIdentityResult,
+  SyncPublish,
+  SyncShare,
+} from "../contracts/src/device-sync.ts";
+import {
   canonicalDeviceJSON,
   DeviceApproval,
   type DeviceDirectory,
@@ -25,6 +32,7 @@ import { DeviceCloud } from "./device-cloud.ts";
 import { OperationAdmissionError } from "./device-journal.ts";
 import { NativeDeviceLeases } from "./device-native-leases.ts";
 import { DeviceRuntime } from "./device-runtime.ts";
+import { syncCandidates } from "./device-sync.ts";
 
 const configure = DeviceRegistration.extend({
   type: z.literal("configure"),
@@ -58,6 +66,8 @@ const approval = z.strictObject({
   error: z.string().max(200).optional(),
 });
 const managementMethods = new Set([
+  "sync.share",
+  "sync.endpoints.publish",
   "policy.get",
   "policy.set",
   "pairing.create",
@@ -245,6 +255,14 @@ export async function runDeviceService(): Promise<void> {
   const manage = async (method: string, params: unknown): Promise<unknown> => {
     if (!runtime || !cloud) throw new Error("not_ready");
     switch (method) {
+      case "sync.share":
+        return cloud.manage("/sync/share", SyncShare.parse(params));
+      case "sync.endpoints.publish": {
+        const { syncPort } = SyncPublish.parse(params);
+        return cloud.manage("/sync/endpoints", {
+          candidates: await syncCandidates(syncPort),
+        });
+      }
       case "policy.get":
         return runtime.policy;
       case "policy.set": {
@@ -297,6 +315,13 @@ export async function runDeviceService(): Promise<void> {
     if (managementMethods.has(method))
       throw new Error("management_requires_private_helper");
     switch (method) {
+      case "sync.identity":
+        z.strictObject({}).parse(params ?? {});
+        return SyncIdentityResult.parse(await cloud.manage("/sync/identity"));
+      case "sync.access":
+        return SyncAccessResult.parse(
+          await cloud.manage("/sync/access", SyncAccess.parse(params)),
+        );
       case "status":
         return {
           deviceId: runtime.device.deviceId,

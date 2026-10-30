@@ -724,7 +724,8 @@ Shared verbatim with `err.kind` in the daemon log and the client's
 
 ## Fixtures
 
-`fixtures/bots-protocol/` holds one frame per file, pretty-printed, used by both
+`fixtures/bots-protocol/` holds one frame (or an explicitly named HTTP metadata sample)
+per file, pretty-printed, used by both
 sides.
 
 | File | Direction |
@@ -739,6 +740,7 @@ sides.
 | `status.server.json`, `submission.server.json`, `submission.connection.server.json` | run state and the connection-scoped duplicate reply |
 | `bots.server.json`, `error.server.json`, `error-rejected.server.json`, `version-mismatch.server.json` | catalog, runtime failure, definite rejection, exempt handshake failure |
 | `send.client.json`, `send.resources.client.json`, `abort.client.json`, `recover.client.json`, `resync.client.json` | commands |
+| `sync-access.http.json` | version1 sync access request/response metadata, checked by the independent Bot and Registry codecs |
 | `ping.client.json`, `pong.server.json` | liveness |
 | `entities.json` | `BotSummary`, `Message` (user, assistant with a tool call, tool), `InboxItem` samples |
 
@@ -970,3 +972,27 @@ empty replica to its intended sharedBotId before capture/outbox. Resource-only h
 packages for ordinary send/Invocation; they cannot be used as history run/fork parents or
 weaken P0 entries.min(1), tail or missing-history-dependency checks. Empty/malformed carriers
 are invalid_command. Existing history formats, caps, tombstones and queue rules are unchanged.
+
+
+## P3 local synchronization access metadata
+
+POST /v1/bots/:id/sync/access is protected by the daemon bearer, loopback Origin
+policy and existing body limit. Strict body is {peerDeviceId,purpose:"replica.read"}.
+The daemon resolves sharedBotId from this Bot's actual persisted local replica binding
+and applies the existing tombstone guard; no request-supplied group/shared identity is
+accepted. It calls an independently injected, Bots-owned DeviceSyncPort version1 over
+the existing private socket. No runtime admission or historical/resource payload is sent.
+
+The port offers identity() and access({sharedBotId,peerDeviceId,purpose}). Registry must
+verify current device session, same nonempty group and target-to-caller explicit grant,
+including both epoch/credential versions. It returns bound identity/authorization/peer
+Tailscale endpoint metadata only. It never returns tokens/private keys. Socket callers
+cannot grant/revoke/publish. Missing integration, authorization or Registry failure is a
+refusal, not an authorized empty result. Existing local chat/native execution is unchanged.
+
+The normative metadata sample is `fixtures/bots-protocol/sync-access.http.json`.
+Device UUIDs accepted by this new sync request are canonicalized to lowercase by
+the Bots-owned codec. Classified sync refusals return `{error:{kind,message,failure},trace}`:
+403 authorization, 404 deleted/unknown Bot, 400 malformed/unbound/changed scope,
+503 Registry/private-service unavailable or invalid metadata. A completed cross-process
+lookup is rechecked against the current local binding/tombstone before a 200 response.

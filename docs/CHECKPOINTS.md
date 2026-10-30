@@ -1,5 +1,52 @@
 # 用户视角检查点
 
+## 2026-10-30 22:59 +0800 - P3 metadata red/green; stable source, normal gates running
+
+- Fresh264cc9e/treeb40045 remains normally delivered; no old P2 evidence reopened.
+- Real registered/paired Ed25519 services and Registry SQLite first red: sync.identity
+  unknown_local_method on unchanged192 production paths/base264cc9e (entry-red ef302074).
+  Host public management forbidden red66498818 and uppercase peer actual-route redc88a109c
+  are minimally fixed. Registration signer/vault, execution journal and SDK are unchanged.
+- Current directional grant/current epoch/credential, withdrawal and Self-only positive
+  publication use actual owned Node/private socket/Registry. Positive Tailscale discovery
+  is an owned CLI fixture, not a physical network proof. Bot route traverses that chain,
+  rechecks binding/tombstone after the real reply barrier, has one failure origin, and
+  offline Registry refuses access while native local chat/tool execution still succeeds.
+- Stable22-path source receipt source-v1 d794a864; affected root27/27 and Bots64/64,
+  root/Bots types/check-only lint201/210 and strict changed-Swift format exit0. Public
+  Host minimal green includes normal Swift194/44/50 tests. Normal root/Bots checks are
+  now running; candidate/independent Review/commit/push are not complete.
+- bot-route-first's auto-binding assumption and types' erasableSyntaxOnly/cleanup-method
+  mistakes are retained as fixture/editing failures, not product reds. P2 crash/eval/perf
+  retain prior scope; no new recovery or invocation path is introduced by this slice.
+- 23:01 gate completion: root-check-v1 exit0 (264/264, types/Biome201/build),
+  bots-check-doc-fix exit0 (fixtures33, ordinary/coverage813/813 same suite, types/
+  Biome210; coverage95.73/89.31/91.68), device-process-final8/8 and normal Swift
+  194/44/50 plus full strict-format exit0. All six final receipts bind source22/22.
+  First Bots check812/813 failed only the missing bare fixture-table filename; its
+  original log/exit remains, and only the documented table was corrected.
+- Agent1.2.0 remains an unpublished development source candidate. Onboarding still
+  references published1.0.0; this is not an installed P3 release. Package/lock/release
+  configuration are unchanged. Final candidate awaits independent Review/Lead;
+  no commit/push is authorized until acceptance.
+- No live Herdr collection/auth/D1/rendering change, deployment, installed App or physical
+  Mac/Tailscale acceptance. P3 is one metadata foundation slice; P4-P6 remain unstarted.
+
+## 2026-10-30 22:45 +0800 - fresh264cc9e delivered; P3 device-access contract/real setup begins
+
+- Lead/Root accepted fresh delivery264cc9e/treeb40045, own fork matches and clean.
+  Delivery29bbd80f retains initial pre-commit failure, formatting Review, normal
+  commit-attempt2 and first fresh push success; old P2 evidence remains unchanged.
+- Read Registry session/group/epoch, DeviceCloud/private helper/socket, Swift restricted
+  signer and Bots port. getDirectory's offline-local fallback cannot authorize sync.
+- Sent Lead minimal metadata-port, directional sharedBot grant and local Tailscale
+  publication decisions. No production changes. Real Miniflare SQLite, two owned Node
+  services and independent Ed25519 registration/pairing/first-red setup continues.
+  No P3 red/green/gate claim yet; evidence .local/sync-p3-device-access.
+- No installation/pairing/journal rewrite, no execution-policy history authorization,
+  no chat/resources in Registry/logs. P4 transport/72h cache not implemented; no deploy,
+  App/other-tree changes or live auth/D1/UI/physical-Tailscale acceptance.
+
 ## 2026-10-30 22:19 +0800 — fresh空Bot首包真实红→绿，冻结source与新门禁完成待Review
 
 - 普通Bots265b0db/tree d70及独立repair9475e2e/tree4b17正常交付不变，own fork最后核9475e2e；
