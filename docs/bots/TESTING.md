@@ -1140,3 +1140,31 @@ The candidate lists the actual map differences and reuse rationale instead of cl
 older commands ran the final v3 map. All old reds,oracle/editor failures and both22/23 gates stay
 bound. Browser remains normal pre-push; independent test-delta/final acceptance still precedes
 commit/push. No physical Tailscale/Mac/App,CF cache,deploy/npm/PR or next-slice evidence is added.
+
+### Durable-object delivery and #109 ancestry preparation
+
+The accepted slice was normally committed and first-pushed as8b5ca36/tree20d3fe12,parent4f7d035,
+39 paths. objects-delivery-final.json SHA072acfa9 binds289 historical+40 delivery originals and
+source30/full550/complete index681 before/after. Both real hooks and main commit/push exit0.
+Actual pre-push ran root267/267,strict types/check-only lint211/build,browser191 with the existing
+11 conditional skips,and Swift197/51/50. Independent own ls-remote and clean/ahead0/behind0
+confirmed delivery. Older local gates keep their original maps and reuse scope;no old failure
+or raw receipt is rewritten.
+
+Settled trace correctiona40bae3e verifies the original commit-exit declarations as exact
+3888/28010-byte prefixes. Detached Git maintenance/repack ended0 after the main commit and
+appended to complete5074/43436-byte traces;final delivery uses their settled hashes. Push traces
+had no analogous append. Two Swift exact-tag Git probes ended128 because no tag exactly matches
+8b5ca36;subsequent Swift summaries,pre-push hook and push passed. The first settle helper's
+all-child-code0 assertion error is retained as an evidence-script error,not a product gate or
+an assertion that all nested Git commands succeeded.
+
+The following ancestry/docs preparation has separate .local/sync-upstream-109 evidence. Actual
+fetch found upstream/main5d48ba0a,parents d69359b/165d154,tree d3923690 identical to165d154.
+Merge-base is165d154 and the upstream content delta is empty. Normal --no-ff --no-commit merge
+left the index at8b5ca36's tree20d3fe12 before status-doc edits,with no conflicts. All550 selected
+source/test/fixture/script paths were separately compared with real8b5 blobs;old289+40 originals
+and their delivery/candidate receipt hashes remain intact. Only the five authorized status docs
+are prepared for Review. Static diff checks cover this step;no unchanged Bots/crash/eval/coverage
+gate is repeated or relabeled. Merge commit/push and their normal hooks await candidate
+acceptance;MERGE_HEAD alone is not integrated or delivered ancestry. No CF/physical/App scope added.

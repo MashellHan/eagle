@@ -552,13 +552,22 @@ Bots daemon、Swift 客户端和同步服务各有正常门禁，root check 不�
 [C12]: https://developers.cloudflare.com/r2/platform/limits/
 
 
-## Local durable encrypted object slice at base4f7d035
+## Local durable encrypted object delivery8b5ca36 at base4f7d035
 
-The next P4 slice uses helper-owned persistent X25519 wrapping keys and signed,typed metadata
+The delivered P4 slice uses helper-owned persistent X25519 wrapping keys and signed,typed metadata
 through the independent version1 device port. Bots persists immutable cipher/manifest/self-envelope
 or accepted recipient pin results under its own root and exposes additive objects/pull and stored
 objectId-only passive apply. Existing direct page,ordinary local execution and SDK history bytes
 retain their delivered contracts. See PROTOCOL and SYNC-ARCHITECTURE for exact fields/fences;
-TESTING/source-v1 ccdfe1ae records real owned helper/Registry SQLite,crash,offline cold-start and
-normal necessary gates. This is local source awaiting independent Review,not CF caching or
-physical Tailscale/App acceptance. No deployment,publication or new owner-online dependency.
+TESTING/source-v3 fe2e2ecd and authoritative objects-delivery-final.json SHA072acfa9 record the
+real owned helper/Registry SQLite,crash,offline cold-start and actual normal delivery gates.
+Own-fork8b5ca36/tree20d3fe12 and clean/ahead0/behind0 were verified;289 historical and40 delivery
+originals retain old gate scopes and settled trace correctiona40bae3e. This is local controlled
+acceptance,not CF caching or physical Tailscale/App acceptance. Agent1.2.0 remains unpublished
+source and onboarding1.0.0 is unchanged;no deployment,publication or owner-online dependency.
+
+After that clean delivery,upstream/main5d48ba0a was fetched and verified as #109's normal merge,
+with the same tree as common ancestor/original dependency165d154 and no source delta. This
+baseline integration has sync parent8b5ca36 and upstream parent5d48ba0a,preserving the published
+sync chain and every source byte;only status docs change. Actual normal commit and remote
+results belong to the final .local/sync-upstream-109 delivery receipt;preparation is not delivery.

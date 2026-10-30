@@ -1,5 +1,28 @@
 # 用户视角检查点
 
+## 2026-10-31 04:20 +0800 - Durable objects delivered; same-tree #109 ancestry merge prepared
+
+- Local durable objects/directed envelopes are formally closed and normally delivered as
+  8b5ca36/tree20d3fe12,parent4f7d035. Authoritative receipt072acfa9 binds289 history+40 delivery
+  originals;source30/full550/index681 stayed identical. Actual main commit/push and both hooks0,
+  root267,browser191/existing11skip,Swift197/51/50. Own ref and clean/ahead0/behind0 independently
+  verified. Trace correctiona40bae3e retains original prefixes and settled maintenance tails;
+  the two no-exact-tag probes128 and first settle helper assertion error retain their true scope.
+- New .local/sync-upstream-109 evidence starts only after that clean node. Personal MashellHan
+  actual/user,repo-local author,Node26.9/npm11.19.1,existing credentials/remotes remain verified.
+  Normal fetch found5d48ba0a with parentsd69359b/165d154,tree d3923690 equal to165d154;
+  merge-base165d154 and upstream content delta empty. Normal --no-ff --no-commit succeeded,
+  MERGE_HEAD5d48ba0a/index20d3fe12 before docs,HEAD still8b5ca36. No merge commit or push yet.
+- Only PLAN,SYNC-ARCHITECTURE,SYNC,TESTING and this checkpoint receive current status changes;
+  historical failures/checkpoints stay. All550 selected inputs were compared with actual8b5
+  blobs and are unchanged;old289+40 originals plus their authoritative receipt remain protected.
+  Current step uses static diff checks and independent docs/ancestry Review,not repeated source
+  gates or invented current-map executions. Normal hooks remain required after final acceptance.
+- GitHub identity evidence does not establish live Herdr collection/App authentication,
+  production D1/rendering or physical Mac/Tailscale/App verification. CF72h/P5/P6/npm/deploy/PR
+  scope remains untouched. Next hop: freeze the exact two-parent/docs/tree candidate for Lead's
+  existing Reviewer;do not mistake MERGE_HEAD/preparation for completed integration or delivery.
+
 ## 2026-10-31 04:05 +0800 - Normal devices gate passes; fixture-only source frozen for final Review
 
 - Source-v3 fe2e2ecd freezes30 changed/new inputs and550 full selected hashes;282 original

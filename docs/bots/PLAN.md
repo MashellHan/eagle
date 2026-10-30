@@ -32,13 +32,12 @@ P4 first authenticated one-page pull/apply is normally delivered as4f7d035/tree9
 Own remote and clean/ahead0/behind0 were verified; authoritative
 .local/sync-p4-authenticated-pull/p4-delivery-final.json SHA687f6650 binds194 historical
 and30 delivery originals, including actual normal commit/pre-push/root/browser/Swift scopes.
-The next P4 atomic slice has frozen local source-v1 and passing necessary v1 gates, awaiting independent Review: durable encrypted
-page objects and directed recipient envelopes, with helper-owned persistent wrapping keys,
-immutable first-winner object publication and previously authorized offline local opening.
-Review's target-slot objectId P2 has real red/green and source-level closure. Frozen source-v3
-adds two minimal fixture observation corrections; the normal devices gate23/23 and root
-types/check-only lint pass. The original22/23 failures remain intact. Test delta/final candidate
-Review and formal acceptance are pending; no commit/push or remote delivery is claimed.
+Durable encrypted page objects and directed recipient envelopes are normally delivered as
+8b5ca36/tree20d3fe12 after independent Review. Authoritative
+.local/sync-p4-encrypted-objects/objects-delivery-final.json SHA072acfa9 binds289 historical
+and40 delivery originals,including settled trace correctiona40bae3e. Own remote and
+clean/ahead0/behind0 were verified. Source-v3,target-slot P2 closure,both22/23 fixture failures
+and the final normal gates retain their exact recorded scope; TESTING records the delivery.
 Future cache identity must preserve original source epoch/seq across repaging/forwarding;
 CF72h cache/fallback/switching, physical paths and P5/P6 remain planned.
 Historical candidate and per-event evidence below retains its original scope.
@@ -73,20 +72,25 @@ review-fixes-affected87/87、types/check-only lint、Bots普通/coverage各763/7
 
 ### 开发基线与 PR 边界
 
-在自己的 fork [MashellHan/eagle](https://github.com/MashellHan/eagle) 开发，已合入
-`nocoo/main@d69359b` 与 [#109](https://github.com/nocoo/eagle/pull/109) 的
-`165d154`；后者已包含前者，两次合并均为无冲突快进。固定基线为
-`bot-sync/base@165d154`，同步改动单独提交到 `bot-sync/eagle`，不等待上游合并 #109。
+在自己的 fork [MashellHan/eagle](https://github.com/MashellHan/eagle) 开发。历史开发基线已合入
+`nocoo/main@d69359b` 与 [#109](https://github.com/nocoo/eagle/pull/109) 的 `165d154`，
+原 `bot-sync/base@165d154` 和全部已发布同步提交保留。#109 已于2026-10-30 19:58:52Z
+正常合并；其上游 merge commit `5d48ba0a` 的 parents 为 `d69359b`、`165d154`，
+tree 与 `165d154` 完全相同。在已交付干净节点 `8b5ca36` 后，实际 fetch 确认该最新
+`upstream/main`；merge-base 为 `165d154`，两者内容差异为空。
+本次基线整合的固定父系为同步父 `8b5ca36`、上游父 `5d48ba0a`，共同祖先为
+`165d154`；保留全部同步源码和已发布提交。实际正常提交与远端结果记录在
+`.local/sync-upstream-109` 的最终交付收据，准备或候选记录不代表远端交付。
 本地开发目录为 `/Users/mengxionghan/workspace/eagle-sync`，按仓库规则在本地 `main` 集成。
 
 复用 #109 的设备群/配对、helper 文件身份、后台服务、独立设备 Worker 和
-`SharedDevicePort`，以 [DEVICES.md](../DEVICES.md) 为契约。该 port 提供设备执行，
-尚不提供聊天复制、同步密钥分发或直连握手；这些按独立版本化接口补充。
+`SharedDevicePort`，以 [DEVICES.md](../DEVICES.md) 为契约。该 port 提供设备执行；
+同步身份、握手及密钥元数据通过独立版本化的 Bots `DeviceSyncPort` 接入。
 不重新实现设备底座，也不把现有注册 signer 当作通用签名接口。
 
-后续单独向 nocoo 提交同步 PR：#109 合入后，从最新 `nocoo/main` 创建提交候选，
-只迁移 `bot-sync/base..bot-sync/eagle` 的同步提交并复核最终 diff；即使上游 squash
-#109，也不把它的实现再次带入 PR。期间 #109 若更新，单独集成并记录依赖变化。
+后续单独向 nocoo 提交同步 PR：从届时最新 `nocoo/main` 准备候选，复核实际祖先与
+最终同步 diff，不把 #109 的实现再次带入 PR。历史 `bot-sync/base@165d154` 保留为
+原同步提交的比较点，不改写已发布提交。本步无 PR 创建/合并或发布操作。
 
 ### 已确定的行为
 
@@ -151,7 +155,7 @@ Tailscale 直连进入本版范围；专用同步入口仅向 Tailscale 网络�
 | P1 — 本地副本与分支 | in progress | 持久来源日志、outbox、ID 映射、缺口补读与本端恢复 | A 停止后 B 可运行；重复/乱序同步保留两支；不恢复其他端任务 |
 | P2 - resources | local verified | fixed-head696f649, ordinary-root265b0db/repair9475e2e and fresh264cc9e delivered normally | Complete local version loading; raw contents/tool associations retained |
 | P3 — 设备底座接入 | first metadata slice delivered460b60d | 复用 #109 的安装/配对/helper/权限；新增同步身份授权、Tailscale 端点发布和共享访问接口 | 现有设备能力保持有效；无 Tailscale 可走云通道；端点身份、群成员和同步权限真实生效 |
-| P4 — 直连、中转与 3 天缓存 | first direct-page slice delivered4f7d035; durable objects/envelopes v3 frozen, necessary local gates passed/P2 source closed; test delta/final Review pending | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
+| P4 — 直连、中转与 3 天缓存 | first direct-page slice delivered4f7d035; local durable objects/envelopes delivered8b5ca36; remaining network/cache scope planned | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
 | P5 — 原生多端流程 | planned | 共享目录、各端运行状态、直连/中继状态、分支选择/合并、同步覆盖范围与资源冲突 | 从 App 完成双端执行、错峰补齐、过期恢复；路径切换不打断本地 run，缺口不误报完整 |
 | P6 — 多机验证与交付 | planned | 物理双 Mac、真实 Tailscale 路径、断网/重启/升级、性能与成本、发布门禁 | 直连/回退/切回、同时运行、A 关机、B 重启、过期补读及新设备初始化有实际证据 |
 
