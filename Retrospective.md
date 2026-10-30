@@ -805,3 +805,9 @@ and points BundleProgram at it. Signing, the App's code-identity lookup and inst
 ownership checks read that same signed plist. The label, Mach service, code-signing
 requirements and device data do not change. Its real changed-helper installation
 remains the deciding check; no successful upgrade is inferred from the new layout.
+
+The `1034f43` versioned-helper trial also failed twice with explicit Launch
+Constraint Violation before execution. The observed PID was transient and did
+not establish readiness. Changing the executable path did not close the cached
+constraint issue. The next narrow signing trial assigns only the candidate helper
+a stable reverse-DNS identifier, retaining its exact ad-hoc CDHash requirement.

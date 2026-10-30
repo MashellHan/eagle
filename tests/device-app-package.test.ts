@@ -297,6 +297,15 @@ test("nested signing preserves Node, signs helper before App, and propagates ver
       .filter((args) => args.includes("--sign"))
       .map((args) => args.at(-1));
     assert.deepEqual(signed, [addon, join(f.app, helperPath as string), f.app]);
+    const identified = calls.filter((args) => args.includes("--identifier"));
+    assert.equal(identified.length, 1);
+    const helperCall = identified[0];
+    assert(helperCall);
+    assert.equal(helperCall.at(-1), join(f.app, helperPath as string));
+    assert.equal(
+      helperCall[helperCall.indexOf("--identifier") + 1],
+      "ai.hexly.eagle.devices.candidate.helper",
+    );
     assert.equal(calls.at(-1)?.includes("--verify"), true);
     assert(
       calls.some(

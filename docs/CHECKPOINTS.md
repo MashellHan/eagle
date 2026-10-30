@@ -2393,3 +2393,19 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   closed the installer safeguards; no additional team or live collection is used.
 - No Worker deployment, D1 mutation, identity reset or Keychain access. PR #109's
   macOS CI and the changed-helper installed upgrade remain the next broken hops.
+
+## 2026-10-30 13:12 +0800 — Versioned executable path also failed live acceptance
+
+- `1034f43` changed the real helper path and its CDHash, after verified old-service
+  preparation. Both launch attempts still hit a Launch Constraint Violation in
+  17/19 milliseconds; the brief observed PID was not readiness. No automatic
+  upgrade pass is claimed from this package.
+- All 26 Node packaging/installer regressions and 24 affected Swift tests passed,
+  with the new path behavior first failing its assertions. Existing Astra
+  reviewers found no code-path or signature-guard issue; the live failure remains.
+- Root is testing one narrower signing change: give only the candidate helper a
+  stable signing identifier instead of inheriting the linker's UUID identifier.
+  Its actual ad-hoc designated requirement must still pin its current CDHash.
+- No new cloud deployment, D1 write, Keychain access, identity reset or live Herdr
+  collection. UI and cross-Mac operation evidence remains distinct from automatic
+  update acceptance. CI SDK confirmation is still pending the final normal push.

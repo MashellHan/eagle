@@ -282,11 +282,12 @@ export function signDeviceBundle(
       "--verbose=2",
       path,
     ]);
-  const sign = (path: string) => {
+  const sign = (path: string, identifier?: string) => {
     execute("/usr/bin/codesign", [
       "--force",
       "--sign",
       identity,
+      ...(identifier ? ["--identifier", identifier] : []),
       "--options",
       "runtime",
       identity === "-" ? "--timestamp=none" : "--timestamp",
@@ -296,7 +297,12 @@ export function signDeviceBundle(
   };
   verify(node);
   for (const path of nativeCode(runtime)) if (path !== node) sign(path);
-  sign(join(app, deviceHelperRelativePath(app)));
+  sign(
+    join(app, deviceHelperRelativePath(app)),
+    config.profile === "device-candidate"
+      ? "ai.hexly.eagle.devices.candidate.helper"
+      : undefined,
+  );
   save(join(resources, "DeviceSigning.json"), {
     version: 1,
     mode: identity === "-" ? "ad-hoc-candidate" : "configured-identity",

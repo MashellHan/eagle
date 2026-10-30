@@ -81,6 +81,8 @@ App 启动检测到包更新时，完成旧注册的异步注销后，由后台 
 候选 helper 的实际文件名同时包含该 build，`BundleProgram` 指向本次文件；签名、
 App 的 helper 身份验证和安装器的进程归属检查均从签名包内同一 plist 读取真实路径。
 这不改变服务 label、Mach service 或设备身份。正式发布和旧候选的固定 helper 路径仍受支持。
+候选 helper 使用固定的签名 identifier，避免继承链接器每次变化的 UUID 标识；ad-hoc
+产物的 designated requirement 仍精确绑定当前 CDHash，不能用同名程序替代。
 显示用的 `CFBundleShortVersionString` 仍取产品版本，正式发布包保留发布版本规则。
 
 Bot 详情保留“可用电脑”，显示本机、群内设备、状态和 agent 当前实际执行的目标，
