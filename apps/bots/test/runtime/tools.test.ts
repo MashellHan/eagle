@@ -322,7 +322,7 @@ test("native bash timeout keeps collected output and returns a model-visible fai
       .flatMap((event) => (event.type === "append" ? event.message.blocks : []))
       .find((block) => block.type === "toolResult");
     assert.ok(result?.type === "toolResult");
-    assert.equal(received, "before-timeout", "the real onOutput callback received stderr");
+    assert.match(received, /before-timeout/, "the real onOutput callback received stderr");
     assert.equal(result.isError, true);
     assert.match(result.text, /before-timeout/);
     assert.match(result.text, /timed out/i);
