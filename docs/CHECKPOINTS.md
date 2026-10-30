@@ -2215,3 +2215,23 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   regression and tells the user to refresh the target rather than resubmit.
 - Next broken hop: finish the UI check, integrate and review the remote policy
   commit, then install once and exercise the actual window and automatic startup.
+
+## 2026-10-30 11:03 +0800 — Device UI and management integration
+
+- User view: installed App still runs the recovered `20b13f0`; identity/Raven/token/
+  catalog fingerprints and two existing histories were recorded for the replacement.
+  Root owns the next complete signed build and installation, followed by user testing.
+- Herdr: existing Astra lead closed the remote policy credential-version finding;
+  its fix is integrated as `11b1ed1`. The UI reviewer identified a settings-only
+  App with no approval presenter. A real NSWindow regression failed first and now
+  passes with one App-owned confirmation window, retaining exact request-ID denial.
+- Authentication/storage: remote policies use the trusted App path, authenticated
+  same-group relay and target journal confirmation. No live server update or D1
+  mutation was performed. Root's 240-test check passed, including isolated local
+  Miniflare/D1, types, check-only lint and the production build.
+- Rendering: the final Swift packages passed 285 tests; four-device light/dark
+  snapshots were reviewed. Browser gate is running. The latest window fix is under
+  incremental review; no installed-GUI or physical two-Mac pass is claimed yet.
+- Next broken hop: finish this bounded review/check, build and install, verify
+  automatic helper startup and actual settings/approval interactions. No PR until
+  the user confirms the installed result.

@@ -15,6 +15,7 @@ public final class SettingsWindowController {
     model: SettingsViewModel, daemon: BotsDaemonSupervisor? = nil,
     devices: DeviceSettingsViewModel = .shared
   ) {
+    DeviceApprovalWindowController.shared.observe(devices)
     if let window {
       self.model?.selection = model.selection
       window.makeKeyAndOrderFront(nil)

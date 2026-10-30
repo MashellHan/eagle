@@ -2,10 +2,11 @@ import EagleDesign
 import EagleDevices
 import SwiftUI
 
-/// Presented by the shell, so confirmation is available outside Settings as well.
+/// Presented by the App's single confirmation window, independent of workspace lifetime.
 public struct DeviceApprovalView: View {
   @ObservedObject private var model: DeviceSettingsViewModel
   @State private var displayedRequestId: String?
+  @AppStorage("eagle.appearance") private var appearance = "system"
 
   public init(model: DeviceSettingsViewModel = .shared) {
     self.model = model
@@ -79,6 +80,7 @@ public struct DeviceApprovalView: View {
     .padding(24)
     .frame(minWidth: 560, idealWidth: 640, maxWidth: 760, minHeight: 260)
     .background(Theme.Palette.surface)
+    .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
     .onAppear { displayedRequestId = model.pendingApproval?.id }
     .onDisappear {
       if let displayedRequestId { model.respondToApproval(false, requestId: displayedRequestId) }

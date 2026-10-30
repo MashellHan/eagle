@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
     NSApp.activate(ignoringOtherApps: true)
+    DeviceApprovalWindowController.shared.observe(DeviceSettingsViewModel.shared)
     Task { @MainActor in await DeviceSettingsViewModel.shared.startIfNeeded() }
   }
 

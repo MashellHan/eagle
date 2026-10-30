@@ -337,16 +337,6 @@ public struct WorkspaceShellView: View {
     .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSettings)) { _ in
       showSettings()
     }
-    .sheet(
-      isPresented: Binding(
-        get: { devices.pendingApproval != nil },
-        set: { if !$0 { devices.denyPendingApproval() } })
-    ) {
-      DeviceApprovalView(model: devices)
-    }
-    .onChange(of: devices.pendingApproval?.id) { _, value in
-      if value != nil { NSApp.activate(ignoringOtherApps: true) }
-    }
   }
 
   private func showSettings() {
