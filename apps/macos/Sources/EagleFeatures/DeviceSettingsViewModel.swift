@@ -73,6 +73,7 @@ private struct DeviceServiceState: Decodable {
   @Published public private(set) var directory: DeviceDirectoryState?
   @Published public private(set) var directoryIsStale = true
   @Published public private(set) var policy: DevicePolicyState?
+  @Published private var confirmedPolicies: [String: DevicePolicyState] = [:]
   @Published public private(set) var invitation: DevicePairingInvitation?
   @Published public private(set) var pendingRedeemRequestId: String?
   @Published public private(set) var pendingApproval: DeviceApprovalRequest?
@@ -107,7 +108,8 @@ private struct DeviceServiceState: Decodable {
     self.defaults = defaults
     self.now = now
     self.observationWait = observationWait
-    enabled = !defaults.bool(forKey: Self.disabledKey)
+    enabled = true
+    defaults.removeObject(forKey: Self.disabledKey)
     let record = defaults.dictionary(forKey: Self.pendingRedeemKey)
     // Older candidate records contain an ID only: they can be queried, never blindly retried.
     let savedID = record?["requestId"] as? String ?? defaults.string(forKey: Self.pendingRedeemKey)
@@ -145,6 +147,12 @@ private struct DeviceServiceState: Decodable {
     case "request_conflict": return "此请求已绑定另一个配对码，请输入原配对码或查询原请求。"
     case "pairing_binding_unavailable": return "原请求缺少配对码校验信息，只能继续查询原结果。"
     case "invalid_session", "revoked_session", "unknown_device": return "设备身份会话已失效，请重新连接设备服务。"
+    case "target_policy_unavailable": return "暂时无法修改这台设备的权限，请确认设备在线并已更新 Eagle。"
+    case "target_offline": return "这台设备当前离线，请等待它重新连接后再修改权限。"
+    case "target_management_unsupported": return "请先更新这台设备上的 Eagle，再修改它的权限。"
+    case "policy_result_unknown_refresh_target", "policy_request_already_sent_refresh_target":
+      return "权限修改结果尚未确认，请刷新查看这台设备的实际权限。"
+    case "policy_management_busy": return "这台设备正在处理其他请求，请稍后再试。"
     case "device_service_timeout":
       return pendingRedeemRequestId == nil
         ? "设备服务未能及时就绪，请重试。"
@@ -378,11 +386,44 @@ private struct DeviceServiceState: Decodable {
     } catch { record(error) }
   }
 
-  public func setPolicy(_ mode: DevicePolicyState.Mode) async {
+  public func policy(for device: DeviceDirectoryEntry) -> DevicePolicyState? {
+    if device.deviceId == localDeviceId { return policy }
+    guard let confirmed = confirmedPolicies[device.deviceId] else { return device.policy }
+    if let observed = device.policy, observed.version >= confirmed.version { return observed }
+    return confirmed
+  }
+
+  public func canEditPolicy(for device: DeviceDirectoryEntry) -> Bool {
+    guard enabled, localReady, !controlsBusy, policy(for: device) != nil else { return false }
+    if device.deviceId == localDeviceId { return true }
+    return !directoryIsStale && device.online == true
+      && device.capabilities?.contains("policy.manage") == true
+  }
+
+  public func setPolicy(_ mode: DevicePolicyState.Mode, deviceId: String? = nil) async {
+    let remote = deviceId.flatMap { $0 == localDeviceId ? nil : $0 }
+    if let remote {
+      guard let device = directory?.devices.first(where: { $0.deviceId == remote }),
+        canEditPolicy(for: device)
+      else {
+        rejectPreflight("target_policy_unavailable")
+        return
+      }
+    }
     await perform {
+      var params: [String: DeviceJSON] = ["mode": .string(mode.rawValue)]
+      if let remote {
+        params["deviceId"] = .string(remote)
+        params["requestId"] = .string(UUID().uuidString.lowercased())
+      }
       let result = try await self.control.call(
-        "policy.set", params: .object(["mode": .string(mode.rawValue)]))
-      self.policy = try result.decoded(DevicePolicyState.self)
+        "policy.set", params: .object(params))
+      let policy = try result.decoded(DevicePolicyState.self)
+      if let remote {
+        self.confirmedPolicies[remote] = policy
+      } else {
+        self.policy = policy
+      }
       self.denyPendingApproval()
       await self.readState()
     }

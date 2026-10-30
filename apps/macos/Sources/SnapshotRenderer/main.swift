@@ -180,8 +180,9 @@ struct SnapshotRenderer {
       let settings = SettingsViewModel()
       settings.selection = .machines
       capture(
-        SettingsView(model: settings, devices: model).preferredColorScheme(scheme),
-        size: CGSize(width: 920, height: 900), named: "devices-settings-\(name)", in: directory,
+        SettingsView(model: settings, devices: model, showsCloseButton: false)
+          .preferredColorScheme(scheme),
+        size: CGSize(width: 1120, height: 820), named: "devices-settings-\(name)", in: directory,
         appearance: scheme == .dark ? .darkAqua : .aqua)
       capture(
         DeviceInspectorView(model: model, onManage: {})
@@ -468,7 +469,8 @@ final class SnapshotHTTPStub: URLProtocol {
               "arch": .string("arm64"), "groupId": .string("snapshot-group"), "online": online,
               "lastSeenAt": .null,
               "capabilities": online == .null
-                ? .null : .array([.string("command"), .string("file.read")]),
+                ? .null
+                : .array([.string("command"), .string("file.read"), .string("policy.manage")]),
               "policy": mode == .null ? .null : .object(["mode": mode, "version": .number(1)]),
             ])
           }),

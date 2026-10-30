@@ -18,7 +18,6 @@ public struct WorkspaceShellView: View {
   @State private var showsAccountMenu = false
   @State private var showsBotCreate = false
   @State private var showsBotFaceEditor = false
-  @State private var showsSettings = false
   @AppStorage("eagle.appearance") private var appearance = "system"
   @AppStorage("eagle.hideToolCalls") private var hideToolCalls = false
   @AppStorage("eagle.loadMockData") private var loadMockData = false
@@ -169,7 +168,7 @@ public struct WorkspaceShellView: View {
           },
           onCollapse: { layout.toggleSidebar() },
           onAccount: { showsAccountMenu = true },
-          onGallery: { onShowGallery { showsSettings = true } },
+          onGallery: { onShowGallery { showSettings() } },
           onPinItem: { id in chrome.togglePin(id) },
           moveTargets: { id in moveTargets(for: id) },
           onToggleItem: { id in
@@ -263,7 +262,7 @@ public struct WorkspaceShellView: View {
           computerContent: AnyView(
             DeviceInspectorView(model: devices) {
               settings.selection = .machines
-              showsSettings = true
+              showSettings()
             })
         )
         .sheet(isPresented: $showsBotFaceEditor) {
@@ -283,7 +282,7 @@ public struct WorkspaceShellView: View {
         bots.onSelect = { id in list.selection = id }
         bots.onOpenSettings = {
           settings.selection = .bots
-          showsSettings = true
+          showSettings()
         }
         await daemon.startIfNeeded()
       }
@@ -327,7 +326,7 @@ public struct WorkspaceShellView: View {
           .onTapGesture { showsAccountMenu = false }
         AccountMenu(rows: account.rows) { row in
           showsAccountMenu = false
-          if row.id == "settings" { showsSettings = true }
+          if row.id == "settings" { showSettings() }
         }
         .padding(.leading, Theme.Metric.contentInset)
         .padding(.bottom, Theme.Metric.footerHeight + Theme.Metric.footerBottom + 6)
@@ -335,16 +334,8 @@ public struct WorkspaceShellView: View {
       }
     }
     .animation(.snappy(duration: 0.18), value: showsAccountMenu)
-    // A small blur under the settings card: the window stays recognisable, only softened.
-    .blur(radius: showsSettings ? 5 : 0)
-    .animation(.easeOut(duration: 0.18), value: showsSettings)
-    .overlay {
-      if showsSettings {
-        settingsOverlay
-      }
-    }
     .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSettings)) { _ in
-      showsSettings = true
+      showSettings()
     }
     .sheet(
       isPresented: Binding(
@@ -358,31 +349,7 @@ public struct WorkspaceShellView: View {
     }
   }
 
-  /// Centred settings card over a blurred, dimmed copy of the window. The
-  /// traffic lights are hidden while it is open so the card owns the chrome.
-  private var settingsOverlay: some View {
-    ZStack {
-      // The blur lives on the window itself (a few points); this layer only dims.
-      Color.black.opacity(0.32)
-        .ignoresSafeArea()
-        .onTapGesture { showsSettings = false }
-
-      SettingsView(
-        model: settings, onClose: { showsSettings = false }, daemon: daemon, devices: devices
-      )
-      .frame(width: Theme.Metric.settingsWidth, height: Theme.Metric.settingsHeight)
-      .background(
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-          .fill(Theme.Palette.surface)
-      )
-      .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-      .overlay(
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-          .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
-      )
-      .shadow(color: .black.opacity(0.28), radius: 40, y: 18)
-      .background(TrafficLights(hidden: true))
-    }
-    .transition(.opacity)
+  private func showSettings() {
+    SettingsWindowController.shared.show(model: settings, daemon: daemon, devices: devices)
   }
 }

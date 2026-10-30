@@ -15,84 +15,50 @@ public struct DeviceSettingsView: View {
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 18) {
-      serviceCard
+      connectionStatus
       directoryCard
+      SettingsCard {
+        pairingContent.padding(.vertical, 18)
+      }
     }
     .task { await model.observe() }
     .alert(
-      "移出设备群？",
+      "移除设备？",
       isPresented: Binding(
         get: { removing != nil }, set: { if !$0 { removing = nil } }
       )
     ) {
       Button("取消", role: .cancel) { removing = nil }
-      Button("移出", role: .destructive) {
+      Button("移除", role: .destructive) {
         guard let device = removing else { return }
         removing = nil
         Task { await model.removeMember(device.deviceId) }
       }
     } message: {
-      Text("移出后，\(removing?.name ?? "此设备") 与群内其他设备不能再互相执行操作。可以通过新配对码重新加入。")
+      Text("移除后，\(removing?.name ?? "此设备") 与群内其他设备不能再互相执行操作。可以通过新配对码重新加入。")
     }
   }
 
-  private var serviceCard: some View {
-    SettingsCard {
-      VStack(alignment: .leading, spacing: 12) {
-        SettingsRow("设备服务") {
-          if model.isStarting { SpinnerArc(size: 12) }
-          Toggle(
-            "启用设备服务",
-            isOn: Binding(
-              get: { model.enabled }, set: { value in Task { await model.setEnabled(value) } }
-            )
-          )
-          .labelsHidden()
-          .toggleStyle(.switch)
-          .tint(Theme.Palette.accentStrong)
-          .disabled(!model.canToggleService)
-        }
-        HStack(spacing: 18) {
-          Label(model.localReady ? "本机可用" : "本机未就绪", systemImage: "desktopcomputer")
-            .foregroundStyle(
-              model.localReady ? Theme.Palette.accentStrong : Theme.Palette.textMuted)
-          Label(cloudLabel, systemImage: "network")
-            .foregroundStyle(Theme.Palette.textSecondary)
-          Spacer(minLength: 0)
-          SettingsActionButton("刷新") {
-            Task {
-              await model.startIfNeeded()
-              await model.refresh()
-            }
-          }
-          .disabled(!model.enabled || model.controlsBusy)
-        }
-        .font(Theme.TypeScale.note)
-        Text(
-          model.enabled
-            ? "关闭窗口后服务仍在后台运行。"
-            : "启用后可执行本机工具，并与其他设备配对。"
-        )
-        .font(Theme.TypeScale.note)
-        .foregroundStyle(Theme.Palette.textSecondary)
-        .fixedSize(horizontal: false, vertical: true)
-        serviceRecovery
-        if model.localReady && model.enabled {
-          Divider().overlay(Theme.Palette.line)
-          if model.pendingRedeemRequestId != nil {
-            SettingsCaption("配对待确认")
-            pairingContent
-          } else {
-            DisclosureGroup("添加设备") {
-              pairingContent.padding(.top, 12)
-            }
-            .disclosureGroupStyle(DeviceDisclosureStyle())
-            .font(Theme.TypeScale.note)
-            .foregroundStyle(Theme.Palette.textPrimary)
+  private var connectionStatus: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 18) {
+        if model.isStarting { SpinnerArc(size: 12) }
+        Label(model.localReady ? "本机可用" : "本机未就绪", systemImage: "desktopcomputer")
+          .foregroundStyle(
+            model.localReady ? Theme.Palette.accentStrong : Theme.Palette.textMuted)
+        Label(cloudLabel, systemImage: "network")
+          .foregroundStyle(Theme.Palette.textSecondary)
+        Spacer(minLength: 0)
+        SettingsActionButton("刷新") {
+          Task {
+            await model.startIfNeeded()
+            await model.refresh()
           }
         }
+        .disabled(model.controlsBusy)
       }
-      .padding(.bottom, 16)
+      .font(Theme.TypeScale.note)
+      serviceRecovery
     }
   }
 
@@ -112,7 +78,7 @@ public struct DeviceSettingsView: View {
       }
     }
     if model.canRetryService {
-      SettingsActionButton("重启设备服务") { Task { await model.retryService() } }
+      SettingsActionButton("重试") { Task { await model.retryService() } }
         .disabled(model.controlsBusy)
     }
   }
@@ -127,14 +93,19 @@ public struct DeviceSettingsView: View {
     }
   }
 
-  private var policyMenu: some View {
-    Menu {
+  private func policyMenu(for device: DeviceDirectoryEntry? = nil) -> some View {
+    let policy: DevicePolicyState?
+    if let device { policy = model.policy(for: device) } else { policy = model.policy }
+    let canEdit =
+      device.map { model.canEditPolicy(for: $0) }
+      ?? (model.enabled && model.localReady && !model.controlsBusy && model.policy != nil)
+    return Menu {
       ForEach(DevicePolicyState.Mode.allCases, id: \.self) { mode in
-        Button(mode.title) { Task { await model.setPolicy(mode) } }
+        Button(mode.title) { Task { await model.setPolicy(mode, deviceId: device?.deviceId) } }
       }
     } label: {
       HStack(spacing: 6) {
-        Text(model.policy?.mode.title ?? "策略未知")
+        Text(policy?.mode.title ?? "策略未知")
         Image(systemName: "chevron.down")
       }
       .font(Theme.TypeScale.note)
@@ -143,29 +114,14 @@ public struct DeviceSettingsView: View {
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
     .fixedSize()
-    .disabled(!model.enabled || !model.localReady || model.controlsBusy || model.policy == nil)
-    .accessibilityLabel("本机执行策略")
-    .help(policyDetail)
-  }
-
-  private var policyDetail: String {
-    switch model.policy?.mode {
-    case .allApprove:
-      "始终允许：设备群内所有 Bot 都可执行此用户有权访问的文件和命令，无需逐个授权。"
-    case .alwaysAsk:
-      "每次询问：由发起操作的 Mac 上的 Eagle 确认完整操作。App 未运行、未确认或确认过期时，操作被拒绝。"
-    case .paused:
-      "已暂停接纳新操作。正在执行的操作仍可查询或取消；暂停不会证明工具已停止。"
-    default:
-      "尚未读到本机策略，请刷新后再试。"
-    }
+    .disabled(!canEdit)
+    .accessibilityLabel("\(device?.name ?? "本机")执行策略")
+    .accessibilityIdentifier("devices.policy.\(device?.deviceId ?? "local")")
+    .help(canEdit ? "设置这台设备如何执行请求" : "设备就绪且支持权限设置后可修改")
   }
 
   private var pairingContent: some View {
     VStack(alignment: .leading, spacing: 14) {
-      Text("在任意一台设备输入另一台的配对码，即可共享整个设备群。")
-        .font(Theme.TypeScale.note)
-        .foregroundStyle(Theme.Palette.textSecondary)
       if let invitation = model.invitation {
         TimelineView(.periodic(from: .now, by: 1)) { context in
           let expiry = Date(timeIntervalSince1970: Double(invitation.expiresAt) / 1000)
@@ -190,7 +146,7 @@ public struct DeviceSettingsView: View {
               }
               .disabled(context.date >= expiry)
               SettingsActionButton("作废") { Task { await model.revokePairing() } }
-                .disabled(model.controlsBusy)
+                .disabled(model.controlsBusy || !model.localReady)
             }
           }
         }
@@ -204,7 +160,7 @@ public struct DeviceSettingsView: View {
           SettingsActionButton("生成本机配对码") {
             Task { await model.createPairing(ttlSeconds: ttlSeconds) }
           }
-          .disabled(model.controlsBusy)
+          .disabled(model.controlsBusy || !model.localReady)
           Spacer(minLength: 0)
         }
       }
@@ -224,14 +180,14 @@ public struct DeviceSettingsView: View {
         SettingsActionButton("查询配对结果", prominent: true) {
           Task { await model.recoverPairing() }
         }
-        .disabled(model.controlsBusy)
+        .disabled(model.controlsBusy || !model.localReady)
         HStack(spacing: 10) {
           SettingsTextField("重新输入原配对码", text: $pairingCode)
             .accessibilityLabel("原请求的配对码")
             .onSubmit { redeem() }
           SettingsActionButton("用原请求重试", action: redeem)
             .disabled(
-              model.controlsBusy
+              model.controlsBusy || !model.localReady
                 || pairingCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
       } else {
@@ -239,9 +195,9 @@ public struct DeviceSettingsView: View {
           SettingsTextField("输入另一台设备的配对码", text: $pairingCode)
             .accessibilityLabel("另一台设备的配对码")
             .onSubmit { redeem() }
-          SettingsActionButton("配对", prominent: !pairingCode.isEmpty, action: redeem)
+          SettingsActionButton("添加设备", prominent: true, action: redeem)
             .disabled(
-              model.controlsBusy
+              model.controlsBusy || !model.localReady
                 || pairingCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
       }
@@ -275,20 +231,14 @@ public struct DeviceSettingsView: View {
           }
           .font(Theme.TypeScale.note)
           .lineLimit(1)
-          Text(
-            !model.enabled
-              ? "设备服务已关闭"
-              : model.isStarting
-                ? "正在启动"
-                : model.localReady ? "本机可用" : "本机未就绪"
-          )
-          .font(Theme.TypeScale.pill)
-          .foregroundStyle(Theme.Palette.textSecondary)
+          DeviceStatusIcon(
+            online: model.localReady ? true : nil,
+            label: model.localReady ? "本机可用" : "本机未就绪")
         }
         Spacer(minLength: 0)
       }
       .accessibilityElement(children: .combine)
-      policyMenu
+      policyMenu()
     }
     .padding(.vertical, 14)
   }
@@ -313,15 +263,12 @@ public struct DeviceSettingsView: View {
                 DeviceSummaryView(
                   device: device, isLocal: device.deviceId == directory.localDeviceId,
                   localReady: model.localReady, stale: model.directoryIsStale,
-                  showsPolicy: device.deviceId != directory.localDeviceId,
+                  showsPolicy: false,
                   serviceEnabled: model.enabled)
-                VStack(alignment: .trailing, spacing: 10) {
-                  if device.deviceId == directory.localDeviceId {
-                    policyMenu
-                  }
+                HStack(spacing: 16) {
+                  policyMenu(for: device)
                   if directory.groupId != nil {
-                    SettingsActionButton(device.deviceId == directory.localDeviceId ? "退出群" : "移出")
-                    {
+                    SettingsActionButton("移除") {
                       removing = device
                     }
                     .disabled(
@@ -363,16 +310,17 @@ struct DeviceSummaryView: View {
         }
         .font(Theme.TypeScale.note)
         .lineLimit(1)
-        Text(statusLabel)
-          .font(Theme.TypeScale.pill)
-          .foregroundStyle(Theme.Palette.textSecondary)
+        .accessibilityElement(children: .combine)
+        if compact {
+          DeviceStatusIcon(online: connectionOnline, label: statusLabel)
+        }
         if showsPolicy {
           Text(device.policy?.mode.title ?? "策略未知")
             .font(Theme.TypeScale.pill)
             .foregroundStyle(Theme.Palette.textMuted)
         }
         if !compact {
-          DisclosureGroup("设备详情") {
+          DisclosureGroup {
             VStack(alignment: .leading, spacing: 6) {
               Text(device.deviceId)
                 .font(Theme.TypeScale.mono)
@@ -386,32 +334,78 @@ struct DeviceSummaryView: View {
             }
             .padding(.top, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
+          } label: {
+            Text("详情").underline()
           }
-          .disclosureGroupStyle(DeviceDisclosureStyle())
+          .disclosureGroupStyle(
+            DeviceDetailsStyle(online: connectionOnline, statusLabel: statusLabel)
+          )
           .font(Theme.TypeScale.pill)
           .foregroundStyle(Theme.Palette.textMuted)
         }
       }
       Spacer(minLength: 0)
     }
-    .accessibilityElement(children: .combine)
   }
 
   private var capabilityLabels: String {
     guard let capabilities = device.capabilities else { return "尚未观察到" }
     let labels = [
       "command": "运行命令", "file.read": "读取文件", "file.write": "写入文件", "file.list": "浏览目录",
-      "native": "本机工具",
+      "native": "本机工具", "policy.manage": "权限设置",
     ]
     return capabilities.isEmpty
       ? "无" : capabilities.map { labels[$0] ?? "其他操作" }.joined(separator: "、")
   }
 
   private var statusLabel: String {
-    if isLocal && !serviceEnabled { return "设备服务已关闭" }
+    if isLocal && !serviceEnabled { return "本机未就绪" }
     if isLocal && !localReady { return "本机未就绪" }
     if stale { return isLocal && localReady ? "本机可用 · 云端观察待刷新" : "观察待刷新" }
     return isLocal && localReady ? "本机可用 · \(device.connectionLabel)" : device.connectionLabel
+  }
+
+  private var connectionOnline: Bool? {
+    if isLocal && (!serviceEnabled || !localReady) { return false }
+    return stale ? nil : device.online
+  }
+}
+
+private struct DeviceStatusIcon: View {
+  let online: Bool?
+  let label: String
+
+  var body: some View {
+    Image(systemName: online == true ? "circle.fill" : online == false ? "circle" : "circle.dashed")
+      .font(.system(size: 9, weight: .medium))
+      .foregroundStyle(online == true ? Theme.Palette.accentStrong : Theme.Palette.textMuted)
+      .frame(width: 12, height: 20)
+      .help(label)
+      .accessibilityLabel(label)
+  }
+}
+
+private struct DeviceDetailsStyle: DisclosureGroupStyle {
+  let online: Bool?
+  let statusLabel: String
+
+  func makeBody(configuration: Configuration) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(spacing: 8) {
+        DeviceStatusIcon(online: online, label: statusLabel)
+        Button {
+          configuration.isExpanded.toggle()
+        } label: {
+          configuration.label
+            .padding(.vertical, 6)
+            .padding(.trailing, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(configuration.isExpanded ? "已展开" : "已折叠")
+      }
+      if configuration.isExpanded { configuration.content }
+    }
   }
 }
 

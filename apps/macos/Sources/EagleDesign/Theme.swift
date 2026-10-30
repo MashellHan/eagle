@@ -143,8 +143,8 @@ public enum Theme {
     public static let galleryInset: CGFloat = 24
     public static let galleryRailWidth: CGFloat = 208
     public static let galleryRadius: CGFloat = 18
-    public static let settingsWidth: CGFloat = 900
-    public static let settingsHeight: CGFloat = 640
+    public static let settingsWidth: CGFloat = 1120
+    public static let settingsHeight: CGFloat = 820
   }
 
   public enum TypeScale {

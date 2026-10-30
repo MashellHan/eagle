@@ -11,21 +11,26 @@ public struct SettingsView: View {
   @AppStorage("eagle.loadMockData") private var loadMockData = false
   private let onClose: () -> Void
   private let daemon: BotsDaemonSupervisor?
+  private let showsCloseButton: Bool
 
   public init(
     model: SettingsViewModel = SettingsViewModel(),
     onClose: @escaping () -> Void = {},
     daemon: BotsDaemonSupervisor? = nil,
-    devices: DeviceSettingsViewModel = .shared
+    devices: DeviceSettingsViewModel = .shared,
+    showsCloseButton: Bool = true
   ) {
     _model = StateObject(wrappedValue: model)
     self.onClose = onClose
     self.daemon = daemon
     self.devices = devices
+    self.showsCloseButton = showsCloseButton
   }
 
   public var body: some View {
-    SettingsScaffold(selection: $model.selection, onClose: onClose) {
+    SettingsScaffold(
+      selection: $model.selection, onClose: onClose, showsCloseButton: showsCloseButton
+    ) {
       switch model.selection {
       case .general:
         general
@@ -43,6 +48,7 @@ public struct SettingsView: View {
         updates
       }
     }
+    .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
   }
 
   private var general: some View {

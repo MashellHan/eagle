@@ -2194,3 +2194,24 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   automatic startup with no manual device-service toggle. The user then requested
   a simpler, resizable device settings UI and per-device policy controls; complete
   that increment before local delivery, and wait for their test confirmation before PR.
+
+## 2026-10-30 10:48 +0800 — Device settings simplification
+
+- User view: current installed App remains the recovered `20b13f0`. Startup fix
+  `b4f581f` is committed; Astra reviewer closed its remaining late pairing result
+  finding. No new install, public deployment or PR has been performed.
+- Root's next increment replaces the fixed settings overlay with a resizable
+  window, removes manual service controls, shows pairing input immediately, and
+  keeps per-device policy/removal beside an inline detail link and status icon.
+- Authentication/storage: the existing identity, Raven settings and Bot data
+  stay in place. No D1 or production fixture writes. The service worker is adding
+  authenticated remote policy management in its separate worktree; the Bot socket
+  remains unable to issue management writes.
+- Herdr/checks: one Root writer for Swift/UI, one service developer for the device
+  protocol, Astra lead/reviewer read-only. UI behavior regressions failed first;
+  stable per-device identifiers resolved the AX menu assertion. The final full
+  macOS run passed 284 tests and 94.5% logic coverage; four-device light/dark
+  snapshots were reviewed. Remote policy uncertainty has a failing-then-passing
+  regression and tells the user to refresh the target rather than resubmit.
+- Next broken hop: finish the UI check, integrate and review the remote policy
+  commit, then install once and exercise the actual window and automatic startup.

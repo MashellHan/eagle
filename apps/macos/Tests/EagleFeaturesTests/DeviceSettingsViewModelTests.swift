@@ -33,7 +33,7 @@ struct DeviceSettingsViewModelTests {
     #expect(model.directory?.devices.first?.online == true)
   }
 
-  @Test("disable unregisters and the current app preference prevents restart")
+  @Test("a temporary stop does not prevent the next App instance from starting automatically")
   func disable() async throws {
     let (model, control, defaults) = deviceSettingsFixture()
     defer { defaults.removePersistentDomain(forName: control.domain) }
@@ -43,8 +43,8 @@ struct DeviceSettingsViewModelTests {
     #expect(!model.localReady)
     let restored = DeviceSettingsViewModel(control: control, defaults: defaults)
     await restored.startIfNeeded()
-    #expect(!restored.enabled)
-    #expect(control.starts == 1)
+    #expect(restored.enabled)
+    #expect(control.starts == 2)
     await restored.setEnabled(true)
     #expect(control.starts == 2)
   }

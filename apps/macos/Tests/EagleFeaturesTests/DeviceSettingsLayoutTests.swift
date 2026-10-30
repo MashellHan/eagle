@@ -27,8 +27,8 @@ struct DeviceSettingsLayoutTests {
     let titles = entries(host).compactMap(title)
     let name = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
     #expect(titles.contains { $0.contains(name) && $0.contains("本机") })
-    let status = disabled ? "设备服务已关闭" : "本机未就绪"
-    #expect(titles.contains { $0.contains(name) && $0.contains(status) })
+    #expect(titles.contains { $0.contains("本机未就绪") })
+    #expect(model.enabled)
     #expect(!model.localReady)
   }
 
@@ -48,11 +48,12 @@ struct DeviceSettingsLayoutTests {
     host.layoutSubtreeIfNeeded()
 
     let titles = entries(host).compactMap(title)
-    #expect(titles.contains { $0.contains(name) && $0.contains("设备服务已关闭") })
+    #expect(titles.contains { $0.contains(name) })
+    #expect(titles.contains { $0.contains("本机未就绪") })
   }
 
-  @Test("pairing inputs stay out of the default device overview")
-  func pairingStartsCollapsed() async throws {
+  @Test("adding a device is immediately available without a manual service switch")
+  func pairingStartsExpanded() async throws {
     let (model, control, defaults) = deviceSettingsFixture()
     defer { defaults.removePersistentDomain(forName: control.domain) }
     await model.startIfNeeded()
@@ -65,10 +66,11 @@ struct DeviceSettingsLayoutTests {
     host.layoutSubtreeIfNeeded()
 
     let titles = entries(host).compactMap(title)
-    #expect(titles.contains("启用设备服务"))
+    #expect(!titles.contains("启用设备服务"))
+    #expect(!titles.contains("关闭窗口后服务仍在后台运行。"))
     #expect(titles.contains("添加设备"))
-    #expect(!titles.contains("生成本机配对码"))
-    #expect(!titles.contains("另一台设备的配对码"))
+    #expect(titles.contains("生成本机配对码"))
+    #expect(titles.contains("另一台设备的配对码"))
   }
 
   @Test("an unresolved pairing stays visible without expanding the pairing section")
@@ -92,8 +94,8 @@ struct DeviceSettingsLayoutTests {
     #expect(titles.contains("用原请求重试"))
   }
 
-  @Test("the pairing disclosure is a full row and its trailing blank area expands it")
-  func disclosureHitArea() async throws {
+  @Test("unfinished pairing input survives device status updates")
+  func pairingInputSurvivesRefresh() async throws {
     let (model, control, defaults) = deviceSettingsFixture()
     defer { defaults.removePersistentDomain(forName: control.domain) }
     await model.startIfNeeded()
@@ -101,22 +103,6 @@ struct DeviceSettingsLayoutTests {
     defer {
       window.orderOut(nil)
       window.contentView = nil
-    }
-    try await Task.sleep(for: .milliseconds(50))
-    host.layoutSubtreeIfNeeded()
-    let node = try #require(entries(host).first { ["配对设备", "添加设备"].contains(title($0)) })
-    let frame = try #require(node.value(forKey: "accessibilityFrame") as? NSValue).rectValue
-    #expect(frame.height >= 44)
-    #expect(frame.width >= host.bounds.width - 80)
-    let screen = window.convertToScreen(host.convert(host.bounds, to: nil))
-    let point = window.convertPoint(fromScreen: NSPoint(x: screen.maxX - 40, y: frame.midY))
-    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-      let event = try #require(
-        NSEvent.mouseEvent(
-          with: type, location: point, modifierFlags: [], timestamp: 0,
-          windowNumber: window.windowNumber, context: nil, eventNumber: 0,
-          clickCount: 1, pressure: 1))
-      window.sendEvent(event)
     }
     try await Task.sleep(for: .milliseconds(50))
     host.layoutSubtreeIfNeeded()
@@ -133,16 +119,38 @@ struct DeviceSettingsLayoutTests {
     try await Task.sleep(for: .milliseconds(20))
     let refreshed = try #require(entries(host).first { title($0) == "另一台设备的配对码" })
     #expect(attribute(refreshed, "AXValue") as? String == "unfinished-pairing-input")
-    let button = try #require(entries(host).first { title($0) == "添加设备" })
+  }
+
+  @Test("each device exposes policy and removal beside its inline details link")
+  func deviceControls() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    control.directory = managedDeviceDirectory()
+    await model.startIfNeeded()
+    let (host, window) = makeHost(model)
+    defer {
+      window.orderOut(nil)
+      window.contentView = nil
+    }
+    try await Task.sleep(for: .milliseconds(50))
+    let titles = entries(host).compactMap(title)
+    let policies = Set(
+      entries(host).compactMap { attribute($0, "AXIdentifier") as? String }
+        .filter { $0.hasPrefix("devices.policy.") })
+    #expect(
+      policies == [
+        "devices.policy.\(deviceSettingsLocalID)",
+        "devices.policy.22222222-2222-4222-8222-222222222222",
+      ])
+    #expect(titles.filter { $0 == "移除" }.count == 2)
+    #expect(!titles.contains("退出群"))
+    #expect(!titles.contains("移出"))
+    let details = try #require(entries(host).first { title($0) == "详情" })
     let press = NSSelectorFromString("accessibilityPerformPress")
-    try #require(button.responds(to: press))
-    button.perform(press)
+    try #require(details.responds(to: press))
+    details.perform(press)
     try await Task.sleep(for: .milliseconds(20))
-    #expect(!entries(host).compactMap(title).contains("另一台设备的配对码"))
-    button.perform(press)
-    try await Task.sleep(for: .milliseconds(20))
-    let reopened = try #require(entries(host).first { title($0) == "另一台设备的配对码" })
-    #expect(attribute(reopened, "AXValue") as? String == "unfinished-pairing-input")
+    #expect(entries(host).compactMap(title).contains(deviceSettingsLocalID))
   }
 
   private func makeHost(
@@ -177,6 +185,7 @@ struct DeviceSettingsLayoutTests {
       [
         "AXTitle": "accessibilityTitle", "AXDescription": "accessibilityLabel",
         "AXChildren": "accessibilityChildren", "AXValue": "accessibilityValue",
+        "AXIdentifier": "accessibilityIdentifier",
       ][name] ?? name)
     if node.responds(to: selector) { return node.perform(selector)?.takeUnretainedValue() }
     let legacy = NSSelectorFromString("accessibilityAttributeValue:")
