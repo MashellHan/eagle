@@ -259,6 +259,20 @@ Settings, the device inspector and App windows share one five-second observation
 task while any of them is present. Unchanged background reads publish no UI
 changes and do not disable local controls. User mutations supersede older reads,
 including their errors; stopped services cannot be revived by delayed replies.
+App launch also starts the enabled device service independently of view creation.
+Registration and signature inspection run off the UI actor. A registered service
+must answer an authenticated, read-only XPC `service.ping` within five seconds;
+it returns `{version:1}` without waiting for the Node socket or cloud network.
+registration alone never proves that the helper ran. On a transport failure, one
+automatic recovery refreshes this App's LaunchServices entry and serially
+unregisters/registers its helper before probing again. Repeated failed observations
+do not repeat that recovery; successful contact or an explicit retry resets the
+budget. Approval, signature validation and protocol failures remain closed.
+Normal status and management calls keep their existing deadlines. Local
+initialization is observed every 100 ms for up to five seconds, then returns
+to the normal observation cadence. Local readiness and policy publish before a
+cloud directory request completes. Recovery preserves the enabled preference,
+device identity and pending pairing IDs and never replays a management mutation.
 Local policy remains available when the cloud directory is offline or stale,
 provided the service is enabled, locally ready and its policy is known.
 The Add device and detail disclosures use full-width, 44-point-minimum Button

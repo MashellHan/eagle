@@ -7,6 +7,93 @@ import Testing
 @Suite("Device settings recovery", .serialized)
 @MainActor
 struct DeviceSettingsRecoveryTests {
+  @Test("cold local initialization becomes ready without waiting for a directory observation tick")
+  func coldStartup() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    var probes = 0
+    control.handler = { method, _ in
+      guard method == "service.status" else { return nil }
+      probes += 1
+      if probes == 1 {
+        return .object([
+          "deviceId": .string(deviceSettingsLocalID), "localReady": .bool(false),
+          "cloudStatus": .string("offline"),
+        ])
+      }
+      return nil
+    }
+    await model.startIfNeeded()
+    #expect(model.localReady)
+    #expect(model.policy?.mode == .allApprove)
+    #expect(probes == 2)
+    #expect(control.starts == 1)
+  }
+
+  @Test("local readiness and controls are available before a slow cloud directory responds")
+  func localReadyBeforeDirectory() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    var release: CheckedContinuation<Void, Never>?
+    control.asyncHandler = { method, _ in
+      if method == "directory" { await withCheckedContinuation { release = $0 } }
+      return nil
+    }
+    let starting = Task { await model.startIfNeeded() }
+    while release == nil { await Task.yield() }
+    #expect(model.localReady)
+    #expect(model.policy?.mode == .allApprove)
+    #expect(!model.controlsBusy)
+    release?.resume()
+    await starting.value
+  }
+
+  @Test(
+    "disabling after local startup does not wait for a slow cloud directory",
+    arguments: [false, true])
+  func stopDoesNotWaitForCloudDirectory(pendingPairing: Bool) async throws {
+    let (_, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    if pendingPairing {
+      defaults.set(
+        UUID().uuidString.lowercased(), forKey: DeviceSettingsViewModel.pendingRedeemKey)
+    }
+    let model = DeviceSettingsViewModel(control: control, defaults: defaults)
+    var release: CheckedContinuation<Void, Never>?
+    control.asyncHandler = { method, _ in
+      if method == "directory" { await withCheckedContinuation { release = $0 } }
+      return nil
+    }
+    let starting = Task { await model.startIfNeeded() }
+    while release == nil { await Task.yield() }
+    let stopping = Task { await model.setEnabled(false) }
+    try await Task.sleep(for: .milliseconds(30))
+    #expect(control.stops == 1)
+    release?.resume()
+    await starting.value
+    await stopping.value
+    #expect(!model.enabled)
+    #expect(!model.localReady)
+    #expect(model.errorCode == nil)
+    #expect((model.pendingRedeemRequestId != nil) == pendingPairing)
+  }
+
+  @Test("failed helper startup can be retried without toggling the service preference")
+  func retryHelperStartup() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    control.startError = DeviceHostError.unavailable
+    await model.startIfNeeded()
+    #expect(model.canRetryService)
+    control.startError = nil
+    await model.retryService()
+    #expect(model.localReady)
+    #expect(model.enabled)
+    #expect(!defaults.bool(forKey: DeviceSettingsViewModel.disabledKey))
+    #expect(control.starts == 2)
+    #expect(control.stops == 0)
+  }
+
   @Test("failed unregister preserves enabled preference and permits reconnect and retry")
   func failedStop() async throws {
     let (model, control, defaults) = deviceSettingsFixture()

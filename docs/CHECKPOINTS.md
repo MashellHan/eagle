@@ -2172,3 +2172,25 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   Services selection and all 42 native checks await unlock and test-window
   coordination. Browser port 27053 is released, but no native test or App update
   was performed here. Physical two-Mac acceptance remains pending.
+
+## 2026-10-30 10:29 +0800 — Helper automatic startup repair
+
+- User view: installed `20b13f0` was recovered through normal App registration;
+  the device page showed local readiness and public cloud online, and the installed
+  Bots adapter completed `/bin/df -k /`. Identity, Raven settings and histories
+  were preserved. This is one-Mac evidence, not a two-Mac acceptance result.
+- Herdr: Root remains the only writer/installer; the existing Astra lead and
+  reviewer inspect the startup changes read-only, without duplicating tests.
+- Authentication/storage: exact XPC signing requirements remain; no Keychain,
+  device identity, cloud deployment or D1 change. Existing public registration
+  and local Bots health were verified; new code has not yet been installed.
+- Implementation: dedicated helper ping, bounded re-registration, background
+  system IPC, early local readiness and an App launch entry are implemented.
+  Full macOS tests and the 90% coverage gate passed (95.2%). Review found a
+  partial-registration recovery-budget edge and a stop waiting on a cloud read;
+  both are fixed with regressions. The remaining late pairing-recovery result
+  after disabling was also reproduced and fixed; affected suites passed 32 tests.
+- Next broken hop: build and install the corrected candidate, then measure real
+  automatic startup with no manual device-service toggle. The user then requested
+  a simpler, resizable device settings UI and per-device policy controls; complete
+  that increment before local delivery, and wait for their test confirmation before PR.

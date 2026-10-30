@@ -169,6 +169,10 @@ public final class DeviceServiceHost {
   }
 
   public func call(_ method: String, params: DeviceJSON? = nil) async throws -> DeviceJSON {
+    if method == "service.ping" {
+      // Authenticated helper contact must not depend on a busy Node socket or the network.
+      return .object(["version": .number(1)])
+    }
     if method == "service.status" {
       var status: [String: DeviceJSON] = [
         "deviceId": .string(identity.deviceId), "localReady": .bool(localReady),

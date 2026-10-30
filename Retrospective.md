@@ -626,3 +626,27 @@ matched; 28 optional packages for other platforms were absent. No package was
 repacked and no registry or TLS setting changed. Evidence is retained under
 `.local/device-evidence/upstream-pr/npm-recovery/`; installation success alone
 does not establish the subsequent build, push or two-Mac acceptance results.
+
+## 2026-10-30 — Installed helper update rejected before execution
+
+The `20b13f0` candidate was assembled, verified with deep/strict codesign and
+installed intact in `~/Applications`. Its automatic unregister/register ran,
+but launchd rejected the helper with `OS_REASON_CODESIGNING / Launch Constraint
+Violation` at 09:57:38, followed by `EX_CONFIG`. The helper file existed; the later
+"could not find and/or execute" messages did not establish a missing-file cause.
+The App and Bots daemon remained alive while device tools returned unavailable.
+
+Normal App unregister, a forced LaunchServices refresh for this App only, and
+App re-enable recovered the same installed signed bytes at 10:09:58. The UI showed
+local readiness and the public cloud connection; the installed Bots device
+adapter completed `/bin/df -k /` with exit 0. Identity, Raven configuration,
+daemon token and catalogue hashes matched, and both Bot histories remained.
+This establishes recovery, not which cached OS record caused the first rejection.
+Evidence: `.local/device-evidence/reinstall-20261030-mm44r90m/`.
+
+The follow-up distinguishes authenticated helper contact from Node readiness:
+`service.ping` never waits for the Node socket or cloud. A bounded failed-handshake
+recovery refreshes only this App and preserves pairing IDs and user preferences.
+Ordinary management timeouts keep their uncertainty semantics. The local status
+and policy publish before cloud directory reads so a slow network cannot hold the
+local controls in their startup state.

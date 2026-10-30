@@ -84,6 +84,34 @@ struct DeviceSettingsRefreshTests {
     #expect(model.errorCode == "revoked_session")
   }
 
+  @Test("an offline directory does not flash the helper's cached online status on every read")
+  func stableOfflineDirectory() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    control.handler = { method, _ in
+      if method == "service.status" {
+        return .object([
+          "deviceId": .string(deviceSettingsLocalID), "localReady": .bool(true),
+          "cloudStatus": .string("online"),
+        ])
+      }
+      if method == "directory", case .object(var directory) = control.directory {
+        directory["cloudStatus"] = .string("offline")
+        return .object(directory)
+      }
+      return nil
+    }
+    await model.startIfNeeded()
+    #expect(model.cloudStatus == "offline")
+    var publications = 0
+    let observer = model.objectWillChange.sink { publications += 1 }
+    defer { observer.cancel() }
+    await model.refresh()
+    #expect(model.localReady)
+    #expect(model.cloudStatus == "offline")
+    #expect(publications == 0)
+  }
+
   @Test("late policy replies cannot overwrite a completed policy write")
   func latePolicy() async throws {
     let (model, control, defaults) = deviceSettingsFixture()

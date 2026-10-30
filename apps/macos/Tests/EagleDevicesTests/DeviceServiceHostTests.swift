@@ -69,6 +69,27 @@ struct DeviceServiceHostTests {
     try FileManager.default.removeItem(at: host.stateDirectory)
   }
 
+  @Test("authenticated helper handshake is independent of Node and cloud readiness")
+  func helperHandshake() async throws {
+    let host = try host()
+    let current = try DeviceCodeIdentity.currentRequirement()
+    let listener = NSXPCListener.anonymous()
+    let server = DeviceXPCServer(host: host, requiredPeer: current)
+    listener.delegate = server
+    listener.resume()
+    let client = DeviceXPCClient(
+      connection: NSXPCConnection(listenerEndpoint: listener.endpoint), requiredPeer: current,
+      confirm: { _ in false })
+    defer {
+      client.invalidate()
+      withExtendedLifetime(server) { listener.invalidate() }
+    }
+    let reply = try await client.call("service.ping", timeoutSeconds: 1)
+    #expect(reply["version"] == .number(1))
+    #expect(!host.localReady)
+    #expect(host.cloudStatus == "offline")
+  }
+
   @Test("helper configures offline tools automatically and keeps management off the Bot socket")
   func offline() async throws {
     let host = try host()

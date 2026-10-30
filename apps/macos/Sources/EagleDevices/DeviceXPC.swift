@@ -182,14 +182,16 @@ private final class DeviceHostPeer: NSObject, DeviceHostXPC, @unchecked Sendable
     connection.resume()
   }
   public func invalidate() { connection.invalidate() }
-  public func call(_ method: String, params: DeviceJSON? = nil) async throws -> DeviceJSON {
+  public func call(
+    _ method: String, params: DeviceJSON? = nil, timeoutSeconds: Double = 25
+  ) async throws -> DeviceJSON {
     var value: [String: DeviceJSON] = ["method": .string(method)]
     if let params { value["params"] = params }
     let data = try JSONEncoder().encode(DeviceJSON.object(value))
     let result: Result<DeviceJSON, DevicePortError> = await withCheckedContinuation {
       continuation in
       let gate = DeviceReply(
-        continuation, timeoutSeconds: 25,
+        continuation, timeoutSeconds: timeoutSeconds,
         fallback: .failure(DevicePortError("device_service_timeout")))
       guard
         let proxy = connection.remoteObjectProxyWithErrorHandler({ @Sendable _ in

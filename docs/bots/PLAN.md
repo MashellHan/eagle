@@ -152,6 +152,22 @@ candidate 构建期 HTTPS service origin 小片已实现并增量审查通过，
 
 ## Where the code lives
 
+### Helper startup recovery (2026-10-30)
+
+Installing `20b13f0` reproduced a signed helper launch-constraint rejection after
+the automatic unregister/register had already run. The installed App recovered
+through its device switch and a targeted LaunchServices refresh; its private
+device adapter executed a read-only command, with local readiness and the public
+cloud connection verified. Identity, Raven configuration and histories remained.
+
+The follow-up moves registration/signature work off the UI actor, adds an
+authenticated helper handshake and one bounded registration recovery, starts from
+App launch as well as the shared view lifecycle, and observes cold local readiness
+promptly before waiting for cloud directory data. Regression tests reproduced
+unreachable-but-registered startup, delayed readiness and missing retry controls;
+the handshake has a real XPC regression with Node not started. Signed installation
+and automatic startup verification remain pending for this follow-up.
+
 ### Exclusive search providers (2026-10-28)
 
 Services now has one compact Search section: a single provider selector above

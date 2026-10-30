@@ -6,9 +6,19 @@ import ServiceManagement
   var socketPath: String? { get }
   func start(
     confirm: @escaping @MainActor @Sendable (DeviceApprovalRequest) async -> Bool) async throws
+  func retryStart(
+    confirm: @escaping @MainActor @Sendable (DeviceApprovalRequest) async -> Bool) async throws
   func call(_ method: String, params: DeviceJSON?) async throws -> DeviceJSON
   func stop() async throws
   func openSystemSettings()
+}
+
+extension DeviceControl {
+  public func retryStart(
+    confirm: @escaping @MainActor @Sendable (DeviceApprovalRequest) async -> Bool
+  ) async throws {
+    try await start(confirm: confirm)
+  }
 }
 
 /// Uses the signed bundle's release configuration. No server or runtime path is user input.
@@ -29,35 +39,57 @@ import ServiceManagement
     confirm: @escaping @MainActor @Sendable (DeviceApprovalRequest) async -> Bool
   ) async throws {
     guard let configuration else { throw DeviceHostError.invalidConfiguration }
-    let helper = bundle.appendingPathComponent("Contents/Library/LaunchServices/EagleDeviceHelper")
-    let requirement = try DeviceCodeIdentity.requirement(at: helper)
-    let fingerprint = try DeviceServiceRegistration.fingerprint(
-      appRequirement: DeviceCodeIdentity.requirement(at: bundle), helperRequirement: requirement,
-      executable: Data(contentsOf: helper),
-      plist: Data(
-        contentsOf: bundle.appendingPathComponent(
-          "Contents/Library/LaunchAgents/\(configuration.launchAgentPlist)")))
-    let service = SMAppService.agent(plistName: configuration.launchAgentPlist)
+    let startedAt = ContinuousClock.now
+    let (requirement, fingerprint) = try await Task.detached { [bundle] in
+      let helper = bundle.appendingPathComponent(
+        "Contents/Library/LaunchServices/EagleDeviceHelper")
+      let requirement = try DeviceCodeIdentity.requirement(at: helper)
+      let fingerprint = try DeviceServiceRegistration.fingerprint(
+        appRequirement: DeviceCodeIdentity.requirement(at: bundle), helperRequirement: requirement,
+        executable: Data(contentsOf: helper),
+        plist: Data(
+          contentsOf: bundle.appendingPathComponent(
+            "Contents/Library/LaunchAgents/\(configuration.launchAgentPlist)")))
+      return (requirement, fingerprint)
+    }.value
     if registration == nil {
       registration = DeviceServiceRegistration(
-        service: service, defaults: defaults, profile: configuration.profile)
+        service: SystemDeviceBackgroundService(
+          plistName: configuration.launchAgentPlist, bundle: bundle),
+        defaults: defaults, profile: configuration.profile)
     }
     guard let registration else { throw DeviceHostError.unavailable }
-    log.info("background status before registration: \(service.status.rawValue, privacy: .public)")
-    do { try await registration.prepare(fingerprint: fingerprint) } catch {
+    do {
+      try await registration.prepare(fingerprint: fingerprint) { [self] in
+        client?.invalidate()
+        let connection = DeviceXPCClient(
+          connection: NSXPCConnection(machServiceName: configuration.machServiceName),
+          requiredPeer: requirement, confirm: confirm)
+        do {
+          let reply = try await connection.call("service.ping", timeoutSeconds: 5)
+          guard reply["version"] == .number(1) else { throw DeviceHostError.invalidResponse }
+          client = connection
+        } catch {
+          connection.invalidate()
+          client = nil
+          throw error
+        }
+      }
+    } catch {
       let diagnostic = error as NSError
       log.error(
-        "background registration failed: \(diagnostic.domain, privacy: .public) \(diagnostic.code, privacy: .public)"
+        "background startup failed: \(diagnostic.domain, privacy: .public) \(diagnostic.code, privacy: .public)"
       )
       throw error
     }
-    log.info("background status after registration: \(service.status.rawValue, privacy: .public)")
-    if service.status == .requiresApproval { throw DevicePortError("background_approval_required") }
-    guard service.status == .enabled else { throw DeviceHostError.unavailable }
-    client?.invalidate()
-    client = DeviceXPCClient(
-      connection: NSXPCConnection(machServiceName: configuration.machServiceName),
-      requiredPeer: requirement, confirm: confirm)
+    let elapsed = startedAt.duration(to: ContinuousClock.now)
+    log.info("background helper connected in \(String(describing: elapsed), privacy: .public)")
+  }
+  public func retryStart(
+    confirm: @escaping @MainActor @Sendable (DeviceApprovalRequest) async -> Bool
+  ) async throws {
+    registration?.resetRecovery()
+    try await start(confirm: confirm)
   }
   public func call(_ method: String, params: DeviceJSON? = nil) async throws -> DeviceJSON {
     guard let client else { throw DeviceHostError.unavailable }
@@ -67,7 +99,8 @@ import ServiceManagement
     guard let configuration else { throw DeviceHostError.invalidConfiguration }
     if registration == nil {
       registration = DeviceServiceRegistration(
-        service: SMAppService.agent(plistName: configuration.launchAgentPlist), defaults: defaults,
+        service: SystemDeviceBackgroundService(
+          plistName: configuration.launchAgentPlist, bundle: bundle), defaults: defaults,
         profile: configuration.profile)
     }
     guard let registration else { throw DeviceHostError.unavailable }

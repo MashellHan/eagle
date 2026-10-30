@@ -63,6 +63,110 @@ struct DeviceServiceRegistrationTests {
     #expect(defaults.string(forKey: key) == "first")
   }
 
+  @Test(
+    "an enabled but unreachable helper is recovered once before startup succeeds",
+    arguments: ["device_service_timeout", "device_service_unavailable"])
+  func unreachableHelper(code: String) async throws {
+    let (registration, service, defaults, domain) = fixture()
+    defer { defaults.removePersistentDomain(forName: domain) }
+    defaults.set("current", forKey: key)
+    var probes = 0
+    try await registration.prepare(fingerprint: "current") {
+      probes += 1
+      if probes == 1 { throw DevicePortError(code) }
+    }
+    #expect(probes == 2)
+    #expect(service.events == ["unregister", "register"])
+    #expect(defaults.string(forKey: key) == "current")
+  }
+
+  @Test("repeated failed observations do not repeatedly restart the helper")
+  func boundedRecovery() async throws {
+    let (registration, service, defaults, domain) = fixture()
+    defer { defaults.removePersistentDomain(forName: domain) }
+    defaults.set("current", forKey: key)
+    var probes = 0
+    for _ in 0..<2 {
+      await #expect(throws: DeviceHostError.unavailable) {
+        try await registration.prepare(fingerprint: "current") {
+          probes += 1
+          throw DeviceHostError.unavailable
+        }
+      }
+    }
+    #expect(probes == 3)
+    #expect(service.events == ["unregister", "register"])
+  }
+
+  @Test("registration failure during recovery cannot escape the automatic retry budget")
+  func recoveryRegistrationFailureIsBounded() async throws {
+    let (registration, service, defaults, domain) = fixture()
+    defer { defaults.removePersistentDomain(forName: domain) }
+    defaults.set("current", forKey: key)
+    service.registerError = DeviceHostError.failed
+    await #expect(throws: DeviceHostError.failed) {
+      try await registration.prepare(fingerprint: "current") { throw DeviceHostError.unavailable }
+    }
+    service.registerError = nil
+    await #expect(throws: DeviceHostError.unavailable) {
+      try await registration.prepare(fingerprint: "current") { throw DeviceHostError.unavailable }
+    }
+    #expect(service.events == ["unregister", "register"])
+    #expect(service.status == .notRegistered)
+  }
+
+  @Test("explicit retry permits one new recovery without deleting other saved state")
+  func explicitRecoveryRetry() async throws {
+    let (registration, service, defaults, domain) = fixture()
+    defer { defaults.removePersistentDomain(forName: domain) }
+    defaults.set("current", forKey: key)
+    defaults.set("original-request", forKey: "pendingPairing")
+    await #expect(throws: DeviceHostError.unavailable) {
+      try await registration.prepare(fingerprint: "current") { throw DeviceHostError.unavailable }
+    }
+    registration.resetRecovery()
+    var probes = 0
+    try await registration.prepare(fingerprint: "current") {
+      probes += 1
+      if probes == 1 { throw DeviceHostError.unavailable }
+    }
+    #expect(probes == 2)
+    #expect(service.events == ["unregister", "register", "unregister", "register"])
+    #expect(defaults.string(forKey: "pendingPairing") == "original-request")
+  }
+
+  @Test(
+    "protocol and permission failures never trigger helper replacement",
+    arguments: [
+      "invalid_device_response", "device_method_forbidden", "background_approval_required",
+    ])
+  func rejectedProbe(code: String) async throws {
+    let (registration, service, defaults, domain) = fixture()
+    defer { defaults.removePersistentDomain(forName: domain) }
+    defaults.set("current", forKey: key)
+    await #expect(throws: DevicePortError.self) {
+      try await registration.prepare(fingerprint: "current") { throw DevicePortError(code) }
+    }
+    #expect(service.events.isEmpty)
+  }
+
+  @Test("approval revoked during a probe prevents automatic re-registration")
+  func revokedDuringProbe() async throws {
+    let (registration, service, defaults, domain) = fixture()
+    defer { defaults.removePersistentDomain(forName: domain) }
+    defaults.set("current", forKey: key)
+    do {
+      try await registration.prepare(fingerprint: "current") {
+        service.status = .requiresApproval
+        throw DeviceHostError.unavailable
+      }
+      Issue.record("revoked approval must block startup")
+    } catch let error as DevicePortError {
+      #expect(error.code == "background_approval_required")
+    }
+    #expect(service.events.isEmpty)
+  }
+
   @Test("concurrent starts wait for the same completed unregister")
   func delayedUnregister() async throws {
     let (registration, service, defaults, domain) = fixture()
@@ -201,7 +305,8 @@ struct DeviceServiceRegistrationTests {
   var unregisterGate: (() async -> Void)?
   var registeredStatus: SMAppService.Status = .enabled
   init(status: SMAppService.Status) { self.status = status }
-  func register() throws {
+  func currentStatus() async -> SMAppService.Status { status }
+  func register() async throws {
     events.append("register")
     if let registerError { throw registerError }
     status = registeredStatus

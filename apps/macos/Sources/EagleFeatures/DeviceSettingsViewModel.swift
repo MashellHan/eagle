@@ -124,7 +124,9 @@ private struct DeviceServiceState: Decodable {
   public var isRefreshing: Bool { refreshGeneration != nil }
   public var controlsBusy: Bool { isStarting || isBusy }
   public var canToggleService: Bool { !isBusy && (enabled || !controlsBusy) }
-  public var canRetryService: Bool { enabled && started && !localReady && !isStarting }
+  public var canRetryService: Bool {
+    enabled && !localReady && !controlsBusy && !needsBackgroundApproval
+  }
   public var errorMessage: String? {
     guard let errorCode else { return nil }
     switch errorCode {
@@ -145,13 +147,17 @@ private struct DeviceServiceState: Decodable {
     case "invalid_session", "revoked_session", "unknown_device": return "设备身份会话已失效，请重新连接设备服务。"
     case "device_service_timeout":
       return pendingRedeemRequestId == nil
-        ? "设备服务响应超时。可关闭后重新启用设备服务。"
+        ? "设备服务未能及时就绪，请重试。"
         : "设备服务响应超时。配对结果尚不确定，请保留并查询原请求。"
     default: return "设备服务暂时不可用，请重试。"
     }
   }
 
   public func startIfNeeded() async {
+    await start(retrying: false)
+  }
+
+  private func start(retrying: Bool) async {
     guard enabled, !stopping, !isBusy else { return }
     if let startTask {
       await startTask.value
@@ -162,14 +168,30 @@ private struct DeviceServiceState: Decodable {
     let task = Task { @MainActor [weak self] in
       guard let self else { return }
       do {
-        try await control.start { [weak self] request in
+        let confirm: @MainActor @Sendable (DeviceApprovalRequest) async -> Bool = {
+          [weak self] request in
           guard let self else { return false }
           return await self.confirm(request)
         }
+        if retrying {
+          try await control.retryStart(confirm: confirm)
+        } else {
+          try await control.start(confirm: confirm)
+        }
         started = true
         if enabled {
-          await refresh()
-          if pendingRedeemRequestId != nil { await recoverPairing() }
+          let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+          await readState(includeDirectory: false)
+          // Observe cold local initialization promptly; cloud reads never define local readiness.
+          while enabled && !stopping && !localReady && errorCode == nil
+            && ContinuousClock.now < deadline
+          {
+            try await Task.sleep(for: .milliseconds(100))
+            await readState(includeDirectory: false)
+          }
+          if enabled && !stopping && !localReady && errorCode == nil {
+            throw DeviceHostError.timeout
+          }
         }
       } catch { record(error) }
       isStarting = false
@@ -177,6 +199,12 @@ private struct DeviceServiceState: Decodable {
     startTask = task
     await task.value
     startTask = nil
+    // Cloud enrichment is outside the startup task: disabling never waits for a cloud read.
+    if enabled && !stopping && localReady {
+      let generation = stateGeneration
+      await readDirectory()
+      if acceptsRead(generation), pendingRedeemRequestId != nil { await recoverPairing() }
+    }
   }
 
   public func setEnabled(_ value: Bool) async {
@@ -254,7 +282,7 @@ private struct DeviceServiceState: Decodable {
     await readState()
   }
 
-  private func readState() async {
+  private func readState(includeDirectory: Bool = true) async {
     let generation = stateGeneration
     guard enabled, started, !stopping, refreshGeneration != generation else { return }
     refreshGeneration = generation
@@ -272,14 +300,22 @@ private struct DeviceServiceState: Decodable {
         publish(\.directoryIsStale, true)
         return
       }
-      let current = try await control.call("directory", params: nil)
-      guard acceptsRead(generation) else { return }
+      publish(\.localReady, true)
+      localDeviceId = status.deviceId
       let currentPolicy = try await control.call("policy.get", params: nil).decoded(
         DevicePolicyState.self)
       guard acceptsRead(generation) else { return }
+      publish(\.policy, currentPolicy)
+      if isStarting { isStarting = false }
+      if !includeDirectory {
+        applyStatus(status)
+        publish(\.errorCode, nil)
+        return
+      }
+      let current = try await control.call("directory", params: nil)
+      guard acceptsRead(generation) else { return }
       applyStatus(status, cloudStatus: current["cloudStatus"]?.string)
       try applyDirectory(current)
-      publish(\.policy, currentPolicy)
       publish(\.errorCode, nil)
     } catch {
       guard acceptsRead(generation) else { return }
@@ -296,9 +332,31 @@ private struct DeviceServiceState: Decodable {
     }
   }
 
-  /// Retry the Node child through the already authenticated helper; registration is unchanged.
+  private func readDirectory() async {
+    let generation = stateGeneration
+    guard enabled, started, !stopping, !isBusy, refreshGeneration != generation else { return }
+    refreshGeneration = generation
+    defer { if refreshGeneration == generation { refreshGeneration = nil } }
+    do {
+      let current = try await control.call("directory", params: nil)
+      guard acceptsRead(generation) else { return }
+      if let cloud = current["cloudStatus"]?.string { publish(\.cloudStatus, cloud) }
+      try applyDirectory(current)
+      publish(\.errorCode, nil)
+    } catch {
+      guard acceptsRead(generation) else { return }
+      publish(\.directoryIsStale, true)
+      record(error)
+    }
+  }
+
+  /// Retry an unreachable helper, or only its Node child when the helper is authenticated.
   public func retryService() async {
-    guard enabled, started, !stopping, !controlsBusy else { return }
+    guard enabled, !stopping, !controlsBusy else { return }
+    if !started {
+      await start(retrying: true)
+      return
+    }
     stateGeneration &+= 1
     isBusy = true
     denyPendingApproval()
