@@ -752,3 +752,18 @@ The preceding parallel Bots check and Swift compile also exposed the existing
 the unchanged complete Bots check without the concurrent compile passed both
 636-test runs and coverage. Both observations are preserved; no timeout, coverage
 threshold, test selection or project hook was weakened.
+
+## 2026-10-30 — ServiceManagement async import differs across SDKs
+
+PR #109's first macOS CI run passed dependency installation and the real device
+integration suite, then rejected the async call to `SMAppService.unregister()`:
+the CI SDK treats the service object as non-Sendable, so its synthesized async
+method would send an actor-owned object to another executor. The local Xcode
+build and normal push gates had accepted that import. The build failure is
+retained in the ignored final `ci-macos-job.log` for run `41001859266`.
+
+The wrapper now calls the system's completion-handler API synchronously on its
+own actor and resumes a checked continuation after that callback. It preserves
+the documented process-exit boundary before re-registration without adding an
+unchecked Sendable declaration or disabling concurrency checks. The subsequent
+CI build, rather than local compilation alone, verifies the older SDK path.

@@ -2336,3 +2336,24 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   remain in the retrospective and ignored evidence.
 - Next hop: run the normal pre-push gates, update the existing fork branch and
   make PR #109 ready for review under the user's explicit authorization.
+
+## 2026-10-30 12:25 +0800 — Formal PR published; fixing CI SDK compatibility
+
+- User view: PR #109 is ready for review on the existing `device-groups/eagle`
+  fork branch. The installed App remains the previously verified `fef7203`
+  candidate with pairing above My Devices and its local policy at All approve.
+- The normal push gates passed 241 root tests, 191 browser journeys (11 existing
+  viewport skips), and 289 macOS package tests at `85c00e5`. The first GitHub
+  macOS job passed the device integration suite but rejected the SDK's async
+  `SMAppService.unregister()` import as a non-Sendable actor crossing.
+- Root replaced that import with its completion-handler API and a checked
+  continuation, preserving the system's completed-unregistration boundary.
+  All 22 affected registration tests passed. The existing Herdr Astra reviewer
+  found no blocking issue; lead/reviewer remain read-only. No live Herdr
+  collection was performed for this App-only follow-up.
+- Authentication/storage: no additional cloud deployment, D1 mutation, remote
+  fixture or Keychain access. The two existing device identities and histories
+  remain on their existing paths; their last installed verification is unchanged.
+- Next hop: commit, complete one signed upgrade of the SDK fix, verify installed
+  local readiness and data preservation, then push normally and check the new
+  GitHub macOS job. The older SDK compile is not claimed fixed until CI confirms it.

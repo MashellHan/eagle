@@ -37,7 +37,16 @@ actor SystemDeviceBackgroundService: DeviceBackgroundService {
     service = SMAppService.agent(plistName: plistName)
     try service.register()
   }
-  func unregister() async throws { try await service.unregister() }
+  func unregister() async throws {
+    // The callback keeps the non-Sendable SM object on this actor on older SDKs too.
+    // Its completion still marks the system's safe boundary for re-registration.
+    try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<Void, any Error>) in
+      service.unregister { error in
+        if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+      }
+    }
+  }
 }
 
 /// Coordinates registration and helper contact; only the helper can report runtime readiness.
