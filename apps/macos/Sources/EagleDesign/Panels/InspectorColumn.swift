@@ -10,26 +10,14 @@ public struct InspectorArtifact: Identifiable, Hashable, Sendable {
   }
 }
 
-public struct InspectorJob: Identifiable, Hashable, Sendable {
-  public let id: String
-  public let title: String
-  public let detail: String
-  public let isOn: Bool
-
-  public init(id: String, title: String, detail: String, isOn: Bool) {
-    self.id = id
-    self.title = title
-    self.detail = detail
-    self.isOn = isOn
-  }
-}
-
 /// Right column: participant summary, text tabs, then the decorated sections of the
 /// selected tab. Every section is a header (glyph, title, hairline) plus rows or an empty
 /// state, so the column keeps one grid whether or not a bot has anything to show.
 public struct InspectorColumn: View {
   public enum Tab: String, CaseIterable, Hashable, Sendable {
     case detail = "详情"
+    case model = "模型"
+    case triggers = "触发器"
     case library = "资料库"
     case computer = "电脑"
   }
@@ -39,7 +27,6 @@ public struct InspectorColumn: View {
   private let tintIndex: Int
   private let width: CGFloat
   private let artifacts: [InspectorArtifact]
-  private let jobs: [InspectorJob]
   private let tasks: [InspectorTaskRow]
   private let usage: [InspectorUsageRow]
   private let choices: [InspectorChoiceRow]
@@ -47,7 +34,6 @@ public struct InspectorColumn: View {
   private let triggers: [InspectorUsageRow]
   private let onChoose: (String, String) -> Void
   @Binding private var tab: Tab
-  private let onToggleJob: (String, Bool) -> Void
   private let onRetryTask: (String) -> Void
   private let onStopTask: (String) -> Void
   private let onExpand: () -> Void
@@ -66,14 +52,12 @@ public struct InspectorColumn: View {
     tintIndex: Int,
     width: CGFloat = Theme.Metric.inspectorWidth,
     artifacts: [InspectorArtifact],
-    jobs: [InspectorJob],
     tasks: [InspectorTaskRow] = [],
     usage: [InspectorUsageRow] = [],
     choices: [InspectorChoiceRow] = [],
     triggers: [InspectorUsageRow] = [],
     onChoose: @escaping (String, String) -> Void = { _, _ in },
     tab: Binding<Tab>,
-    onToggleJob: @escaping (String, Bool) -> Void = { _, _ in },
     onRetryTask: @escaping (String) -> Void = { _ in },
     onStopTask: @escaping (String) -> Void = { _ in },
     onExpand: @escaping () -> Void = {},
@@ -91,14 +75,12 @@ public struct InspectorColumn: View {
     self.tintIndex = tintIndex
     self.width = width
     self.artifacts = artifacts
-    self.jobs = jobs
     self.tasks = tasks
     self.usage = usage
     self.choices = choices
     self.triggers = triggers
     self.onChoose = onChoose
     self._tab = tab
-    self.onToggleJob = onToggleJob
     self.onRetryTask = onRetryTask
     self.onStopTask = onStopTask
     self.onExpand = onExpand
@@ -166,9 +148,11 @@ public struct InspectorColumn: View {
   private var sections: [InspectorSectionModel] {
     switch tab {
     case .detail:
-      return InspectorSections.detail(
-        artifacts: artifacts, jobs: jobs, tasks: tasks, usage: usage, choices: choices,
-        triggers: triggers)
+      return InspectorSections.detail(artifacts: artifacts, tasks: tasks)
+    case .model:
+      return InspectorSections.model(choices: choices, usage: usage)
+    case .triggers:
+      return [InspectorSections.triggersSection.with(.usage(triggers))]
     case .library:
       return InspectorSections.library(artifacts: artifacts)
     case .computer:
@@ -183,7 +167,6 @@ public struct InspectorColumn: View {
       ForEach(sections) { section in
         InspectorSectionView(
           section: section,
-          onToggleJob: onToggleJob,
           onExpand: onExpand,
           onRetryTask: onRetryTask,
           onStopTask: onStopTask,

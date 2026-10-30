@@ -316,11 +316,6 @@ public struct TemplateGallery: View {
               InspectorArtifact(id: "2", title: "deps 2026-10-24 next-ai"),
               InspectorArtifact(id: "3", title: "deps 2026-10-24 meowth"),
             ],
-            jobs: [
-              InspectorJob(id: "j1", title: "每日依赖修复调度", detail: "每天 8:47", isOn: true),
-              InspectorJob(
-                id: "j2", title: "依赖修复进度 10-24", detail: "每小时，10月24日，10:00 – 20:00", isOn: true),
-            ],
             tasks: [
               InspectorTaskRow(
                 id: "t_12", title: "生成回答", symbolName: "sparkles", status: "运行中", depth: 0,
@@ -342,7 +337,6 @@ public struct TemplateGallery: View {
             subtitle: "Bots",
             tintIndex: 5,
             artifacts: [],
-            jobs: [],
             tab: .constant(.detail)
           )
           .frame(height: 620)

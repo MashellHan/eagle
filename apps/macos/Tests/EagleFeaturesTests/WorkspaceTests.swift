@@ -36,8 +36,7 @@ struct MockWorkspaceTests {
   @Test("inspector fixtures are deep")
   func inspector() {
     #expect(MockWorkspace.artifacts.count >= 5)
-    #expect(MockWorkspace.jobs.count >= 2)
-    #expect(MockWorkspace.jobs.allSatisfy { !$0.detail.isEmpty })
+    #expect(MockWorkspace.artifacts.allSatisfy { !$0.title.isEmpty })
   }
 }
 
@@ -214,26 +213,6 @@ struct ChatTests {
 
 @Suite("Inspector")
 struct InspectorTests {
-  @Test("toggling a job flips only that job")
-  func toggle() {
-    let model = InspectorViewModel()
-    let first = model.jobs[0]
-    let second = model.jobs[1]
-    model.setJob(first.id, isOn: !first.isOn)
-    #expect(model.jobs[0].isOn == !first.isOn)
-    #expect(model.jobs[0].title == first.title)
-    #expect(model.jobs[0].detail == first.detail)
-    #expect(model.jobs[1] == second)
-  }
-
-  @Test("unknown job identifiers are ignored")
-  func unknown() {
-    let model = InspectorViewModel()
-    let before = model.jobs
-    model.setJob("nope", isOn: true)
-    #expect(model.jobs == before)
-  }
-
   @Test("the detail tab is the default")
   func defaultTab() {
     #expect(InspectorViewModel().tab == .detail)

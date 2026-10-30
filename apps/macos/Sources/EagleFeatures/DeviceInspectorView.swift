@@ -1,7 +1,7 @@
 import EagleDesign
 import SwiftUI
 
-/// Shared device directory, independent of the selected Bot's identity.
+/// The live computer list: the shared device model, drawn as the inspector's compact rows.
 public struct DeviceInspectorView: View {
   @ObservedObject private var model: DeviceSettingsViewModel
   private let onManage: () -> Void
@@ -12,23 +12,20 @@ public struct DeviceInspectorView: View {
   }
 
   public var body: some View {
-    VStack(alignment: .leading, spacing: Theme.Metric.panelSectionBodyGap) {
-      PanelSectionHeader(symbolName: "desktopcomputer", title: "可用电脑")
-      if let directory = model.directory, !directory.devices.isEmpty {
-        ForEach(directory.devices) { device in
-          DeviceSummaryView(
-            device: device, isLocal: device.deviceId == directory.localDeviceId,
-            localReady: model.localReady, stale: model.directoryIsStale, compact: true)
-        }
-      } else {
-        Text(model.enabled ? "还没有读到设备目录" : "设备服务已停用")
-          .font(Theme.TypeScale.note)
-          .foregroundStyle(Theme.Palette.textMuted)
-      }
-      TextAction("管理设备", action: onManage)
-        .frame(maxWidth: .infinity)
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
+    DeviceInspectorList(
+      entries: (model.directory?.devices ?? []).map { device in
+        DeviceInspectorEntry(
+          id: device.deviceId,
+          name: device.name,
+          isLocal: device.deviceId == model.directory?.localDeviceId,
+          online: device.online,
+          policy: model.policy(for: device)?.mode.title ?? "策略未知"
+        )
+      },
+      enabled: model.enabled,
+      stale: model.directoryIsStale,
+      onManage: onManage
+    )
     .task { await model.observe() }
   }
 }

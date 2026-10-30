@@ -222,14 +222,6 @@ public enum MockWorkspace {
     InspectorArtifact(id: "d7", title: "deps 2026-10-24 base-mcp"),
   ]
 
-  public static let jobs: [InspectorJob] = [
-    InspectorJob(
-      id: "j1", title: "每日依赖修复调度", detail: "每天 8:47", isOn: true),
-    InspectorJob(
-      id: "j2", title: "依赖修复进度 10-24", detail: "每小时 · 10:00–20:00", isOn: true),
-    InspectorJob(
-      id: "j3", title: "Codex 审查轮次上限", detail: "最多 10 轮，通过即合并", isOn: true),
-  ]
 }
 
 /// Left column state. Every item is a bot; the groups are how the user files them.
@@ -443,20 +435,9 @@ public final class BotChatViewModel: ObservableObject {
 /// Right column state.
 public final class InspectorViewModel: ObservableObject {
   @Published public var artifacts: [InspectorArtifact]
-  @Published public var jobs: [InspectorJob]
   @Published public var tab: InspectorColumn.Tab = .detail
 
-  public init(
-    artifacts: [InspectorArtifact] = MockWorkspace.artifacts,
-    jobs: [InspectorJob] = MockWorkspace.jobs
-  ) {
+  public init(artifacts: [InspectorArtifact] = MockWorkspace.artifacts) {
     self.artifacts = artifacts
-    self.jobs = jobs
-  }
-
-  public func setJob(_ id: String, isOn: Bool) {
-    guard let index = jobs.firstIndex(where: { $0.id == id }) else { return }
-    let job = jobs[index]
-    jobs[index] = InspectorJob(id: job.id, title: job.title, detail: job.detail, isOn: isOn)
   }
 }

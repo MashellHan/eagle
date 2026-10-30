@@ -101,7 +101,6 @@ public struct InspectorChoiceRow: Identifiable, Hashable, Sendable {
 public struct InspectorSectionModel: Identifiable, Hashable, Sendable {
   public enum Rows: Hashable, Sendable {
     case artifacts([InspectorArtifact])
-    case jobs([InspectorJob])
     case tasks([InspectorTaskRow])
     case usage([InspectorUsageRow])
     case choices([InspectorChoiceRow])
@@ -132,7 +131,6 @@ public struct InspectorSectionModel: Identifiable, Hashable, Sendable {
   public var isEmpty: Bool {
     switch rows {
     case .artifacts(let rows): return rows.isEmpty
-    case .jobs(let rows): return rows.isEmpty
     case .tasks(let rows): return rows.isEmpty
     case .usage(let rows): return rows.isEmpty
     case .choices(let rows): return rows.isEmpty
@@ -153,18 +151,6 @@ public enum InspectorSections {
       symbolName: "shippingbox",
       title: "还没有产物",
       detail: "这个 Bot 生成的文件会出现在这里。"
-    )
-  )
-
-  public static let jobsSection = InspectorSectionModel(
-    id: "jobs",
-    title: "例行任务",
-    symbolName: "clock",
-    rows: .jobs([]),
-    placeholder: InspectorPlaceholder(
-      symbolName: "clock.arrow.circlepath",
-      title: "没有例行任务",
-      detail: "按计划自动运行的调度会出现在这里。"
     )
   )
 
@@ -240,22 +226,25 @@ public enum InspectorSections {
     )
   )
 
-  /// 编码, 例行任务, 任务 — the detail tab always shows all three, so a section never folds
-  /// away and shifts the ones below it.
+  /// 编码 and 任务 — what the open conversation is doing right now. The model and its spend
+  /// have their own tab, and triggers are a tab of their own rather than a line here.
   public static func detail(
     artifacts: [InspectorArtifact],
-    jobs: [InspectorJob],
-    tasks: [InspectorTaskRow],
-    usage: [InspectorUsageRow],
-    choices: [InspectorChoiceRow] = [],
-    triggers: [InspectorUsageRow] = []
+    tasks: [InspectorTaskRow]
+  ) -> [InspectorSectionModel] {
+    [
+      artifactsSection.with(.artifacts(artifacts)),
+      tasksSection.with(.tasks(tasks)),
+    ]
+  }
+
+  /// 模型 and 用量: how the open bot thinks and what that has cost so far.
+  public static func model(
+    choices: [InspectorChoiceRow],
+    usage: [InspectorUsageRow]
   ) -> [InspectorSectionModel] {
     [
       modelSection.with(.choices(choices)),
-      artifactsSection.with(.artifacts(artifacts)),
-      jobsSection.with(.jobs(jobs)),
-      triggersSection.with(.usage(triggers)),
-      tasksSection.with(.tasks(tasks)),
       usageSection.with(.usage(usage)),
     ]
   }

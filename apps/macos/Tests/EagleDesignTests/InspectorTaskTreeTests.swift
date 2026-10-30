@@ -45,7 +45,7 @@ struct InspectorTaskTreeTests {
         id: "t_\(index)", title: "Task \(index)", symbolName: "circle", status: "Waiting",
         depth: depth, isRunning: false, isBlocked: false)
     }
-    let section = InspectorSections.detail(artifacts: [], jobs: [], tasks: tasks, usage: [])[4]
+    let section = InspectorSections.detail(artifacts: [], tasks: tasks)[1]
     for scheme in [ColorScheme.light, .dark] {
       let renderer = ImageRenderer(
         content: InspectorSectionView(section: section)

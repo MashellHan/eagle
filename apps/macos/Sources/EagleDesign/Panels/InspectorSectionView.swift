@@ -3,7 +3,6 @@ import SwiftUI
 /// One decorated section: the shared header, then either its rows or its empty state.
 public struct InspectorSectionView: View {
   private let section: InspectorSectionModel
-  private let onToggleJob: (String, Bool) -> Void
   private let onExpand: () -> Void
   private let onRetryTask: (String) -> Void
   private let onStopTask: (String) -> Void
@@ -11,14 +10,12 @@ public struct InspectorSectionView: View {
 
   public init(
     section: InspectorSectionModel,
-    onToggleJob: @escaping (String, Bool) -> Void = { _, _ in },
     onExpand: @escaping () -> Void = {},
     onRetryTask: @escaping (String) -> Void = { _ in },
     onStopTask: @escaping (String) -> Void = { _ in },
     onChoose: @escaping (String, String) -> Void = { _, _ in }
   ) {
     self.section = section
-    self.onToggleJob = onToggleJob
     self.onExpand = onExpand
     self.onRetryTask = onRetryTask
     self.onStopTask = onStopTask
@@ -48,19 +45,6 @@ public struct InspectorSectionView: View {
         }
         TextAction("展开", action: onExpand)
           .frame(maxWidth: .infinity)
-      }
-    case .jobs(let jobs):
-      VStack(spacing: Theme.Metric.panelSectionBodyGap) {
-        ForEach(jobs) { job in
-          ToggleRow(
-            title: job.title,
-            detail: job.detail,
-            isOn: Binding(
-              get: { job.isOn },
-              set: { onToggleJob(job.id, $0) }
-            )
-          )
-        }
       }
     case .choices(let rows):
       VStack(alignment: .leading, spacing: Theme.Metric.panelTaskRowGap) {

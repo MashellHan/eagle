@@ -8,9 +8,6 @@ struct InspectorSectionTests {
     InspectorArtifact(id: "a1", title: "deps 2026-10-24 sleepy"),
     InspectorArtifact(id: "a2", title: "deps 2026-10-24 next-ai"),
   ]
-  private let jobs = [
-    InspectorJob(id: "j1", title: "每日依赖修复调度", detail: "每天 8:47", isOn: true)
-  ]
   private let tasks = [
     InspectorTaskRow(
       id: "t_12", title: "生成回答", symbolName: "sparkles", status: "运行中", depth: 0,
@@ -20,8 +17,26 @@ struct InspectorSectionTests {
       depth: 1, isRunning: false, isBlocked: false),
   ]
 
-  @Test("the detail tab is 模型, 编码, 例行任务, 触发器, 任务, 用量 — always all six, in order")
+  @Test("详情 is 编码 and 任务: what the open conversation is doing now")
   func detailOrder() {
+    let sections = InspectorSections.detail(artifacts: artifacts, tasks: tasks)
+    #expect(sections.map(\.title) == ["编码", "任务"])
+    #expect(sections.map(\.id).count == Set(sections.map(\.id)).count)
+    #expect(sections.allSatisfy { !$0.symbolName.isEmpty }, "every section header carries a glyph")
+    guard case .artifacts(let artifactRows) = sections[0].rows else {
+      Issue.record("the first section holds the artifacts")
+      return
+    }
+    #expect(artifactRows == artifacts)
+    guard case .tasks(let taskRows) = sections[1].rows else {
+      Issue.record("the second section holds the tasks")
+      return
+    }
+    #expect(taskRows == tasks)
+  }
+
+  @Test("模型 holds the agent choices and what they have spent")
+  func modelTab() {
     let usage = [
       InspectorUsageRow(id: "input", label: "输入", value: "12.3k"),
       InspectorUsageRow(id: "cost", label: "花费", value: "$0.42"),
@@ -31,31 +46,15 @@ struct InspectorSectionTests {
         id: "model", label: "模型", value: "auto/gpt-6-luna", selected: "auto/gpt-6-luna",
         choices: [.init(id: "auto/gpt-6-luna", title: "auto/gpt-6-luna")])
     ]
-    let trigger = [InspectorUsageRow(id: "cron", label: "计划", value: "0 9 * * *")]
-    let sections = InspectorSections.detail(
-      artifacts: artifacts, jobs: jobs, tasks: tasks, usage: usage, choices: choices,
-      triggers: trigger)
-    #expect(sections.map(\.title) == ["模型", "编码", "例行任务", "触发器", "任务", "用量"])
-    #expect(sections.map(\.id).count == Set(sections.map(\.id)).count)
-    #expect(sections.allSatisfy { !$0.symbolName.isEmpty }, "every section header carries a glyph")
-    #expect(sections.allSatisfy { !$0.isEmpty })
+    let sections = InspectorSections.model(choices: choices, usage: usage)
+    #expect(sections.map(\.title) == ["模型", "用量"])
     guard case .choices(let rows) = sections[0].rows else {
       Issue.record("the first section holds the agent choices")
       return
     }
     #expect(rows == choices)
-    guard case .usage(let triggerRows) = sections[3].rows else {
-      Issue.record("the fourth section holds the selected trigger")
-      return
-    }
-    #expect(triggerRows == trigger)
-    guard case .tasks(let taskRows) = sections[4].rows else {
-      Issue.record("the fifth section holds the tasks")
-      return
-    }
-    #expect(taskRows == tasks)
-    guard case .usage(let figures) = sections[5].rows else {
-      Issue.record("the last section holds the usage")
+    guard case .usage(let figures) = sections[1].rows else {
+      Issue.record("the second section holds the usage")
       return
     }
     #expect(figures == usage)
@@ -63,18 +62,18 @@ struct InspectorSectionTests {
 
   @Test("an empty section keeps its header and carries an icon, a line and a sentence")
   func emptySections() {
-    let sections = InspectorSections.detail(
-      artifacts: [], jobs: [], tasks: [], usage: [])
-    #expect(
-      sections.map(\.title) == ["模型", "编码", "例行任务", "触发器", "任务", "用量"],
-      "a section never disappears")
+    let sections = InspectorSections.detail(artifacts: [], tasks: [])
+    #expect(sections.map(\.title) == ["编码", "任务"], "a section never disappears")
     #expect(sections.allSatisfy { $0.isEmpty })
-    #expect(
-      sections.map(\.placeholder.title)
-        == ["这个会话没有模型", "还没有产物", "没有例行任务", "没有选中触发器", "没有正在运行的任务", "还没有用量"])
+    #expect(sections.map(\.placeholder.title) == ["还没有产物", "没有正在运行的任务"])
     #expect(sections.allSatisfy { !$0.placeholder.symbolName.isEmpty })
     #expect(sections.allSatisfy { !$0.placeholder.detail.isEmpty })
-    #expect(sections[4].placeholder.title == "没有正在运行的任务")
+    #expect(sections[1].placeholder.title == "没有正在运行的任务")
+  }
+
+  @Test("the inspector tabs read 详情, 模型, 触发器, 资料库, 电脑 in that order")
+  func tabOrder() {
+    #expect(InspectorColumn.Tab.allCases.map(\.rawValue) == ["详情", "模型", "触发器", "资料库", "电脑"])
   }
 
   @Test("the library and computer tabs are decorated sections too")
@@ -95,15 +94,13 @@ struct InspectorSectionTests {
 
   @Test("a section with rows never reads as empty, whatever the row kind")
   func emptinessFollowsRows() {
-    let sections = InspectorSections.detail(artifacts: [], jobs: jobs, tasks: [], usage: [])
-    #expect(sections.map(\.isEmpty) == [true, true, false, true, true, true])
-    let onlyArtifacts = InspectorSections.detail(
-      artifacts: artifacts, jobs: [], tasks: [], usage: [])
-    #expect(onlyArtifacts.map(\.isEmpty) == [true, false, true, true, true, true])
-    let withUsage = InspectorSections.detail(
-      artifacts: [], jobs: [], tasks: [],
-      usage: [InspectorUsageRow(id: "input", label: "输入", value: "812")])
-    #expect(withUsage.map(\.isEmpty) == [true, true, true, true, true, false])
+    let sections = InspectorSections.detail(artifacts: [], tasks: tasks)
+    #expect(sections.map(\.isEmpty) == [true, false])
+    let onlyArtifacts = InspectorSections.detail(artifacts: artifacts, tasks: [])
+    #expect(onlyArtifacts.map(\.isEmpty) == [false, true])
+    let withUsage = InspectorSections.model(
+      choices: [], usage: [InspectorUsageRow(id: "input", label: "输入", value: "812")])
+    #expect(withUsage.map(\.isEmpty) == [true, false])
   }
 
   @Test("a task row indents with its depth and spins only while running")

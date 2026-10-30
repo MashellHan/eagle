@@ -138,6 +138,31 @@ struct SnapshotRenderer {
     defer { deviceDefaults.removePersistentDomain(forName: "EagleDeviceSnapshots") }
     let devices = DeviceSettingsViewModel(control: deviceFixture, defaults: deviceDefaults)
     await devices.startIfNeeded()
+    // The inspector's 电脑 tab: three machines, one of them this one and one offline.
+    for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
+      capture(
+        DeviceInspectorList(
+          entries: [
+            DeviceInspectorEntry(
+              id: "d1", name: "MBPHome.LZ", isLocal: true, online: true, policy: "始终允许"),
+            DeviceInspectorEntry(
+              id: "d2", name: "MacMini-2", isLocal: false, online: true, policy: "每次询问"),
+            DeviceInspectorEntry(
+              id: "d3", name: "MacMini-1", isLocal: false, online: false, policy: "暂停"),
+            DeviceInspectorEntry(
+              id: "d4", name: "studio-away", isLocal: false, online: nil, policy: "策略未知"),
+          ]
+        )
+        .padding(Theme.Metric.panelInset)
+        .frame(width: Theme.Metric.inspectorWidth)
+        .background(Theme.Palette.surface)
+        .preferredColorScheme(scheme),
+        size: CGSize(width: Theme.Metric.inspectorWidth, height: 260),
+        named: "inspector-computer-\(name)", in: directory,
+        appearance: scheme == .dark ? .darkAqua : .aqua
+      )
+    }
+
     // The about page, with an update available: the only state a person cannot reach by
     // building a development copy, so it is reviewed as an image instead.
     let about = SettingsViewModel(
@@ -335,8 +360,7 @@ struct SnapshotRenderer {
         status: "休眠", depth: 0, isRunning: false, isBlocked: false),
     ]
     for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
-      let taskSection = InspectorSections.detail(
-        artifacts: [], jobs: [], tasks: inspectorTasks, usage: [])[3]
+      let taskSection = InspectorSections.detail(artifacts: [], tasks: inspectorTasks)[1]
       let taskHeight =
         Theme.Metric.sectionHeaderHeight + Theme.Metric.panelSectionBodyGap
         + CGFloat(inspectorTasks.count) * Theme.Metric.panelTaskRowHeight
@@ -361,10 +385,6 @@ struct SnapshotRenderer {
             InspectorArtifact(id: "a1", title: "deps 2026-10-24 sleepy"),
             InspectorArtifact(id: "a2", title: "deps 2026-10-24 next-ai"),
           ],
-          jobs: [
-            InspectorJob(id: "j1", title: "每日依赖修复调度", detail: "每天 8:47", isOn: true),
-            InspectorJob(id: "j2", title: "依赖修复进度 10-24", detail: "每小时", isOn: false),
-          ],
           tasks: inspectorTasks,
           tab: .constant(.detail)
         )
@@ -381,7 +401,6 @@ struct SnapshotRenderer {
         subtitle: "Bots",
         tintIndex: 5,
         artifacts: [],
-        jobs: [],
         tasks: [],
         tab: .constant(.detail)
       )

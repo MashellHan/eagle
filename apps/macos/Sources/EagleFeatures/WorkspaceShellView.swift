@@ -101,6 +101,10 @@ public struct WorkspaceShellView: View {
 
   private var selectedIsBot: Bool { bots.owns(list.selection) }
 
+  /// The inspector belongs to an open conversation: with nothing selected there is nothing to
+  /// inspect, so the column (and its drag handle) stay away instead of showing an empty panel.
+  private var showsInspector: Bool { layout.showsInspector && list.selection != nil }
+
   /// The sample transcript carries its own exchanges, so opening one only needs the entry that
   /// holds it. A bot's exchanges will be read from the daemon by id.
   private func openPeerExchange(_ id: String) {
@@ -120,7 +124,7 @@ public struct WorkspaceShellView: View {
     ZStack(alignment: .bottomLeading) {
       ThreeColumnShell(
         showsSidebar: layout.showsSidebar,
-        showsInspector: layout.showsInspector,
+        showsInspector: showsInspector,
         sidebarWidth: layout.sidebarWidth,
         inspectorWidth: layout.inspectorWidth,
         onResizeSidebar: { layout.setSidebarWidth($0) },
@@ -223,7 +227,7 @@ public struct WorkspaceShellView: View {
               draft: $chat.draft,
               onSend: { chat.send() },
               showsSidebar: layout.showsSidebar,
-              showsInspector: layout.showsInspector,
+              showsInspector: showsInspector,
               onShowSidebar: { layout.toggleSidebar() },
               onToggleInspector: { layout.toggleInspector() },
               onOpenPeerExchange: { openPeerExchange($0) }
@@ -245,7 +249,6 @@ public struct WorkspaceShellView: View {
           tintIndex: selectedIsBot ? bots.tintIndex : (item?.tintIndex ?? 2),
           width: layout.inspectorWidth,
           artifacts: selectedIsMock ? inspector.artifacts : [],
-          jobs: selectedIsMock ? inspector.jobs : [],
           tasks: selectedIsBot ? bots.tasks : [],
           usage: selectedIsBot ? bots.usage : [],
           choices: selectedIsBot ? bots.choices : [],
@@ -255,7 +258,6 @@ public struct WorkspaceShellView: View {
             Task { await bots.choose(row, value: value) }
           },
           tab: $inspector.tab,
-          onToggleJob: { inspector.setJob($0, isOn: $1) },
           onRetryTask: { id in
             guard selectedIsBot else { return }
             Task { await bots.retryTask(id) }
