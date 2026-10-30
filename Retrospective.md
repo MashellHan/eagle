@@ -665,3 +665,20 @@ the helper. Its completion is bounded and a failed refresh prevents registration
 Healthy same-bundle openings and status reads do not invoke it. No signature rule,
 Keychain policy or system database is relaxed or reset. Real upgrade verification,
 including local readiness and an installed command, remains the decisive check.
+
+The bounded external registrar in `b13030d` still failed the real 11:23 upgrade:
+launchd again rejected the helper and no helper became available during the
+20-second startup observation. The extra process and its cleanup did not establish
+a fix. A subsequent complete assembly at `fa1d1cd` gave the candidate a distinct
+`CFBundleVersion`, preserving its product version, identity and signing rules.
+That upgrade started the helper in about 4.95 seconds, reported local readiness
+in 15.50 seconds and cloud online in 16.40 seconds without a manual retry; the
+installed Bots adapter then completed `/bin/df -k /` with exit 0.
+
+The job's parent build version now matched the new bundle. This supports distinct
+candidate build identities but does not prove macOS's internal cache key. Remove
+the unsuccessful external registrar path and verify one further complete upgrade
+with only the public LaunchServices refresh and distinct build version. Retain
+the earlier failed observations under
+`.local/device-evidence/device-settings-ui-20261030/`; do not recast eventual
+recovery as fast startup.

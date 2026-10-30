@@ -2258,3 +2258,26 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   existing 240-test root and 191-pass browser gates (11 existing viewport skips)
   passed; no duplicate run is needed for this Swift-only follow-up. User testing
   still precedes any PR.
+
+## 2026-10-30 11:40 +0800 — Candidate build identity and final delivery scope
+
+- User view: installed `fa1d1cd` automatically started the helper, reached local
+  readiness in 15.50 seconds and cloud online in 16.40 seconds without a manual
+  retry. Its installed Bots adapter completed `/bin/df -k /`; both existing Bots
+  and both physical device memberships remain. Pairing is above the device list.
+- The preceding external registrar candidate `b13030d` still failed the actual
+  upgrade. Root is removing that ineffective process path, keeping distinct
+  candidate build versions and the public LS refresh, then checking another full
+  signed install. No Keychain, weaker signature or system database reset is used.
+- Herdr: existing Astra lead/reviewer remain read-only; Root owns integration and
+  installation. Latest upstream `d69359b` merged without conflict, including its
+  trigger refresh and upstream decision to keep native focus in CI only.
+- Authentication/storage: existing public Worker is still verified `bda3ef8`;
+  no new cloud deployment, identity, D1 mutation or remote fixture. The second
+  physical Mac is online but has an older Agent without `policy.manage`, so its
+  remote policy change has not been accepted as verified.
+- Next broken hop: verify the simplified startup and actual App menu, resizing,
+  pairing draft stability and settings-only approval. The user's latest instruction
+  authorizes completing the work and publishing a formal PR; it supersedes the
+  earlier wait-for-user-test condition. Normal push gates and Astra increment
+  review remain required; PR #109 has not yet been updated.
