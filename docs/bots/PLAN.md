@@ -179,7 +179,20 @@ now prepares unregistration before moving the old App, using a maintenance entry
 that runs before SwiftUI or Bots initialization. It checks the old job and PID
 independently and preserves the old bundle on preparation failure. A legacy
 candidate may use the new signed maintenance process once, subject to the same
-postconditions. Cross-signature installed verification is still pending.
+postconditions. The fixed identifier and versioned executable path alone still
+failed live upgrades, as retained in the retrospective.
+
+The candidate now versions its service Label, MachService and plist filename by
+the same build, while retaining its profile, socket and data paths. At `2bea0d6`,
+a complete debug-to-release upgrade changed the helper SHA/CDHash, automatically
+removed the old service, reached local readiness in 10.60 seconds and cloud online
+in 11.77 seconds. The new job ran once and had never exited; the old job was gone.
+The first adoption of versioned names used the installed App's maintenance entry
+to clear the already-failed legacy job and is not counted as automatic upgrade
+acceptance. Identity, Raven, token and catalogue hashes matched, both history files
+remained, and installed local execution plus physical MacMini-2 to MacMini 1
+execution/query by original operation ID passed again. CI SDK compatibility still
+requires the new GitHub run after the normal push gates.
 
 The installed App's menu opens the actual resizable Settings window. Pairing is
 above My Devices and always visible; resizing survives closing/reopening, and an

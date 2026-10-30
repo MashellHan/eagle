@@ -2426,3 +2426,21 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   crossing, already corrected locally. Normal push and renewed CI remain.
   No live Herdr collection, new Worker deployment, D1 writes, Keychain access
   or device credential changes. Prior UI and cross-Mac evidence is unchanged.
+
+## 2026-10-30 13:37 +0800 — Changed-helper upgrade and commands pass
+
+- The installed `2bea0d6` candidate passed a normal debug-to-release upgrade with
+  different helper SHA/CDHash: 10.60 seconds to local readiness, 11.77 seconds to
+  cloud online. Old versioned job absent; new job one run, never exited. The
+  separate first adoption cleared the already-failed legacy job through the old
+  signed App; only the subsequent upgrade is counted as automatic acceptance.
+- Identity, Raven/gateway, daemon token and catalogue hashes match their
+  pre-install values; both recorded history files still exist. The installed
+  adapter completed `/bin/df -k /` locally and `/bin/hostname` on the physical
+  peer, then retrieved the identical remote result by the original operation ID.
+- Herdr lead remains read-only; Astra reviewer is closing the two small service
+  name/ownership commits. Packaging/installer regressions passed after their
+  failing cases. The existing installed UI evidence still applies; no UI code
+  changed in this follow-up and no live Herdr collection was invoked.
+- No new Worker deployment, D1 writes, Keychain access or credential resets.
+  Next: normal push gates, update PR #109 and confirm its macOS CI SDK fix.

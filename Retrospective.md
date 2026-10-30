@@ -818,3 +818,13 @@ The next bounded trial versions the candidate's Label, MachService and plist nam
 together, preserving its profile and data paths, and selects the old service for
 installer cleanup from the old signed bundle. This targets the observed reuse of
 the older BTM item rather than adding another delay. Live acceptance remains open.
+
+The versioned-service trial passed a real changed-helper upgrade at `2bea0d6`:
+debug-to-release changed its SHA/CDHash; the normal installer removed the old job,
+then the new job ran once and reached local readiness in 10.60 seconds and cloud
+online in 11.77 seconds. No manual retry was used for that upgrade. First adoption
+had explicitly cleared the previously failed legacy job through the old signed
+App and is recorded separately. Identity/configuration hashes and both history
+files were preserved; installed local execution and physical A-to-B execution
+with an original-ID query passed. This demonstrates the candidate upgrade path;
+it does not claim knowledge of Apple's private cache key or distribution signing.
