@@ -1,4 +1,13 @@
 import { z } from "zod";
+import type {
+  SyncEnvelopeRequest,
+  SyncKeyDescriptor,
+  SyncKeyEnvelope,
+  SyncOpenRequest,
+  SyncSealRequest,
+  SyncSealResult,
+  syncObjectPullInput,
+} from "./DeviceSyncObjects.ts";
 
 export const deviceSyncPeer = z.strictObject({
   deviceId: z.uuid(),
@@ -58,6 +67,22 @@ export interface DeviceSyncPort {
     context: { trace: string; botId: string },
   ): Promise<{ version: 1; signature: string }>;
 
+  descriptor?(context: {
+    trace: string;
+    botId: string;
+  }): Promise<z.infer<typeof SyncKeyDescriptor>>;
+  sealKey?(
+    input: z.infer<typeof SyncSealRequest>,
+    context: { trace: string; botId: string },
+  ): Promise<z.infer<typeof SyncSealResult>>;
+  envelope?(
+    input: z.infer<typeof SyncEnvelopeRequest>,
+    context: { trace: string; botId: string },
+  ): Promise<z.infer<typeof SyncKeyEnvelope>>;
+  openKey?(
+    input: z.infer<typeof SyncOpenRequest>,
+    context: { trace: string; botId: string },
+  ): Promise<{ version: 1; dek: string }>;
   access(
     input: z.infer<typeof deviceSyncInput> & { sharedBotId: string },
     context: { trace: string; botId: string },
@@ -110,5 +135,11 @@ export type SyncStatus = {
 };
 export interface SyncApi {
   status(): SyncStatus;
+  pullObject?(
+    botId: string,
+    input: z.infer<typeof syncObjectPullInput>,
+    trace: string,
+  ): Promise<unknown>;
+  applyObject?(botId: string, objectId: string, trace: string): Promise<unknown>;
   pull(botId: string, input: z.infer<typeof syncPullInput>, trace: string): Promise<unknown>;
 }

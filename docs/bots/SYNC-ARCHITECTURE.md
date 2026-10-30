@@ -1,6 +1,6 @@
 # 多端 Bot 同步架构
 
-2026-10-30 · 整体网络/云端架构仍为提案；本地P0-P2及P3元数据基础片已交付，P4首个认证页切片进行中。
+2026-10-30 · 整体网络/云端架构仍为提案；本地P0-P2及P3元数据基础片已交付，P4首个认证页切片4f7d035已交付。持久对象/定向信封片source-v3已冻结，必要本地门禁通过，目标槽ID绑定P2源码复核已关闭；两项测试观察窗口窄修及最终候选待增量Review与正式接受，尚未交付。
 
 **历史长期保存在各设备，Tailscale 直连优先、Cloudflare 中转兜底；共享对话保留并发分支。**
 同一个 Bot 在 A、B 各有独立副本与运行时；A 离线或云端不可达时，
@@ -226,5 +226,46 @@ Failures retain process trace/failure attribution and one innermost error origin
 network reachability and authorization failures remain distinguishable. Logs contain
 no keys, plaintext pages, proof payloads or private paths. Real owned Registry/Node/socket
 protocol evidence is separate from actual Tailscale kernel/physical two-Mac acceptance.
-Long-lived DEK/wrapping descriptors/envelopes/rotation and CF first-cache+72h deletion,
-fallback/switchback are later slices. No deployment, release, App replacement or P5 UI.
+The following slice adds durable DEK envelopes. Rotation and CF first-cache+72h deletion,
+fallback/switchback remain later slices. No deployment, release, App replacement or P5 UI.
+
+
+## P4 durable page object and directed envelope (local implementation contract)
+
+Starts at delivered4f7d035/tree959dece. One immutable object uses an independent random
+32-byte DEK and96-bit AEAD nonce, with a publisher self-envelope protected by a helper-owned
+persistent X25519 wrapping key. The descriptor derives from that successfully persisted key;
+Ed registration/proof remain restricted and unchanged. New typed helper kinds carry only
+bounded key/envelope metadata; plaintext DEKs never persist in replica DB/Registry/log and
+8MiB ciphertext never enters the4096B vault or512KiB private frame.
+
+Publish cipher+signed manifest+descriptor+self-envelope as one durable, exclusive first-winner
+result in the daemon's owned object directory. Concurrent retries/lost receipt/reopen return
+the original object/keyId/cipher; corrupt committed winners fail closed. Append recipients
+independently. The first current-authorized receive fixes issuer/publisher identity and complete
+signed descriptor/envelope/object digests in that same local result. Offline open/apply accepts
+only a stored objectId and validates that fixed pin, with no identity/access/proof/cloud call.
+New retrieval/envelope issuance always uses the current directional grant and await fences;
+revocation does not erase previously learned content. Keep ready-only actual-use guards and
+passive0execution semantics; existing direct pull/page routes remain compatible.
+
+Manifest retains original source(replicaId,epoch),advertised range,actual included seq/event
+identities,nextAfter/hasMore,page digest and cipher digest. Future cache retention must use stable
+(sharedBotId,source.replicaId,source.epoch,seq), detecting conflicting event bytes. Repaging,
+hasMore changes,forwarding or new cipher/object/envelope packaging cannot renew an event's72h.
+This slice defines those inputs only: no CF storage,cache clock,automatic fallback or rotation
+framework. The additive local objects/pull selector is a strict union of peer+page query or peer+objectId;
+objects/apply accepts only stored objectId. The original direct pull remains unchanged.
+Page plaintext/pageDigest/eventDigest use original JSON.stringify order, including SDK model/data;
+only new controlled signed metadata uses canonical key ordering. A current ephemeral AEAD receipt
+binds each network object delivery to its request/session and all immutable artifact digests.
+
+Complete files are staged/file-fsynced before a short ready lease. The lease rechecks full local
+binding(localBotId/sharedBotId/replicaId/epoch),same handle,tombstone,time and online generation,
+then only exclusive-links,cleans the owned stage and directory-fsyncs. Complete winner reads,
+signature/digest verification happen outside that lease, before ACK. EEXIST always verifies the
+winner. A complete winner with exactly one owned same-inode UUID stage link can recover after a
+link-before-unlink crash; unknown links and corrupt winners refuse without replacing the object.
+Previously accepted local apply fences daemon closed and actual binding/handle/tombstone, but
+never listener Self/readiness or online exchange generation. It makes no cloud call and cannot
+open/recover a Bot. A missing wrapping key refuses opening/issuing rather than minting a replacement.

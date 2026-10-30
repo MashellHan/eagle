@@ -1,5 +1,181 @@
 # 用户视角检查点
 
+## 2026-10-31 04:05 +0800 - Normal devices gate passes; fixture-only source frozen for final Review
+
+- Source-v3 fe2e2ecd freezes30 changed/new inputs and550 full selected hashes;282 original
+  artifacts include v1/v2 candidates,real wrong-ID red/green,both22/23 device failures and raw
+  read-only timing observations. Production is byte-identical to v2's reviewed P2 repair.
+- Only two tests change from v2: await same-trace core propagation using existing until before
+  unchanged attribution asserts; run explicit offline-native after both epoch/close refusals.
+  Every refused-window DB equality/provider baseline stays; native afterward actually adds2.
+  Normal complete devices-v3 b096c98c is23/23;root types/check-only lintd74afdc8 exit0,both550
+  before=after. Lead received exact source/test delta for existing independent Review.
+- Complete Bots-v2 a453f6ed retains825 ordinary/825 coverage and91.85/88.92/90.24 aggregate;
+  its Bots inputs are unchanged. Root/Swift197/51/50/default-filtered94.6/crash17/exact eval
+  preserve original v1 scope,not invented v3 reruns. Browser waits normal pre-push.
+- Final docs now correct the stale contract/first-red summary and bind the actual repair/gate
+  scopes. Final candidate preparation and independent test-delta/Lead acceptance remain;no
+  commit/push/fetch/merge. PR109 upstream integration waits a clean delivered node.
+  Live collection/auth,production D1/rendering,physical Mac/Tailscale/App and CF remain unverified
+  or unimplemented. No publication/deploy/PR/P5/P6/next slice. Next hop: exact docs/index/tree
+  receipt and independent acceptance,then the separately authorized normal delivery sequence.
+
+## 2026-10-31 04:02 +0800 - Resume interrupted fixture diagnosis; production remains frozen
+
+- Lead reports the intervening local model proxy403 interrupted work; no gate or delivery is
+  inferred during that gap. HEAD remains4f7d035. Source-v2 7126eb18 matches all550 disk hashes,
+  and its251 bound artifacts remain intact. P2 target-slot decoder Review is closed; source
+  is unchanged. Earlier01:50 checkpoint and both22/23 device failures remain historical facts.
+- Existing device-timing-diagnostic-v2 9b7acfea ran both original complete files with read-only
+  owned observation:17/17. Actual runtime/core records share failure/trace/Bot with one origin;
+  post-native refusal baselines already include the same projection counts that arrived late
+  in the failed run. This passing observation cannot reconstruct either failed run's deleted
+  directory. Submission.done does not await ReplicaSync's separately scheduled scan.
+- Apply Lead's minimal fixture correction: await this trace's core propagation before the
+  original attribution snapshot; move explicit offline-native execution after both epoch/close
+  refusal windows. Keep every DB equality and provider baseline assertion; native still must
+  execute with+2 afterward. No production flush API or runtime/log semantics change.
+- Lead reports PR#109 merged/closed at19:58:52Z,upstream5d48ba0a. No fetch/merge occurs on
+  this uncommitted candidate: current slice must first pass Review/gates and normal delivery
+  into a clean node. No CF/next slice,App/deploy/npm/PR action. Live collection/auth,production
+  D1/rendering and physical Mac/Tailscale/App remain unverified. Next hop: freeze test-only
+  delta and run the actual complete devices gate,then final candidate/independent acceptance.
+
+## 2026-10-31 01:50 +0800 - Target-slot Review P2 repaired; devices gate diagnosis in progress
+
+- Previous4f7d035 delivery stays closed. Old source-v1/candidate-v1 and234 artifacts are unchanged.
+  The new real red e8bb2510 used the frozen f070889e production: a complete signed legal record
+  for another objectId,under the same Bot/full binding/publisher,was substituted after a read
+  miss. Public pull wrongly returned200/stored:true; EEXIST and unknown-result rereads also
+  returned the wrong winner. No DB/provider delta. Original test/fixture/source bytes archived.
+- Source-v2 7126eb18 freezes the three-path decoder/integration/store-fixture delta and550
+  full selected inputs. Shared objectId-bound decoding now refuses both winner rereads; actual
+  route403/no stored ACK,ordinary concurrency/lost reply/slot/cold-offline history all pass in
+  green1a7ed8ea. Root/Bots types/check-only lint01edac90 and Bots complete checka453f6ed exit0.
+- Normal devices-v2 b6ee01bd is22/23: unchanged P3 test's immediate disk snapshot lacked the
+  core propagation line after finding the runtime origin. Original full file isolated16/16.
+  A second normal gate6a9f9cf3 is22/23: that P3 assertion passed,but the offline test's DB counts
+  changed after an explicit native run during a later refusal window. Neither failure is waived
+  or labeled a product cause; owned read-only timing diagnostics retain the original assertions.
+  Source remains frozen for Lead-arranged incremental Review; no commit/push.
+- No live collection/authentication,production D1/rendering,physical Tailscale/Mac/App or CF
+  evidence is added. Unchanged Swift/root/crash/eval v1 inputs keep their exact prior scope;
+  browser remains normal pre-push. Next broken hop: distinguish actual log/DB sampling and
+  explicit-run completion from rejected sync behavior,then complete the normal devices gate.
+
+## 2026-10-31 01:39 +0800 - Durable object gates complete; final docs/tree being bound
+
+- Source-v1 ccdfe1ae remains byte-frozen at base4f7d035:29 changed/new inputs,550 complete
+  selected source/test/fixture/script hashes,203 original artifacts. Critical regressions are
+  tracked. No commit/push; independent source Review is handed to Lead.
+- All normal necessary checks on the identical550 before/after inputs exit0: root267,
+  Bots ordinary825 and coverage825 (91.85/88.92/90.24 aggregate),devices23,crash17,exact
+  root-resources one case/two rows. Swift actual summaries197/51/50;strict recursive0 plus
+  fixture strict0; original coverage script/default90 yields1465/1549=94.6% in its existing
+  filtered collection,not all new synchronization logic. Raw command/cwd/start/log/exit preserved.
+- Source artifacts include the formal descriptor entry red,hardlink/missing-wrap/EACCES/
+  offline-readiness true reds and every intermediate fixture/oracle failure with original scope.
+  Final docs now describe strict additive selectors,typed metadata/persistent vault,first-winner
+  short admission,offline fixed pins and stable future source-event cache identity. Candidate
+  preparation only binds these docs/index/tree; independent acceptance still precedes delivery.
+- Live Herdr collection/auth,production D1/rendering,physical Tailscale/two-Mac/App and CF cache
+  remain unverified/unimplemented as applicable. Browser awaits normal pre-push;no unrelated
+  perf/P2/P3-specific repeat,release/npm/deploy/PR/P5/P6 work. Next hop is final integrity and
+  independent Review/Lead decision; no earlier delivery or failure evidence is rewritten.
+
+## 2026-10-31 01:37 +0800 - Durable object source frozen; normal gates and independent Review handoff
+
+- Source-v1 ccdfe1ae freezes29 changed/new source/test/fixture/script paths at delivered4f7d035,
+  with550 tracked+new selected inputs and203 historical originals. Docs remain WIP; no commit/push.
+  Lead received the stable receipt for existing independent read-only Review. Source bytes stay frozen.
+- Critical regressions now live in tracked encrypted-objects/device-objects/Bots tests and owned
+  Swift/Node/store fixtures. publisher-slot-fences c215da1b is1/1 on549 before=after: B object/slot
+  six stage windows,A pin full-binding/delete/close/expiry/generation/grant windows; no rejected
+  publication/admission. short-admission-helper-await2faca534 also passes actual helper-response
+  held across Registry grant revocation. Final short lease only guards/link/unlink/dir-fsyncs;
+  complete verified winner reads happen after it and before ACK. No limits/allowlists were widened.
+- Tracked cases preserve immutable concurrent winners/DEKs/cipher/self-envelope,actual syscall
+  link-before-unlink SIGKILL and post-commit lost reply/reopen,unknown hardlinks/corruption refusal,
+  verified descriptor retry single slot,actual EACCES/storage_failed503/original cause/single origin
+  and crypto403,missing-wrap no-mint,cold offline bytes/head/sections and passive provider delta0.
+  Offline-readiness6a928d8c red→37aad103 green removes online generation from local stored apply;
+  actual key.open wait with Self loss succeeds,while same-window close/binding change refuses.
+- Frozen550 source before=after: root-check-v1 c30e31cc exit0 (267 tests/types/check-only lint211/build),
+  bots-check-v1 7ae0837b exit0 (fixtures34,ordinary825 and coverage825,types/lint219;
+  aggregate91.85% lines/88.92% branches/90.24% functions),device-process-v1 098867c5 exit0
+  (23/23,including new owned helper loop),crash-v1 50dd494b exit0 (17/17).
+  swift-current-first aa54c732 exit0 reports197/51/50;strict-v1 exit0. Original default90
+  coverage script and exact root-resources eval are running,not yet passed.
+- Earlier editor/status/canonical-payload oracle and genuine product reds remain original raw;
+  no old filename implies success. Live Herdr collection/auth,production D1/rendering,
+  physical Tailscale/Mac/App/CF remain unverified. Next hop: complete running gates,bind final
+  docs/candidate and independent Review; no publication/deployment/next-slice work.
+
+## 2026-10-31 01:23 +0800 - Durable object cold-offline loop and storage failure attribution locally verified
+
+- Base4f7d035 remains the delivered baseline. This next P4 object/envelope slice is WIP;
+  no source freeze, Review acceptance, commit or push. Prior delivery evidence is unchanged.
+- history-offline-first4a1532b8 is an ordinary-ready oracle failure; second eb2394bd is1/1,
+  both selected542 paths unchanged. B+Registry stop before A helper/Node/Bots cold startup;
+  fixture waits only localReady. An explicitly established unavailable Bot refuses sync after
+  repair until local open. Original12826-byte Page/history5 entries/head/section order match;
+  passive provider delta0, source native run2 and final local native run2 recorded separately.
+- missing-wrap-red4b7e52ab proved old-object open silently created a replacement wrapping
+  account after deletion. Helper now loads existing wrap key for open/envelope; new executable
+  build e3b0c442 and exact missing-wrap-green5c67b1f7 exit0 leave the missing account absent.
+- object-io-second-red4917cea2 proved actual owned EACCES became auth_failed/403. Exact
+  green071fb155 now preserves cause EACCES as storage_failed/503 with provider0. Filesystem
+  operations alone receive storage attribution; crypto/descriptor validation remains auth.
+  First object-io5b6da4ef included a fixture URL error and remains separate.
+- Earlier hardlink crash red d21c1c7a/green d08cb8c0 are preserved. Next broken hops are
+  explicit unknown-hardlink/concurrent first-winner/lost-reply and staged final-use races,
+  then tracked integration consolidation and necessary full gates. Current local fixture
+  process evidence does not establish physical Tailscale, installed App or cloud cache.
+- Live Herdr collection/authentication, production D1/rendering and physical-device/App/CF
+  behavior are unverified in this slice. No deployment/npm/PR/P5/P6 action.
+
+## 2026-10-31 01:09 +0800 - Durable object contracts accepted; helper key loop green, object routes being connected
+
+- Base4f7d035 remains delivered/unchanged; no commit/push. Lead accepted the exact additive
+  descriptor/seal/envelope/open,first-winner file publication,recipient slots and objectId-only
+  offline pin contracts. Current source is implementation WIP, not a frozen candidate.
+- Real entry-second4ce5258a/receipt05632cb5 proves the missing descriptor method after actual
+  Swift helper/vault,dual Node,Registry SQLite pairing,B->A grant and7-event Bot resources page.
+  All227 production paths equal base; all534 selected paths unchanged before/after. Initial
+  entry-red49924650 was a /tmp-symlink vault fixture failure and remains separately preserved.
+- descriptor-second a3e17b90 passes real canonical signature/keyId validation and helper/Node
+  restart key-body stability. Swift-descriptor-first2d4482a6 exit0 reports197/48/50;48 includes
+  three new real vault tests. Intermediate a46ba95f signature-deepEqual was an oracle failure;
+  valid signature bytes are never slot identity. Slots compare verified unsigned descriptor bodies.
+- Subsequent missing seal red7df1d55a and helper envelope/open green43647257 are owned local
+  key-loop evidence only:2532B controlled fixture,wrong recipient/tampering refused,revoke blocks
+  new issuance,online restart then Registry-off open succeeds. This does not yet prove cold
+  offline startup or original SDK history Page byte preservation.
+- Production object wiring now uses original JSON.stringify Page/event bytes,controlled metadata
+  canonical signatures,small session-authenticated delivery receipt and exclusive complete records.
+  Final publish/apply must fence full local binding,healthy handle,time/generation at actual use.
+  Network/immutable-object/race/history/cold-offline tests and required final gates are still pending.
+- Herdr coordination remains local. No live collection,production auth,D1/rendering,physical
+  Tailscale/two-Mac,installed App,CF cache,deploy/npm/PR/P5/P6 evidence or action. Next broken hop:
+  real authenticated object network -> durable first winner/pin -> cold offline ready-only apply.
+
+## 2026-10-31 00:54 +0800 - P4 direct-page delivered; durable object/envelope contract and first-red preparation
+
+- Previous4f7d035/tree959dece is normally delivered to the verified own fork, clean/ahead0/behind0.
+  Delivery receipt687f6650 and all194+30 original evidence files remain unchanged. Base is not moved.
+- The next atomic slice is only at read-only integration/short-contract/real-first-red preparation.
+  Helper vault4096B/insert-only suits one wrapping key; full cipher+manifest+self-envelope needs
+  separate exclusive first-winner publication. First lawful local pin and offline objectId-only
+  lookup are in the new ignored proposal; no production behavior has changed and no new gate ran.
+- PLAN current summary/P4 row now distinguish delivered direct pages from in-progress durable
+  objects/envelopes. Original source epoch/seq will remain visible for future cache anti-renewal;
+  repaging/forwarding/new packaging cannot create a fresh72h for the same source event.
+- Current Herdr coordination is local with innovation-lead; no live collection, production auth,
+  remote D1 write, rendering, physical Tailscale/two-Mac or installed App verification. New local
+  Registry registration/pairing red has not run yet. CF/P5/P6/npm/deployment/PR actions are unstarted.
+- Next broken hop: real paired/authorized A/B and actual resource Page must reach the missing
+  typed wrapping-descriptor public private-port method on unchanged4f7d035 production.
+
 ## 2026-10-31 00:33 +0800 - P4 four-P2 source-v4 frozen; required gate scopes complete
 
 - Base460b60d/P3 delivery is unchanged. source-v4 SHA4095cb04 freezes36 paths,11 source deltas

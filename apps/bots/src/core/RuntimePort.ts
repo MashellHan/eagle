@@ -94,6 +94,12 @@ export interface RuntimeHandle {
     readonly trace: string;
     /** Internal synchronization use-point check; never accepted from wire params. */
     readonly guard?: () => void;
+    readonly expectedBinding?: {
+      localBotId: string;
+      sharedBotId: string;
+      replicaId: string;
+      epoch: string;
+    };
   }): Promise<unknown>;
   refreshTools(trace: string): Promise<void>;
   /** Atomic: the view at attachment plus every later commit, with nothing lost between. */
@@ -134,6 +140,8 @@ export interface RuntimeHandle {
 export interface RuntimePort {
   readReplicaBinding?(
     spec: Pick<RuntimeBotSpec, "id" | "dir">,
-  ): Promise<{ sharedBotId: string } | undefined>;
+  ): Promise<
+    { sharedBotId: string; localBotId?: string; replicaId?: string; epoch?: string } | undefined
+  >;
   open(spec: RuntimeBotSpec): Promise<RuntimeHandle>;
 }

@@ -16,12 +16,13 @@ import Security
       let requirement = try DeviceCodeIdentity.applicationRequirement(at: bundle)
       let config = try DeviceHostConfiguration.load(bundle: bundle)
       let runtime = bundle.appendingPathComponent("Contents/Resources/DeviceRuntime")
-      let identity = try DeviceIdentity.loadOrCreate(profile: config.profile)
+      let vault = DeviceFileVault()
+      let identity = try DeviceIdentity.loadOrCreate(profile: config.profile, vault: vault)
       let host = DeviceServiceHost(
         identity: identity, configuration: config,
         node: runtime.appendingPathComponent("node"),
         entry: runtime.appendingPathComponent(
-          "agent/node_modules/@nocoo/eagle-agent/dist/agent/device-service.js"))
+          "agent/node_modules/@nocoo/eagle-agent/dist/agent/device-service.js"), vault: vault)
       let listener = NSXPCListener(machServiceName: config.machServiceName)
       let delegate = DeviceXPCServer(host: host, requiredPeer: requirement)
       listener.delegate = delegate

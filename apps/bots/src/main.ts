@@ -544,6 +544,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     deviceSync === undefined
       ? undefined
       : new AuthenticatedSync({
+          root: canonical.root,
           registry,
           device: deviceSync,
           log,

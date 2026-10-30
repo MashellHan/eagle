@@ -353,7 +353,21 @@ export class ReplicaSync {
 
   command(command: Command): Promise<unknown> {
     const guard = () => {
+      // A store read failure keeps storage attribution; a changed valid binding is a use refusal.
+      const binding =
+        command.expectedBinding === undefined
+          ? undefined
+          : (JSON.parse(
+              String(this.store.db.prepare("SELECT value FROM binding WHERE id=1").get()?.value),
+            ) as Record<string, unknown>);
       try {
+        if (
+          binding !== undefined &&
+          Object.entries(command.expectedBinding ?? {}).some(
+            ([key, value]) => binding[key] !== value,
+          )
+        )
+          throw new Error("sync_identity_changed");
         command.guard?.();
       } catch (cause) {
         if (cause instanceof ClassifiedFailure) throw cause;

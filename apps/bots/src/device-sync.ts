@@ -1,5 +1,14 @@
 import { z } from "zod";
 import {
+  SyncEnvelopeRequest,
+  SyncKeyBytes,
+  SyncKeyDescriptor,
+  SyncKeyEnvelope,
+  SyncOpenRequest,
+  SyncSealRequest,
+  SyncSealResult,
+} from "./core/DeviceSyncObjects.ts";
+import {
   type DeviceSyncPort,
   deviceSyncAccess,
   deviceSyncIdentity,
@@ -71,6 +80,27 @@ export class SocketDeviceSyncPort implements DeviceSyncPort {
     } finally {
       channel.close();
     }
+  }
+
+  descriptor(context: { trace: string; botId: string }) {
+    return this.#call("sync.key.descriptor", {}, context, (value) =>
+      SyncKeyDescriptor.parse(value),
+    );
+  }
+  sealKey(input: z.infer<typeof SyncSealRequest>, context: { trace: string; botId: string }) {
+    return this.#call("sync.key.seal", SyncSealRequest.parse(input), context, (value) =>
+      SyncSealResult.parse(value),
+    );
+  }
+  envelope(input: z.infer<typeof SyncEnvelopeRequest>, context: { trace: string; botId: string }) {
+    return this.#call("sync.key.envelope", SyncEnvelopeRequest.parse(input), context, (value) =>
+      SyncKeyEnvelope.parse(value),
+    );
+  }
+  openKey(input: z.infer<typeof SyncOpenRequest>, context: { trace: string; botId: string }) {
+    return this.#call("sync.key.open", SyncOpenRequest.parse(input), context, (value) =>
+      z.strictObject({ version: z.literal(1), dek: SyncKeyBytes }).parse(value),
+    );
   }
 
   identity(context: { trace: string; botId: string }) {

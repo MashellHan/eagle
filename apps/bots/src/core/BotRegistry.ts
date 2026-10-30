@@ -144,9 +144,15 @@ const assertTaskId = (taskId: string): void => {
   );
 };
 
+type ReplicaBinding = NonNullable<
+  Awaited<ReturnType<NonNullable<RuntimePort["readReplicaBinding"]>>>
+>;
 export type ReadyReplica = {
   readonly botId: string;
   readonly sharedBotId: string;
+  readonly binding: Readonly<ReplicaBinding>;
+  /** Final synchronous object/slot publication only; all staging happens before this lease. */
+  publish(action: () => undefined, guard: () => void): Promise<void>;
   check(): Promise<void>;
   command(method: "pull" | "apply", params: unknown, guard?: () => void): Promise<unknown>;
 };
@@ -160,6 +166,19 @@ export class BotRegistry {
     return {
       botId,
       sharedBotId: first.sharedBotId,
+      binding: first.binding,
+      publish: async (action, guard) => {
+        await this.#syncLease(
+          botId,
+          trace,
+          uniqueShared,
+          first,
+          undefined,
+          undefined,
+          guard,
+          action,
+        );
+      },
       check: async () => {
         await use();
       },
@@ -218,11 +237,23 @@ export class BotRegistry {
     botId: string,
     trace: string,
     uniqueShared?: string,
-    expected?: { entry: Entry; handle: RuntimeHandle; sharedBotId: string },
+    expected?: {
+      entry: Entry;
+      handle: RuntimeHandle;
+      sharedBotId: string;
+      binding: ReplicaBinding;
+    },
     method?: "pull" | "apply",
     params?: unknown,
     guard?: () => void,
-  ): Promise<{ entry: Entry; handle: RuntimeHandle; sharedBotId: string; result: unknown }> {
+    publish?: () => undefined,
+  ): Promise<{
+    entry: Entry;
+    handle: RuntimeHandle;
+    sharedBotId: string;
+    binding: ReplicaBinding;
+    result: unknown;
+  }> {
     return this.#directorySerial(async () => {
       const entry = this.#entry(botId, trace);
       const handle = entry.handle;
@@ -251,7 +282,10 @@ export class BotRegistry {
         });
         if (
           !binding ||
-          (expected && expected.sharedBotId !== binding.sharedBotId) ||
+          (expected &&
+            (["localBotId", "sharedBotId", "replicaId", "epoch"] as const).some(
+              (key) => expected.binding[key] !== binding[key],
+            )) ||
           (uniqueShared !== undefined &&
             (uniqueShared !== binding.sharedBotId ||
               (await this.#syncAliases(uniqueShared)).length !== 1)) ||
@@ -259,6 +293,21 @@ export class BotRegistry {
           !healthy()
         )
           throw this.#syncRefused(trace, botId, "sync Bot identity or lifecycle changed");
+        if (publish) {
+          guard?.();
+          publish();
+        }
+        const completeBinding =
+          binding.localBotId !== undefined &&
+          binding.replicaId !== undefined &&
+          binding.epoch !== undefined
+            ? {
+                localBotId: binding.localBotId,
+                sharedBotId: binding.sharedBotId,
+                replicaId: binding.replicaId,
+                epoch: binding.epoch,
+              }
+            : undefined;
         const result =
           method === undefined
             ? undefined
@@ -267,9 +316,16 @@ export class BotRegistry {
                 params,
                 trace,
                 ...(guard === undefined ? {} : { guard }),
+                ...(completeBinding === undefined ? {} : { expectedBinding: completeBinding }),
               });
         if (!healthy()) throw this.#syncRefused(trace, botId, "sync Bot lifecycle changed");
-        return { entry, handle: handle as RuntimeHandle, sharedBotId: binding.sharedBotId, result };
+        return {
+          entry,
+          handle: handle as RuntimeHandle,
+          sharedBotId: binding.sharedBotId,
+          binding: { ...binding },
+          result,
+        };
       } finally {
         this.release(botId);
       }

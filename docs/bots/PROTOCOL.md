@@ -741,6 +741,7 @@ sides.
 | `bots.server.json`, `error.server.json`, `error-rejected.server.json`, `version-mismatch.server.json` | catalog, runtime failure, definite rejection, exempt handshake failure |
 | `send.client.json`, `send.resources.client.json`, `abort.client.json`, `recover.client.json`, `resync.client.json` | commands |
 | `sync-proof.http.json` | fixed-domain typed mutual proof and shared Node/CryptoKit signing bytes, validated by the independent Bots codec |
+| `sync-objects-v1/canonical.json` | typed durable object/descriptor/envelope signing bytes verified by Node, Bots and Swift CryptoKit |
 | `sync-access.http.json` | version1 sync access request/response metadata, checked by the independent Bot and Registry codecs |
 | `ping.client.json`, `pong.server.json` | liveness |
 | `entities.json` | `BotSummary`, `Message` (user, assistant with a tool call, tool), `InboxItem` samples |
@@ -1076,3 +1077,38 @@ Normal public application quit awaits bounded withdrawal and close, records conf
 unknown, then replies exactly once. Unexpected owned exit invalidates its generation and
 withdraws; adopted processes use the previously verified OS process-start identity if health
 becomes unavailable. Unconfirmed withdrawal never blocks exit indefinitely or claims success.
+
+
+## P4 immutable encrypted page objects (additive v1)
+
+Loopback bearer/no-Origin POST `/v1/bots/:id/sync/objects/pull` accepts exactly one selector:
+`{peerDeviceId,source?,after,limit?}` or `{peerDeviceId,objectId}`. Mixed/unknown fields reject.
+It returns `{version:1,objectId,stored:true,applied:false,cipherDigest}` only after a complete
+immutable local result is durable. `/sync/objects/apply` strictly accepts `{objectId}` and
+resolves only the already stored capability bound to this exact local Bot/replica/epoch/sharedBot.
+It returns `{version:1,objectId,applied:<original replica.apply result>}`. Public callers cannot
+supply an issuer pin,URL,IP,management token or remote body to offline apply. Existing sync/pull
+and replica Page/SDK formats are unchanged; synchronization remains ready-only and passive.
+
+Remote `/v1/sync/object` uses the existing one-use mutual proof exchange and an encrypted strict
+selector including the current recipient descriptor. The response is `{carrier,receipt,trace}`.
+Carrier is `{version:1,manifest,descriptor,ciphertext,envelope}`; cipher appears once outside the
+small ephemeral AEAD receipt. Receipt binds current sessionId,requestDigest,objectId and complete
+publisher/issuer/recipient plus manifest/envelope/descriptor/cipher digests. Both ends recheck
+current directional grants,time,generation and local binding at final use. An old signed object
+alone is never evidence of a current authorized network exchange.
+
+Manifest signs version/purpose/Registry origin,publisher,sharedBot,keyEpoch1,keyId,objectId,
+source,advertised range,actual included seq/eventDigest,nextAfter/hasMore,pageDigest,nonce and
+cipherDigest. ObjectId is the digest of controlled version/purpose,publisherDeviceId,sharedBot,
+keyEpoch,source,pageDigest, independent of encryption randomness and recipient signatures.
+Page plaintext and event digests retain the original Page JSON.stringify model/data insertion
+order. The32-byte per-object DEK/96-bit nonce encrypt with full header AAD; wrapping uses a
+separate persistent X25519 key and a signed directed envelope bound to the complete manifest,
+issuer/recipient identities and signed descriptors. Logical slots compare verified unsigned
+descriptor bodies: another valid signature does not replace the original envelope/descriptor.
+
+Plaintext remains8MiB/128events. Cipher is at most8MiB+16 bytes; the object JSON frame permits
+its base64url encoding plus64KiB metadata. Private512KiB/vault4096B limits do not change.
+`fixtures/bots-protocol/sync-objects-v1/canonical.json` contains actual CryptoKit signatures
+and exact shared Node/Swift canonical metadata texts; it contains no private key or DEK.

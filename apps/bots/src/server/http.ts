@@ -7,6 +7,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { DirectoryError } from "../core/BotDirectory.ts";
 import type { BotRegistry } from "../core/BotRegistry.ts";
 import type { ConversationService } from "../core/ConversationService.ts";
+import { syncObjectApplyInput, syncObjectPullInput } from "../core/DeviceSyncObjects.ts";
 import { deviceSyncInput, type SyncApi, syncPullInput } from "../core/DeviceSyncPort.ts";
 import {
   BOT_SHAPES,
@@ -433,6 +434,71 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       return;
     }
     try {
+      const objectMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/sync\/objects\/(pull|apply)$/.exec(path);
+      if (objectMatch !== null && request.method === "POST") {
+        if (request.headers.origin !== undefined) {
+          json(response, 403, {
+            error: { kind: "auth_failed", message: "origin is not accepted" },
+          });
+          return;
+        }
+        const sync = options.sync;
+        if (!sync?.pullObject || !sync.applyObject) {
+          json(response, 409, {
+            error: { kind: "invalid_command", message: "device synchronization is not configured" },
+          });
+          return;
+        }
+        let body: unknown;
+        try {
+          body = await readBody(request);
+        } catch {
+          json(response, 400, {
+            error: { kind: "invalid_command", message: "invalid sync object request" },
+          });
+          return;
+        }
+        const trace = `tr_http_${++sequence}`,
+          botId = objectMatch[1] as string;
+        try {
+          let result: unknown;
+          if (objectMatch[2] === "pull") {
+            const parsed = syncObjectPullInput.safeParse(body);
+            if (!parsed.success) {
+              json(response, 400, {
+                error: { kind: "invalid_command", message: "invalid sync object selector" },
+              });
+              return;
+            }
+            result = await sync.pullObject(botId, parsed.data, trace);
+          } else {
+            const parsed = syncObjectApplyInput.safeParse(body);
+            if (!parsed.success) {
+              json(response, 400, {
+                error: { kind: "invalid_command", message: "invalid sync object id" },
+              });
+              return;
+            }
+            result = await sync.applyObject(botId, parsed.data.objectId, trace);
+          }
+          json(response, 200, result);
+        } catch (error) {
+          if (!(error instanceof ClassifiedFailure)) throw error;
+          const kind = error.failure.kind;
+          json(
+            response,
+            kind === "auth_failed"
+              ? 403
+              : kind === "unknown_bot"
+                ? 404
+                : kind === "invalid_command"
+                  ? 400
+                  : 503,
+            { error: { kind, message: error.message, failure: error.failure.id }, trace },
+          );
+        }
+        return;
+      }
       const pullMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/sync\/pull$/.exec(path);
       if (
         (path === "/v1/sync/status" && request.method === "GET") ||

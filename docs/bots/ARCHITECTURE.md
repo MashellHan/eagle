@@ -624,3 +624,21 @@ request uses the device directory's offline-local presentation fallback.
 Sync access snapshots the real binding under the existing directory serialization, releases
 that serialization during the private-service request, then rechecks binding and deletion
 under it before returning. It never leases/opens a Harness or blocks ordinary local input.
+
+
+## P4 durable object ownership
+
+Bots owns its version1 key codec,immutable SyncObjectStore and authenticated object delivery
+composition. DeviceSyncPort carries only typed key metadata across the existing private socket;
+Swift helper/vault alone retains wrapping private keys. Bots imports no Eagle contracts or
+Worker/Agent source. A global owned `sync-objects/v1/<objectId>.json` contains the complete cipher,
+signed manifest,descriptor,envelope and fixed accepted identity pin; the record also binds all
+four actual local replica identity fields. Recipient slots are append-only under that object.
+No plaintext DEK enters replica DB,Registry or logs, and ciphertext does not enter the vault.
+
+ReadyReplica.publish is an internal synchronous first-winner admission seam, not a public
+transaction API. Staging and full winner verification remain outside the short lease; actual
+exclusive link is fenced against directory/binding/handle/tombstone and lifetime changes.
+Local stored apply uses the existing runtime command actual-use guard and passive receive;
+network readiness cannot invalidate that offline capability. Ordinary open/recover and SDK
+scheduling retain their existing contract. No cache,transport retry or new execution queue exists.

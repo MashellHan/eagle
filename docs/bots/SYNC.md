@@ -550,3 +550,15 @@ Bots daemon、Swift 客户端和同步服务各有正常门禁，root check 不�
 [C10]: https://developers.cloudflare.com/r2/pricing/
 [C11]: https://developers.cloudflare.com/durable-objects/platform/limits/
 [C12]: https://developers.cloudflare.com/r2/platform/limits/
+
+
+## Local durable encrypted object slice at base4f7d035
+
+The next P4 slice uses helper-owned persistent X25519 wrapping keys and signed,typed metadata
+through the independent version1 device port. Bots persists immutable cipher/manifest/self-envelope
+or accepted recipient pin results under its own root and exposes additive objects/pull and stored
+objectId-only passive apply. Existing direct page,ordinary local execution and SDK history bytes
+retain their delivered contracts. See PROTOCOL and SYNC-ARCHITECTURE for exact fields/fences;
+TESTING/source-v1 ccdfe1ae records real owned helper/Registry SQLite,crash,offline cold-start and
+normal necessary gates. This is local source awaiting independent Review,not CF caching or
+physical Tailscale/App acceptance. No deployment,publication or new owner-online dependency.

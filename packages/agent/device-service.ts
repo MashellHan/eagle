@@ -1,10 +1,21 @@
-import { createPublicKey, randomUUID, verify } from "node:crypto";
+import { createHash, createPublicKey, randomUUID, verify } from "node:crypto";
 import { chmodSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import { connect, createServer, type Socket } from "node:net";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import {
+  SyncEnvelopeRequest,
+  SyncKeyBytes,
+  SyncKeyDescriptor,
+  SyncKeyDescriptorRequest,
+  SyncKeyEnvelope,
+  SyncOpenRequest,
+  SyncSealRequest,
+  SyncSealResult,
+  syncDescriptorPayload,
+} from "../contracts/src/device-objects.ts";
 import {
   SyncAccess,
   SyncAccessResult,
@@ -33,6 +44,11 @@ import {
 import { DeviceCloud } from "./device-cloud.ts";
 import { OperationAdmissionError } from "./device-journal.ts";
 import { NativeDeviceLeases } from "./device-native-leases.ts";
+import {
+  verifyKeyEnvelope,
+  verifyObjectManifest,
+  verifyWrappingDescriptor,
+} from "./device-objects.ts";
 import { DeviceRuntime } from "./device-runtime.ts";
 import { syncSelf } from "./device-sync.ts";
 
@@ -164,7 +180,14 @@ async function clearStaleSocket(path: string): Promise<void> {
 }
 
 type HelperPending = {
-  kind: "signature" | "approval" | "sync_signature";
+  kind:
+    | "signature"
+    | "approval"
+    | "sync_signature"
+    | "sync_key_descriptor_result"
+    | "sync_key_seal_result"
+    | "sync_key_envelope_result"
+    | "sync_key_open_result";
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -183,7 +206,7 @@ export async function runDeviceService(): Promise<void> {
   let stopping = false;
   const sockets = new Set<Socket>();
   const helper = (
-    kind: "signature" | "approval" | "sync_signature",
+    kind: HelperPending["kind"],
     value: Record<string, unknown>,
   ): Promise<unknown> =>
     new Promise((resolveHelper, reject) => {
@@ -354,6 +377,191 @@ export async function runDeviceService(): Promise<void> {
           ),
           registryOrigin: new URL(configuration?.baseUrl ?? "").origin,
         };
+      case "sync.key.descriptor": {
+        z.strictObject({}).parse(params ?? {});
+        const syncCloud = cloud;
+        if (!configuration) throw new Error("not_ready");
+        const configured = configuration;
+        const current = async () => {
+          const { identity } = SyncIdentityResult.parse(
+            await syncCloud.manage("/sync/identity"),
+          );
+          if (
+            identity.deviceId !== configured.deviceId ||
+            identity.publicKey !== configured.publicKey
+          )
+            throw new Error("sync_identity_changed");
+          return identity;
+        };
+        const identity = await current();
+        const request = SyncKeyDescriptorRequest.parse({
+          version: 1,
+          registryOrigin: new URL(configured.baseUrl).origin,
+          identity,
+        });
+        const descriptor = SyncKeyDescriptor.parse(
+          await helper("sync_key_descriptor_result", {
+            type: "sync_key_descriptor",
+            request,
+          }),
+        );
+        const { signature: signed, ...body } = descriptor;
+        if (
+          descriptor.registryOrigin !== request.registryOrigin ||
+          descriptor.deviceId !== identity.deviceId ||
+          descriptor.publicKey !== identity.publicKey ||
+          descriptor.credentialVersion !== identity.credentialVersion ||
+          createHash("sha256")
+            .update(Buffer.from(descriptor.wrappingPublicKey, "base64url"))
+            .digest("hex") !== descriptor.keyId ||
+          !verify(
+            null,
+            Buffer.from(syncDescriptorPayload(body)),
+            createPublicKey({
+              key: Buffer.from(identity.publicKey, "base64url"),
+              format: "der",
+              type: "spki",
+            }),
+            Buffer.from(signed, "base64url"),
+          )
+        )
+          throw new Error("invalid_sync_key_descriptor");
+        const after = await current();
+        if (
+          stopping ||
+          session.closed ||
+          cloud !== syncCloud ||
+          canonicalDeviceJSON(identity) !== canonicalDeviceJSON(after)
+        )
+          throw new Error("sync_identity_changed");
+        return descriptor;
+      }
+      case "sync.key.seal":
+      case "sync.key.envelope":
+      case "sync.key.open": {
+        if (!configuration) throw new Error("not_ready");
+        const configured = configuration;
+        const syncCloud = cloud;
+        const origin = new URL(configured.baseUrl).origin;
+        const same = (a: unknown, b: unknown) =>
+          canonicalDeviceJSON(a) === canonicalDeviceJSON(b);
+        const own = (peer: { deviceId: string; publicKey: string }) => {
+          if (
+            peer.deviceId !== configured.deviceId ||
+            peer.publicKey !== configured.publicKey
+          )
+            throw new Error("sync_identity_changed");
+        };
+        const live = () => {
+          if (stopping || session.closed || cloud !== syncCloud)
+            throw new Error("sync_identity_changed");
+        };
+        if (method === "sync.key.open") {
+          const request = SyncOpenRequest.parse(params);
+          const manifest = verifyObjectManifest(request.manifest);
+          const envelope = verifyKeyEnvelope(request.envelope, manifest);
+          if (
+            manifest.registryOrigin !== origin ||
+            !same(manifest.publisher, request.publisherPin) ||
+            !same(envelope.issuer, request.issuerPin) ||
+            !same(envelope.recipient, request.recipientPin)
+          )
+            throw new Error("invalid_sync_key_pin");
+          own(envelope.recipient);
+          const result = z
+            .strictObject({ version: z.literal(1), dek: SyncKeyBytes })
+            .parse(
+              await helper("sync_key_open_result", {
+                type: "sync_key_open",
+                request,
+              }),
+            );
+          live();
+          return result;
+        }
+        if (method === "sync.key.seal") {
+          const request = SyncSealRequest.parse(params);
+          own(request.identity);
+          if (
+            request.manifest.registryOrigin !== origin ||
+            !same(request.manifest.publisher, request.identity)
+          )
+            throw new Error("invalid_sync_key_manifest");
+          const current = async () => {
+            const { identity } = SyncIdentityResult.parse(
+              await syncCloud.manage("/sync/identity"),
+            );
+            if (!same(identity, request.identity))
+              throw new Error("sync_identity_changed");
+          };
+          await current();
+          const result = SyncSealResult.parse(
+            await helper("sync_key_seal_result", {
+              type: "sync_key_seal",
+              request,
+            }),
+          );
+          const manifest = verifyObjectManifest(result.manifest);
+          const { signature: _signature, ...body } = manifest;
+          if (!same(body, request.manifest))
+            throw new Error("invalid_sync_key_manifest");
+          verifyWrappingDescriptor(result.descriptor, request.identity, origin);
+          const envelope = verifyKeyEnvelope(result.envelope, manifest);
+          if (
+            !same(envelope.issuer, request.identity) ||
+            !same(envelope.recipient, request.identity) ||
+            envelope.recipientDescriptor.keyId !== result.descriptor.keyId
+          )
+            throw new Error("invalid_sync_key_envelope");
+          await current();
+          live();
+          return result;
+        }
+        const request = SyncEnvelopeRequest.parse(params);
+        own(request.identity);
+        const manifest = verifyObjectManifest(request.manifest);
+        if (manifest.registryOrigin !== origin)
+          throw new Error("invalid_sync_key_manifest");
+        own(manifest.publisher);
+        const original = verifyKeyEnvelope(request.envelope, manifest);
+        own(original.recipient);
+        verifyWrappingDescriptor(
+          request.recipientDescriptor,
+          request.recipient,
+          origin,
+        );
+        const current = async () => {
+          const access = SyncAccessResult.parse(
+            await syncCloud.manage("/sync/peer/authorize", {
+              sharedBotId: manifest.sharedBotId,
+              peerDeviceId: request.recipient.deviceId,
+              purpose: "replica.read",
+            }),
+          );
+          if (
+            !same(access.local, request.identity) ||
+            !same(access.peer, request.recipient)
+          )
+            throw new Error("sync_identity_changed");
+        };
+        await current();
+        const result = SyncKeyEnvelope.parse(
+          await helper("sync_key_envelope_result", {
+            type: "sync_key_envelope",
+            request,
+          }),
+        );
+        const envelope = verifyKeyEnvelope(result, manifest);
+        if (
+          !same(envelope.issuer, request.identity) ||
+          !same(envelope.recipient, request.recipient) ||
+          !same(envelope.recipientDescriptor, request.recipientDescriptor)
+        )
+          throw new Error("invalid_sync_key_envelope");
+        await current();
+        live();
+        return result;
+      }
       case "sync.endpoints.self":
         return syncSelf();
       case "sync.proof": {
@@ -720,6 +928,49 @@ export async function runDeviceService(): Promise<void> {
           process.exitCode = 1;
           await shutdown();
         });
+        return;
+      }
+      const keyResponse = z
+        .strictObject({
+          type: z.enum([
+            "sync_key_seal_result",
+            "sync_key_envelope_result",
+            "sync_key_open_result",
+          ]),
+          requestId: DeviceId,
+          result: z.unknown().optional(),
+          error: z.string().max(200).optional(),
+        })
+        .safeParse(value);
+      if (keyResponse.success) {
+        const response = keyResponse.data;
+        const request = pending.get(response.requestId);
+        if (!request || request.kind !== response.type) return;
+        pending.delete(response.requestId);
+        clearTimeout(request.timer);
+        if (response.error) request.reject(new Error("helper_request_denied"));
+        else if (response.result !== undefined)
+          request.resolve(response.result);
+        else request.reject(new Error("invalid_helper_response"));
+        return;
+      }
+      const descriptor = z
+        .strictObject({
+          type: z.literal("sync_key_descriptor_result"),
+          requestId: DeviceId,
+          result: SyncKeyDescriptor.optional(),
+          error: z.string().max(200).optional(),
+        })
+        .safeParse(value);
+      if (descriptor.success) {
+        const response = descriptor.data;
+        const request = pending.get(response.requestId);
+        if (request?.kind !== "sync_key_descriptor_result") return;
+        pending.delete(response.requestId);
+        clearTimeout(request.timer);
+        if (response.error) request.reject(new Error("helper_request_denied"));
+        else if (response.result) request.resolve(response.result);
+        else request.reject(new Error("invalid_helper_response"));
         return;
       }
       const proof = signature.safeParse(value);

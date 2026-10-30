@@ -392,3 +392,13 @@ including adapter classifier identities; B retains the only error origin and A p
 same failure id as a warning with the shared trace and its own local Bot id.
 Positive endpoint reconfirmation uses the current trusted Node session,
 and a late Self reply after shutdown cannot claim renewed readiness/publication.
+
+
+Durable object pull/apply use the existing runtime.sync start/ok/fail trace and original local Bot
+context. Their four typed private crossings preserve the same trace; no cipher/page/key,signature
+payload,pin body or private filesystem path is logged. File open/read/stage/file-fsync/link/dir-fsync
+failures are classified at the object storage boundary as storage_failed, preserving the original
+native cause and one error origin; outer crossings only warn with the same failure identity.
+Complete malformed signature/digest/AEAD/protocol data remains auth_failed. Offline local apply
+success does not certify peer delivery,cloud caching or model/tool execution. Network body I/O
+and original direct-page failure propagation retain their previously delivered behavior.

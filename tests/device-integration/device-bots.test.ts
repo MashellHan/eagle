@@ -762,6 +762,15 @@ test("Bot sync access traverses private service and current Registry grants with
     const refused = await request(path, input);
     assert.equal(refused.status, 403, JSON.stringify(refused));
     const err = refused.body.error as { failure: string };
+    await until(
+      async () =>
+        logs().some(
+          (r) => r.trace === refused.body.trace && r.evt === "core.sync.fail",
+        )
+          ? true
+          : undefined,
+      "this trace's core sync propagation is on disk",
+    );
     const failureLogs = logs().filter((r) => r.trace === refused.body.trace);
     const origins = failureLogs.filter((r) => r.level === "error");
     assert.equal(origins.length, 1);

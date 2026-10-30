@@ -432,3 +432,29 @@ withdrawal result records unknown even when the underlying call ignores cancella
 not wait indefinitely or claim cloud success. The synchronous WillTerminate hook is fallback.
 Verified adopted processes retain OS uid/pid/start-time identity, preventing arbitrary-PID kills
 when health disappears. None of this is installed-App or physical Tailscale acceptance evidence.
+
+
+### P4 durable object key port (unpublished source)
+
+The Bot private socket adds four strict, independently matched typed operations:
+`sync.key.descriptor`, `sync.key.seal`, `sync.key.envelope`, `sync.key.open`. They carry bounded
+key metadata only; no page/cipher body crosses the512KiB channel. Helper pending kinds and
+requestIds cannot satisfy registration,approval,proof or another key operation. The32-pending
+bound and4096B vault record limit remain. There is no generic signing or decryption endpoint.
+
+`eagle-bots-wrap-v1:<profile>` stores an independent X25519 private key bound to the exact
+profile,Registry origin,deviceId and Ed public key. Concurrent creation rereads the insert winner;
+corruption/insecure permissions refuse. Descriptors derive keyId/public key only from the
+persisted winner. Descriptor/seal may initialize a key; envelope/open require an existing one.
+The Ed-signed descriptor has its own eagle-bots-wrap-descriptor-v1 domain. Signed page manifests
+and directed key envelopes have separate fixed domains/purposes and complete object/identity
+bindings. keyEpoch1 is scoped to publisher/sharedBot; independent random per-object DEKs are
+not a general key-rotation implementation.
+
+New descriptors/seals use current Registry identity; issuing an envelope rechecks the current
+publisher-to-recipient grant and complete identities before/after the actual helper await.
+The original artifact publisher remains fixed while a new issuer must match the current
+handshake. Offline key.open validates the previously pinned complete signed artifact and local
+Ed/wrap ownership without cloud identity/access/proof. Old local capabilities survive credential
+or group revocation; they never authorize a new network read or envelope. Agent1.2.0 remains
+unpublished source, onboarding1.0.0 unchanged; no deployment or App installation is included.

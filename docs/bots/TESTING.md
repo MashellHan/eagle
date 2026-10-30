@@ -1038,3 +1038,105 @@ editing failures. No raw log/exit is rewritten or renamed into a successful gate
 remains normal pre-push; unrelated perf/P2/P3 gates are not repeated. Physical Tailscale/two-Mac,
 installed App, cloud authentication/D1/rendering, CF cache/fallback, long-term keys and P5/P6
 remain unverified/outside this first-page candidate. Formal Review/Lead acceptance precedes delivery.
+
+
+### P4 durable objects and offline capability slice
+
+The previous4f7d035 direct-page delivery stays closed. New evidence is isolated under
+.local/sync-p4-encrypted-objects. entry-second4ce5258a/receipt05632cb5 is the real missing typed
+key descriptor red after Registry SQLite pairing,B->A grant,dual owned helper/Node/Bots and
+original resources page;227 production paths equal base and534 selected inputs are unchanged.
+entry-red49924650 was a fixture /tmp symlink/insecure-storage failure. descriptor-firsta46ba95f
+was a signature equality oracle failure; both original failures remain unmodified.
+
+Tracked tests/device-integration/encrypted-objects.test.ts compiles real Swift CryptoKit/Host
+against an isolated DeviceFileVault and runs real Node/private socket/Miniflare Registry SQLite
+plus independent Bots daemons. It covers concurrent different-key candidates/first-winner,actual
+SIGKILL after link and after publish before response,reopen,unknown hardlinks,corrupt winner,
+verified same-body descriptors with distinct observed signatures and one original recipient slot,
+actual EACCES/cause/storage_failed503/single origin,crypto rejection remaining403,and helper reply
+held across current grant revocation. Test-only owned pipes/syscalls mount the production handler;
+no production bypass,real private key,Tailscale kernel bind or physical Mac/App claim is involved.
+
+Staged B object/recipient slot and A capability pin cross actual file-fsync barriers before
+binding/expiry/exchange-generation changes; full local binding,delete,close and grant revocation
+also refuse before publication or SDK admission. A cold offline case stops B and Registry first,
+then restarts A helper/Node/Bots from old owned directories waiting only localReady. A separately
+forced unavailable handle refuses sync even after repair until explicit local open. Stored apply
+preserves original12826-byte Page/history5 entries/head/section order; passive provider delta0
+is separate from source native run2 and final explicit local native run2. Actual member removal
+changes recipient group/credential and blocks new issuance; the old stored offline capability
+still opens. Missing wrap account refuses without minting; listener setReady(undefined) during
+actual key.open does not cancel offline apply,while daemon close/full-binding change still refuse.
+Replica/SDK table counts fence rejected paths. Unit tests independently exercise object storage,
+AEAD and typed/canonical codecs; shared signed fixtures are checked in Node,Bots and CryptoKit.
+
+Retained intermediate failures include history-offline-first4a1532b8 (ordinary startup already
+ready,so the cold-must-reject oracle was wrong),object-io-first5b6da4ef (fixture URL),and staged
+status oracles e956c18a/c6c1c1f5 (localBot corruption503/changed epoch400). Formal additional reds
+are hardlinkd21c1c7a,missing-wrap4b7e52ab,EACCES4917cea2 and offline-readiness6a928d8c. The two
+history runs selected542 unchanged paths; second eb2394bd is1/1. No handwritten13/14/15 figure
+is a test count or evidence scope. New full gates and final source bindings are recorded only
+when complete; original P4/P2/P3/perf evidence is not relabeled as this slice's gate.
+
+Frozen source-v1 `ccdfe1ae` binds29 changed/new inputs and550 full selected tracked+new paths,
+plus203 historical originals. Every gate below independently records command/cwd/start/exit/log
+SHA and sourceBefore=sourceAfter=that full550 mapping. Source remains frozen for independent
+Review; successful local checks are not commit/push/delivery or physical-network acceptance.
+
+| Actual gate | Raw log SHA prefix | Result |
+| --- | --- | --- |
+| root-check-v1 | c30e31cc |267 tests,strict types,check-only lint211,build; exit0 |
+| bots-check-v1 |7ae0837b |fixtures34,ordinary825,coverage825,types,check-only lint219; exit0 |
+| swift-current-first |aa54c732 |197/51/50 actual suites; exit0 on the same frozen inputs |
+| swift-strict-v1 |e3b0c442 |original recursive Sources/Scripts/Tests strict check; exit0 |
+| swift-coverage-v1 |50b7dd5c |original script/default90;197/51/50,1465/1549=94.6%; exit0 |
+| device-process-v1 |098867c5 |23/23,including production helper/Registry/object protocol and old P4 deep guards; exit0 |
+| crash-v1 |50dd494b |17/17; exit0 |
+| eval-root-resources-v1 |cc11463c |one exact case/two rows; exit0 |
+
+Bots aggregate coverage is91.85% lines,88.92% branches,90.24% functions. Swift94.6% applies
+only to the existing script's filtered logic-file collection, not all new synchronization code.
+The tracked integration Swift fixture also receives its own check-only strict lint because it
+lives outside apps/macos's recursive roots. Browser remains the normal future pre-push hook;
+unaffected perf/P2/P3-specific gates and physical/live/cloud/App checks are not repeated.
+
+Review target-slot P2 retains the old v1 receipts above. On unchanged f070889e production,
+wrong-object-winner-red e8bb2510 substituted a fully signed,digest-valid same-Bot/full-binding/
+publisher record with another objectId after target read miss. Actual HTTP returned200/stored
+with the wrong ID; EEXIST and unknown-result complete rereads also accepted it. Bad JSON was
+not used. Archived red inputs bind550 before=after and all production equal frozen v1.
+Source-v2 7126eb18 changes only the shared objectId-bound decoder and the tracked integration/
+store fixture. Green1a7ed8ea refuses both rereads and actual route403/no stored ACK,while retaining
+same-ID concurrency,crash/lost-reply,recipient-slot and cold-offline history/zero-execution cases.
+Root/Bots types/check-only lint01edac90 and complete Bots checka453f6ed pass on v2's550 inputs.
+Devices b6ee01bd and6a9f9cf3 each retain actual22/23 failures: respectively an immediate disk
+propagation snapshot and later offline DB-count change after explicit native execution. The
+unmodified original device-bots file passes16/16 in isolation; at v2,timing diagnosis and normal
+full devices completion were pending. No failure is removed or relabeled as success. Unchanged
+root267/Swift197/51/50/filtered coverage94.6/crash17/exact eval keep only their original v1 map;
+they are not claimed as new whole-v2 executions. Independent delta Review precedes acceptance.
+
+Source-v3 `fe2e2ecd` freezes30 changed/new inputs and550 full selected paths,with282 originals.
+Production remains identical to v2's reviewed decoder fix. Its exact two-test delta waits via
+the existing until for this trace's core propagation before the same origin/failure/Bot assertions,
+and moves explicit offline-native run after epoch/closeSync refusal. Both refusal windows still
+assert every DB table count unchanged and provider===baseline; native afterward must actually
+succeed with+2. No timeout,production flush/settle API,log level or protocol status is changed.
+Read-only diagnostic9b7acfea ran both original complete files17/17; actual runtime/core records
+share one origin/failure/trace/Bot and post-native baselines already contained the projection
+counts seen late in the failed run. Original failed directories were removed,so this observation
+does not claim a capture of either failed run's precise late-write timing.
+
+| Repair gate | Raw log SHA prefix | Actual input scope and result |
+| --- | --- | --- |
+| device-process-v3 | b096c98c | normal complete devices command23/23; full v3 mapping550 before=after; no observer/skip/focus |
+| root-types-lint-v3 | d74afdc8 | strict types/check-only lint211; full v3 mapping550 before=after; exit0 |
+| bots-check-v2 | a453f6ed | fixtures34,ordinary825,coverage825,types/lint219; v2 mapping550 before=after; Bots inputs unchanged in v3 |
+
+Root test/build,Swift/strict/default90 coverage,crash17 and exact root-resources receipts retain
+their earlier v1 full map; current root lint/types and affected device execution are rebound above.
+The candidate lists the actual map differences and reuse rationale instead of claiming those
+older commands ran the final v3 map. All old reds,oracle/editor failures and both22/23 gates stay
+bound. Browser remains normal pre-push; independent test-delta/final acceptance still precedes
+commit/push. No physical Tailscale/Mac/App,CF cache,deploy/npm/PR or next-slice evidence is added.
