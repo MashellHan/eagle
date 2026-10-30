@@ -73,7 +73,7 @@ export default worker;
       entry,
       "--dry-run",
       "--config",
-      "apps/web/wrangler.devices.jsonc",
+      "apps/web/wrangler.devices.example.jsonc",
       "--outdir",
       join(root, "worker"),
     ],

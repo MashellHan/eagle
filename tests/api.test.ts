@@ -82,7 +82,7 @@ before(async () => {
     [
       "deploy",
       "--config",
-      "apps/web/wrangler.jsonc",
+      "apps/web/wrangler.example.jsonc",
       "--dry-run",
       "--outdir",
       resolve(".local/test-worker"),
@@ -414,7 +414,9 @@ test("the dashboard does not expose or provision the independent device service"
     const response = await request(path, undefined, viewer);
     assert.equal(response.status, 404);
   }
-  const config = JSON.parse(readFileSync("apps/web/wrangler.jsonc", "utf8"));
+  const config = JSON.parse(
+    readFileSync("apps/web/wrangler.example.jsonc", "utf8"),
+  );
   assert.equal(
     config.durable_objects.bindings.some((binding: { name: string }) =>
       binding.name.startsWith("DEVICE_"),

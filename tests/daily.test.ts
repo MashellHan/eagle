@@ -50,7 +50,9 @@ test("one daily cron starts at 23:59 Beijing and preserves calendar boundaries",
     DailySettingsSchema.safeParse({ intervalHours: 24 }).success,
     false,
   );
-  const config = JSON.parse(readFileSync("apps/web/wrangler.jsonc", "utf8"));
+  const config = JSON.parse(
+    readFileSync("apps/web/wrangler.example.jsonc", "utf8"),
+  );
   assert.deepEqual(config.triggers.crons, ["59 15 * * *"]);
 });
 
