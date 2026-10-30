@@ -86,6 +86,8 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
   const version = JSON.parse(
     readFileSync(join(sourceRoot, "package.json"), "utf8"),
   ).version as string;
+  const buildVersion =
+    profile === "device-candidate" ? String(Date.now()) : version;
   const identifier =
     profile === "device-candidate"
       ? "ai.hexly.eagle.macos.device-candidate"
@@ -100,8 +102,7 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
     CFBundleShortVersionString: version,
     // Candidate rebuilds have different signatures even when the release version is unchanged.
     // Give ServiceManagement a distinct parent build instead of reusing an old launch constraint.
-    CFBundleVersion:
-      profile === "device-candidate" ? String(Date.now()) : version,
+    CFBundleVersion: buildVersion,
   }))
     info = info.replace(
       new RegExp(`(<key>${key}</key>\\s*)<string>[^<]*</string>`),
@@ -123,9 +124,26 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
   writeFileSync(join(contents, "Info.plist"), info);
   copyFileSync(join(support, "AppIcon.icns"), join(resources, "AppIcon.icns"));
   save(join(resources, "DeviceHost.json"), config);
-  copyFileSync(
+  let launchConfiguration = readFileSync(
     join(support, config.launchAgentPlist),
+    "utf8",
+  );
+  if (profile === "device-candidate") {
+    const marker =
+      /(<key>EAGLE_DEVICE_BUNDLE_BUILD<\/key>\s*)<string>[^<]*<\/string>/;
+    if (!marker.test(launchConfiguration))
+      throw new Error(
+        "candidate launch configuration is missing its build marker",
+      );
+    // BTM compares the launch configuration separately from the enclosing bundle version.
+    launchConfiguration = launchConfiguration.replace(
+      marker,
+      `$1<string>${xml(buildVersion)}</string>`,
+    );
+  }
+  writeFileSync(
     join(contents, "Library/LaunchAgents", config.launchAgentPlist),
+    launchConfiguration,
   );
   for (const entry of readdirSync(dirname(binary), { withFileTypes: true }))
     if (entry.isDirectory() && entry.name.endsWith(".bundle"))

@@ -708,6 +708,22 @@ through the instance constructed before that refresh. Whether that earlier objec
 retained stale registration metadata remains a hypothesis; the installed upgrade
 is again the acceptance check. Evidence: `combined-upgrade/`.
 
+The fresh-instance trial `872a31b` also failed automatic upgrade. The same signed
+bytes recovered after the existing UI Retry at 12:00:27; a 12:00:47 probe found
+local readiness, cloud online, both devices and both Bots. This is manual recovery
+evidence. BTM logs for the failed 11:51 registration reused the same item and the
+unchanged LaunchAgent configuration checksum, with invalidation occurring after
+both attempted registrations. This points to registration propagation, without
+proving that the hidden LWCR contained a stale hash.
+
+Candidate assembly now writes its unique bundle build into the LaunchAgent's
+`EAGLE_DEVICE_BUNDLE_BUILD` environment field, so BTM sees a changed configuration
+alongside the changed signed bundle. Labels, Mach services, identity and signature
+requirements stay fixed. The packaging regression failed first because the two
+builds reused an identical launch configuration; the actual upgrade remains the
+decisive check. The recovered `872a31b` also completed a real command from MacMini-2
+to MacMini 1 and returned the identical result when queried by its original ID.
+
 ## 2026-10-30 — Cron acceptance observed admission before completion
 
 After integrating upstream `d69359b`, the complete Bots evaluation suite reported

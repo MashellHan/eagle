@@ -2281,3 +2281,31 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   authorizes completing the work and publishing a formal PR; it supersedes the
   earlier wait-for-user-test condition. Normal push gates and Astra increment
   review remain required; PR #109 has not yet been updated.
+
+## 2026-10-30 11:55 +0800 — Installed upgrade still blocks delivery
+
+- User view: the full signed `05b3099`, `67a0029` and `872a31b` upgrades did not
+  reach a usable device helper in their first 20 seconds; subsequent launchd
+  observations reported `EX_CONFIG` 78. Crash reports identify a launch constraint
+  violation. Neither restoring the Apple registrar nor recreating SMAppService
+  after refresh established a reliable fix. The single `fa1d1cd` success is not
+  generalized into a passing upgrade claim.
+- Root is exercising the actual App UI through Accessibility: the in-App gallery
+  contains session/base-control navigation and its Settings button opens the real
+  resizable settings window. Pairing is above My Devices; draft and resize checks
+  are in progress. Policy/approval and installed commands require helper recovery.
+- Herdr: the existing Astra lead is doing one targeted read-only comparison of
+  system registration/signature metadata; the reviewer closed the small code and
+  evaluation increments. Root alone writes and installs. No other team, live
+  Herdr collection or unrelated process is modified.
+- Checks: unchanged Bots check passed both 636-test runs and coverage after one
+  recorded 50-ms fixture failure during parallel Swift compilation. All nine eval
+  scenarios passed after correcting the cron case to await both committed replies,
+  retaining its original budgets and assertions. Registration tests passed 22/22.
+- Authentication/storage: no Keychain, weaker signature, global registration reset,
+  new cloud resource, D1 write or remote fixture. Identity, provider configuration
+  and histories remain protected through complete staged installs. The public
+  Worker remains at the previously verified revision.
+- Next broken hop: reliable installed helper startup, then policy/approval and
+  remote read-only command acceptance. Normal push gates and formal PR #109 remain
+  authorized but have not yet been executed for this head.

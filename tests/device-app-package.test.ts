@@ -133,7 +133,7 @@ test("candidate assembly honors and normalizes an explicit HTTPS origin while re
   }
 });
 
-test("rebuilding a candidate changes its build identity while keeping the release version", () => {
+test("rebuilding a candidate changes its build and launch configuration while keeping the release version", () => {
   const f = fixture();
   const version = JSON.parse(readFileSync("package.json", "utf8")).version;
   const readVersion = (key: string) => {
@@ -142,13 +142,35 @@ test("rebuilding a candidate changes its build identity while keeping the releas
       new RegExp(`<key>${key}</key>\\s*<string>([^<]+)</string>`),
     )?.[1];
   };
+  const readLaunchConfiguration = () =>
+    readFileSync(
+      join(
+        f.app,
+        "Contents/Library/LaunchAgents/ai.hexly.eagle.devices.candidate.plist",
+      ),
+      "utf8",
+    );
   try {
     assert.equal(prepare(f).status, 0);
     const first = readVersion("CFBundleVersion");
+    const firstLaunch = readLaunchConfiguration();
+    assert.match(
+      firstLaunch,
+      new RegExp(
+        `<key>EAGLE_DEVICE_BUNDLE_BUILD</key>\\s*<string>${first}</string>`,
+      ),
+    );
     assert.equal(readVersion("CFBundleShortVersionString"), version);
     rmSync(f.app, { recursive: true });
     assert.equal(prepare(f).status, 0);
     assert.notEqual(readVersion("CFBundleVersion"), first);
+    assert.notEqual(readLaunchConfiguration(), firstLaunch);
+    assert.match(
+      readLaunchConfiguration(),
+      new RegExp(
+        `<key>EAGLE_DEVICE_BUNDLE_BUILD</key>\\s*<string>${readVersion("CFBundleVersion")}</string>`,
+      ),
+    );
     assert.equal(readVersion("CFBundleShortVersionString"), version);
   } finally {
     rmSync(f.root, { recursive: true, force: true });
