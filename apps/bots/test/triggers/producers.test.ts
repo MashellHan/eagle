@@ -224,6 +224,7 @@ test("a timer tick wakes the pump, not only an explicit tick", async () => {
       schedule: { cron: "0 9 * * *", timezone: "Asia/Shanghai" },
     });
     const timers: (() => void)[] = [];
+    const ticks: { botId: string; kind: string }[] = [];
     producers = new TriggerProducers({
       bots: () => ["b_1"],
       storeFor: async () => setup.store,
@@ -235,6 +236,7 @@ test("a timer tick wakes the pump, not only an explicit tick", async () => {
         timers.push(run);
         return () => undefined;
       },
+      onTick: ({ botId, tick }) => ticks.push({ botId, kind: tick.kind }),
     });
     producers.start();
     // The first tick arms the cursor; the second one, at the next minute, fires.
@@ -247,6 +249,14 @@ test("a timer tick wakes the pump, not only an explicit tick", async () => {
       fake.invoked.length,
       1,
       "the timer path admits the batch without an explicit tick()",
+    );
+    assert.deepEqual(
+      ticks,
+      [
+        { botId: "b_1", kind: "armed" },
+        { botId: "b_1", kind: "fired" },
+      ],
+      "each tick reports its decision, so the caller can republish the list",
     );
   } finally {
     producers?.stop();
