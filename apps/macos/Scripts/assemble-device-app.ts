@@ -88,6 +88,9 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
   ).version as string;
   const buildVersion =
     profile === "device-candidate" ? String(Date.now()) : version;
+  const helperRelative = `Contents/Library/LaunchServices/EagleDeviceHelper${
+    profile === "device-candidate" ? `.${buildVersion}` : ""
+  }`;
   const identifier =
     profile === "device-candidate"
       ? "ai.hexly.eagle.macos.device-candidate"
@@ -119,12 +122,9 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
   mkdirSync(join(contents, "Library/LaunchServices"), { recursive: true });
   mkdirSync(join(contents, "Library/LaunchAgents"));
   copyFileSync(binary, join(contents, "MacOS/EagleApp"));
-  copyFileSync(
-    helper,
-    join(contents, "Library/LaunchServices/EagleDeviceHelper"),
-  );
+  copyFileSync(helper, join(app, helperRelative));
   chmodSync(join(contents, "MacOS/EagleApp"), 0o755);
-  chmodSync(join(contents, "Library/LaunchServices/EagleDeviceHelper"), 0o755);
+  chmodSync(join(app, helperRelative), 0o755);
   writeFileSync(join(contents, "Info.plist"), info);
   copyFileSync(join(support, "AppIcon.icns"), join(resources, "AppIcon.icns"));
   save(join(resources, "DeviceHost.json"), config);
@@ -133,6 +133,15 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
     "utf8",
   );
   if (profile === "device-candidate") {
+    const program = /(<key>BundleProgram<\/key>\s*)<string>[^<]*<\/string>/;
+    if (!program.test(launchConfiguration))
+      throw new Error(
+        "candidate launch configuration is missing its executable",
+      );
+    launchConfiguration = launchConfiguration.replace(
+      program,
+      `$1<string>${helperRelative}</string>`,
+    );
     const marker =
       /(<key>EAGLE_DEVICE_BUNDLE_BUILD<\/key>\s*)<string>[^<]*<\/string>/;
     if (!marker.test(launchConfiguration))
@@ -156,6 +165,39 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
         verbatimSymlinks: true,
       });
 }
+/** The signed launch plist is the common source for signing and installer ownership checks. */
+export function deviceHelperRelativePath(app: string): string {
+  const config = JSON.parse(
+    readFileSync(join(app, "Contents/Resources/DeviceHost.json"), "utf8"),
+  ) as HostConfig;
+  if (
+    config.launchAgentPlist.includes("/") ||
+    config.launchAgentPlist !== `${config.machServiceName}.plist`
+  )
+    throw new Error("invalid device launch configuration");
+  const plist = readFileSync(
+    join(app, "Contents/Library/LaunchAgents", config.launchAgentPlist),
+    "utf8",
+  );
+  const program = plist.match(
+    /<key>BundleProgram<\/key>\s*<string>([^<]+)<\/string>/,
+  )?.[1];
+  const build = readFileSync(join(app, "Contents/Info.plist"), "utf8").match(
+    /<key>CFBundleVersion<\/key>\s*<string>([^<]+)<\/string>/,
+  )?.[1];
+  const legacy = "Contents/Library/LaunchServices/EagleDeviceHelper";
+  if (
+    program !== legacy &&
+    !(
+      config.profile === "device-candidate" &&
+      /^\d{1,20}$/.test(build ?? "") &&
+      program === `${legacy}.${build}`
+    )
+  )
+    throw new Error("invalid bundled helper path");
+  return program;
+}
+
 export function copyDeviceRuntime(source: string, destination: string): void {
   if (existsSync(destination))
     throw new Error("runtime copy destination already exists");
@@ -254,7 +296,7 @@ export function signDeviceBundle(
   };
   verify(node);
   for (const path of nativeCode(runtime)) if (path !== node) sign(path);
-  sign(join(app, "Contents/Library/LaunchServices/EagleDeviceHelper"));
+  sign(join(app, deviceHelperRelativePath(app)));
   save(join(resources, "DeviceSigning.json"), {
     version: 1,
     mode: identity === "-" ? "ad-hoc-candidate" : "configured-identity",

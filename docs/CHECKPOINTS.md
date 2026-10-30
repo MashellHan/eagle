@@ -2375,3 +2375,21 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   reset, Keychain access, signature weakening or live Herdr collection. Existing
   data paths remain in place. PR #109 is formal; its current macOS CI failure and
   this installed upgrade gap still require closure before claiming completion.
+
+## 2026-10-30 12:57 +0800 — Prepared upgrade did not solve changed helper signatures
+
+- The new installer migrated the old candidate using the new signed maintenance
+  entry, with independent old job/PID disappearance before replacement. `7ed57d4`
+  debug then reached local readiness in 12.76 seconds and cloud online in 13.91
+  seconds, with no manual retry. A local command completed and identity, Raven,
+  token and catalogue hashes matched. This installation reused the helper bytes.
+- A subsequent same-source release build changed the helper bytes and passed the
+  old installed App's maintenance callback and process/job checks, but again
+  failed automatic startup. Therefore preparing unregistration earlier does not
+  by itself solve the cross-signature case. Both outcomes remain in evidence.
+- Root is testing a candidate-only versioned helper filename with matching
+  BundleProgram, signing and identity lookup. Service label/Mach name, private
+  device data and signature requirements stay fixed. Existing Herdr Astra review
+  closed the installer safeguards; no additional team or live collection is used.
+- No Worker deployment, D1 mutation, identity reset or Keychain access. PR #109's
+  macOS CI and the changed-helper installed upgrade remain the next broken hops.

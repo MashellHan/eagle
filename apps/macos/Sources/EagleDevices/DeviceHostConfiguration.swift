@@ -47,6 +47,31 @@ public struct DeviceHostConfiguration: Codable, Sendable {
   }
   public var socketPath: String { stateDirectory.appendingPathComponent("access.sock").path }
 
+  public func helperURL(bundle: URL) throws -> URL {
+    try validate()
+    func plist(_ path: String) throws -> [String: Any] {
+      guard
+        let value = try PropertyListSerialization.propertyList(
+          from: Data(contentsOf: bundle.appendingPathComponent(path)), options: [], format: nil
+        ) as? [String: Any]
+      else { throw DeviceHostError.invalidConfiguration }
+      return value
+    }
+    let launch = try plist("Contents/Library/LaunchAgents/\(launchAgentPlist)")
+    guard let program = launch["BundleProgram"] as? String else {
+      throw DeviceHostError.invalidConfiguration
+    }
+    let legacy = "Contents/Library/LaunchServices/EagleDeviceHelper"
+    if program != legacy {
+      guard profile == "device-candidate",
+        let build = try plist("Contents/Info.plist")["CFBundleVersion"] as? String,
+        build.range(of: "^[0-9]{1,20}$", options: .regularExpression) != nil,
+        program == "\(legacy).\(build)"
+      else { throw DeviceHostError.invalidConfiguration }
+    }
+    return bundle.appendingPathComponent(program)
+  }
+
   /// Only the running kernel can supply reboot proof; absence never becomes a random ID.
   public static func bootSessionID() -> String? {
     var size = 0

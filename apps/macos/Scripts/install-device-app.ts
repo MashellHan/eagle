@@ -2,6 +2,7 @@ export type InstalledDeviceJob = { pid?: number; program?: string };
 
 export interface DeviceInstallerSystem {
   verify(bundle: string): void;
+  helperPath(bundle: string): string;
   supportsMaintenance(bundle: string): boolean;
   copy(source: string, destination: string): void;
   quit(bundle: string): void;
@@ -43,8 +44,7 @@ export function installDeviceCandidate(
     throw new Error("a device service already belongs to another installation");
   if (
     previousJob?.program !== undefined &&
-    previousJob.program !==
-      join(destination, "Contents/Library/LaunchServices/EagleDeviceHelper")
+    previousJob.program !== system.helperPath(destination)
   )
     throw new Error("the device service belongs to a different App path");
   if (previousJob && !previousJob.program)
@@ -111,6 +111,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { deviceHelperRelativePath } from "./assemble-device-app.ts";
 
 function macOSSystem(): DeviceInstallerSystem {
   const identifier = "ai.hexly.eagle.macos.device-candidate";
@@ -139,6 +140,7 @@ function macOSSystem(): DeviceInstallerSystem {
       join(bundle, "Contents/Info.plist"),
     ]);
   return {
+    helperPath: (bundle) => join(bundle, deviceHelperRelativePath(bundle)),
     verify(bundle) {
       checked(
         "/usr/bin/codesign",

@@ -78,6 +78,9 @@ App 启动检测到包更新时，完成旧注册的异步注销后，由后台 
 每次组装候选包使用独立的 `CFBundleVersion`，区分产品版本相同但签名不同的构建；
 同一构建标记写入 LaunchAgent 的 `EAGLE_DEVICE_BUNDLE_BUILD` 环境字段，使后台
 服务配置也随候选包更新。该字段不作为设备身份或用户设置，也不参与命令执行权限。
+候选 helper 的实际文件名同时包含该 build，`BundleProgram` 指向本次文件；签名、
+App 的 helper 身份验证和安装器的进程归属检查均从签名包内同一 plist 读取真实路径。
+这不改变服务 label、Mach service 或设备身份。正式发布和旧候选的固定 helper 路径仍受支持。
 显示用的 `CFBundleShortVersionString` 仍取产品版本，正式发布包保留发布版本规则。
 
 Bot 详情保留“可用电脑”，显示本机、群内设备、状态和 agent 当前实际执行的目标，

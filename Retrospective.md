@@ -792,3 +792,16 @@ The first prepared installer refused before quitting or replacing the old App:
 executable's absolute path. The guard stayed closed. The adapter now reads that
 PID's executable path through the kernel's `proc_pidpath`, preserving the exact
 installed-bundle comparison rather than accepting a relative name.
+
+The prepared legacy migration to `7ed57d4` debug passed automatically and preserved
+the existing data. It reused the helper bytes. The following debug-to-release
+upgrade changed the helper, awaited the old installed App's unregister callback,
+confirmed the old job and PID absent, then replaced the bundle; launch constraints
+still rejected the new helper. Earlier unregistration is therefore an installer
+safeguard, not a demonstrated complete fix for the cached constraint.
+
+The next candidate-only trial puts its build version in the actual helper filename
+and points BundleProgram at it. Signing, the App's code-identity lookup and installer
+ownership checks read that same signed plist. The label, Mach service, code-signing
+requirements and device data do not change. Its real changed-helper installation
+remains the deciding check; no successful upgrade is inferred from the new layout.

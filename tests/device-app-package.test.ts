@@ -78,7 +78,7 @@ test("candidate bundle fixes isolated host configuration and SMAppService helper
     );
     assert.match(
       plist,
-      /<key>BundleProgram<\/key>\s*<string>Contents\/Library\/LaunchServices\/EagleDeviceHelper<\/string>/,
+      /<key>BundleProgram<\/key>\s*<string>Contents\/Library\/LaunchServices\/EagleDeviceHelper\.\d+<\/string>/,
     );
     assert.match(
       plist,
@@ -86,10 +86,17 @@ test("candidate bundle fixes isolated host configuration and SMAppService helper
     );
     assert.match(plist, /<key>RunAtLoad<\/key>\s*<true\/>/);
     assert.match(plist, /<key>KeepAlive<\/key>\s*<true\/>/);
+    const helper = plist.match(
+      /<key>BundleProgram<\/key>\s*<string>([^<]+)<\/string>/,
+    )?.[1];
+    const build = readFileSync(join(contents, "Info.plist"), "utf8").match(
+      /<key>CFBundleVersion<\/key>\s*<string>([^<]+)<\/string>/,
+    )?.[1];
     assert.equal(
-      existsSync(join(contents, "Library/LaunchServices/EagleDeviceHelper")),
-      true,
+      helper,
+      `Contents/Library/LaunchServices/EagleDeviceHelper.${build}`,
     );
+    assert.equal(existsSync(join(f.app, helper as string)), true);
     assert.equal(
       readFileSync(
         join(contents, "Resources/EagleFeatures.bundle/resource"),
@@ -279,14 +286,17 @@ test("nested signing preserves Node, signs helper before App, and propagates ver
       calls.some((args) => args.includes("--force") && args.at(-1) === node),
       false,
     );
+    const helperPath = readFileSync(
+      join(
+        f.app,
+        "Contents/Library/LaunchAgents/ai.hexly.eagle.devices.candidate.plist",
+      ),
+      "utf8",
+    ).match(/<key>BundleProgram<\/key>\s*<string>([^<]+)<\/string>/)?.[1];
     const signed = calls
       .filter((args) => args.includes("--sign"))
       .map((args) => args.at(-1));
-    assert.deepEqual(signed, [
-      addon,
-      join(f.app, "Contents/Library/LaunchServices/EagleDeviceHelper"),
-      f.app,
-    ]);
+    assert.deepEqual(signed, [addon, join(f.app, helperPath as string), f.app]);
     assert.equal(calls.at(-1)?.includes("--verify"), true);
     assert(
       calls.some(

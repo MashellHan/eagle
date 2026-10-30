@@ -41,8 +41,7 @@ extension DeviceControl {
     guard let configuration else { throw DeviceHostError.invalidConfiguration }
     let startedAt = ContinuousClock.now
     let (requirement, fingerprint) = try await Task.detached { [bundle] in
-      let helper = bundle.appendingPathComponent(
-        "Contents/Library/LaunchServices/EagleDeviceHelper")
+      let helper = try configuration.helperURL(bundle: bundle)
       let requirement = try DeviceCodeIdentity.requirement(at: helper)
       let fingerprint = try DeviceServiceRegistration.fingerprint(
         appRequirement: DeviceCodeIdentity.requirement(at: bundle), helperRequirement: requirement,

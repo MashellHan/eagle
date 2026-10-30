@@ -42,6 +42,8 @@ function fixture() {
   let alive = true;
   const events: string[] = [];
   const system: DeviceInstallerSystem = {
+    helperPath: (bundle) =>
+      join(bundle, "Contents/Library/LaunchServices/EagleDeviceHelper"),
     verify(bundle) {
       assert(["old", "new"].includes(payload(bundle)));
       events.push(`verify:${payload(bundle)}`);
@@ -104,6 +106,22 @@ test("legacy migration uses the new signed bundle and confirms the old job is go
   try {
     installDeviceCandidate(f.source, f.destination, f.system);
     assert(f.events.includes("prepare:new"));
+    assert.equal(f.payload(f.destination), "new");
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("installer checks the current versioned helper path from the installed bundle", () => {
+  const f = fixture();
+  f.system.helperPath = (bundle) =>
+    join(
+      bundle,
+      "Contents/Library/LaunchServices/EagleDeviceHelper.1793336081495",
+    );
+  f.setJob({ pid: 42, program: f.system.helperPath(f.destination) });
+  try {
+    installDeviceCandidate(f.source, f.destination, f.system);
     assert.equal(f.payload(f.destination), "new");
   } finally {
     f.cleanup();
