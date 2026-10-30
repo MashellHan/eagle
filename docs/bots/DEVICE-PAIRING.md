@@ -82,6 +82,7 @@ App 启动检测到包更新时，完成旧注册的异步注销后，由后台 
 App 的 helper 身份验证和安装器的进程归属检查均从签名包内同一 plist 读取真实路径。
 候选服务 label、Mach service 与 plist 文件名也包含同一次 build，避免新的 helper 签名复用
 旧服务的启动约束。安装器从旧签名包读取旧名称并确认该 job 消失，再安装新名称；
+若新名称已被其他安装占用，在退出旧 App 前拒绝替换。
 `device-candidate` profile、socket、设备身份和持久化目录保持不变。
 正式发布与旧候选的固定服务名、固定 helper 路径仍受支持。
 候选 helper 使用固定的签名 identifier，避免继承链接器每次变化的 UUID 标识；ad-hoc

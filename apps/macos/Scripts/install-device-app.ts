@@ -2,6 +2,7 @@ export type InstalledDeviceJob = { pid?: number; program?: string };
 
 export interface DeviceInstallerSystem {
   verify(bundle: string): void;
+  serviceLabel(bundle: string): string;
   helperPath(bundle: string): string;
   supportsMaintenance(bundle: string): boolean;
   copy(source: string, destination: string): void;
@@ -42,6 +43,12 @@ export function installDeviceCandidate(
   const previousJob = system.job(installed ? destination : source);
   if (!installed && previousJob)
     throw new Error("a device service already belongs to another installation");
+  if (
+    installed &&
+    system.serviceLabel(source) !== system.serviceLabel(destination) &&
+    system.job(source)
+  )
+    throw new Error("the new device service is already registered");
   if (
     previousJob?.program !== undefined &&
     previousJob.program !== system.helperPath(destination)
@@ -141,6 +148,7 @@ function macOSSystem(): DeviceInstallerSystem {
       join(bundle, "Contents/Info.plist"),
     ]);
   return {
+    serviceLabel: deviceCandidateServiceLabel,
     helperPath: (bundle) => join(bundle, deviceHelperRelativePath(bundle)),
     verify(bundle) {
       checked(

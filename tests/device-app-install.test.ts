@@ -42,6 +42,7 @@ function fixture() {
   let alive = true;
   const events: string[] = [];
   const system: DeviceInstallerSystem = {
+    serviceLabel: () => "fixture-service",
     helperPath: (bundle) =>
       join(bundle, "Contents/Library/LaunchServices/EagleDeviceHelper"),
     verify(bundle) {
@@ -111,6 +112,43 @@ test("upgrade checks the old bundle's job before and after unregistering", () =>
   try {
     installDeviceCandidate(f.source, f.destination, f.system);
     assert.deepEqual(inspected, [f.destination, f.destination]);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("a new build's occupied service is rejected before touching the installed app", () => {
+  const f = fixture();
+  f.system.serviceLabel = f.payload;
+  const oldJob = f.system.job;
+  f.system.job = (bundle?: string) =>
+    bundle === f.source
+      ? { pid: 43, program: f.system.helperPath(f.source) }
+      : oldJob(f.destination);
+  try {
+    assert.throws(
+      () => installDeviceCandidate(f.source, f.destination, f.system),
+      /new device service is already registered/,
+    );
+    assert(!f.events.includes("quit"));
+    assert.equal(f.payload(f.destination), "old");
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("a new build checks its own availability and then verifies old-service removal", () => {
+  const f = fixture();
+  f.system.serviceLabel = f.payload;
+  const oldJob = f.system.job;
+  const inspected: (string | undefined)[] = [];
+  f.system.job = (bundle?: string) => {
+    inspected.push(bundle);
+    return bundle === f.source ? undefined : oldJob(f.destination);
+  };
+  try {
+    installDeviceCandidate(f.source, f.destination, f.system);
+    assert.deepEqual(inspected, [f.destination, f.source, f.destination]);
   } finally {
     f.cleanup();
   }
