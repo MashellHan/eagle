@@ -16,10 +16,10 @@ public struct DeviceSettingsView: View {
   public var body: some View {
     VStack(alignment: .leading, spacing: 18) {
       connectionStatus
-      directoryCard
       SettingsCard {
         pairingContent.padding(.vertical, 18)
       }
+      directoryCard
     }
     .task { await model.observe() }
     .alert(
