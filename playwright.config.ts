@@ -9,6 +9,11 @@ export default defineConfig({
       "npm --workspace @eagle/web run build -- --mode test && npm --workspace @eagle/web exec -- vite preview --mode test --host 127.0.0.1 --port 27053 --strictPort",
     url: "http://127.0.0.1:27053",
     reuseExistingServer: false,
+    // The UI names its deployments at build time; the suite builds against example origins.
+    env: {
+      VITE_PRODUCTION_ORIGIN: "https://app.example.com",
+      VITE_PRODUCTION_INGEST_ORIGIN: "https://ingest.example.com",
+    },
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },

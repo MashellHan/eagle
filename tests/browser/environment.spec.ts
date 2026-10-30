@@ -82,7 +82,7 @@ test("local environment switch isolates reads, writes, identity and onboarding",
   await page.getByLabel("机器名称").fill("Synthetic new");
   await page.getByRole("button", { name: "创建并生成提示词" }).click();
   await expect(page.getByLabel("提示词预览")).toContainText(
-    "https://eagle-ingest.hexly.ai",
+    "https://ingest.example.com",
   );
   expect(writes).toEqual(["/__local/prod/api/v1/machines"]);
   await page.keyboard.press("Escape");
@@ -111,7 +111,7 @@ test("failed production authentication never falls back and leaves Local accessi
   await page.goto("/");
   await expect(
     page.getByText(
-      "请在本机终端运行 cloudflared access login --quiet https://eagle.hexly.ai，然后重试。",
+      "请在本机终端运行 cloudflared access login --quiet https://app.example.com，然后重试。",
       { exact: true },
     ),
   ).toBeVisible();
