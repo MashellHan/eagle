@@ -13,6 +13,7 @@ import {
 import { z } from "zod";
 import { ClassifiedFailure } from "../../core/domain.ts";
 import type { RuntimeHandle, SubmitInput } from "../../core/RuntimePort.ts";
+import { FailureClassifier } from "./classify.ts";
 import {
   bundleSchema,
   entrySchema,
@@ -351,6 +352,20 @@ export class ReplicaSync {
   }
 
   command(command: Command): Promise<unknown> {
+    const guard = () => {
+      try {
+        command.guard?.();
+      } catch (cause) {
+        if (cause instanceof ClassifiedFailure) throw cause;
+        throw new ClassifiedFailure(
+          new FailureClassifier().classify("replica:guard", "auth_failed", "runtime").classification
+            .failure,
+          "not_admitted",
+          "synchronization context is no longer valid",
+          { cause },
+        );
+      }
+    };
     return this.#serial(async () => {
       bounded(command.params);
       await this.#harness.commit(() => undefined, ctx);
@@ -377,10 +392,12 @@ export class ReplicaSync {
               replicaId: this.store.binding.replicaId,
               epoch: this.store.binding.epoch,
             });
+          guard();
           return this.store.page(source, input.after, input.limit);
         }
         case "apply": {
           const { page } = parse(z.strictObject({ page: pageSchema }), command.params);
+          guard();
           this.store.receive(page);
           await this.#drain(page.source);
           if (this.store.blocked(page.source) !== undefined)

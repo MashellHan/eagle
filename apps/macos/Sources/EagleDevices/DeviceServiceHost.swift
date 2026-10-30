@@ -308,6 +308,30 @@ public final class DeviceServiceHost {
             "error": .string("invalid_registration_payload"),
           ]))
       }
+    case "sync_proof":
+      guard case .object(let fields) = value,
+        Set(fields.keys) == Set(["type", "requestId", "request"]),
+        let id = value["requestId"]?.string, UUID(uuidString: id) != nil,
+        let raw = value["request"]
+      else {
+        rejectProtocol()
+        return
+      }
+      do {
+        let signature = try identity.signSyncProof(
+          SyncProofRequest(raw), serviceOrigin: configuration.serviceOrigin, now: Self.now)
+        try send(
+          .object([
+            "type": .string("sync_signature"), "requestId": .string(id),
+            "signature": .string(signature),
+          ]))
+      } catch {
+        try? send(
+          .object([
+            "type": .string("sync_signature"), "requestId": .string(id),
+            "error": .string("invalid_sync_proof"),
+          ]))
+      }
     case "approve":
       guard let request = try? value.decoded(DeviceApprovalRequest.self) else {
         rejectProtocol()

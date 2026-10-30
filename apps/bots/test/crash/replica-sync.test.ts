@@ -13,9 +13,13 @@ import {
 } from "@earendil-works/pi-ai";
 import { type ConversationId, Harness } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { BotDirectory, nodeDirectoryFs } from "../../src/core/BotDirectory.ts";
+import { BotRegistry } from "../../src/core/BotRegistry.ts";
 import { ClassifiedFailure } from "../../src/core/domain.ts";
+import { captureLog } from "../../src/log/log.ts";
 import { type HistoryBundle, HistoryReplica } from "../../src/runtime/pi/HistoryReplica.ts";
 import { ResourcePin } from "../../src/runtime/pi/HistoryResources.ts";
+import { readReplicaBinding } from "../../src/runtime/pi/ReplicaStore.ts";
 import { pageSchema, type ResourceCarrier } from "../../src/runtime/pi/syncProtocol.ts";
 import { createToolRegistry } from "../../src/tools/registry.ts";
 import { openWorkspace } from "../../src/tools/workspace.ts";
@@ -625,5 +629,125 @@ test("SIGKILL after complete resource installation before branch pin/admission r
   } finally {
     await source.close();
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("network ready-only leases never recover durable local pending work, including after repair", async () => {
+  const bench = await createBench();
+  const source = await openReplica(join(bench.dir, "ready-source"));
+  const directory = new BotDirectory(join(bench.dir, "ready-target"), await nodeDirectoryFs());
+  const { log } = captureLog();
+  let opens = 0;
+  const registry = new BotRegistry({
+    directory,
+    log,
+    readReplicaBinding: (spec) => readReplicaBinding(join(spec.dir, "replica.sqlite"), spec.id),
+    openRuntime: (spec) => {
+      opens++;
+      return bench.runtime.open(spec);
+    },
+    model: { provider: "faux", modelId: "faux-1" },
+    idleCloseMs: 40,
+    quarantineRetryMs: 60000,
+    closeDeadlineMs: 1000,
+    bootTrace: () => "tr_ready_boot",
+  });
+  try {
+    await directory.create({
+      id: "b_replica",
+      title: "ready-only pending",
+      model: { provider: "faux", modelId: "faux-1" },
+      createdAt: "2026-10-30T00:00:00.000Z",
+      updatedAt: "2026-10-30T00:00:00.000Z",
+    });
+    const resources = JSON.parse(
+      await readFile(
+        new URL("../../../../fixtures/bots-sync/resources.v1.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const carrier = (await source.command("export", {
+      kind: "resources",
+      resources,
+    })) as ResourceCarrier;
+    await killAtCommit({
+      dir: directory.botDir("b_replica"),
+      mode: "root-resource-intent",
+      bundle: carrier,
+      secondBundle: carrier,
+      sharedBotId: source.sync.store.binding.sharedBotId,
+      installBeforeIntent: true,
+    });
+    const version = createHash("sha256").update(JSON.stringify(resources)).digest("hex");
+    const path = join(directory.botDir("b_replica"), "resources", version, "AGENTS.md");
+    const original = await readFile(path);
+    await chmod(path, 0o600);
+    await writeFile(path, "damaged before startup");
+    await registry.start();
+    assert.equal(registry.state("b_replica"), "unavailable");
+    const failedOpens = opens;
+    assert.equal(bench.faux.state.callCount, 0);
+    await writeFile(path, original);
+    for (const get of [
+      () => registry.readyReplica("b_replica", "tr_ready_repaired"),
+      () => registry.readySharedReplica(source.sync.store.binding.sharedBotId, "tr_ready_peer"),
+    ])
+      await assert.rejects(get, /ready local Bot/);
+    assert.equal(opens, failedOpens, "sync alone does not reopen after disk repair");
+    assert.equal(bench.faux.state.callCount, 0);
+    const db = new (await import("node:sqlite")).DatabaseSync(
+      join(directory.botDir("b_replica"), "replica.sqlite"),
+      { readOnly: true },
+    );
+    try {
+      const value = JSON.parse(
+        String(
+          db.prepare("SELECT value FROM local_runs WHERE request_id='root-resource-queued'").get()
+            ?.value,
+        ),
+      );
+      assert.equal(value.admitted, false);
+      assert.notEqual(value.rejected, true);
+    } finally {
+      db.close();
+    }
+    bench.faux.setResponses([text("explicit local recovery only")]);
+    await registry.recover("b_replica", "tr_explicit_local_recover");
+    await waitFor(
+      () => bench.faux.state.callCount === 1,
+      "explicit local recovery resumes original pending ID",
+    );
+    const ready = await registry.readyReplica("b_replica", "tr_ready_after_recover");
+    await ready.command("pull", { after: 0 });
+    assert.equal(bench.faux.state.callCount, 1);
+    registry.touch("b_replica");
+    const fault = new (await import("node:sqlite")).DatabaseSync(
+      join(directory.botDir("b_replica"), "replica.sqlite"),
+    );
+    try {
+      fault.exec("ALTER TABLE binding RENAME TO owned_failed_binding");
+      await assert.rejects(
+        () => ready.check(),
+        (error: unknown) =>
+          error instanceof ClassifiedFailure && error.failure.kind === "storage_failed",
+      );
+    } finally {
+      fault.exec("ALTER TABLE owned_failed_binding RENAME TO binding");
+      fault.close();
+      registry.release("b_replica");
+    }
+    await waitFor(() => registry.state("b_replica") === "catalogued", "real idle close");
+    const closedOpens = opens;
+    await assert.rejects(() => ready.check(), /ready local Bot/);
+    await assert.rejects(
+      () => registry.readyReplica("b_replica", "tr_ready_cold"),
+      /ready local Bot/,
+    );
+    assert.equal(opens, closedOpens, "stale and fresh sync leases cannot reopen cold runtime");
+    assert.equal(bench.faux.state.callCount, 1);
+  } finally {
+    await registry.shutdown();
+    await source.close();
+    await bench.cleanup();
   }
 });

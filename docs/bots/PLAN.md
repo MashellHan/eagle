@@ -20,17 +20,30 @@ discovery. Those additions are not implemented or enabled by this plan update.
 P0 本地闭环已推 `c073ea19`；P1 首个本地增量切片已验证并正常推送 `c8d8fd4`；
 P1 恢复身份切片已正常推送 fdb8973；目录 tombstone 已验收并正常推送 60fa5e2；
 P2 fixed-head696f649, ordinary-root265b0db and independent repair9475e2e were delivered normally.
-Fresh first-package264cc9e/treeb40045 is also delivered: HEAD/own fork264cc9e, clean/ahead0/behind0.
+Fresh first-package264cc9e/treeb40045 was delivered with own fork verified and clean/ahead0/behind0.
 Receipt .local/sync-p2-fresh-resources/fresh-delivery.json SHA29bbd80f retains the initial
 pre-commit formatting failure, accepted formatting delta, successful commit-attempt2 and
 first fresh push with complete normal hooks. P2 local resource boundaries are verified.
-P3 device identity/sync access/Tailscale metadata is now in progress: real Registry/helper
-contracts and first real red; Lead-approved directional grants, readonly Bot port and
-trusted-parent endpoint publication are under implementation. No P4 transport is started.
-Stable P3 source-v1 d794a864 freezes22 source/test/fixture paths. Local gates are green:
-root264, Bots ordinary/coverage813 same suite, devices8 and Swift194/44/50; final
-candidate awaits independent Review/Lead, with no P3 commit/push yet.
-P4-P6 remain planned; no transport/cache/cloud/UI/physical-Mac acceptance is claimed.
+P3 metadata foundation is normally delivered as460b60d/treee3a552c; HEAD/own fork were
+independently verified clean/ahead0/behind0. Its authoritative delivery receipt is
+.local/sync-p3-device-access/p3-delivery-final.json SHAd0eccb99; prior metadata receipts
+and all original evidence remain readable. Agent1.2.0 is unpublished source, onboarding1.0.0 unchanged.
+P4's first authenticated one-page pull/apply slice is now in progress: directional
+current Registry authorization, restricted mutual proofs, ephemeral AEAD, Self-only listener
+and trusted-parent publication. Real local red/green evidence and stable31-path source-v1
+e57db583/tree88a203b6/candidate4cfc42f8 and their seven gates retain their original scope.
+Review/Lead accepted four narrow P2 fixes: proof use after async waits, current-session endpoint
+reconfirmation, shutdown during Self I/O and response-body transport attribution. All four have
+real red/green evidence. Source-v4 4095cb04 freezes36 paths and the exact11-path delta from
+tree88a203b6. It separately binds the runtime-classifier dependency correction from v2 to v3
+and existing FAILURE_ID propagation from v3 to v4; all earlier source/gate receipts remain.
+Final v4 Bots ordinary/coverage each820, devices22, recovery17 and exact root-resources eval
+one case pass, as do root/Bots types and check-only lint. Root-v2's265 tests/build and Swift-v2's
+197/45/50+strict format retain their exact earlier source scope; default90 coverage-v3 reports
+the existing filtered logic collection94.6%. These prior global source maps are not relabeled v4.
+The final docs/index candidate is bound separately; Review/Lead acceptance and normal delivery
+remain pending.
+Long-lived DEK/envelopes, CF72h caching/fallback/switching and P5/P6 remain planned.
 Historical candidate and per-event evidence below retains its original scope.
 
 
@@ -140,8 +153,8 @@ Tailscale 直连进入本版范围；专用同步入口仅向 Tailscale 网络�
 | P0 — 契约与上下文验证 | local verified | 身份、因果关系、被动导入、资源版本、端点/握手、双路径游标与确认语义 | 两个独立 SQLite 重建等价上下文；导入零执行；接纳与导出之间的崩溃可恢复 |
 | P1 — 本地副本与分支 | in progress | 持久来源日志、outbox、ID 映射、缺口补读与本端恢复 | A 停止后 B 可运行；重复/乱序同步保留两支；不恢复其他端任务 |
 | P2 - resources | local verified | fixed-head696f649, ordinary-root265b0db/repair9475e2e and fresh264cc9e delivered normally | Complete local version loading; raw contents/tool associations retained |
-| P3 — 设备底座接入 | in progress | 复用 #109 的安装/配对/helper/权限；新增同步身份授权、Tailscale 端点发布和共享访问接口 | 现有设备能力保持有效；无 Tailscale 可走云通道；端点身份、群成员和同步权限真实生效 |
-| P4 — 直连、中转与 3 天缓存 | planned | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
+| P3 — 设备底座接入 | first metadata slice delivered460b60d | 复用 #109 的安装/配对/helper/权限；新增同步身份授权、Tailscale 端点发布和共享访问接口 | 现有设备能力保持有效；无 Tailscale 可走云通道；端点身份、群成员和同步权限真实生效 |
+| P4 — 直连、中转与 3 天缓存 | first authenticated-page slice in progress | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
 | P5 — 原生多端流程 | planned | 共享目录、各端运行状态、直连/中继状态、分支选择/合并、同步覆盖范围与资源冲突 | 从 App 完成双端执行、错峰补齐、过期恢复；路径切换不打断本地 run，缺口不误报完整 |
 | P6 — 多机验证与交付 | planned | 物理双 Mac、真实 Tailscale 路径、断网/重启/升级、性能与成本、发布门禁 | 直连/回退/切回、同时运行、A 关机、B 重启、过期补读及新设备初始化有实际证据 |
 

@@ -1,7 +1,11 @@
+import { z } from "zod";
 import {
   type DeviceSyncPort,
   deviceSyncAccess,
   deviceSyncIdentity,
+  deviceSyncPeerAccess,
+  deviceSyncProof,
+  deviceSyncSelf,
 } from "./core/DeviceSyncPort.ts";
 import { ClassifiedFailure } from "./core/domain.ts";
 import { newFailure } from "./core/failures.ts";
@@ -75,17 +79,45 @@ export class SocketDeviceSyncPort implements DeviceSyncPort {
     );
   }
 
+  self(context: { trace: string; botId: string }) {
+    return this.#call("sync.endpoints.self", undefined, context, (value) =>
+      deviceSyncSelf.parse(value),
+    );
+  }
+  proof(input: z.infer<typeof deviceSyncProof>, context: { trace: string; botId: string }) {
+    return this.#call("sync.proof", deviceSyncProof.parse(input), context, (value) =>
+      z
+        .strictObject({ version: z.literal(1), signature: z.string().regex(/^[A-Za-z0-9_-]{86}$/) })
+        .parse(value),
+    );
+  }
+  authorize(
+    input: Parameters<DeviceSyncPort["access"]>[0],
+    context: { trace: string; botId: string },
+  ) {
+    return this.#access("sync.peer.authorize", input, context, (value) =>
+      deviceSyncPeerAccess.parse(value),
+    );
+  }
   access(
     input: Parameters<DeviceSyncPort["access"]>[0],
     context: { trace: string; botId: string },
+  ) {
+    return this.#access("sync.access", input, context, (value) => deviceSyncAccess.parse(value));
+  }
+  #access<T extends z.infer<typeof deviceSyncAccess>>(
+    method: string,
+    input: Parameters<DeviceSyncPort["access"]>[0],
+    context: { trace: string; botId: string },
+    decode: (value: unknown) => T,
   ) {
     const request = {
       ...input,
       sharedBotId: input.sharedBotId.toLowerCase(),
       peerDeviceId: input.peerDeviceId.toLowerCase(),
     };
-    return this.#call("sync.access", request, context, (value) => {
-      const result = deviceSyncAccess.parse(value);
+    return this.#call(method, request, context, (value) => {
+      const result = decode(value);
       if (
         result.sharedBotId !== request.sharedBotId ||
         result.purpose !== request.purpose ||

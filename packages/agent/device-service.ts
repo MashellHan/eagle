@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createPublicKey, randomUUID, verify } from "node:crypto";
 import { chmodSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import { connect, createServer, type Socket } from "node:net";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -9,8 +9,10 @@ import {
   SyncAccess,
   SyncAccessResult,
   SyncIdentityResult,
+  SyncProofRequest,
   SyncPublish,
   SyncShare,
+  syncProofPayload,
 } from "../contracts/src/device-sync.ts";
 import {
   canonicalDeviceJSON,
@@ -32,7 +34,7 @@ import { DeviceCloud } from "./device-cloud.ts";
 import { OperationAdmissionError } from "./device-journal.ts";
 import { NativeDeviceLeases } from "./device-native-leases.ts";
 import { DeviceRuntime } from "./device-runtime.ts";
-import { syncCandidates } from "./device-sync.ts";
+import { syncSelf } from "./device-sync.ts";
 
 const configure = DeviceRegistration.extend({
   type: z.literal("configure"),
@@ -162,7 +164,7 @@ async function clearStaleSocket(path: string): Promise<void> {
 }
 
 type HelperPending = {
-  kind: "signature" | "approval";
+  kind: "signature" | "approval" | "sync_signature";
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -181,7 +183,7 @@ export async function runDeviceService(): Promise<void> {
   let stopping = false;
   const sockets = new Set<Socket>();
   const helper = (
-    kind: "signature" | "approval",
+    kind: "signature" | "approval" | "sync_signature",
     value: Record<string, unknown>,
   ): Promise<unknown> =>
     new Promise((resolveHelper, reject) => {
@@ -252,16 +254,36 @@ export async function runDeviceService(): Promise<void> {
       return { ...ownDirectory(), cloudStatus: "offline" };
     }
   };
+  let endpointTail: Promise<unknown> = Promise.resolve();
   const manage = async (method: string, params: unknown): Promise<unknown> => {
     if (!runtime || !cloud) throw new Error("not_ready");
     switch (method) {
       case "sync.share":
         return cloud.manage("/sync/share", SyncShare.parse(params));
       case "sync.endpoints.publish": {
-        const { syncPort } = SyncPublish.parse(params);
-        return cloud.manage("/sync/endpoints", {
-          candidates: await syncCandidates(syncPort),
-        });
+        const publicationCloud = cloud;
+        const publish = async () => {
+          const { syncPort, expectedSelfDigest } = SyncPublish.parse(params);
+          const self = syncPort === null ? undefined : await syncSelf();
+          if (
+            self &&
+            expectedSelfDigest !== undefined &&
+            expectedSelfDigest !== self.digest
+          ) {
+            await publicationCloud.manage("/sync/endpoints", {
+              candidates: [],
+            });
+            throw new Error("sync_self_changed");
+          }
+          return publicationCloud.manage("/sync/endpoints", {
+            candidates:
+              self?.addresses.map((address) => ({ address, port: syncPort })) ??
+              [],
+          });
+        };
+        const next = endpointTail.then(publish);
+        endpointTail = next.catch(() => undefined);
+        return next;
       }
       case "policy.get":
         return runtime.policy;
@@ -322,6 +344,78 @@ export async function runDeviceService(): Promise<void> {
         return SyncAccessResult.parse(
           await cloud.manage("/sync/access", SyncAccess.parse(params)),
         );
+      case "sync.peer.authorize":
+        return {
+          ...SyncAccessResult.parse(
+            await cloud.manage(
+              "/sync/peer/authorize",
+              SyncAccess.parse(params),
+            ),
+          ),
+          registryOrigin: new URL(configuration?.baseUrl ?? "").origin,
+        };
+      case "sync.endpoints.self":
+        return syncSelf();
+      case "sync.proof": {
+        const request = SyncProofRequest.parse(params);
+        if (
+          !configuration ||
+          request.registryOrigin !== new URL(configuration.baseUrl).origin ||
+          request.expiresAt <= Date.now() ||
+          request.expiresAt > Date.now() + 60000
+        )
+          throw new Error("invalid_sync_proof");
+        const syncCloud = cloud;
+        const own = request[request.role];
+        const peer = request[request.role === "reader" ? "server" : "reader"];
+        if (
+          own.deviceId !== configuration.deviceId ||
+          own.publicKey !== configuration.publicKey
+        )
+          throw new Error("invalid_sync_proof");
+        const access = async () => {
+          const result = SyncAccessResult.parse(
+            await syncCloud.manage(
+              request.role === "reader"
+                ? "/sync/access"
+                : "/sync/peer/authorize",
+              {
+                sharedBotId: request.sharedBotId,
+                peerDeviceId: peer.deviceId,
+                purpose: request.purpose,
+              },
+            ),
+          );
+          if (
+            JSON.stringify(result.local) !== JSON.stringify(own) ||
+            JSON.stringify(result.peer) !== JSON.stringify(peer)
+          )
+            throw new Error("sync_identity_changed");
+        };
+        await access();
+        const signed = await helper("sync_signature", {
+          type: "sync_proof",
+          request,
+        });
+        if (
+          typeof signed !== "string" ||
+          !verify(
+            null,
+            Buffer.from(syncProofPayload(request)),
+            createPublicKey({
+              key: Buffer.from(own.publicKey, "base64url"),
+              format: "der",
+              type: "spki",
+            }),
+            Buffer.from(signed, "base64url"),
+          )
+        )
+          throw new Error("invalid_sync_signature");
+        await access();
+        if (request.expiresAt <= Date.now())
+          throw new Error("sync_proof_expired");
+        return { version: 1, signature: signed };
+      }
       case "status":
         return {
           deviceId: runtime.device.deviceId,
@@ -629,18 +723,27 @@ export async function runDeviceService(): Promise<void> {
         return;
       }
       const proof = signature.safeParse(value);
+      const syncProof = signature
+        .extend({ type: z.literal("sync_signature") })
+        .safeParse(value);
       const approved = approval.safeParse(value);
-      if (proof.success || approved.success) {
+      if (proof.success || approved.success || syncProof.success) {
         const response = proof.success
           ? proof.data
           : approved.success
             ? approved.data
-            : undefined;
+            : syncProof.success
+              ? syncProof.data
+              : undefined;
         if (!response) return;
         const request = pending.get(response.requestId);
         if (
           !request ||
-          (proof.success ? "signature" : "approval") !== request.kind
+          (proof.success
+            ? "signature"
+            : approved.success
+              ? "approval"
+              : "sync_signature") !== request.kind
         )
           return;
         pending.delete(response.requestId);
@@ -650,6 +753,8 @@ export async function runDeviceService(): Promise<void> {
           request.resolve(proof.data.signature);
         else if (approved.success && approved.data.approval)
           request.resolve(approved.data.approval);
+        else if (syncProof.success && syncProof.data.signature)
+          request.resolve(syncProof.data.signature);
         else request.reject(new Error("invalid_helper_response"));
         return;
       }

@@ -912,3 +912,129 @@ a bare normative table entry fixes it without source changes. Browser/platform h
 remain for accepted normal delivery; physical network/cloud/installed App are unverified.
 Agent1.2.0 is unpublished source, onboarding1.0.0 remains unchanged. No new crash/eval/
 perf result is claimed for this metadata-only slice.
+
+
+P4 first authenticated page evidence lives in .local/sync-p4-authenticated-pull. The original
+entry-red uses paired real Registry SQLite/independent Ed25519 Node services, actual bound
+Bots and an existing full resource page before sync.peer.authorize fails unknown_local_method
+on base460b60d. Initial run.py receipts cover only196 existing production paths; they do not
+bind new P4 files. run-v2 separately hashes tracked+new production/tests/fixtures/scripts before
+and after each command, with cwd/start/exit/log SHA. Stable-source gates must match the final
+manifest; old and intermediate failures retain their actual scope and filenames.
+
+Owned tests cover exact page bytes through mutual proof/X25519/HKDF/AEAD, one-way grants,
+wrong-origin helper refusal, consumed challenge replay, signature-wait revocation, local
+rebind/tombstone and alias refusal, passive0model/tool/admission before explicit native local
+work. Crypto tests explicitly retain a legal full AAD>1024, plus direction/transcript/sequence
+and tamper refusal. The actual HKDF1026>1024 red is retained; no truncation/limit increase.
+An archived original Node writer plus real Registry pre-write barrier reproduces stale publish
+following a later withdraw, and current endpoint-only serialization proves the final empty set.
+Owned CLI discovery and mapped real TCP sockets exercise Self-only whole-set binding, second
+bind failure, discovery fencing and drain; these are not physical Tailscale interface evidence.
+Owned SIGKILL leaves a real local pending intent. Corrupt installation makes startup unavailable;
+after repair sync still refuses0execution, and explicit local recover executes the original once.
+Cold/stale handles cannot reopen via sync. All prior active/Inbox preflight assertions remain.
+Public NSApplicationDelegate tests exercise actual owned child quit/exit, confirmed vs unknown,
+unresponsive cancellation and one reply, plus adopted pid with unavailable health. Normal Swift
+raw summaries are195/45/50 at quit-entry-first-green, not194/46/50. That earlier local scope and
+later WIP source changes are not a final frozen-source gate. No P2/perf or installed/live/CF/
+physical-Mac evidence is relabeled as P4 acceptance. Complete checks/Review are recorded only
+when actually run on the stable final source; P4 later cache/key/fallback slices remain open.
+
+Original P4 source-v1 e57db583 binds31 changed/new production/test/fixture/script paths to
+base460b60d, including null base blobs for new files. Seven new gate receipts each hash
+532 selected tracked+new production/test/fixture/script paths before/after and match31/31
+frozen paths. Normal root-check-v1 passes265 tests, types/check-only Biome202 and build.
+bots-check-v1 passes fixtures34, ordinary817/817 and coverage817/817 from the same suite,
+types/check-only Biome215; aggregate coverage is93.92% lines/89.07% branches/90.69% functions.
+swift-check-v1 passes196/45/50 and strict recursive format; device-process-v1 passes10/10;
+crash-v1 passes17/17 including ready-only pending recovery; exact eval-root-resources-v1
+passes one case/two rows. No P2/P3/perf result is substituted for these new gate results.
+
+The seventh gate runs the unchanged `sh apps/macos/Scripts/coverage.sh` at its default90
+threshold. It passes196/45/50 and reports1465/1549 lines,94.6% for the existing logic-file
+filter: WorkspaceViewModels, SettingsViewModel, DeviceSettingsViewModel, SettingsModels,
+SidebarComposition, Theme and SidebarList. The raw report retains its relative/macOS-prefixed
+Theme/SidebarList entries; no report/filter normalization is applied. This is not a90% claim
+for all new synchronization logic. Existing compiler concurrency warnings in unchanged
+BotsTransport remain visible, as do root build chunk notices and informational lint suggestions.
+Old196-path/WIP receipts and every real red/intermediate fixture/type failure remain unchanged;
+misnamed quit-startup-race-green is exit1, while quit-generation-second is exit0.
+Source Review/Lead acceptance and normal commit/pre-push remain pending; browser runs only in
+the normal pre-push. No physical Tailscale bind/two-Mac path, installed App, live Herdr collection,
+cloud authentication/D1/rendering, CF cache/fallback or deployment/release evidence is claimed.
+
+P4 expiry-after-await delta contract: keep candidate88a203b6/sourcee57db583 and its seven
+gate scopes immutable. On that production, real Registry final-response barriers and an owned
+clock advance cross expiry only after a legal proof has entered. B's final challenge/page and
+A's final request/apply must refuse; A's actual binding-return barrier must also refuse before
+apply. Real page/source/applied/SDK counts stay unchanged, provider/tools remain0 and trace/
+single-origin attribution is retained. The older entry-before-60001 test remains separate.
+The same internal synchronous guard must survive ReplicaSync's own serial/commit awaits and
+check the original exchange generation/closed state before receive; apply admitted within the
+lifetime retains its existing atomic completion semantics. Other accepted P2 contracts require
+same-daemon endpoint reconfirmation after real pairing/epoch changes, owned private-Self-I/O
+shutdown cleanup before reply release, and actual headers-then-truncated TCP body attribution
+as network failure with the original cause. No new limits, SDK behavior or cancellation framework.
+The actual publication test uses the public Supervisor with a narrow trusted-parent fixture
+bridge to owned Node/Registry and a real daemon/listener. Original shared process helpers are
+extracted unchanged except owned gates into device-fixtures.ts for reuse; Bots imports no Eagle
+code. Fixture Self addresses map to real loopback sockets only inside that owned child, so this
+proves the protocol/lifecycle chain, not physical Tailscale binding. Ready positive publication
+reconfirms on existing polling rounds plus request/retry time; withdrawal remains deduplicated.
+Deep guard tests delay only the return of actual public binding reads/Harness commits, then
+advance the owned clock or invalidate exchange generation; no SDK result/admission is stubbed.
+
+### P4 four-P2 repair candidate evidence
+
+Source-v4 `4095cb04` freezes36 production/test/fixture/script paths at base460b60d, with11
+source deltas from the original tree88a203b6. Source-v2 `70d7e0d0`, v3 `85e188e0`, the original
+candidate/source and all original103 artifacts/seven gates remain immutable. The v3/v4 old-tree
+metadata mistakenly used the original changed-path inventory for three existing files;
+`old-tree-metadata-correction.json` (`e5302a2b`) records their actual Git blobs/bytes. It does
+not alter source or gate results. The final candidate resolves old values from the full tree.
+
+The original expiry-await red `37dfd17a` crosses final Registry/binding waits. Final tests also
+cross actual public SDK commit returns on both A and B, and invalidate exchange generation
+inside command queues. All refuse403 before page/receive, preserve original page/replica/SDK
+counts and provider/tools0. Guard failures preserve ClassifiedFailure identity or raw cause,
+auth_failed/runtime and the actual use point. `bots-check-v2` is an actual819/820 architecture
+failure (`78cfc793`), fixed by using the existing runtime classifier without changing allowlists.
+The resulting remote classifier red `93b69474` returns403 but replaces B's f_1/f_2 at A;
+two new tests plus their parent fail, while the original14 assertions retain their behavior.
+Only remoteFailure's id codec changes to the existing protocol FAILURE_ID. Final process
+assertions require B's single error origin, A warnings with the same id/trace and each local
+Bot id, and no apply or execution. V2->v3 classifier and v3->v4 propagation deltas are separate.
+
+The other three genuine reds are publication-identity-second `f51e5a0c`, shutdown-self-second
+`052df103` and body-transport `67256758`. They cover current-session positive publication after
+real pairing, local cleanup starting while private Self I/O is held, and headers-then-truncated
+TCP body classification. Body errors preserve the original TypeError/UND_ERR_SOCKET cause as
+network/internal503; complete bad JSON remains auth_failed403. No route status mapping changes.
+
+Final v4 receipts each bind all36 frozen paths and534 selected tracked+new source/test/fixture/
+script paths before=after: `bots-check-v4` (`2c99aaa2`) passes fixtures34, ordinary820/820 and
+coverage820/820 on the same suite, types/check-only Biome215; aggregate coverage is93.84% lines,
+89.16% branches and90.71% functions. `device-process-v4` (`516d943c`) passes22/22, including the
+expanded16-case process file; `crash-v4` (`3ca2fa1a`) passes17/17; `eval-root-resources-v4`
+(`cc11463c`) passes one exact case/two rows. `remote-classifier-types-third` (`c95ca5d4`) binds
+the same final36/534 paths and passes root/Bots strict types plus check-only Biome204/215.
+
+Reused earlier scope is explicit: root-check-v2 (`5bf235c5`) passes265 tests/types/Biome204/build;
+swift-check-v2 (`00d0d7f2`) passes197/45/50 and strict recursive format. Their global maps differ
+from v4 at ReplicaSync, sync-pull and the process test (33/36 frozen paths match), so they are
+not v4 whole-source runs. The final types/lint receipt above checks the changed process test.
+Unchanged `sh apps/macos/Scripts/coverage.sh`, default90, actually ran at v3 (`86fa0395`):
+197/45/50,1465/1549 lines=94.6% for the existing logic-file filter only. Its global map differs
+from v4 at sync-pull/process test (34/36 match); Swift/fixture inputs are unchanged. The existing
+relative/macOS-prefixed filter entries and imported BotsTransport compiler warnings remain raw.
+No90% claim for every new synchronization file and no new Swift run for the final codec delta.
+
+All intermediate failures stay separate: Self fixture166836ed lacked0600 and never reached
+the target; a0a0722b is a nested Swift macro compile failure; body-transport-green0a023ee0 is
+exit1 because its fixture wrongly expected500 instead of the existing503. Missing helper
+export1e3bacec, types/formatf6ba7248, new trace-row annotation793ea288 and formatb2f97340 are
+editing failures. No raw log/exit is rewritten or renamed into a successful gate. Browser
+remains normal pre-push; unrelated perf/P2/P3 gates are not repeated. Physical Tailscale/two-Mac,
+installed App, cloud authentication/D1/rendering, CF cache/fallback, long-term keys and P5/P6
+remain unverified/outside this first-page candidate. Formal Review/Lead acceptance precedes delivery.

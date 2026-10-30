@@ -1,5 +1,176 @@
 # 用户视角检查点
 
+## 2026-10-31 00:33 +0800 - P4 four-P2 source-v4 frozen; required gate scopes complete
+
+- Base460b60d/P3 delivery is unchanged. source-v4 SHA4095cb04 freezes36 paths,11 source deltas
+  from old tree88a203b6; v2->v3 classifier and v3->v4 remote propagation are separately bound.
+  All old source/candidate/103 artifacts/seven gates and intermediate files remain readable.
+- Real B public SDK commit expiry/generation red93b69474 preserves f_1/f_2 at B but A minted
+  replacements. Existing FAILURE_ID reuse passes whole process16/16 locally; final full device
+  suite22/22 includes B single error origin/A warn, shared id/trace/local Bot and0apply/provider.
+  Original A deep expiry/generation and body UND_ERR_SOCKET/cause assertions remain.
+- Final v4 gates: Bots fixtures34, ordinary/coverage each820 (same suite), types/Biome215,
+  aggregate93.84/89.16/90.71; devices22, crash17, exact root-resources one case/two rows, all exit0.
+  V4 root/Bots types/check-only Biome204/215 c95ca5d4 binds36/36 and534 selected paths unchanged.
+- Earlier root-check-v2 root265/types/lint/build and Swift-v2197/45/50+strict retain their
+  actual source maps (three final path differences). Default90 coverage-v3 actually passed
+  197/45/50,1465/1549=94.6% on the existing filtered collection, with two final map differences.
+  These are authorized unchanged-scenario reuse, not v4 whole-source gate claims or all-sync90%.
+- Preserved failures: true architecture819/82078cfc793 and remote identity93b69474; initial
+  Self0600 fixture166836ed, nested macroa0a0722b, bad500 oracle0a023ee0, missing export1e3bacec,
+  and types/formatf6ba7248/793ea288/b2f97340 remain editing/fixture scopes, never product reds.
+- Lead found three old-tree metadata nulls in v3/v4. Originals are unchanged; separate correction
+  receipte5302a2b uses actual git show blobs/bytes. Final candidate will use full-tree old values.
+  Source is frozen for existing independent Review; docs/index/candidate binding is next.
+- No commit/push, browser/perf repeat, P2/P3 reopening, other-tree/App, npm or deployment action.
+  Live collection/authentication/D1/rendering, physical Tailscale/two-Mac and installed App remain
+  unverified. Long-term keys/CF72h/fallback/P5/P6 stay outside this first-page source candidate.
+
+## 2026-10-31 00:23 +0800 - Four P4 Review fixes locally green; stable source and new gates next
+
+- Old sourcee57db583/tree88a203b6/candidate4cfc42f8 and103 original artifacts/seven gates
+  remain readable and unchanged. Only the four accepted P2 boundaries are being refrozen;
+  no commit/push, other-tree/App, release/deployment or P5/P6 changes.
+- Expiry true red37dfd17a is followed by actual binding and public SDK commit return barriers
+  crossing time/generation. Whole device-bots14/14 green49447d56 preserves replica/SDK counts,
+  original B page and provider/tools0. Internal synchronous guard reaches pull/page or receive
+  after serial/Harness.commit waits; in-lifetime apply retains original atomic completion.
+- Actual TCP headers/body red67256758 misclassified403. First named green0a023ee0 is exit1:
+  fixture expected500 while the existing correct route maps internal/network to503. Corrected
+  oracle plus original TypeError/UND_ERR_SOCKET cause, one origin/trace/Bot and zero apply are
+  included in14/14; complete malformed JSON remains403. HTTP mapping was not changed.
+- Real private-Self-I/O close and actual serve SIGTERM red052df103 now pass in whole main+
+  listener13/13 b1569e00. Original local cleanup starts while discovery reply remains held;
+  listener generation closes first and total deadline stays unchanged. Initial166836ed fixture
+  lacked0600 and never reached this boundary; its failure/owned cleanup are preserved separately.
+- Actual Supervisor -> owned Node -> Registry identity publication redf51e5a0c used no-group
+  publication, real pairing/grant and same daemon/port/Self: only1 publication and null endpoints.
+  Existing polling now reconfirms ready positives with the current Node session; withdraw still
+  deduplicates. Swift local greeneae784d7 is197/45/50, including later access and revoked denial.
+  This is polling plus request/retry time, not a hard five-second success promise.
+- Original nested-#require macro failurea0a0722b and missing helper-export1e3bacec are fixture
+  editing failures, not product reds. Final local types/check-only lint+Swift strict7299bc30 is
+  exit0 on534 selected paths. Stable source/delta handoff and seven new full gates follow;
+  browser remains normal pre-push, prior P2/P3/perf are not rerun or relabeled.
+- No live collection/cloud authentication/D1/rendering, physical Tailscale/two-Mac or installed
+  App acceptance. CF72h/cache/fallback/long-term keys and P5/P6 remain outside this slice.
+
+## 2026-10-31 00:13 +0800 - Four accepted P4 Review deltas; genuine expiry-await red and local green
+
+- Old sourcee57db583/tree88a203b6/candidate4cfc42f8,103 artifacts and seven gates remain intact.
+  Lead accepts only expiry-use, identity-publication, shutdown-Self-I/O and body-I/O attribution
+  fixes. Production/test/docs thaw is limited to those boundaries; no commit/push/P5/P6 work.
+- expiry-await-red37dfd17a ran the whole process file on unchanged e57 production: five actual
+  Registry-response/binding-return clock barriers reproduce stale challenge/page/apply use.
+  B's page and A's apply returned200 after expiry; A's replica/SDK counts grew, provider remained0.
+  Reader request was sent after expiry despite later403. The original source page stayed equal.
+- Internal guard now crosses ready-directory and ReplicaSync serial/Harness.commit waits to
+  actual pull/receive, checking both time and original exchange generation; runtime preserves
+  Classified/cause/auth_failed/single origin. Same whole-file local green02a4a170 passes10/10,
+  with all five new barriers refused and unchanged replica/SDK counts. This is not a new final gate.
+- Remaining three defects need their own real red/minimal fix; stable delta/source and complete
+  necessary gates/Review follow. Existing physical Tailscale/App/cloud/auth/D1/rendering and
+  CF/cache/long-term-key/P5/P6 boundaries remain unverified; no deployment/npm/other-tree changes.
+
+## 2026-10-31 00:05 +0800 - P4 stable source and seven new gates green; acceptance pending
+
+- P3 base460b60d/treee3a552c and all earlier delivery/red/intermediate evidence remain unchanged.
+  Stable source-v1 SHAe57db583 binds31 changed/new production/test/fixture/script paths with
+  base/disk blobs; Lead has arranged read-only source Review. No commit/push or P5/P6 work.
+- All seven new gate receipts match31/31 frozen source paths and532 selected tracked+new
+  production/test/fixture/script hashes before/after. Root265/265+types/check-only Biome202/build;
+  Bots fixtures34, ordinary817/817 and coverage817/817+types/Biome215 (93.92/89.07/90.69);
+  normal Swift196/45/50+strict format, whole devices10/10, crash17/17, exact root-resources
+  eval one case/two rows are exit0. Original logs/command/cwd/start/exit/SHA remain readable.
+- Seventh gate uses unchanged coverage.sh/default90:196/45/50 and actual filtered report
+  1465/1549 lines=94.6%, not all new sync logic. Its existing relative/macOS-prefixed entries
+  and unchanged BotsTransport compiler warnings remain in raw output; no filter/limit changes.
+- Genuine startup-quit red310876f0 and misnamed greenfc7f3d0b/exit1 stay preserved;
+  quit-generation-second c0b22209 is196/45/50 exit0. Final Swift gates also bind the later
+  narrow warning/stop-generation source edits. Old local/WIP/196-path scopes are not final gates.
+- Final38-path docs/index/tree candidate is being bound for formal Review/Lead acceptance.
+  Next broken hop is that independent acceptance, then normal delivery hooks (browser there).
+  No live Herdr collection, cloud authentication/D1/rendering, physical Tailscale/two-Mac,
+  installed App, CF cache/deployment/npm evidence. Agent1.2 remains unpublished; onboarding1.0 unchanged.
+
+## 2026-10-30 23:59 +0800 - P4 network/security and lifecycle race evidence; no stable candidate yet
+
+- Base460b60d/P3 and all historical receipts remain unchanged; no commit/push or P5/P6 work.
+- Real owned Registry/Node/Bots page path is locally green4/4: only B-to-A grant,
+  exact plaintext page bytes, passive0execution, later explicit native execution, wrong-origin
+  zero signer/apply, challenge replay/expiry/generation refusal, one failure origin/trace/Bot,
+  helper-wait revocation, rebind/tombstone and source alias refusal. Membership-epoch barrier
+  also passed4/4 (network-epoch-local); formatting during that WIP run makes before/after
+  false, so it is not a frozen-source gate. All logs preserve that actual scope.
+- Genuine ready-only SQLite-read classification red35abb84a is minimally fixed at the new
+  registry boundary; actual SIGKILL/pending/startup-bad-package/repair-only-sync refusal and
+  explicit local recovery remain green10/10 (ready-io-green290e5861).
+- Self-only whole-set binding/drain is locally green4/4 with crypto; mapped owned sockets
+  are not physical Tailscale proof. First local127.0.0.2 fixture bind and err.origin-shape
+  mistakes remain fixture failures; no production limits or discovery checks were bypassed.
+- Public quit red3f3ffb94 and initial green524d4498 raw summaries are195/45/50.
+  Owned exit/adopted-health503/finite non-cooperative shutdown green5f651a40 is196/45/50.
+  New genuine pending-startup/quit red310876f0 is196 tests1issue +45/50; first attempted
+  fixfc7f3d0b retained two failures: external-mode fixture wrongly demanded adoption, and
+  no-owner cleanup incorrectly overwrote unknown. The fixture branch is corrected without
+  allowing external adoption/kill; unknown is preserved and startup generation draining now
+  covers stop/quit. Full Swift rerun is in progress; no completed-green claim yet.
+- Stable source/complete final gates/Review remain pending. New run-v2 includes new and
+  existing production, actual tests/fixtures/scripts; old196 maps are never expanded in place.
+  No actual Herdr collection/auth/D1/rendering, cloud-cache/deployment, npm/App install or
+  physical Mac/Tailscale verification. Agent1.2 development/onboarding1.0 remains unchanged.
+
+## 2026-10-30 23:45 +0800 - P4 actual authenticated page green; lifecycle boundaries remain WIP
+
+- P3 base460b60d and all prior delivery artifacts remain unchanged. No commit/push.
+- crypto-first retains the actual Node HKDF info1026>1024 failure. The accepted fix hashes
+  complete AAD for info, retains transcript salt/full AEAD AAD; crypto-second2/2 includes
+  explicit legal AAD>1024 and direction/transcript/sequence refusals. Real network-fourth3/3
+  then transfers exact original page, applies passively with provider0, and later explicit
+  local native tool work succeeds. This does not claim the unique cause of every prior500.
+- Public local reverse-denial route produced an independent500-vs403 redfc4ae8b7;
+  minimal ClassifiedFailure HTTP propagation is green3/3 with trace/failure identity.
+  Actual helper/wrong-origin/challenge-replay/signing-wait revocation boundaries are green3/3.
+- Archived base Node writer and real Registry write barrier reproduce stale publish after
+  later withdrawal (red474244cc); current endpoint-only serial writer whole process4/4
+  greene6639a62. No physical Tailscale bind or installed-App claim.
+- New run-v2 separately binds tracked+new source/tests/fixtures/scripts (currently530 files)
+  before/after command/cwd/start/exit/log. Old196-path receipts retain their original scope.
+  Ready-only durable-pending recovery fixture first failed missing installation prerequisite;
+  that ENOENT is retained as fixture failure, not product red. Corrected owned setup is running.
+- Parent generation/publication/finite public quit path, broader races and complete gates/
+  stable source/Review are unfinished. No live Herdr collection/auth/D1/UI/App, cloud cache,
+  deployment or npm actions; P4 is the first page slice, P5-P6 remain unimplemented.
+
+## 2026-10-30 23:33 +0800 - P4 direction red/green; typed proof and ready-only implementation
+
+- Base460b60d remains P3's normally delivered commit; P3 receipts/old metadata corrections untouched.
+- Real entry-red599f0c45: paired Registry SQLite, two independent Ed25519/Node services,
+  two bound Bots and valid original resource page, only B-to-A grant and A.access(B) success,
+  provider0; B.sync.peer.authorize returned unknown_local_method.196 production paths
+  matched460b60d before/after. Archived test/raw log/exit remain in.sync-p4-authenticated-pull.
+- Minimal direction implementation is locally green3/3 whole process file. Typed helper
+  proof now has strict domain/schema/owner/time checks and Node pre/post authorization;
+  canonical Node/CryptoKit fixture security tests plus normal Swift runs are locally green.
+  First types closure-narrowing and Swift nested-#require fixture compile failures remain
+  honest intermediate editing failures. No full P4/network/Review/complete gate claim yet.
+- Adopted ready-only handle leases and serial endpoint writer/finite quit contract; network
+  page handler, lifecycle bridge and real negative/race integration are still in progress.
+  No P4 transport/CF cache/physical Tailscale proof, deployments, npm/App/PR actions claimed.
+
+## 2026-10-30 23:23 +0800 - P3 normally delivered; P4 authenticated-page contract and first real red setup
+
+- HEAD/own fork460b60d/treee3a552c delivered normally and independently verified;
+  p3-delivery-final SHAd0eccb99 binds the accepted30paths/47original artifacts and normal
+  commit/push hooks. Earlier metadata corrections remain readable; P3 is not reopened.
+- P4 first slice begins with current directional B-to-A authorization, restricted mutual
+  proof, ephemeral AEAD and one passive page through original apply. Contract precedes
+  production. Evidence directory.local/sync-p4-authenticated-pull; real paired Registry,
+  two owned services and valid Bot/page prerequisites are being prepared for first red.
+- No P4 product red/green/gates claimed yet. Long-term keys/envelopes, CF72h/fallback,
+  P5 UI/P6 physical-network acceptance remain future. No live auth/D1/UI/App change,
+  deployment, npm publication, PR or other-tree action; Agent source1.2/onboarding1.0 unchanged.
+
 ## 2026-10-30 22:59 +0800 - P3 metadata red/green; stable source, normal gates running
 
 - Fresh264cc9e/treeb40045 remains normally delivered; no old P2 evidence reopened.

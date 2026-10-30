@@ -92,6 +92,8 @@ export interface RuntimeHandle {
       | "receipts";
     readonly params: unknown;
     readonly trace: string;
+    /** Internal synchronization use-point check; never accepted from wire params. */
+    readonly guard?: () => void;
   }): Promise<unknown>;
   refreshTools(trace: string): Promise<void>;
   /** Atomic: the view at attachment plus every later commit, with nothing lost between. */

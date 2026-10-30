@@ -6,6 +6,9 @@ import { dirname, isAbsolute } from "node:path";
 const METHODS = new Set([
   "sync.identity",
   "sync.access",
+  "sync.peer.authorize",
+  "sync.proof",
+  "sync.endpoints.self",
   "status",
   "directory",
   "execute",

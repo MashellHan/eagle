@@ -1,6 +1,6 @@
 import { createInterface } from "node:readline";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
-import { pageSchema } from "../../../src/runtime/pi/syncProtocol.ts";
+import { pageSchema, resourceCarrierSchema } from "../../../src/runtime/pi/syncProtocol.ts";
 import { text, waitFor } from "../../support/pi.ts";
 import { openReplica } from "../../support/replica.ts";
 
@@ -14,6 +14,7 @@ const input = JSON.parse(line) as {
   page?: unknown;
   bundle?: unknown;
   secondBundle?: unknown;
+  installBeforeIntent?: boolean;
 };
 const replica = await openReplica(input.dir);
 // Blocking only in this owned child makes the durable commit/reply boundary exact.
@@ -64,6 +65,8 @@ if (input.mode === "root-resource-intent" || input.mode === "root-resource-queue
   const second = (await replica.command("import", { bundle: input.secondBundle })) as {
     head: string;
   };
+  if (input.installBeforeIntent)
+    await replica.history.installResources(resourceCarrierSchema.parse(input.bundle));
   const submit = (requestId: string, head: string) =>
     replica.sync.root(
       {

@@ -370,3 +370,25 @@ the remote await. Logs contain only bounded reason codes, never metadata bodies,
 endpoints, tokens, private keys or local socket paths. The endpoint returns its
 trace and failure id on classified failure. Authorization failure never becomes an
 offline directory fallback. No SDK submission is made by this route.
+
+
+P4 authenticated pull reuses runtime.sync.start/ok/fail for the actual exchange and private
+metadata calls, and core.sync.fail for ready-only/binding refusals. Each request carries the
+same trace across the dedicated HTTP handshake/page route; an innermost ClassifiedFailure
+keeps its failure identity through remote response and local HTTP propagation. Outer layers
+record propagation, not a second error origin. Local ready-binding I/O is storage_failed;
+missing directional authorization is auth_failed and network-unreachable remains distinct.
+Logs carry no proof payload/signature, keys, plaintext pages/resources, tokens or local socket
+paths. Listener bind failure uses listener_error/sync_bind_failed and does not prevent local
+chat startup. Parent OSLog records publication/withdrawal unconfirmed without metadata bodies.
+A quit reply/process exit is not proof of confirmed endpoint withdrawal; unknown stays unknown
+on a late callback. Owned CLI/TCP fixtures establish protocol behavior, not physical connectivity.
+Response-body stream I/O, including a truncated body after successful headers, retains
+sync_network_unreachable/internal and the original nested I/O cause (local HTTP503); it does
+not become auth_failed403. Size/JSON/crypto validation remains outside that I/O catch. Internal
+use-point guard failures keep their original cause with one runtime auth_failed origin; they
+are not storage failures. Remote failures accept the existing protocol FAILURE_ID grammar,
+including adapter classifier identities; B retains the only error origin and A propagates the
+same failure id as a warning with the shared trace and its own local Bot id.
+Positive endpoint reconfirmation uses the current trusted Node session,
+and a late Self reply after shutdown cannot claim renewed readiness/publication.

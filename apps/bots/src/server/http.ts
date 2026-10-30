@@ -1,12 +1,13 @@
 // The daemon's HTTP surface and its upgrade (docs/bots/PROTOCOL.md "HTTP endpoints"):
 // ready checks and the catalog, with the bearer token checked before anything else runs.
+
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import { DirectoryError } from "../core/BotDirectory.ts";
 import type { BotRegistry } from "../core/BotRegistry.ts";
 import type { ConversationService } from "../core/ConversationService.ts";
-import { deviceSyncInput } from "../core/DeviceSyncPort.ts";
+import { deviceSyncInput, type SyncApi, syncPullInput } from "../core/DeviceSyncPort.ts";
 import {
   BOT_SHAPES,
   BOT_TINTS,
@@ -33,6 +34,7 @@ const Events = {
 } as const;
 
 export type ServerOptions = {
+  readonly sync?: SyncApi;
   /** Host configuration identity, not a credential or authorization decision. */
   readonly deviceSocket?: string;
   readonly token: string;
@@ -431,6 +433,66 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       return;
     }
     try {
+      const pullMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/sync\/pull$/.exec(path);
+      if (
+        (path === "/v1/sync/status" && request.method === "GET") ||
+        (pullMatch !== null && request.method === "POST")
+      ) {
+        if (request.headers.origin !== undefined) {
+          json(response, 403, {
+            error: { kind: "auth_failed", message: "origin is not accepted" },
+          });
+          return;
+        }
+        if (options.sync === undefined) {
+          json(response, 409, {
+            error: { kind: "invalid_command", message: "device synchronization is not configured" },
+          });
+          return;
+        }
+        if (pullMatch === null) json(response, 200, options.sync.status());
+        else {
+          let body: unknown;
+          try {
+            body = await readBody(request);
+          } catch {
+            json(response, 400, {
+              error: { kind: "invalid_command", message: "invalid sync pull request" },
+            });
+            return;
+          }
+          const parsed = syncPullInput.safeParse(body);
+          if (!parsed.success) {
+            json(response, 400, {
+              error: { kind: "invalid_command", message: "invalid sync pull request" },
+            });
+            return;
+          }
+          const trace = `tr_http_${++sequence}`;
+          try {
+            json(
+              response,
+              200,
+              await options.sync.pull(pullMatch[1] as string, parsed.data, trace),
+            );
+          } catch (error) {
+            if (!(error instanceof ClassifiedFailure)) throw error;
+            const kind = error.failure.kind;
+            json(
+              response,
+              kind === "auth_failed"
+                ? 403
+                : kind === "unknown_bot"
+                  ? 404
+                  : kind === "invalid_command"
+                    ? 400
+                    : 503,
+              { error: { kind, message: error.message, failure: error.failure.id }, trace },
+            );
+          }
+        }
+        return;
+      }
       const syncMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/sync\/access$/.exec(path);
       if (syncMatch !== null && request.method === "POST") {
         if (request.headers.origin !== undefined) {

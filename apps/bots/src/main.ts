@@ -2,6 +2,7 @@
 // one token, one log, one registry and one server. Everything here is composition; the
 // behaviour lives in the modules it wires.
 
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
@@ -56,6 +57,8 @@ import {
 import { acquireLock, LockError } from "./server/singleton.ts";
 import { toServerEvent } from "./server/socket.ts";
 import { UsageStore } from "./server/usage.ts";
+import { SyncListener } from "./sync-listener.ts";
+import { AuthenticatedSync } from "./sync-pull.ts";
 import type { SearchClient } from "./tools/search/client.ts";
 import { createDeepSeekSearch } from "./tools/search/deepseek.ts";
 import { createTavilySearch } from "./tools/search/tavily.ts";
@@ -70,6 +73,7 @@ export type DaemonHandle = {
   readonly token: string;
   readonly daemon: Daemon;
   readonly registry: BotRegistry;
+  readonly sync: AuthenticatedSync | undefined;
   close(): Promise<void>;
 };
 
@@ -311,10 +315,12 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     gateway === undefined
       ? canonical.model
       : { provider: gateway.provider, modelId: gateway.model };
+  const deviceSync =
+    canonical.deviceSocket === undefined
+      ? undefined
+      : new SocketDeviceSyncPort(canonical.deviceSocket, log);
   const registry = new BotRegistry({
-    ...(canonical.deviceSocket === undefined
-      ? {}
-      : { deviceSync: new SocketDeviceSyncPort(canonical.deviceSocket, log) }),
+    ...(deviceSync === undefined ? {} : { deviceSync }),
     directory,
     openRuntime: (spec) => runtime.open(spec),
     readReplicaBinding: (spec) => runtime.readReplicaBinding(spec),
@@ -533,7 +539,23 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       });
     },
   };
+  const instance = `i_${randomUUID()}`;
+  const sync =
+    deviceSync === undefined
+      ? undefined
+      : new AuthenticatedSync({
+          registry,
+          device: deviceSync,
+          log,
+          deviceSocket: canonical.deviceSocket as string,
+          instance,
+        });
+  const syncListener =
+    sync === undefined || deviceSync === undefined
+      ? undefined
+      : new SyncListener(sync, deviceSync, canonical.syncPort, log);
   const daemon = await startServer({
+    ...(sync === undefined ? {} : { sync }),
     ...(canonical.deviceSocket === undefined ? {} : { deviceSocket: canonical.deviceSocket }),
     token,
     log,
@@ -543,7 +565,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     triggers: triggerApi,
     ingress,
     version: packageVersion(),
-    instance: `i_${process.pid}`,
+    instance,
     capabilities,
     port: canonical.port,
     gatewayProvider: () => gateway?.provider ?? "magpie",
@@ -566,6 +588,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     },
   });
   broadcast = daemon.broadcastCatalog;
+  syncListener?.start();
   const close = async (): Promise<void> => {
     // One absolute deadline for the whole shutdown: a stalled socket grace, handle close
     // or log flush must not add up past the configured budget.
@@ -579,11 +602,14 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       // Producers stop first, then admissions already in flight settle, and only then may
       // the registry close handles under them (TRIGGERS.md §3.6).
       producers.stop();
+      sync?.close();
+      const listenerClosed = syncListener?.close();
       await daemon.close();
       await service.drain();
       await registry.shutdown();
       await sink.close();
       await lock.close();
+      await listenerClosed;
     })();
     try {
       await Promise.race([stopped, deadline]);
@@ -591,7 +617,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       if (timer !== undefined) clearTimeout(timer);
     }
   };
-  return { config: canonical, port: daemon.port, token, daemon, registry, close };
+  return { config: canonical, port: daemon.port, token, daemon, registry, sync, close };
 };
 
 export const createProviderService = async (

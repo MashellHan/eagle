@@ -8,6 +8,8 @@ import type { Level } from "./log/log.ts";
 export type DaemonConfig = {
   /** Optional host-owned, version-1 private device port. No credentials. */
   readonly deviceSocket?: string;
+  /** Separate Self-only sync listener; absent disables listening, zero selects a port. */
+  readonly syncPort?: number;
   /** Canonical root: the catalog, the token, the logs and every bot directory. */
   readonly root: string;
   /** Loopback service port. */
@@ -74,7 +76,18 @@ export const readConfig = (input: ConfigInput = {}): DaemonConfig => {
       port = portNumber(value, DEFAULT_PORT);
     }
   }
+  const selectedSyncPort = argv.includes("--sync-port")
+    ? argv[argv.indexOf("--sync-port") + 1]
+    : env.BOTS_SYNC_PORT;
+  if (
+    (argv.includes("--sync-port") || selectedSyncPort !== undefined) &&
+    (selectedSyncPort === undefined ||
+      !/^\d+$/.test(selectedSyncPort) ||
+      Number(selectedSyncPort) > 65535)
+  )
+    throw new Error("--sync-port needs a port from0 to65535");
   return {
+    ...(selectedSyncPort === undefined ? {} : { syncPort: Number(selectedSyncPort) }),
     ...(env.BOTS_DEVICE_SOCKET === undefined ? {} : { deviceSocket: env.BOTS_DEVICE_SOCKET }),
     root,
     port,

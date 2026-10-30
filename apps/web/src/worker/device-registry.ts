@@ -472,7 +472,10 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
         version: 1,
         identity: syncIdentity(this.sessionDevice(sessionHash)),
       });
-    if ((path === "/sync/share" || path === "/sync/access") && post) {
+    if (
+      ["/sync/share", "/sync/access", "/sync/peer/authorize"].includes(path) &&
+      post
+    ) {
       const input =
         path === "/sync/share"
           ? SyncShare.parse(await deviceBody(request))
@@ -508,13 +511,16 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
             );
             return { enabled: true };
           }
+          const serving = path === "/sync/peer/authorize";
+          const grantor = serving ? localIdentity : peerIdentity;
+          const reader = serving ? peerIdentity : localIdentity;
           const grant = this.one<{ binding: string }>(
             "SELECT binding FROM sync_grants WHERE grantingDeviceId=? AND sharedBotId=? AND peerDeviceId=?",
-            peer.deviceId,
+            grantor.deviceId,
             input.sharedBotId,
-            current.deviceId,
+            reader.deviceId,
           );
-          if (grant?.binding !== JSON.stringify([peerIdentity, localIdentity]))
+          if (grant?.binding !== JSON.stringify([grantor, reader]))
             throw new DeviceHttpError(403, "sync_not_shared");
           const endpoints = this.one<{
             binding: string;

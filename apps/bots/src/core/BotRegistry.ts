@@ -144,7 +144,138 @@ const assertTaskId = (taskId: string): void => {
   );
 };
 
+export type ReadyReplica = {
+  readonly botId: string;
+  readonly sharedBotId: string;
+  check(): Promise<void>;
+  command(method: "pull" | "apply", params: unknown, guard?: () => void): Promise<unknown>;
+};
+
 export class BotRegistry {
+  /** A sync request may lease an existing healthy handle, never open or recover one. */
+  async readyReplica(botId: string, trace: string, uniqueShared?: string): Promise<ReadyReplica> {
+    const first = await this.#syncLease(botId, trace, uniqueShared);
+    const use = (method?: "pull" | "apply", params?: unknown, guard?: () => void) =>
+      this.#syncLease(botId, trace, uniqueShared, first, method, params, guard);
+    return {
+      botId,
+      sharedBotId: first.sharedBotId,
+      check: async () => {
+        await use();
+      },
+      command: async (method, params, guard) => (await use(method, params, guard)).result,
+    };
+  }
+
+  async readySharedReplica(sharedBotId: string, trace: string): Promise<ReadyReplica> {
+    const matches = await this.#directorySerial(() => this.#syncAliases(sharedBotId)).catch(
+      (error) => this.#syncStorageFailure(error, trace),
+    );
+    if (matches.length !== 1)
+      throw this.#syncRefused(trace, undefined, "shared Bot binding is absent or ambiguous");
+    return this.readyReplica(matches[0] as string, trace, sharedBotId);
+  }
+
+  async #syncAliases(sharedBotId: string): Promise<string[]> {
+    const matches: string[] = [];
+    for (const [botId, entry] of this.#entries) {
+      if (entry.deleted) continue;
+      const binding = await this.#options.readReplicaBinding?.({
+        id: botId,
+        dir: this.#options.directory.botDir(botId),
+      });
+      if (binding?.sharedBotId === sharedBotId) matches.push(botId);
+    }
+    return matches;
+  }
+
+  #syncRefused(trace: string, botId: string | undefined, message: string): ClassifiedFailure {
+    const failure = newFailure("invalid_command");
+    this.#options.log.emit("error", "core", Events.syncFail, {
+      trace,
+      ...(botId === undefined ? {} : { botId }),
+      failure,
+      origin: true,
+    });
+    return new ClassifiedFailure(failure, "not_admitted", message);
+  }
+
+  #syncStorageFailure(error: unknown, trace: string, botId?: string): never {
+    if (error instanceof ClassifiedFailure) throw error;
+    const failure = newFailure("storage_failed");
+    this.#options.log.emit("error", "core", Events.syncFail, {
+      trace,
+      ...(botId === undefined ? {} : { botId }),
+      failure,
+      origin: true,
+    });
+    throw new ClassifiedFailure(failure, "not_admitted", "sync binding could not be read", {
+      cause: error,
+    });
+  }
+
+  #syncLease(
+    botId: string,
+    trace: string,
+    uniqueShared?: string,
+    expected?: { entry: Entry; handle: RuntimeHandle; sharedBotId: string },
+    method?: "pull" | "apply",
+    params?: unknown,
+    guard?: () => void,
+  ): Promise<{ entry: Entry; handle: RuntimeHandle; sharedBotId: string; result: unknown }> {
+    return this.#directorySerial(async () => {
+      const entry = this.#entry(botId, trace);
+      const handle = entry.handle;
+      const healthy = () =>
+        this.#entries.get(botId) === entry &&
+        entry.handle === handle &&
+        handle !== undefined &&
+        handle.replica !== undefined &&
+        !entry.deleted &&
+        !entry.closing &&
+        !entry.deleting &&
+        entry.settling === undefined &&
+        ["idle", "running"].includes(entry.state) &&
+        entry.unavailable === undefined;
+      if (!healthy() || (expected && (expected.entry !== entry || expected.handle !== handle)))
+        throw this.#syncRefused(
+          trace,
+          botId,
+          "sync requires the same ready local Bot; recover it locally first",
+        );
+      this.#touch(entry);
+      try {
+        const binding = await this.#options.readReplicaBinding?.({
+          id: botId,
+          dir: this.#options.directory.botDir(botId),
+        });
+        if (
+          !binding ||
+          (expected && expected.sharedBotId !== binding.sharedBotId) ||
+          (uniqueShared !== undefined &&
+            (uniqueShared !== binding.sharedBotId ||
+              (await this.#syncAliases(uniqueShared)).length !== 1)) ||
+          (await this.#options.directory.isDeleted(binding.sharedBotId)) ||
+          !healthy()
+        )
+          throw this.#syncRefused(trace, botId, "sync Bot identity or lifecycle changed");
+        const result =
+          method === undefined
+            ? undefined
+            : await (handle as RuntimeHandle).replica?.({
+                method,
+                params,
+                trace,
+                ...(guard === undefined ? {} : { guard }),
+              });
+        if (!healthy()) throw this.#syncRefused(trace, botId, "sync Bot lifecycle changed");
+        return { entry, handle: handle as RuntimeHandle, sharedBotId: binding.sharedBotId, result };
+      } finally {
+        this.release(botId);
+      }
+    }).catch((error) => this.#syncStorageFailure(error, trace, botId));
+  }
+
   async syncAccess(
     botId: string,
     input: Omit<Parameters<DeviceSyncPort["access"]>[0], "sharedBotId">,

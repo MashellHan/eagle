@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DeviceId } from "./devices.ts";
+import { canonicalDeviceJSON, DeviceId } from "./devices.ts";
 
 export const SyncIdentity = z.strictObject({
   deviceId: DeviceId,
@@ -20,7 +20,13 @@ export const SyncShare = SyncAccess.omit({ purpose: true }).extend({
   enabled: z.boolean(),
 });
 export const SyncPort = z.number().int().min(1).max(65535).nullable();
-export const SyncPublish = z.strictObject({ syncPort: SyncPort });
+export const SyncPublish = z.strictObject({
+  syncPort: SyncPort,
+  expectedSelfDigest: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
+});
 export const TailscaleAddress = z.union([z.ipv4(), z.ipv6()]).refine((ip) => {
   if (ip.includes(":")) return ip.toLowerCase().startsWith("fd7a:115c:a1e0:");
   const [a, b] = ip.split(".").map(Number);
@@ -47,3 +53,41 @@ export const SyncAccessResult = z.strictObject({
   peer: SyncIdentity,
   endpoints: SyncEndpoints.nullable(),
 });
+
+const syncBytes32 = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+export const SyncSelf = z.strictObject({
+  version: z.literal(1),
+  addresses: z.array(TailscaleAddress).max(8),
+  digest: z.string().regex(/^[a-f0-9]{64}$/),
+});
+export const SyncProofRequest = z
+  .strictObject({
+    version: z.literal(1),
+    registryOrigin: z.url().refine((value) => new URL(value).origin === value),
+    role: z.enum(["reader", "server"]),
+    purpose: z.literal("replica.read"),
+    sharedBotId: DeviceId,
+    reader: SyncIdentity,
+    server: SyncIdentity,
+    readerNonce: syncBytes32,
+    serverNonce: syncBytes32,
+    generation: syncBytes32,
+    sessionId: syncBytes32,
+    expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    readerEphemeral: syncBytes32,
+    serverEphemeral: syncBytes32,
+  })
+  .refine(
+    (value) =>
+      value.reader.deviceId !== value.server.deviceId &&
+      value.reader.groupId !== null &&
+      value.reader.groupId === value.server.groupId,
+  );
+
+/** Fixed domain and canonical typed metadata only; never caller-supplied signing bytes. */
+export function syncProofPayload(input: unknown): string {
+  return (
+    "eagle-bots-sync-proof-v1\n" +
+    canonicalDeviceJSON(SyncProofRequest.parse(input))
+  );
+}

@@ -740,6 +740,7 @@ sides.
 | `status.server.json`, `submission.server.json`, `submission.connection.server.json` | run state and the connection-scoped duplicate reply |
 | `bots.server.json`, `error.server.json`, `error-rejected.server.json`, `version-mismatch.server.json` | catalog, runtime failure, definite rejection, exempt handshake failure |
 | `send.client.json`, `send.resources.client.json`, `abort.client.json`, `recover.client.json`, `resync.client.json` | commands |
+| `sync-proof.http.json` | fixed-domain typed mutual proof and shared Node/CryptoKit signing bytes, validated by the independent Bots codec |
 | `sync-access.http.json` | version1 sync access request/response metadata, checked by the independent Bot and Registry codecs |
 | `ping.client.json`, `pong.server.json` | liveness |
 | `entities.json` | `BotSummary`, `Message` (user, assistant with a tool call, tool), `InboxItem` samples |
@@ -996,3 +997,82 @@ the Bots-owned codec. Classified sync refusals return `{error:{kind,message,fail
 403 authorization, 404 deleted/unknown Bot, 400 malformed/unbound/changed scope,
 503 Registry/private-service unavailable or invalid metadata. A completed cross-process
 lookup is rechecked against the current local binding/tombstone before a 200 response.
+
+
+## P4 first authenticated one-page pull
+
+This additive local slice uses the existing daemon bearer, rejects any Origin header,
+keeps management HTTP on loopback and leaves default queues unchanged:
+
+- GET /v1/sync/status returns version1, instance, pid, device-socket binding digest,
+  ready, actualPort|null and selfDigest|null. Readiness certifies the current Self
+  socket set is bound, not publication, authentication or physical connectivity.
+- POST /v1/bots/:id/sync/pull accepts only {peerDeviceId,source?,after,limit?}.
+  source is {replicaId,epoch}, after is nonnegative, limit defaults128 and is1...128.
+  Shared identity comes from the actual local binding. URLs, IPs, tokens and group
+  claims are not accepted. The response is {page,applied}, preserving the original page.
+  Failure uses the existing {error:{kind,message,failure},trace} shape/status mapping.
+
+A requires its current access(B), while B independently requires B's current grant to A
+through read-only sync.peer.authorize. A reciprocal grant is not required. Registry and
+private-service failures refuse the exchange; no local directory fallback authorizes it.
+Only the new private authorize result adds configured registryOrigin; P3 codecs are unchanged.
+
+The dedicated listener exposes only POST /v1/sync/challenge and /v1/sync/page. Challenge
+input is strict version1/sharedBotId/readerDeviceId/readerNonce/readerEphemeral. Both endpoints
+reject Origin and all management/run routes. A challenge is consumed once, expires within60s,
+and belongs to one daemon generation; at most128 unexpired challenges are held in memory.
+Challenge JSON is capped8192 bytes. The private DeviceChannel remains512KiB and transports
+only typed identity/proof/Self metadata, never history pages.
+
+Both helper signatures use eagle-bots-sync-proof-v1 plus canonical typed JSON. The proof
+contains version1, registryOrigin, role(reader/server), purpose(replica.read), sharedBotId,
+reader/server current identity(publicKey/deviceId/groupId/membershipEpoch/credentialVersion),
+readerNonce/serverNonce/generation/sessionId, expiresAt and both32-byte X25519 public keys.
+Nonces and keys are canonical base64url. The helper validates its configured origin and own
+identity, exact fields and <=60s expiry, then constructs signing bytes itself. No payload or
+digest signing entry is exposed. Node checks current directional access before and after the
+helper wait; peers verify signatures using current Registry keys and recheck identity/grant
+across page preparation/decryption awaits. No identity snapshot is a reusable bearer token.
+Expiry is rechecked after the final asynchronous authorization/binding checks and at the
+actual challenge/request/page/apply use point, including ready-directory and replica-command
+queue waits. A proof that entered within its lifetime cannot be used after that lifetime.
+The internal use guard also checks the original exchange generation/closed state after those
+waits. It is not a wire parameter or SDK extension. Once apply is admitted at receive within
+the lifetime, the existing atomic apply/drain completion remains; no later cancellation is added.
+
+X25519 feeds SHA256 HKDF with SHA256(full server-role canonical proof transcript) as salt
+and SHA256(full AAD) as info. AAD is the full domain+canonical proof, direction and sequence0;
+it is never truncated. AES256-GCM has independent reader/server keys, random12-byte nonce,
+16-byte tag and strict sequence0. Encrypted frame cap is ceil(8MiB*4/3)+16384 bytes; decrypted
+page remains <=8MiB and <=128 events, with all prior source/epoch/seq/dependency checks.
+Ephemeral session keys are not cache/resource keys. One-page pull does not implement CF
+fallback, durable encryption envelopes, automatic switching or72h caching.
+
+Both sides require an existing healthy held runtime. Sync uses short serialized leases
+and the same handle identity, never BotRegistry.replica's touch/open/recover behavior.
+Cold, unavailable, closing, deleted or rebound instances refuse. Explicit local recovery
+retains ownership of pending work. No lease spans the remote exchange; binding/tombstone
+and instance are checked again before local page reads/apply. B rejects multiple aliases
+for the same sharedBotId. Passive apply never submits or resumes local/foreign work.
+
+DaemonConfig.syncPort, --sync-port and BOTS_SYNC_PORT are optional, disabled by default;
+zero selects an OS port. sync.endpoints.self returns bounded actual Self addresses plus
+SHA256(JSON.stringify(sorted unique addresses)). Only Tailscale IPv4/IPv6 ranges are accepted.
+The listener binds the whole current set to the same actual port or remains unready; no
+wildcard/LAN listener, partial publication or forced Tailscale installation/login is added.
+The trusted parent alone publishes {syncPort,expectedSelfDigest?}, or null to withdraw.
+Node serializes only these writers in management receive order through discovery and the
+Registry write, including failures. Digest mismatch withdraws stale endpoints and refuses.
+App status reads verify owned pid/instance/socket binding; stale generations cannot dispatch.
+Ready positive publication is reconfirmed through the current Node session on each existing
+polling round; only unchanged withdrawal is deduplicated. Identity changes never relax Registry
+matching or digest checks. Poll/request/retry timing does not promise a fixed success deadline.
+Shutdown invalidates generation/access immediately and begins the original local HTTP/drain/
+registry cleanup while unfinished private Self discovery drains within the unchanged total budget.
+Late Self results cannot make the closed listener ready. Header/body transport I/O uses the
+existing network/internal failure mapping; size, JSON and crypto refusals remain protocol failures.
+Normal public application quit awaits bounded withdrawal and close, records confirmed or
+unknown, then replies exactly once. Unexpected owned exit invalidates its generation and
+withdraws; adopted processes use the previously verified OS process-start identity if health
+becomes unavailable. Unconfirmed withdrawal never blocks exit indefinitely or claims success.

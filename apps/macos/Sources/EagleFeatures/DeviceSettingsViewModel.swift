@@ -161,6 +161,14 @@ private struct DeviceServiceState: Decodable {
     }
   }
 
+  /// Trusted parent metadata only; Bot private sockets cannot publish endpoint candidates.
+  public func publishSyncEndpoints(port: Int?, expectedSelfDigest: String?) async throws {
+    guard enabled, localReady, !stopping else { throw DeviceHostError.unavailable }
+    var params: [String: DeviceJSON] = ["syncPort": port.map { .number(Double($0)) } ?? .null]
+    if let expectedSelfDigest { params["expectedSelfDigest"] = .string(expectedSelfDigest) }
+    _ = try await control.call("sync.endpoints.publish", params: .object(params))
+  }
+
   public func startIfNeeded() async {
     await start(retrying: false)
   }

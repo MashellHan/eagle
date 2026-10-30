@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { TailscaleAddress } from "../contracts/src/device-sync.ts";
@@ -32,10 +33,23 @@ async function probe(binary: string): Promise<string> {
 }
 
 /** Only this device's Tailscale Self addresses; never its peers or LAN interfaces. */
-export async function syncCandidates(
-  port: number | null,
-): Promise<{ address: string; port: number }[]> {
-  if (port === null) return [];
+export async function syncSelf(): Promise<{
+  version: 1;
+  addresses: string[];
+  digest: string;
+}> {
+  const result = (addresses: string[]) => {
+    addresses = [
+      ...new Set(addresses.map((address) => address.toLowerCase())),
+    ].sort();
+    return {
+      version: 1 as const,
+      addresses,
+      digest: createHash("sha256")
+        .update(JSON.stringify(addresses))
+        .digest("hex"),
+    };
+  };
   let output: string;
   try {
     output = await probe("tailscale");
@@ -47,14 +61,22 @@ export async function syncCandidates(
         "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
       );
     } catch (fallback) {
-      if ((fallback as NodeJS.ErrnoException).code === "ENOENT") return [];
+      if ((fallback as NodeJS.ErrnoException).code === "ENOENT")
+        return result([]);
       throw new Error("tailscale_discovery_failed", { cause: fallback });
     }
   }
   const parsed = status.parse(JSON.parse(output));
-  if (parsed.BackendState !== "Running") return [];
+  if (parsed.BackendState !== "Running") return result([]);
   const self = z
     .object({ TailscaleIPs: z.array(TailscaleAddress).max(8) })
     .parse(parsed.Self);
-  return [...new Set(self.TailscaleIPs)].map((address) => ({ address, port }));
+  return result(self.TailscaleIPs);
+}
+
+export async function syncCandidates(
+  port: number | null,
+): Promise<{ address: string; port: number }[]> {
+  if (port === null) return [];
+  return (await syncSelf()).addresses.map((address) => ({ address, port }));
 }

@@ -1,6 +1,6 @@
 # 多端 Bot 同步架构
 
-2026-10-30 · 整体网络/云端架构仍为提案；本地P0-P2已交付，P3元数据基础片进行中。
+2026-10-30 · 整体网络/云端架构仍为提案；本地P0-P2及P3元数据基础片已交付，P4首个认证页切片进行中。
 
 **历史长期保存在各设备，Tailscale 直连优先、Cloudflare 中转兜底；共享对话保留并发分支。**
 同一个 Bot 在 A、B 各有独立副本与运行时；A 离线或云端不可达时，
@@ -150,7 +150,7 @@ Worker/DO 承接接入与中转，R2 仅作最多 3 天的临时存储；不采�
 [orca-stream]: https://github.com/stablyai/orca/blob/6b937c7e5f5a8d2cfcb755c6708ac38a632b3012/src/shared/structured-agent-session-coalescer.ts#L8
 [orca-skills]: https://github.com/stablyai/orca/blob/6b937c7e5f5a8d2cfcb755c6708ac38a632b3012/src/shared/skill-package-manifest.ts#L14
 
-## P3 first metadata foundation (local candidate)
+## P3 first metadata foundation (delivered460b60d)
 
 The online Registry reuses registered sessions for version1 identity, directional
 sharedBot grants and endpoint metadata; it never grants sync from the local directory
@@ -159,4 +159,72 @@ or transport fallback. Trusted parent publication takes a bound syncPort, discov
 Tailscale Self IPs and can withdraw them; candidate metadata is not reachability.
 The Bot-owned read port and `/v1/bots/:id/sync/access` use the actual local binding,
 then recheck binding/tombstone after the remote request. See DEVICES/PROTOCOL for the
-exact contract and PLAN/CHECKPOINTS for actual evidence. P4-P6 remain planned.
+exact contract and PLAN/CHECKPOINTS for actual evidence. P4 transport begins below; P5/P6 remain planned.
+
+## P4 first authenticated one-page pull (implementation contract)
+
+This slice starts at460b60d. A explicitly requests one page from B; B checks its own
+B-to-A grant using readonly sync.peer.authorize. A uses existing access(B). Both decisions
+use current Registry sessions, keys, nonempty shared group, epochs and credentials;
+no directory fallback, reverse grant or owner-online execution prerequisite exists.
+Both sides reauthorize after signing/page-preparation awaits. Binding/tombstone checks
+fence B before page read/send and A before applying; ambiguous local sharedBot aliases
+are refused. Unauthenticated handshakes never open/touch the SDK.
+
+The existing Bots startDaemon owns a separate listener, configured by optional syncPort,
+--sync-port/BOTS_SYNC_PORT (absent=disabled;0=kernel-selected). Management HTTP stays
+127.0.0.1. Readonly sync.endpoints.self returns bounded actual Tailscale Self addresses
+and canonical-set digest. Every address must bind the same actual port before ready;
+any failure closes the partial set. No wildcard, loopback or ordinary LAN listener is
+accepted in production. Missing/logged-out Self gives no listener; real discovery errors
+remain failures. Losing Self withdraws readiness/publication without stopping local chat.
+
+Local bearer/no-Origin GET /v1/sync/status exposes only instance/pid/device-port binding,
+ready/actualPort/SelfDigest. Existing App supervisor ownership checks and narrow
+DeviceSettingsViewModel-to-DeviceControl/XPC/Host management bridge publish the ready
+port; stopping/invalidating publishes null. Optional expectedSelfDigest is compared to
+new Node discovery before publication and cannot select caller IPs. Standalone daemons
+without a trusted parent cannot claim publication. Device private frames remain512KiB.
+Endpoint publish/withdraw alone are serialized in Node management receive order across
+Self discovery/digest checks/Registry writes; failures release that chain. Digest is
+not a write-order fence. App drops undispatched stale daemon generations. Normal quit,
+including the public recorded-daemon termination path, finitely waits for withdrawal
+and close; timeout/unconfirmed remains unknown, without indefinitely blocking local exit.
+
+Local bearer/no-Origin POST /v1/bots/:id/sync/pull strictly accepts
+{peerDeviceId,source?,after,limit?}, derives sharedBotId from real binding and resolves
+current authorized endpoints. The separate remote listener exposes only challenge and
+one-page pull, never bind/run/tasks/management. Plaintext page remains8MiB/128events;
+ciphertext/base64 framing has its own explicit size cap, with no silent truncation.
+The decoded page uses existing replica.apply and remains passive.
+Both A and B are ready-only: only a healthy, already-held runtime handle may service
+sync. Cold/unavailable/closing Bots refuse without touch/open/recover/resume. A short
+existing serial/lease boundary pins the exact handle for each local page operation;
+no lease spans network/signing awaits. The same instance, binding and tombstone are
+rechecked before page read/send/apply. Ordinary replica/open/recover behavior is unchanged;
+a user must explicitly recover a cold local Bot before synchronization can succeed.
+
+Mutual proof is a new strictly typed helper request, not registration/approval payload
+signing. Domain eagle-bots-sync-proof-v1 binds version, Registry origin, reader/server
+role, replica.read, sharedBotId, both current full identities, both32-byte nonces,
+challenge/session generation, expiry<=60s and both X25519 ephemeral public keys.
+Helper builds signing bytes internally, validates own identity/schema/size/time, and
+replies only to the independently matched pending kind/requestId. Original signer and
+32-pending Host bound remain intact. One-use challenges and process generation fence
+replay, expiry and old callbacks. Standard Ed25519/X25519/HKDF/AES-GCM derive separate
+direction keys; sequence and transcript-bound AAD protect both boxes. Ephemeral session
+keys are never advertised as resource/cache keys.
+Expiry and original exchange generation/closed checks reach the actual pull/page/receive use
+point after directory, binding, ReplicaSync serial and public Harness.commit awaits. A command
+admitted within the lifetime keeps its original atomic apply completion. Ready positive endpoint
+publication is reconfirmed through the current Node session on existing polling rounds; unchanged
+withdrawal remains deduplicated. Unfinished private Self discovery cannot prevent the original
+local shutdown cleanup from starting under its unchanged total deadline. Body transport I/O
+retains network attribution/cause; protocol validation stays separate.
+
+Failures retain process trace/failure attribution and one innermost error origin;
+network reachability and authorization failures remain distinguishable. Logs contain
+no keys, plaintext pages, proof payloads or private paths. Real owned Registry/Node/socket
+protocol evidence is separate from actual Tailscale kernel/physical two-Mac acceptance.
+Long-lived DEK/wrapping descriptors/envelopes/rotation and CF first-cache+72h deletion,
+fallback/switchback are later slices. No deployment, release, App replacement or P5 UI.

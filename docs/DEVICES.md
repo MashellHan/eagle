@@ -345,7 +345,7 @@ with the same binding. Pins survive service restart and never store tokens or
 operation parameter plaintext.
 
 
-## P3 synchronization metadata slice (in progress)
+## P3 synchronization metadata slice (source delivered460b60d)
 
 The first local slice reuses the actual registered device session, Registry SQLite
 current membership/epoch/credential state and private helper/socket. A Bots-owned
@@ -392,9 +392,43 @@ remain trusted-parent-only, including endpoint withdrawal. Host permits exactly 
 its pending-32 bound and unknown-method refusal remain. Swift registration signer is unchanged:
 existing restricted registration obtains the service bearer; direct proof/E2EE is P4.
 
-This P3 implementation is a local unpublished source candidate on Agent1.2.0.
+This P3 source was delivered normally as460b60d; Agent1.2.0 remains unpublished.
 Onboarding remains pinned to verified published1.0.0; no package/release configuration
 or lockfile changes, npm publication, deployment or installed App replacement occur.
 A future actual Agent release must choose its version and pass publication/onboarding
 requirements separately. Local CLI fixtures prove discovery parsing and process wiring,
 not installed/physical Tailscale reachability or availability in the published Agent.
+
+
+### P4 restricted synchronization proof and parent lifecycle
+
+Agent1.2.0 remains an unpublished development source candidate; onboarding still uses
+published1.0.0. This source slice does not install an App or deploy Registry changes.
+P3 identity/access and registration/approval signatures retain their existing formats.
+The private Bot socket adds read-only sync.peer.authorize, sync.endpoints.self and sync.proof.
+Only the new authorize result includes the canonical locally configured Registry origin.
+The Swift helper separately accepts a strict typed sync_proof request and returns a matched
+sync_signature reply; registration signatures and approvals cannot satisfy that pending kind.
+The fixed eagle-bots-sync-proof-v1 domain binds both current peers, purpose, sharedBot, roles,
+nonces, generation, expiry<=60s and both ephemeral keys. Helper-owned identity/origin/time
+checks construct the exact canonical signing text; no arbitrary signing API or vault change.
+Private512KiB traffic contains metadata only. Dedicated encrypted page traffic is owned by
+Bots and never crosses this channel; Registry receives no conversation/resource plaintext.
+
+Trusted parent sync.endpoints.publish accepts only a port/null and optional expectedSelfDigest.
+Node rediscovers bounded Tailscale Self addresses, never accepts caller addresses/identity, and
+orders endpoint writes through Registry completion so a slow old publish cannot undo a later
+withdrawal. Failed writers release the chain. Bots sockets still cannot publish/share/revoke.
+The App reads authenticated owned daemon status, fences instance/pid/socket binding and local
+generation, and publishes only ready actual-port/digest metadata. Current ready status
+reconfirms positive publication on each existing polling round through the
+current Node session, so pairing/epoch/credential changes cannot leave a permanent port/digest
+cache hit. Withdrawal remains deduplicated. Polling plus request/failure retry time is not a hard
+five-second success guarantee. Stopping, readiness loss and
+unexpected owned exit withdraw; late callbacks cannot dispatch for a newer generation.
+EagleApplicationDelegate keeps launch/activation/last-window behavior, but normal quit returns
+terminateLater, awaits finite withdrawal/close and replies once. Three seconds without a
+withdrawal result records unknown even when the underlying call ignores cancellation; it does
+not wait indefinitely or claim cloud success. The synchronous WillTerminate hook is fallback.
+Verified adopted processes retain OS uid/pid/start-time identity, preventing arbitrary-PID kills
+when health disappears. None of this is installed-App or physical Tailscale acceptance evidence.

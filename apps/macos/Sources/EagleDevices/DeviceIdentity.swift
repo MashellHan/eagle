@@ -66,6 +66,14 @@ public struct DeviceIdentity: Sendable {
     return try key.signature(for: Data(payload.utf8)).base64URL
   }
 
+  public func signSyncProof(
+    _ request: SyncProofRequest, serviceOrigin: String, now: Int64
+  ) throws -> String {
+    let payload = try request.signingPayload(
+      serviceOrigin: serviceOrigin, deviceId: deviceId, publicKey: publicKey, now: now)
+    return try key.signature(for: Data(payload.utf8)).base64URL
+  }
+
   /// Called only after the trusted App confirms this exact immutable request.
   public func approve(_ request: DeviceApprovalRequest, now: Int64) throws -> DeviceApproval {
     try request.validate(sourceDeviceId: deviceId, now: now)
