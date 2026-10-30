@@ -828,3 +828,16 @@ App and is recorded separately. Identity/configuration hashes and both history
 files were preserved; installed local execution and physical A-to-B execution
 with an original-ID query passed. This demonstrates the candidate upgrade path;
 it does not claim knowledge of Apple's private cache key or distribution signing.
+
+The subsequent scope review found the website still exposing the device routes
+and provisioning duplicate DO bindings after the product had moved to its own
+Worker. The redundant website changes were restored to main, and the same API
+and process tests now use the actual standalone entry. A website isolation
+regression first returned 503 instead of 404; all 67 affected cases then passed.
+
+Root is also validating a combined startup simplification: use the existing
+background `LSRegisterURL` API instead of a registrar subprocess, give new helpers
+a fixed filename and omit the duplicate build environment marker. Versioned
+service names, old-bundle path parsing, update preparation and exact peer signing
+requirements remain. The prior failed trials are retained above; local packaging
+tests alone do not establish that the simplified real upgrades work.

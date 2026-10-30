@@ -90,7 +90,7 @@ test("candidate bundle fixes isolated host configuration and SMAppService helper
     const plist = launchConfiguration(f.app);
     assert.match(
       plist,
-      /<key>BundleProgram<\/key>\s*<string>Contents\/Library\/LaunchServices\/EagleDeviceHelper\.\d+<\/string>/,
+      /<key>BundleProgram<\/key>\s*<string>Contents\/Library\/LaunchServices\/EagleDeviceHelper<\/string>/,
     );
     assert.match(
       plist,
@@ -101,10 +101,7 @@ test("candidate bundle fixes isolated host configuration and SMAppService helper
     const helper = plist.match(
       /<key>BundleProgram<\/key>\s*<string>([^<]+)<\/string>/,
     )?.[1];
-    assert.equal(
-      helper,
-      `Contents/Library/LaunchServices/EagleDeviceHelper.${build}`,
-    );
+    assert.equal(helper, "Contents/Library/LaunchServices/EagleDeviceHelper");
     assert.equal(existsSync(join(f.app, helper as string)), true);
     assert.equal(
       readFileSync(
@@ -173,12 +170,7 @@ test("rebuilding a candidate changes its build and launch configuration while ke
     const first = readVersion("CFBundleVersion");
     const firstHost = hostConfig(f.app);
     const firstLaunch = readLaunchConfiguration();
-    assert.match(
-      firstLaunch,
-      new RegExp(
-        `<key>EAGLE_DEVICE_BUNDLE_BUILD</key>\\s*<string>${first}</string>`,
-      ),
-    );
+    assert.doesNotMatch(firstLaunch, /EAGLE_DEVICE_BUNDLE_BUILD/);
     assert.equal(readVersion("CFBundleShortVersionString"), version);
     rmSync(f.app, { recursive: true });
     assert.equal(prepare(f).status, 0);
@@ -195,12 +187,11 @@ test("rebuilding a candidate changes its build and launch configuration while ke
       ),
     );
     assert.notEqual(readLaunchConfiguration(), firstLaunch);
-    assert.match(
-      readLaunchConfiguration(),
-      new RegExp(
-        `<key>EAGLE_DEVICE_BUNDLE_BUILD</key>\\s*<string>${readVersion("CFBundleVersion")}</string>`,
-      ),
-    );
+    const program = (launch: string) =>
+      launch.match(
+        /<key>BundleProgram<\/key>\s*<string>([^<]+)<\/string>/,
+      )?.[1];
+    assert.equal(program(readLaunchConfiguration()), program(firstLaunch));
     assert.equal(readVersion("CFBundleShortVersionString"), version);
   } finally {
     rmSync(f.root, { recursive: true, force: true });

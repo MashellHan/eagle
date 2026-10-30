@@ -54,8 +54,7 @@ extension DeviceControl {
     if registration == nil {
       registration = DeviceServiceRegistration(
         service: SystemDeviceBackgroundService(
-          plistName: configuration.launchAgentPlist, bundle: bundle,
-          isCandidate: configuration.profile == "device-candidate"),
+          plistName: configuration.launchAgentPlist, bundle: bundle),
         defaults: defaults, profile: configuration.profile)
     }
     guard let registration else { throw DeviceHostError.unavailable }
@@ -100,8 +99,7 @@ extension DeviceControl {
     if registration == nil {
       registration = DeviceServiceRegistration(
         service: SystemDeviceBackgroundService(
-          plistName: configuration.launchAgentPlist, bundle: bundle,
-          isCandidate: configuration.profile == "device-candidate"), defaults: defaults,
+          plistName: configuration.launchAgentPlist, bundle: bundle), defaults: defaults,
         profile: configuration.profile)
     }
     guard let registration else { throw DeviceHostError.unavailable }

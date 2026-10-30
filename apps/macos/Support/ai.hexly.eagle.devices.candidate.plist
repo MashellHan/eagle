@@ -6,11 +6,6 @@
   <string>ai.hexly.eagle.devices.candidate</string>
   <key>BundleProgram</key>
   <string>Contents/Library/LaunchServices/EagleDeviceHelper</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>EAGLE_DEVICE_BUNDLE_BUILD</key>
-    <string>build-version</string>
-  </dict>
   <key>MachServices</key>
   <dict>
     <key>ai.hexly.eagle.devices.candidate</key>

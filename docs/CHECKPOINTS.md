@@ -2444,3 +2444,25 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   changed in this follow-up and no live Herdr collection was invoked.
 - No new Worker deployment, D1 writes, Keychain access or credential resets.
   Next: normal push gates, update PR #109 and confirm its macOS CI SDK fix.
+
+## 2026-10-30 14:06 +0800 — PR scope cleanup
+
+- User requested a PR summary, removal of unnecessary changes, then comment
+  monitoring. At `cb55083`, both GitHub Check jobs passed, including the older
+  macOS SDK, native focus, strict formatting and coverage. No PR comments or
+  reviews had been posted at the scope review's last remote check.
+- The website's duplicated device entry/bindings/types were restored to current
+  `main`; the device DOs now use their standalone environment type. All original
+  device API/process cases run through the standalone entry/config, with only
+  its two DOs. The new website isolation assertion failed 503 versus 404 first;
+  all 67 affected API/process cases and typecheck then passed. Existing deployment
+  records target only `eagle-devices`; no cloud resources or D1 were changed.
+- Existing Astra lead/reviewer performed bounded read-only scope reviews. Root
+  removed the registrar subprocess and duplicate build marker, and restored a
+  fixed helper filename in new packages while retaining old-bundle path parsing.
+  Packaging regressions failed first; all 32 packaging/installer cases now pass.
+  The removed registrar's four tests apply only to that removed class.
+- The installed `2bea0d6` App still reported local readiness and cloud online at
+  14:06. No new UI implementation, credential writes or live Herdr collection.
+  Next hop: two complete signed upgrades proving the simplified startup, then
+  normal push gates and comment monitoring. Source cleanup is not installed proof.

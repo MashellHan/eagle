@@ -94,9 +94,7 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
     config.machServiceName = `${templateService}.${buildVersion}`;
     config.launchAgentPlist = `${config.machServiceName}.plist`;
   }
-  const helperRelative = `Contents/Library/LaunchServices/EagleDeviceHelper${
-    profile === "device-candidate" ? `.${buildVersion}` : ""
-  }`;
+  const helperRelative = "Contents/Library/LaunchServices/EagleDeviceHelper";
   const identifier =
     profile === "device-candidate"
       ? "ai.hexly.eagle.macos.device-candidate"
@@ -140,26 +138,6 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
     launchConfiguration = launchConfiguration.replaceAll(
       templateService,
       config.machServiceName,
-    );
-    const program = /(<key>BundleProgram<\/key>\s*)<string>[^<]*<\/string>/;
-    if (!program.test(launchConfiguration))
-      throw new Error(
-        "candidate launch configuration is missing its executable",
-      );
-    launchConfiguration = launchConfiguration.replace(
-      program,
-      `$1<string>${helperRelative}</string>`,
-    );
-    const marker =
-      /(<key>EAGLE_DEVICE_BUNDLE_BUILD<\/key>\s*)<string>[^<]*<\/string>/;
-    if (!marker.test(launchConfiguration))
-      throw new Error(
-        "candidate launch configuration is missing its build marker",
-      );
-    // BTM compares the launch configuration separately from the enclosing bundle version.
-    launchConfiguration = launchConfiguration.replace(
-      marker,
-      `$1<string>${xml(buildVersion)}</string>`,
     );
   }
   writeFileSync(

@@ -71,17 +71,14 @@ Bot 详情中的设备摘要继续展示策略。
 旧候选没有维护入口时，不保证跨服务名称自动迁移；无法确认旧服务停止就安全拒绝。
 
 App 启动检测到包更新时，完成旧注册的异步注销后，由后台 actor 刷新当前完整 App，再创建新的
-`SMAppService` 对象注册 helper；注册后须通过签名握手和本机就绪检查。ad-hoc 候选包通过 Apple 的
-`lsregister -f` 刷新，限时 3 秒，未退出的子进程仍由 actor 持有并阻止新一轮注册；
-正式发布包通过 `LSRegisterURL` 刷新。
+`SMAppService` 对象注册 helper；注册后须通过签名握手和本机就绪检查。
+候选与正式包都通过后台 actor 上的 `LSRegisterURL` 刷新完整 App，不另起 registrar 子进程。
 只有首次注册、包更新及一次有界握手恢复会重新注册，健康状态轮询不重复注册。
 不重置系统数据库，也不放宽签名约束。
 每次组装候选包使用独立的 `CFBundleVersion`，区分产品版本相同但签名不同的构建；
-同一构建标记写入 LaunchAgent 的 `EAGLE_DEVICE_BUNDLE_BUILD` 环境字段，使后台
-服务配置也随候选包更新。该字段不作为设备身份或用户设置，也不参与命令执行权限。
-候选 helper 的实际文件名同时包含该 build，`BundleProgram` 指向本次文件；签名、
-App 的 helper 身份验证和安装器的进程归属检查均从签名包内同一 plist 读取真实路径。
-候选服务 label、Mach service 与 plist 文件名也包含同一次 build，避免新的 helper 签名复用
+新包使用固定的 `EagleDeviceHelper` 文件名；签名、App 的 helper 身份验证和安装器的
+进程归属检查均从签名包内同一 plist 读取真实路径，兼容旧候选的版本化 helper 文件名。
+候选服务 label、Mach service 与 plist 文件名包含同一次 build，避免新的 helper 签名复用
 旧服务的启动约束。安装器从旧签名包读取旧名称并确认该 job 消失，再安装新名称；
 若新名称已被其他安装占用，在退出旧 App 前拒绝替换。
 安装器只读列举当前用户的候选服务；发现旧/新包以外的候选名称时同样拒绝，不停止其他安装。

@@ -15,21 +15,16 @@ actor SystemDeviceBackgroundService: DeviceBackgroundService {
   private var service: SMAppService
   private let plistName: String
   private let bundle: URL
-  private let isCandidate: Bool
-  private let candidateRegistration = DeviceCandidateRegistration()
 
-  init(plistName: String, bundle: URL, isCandidate: Bool = false) {
+  init(plistName: String, bundle: URL) {
     self.plistName = plistName
     service = SMAppService.agent(plistName: plistName)
     self.bundle = bundle
-    self.isCandidate = isCandidate
   }
 
   func currentStatus() -> SMAppService.Status { service.status }
   func register() throws {
-    if isCandidate {
-      try candidateRegistration.refresh(bundle)
-    } else if LSRegisterURL(bundle as CFURL, true) != noErr {
+    if LSRegisterURL(bundle as CFURL, true) != noErr {
       throw DevicePortError("background_registration_failed")
     }
     try Task.checkCancellation()
