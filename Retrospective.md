@@ -864,3 +864,14 @@ the original CI log remains in `.local/device-evidence/pr109-scope/github-macos-
 The fixture retains the result of releasing all calls, so a late duplicate factory
 call still increments the count and completes instead of hanging before the final
 assertion. Individually released old/new calls remain independently controlled.
+
+The next run at `2a28287` passed Linux but timed out while executing the native
+focus fixture, before reaching coverage. Compilation, signing and cursor lookup
+had succeeded; the unchanged 60-second process deadline stopped the fixture.
+The probe, its Swift fixture, all EagleDesign inputs and CI configuration match
+`d68e210`, whose focus check passed. This does not yet establish a transient cause.
+The requested single macOS-job rerun returned HTTP 403 because the personal
+account lacks upstream repository admin rights; no rerun started. The failure log
+and rejected request remain in `.local/device-evidence/pr109-scope/`. The next
+verification follows the normal checkpoint/documentation push to the owned fork;
+no timeout, assertion, hook or account permission was changed.

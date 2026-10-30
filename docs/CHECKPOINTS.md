@@ -2479,3 +2479,23 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Astra lead/reviewer closed the bounded source reviews. No further UI change,
   live Herdr collection, D1 write or deployment. PR has no comments/reviews.
   Next: normal push gates, this head's GitHub CI and ongoing comment monitoring.
+
+## 2026-10-30 14:48 +0800 — PR cleanup and current CI boundary
+
+- PR #109's scope cleanup and installed acceptance remain complete. At `2a28287`,
+  the lifecycle test waits for explicit events and still rejects late duplicate
+  connections. Astra's bounded review closed its only fixture finding; normal
+  push gates passed 260 root, 191 browser and 287 Swift tests, with the existing
+  11 viewport skips unchanged.
+- Linux CI passed. The macOS job timed out in the native focus fixture before
+  coverage, despite identical probe inputs to the prior passing run. The cause
+  remains unproven. A single upstream job-rerun request returned HTTP 403 and
+  started nothing; this documentation checkpoint uses the normal fork push path.
+- The existing Herdr lead monitors ordinary comments, inline comments, reviews
+  and current-head CI every 180 seconds. Observed comments/reviews remain empty.
+  Root owns this documentation push; lead/reviewer remain read-only for it.
+- No new App install, UI rendering change, live Herdr collection, authentication
+  change, D1 write or deployment. The installed `d121736` runtime and its two
+  successful upgrades plus physical peer-command evidence remain applicable.
+  Next: observe the new CI run; diagnose a repeated focus failure rather than
+  cycling retries or adding unrelated implementation changes.
