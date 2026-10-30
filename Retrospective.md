@@ -1,5 +1,34 @@
 # Retrospective
 
+## 2026-10-30 — Establish admission before losing a device-operation response
+
+The first normal push of Bots commit `265b0db` stopped in the root pre-push
+tests: the lost-response fixture queried its original operation ID but received
+`unknown` instead of `completed` (259/260 passed). Browser and Swift checks had
+not started. The original log remains in
+`.local/sync-p2-root-resources/ordinary-root-push.log`.
+
+Closing the request socket did not establish execution admission. A controlled
+public GET-before-RUN diagnostic reproduced a sent outgoing-request row with no
+operation row or output file: the later run became a query under the existing
+uncertain-operation rules. The isolated seven-test diagnostic and one diagnostic
+root run passed; neither captured the first hook failure's precise interleaving.
+This evidence establishes a missing fixture precondition, not a demonstrated
+loss of an already admitted operation.
+
+The fixture repair keeps the response connection open while the real command
+writes its original `x`, then blocks that command on an owned release file.
+Only after observing `x` does the test destroy the reply connection and release
+the command. Admission observation and original-ID completion share the original
+100 attempts with 10ms waits. Cleanup releases the command and destroys the
+socket even after an assertion failure. The completed result, repeated-ID output,
+one-execution file bytes and all permission/pairing assertions remain intact.
+Production dispatch, journal behavior, limits and hooks do not change.
+The ignored proposal and the tracked repair each passed all seven tests. Root
+types and check-only lint also passed on the repaired bytes. Independent delta
+Review remains pending; full root, browser and Swift gates belong to the next
+normal pre-push. The first failed push is retained; no second push has run.
+
 ## 2026-10-30 — Synchronize collected-output timeout tests with actual output
 
 The P0 Bots check passed 649 ordinary tests but its coverage run failed the

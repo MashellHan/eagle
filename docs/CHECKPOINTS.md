@@ -1,5 +1,18 @@
 # 用户视角检查点
 
+## 2026-10-30 21:54 +0800 — Bots已commit未推，根lost-response测试屏障修复待增量Review
+
+- Bots提交265b0db/tree d70原样保留；首次正常push因根测试259/260失败exit1，远端仍为上次核实的696f649。
+  browser/Swift尚未运行，未重推；fresh不写，Bots源码及既有全部收据不变。
+- 原fixture先关socket未证明接纳。真实public GET先行诊断复现outgoing sent、operations/file缺失且0执行；
+  独立7/7与一次并发260/260诊断通过，均不能证明首次hook失败的精确时序，原日志/退出码保留。
+- 独立根测试修复仅观察实际原x字节后destroy未收到reply的连接，再release原命令、查询原ID；
+  admission与completion共用原100×10ms预算，finally释放命令/连接，保留exact-one-x及全部权限/配对断言。
+- ignored屏障副本7/7；实际修复字节整份device-service 7/7、根types/check-only lint194均exit0。
+  仅tests/device-service.test.ts、根Retrospective及本检查点；正在冻结独立delta，待Review/Lead接受后另作原子提交。
+  未重跑Bots/crash/eval/perf；完整root/browser/Swift仍留后续正常pre-push attempt2，不把诊断通过当push成功。
+- 网站实际Herdr采集、live auth/D1/UI、CF/cloud/网络及物理Mac未验；未操作App/其他树。
+
 ## 2026-10-30 21:42 +0800 — 最后lookup读错归属真实红→绿，新802门禁通过待最终验收
 
 - HEAD/已推696f649保持；旧19d9929/b857247a、271eb439/2f34ac68及全部红/796门禁原样保留。
