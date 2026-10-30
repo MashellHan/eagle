@@ -676,12 +676,28 @@ in 15.50 seconds and cloud online in 16.40 seconds without a manual retry; the
 installed Bots adapter then completed `/bin/df -k /` with exit 0.
 
 The job's parent build version now matched the new bundle. This supports distinct
-candidate build identities but does not prove macOS's internal cache key. Remove
-the unsuccessful external registrar path and verify one further complete upgrade
-with only the public LaunchServices refresh and distinct build version. Retain
-the earlier failed observations under
+candidate build identities but does not prove macOS's internal cache key. The next
+trial removed the external registrar and checked a further complete upgrade with
+only the public LaunchServices refresh and distinct build version. Earlier failed
+observations remain under
 `.local/device-evidence/device-settings-ui-20261030/`; do not recast eventual
 recovery as fast startup.
+
+The simplification trial at `05b3099` disproved that a distinct candidate build
+version alone was sufficient on this Mac. The full signed upgrade launched at
+11:45:35 with build `1793331893645`, but neither the first registration nor its
+one automatic recovery reached a usable helper. The 20-second observation saw
+only a transient process, and launchd subsequently reported `EX_CONFIG` 78.
+That transient PID is not a successful start. No manual retry or registration
+tool was used during this observation.
+
+The observed successful combination at `fa1d1cd` included both a distinct build
+version and the bounded Apple registrar. Restore that already-reviewed candidate
+path and verify the combination in a further complete signed upgrade. The earlier
+same-version registrar failure does not establish that the registrar is unnecessary
+when combined with distinct build identity. Detailed observations remain in
+`simplified-upgrade/` under the same evidence root; the OS cache mechanism is still
+unproven, and release signing requirements are unchanged.
 
 ## 2026-10-30 — Cron acceptance observed admission before completion
 

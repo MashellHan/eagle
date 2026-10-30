@@ -14,16 +14,20 @@ protocol DeviceBackgroundService: Sendable {
 actor SystemDeviceBackgroundService: DeviceBackgroundService {
   private let service: SMAppService
   private let bundle: URL
+  private let isCandidate: Bool
+  private let candidateRegistration = DeviceCandidateRegistration()
 
-  init(plistName: String, bundle: URL) {
+  init(plistName: String, bundle: URL, isCandidate: Bool = false) {
     service = SMAppService.agent(plistName: plistName)
     self.bundle = bundle
+    self.isCandidate = isCandidate
   }
 
   func currentStatus() -> SMAppService.Status { service.status }
   func register() throws {
-    // Refresh this signed App after any previous registration has been removed.
-    guard LSRegisterURL(bundle as CFURL, true) == noErr else {
+    if isCandidate {
+      try candidateRegistration.refresh(bundle)
+    } else if LSRegisterURL(bundle as CFURL, true) != noErr {
       throw DevicePortError("background_registration_failed")
     }
     try Task.checkCancellation()
