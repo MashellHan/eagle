@@ -1,5 +1,16 @@
 # Retrospective
 
+## 2026-10-30 — Await consumed events before draining sidebar publication
+
+The sync baseline pre-push failed the sidebar preview test: 60ms after an empty
+snapshot was emitted, the old Chinese preview was still visible. Emitting to the
+fixture's AsyncStream, consuming that event and publishing shell state are separate
+scheduled steps. The test now waits for each snapshot or connection state to be
+consumed, then drains scheduled publication before asserting the original preview,
+reconnect preservation and empty-snapshot clearing. Production code, timeouts and
+the assertions are unchanged; the original failure remains in
+`.local/sync-baseline/push-portable-node.log`.
+
 ## 2026-10-21 — Accept the minifier's actual string syntax
 
 The additional production UI verifier recognized quoted onboarding versions but

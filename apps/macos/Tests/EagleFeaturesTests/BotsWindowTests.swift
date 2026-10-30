@@ -103,7 +103,7 @@ struct BotsWindowTests {
 
   @Test("sidebar previews use the last received chat text rather than lifecycle state")
   func sidebarPreview() async throws {
-    let (bots, _, port, _) = try await window()
+    let (bots, app, port, _) = try await window()
     #expect(bots.items.first?.subtitle == "")
     port.emit(
       .snapshot(
@@ -120,14 +120,23 @@ struct BotsWindowTests {
               id: "tool", role: .tool, state: .complete, createdAt: "x",
               blocks: [.text("tool output")]),
           ])))
-    try await Task.sleep(for: .milliseconds(60))
+    // Emitting queues the event; drain shell publication only after the model consumes it.
+    try await waitUntil {
+      app.conversation.hasSnapshot && app.conversation.state.messages.last?.id == "tool"
+    }
+    await bots.awaitScheduledPublishDrain()
     #expect(bots.items.first?.subtitle == "可以正常轮询。 下一行")
     port.emit(.connection(.reconnecting(attempt: 1)))
-    try await Task.sleep(for: .milliseconds(60))
+    try await waitUntil { app.conversation.connection == .reconnecting(attempt: 1) }
+    await bots.awaitScheduledPublishDrain()
     #expect(bots.items.first?.subtitle == "可以正常轮询。 下一行")
     port.emit(.connection(.ready))
     port.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
-    try await Task.sleep(for: .milliseconds(60))
+    try await waitUntil {
+      app.conversation.connection == .ready && app.conversation.hasSnapshot
+        && app.conversation.state.messages.isEmpty
+    }
+    await bots.awaitScheduledPublishDrain()
     #expect(bots.items.first?.subtitle == "")
   }
 
