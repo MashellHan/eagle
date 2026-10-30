@@ -2309,3 +2309,30 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Next broken hop: reliable installed helper startup, then policy/approval and
   remote read-only command acceptance. Normal push gates and formal PR #109 remain
   authorized but have not yet been executed for this head.
+
+## 2026-10-30 12:11 +0800 — Installed device acceptance complete; publishing next
+
+- User view: `fef7203` is installed in `~/Applications/Eagle Device Candidate.app`.
+  Its final LaunchAgent build marker passed two consecutive signed upgrades with
+  no manual retry: local readiness 12.83/11.39 seconds, cloud online 13.53/12.17
+  seconds, one helper run and no exit for each package. The App is restored to
+  the device settings page with its original window dimensions.
+- Actual Accessibility interactions verified in-App Settings discovery, pairing
+  above My Devices, persistent resize, a twelve-second stable input draft, row
+  policy/removal controls, Details, and a unique settings-only approval window.
+  Closing denied the request; accepting a second `/bin/df -k /` completed. The
+  local policy is restored to All approve, version 3.
+- The installed adapter completed a real MacMini-2 to MacMini 1 hostname command,
+  confirmed a result different from the local hostname, and queried the identical
+  result using its original ID. The peer still lacks `policy.manage`; its physical
+  remote-policy update and reverse-direction acceptance are not claimed.
+- Authentication/storage: identity, Raven/gateway, daemon-token and catalogue
+  hashes matched the pre-install records; both histories remain. The existing
+  public Worker was not redeployed for App-only changes. No D1 mutation, remote
+  test resource, Keychain access or signature-policy weakening.
+- Herdr/review: existing Astra lead/reviewer closed the focused code increments;
+  Root remains sole writer/installer. Bots 636-test check and coverage, nine eval
+  scenarios, 22 registration tests and 14 package tests passed; earlier failures
+  remain in the retrospective and ignored evidence.
+- Next hop: run the normal pre-push gates, update the existing fork branch and
+  make PR #109 ready for review under the user's explicit authorization.

@@ -724,6 +724,17 @@ builds reused an identical launch configuration; the actual upgrade remains the
 decisive check. The recovered `872a31b` also completed a real command from MacMini-2
 to MacMini 1 and returned the identical result when queried by its original ID.
 
+The final `fef7203` candidate passed two consecutive complete signed upgrades at
+12:06:18 and 12:08:20 with no manual retry. Local readiness was observed at
+12.83/11.39 seconds and cloud online at 13.53/12.17 seconds. Each job reported one
+run and no exit; each installed adapter completed a local read-only command. The
+two LaunchAgent configuration checksums differed and their build markers matched
+their enclosing bundle versions. Identity, gateway, daemon token and catalogue
+hashes matched the pre-install records, and both histories remained. This verifies
+the final combination on this Mac, not Apple's internal cache key or notarized
+distribution behavior. Evidence: `versioned-launch-upgrade/` and
+`versioned-launch-repeat/` under the same evidence root.
+
 ## 2026-10-30 — Cron acceptance observed admission before completion
 
 After integrating upstream `d69359b`, the complete Bots evaluation suite reported

@@ -165,8 +165,28 @@ authenticated helper handshake and one bounded registration recovery, starts fro
 App launch as well as the shared view lifecycle, and observes cold local readiness
 promptly before waiting for cloud directory data. Regression tests reproduced
 unreachable-but-registered startup, delayed readiness and missing retry controls;
-the handshake has a real XPC regression with Node not started. Signed installation
-and automatic startup verification remain pending for this follow-up.
+the handshake has a real XPC regression with Node not started. Candidate assembly
+also gives both the bundle and LaunchAgent configuration the same distinct build
+identity. Earlier registration-only approaches failed real upgrades; the final
+`fef7203` candidate passed two consecutive complete signed upgrades without manual
+retry, reaching local readiness in 12.83/11.39 seconds and cloud online in
+13.53/12.17 seconds. Both jobs ran once and had never exited when checked.
+
+The installed App's menu opens the actual resizable Settings window. Pairing is
+above My Devices and always visible; resizing survives closing/reopening, and an
+input draft survived twelve seconds of status refresh. Each row keeps its policy
+and Remove controls visible, with inline Details expanding/collapsing correctly.
+With only Settings open, one approval window appeared, closing it denied the exact
+request, and allowing a second read-only command completed successfully. The local
+policy was restored to All approve. Identity, Raven configuration, daemon token,
+catalogue and both histories were preserved.
+
+The installed Bots adapter executed a hostname command from physical MacMini-2 on
+physical MacMini 1 and queried the identical result by its original operation ID.
+The second Mac still runs an older Agent without remote policy-management capability;
+changing that physical peer's policy requires updating it. Reverse-direction and
+fresh-machine installation acceptance remain distinct from the verified A-to-B
+operation. No npm publication or distribution-signing/notarization is claimed.
 
 ### Exclusive search providers (2026-10-28)
 
