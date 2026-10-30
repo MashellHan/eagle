@@ -650,3 +650,18 @@ recovery refreshes only this App and preserves pairing IDs and user preferences.
 Ordinary management timeouts keep their uncertainty semantics. The local status
 and policy publish before cloud directory reads so a slow network cannot hold the
 local controls in their startup state.
+
+The first follow-up's real upgrade (`bda3ef8`, 11:07:37) still produced two launch
+constraint crashes before connecting at 11:08:53. The trigger for that eventual
+recovery was not observed; its final 1.139-second handshake is not evidence of a
+fast initial launch. The internal `LSRegisterURL` refresh had not reproduced the
+earlier external registrar recovery. Inspection confirmed that Apple's `lsregister`
+uses a different private registration entry point and has Apple-only entitlements;
+the two paths must not be treated as equivalent.
+
+The next candidate-only change runs that Apple registrar with `-f` and the exact
+current App path, after asynchronous unregister finishes and before registering
+the helper. Its completion is bounded and a failed refresh prevents registration.
+Healthy same-bundle openings and status reads do not invoke it. No signature rule,
+Keychain policy or system database is relaxed or reset. Real upgrade verification,
+including local readiness and an installed command, remains the decisive check.

@@ -14,18 +14,22 @@ protocol DeviceBackgroundService: Sendable {
 actor SystemDeviceBackgroundService: DeviceBackgroundService {
   private let service: SMAppService
   private let bundle: URL
+  private let isCandidate: Bool
 
-  init(plistName: String, bundle: URL) {
+  init(plistName: String, bundle: URL, isCandidate: Bool = false) {
     service = SMAppService.agent(plistName: plistName)
     self.bundle = bundle
+    self.isCandidate = isCandidate
   }
 
   func currentStatus() -> SMAppService.Status { service.status }
   func register() throws {
-    // Refresh only this signed App, including candidate updates with the same version.
-    guard LSRegisterURL(bundle as CFURL, true) == noErr else {
+    if isCandidate {
+      try DeviceCandidateRegistration().refresh(bundle)
+    } else if LSRegisterURL(bundle as CFURL, true) != noErr {
       throw DevicePortError("background_registration_failed")
     }
+    try Task.checkCancellation()
     try service.register()
   }
   func unregister() async throws { try await service.unregister() }

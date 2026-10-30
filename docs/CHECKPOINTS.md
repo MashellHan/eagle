@@ -2235,3 +2235,26 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Next broken hop: finish this bounded review/check, build and install, verify
   automatic helper startup and actual settings/approval interactions. No PR until
   the user confirms the installed result.
+
+## 2026-10-30 11:17 +0800 — Real upgrade exposed a remaining registration failure
+
+- User view: `bda3ef8` is installed and its larger settings window is visible. The
+  user requested pairing/add-device above the device list; that small follow-up
+  is committed as `92c4f56` and will be included in the next complete package.
+- Live authentication/storage: the existing device Worker was updated to
+  `bda3ef8`; its exact public revision and anonymous-directory 401 were verified.
+  Both existing devices and Bots remain. No new cloud resource, D1 migration or
+  remote fixture was created.
+- The first automatic upgrade still failed helper launch constraints twice;
+  it connected at least 76 seconds after launch, with the recovery trigger not
+  observed. A subsequent installed `/bin/df -k /` completed with exit 0. This is
+  recovery evidence and does not close the fast-start requirement.
+- Herdr: Astra confirmed the Apple registrar and internal LS API are different
+  paths, and is reviewing a bounded candidate-only forced registration step.
+  Its 21 affected Swift tests pass. Root preserves the real failing startup logs
+  and owns the next installation; reviewers do not change system registrations.
+- Next broken hop: verify this correction with another complete signed upgrade,
+  then exercise the installed window controls and settings-only approval. The
+  existing 240-test root and 191-pass browser gates (11 existing viewport skips)
+  passed; no duplicate run is needed for this Swift-only follow-up. User testing
+  still precedes any PR.
