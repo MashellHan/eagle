@@ -70,6 +70,64 @@ public struct PillMenu: View {
   }
 }
 
+/// A capsule that opens a menu of choices: it looks like the pill above, but a click shows the
+/// options instead of silently cycling the value.
+public struct PillSelect<Value: Hashable>: View {
+  public struct Option: Identifiable, Hashable {
+    public let id: Value
+    public let title: String
+
+    public init(_ id: Value, _ title: String) {
+      self.id = id
+      self.title = title
+    }
+  }
+
+  private let options: [Option]
+  @Binding private var selection: Value
+  @State private var hovering = false
+
+  public init(options: [Option], selection: Binding<Value>) {
+    self.options = options
+    self._selection = selection
+  }
+
+  public var body: some View {
+    Menu {
+      ForEach(options) { option in
+        Button {
+          selection = option.id
+        } label: {
+          if option.id == selection {
+            Label(option.title, systemImage: "checkmark")
+          } else {
+            Text(option.title)
+          }
+        }
+      }
+    } label: {
+      HStack(spacing: 6) {
+        Text(options.first { $0.id == selection }?.title ?? "")
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(Theme.Palette.textPrimary)
+        Image(systemName: "chevron.down")
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundStyle(Theme.Palette.textSecondary)
+      }
+      .padding(.horizontal, 14)
+      .frame(height: 32)
+      .background(Capsule().fill(hovering ? Theme.Palette.canvas : Theme.Palette.card))
+      .overlay(Capsule().strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline))
+    }
+    .menuStyle(.button)
+    .buttonStyle(.plain)
+    .menuIndicator(.hidden)
+    .fixedSize()
+    .onHover { hovering = $0 }
+    .accessibilityLabel("外观")
+  }
+}
+
 /// Light blue confirmation strip with a check icon.
 public struct InfoBanner: View {
   private let text: String

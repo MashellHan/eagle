@@ -86,7 +86,14 @@ public struct SettingsView: View {
           }
           Divider().overlay(Theme.Palette.line)
           SettingsRow("外观", detail: "浅色、深色或跟随系统") {
-            PillMenu(appearanceLabel) { cycleAppearance() }
+            PillSelect(
+              options: [
+                .init("system", "跟随系统"),
+                .init("light", "浅色"),
+                .init("dark", "深色"),
+              ],
+              selection: $appearance
+            )
           }
         }
       }
@@ -283,23 +290,6 @@ public struct SettingsView: View {
     .buttonStyle(.plain)
     .menuIndicator(.hidden)
     .fixedSize()
-  }
-
-  private var appearanceLabel: String {
-    switch appearance {
-    case "light": return "浅色"
-    case "dark": return "深色"
-    default: return "跟随系统"
-    }
-  }
-
-  private func cycleAppearance() {
-    appearance =
-      switch appearance {
-      case "system": "light"
-      case "light": "dark"
-      default: "system"
-      }
   }
 
   private var providersPage: some View {
