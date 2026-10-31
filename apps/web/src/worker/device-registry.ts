@@ -19,6 +19,8 @@ import {
   SyncAccess,
   SyncCandidate,
   SyncIdentity,
+  SyncIncomingRequest,
+  SyncIncomingResult,
   SyncShare,
 } from "../../../../packages/contracts/src/device-sync.ts";
 import {
@@ -48,6 +50,7 @@ export class DeviceHttpError extends Error {
   }
 }
 class RelayRegistryUnavailable extends Error {}
+class SyncDirectoryUnavailable extends Error {}
 export const deviceJSON = (data: unknown, status = 200) =>
   Response.json(data, {
     status,
@@ -490,6 +493,8 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
     } catch (error) {
       if (error instanceof RelayRegistryUnavailable)
         return deviceJSON({ error: "sync_relay_registry_unavailable" }, 503);
+      if (error instanceof SyncDirectoryUnavailable)
+        return deviceJSON({ error: "sync_directory_storage_failed" }, 503);
       return deviceFailure(error);
     }
   }
@@ -661,6 +666,67 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
         version: 1,
         identity: syncIdentity(this.sessionDevice(sessionHash)),
       });
+    if (path === "/sync/incoming" && post) {
+      const input = SyncIncomingRequest.parse(await deviceBody(request));
+      try {
+        return deviceJSON(
+          SyncIncomingResult.parse(
+            write((current) => {
+              const local = syncIdentity(current);
+              const rows = this.ctx.storage.sql
+                .exec<{
+                  seq: number;
+                  grantingDeviceId: string;
+                  sharedBotId: string;
+                }>(
+                  "SELECT rowid AS seq,grantingDeviceId,sharedBotId FROM sync_grants WHERE peerDeviceId=? AND rowid>? ORDER BY rowid LIMIT ?",
+                  current.deviceId,
+                  input.after,
+                  input.limit + 1,
+                )
+                .toArray();
+              const items: z.infer<typeof SyncIncomingResult>["items"] = [];
+              let nextAfter = input.after;
+              for (const row of rows.slice(0, input.limit)) {
+                nextAfter = row.seq;
+                try {
+                  const holder = syncIdentity(
+                    this.device(row.grantingDeviceId),
+                  );
+                  this.cacheGrant(holder, local, row.sharedBotId);
+                  items.push({ sharedBotId: row.sharedBotId, holder });
+                } catch (error) {
+                  if (
+                    !(error instanceof DeviceHttpError) ||
+                    !["sync_not_shared", "unknown_device"].includes(
+                      error.message,
+                    )
+                  )
+                    throw error;
+                }
+              }
+              return {
+                version: 1,
+                local,
+                items,
+                nextAfter,
+                hasMore: rows.length > input.limit,
+              };
+            }),
+          ),
+        );
+      } catch (cause) {
+        if (
+          cause instanceof DeviceHttpError ||
+          cause instanceof z.ZodError ||
+          cause instanceof SyntaxError
+        )
+          throw cause;
+        throw new SyncDirectoryUnavailable("sync_directory_storage_failed", {
+          cause,
+        });
+      }
+    }
     if (path === "/sync/relay/authority" && post) {
       const input = SyncRelayAuthorityRequest.parse(await deviceBody(request));
       const authority = deviceBase64(

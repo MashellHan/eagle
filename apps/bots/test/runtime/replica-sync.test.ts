@@ -18,6 +18,130 @@ import { factSchema, keyOf } from "../../src/runtime/pi/syncProtocol.ts";
 import { assistant, createBench, text, toolCall, trace, waitFor } from "../support/pi.ts";
 import { openReplica, pull, transfer } from "../support/replica.ts";
 
+test("bounded head metadata discovers incremental ready heads and a passive two-parent merge without carrier bodies", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bots-head-directory-"));
+  const a = await openReplica(join(dir, "a"));
+  const b = await openReplica(join(dir, "b"));
+  try {
+    await b.command("bind", { sharedBotId: a.sync.store.binding.sharedBotId });
+    a.faux.setResponses([text("seed response")]);
+    await (
+      await a.root.submit({ type: "input", content: "head seed", requestId: "head_seed_01" }, ctx)
+    ).wait(ctx);
+    await a.harness.waitForIdle(ctx);
+    await transfer(a, b);
+    const first = (await b.command("heads", { after: 0, limit: 1 })) as {
+      items: {
+        head: string;
+        ready: boolean;
+        parents: string[];
+        source: unknown;
+        resources: unknown[];
+      }[];
+      nextAfter: number;
+      hasMore: boolean;
+    };
+    assert.equal(first.items.length, 1);
+    const seed = first.items[0];
+    assert.ok(seed?.ready);
+    assert.ok(seed.source);
+    assert.doesNotMatch(JSON.stringify(first), /head seed|seed response|base64|"model"/);
+    const detail = (await b.command("head", { head: seed.head })) as {
+      head: string;
+      entries: number;
+      resources: unknown[];
+    };
+    assert.equal(detail.head, seed.head);
+    assert.ok(detail.entries > 0);
+    for (const [replica, requestId, response] of [
+      [a, "head_left_01", "left history"],
+      [b, "head_right_01", "right history"],
+    ] as const) {
+      replica.faux.setResponses([text(response)]);
+      await replica.command("run", { head: seed.head, requestId, text: "continue shared seed" });
+      await replica.harness.waitForIdle(ctx);
+    }
+    const left = (await a.command("export", { branch: "head_left_01" })) as HistoryBundle;
+    const right = (await b.command("export", { branch: "head_right_01" })) as HistoryBundle;
+    await transfer(a, b);
+    let after = first.nextAfter;
+    const heads = new Set([seed.head]);
+    let more = true;
+    while (more) {
+      const page = (await b.command("heads", { after, limit: 1 })) as typeof first;
+      for (const item of page.items) heads.add(item.head);
+      assert.ok(page.nextAfter >= after);
+      after = page.nextAfter;
+      more = page.hasMore;
+    }
+    assert.ok(heads.has(left.head) && heads.has(right.head));
+    const calls = b.faux.state.callCount;
+    const merged = (await b.command("merge", {
+      heads: [left.head, right.head],
+      requestId: "head_merge_01",
+    })) as { head: string };
+    const metadata = (await b.command("head", { head: merged.head })) as {
+      parents: string[];
+      ready: boolean;
+    };
+    assert.deepEqual(metadata.parents, [left.head, right.head]);
+    assert.equal(metadata.ready, true);
+    assert.equal(b.faux.state.callCount, calls);
+    const tail = (await b.command("heads", { after, limit: 128 })) as typeof first;
+    assert.ok(tail.items.some((item) => item.head === merged.head));
+    assert.equal(JSON.stringify(tail).includes("left history"), false);
+    const resource: HistoryBundle["resources"][number] = {
+      name: "AGENTS.md",
+      kind: "instructions",
+      base64: Buffer.from("native selector resource bytes 中文").toString("base64"),
+      sha256: createHash("sha256").update("native selector resource bytes 中文").digest("hex"),
+    };
+    const withResources = (await b.command("export", {
+      head: merged.head,
+      resources: [resource],
+    })) as HistoryBundle;
+    const beforeSelectionCalls = a.faux.state.callCount;
+    await transfer(b, a);
+    const selected = (await a.command("head", { head: withResources.head })) as {
+      ready: boolean;
+      resourceHead: string;
+    };
+    assert.equal(selected.ready, true);
+    assert.deepEqual(withResources.parents, [merged.head]);
+    const resourceManifest = keyOf({
+      kind: "resource_manifest",
+      resources: [keyOf({ kind: "resource", resource })],
+    });
+    assert.equal(
+      a.sync.store.fact(resourceManifest),
+      undefined,
+      "existing head has no standalone manifest",
+    );
+    const context = (await a.command("context", {
+      contextId: "native_metadata_resource_context",
+      head: withResources.head,
+      resourceHead: selected.resourceHead,
+    })) as { contextId: string; resourceHead: string };
+    assert.equal(context.contextId, "native_metadata_resource_context");
+    assert.equal(context.resourceHead, selected.resourceHead);
+    assert.equal(selected.resourceHead, withResources.head);
+    assert.equal(
+      a.sync.store.fact(resourceManifest),
+      undefined,
+      "selection does not backfill a fact",
+    );
+    assert.deepEqual(
+      ((await b.command("export", { head: withResources.head })) as HistoryBundle).resources,
+      [resource],
+    );
+    assert.equal(b.faux.state.callCount, calls, "native context selection remains passive");
+    assert.equal(a.faux.state.callCount, beforeSelectionCalls, "imported selection stays passive");
+  } finally {
+    await Promise.all([a.close(), b.close()]);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("incremental source history stays original through paging, passive forwarding, forks and restart", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bots-incremental-"));
   let a = await openReplica(join(dir, "a"));

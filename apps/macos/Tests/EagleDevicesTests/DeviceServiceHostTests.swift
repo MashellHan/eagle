@@ -135,11 +135,11 @@ struct DeviceServiceHostTests {
     let host = try host()
     try await ready(host)
     do {
-      for method in ["sync.share", "sync.endpoints.publish"] {
-        // Invalid input is rejected by the real Node parser, after Host management admission.
+      for method in ["sync.share", "sync.incoming", "sync.endpoints.publish"] {
+        // Node errors follow Host admission; incoming {} is a valid default request.
         do {
           _ = try await host.call(method, params: .object([:]))
-          Issue.record("invalid sync management must fail")
+          Issue.record("this offline management request must return a Node error")
         } catch {
           #expect(error is DevicePortError, "expected Node rejection, got \(error)")
           #expect((error as? DevicePortError)?.code == "device_service_failed")

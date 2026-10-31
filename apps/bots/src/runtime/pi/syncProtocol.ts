@@ -86,6 +86,7 @@ export const intentSchema = z.strictObject({
   text: z.string(),
   whenBusy: z.enum(["followUp", "steer", "reject"]).optional(),
   resourceHead: digest.optional(),
+  contextId: z.string().regex(INVOCATION_ID).optional(),
   resourceVersion: z.union([z.literal(""), digest]).optional(),
 });
 export const bodySchema = z.discriminatedUnion("kind", [

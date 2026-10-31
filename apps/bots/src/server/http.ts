@@ -857,7 +857,7 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
         return;
       }
       const replicaMatch =
-        /^\/v1\/bots\/([A-Za-z0-9_-]+)\/replica\/(export|import|run|status|bind|pull|apply|receipts)$/.exec(
+        /^\/v1\/bots\/([A-Za-z0-9_-]+)\/replica\/(export|import|run|status|bind|pull|apply|receipts|heads|head|merge|context)$/.exec(
           path,
         );
       if (replicaMatch !== null && request.method === "POST") {
@@ -869,7 +869,11 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
           | "bind"
           | "pull"
           | "apply"
-          | "receipts";
+          | "receipts"
+          | "heads"
+          | "head"
+          | "merge"
+          | "context";
         let params: unknown;
         try {
           params = await readBody(request, MAX_REPLICA_BODY_BYTES);
@@ -882,14 +886,22 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
           });
           return;
         }
+        const trace = `tr_http_${++sequence}`;
+        const ready =
+          method === "heads" || method === "head" || method === "merge" || method === "context";
         json(
           response,
           200,
-          await registry.replica(replicaMatch[1] as string, {
-            method,
-            params,
-            trace: `tr_http_${++sequence}`,
-          }),
+          ready
+            ? await (await registry.readyReplica(replicaMatch[1] as string, trace)).command(
+                method,
+                params,
+              )
+            : await registry.replica(replicaMatch[1] as string, {
+                method,
+                params,
+                trace,
+              }),
         );
         return;
       }

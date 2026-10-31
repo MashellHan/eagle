@@ -1,15 +1,20 @@
 # Authenticated persistent replica status
 
-This slice follows relay6575f53f. Relay delivery ACK remains separate. Current
-direct/cache sender `peerApplied` is unknown until this slice is implemented and
-verified. The first two-physical-Mac round now preserves5/10/14/19-entry fixed
-heads through A→B continuation, A offline/B continuation, A cold recovery, both
-daemon restarts and A's actual return continuation from B's14-entry head.
-Receipt `.local/sync-p4-physical-first/physical-first-round-final.json`
-SHA dc9c65da9060faa5959bc5e384bae218b8467f8c51eec14b2915fdd94c2eba77
-binds actual6575 execution copies, dependencies/helper inputs and332 artifacts.
-This is API/SDK, controlled-provider and actual local-tool scope through B's owned
-TCP→loopback HTTPS Miniflare backend, not native composer/direct-switch acceptance.
+This document retains the all-path status slice contract and its dated execution
+records. Current delivery is `193f75bd` / tree `73695d14`, single parent6575f53f;
+accepted source-v2863cd483 and final25b2ea37 close its Review, normal hooks and
+own-ref/tracking checks. Direct/cache/relay receiver reporting and sender reads
+are implemented. `peerApplied` remains unknown when the current complete key has
+no authenticated snapshot; received/applied/cloudCached stay separate.
+
+Later paragraphs about pending candidates or physical route prerequisites describe
+those earlier stages, not current progress. Scene5 is accepted only with
+f5b7827b+6766880e+timing38377da4 (application direct over Tail DERP, owned Miniflare
+cache fallback/return). P5 source-v6/normal gates and finite A native/restart are
+accepted; finite B native/restart/passive482935b0 is observed and awaits final
+Review/evidence binding. See [current architecture](SYNC-ARCHITECTURE.md),
+[PLAN](PLAN.md) and [SYNC-NATIVE](SYNC-NATIVE.md) for present scope, and
+[TESTING](TESTING.md) for original runs and failures. Fixed upstream182fc1f remains.
 
 The smallest connection uses two additional typed metadata operations,
 `status-report` and `status-read`, through existing Node manage, Registry authority

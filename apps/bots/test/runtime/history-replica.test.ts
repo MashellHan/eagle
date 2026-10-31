@@ -29,6 +29,7 @@ import {
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { type HistoryBundle, HistoryReplica } from "../../src/runtime/pi/HistoryReplica.ts";
+import { EventMapper } from "../../src/runtime/pi/mapEvents.ts";
 import { createHerdrClient } from "../../src/tools/herdr/client.ts";
 import {
   createToolRegistry,
@@ -37,6 +38,7 @@ import {
 } from "../../src/tools/registry.ts";
 import { openWorkspace } from "../../src/tools/workspace.ts";
 import { assistant, text, toolCall, trace } from "../support/pi.ts";
+import { frameQueue, hello, send, startStack } from "../support/server.ts";
 
 const open = async (
   dir: string,
@@ -75,6 +77,7 @@ const open = async (
     database,
     dir,
   );
+  await replica.prepareResources();
   return {
     harness,
     storage: database,
@@ -82,7 +85,8 @@ const open = async (
     root,
     faux,
     workspace: workspace.root,
-    command: (method: "export" | "import" | "run" | "status", params: unknown) =>
+    replica,
+    command: (method: "export" | "import" | "run" | "status" | "merge", params: unknown) =>
       replica.command({ method, params, trace }),
   };
 };
@@ -546,6 +550,461 @@ test("full raw history, compaction references and resource versions survive pass
     assert.deepEqual(await b.command("export", { branch: "branch-2" }), branch2);
   } finally {
     await Promise.all([a.harness.close(ctx), b.harness.close(ctx)]);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("two immutable SDK heads merge effective origins once, retain raw parents and remain editable after reopen", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bots-merge-history-"));
+  let local = await open(dir);
+  try {
+    local.faux.setResponses([
+      assistant([toolCall("write", { path: "before-merge.txt", content: "original tool bytes" })], {
+        stopReason: "toolUse",
+      }),
+      text("tool completed before branching"),
+      text("real compacted context"),
+    ]);
+    await (
+      await local.root.submit(
+        { type: "input", content: "use tool", requestId: "merge_source" },
+        ctx,
+      )
+    ).wait(ctx);
+    const compact = await local.root.compact(undefined, ctx);
+    await local.harness.waitForTask(compact, ctx);
+    await local.harness.waitForIdle(ctx);
+    const target = await local.harness.commit(
+      (tx) =>
+        tx.appendEntry(local.root.id, {
+          kind: "fixture.shared",
+          model: [{ role: "user", content: "shared editable origin", timestamp: 17 }],
+        }),
+      ctx,
+    );
+    const seed = (await local.command("export", {})) as HistoryBundle;
+    assert.ok(seed.entries.some((entry) => entry.kind === "pi.tool-result"));
+    assert.ok(
+      seed.entries.some((entry) => entry.kind === "pi.compaction" && entry.head !== undefined),
+    );
+    const origin = seed.origins[String(target.id)];
+    assert.ok(origin);
+    const branches: HistoryBundle[] = [];
+    for (const side of ["left", "right"]) {
+      const requestId = `merge_branch_${side}`;
+      local.faux.setResponses([
+        assistant(
+          [
+            toolCall(
+              "write",
+              { path: `${side}.txt`, content: `${side} tool result` },
+              { id: "same-branch-call" },
+            ),
+          ],
+          { stopReason: "toolUse" },
+        ),
+        text(`independent ${side} answer`),
+      ]);
+      await local.command("run", { head: seed.head, requestId, text: `continue ${side}` });
+      await local.harness.waitForIdle(ctx);
+      const branch = (await local.command("export", { branch: requestId })) as HistoryBundle;
+      const inherited: HistoryBundle["entries"][number] | undefined = branch.entries.find(
+        (entry) => JSON.stringify(branch.origins[String(entry.id)]) === JSON.stringify(origin),
+      );
+      assert.ok(inherited);
+      await local.harness.commit(
+        (tx) =>
+          tx.appendEntry(branch.source.conversationId as ConversationId, {
+            kind: "fixture.branch.edit",
+            edits:
+              side === "left"
+                ? [
+                    {
+                      target: inherited.id as never,
+                      action: "replace",
+                      messages: [
+                        { role: "user", content: "left explicit replacement", timestamp: 17 },
+                        { role: "user", content: "left second replacement", timestamp: 18 },
+                      ],
+                    },
+                  ]
+                : [{ target: inherited.id as never, action: "omit" }],
+          }),
+        ctx,
+      );
+      branches.push(
+        (await local.command("export", {
+          branch: requestId,
+          resources: [resource("AGENTS.md", "instructions", `${side} instructions`)],
+        })) as HistoryBundle,
+      );
+    }
+    const [left, right] = branches;
+    assert.ok(left && right);
+    const originalParents = JSON.stringify(branches);
+    const providerBefore = local.faux.state.callCount;
+    const tasksBefore = (await local.harness.inspect(ctx)).tasks;
+    const input = {
+      requestId: "merge_context_001",
+      heads: [left.head, right.head],
+      choices: [{ origin, head: left.head }],
+      resources: [{ name: "AGENTS.md", sha256: left.resources[0]?.sha256 }],
+    };
+    const preview = (await local.command("merge", { preview: true, heads: input.heads })) as {
+      conflicts: {
+        origin: unknown;
+        options: { head: string; action: string; messageCount: number; digest: string }[];
+      }[];
+      resources: { name: string; versions: { sha256: string; kind: string; heads: string[] }[] }[];
+    };
+    assert.deepEqual(
+      preview.conflicts
+        .find((item) => JSON.stringify(item.origin) === JSON.stringify(origin))
+        ?.options.map(({ head, action, messageCount }) => ({ head, action, messageCount })),
+      [
+        { head: left.head, action: "replace", messageCount: 2 },
+        { head: right.head, action: "omit", messageCount: 0 },
+      ],
+    );
+    assert.deepEqual(preview.resources, [
+      {
+        name: "AGENTS.md",
+        versions: branches.map((bundle) => ({
+          sha256: bundle.resources[0]?.sha256,
+          kind: "instructions",
+          heads: [bundle.head],
+        })),
+      },
+    ]);
+    assert.doesNotMatch(JSON.stringify(preview), /left explicit replacement|left instructions/);
+    assert.equal(local.faux.state.callCount, providerBefore);
+    assert.deepEqual((await local.harness.inspect(ctx)).tasks, tasksBefore);
+    const result = (await local.command("merge", input)) as { head: string };
+    assert.ok(result?.head, "merge returns a durable immutable head rather than invoking a run");
+    assert.deepEqual(await local.command("merge", input), result);
+    const merged = (await local.command("export", { head: result.head })) as HistoryBundle;
+    assert.deepEqual(merged.parents, [left.head, right.head]);
+    assert.deepEqual(merged.resources, left.resources);
+    assert.equal(local.faux.state.callCount, providerBefore, "merge is passive");
+    assert.deepEqual((await local.harness.inspect(ctx)).tasks, tasksBefore);
+    assert.equal(
+      await readFile(join(local.workspace, "before-merge.txt"), "utf8"),
+      "original tool bytes",
+    );
+    assert.equal(JSON.stringify(branches), originalParents);
+    assert.deepEqual(await local.command("export", { head: left.head }), left);
+    assert.deepEqual(await local.command("export", { head: right.head }), right);
+    const contribution = merged.entries.filter(
+      (entry) =>
+        entry.kind === "bots.merge.contribution" &&
+        JSON.stringify((entry.data as { origin?: unknown })?.origin) === JSON.stringify(origin),
+    );
+    assert.equal(
+      contribution.length,
+      2,
+      "each effective message has an entry while the common origin is selected once",
+    );
+    const mapper = new EventMapper({ botId: "b_shared" });
+    const storedMerged = await local.replica.checkedEntries(
+      merged,
+      await local.replica.receipt(merged.head),
+    );
+    const storedConversation = await local.harness.conversation(
+      storedMerged.conversationId as ConversationId,
+      ctx,
+    );
+    assert.ok(storedConversation);
+    const visible = (await all(storedConversation)).flatMap(
+      (entry) => mapper.entryMessage(entry) ?? [],
+    );
+    assert.match(JSON.stringify(visible), /left explicit replacement/);
+    assert.match(JSON.stringify(visible), /left second replacement/);
+    assert.match(JSON.stringify(visible), /independent left answer/);
+    assert.match(JSON.stringify(visible), /independent right answer/);
+    const selected = contribution[0];
+    assert.ok(selected);
+    assert.deepEqual(selected.model, [
+      { role: "user", content: "left explicit replacement", timestamp: 17 },
+    ]);
+    assert.equal((selected.data as { effect: { action: string } }).effect.action, "replace");
+    const omitted = (await local.command("merge", {
+      ...input,
+      requestId: "merge_omit_001",
+      choices: [{ origin, head: right.head }],
+    })) as { head: string };
+    const omittedBundle = (await local.command("export", { head: omitted.head })) as HistoryBundle;
+    const omittedEntry = omittedBundle.entries.find(
+      (entry) =>
+        JSON.stringify((entry.data as { origin?: unknown })?.origin) === JSON.stringify(origin),
+    );
+    assert.ok(omittedEntry);
+    assert.deepEqual(omittedEntry.model, []);
+    assert.equal(
+      (omittedEntry.data as { effect: { action: string } }).effect.action,
+      "omit",
+      "explicit omission keeps an addressable origin/effect record",
+    );
+    await assert.rejects(
+      local.command("merge", { ...input, requestId: "merge_no_choice", choices: [] }),
+      /conflict/,
+    );
+    await assert.rejects(
+      local.command("merge", { ...input, requestId: "merge_no_resource", resources: [] }),
+      /conflict/,
+    );
+    await assert.rejects(
+      local.command("merge", { ...input, choices: [{ origin, head: right.head }] }),
+      /conflict/,
+    );
+    await local.harness.close(ctx);
+    local = await open(dir);
+    assert.deepEqual(await local.command("merge", input), result);
+    const receipt = await local.replica.receipt(merged.head);
+    assert.ok(receipt);
+    const conversation = await local.harness.conversation(
+      receipt.conversationId as ConversationId,
+      ctx,
+    );
+    assert.ok(conversation);
+    const before = await conversation.context(ctx);
+    assert.equal(before.messages[0]?.role, "system");
+    assert.equal(JSON.stringify(before.messages).match(/left explicit replacement/g)?.length, 1);
+    assert.match(JSON.stringify(before.messages), /independent left answer/);
+    assert.match(JSON.stringify(before.messages), /independent right answer/);
+    const preservedSystemOrder = before.messages
+      .filter((message) => message.role === "system")
+      .map((message) => Object.keys(message.sections ?? {}));
+    assert.ok(preservedSystemOrder.length > 0);
+    const calls = before.messages.flatMap((message) =>
+      message.role !== "assistant"
+        ? []
+        : message.content.filter((part) => part.type === "toolCall"),
+    );
+    const results = before.messages.filter((message) => message.role === "toolResult");
+    assert.equal(calls.length, 3, "the shared original call and both branch calls are retained");
+    assert.equal(
+      new Set(calls.map((call) => call.id)).size,
+      3,
+      "colliding original tool IDs are explicitly mapped",
+    );
+    assert.equal(results.length, 3, "neither branch result is dropped");
+    assert.ok(
+      results.every(
+        (result) => JSON.stringify(result.details ?? null).includes('"missing_result"') === false,
+      ),
+    );
+    assert.deepEqual(
+      results.map((result) => result.toolCallId),
+      calls.map((call) => call.id),
+    );
+    const rebuild = async (
+      seed: HistoryBundle,
+      label: string,
+      messages: NonNullable<HistoryBundle["entries"][number]["model"]>,
+    ) => {
+      await local.replica.createContext(
+        seed,
+        { contextId: label, head: seed.head },
+        () => undefined,
+      );
+      const info = await local.replica.contextInfo(label);
+      const fork = await local.harness.conversation(info.conversationId as ConversationId, ctx);
+      assert.ok(fork);
+      const inherited = seed.entries.filter(
+        (entry) =>
+          JSON.stringify((entry.data as { origin?: unknown })?.origin) === JSON.stringify(origin),
+      );
+      assert.ok(inherited.length > 0);
+      await fork.commit(
+        (tx) =>
+          tx.appendEntry(fork.id, {
+            kind: "fixture.edit.old-origin",
+            // These are SDK edits in a passive fork. The public immutable result below is
+            // rebuilt per effective message, so no multi-message target reaches the mapper.
+            edits: inherited.map((entry, index) =>
+              index === 0
+                ? { target: entry.id as never, action: "replace" as const, messages }
+                : { target: entry.id as never, action: "omit" as const },
+            ),
+          }),
+        ctx,
+      );
+      const edited = await fork.context(ctx);
+      const raw = (await local.command("export", { contextId: label })) as HistoryBundle;
+      const result = (await local.command("merge", {
+        requestId: `${label}_rebuild`,
+        heads: [raw.head, seed.head],
+        choices: [{ origin, head: raw.head }],
+      })) as { head: string };
+      const rebuilt = (await local.command("export", { head: result.head })) as HistoryBundle;
+      assert.deepEqual(rebuilt.parents, [raw.head, seed.head]);
+      const group = rebuilt.entries.filter(
+        (entry) =>
+          JSON.stringify((entry.data as { origin?: unknown })?.origin) === JSON.stringify(origin),
+      );
+      assert.equal(group.length, messages.length);
+      assert.deepEqual(
+        group.map((entry) => entry.model?.[0]),
+        messages,
+      );
+      assert.ok(rebuilt.entries.every((entry) => (entry.model?.length ?? 0) <= 1));
+      const actual = await local.harness.conversation(
+        (await local.replica.receipt(rebuilt.head))?.conversationId as ConversationId,
+        ctx,
+      );
+      assert.ok(actual);
+      assert.deepEqual(
+        (await actual.context(ctx)).messages,
+        edited.messages,
+        "rebuilding changes representation, not SDK context or message positions",
+      );
+      return rebuilt;
+    };
+    const expandedMessages = [
+      { role: "user" as const, content: "expanded first old origin", timestamp: 17 },
+      text("expanded middle old origin"),
+      { role: "user" as const, content: "expanded last old origin", timestamp: 19 },
+    ];
+    const expanded = await rebuild(merged, "edit_origin_expand", expandedMessages);
+    await local.harness.close(ctx);
+    local = await open(dir);
+    const shrunk = await rebuild(expanded, "edit_origin_shrink", [
+      { role: "user", content: "edited old origin after reopen", timestamp: 17 },
+    ]);
+    for (const [head, expected, absent] of [
+      [
+        expanded,
+        ["expanded first old origin", "expanded middle old origin", "expanded last old origin"],
+        "left second replacement",
+      ],
+      [shrunk, ["edited old origin after reopen"], "expanded middle old origin"],
+    ] as const) {
+      const stack = await startStack({ real: true });
+      const socket = stack.connect();
+      try {
+        const bot = await stack.createBot("rebuilt native context");
+        const handle = await stack.registry.open(bot, trace);
+        await handle.replica?.({ method: "import", params: { bundle: head }, trace });
+        await handle.replica?.({
+          method: "context",
+          params: { contextId: "derived_wire_context", head: head.head },
+          trace,
+        });
+        const frames = frameQueue(socket);
+        await send(socket, hello);
+        await frames.next();
+        await send(socket, {
+          type: "subscribe",
+          botId: bot,
+          contextId: "derived_wire_context",
+          trace,
+        });
+        const snapshot = await frames.next();
+        const encoded = JSON.stringify(snapshot);
+        let position = -1;
+        for (const value of expected) {
+          const next = encoded.indexOf(value);
+          assert.ok(next > position);
+          position = next;
+        }
+        assert.equal(encoded.includes(absent), false);
+        assert.ok(position < encoded.indexOf("independent left answer"));
+        assert.ok(
+          encoded.indexOf("independent left answer") < encoded.indexOf("independent right answer"),
+        );
+        assert.equal(stack.faux?.state.callCount, 0, "passive import/subscribe executes nothing");
+        const inputs: TranscriptContext[] = [];
+        stack.faux?.setResponses([
+          (request) => {
+            inputs.push(request);
+            return text("continued rebuilt head");
+          },
+        ]);
+        await send(socket, {
+          type: "send",
+          requestId: "derived_wire_run",
+          contextId: "derived_wire_context",
+          text: "continue rebuilt",
+          whenBusy: "followUp",
+          trace,
+        });
+        for (;;) {
+          const frame = await frames.next();
+          if (
+            frame.type === "submission" &&
+            frame.requestId === "derived_wire_run" &&
+            frame.status === "done"
+          )
+            break;
+        }
+        assert.equal(inputs.length, 1);
+        const provider = JSON.stringify(inputs[0]?.messages);
+        let providerPosition = -1;
+        for (const value of expected) {
+          const next = provider.indexOf(value);
+          assert.ok(next > providerPosition);
+          providerPosition = next;
+        }
+        assert.equal(provider.includes(absent), false);
+        assert.ok(providerPosition < provider.indexOf("independent left answer"));
+        const adapter = await handle.context?.("derived_wire_context", trace);
+        const page = await adapter?.history({ limit: 50 });
+        for (const value of expected) assert.ok(JSON.stringify(page).includes(value));
+      } finally {
+        socket.terminate();
+        await stack.close();
+      }
+    }
+    const currentReceipt = await local.replica.receipt(shrunk.head);
+    const current = await local.harness.conversation(
+      currentReceipt?.conversationId as ConversationId,
+      ctx,
+    );
+    assert.ok(current);
+    const seen: TranscriptContext[] = [];
+    local.faux.setResponses([
+      (request) => {
+        seen.push(request);
+        return text("first actual merged continuation");
+      },
+    ]);
+    await (
+      await current.submit(
+        { type: "input", content: "continue merged context", requestId: "merge_first_run" },
+        ctx,
+      )
+    ).wait(ctx);
+    assert.equal(seen.length, 1);
+    assert.match(JSON.stringify(seen[0]?.messages), /edited old origin after reopen/);
+    assert.doesNotMatch(
+      JSON.stringify(seen[0]?.messages),
+      /shared editable origin|left explicit replacement|left second replacement|expanded middle old origin/,
+    );
+    assert.match(
+      getCurrentSystemMessage(seen[0]?.messages ?? [])?.sections?.["bots-resources"] ?? "",
+      /left instructions/,
+    );
+    const providerSections = Object.keys(
+      getCurrentSystemMessage(seen[0]?.messages ?? [])?.sections ?? {},
+    );
+    assert.ok(providerSections.indexOf("bots-tools") < providerSections.indexOf("bots-resources"));
+    const sequence = JSON.stringify(seen[0]?.messages);
+    assert.ok(
+      sequence.indexOf("edited old origin after reopen") <
+        sequence.indexOf("independent left answer"),
+    );
+    assert.ok(
+      sequence.indexOf("independent left answer") < sequence.indexOf("independent right answer"),
+    );
+    assert.equal(
+      local.faux.state.callCount,
+      1,
+      "reopen/merge/edit never replays old model/tool work",
+    );
+    assert.deepEqual(await local.command("export", { head: left.head }), left);
+    assert.deepEqual(await local.command("export", { head: right.head }), right);
+  } finally {
+    await local.harness.close(ctx);
     await rm(dir, { recursive: true, force: true });
   }
 });

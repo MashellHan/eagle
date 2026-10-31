@@ -940,3 +940,25 @@ Missing refs are unapplied gaps; corrupt packages and installation I/O refuse ad
 under the existing not_admitted/rejected-intent boundary. Active/Inbox/true pending versions
 still preflight before any submit/global resume; actual SDK duplicates keep their established
 shortcut. Full bodies remain immutable facts rather than being copied into run intents.
+
+
+## P5 durable context and contribution mapping
+
+HistoryReplica uses the public SDK create/fork/append/context/defineEntry APIs
+for local contexts and two-parent merge. The immutable ready seed, mutable tip,
+and selected resource head are distinct. A durable context identity reopens
+the same SDK conversation; request lookup/admission/retry and event/history reads
+use that captured identity rather than retargeting the root. Local contexts share
+the original Harness and overall Bot busy/lifecycle limits.
+
+Merge produces one `bots.merge.contribution` per effective message, with full
+original origin, selected edit relation, parent-entry provenance, ordered group
+index/size and explicit tool-call ID mapping. An omitted contribution retains
+an addressable zero-message member. Parent entries/receipts are unchanged. A
+subsequent edit of an old origin is retained in its own passive fork, and the
+same merge constructor rebuilds the effective ordered group before presentation.
+Expansion or shrinking cannot hide later messages in `model[0]`, move tool
+results to the tail or discard the current system-section baseline. The existing
+EventMapper/Wire path recognizes the typed contributions. Preview and merge
+materialization admit no model/tool/task work; only explicit composer submission
+uses the native SDK runtime and the selected local resources.

@@ -155,7 +155,7 @@ export type ReadyReplica = {
   publish(action: () => undefined, guard: () => void): Promise<void>;
   check(): Promise<void>;
   command(
-    method: "pull" | "apply" | "status",
+    method: "pull" | "apply" | "status" | "heads" | "head" | "context" | "merge",
     params: unknown,
     guard?: () => void,
   ): Promise<unknown>;
@@ -165,8 +165,11 @@ export class BotRegistry {
   /** A sync request may lease an existing healthy handle, never open or recover one. */
   async readyReplica(botId: string, trace: string, uniqueShared?: string): Promise<ReadyReplica> {
     const first = await this.#syncLease(botId, trace, uniqueShared);
-    const use = (method?: "pull" | "apply" | "status", params?: unknown, guard?: () => void) =>
-      this.#syncLease(botId, trace, uniqueShared, first, method, params, guard);
+    const use = (
+      method?: Parameters<ReadyReplica["command"]>[0],
+      params?: unknown,
+      guard?: () => void,
+    ) => this.#syncLease(botId, trace, uniqueShared, first, method, params, guard);
     return {
       botId,
       sharedBotId: first.sharedBotId,
@@ -247,7 +250,7 @@ export class BotRegistry {
       sharedBotId: string;
       binding: ReplicaBinding;
     },
-    method?: "pull" | "apply" | "status",
+    method?: Parameters<ReadyReplica["command"]>[0],
     params?: unknown,
     guard?: () => void,
     publish?: () => undefined,

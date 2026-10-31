@@ -1,124 +1,98 @@
 # 多端 Bot 同步架构
 
-2026-10-31 · 本地P0-P2、P3、P4认证页与持久对象/定向信封已交付；固定182fc1f内容整合已正常交付ee26b2b/tree92d79c1e（收据293f1f74）。CF72h显式缓存已正常交付abec9dbb/tree8fbe3651（收据069c8aed），见[SYNC-CACHE.md](SYNC-CACHE.md)。本片自动回退/稳定切回保留既有ready副本与定向授权，加入独立缓存上传和有界缺口扫描，见[SYNC-AUTO.md](SYNC-AUTO.md)；实际门禁、Review与交付由本片独立收据绑定；真实云部署与物理路径未验。182fc1f是同步整体完成前最后上游，不再fetch/pull/merge更新；relay/发现/过期holder补读和真实peer ACK仍是后续范围。
+历史长期保存在各设备；认证的 Tailscale 直连优先，独立 Bots Sync Worker
+提供临时缓存和在线 holder 转发。同一 Bot 的各端独立运行，保留并发分支。
 
-**历史长期保存在各设备，Tailscale 直连优先、Cloudflare 中转兜底；共享对话保留并发分支。**
-同一个 Bot 在 A、B 各有独立副本与运行时；A 离线或云端不可达时，
-已就绪的 B 仍可使用本机已有历史运行，模型和工具环境由 B 提供。
-云端加密增量最多保留 **3 天（72 小时）**，不长期归档聊天正文、摘要或完整基线。
+## 当前状态
 
-开发基线为个人 fork 中的 `bot-sync/base@165d154`，已包含 `nocoo/main@d69359b`
-与 [#109](https://github.com/nocoo/eagle/pull/109)。复用其设备群、配对、身份和后台
-服务；新增同步能力独立提交，后续单独发 PR。具体边界见 [PLAN.md](PLAN.md#开发基线与-pr-边界)。
+- 已交付：本地副本/原始历史和完整资源、定向授权与互证、72h 加密缓存、
+  自动回退/稳定切回、在线 holder 补读，以及独立的持久状态上报/读取。
+  当前交付基线为 `193f75bd` / tree `73695d14`。
+- P5 source-v6 `a4e8d4b3` 及正常受影响门禁已接受：有界 head 目录、持久 context、
+  两父合并/资源选择、原 composer/Outbox 和 owned 原生 composition 已接通。
+  A/B 真实原生选择/发送与同身份 App/daemon 重启、两机 API/SDK 接力和并发、
+  过期后 B→新 C relay 补齐均有各自有限收据；B `482935b0` 与最终文档/树待原 Review 绑定。
+- 物理 scene5 已证产品 direct→owned cache→direct；direct 运行在 Tailscale DERP
+  上，后备是隔离 Miniflare。scene6 使用 owned 原 alarm 的到期时间窗口；
+  不将这些证据扩称 UDP P2P、真实墙钟72h或已部署 Cloudflare。
 
-## 架构
+固定上游为 `182fc1f704774eb37bdbc11cde017f8ff61f1c1a`，开发期间不再更新。
+末尾 PR 比较 base 只正常快进到这个已在本地的提交；PR 准入和准确收据见
+[PLAN](PLAN.md)、[SYNC-NATIVE](SYNC-NATIVE.md) 与 [TESTING](TESTING.md)。
+
+## 组件与数据边界
 
 ```mermaid
 flowchart TB
-  A["Mac A：本地 Bot / SQLite / 资源 / 运行时"]
-  B["Mac B：本地 Bot / SQLite / 资源 / 运行时"]
-  subgraph CF["Cloudflare"]
-    W["Bots Sync Worker：认证与传输"]
-    G["已有 DeviceRegistry DO：设备群与权限"]
-    C["目录 Sync DO：共享 Bot 清单"]
-    S["每 Bot 一个 Sync DO：路由 / 同步位置 / 回执元数据"]
-    R["R2：最多 3 天加密增量 / 临时大对象"]
-    W --> G
-    W --> C
-    W --> S
-    W --> R
-    S --> R
-  end
-  A <-->|优先 Tailscale 认证直连| B
-  A <-->|回退中转 / 后台缓存| W
-  B <-->|回退中转 / 后台缓存| W
+  A["Mac A：本地副本 / SQLite / 资源 / 运行时"]
+  B["Mac B：本地副本 / SQLite / 资源 / 运行时"]
+  W["独立 Bots Sync Worker"]
+  G["已有 DeviceRegistry：身份 / session / 定向 grant"]
+  S["每 Bot DO：holder / 来源位置 / 回执元数据"]
+  R["R2：最多72h的 E2E 加密增量"]
+  A <-->|认证 Tailscale direct| B
+  A <-->|出站 WSS relay / 缓存| W
+  B <-->|出站 WSS relay / 缓存| W
+  W --> G
+  W --> S
+  W --> R
 ```
 
-UI 连接本机 daemon，消息先在本地保存并执行。DO 中转消息，仅持久保存目录、
-同步位置及回执元数据，不把消息正文写进 DO SQLite。本地回复不等待云端 ACK。
+App 连接本机 daemon；共享历史与本机执行库分开，交换事件而非复制活动 SQLite。
+Worker 在内存转发 E2E 密文；DO 持久化身份、holder/source 位置和 ACK 等元数据，
+不存聊天正文或完整基线。R2 不是长期历史库。独立 Sync Worker 通过命名
+service-binding 复用 Registry，不耦合网站/报表 D1，也无需新增通用目录权限系统。
 
-Bots Sync 独立构建、部署，通过版本化接口复用 [设备服务](../DEVICES.md) 的身份和 Registry；
-不耦合网站、Agent 或报表 D1。首个闭环无需 D1、KV、Queues。
-现有 `SharedDevicePort` 用于设备执行；同步握手、密钥分发和端点发现另行定义，
-helper 保管私钥，现有受限注册签名不直接用于同步载荷。
-传输设计参考 Eagle 现有 [LiveRelay](../../apps/web/src/worker/realtime.ts) 的出站连接、
-鉴权与中转机制；新 Bot 缓存规则独立于现有机器采集、实时终端和日报契约。
-
-## 连接选择
-
-- 优先连接已配对设备的 Tailscale 地址；没有地址、不可达或连接失败时使用 Cloudflare。
-  设备服务在群内发布地址与端口；专用同步入口仅向 Tailscale 网络开放，不要求安装或登录 Tailscale 才能使用 Eagle。
-- 直连必须验证设备公钥、群成员授权与加密握手，不能只凭 Tailscale IP 信任对端。
-  两条路径遵守同一授权规则，切路不能绕过认证失败。
-- 参考 Orca，建议直连建连/握手等待 2.5 秒后启动中继竞争；已知网络失败立即回退。
-  中继期间建议本机每 15 秒探测直连，连续成功并满足稳定窗口后切回，避免频繁换路。
-- 两条路径共用事件 ID、应用游标和去重规则；新连接认证完成再切换，用连接代次隔离旧回调。
-  不更换 run 身份、不重新提交模型或工具；这些等待不阻塞本机执行。
-
-直连只优化在线传输，新增持久增量仍后台进入 3 天云缓存，供其他设备错峰补齐；
-直连的对端 ACK 不代表云端已缓存。大文件和历史补读也优先直连，失败经中继透传。
-这里的直连指不经过 Eagle 云中继；Tailscale 底层仍可能使用 DERP，不保证物理 P2P。
-
-## 数据与运行
-
-| 数据 | 保存与共享方式 |
+| 数据 | 边界 |
 | --- | --- |
-| Bot 定义、模型选择、工具配置 | 各端保存版本，跨设备同步 |
-| 原始消息、工具结果、附件、分支、压缩记录 | 各端持久化；云端透传或限时缓存，保留期后从在线副本补齐 |
-| Bot 专属指令、`AGENTS.md`、Skills | 各端保存并传输完整版本；技能包含 `SKILL.md`、脚本和引用文件 |
-| 活动任务、待执行队列、provider 会话 | 仅保存在该 run 的执行设备 |
-| 工作区、项目规则、程序、权限、API key | 本机绑定或配置；私钥和凭据留在安全存储 |
+| 原始消息、input/output/tool result、分支、压缩和来源 | 各端持久保存；被动接收不重新调用模型/工具 |
+| `AGENTS.md`、附件、完整版本 skills（脚本/引用/资产） | 校验原字节，按所选资源版本加载到执行设备 |
+| 本地任务、provider 会话、待执行队列 | 留在本次执行设备，不因同步变成另一端可执行任务 |
+| 工作区环境、权限、API key、设备私钥 | 本机配置/安全存储，不作为聊天资源或同步正文传输 |
 
-每台设备分开保存副本库与运行库：副本库管理共享历史、同步位置和 outbox，
-运行库管理本机 pi 会话与任务。同步交换事件，不复制活动 SQLite。
+一个共享 Bot 对应各端独立的完整 local binding；publisher、holder 和原 source
+不折叠。事件以 `replicaId + epoch + seq` 定位。历史 head 不可变，本地 context
+分别保存 seed、可变 tip 和 resourceHead。两端从 H 并发时保留 H→A、H→B；
+显式合并引用两个 parent，按原 origin/有效 edit 去重并显式选择资源冲突，不改原文。
+请求 ID、context 和资源选择先入 Outbox，重试/换窗口/重启仍归原请求；合并与导入不执行。
 
-同一个 `botId` 可同时有多个 `runId`；每个 run 固定执行设备、历史 head 和资源版本。
-资源校验、完整落盘并实际加载后才可用；并发配置修改保留冲突，可沿本机已选版本继续。
+## 连接、授权与确认
 
-顺序使用时接续已收到的历史；A、B 同时从 H 开始时保留 `H → A1`、`H → B1` 两支。
-默认沿当前分支继续，显式合并创建引用两支的新上下文节点，记录编排方式、保留原文。
-上传时间不决定对话顺序，迟到消息不改写已有 run 实际使用的上下文。
+- direct 仅监听/发布真实已就绪的 Tailscale Self（100.64/10 或 fd7a:115c:a1e0::）。
+  地址是候选，实际读取仍需完整身份互证、当前 holder→reader grant 和使用点检查。
+  没有 Self 不妨碍本机运行或独立出站 relay；不伪造 LAN 地址为 Self。
+- direct 网络竞争为2.5s；CF 驻留至少30s、完整 probe 间隔至少15s，稳定后下一轮切回。
+  cache 缺口/无基线才从当前授权在线 holder relay 补原 source；auth、SQL、schema、
+  crypto 失败保持原分类/cause/trace，不借 fallback 洗成 gap。
+- 每页最多128事件/8MiB；每页/对象 fresh 互证。pending 数/字节、body、requestId、
+  超时/取消和旧 socket 回调均有界。local pendingApply 重试优先，入站总数≤2，
+  独立 upload 一槽；缓存与 relay 内部变化不伪造 direct 成功。
+- helper 只处理 typed 身份、授权、签名/密钥 metadata，不承载正文、通用 signer
+  或远端管理 bearer。供给只使用已 ready 的副本，不自动 open/recover/run。
 
-历史导入只产生记录，不重做模型或工具调用。A 的运行结果未知时，B 可从已有完整
-head 开新 run；原操作仍按原 ID 查询。文件修改及外部副作用由目标系统处理冲突。
+`received`、实际 `applied`、带到期时间的 `cloudCached`、发送端所知 `peerApplied`
+分开。当前 receiver 从互证后的持久库上报，holder 独立读取；确认绑定双方完整身份、
+receiver binding、原 source/epoch 和服务端记录时点。未知当前 binding/没有确认即 unknown，
+旧 epoch 不冒充新实例，applied 不从 received 推算，确认也不表示远端 run 完成。
+本机运行/已成功 apply 不等待 metadata ACK；恢复后读原 DB 补报，不重复 get/apply。
 
-## 同步与恢复
+## 72h 与缺口恢复
 
-1. **本机接纳**：同一事务保存输入、run 意图及 outbox；以稳定请求 ID 交给运行时。
-2. **异步发送**：本机输出落盘后导出事件，优先经认证的 Tailscale 直连；不通则走云中继。
-3. **缓存与补发**：新增增量独立后台缓存，先保存对象再发布带到期时间的引用。
-4. **另一端应用**：验证、解密、补齐依赖，事务保存事件与应用位置；随后可用于新 run。
+`expiresAt = firstCachedAt + 72h`，从原事件首次成功缓存算起。读取、重试、重新分页、
+换对象/信封和设备离线都不续期；到期停止补发，原 alarm tombstone/expired 后实际删除
+R2 对象，失败沿原清理重试。relay 透传旧历史，不重缓存过期历史或刷新原事件钟。
 
-事件以 `replicaId + epoch + seq` 定位，消息以 `itemId + revision` 标识。
-重连从已应用位置补读缺口；备份恢复使用新 epoch。删除保留 tombstone，
-旧副本重建时保留其未上传分支，不能让旧数据复活已删 Bot。
+新设备配对并获当前定向 grant 后，从可用缓存补增量；缺失/到期时向任一完整持有者
+补原始历史与资源，不绑定创建设备。A 离线但 B 完整在线，C 仍可从 B 恢复。
+空目录、空页或 known 上界不证明完整基线；所有 holder 离线时如实 needs_baseline/gap，
+已有完整本机副本继续 native。完整依赖落盘并 applied 后才可作为本机新 run 的上下文。
+撤销阻止后续共享，不擦除已下载历史；已固定 pin 的离线本地 apply 保持原语义。
 
-持久确认是**本机已保存、另一端已应用**；“云端已缓存”必须带到期时间，
-不能当作备份，也不代表执行完成。已见过的位置与当前仍可补发的范围分开记录。
-运行库与副本库之间通过幂等接纳、持久 ID 映射和条目扫描补导出恢复；
-DO 与 R2 不假设联合事务；源端保留本地历史，不因缓存 ACK 删除唯一副本。
+## Orca 借鉴
 
-保留期从服务端首次缓存成功起计算：`expiresAt = firstCachedAt + 72h`。
-到期停止补发并删除对象；重试、读取和设备离线均不续期，清理失败重试必须验证。
-旧历史与完整基线从在线副本分块透传，不通过反复上传延长云端保留；日志不记录正文。
-
-已具备基线的设备可在 72 小时缓存有效期内错峰同步。缓存过期后向在线副本补读；
-这改变缺失数据的获取方式，不限制已有本地副本发起新 run。
-
-新设备流程：**配对入群 → 获得密钥 → 发现 Bot → 向在线副本取基线和资源 → 落盘 → 补读增量**。
-缓存过期后，缺失历史可从任一持有它的在线设备补齐，不绑定创建设备。
-没有这样的在线设备时先等待补齐；已有可运行副本仍能继续，只使用本机已知上下文。
-可运行基线必须包含所选历史的完整依赖；UI 最近消息窗口不能替代原始上下文。
-模型窗口裁剪与压缩保留来源，不承诺模型未暴露的内部状态能够迁移。
-
-内容在端上加密，云端只见密文及必要路由元数据。已有成员向新设备分发密钥信封；
-所有旧设备离线且尚无信封时，需要恢复凭据。撤销阻止后续共享并轮换密钥，
-不能擦除已下载历史，也不停止已有本地副本运行。
-
-## Orca 可借鉴的机制
-
-已拉取并核对的源码基线：`6b937c7e5f5a8d2cfcb755c6708ac38a632b3012`。
-下表链接固定到该提交，区分 Orca 已有机制与 Eagle 的应用方式。
+固定源码引用：`6b937c7e5f5a8d2cfcb755c6708ac38a632b3012`。
+Orca 所查路径是选定主机上的远程会话；跨运行时可运行副本、多父合并和被动导入
+是 Eagle 的扩展，不能从远程访问/中继本身推导已实现。
 
 | 机制 | Orca 做法 | Eagle 如何采用 |
 | --- | --- | --- |
@@ -131,14 +105,12 @@ DO 与 R2 不假设联合事务；源端保留本地历史，不因缓存 ACK �
 | [流式合并][orca-stream] | 普通 assistant 更新约 48 ms 合并，关键事件立即发送 | 合并预览更新，本地持久日志负责恢复，不逐 token 缓存 |
 | [技能包][orca-skills] | manifest 固定版本与文件清单，完整包传到执行端 | 从副本传输完整包，可选 R2 临时中转；各端校验并固定版本 |
 
-所查 Orca 手机/桌面远程会话仍在所选主机执行，中继主要转发消息并保存路由元数据；
-这些路径没有证明跨运行时历史合并。Eagle 需新增**可运行本地副本、对话分支和被动导入**。
-Orca 手机的 [直连入口][orca-direct] 区分 LAN/Tailscale；其自动切换机制不直接推广为所有桌面路径的现有能力。
-Worker/DO 承接接入与中转，R2 仅作最多 3 天的临时存储；不采用云端完整历史库。
-
-当前 pi-durable 1.4.0 的跨库上下文保真、多父上下文构建、整轮资源固定及崩溃恢复
-仍需实现验证。详细源码证据见 [SYNC.md](SYNC.md)，交付状态见 [PLAN.md](PLAN.md)；
-现有已实现契约仍以 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。
+Orca 手机 [direct 入口][orca-direct] 区分 LAN/Tailscale，其能力不直接推广为所有桌面路径。
+详细固定源码分析保留在 [SYNC](SYNC.md)。阶段过程与当前状态由 [PLAN](PLAN.md) 管理；
+运行/协议以 [RUNTIME](RUNTIME.md) 和 [PROTOCOL](PROTOCOL.md) 为准。
+P3/P4 的细合同分别见 [SYNC-AUTO](SYNC-AUTO.md)、[SYNC-CACHE](SYNC-CACHE.md)、
+[SYNC-RELAY](SYNC-RELAY.md)、[SYNC-STATUS](SYNC-STATUS.md)；原生与当前物理准入见
+[SYNC-NATIVE](SYNC-NATIVE.md)，原红绿/失败/证据范围保留在 [TESTING](TESTING.md)。
 
 [orca-catalog]: https://github.com/stablyai/orca/blob/6b937c7e5f5a8d2cfcb755c6708ac38a632b3012/src/main/runtime/rpc/methods/session-tabs-inventory.ts#L88
 [orca-journal]: https://github.com/stablyai/orca/blob/6b937c7e5f5a8d2cfcb755c6708ac38a632b3012/src/main/native-chat/agent-session-journal/journal-row-writer.ts#L55
@@ -149,123 +121,3 @@ Worker/DO 承接接入与中转，R2 仅作最多 3 天的临时存储；不采�
 [orca-relay]: https://github.com/stablyai/orca/blob/6b937c7e5f5a8d2cfcb755c6708ac38a632b3012/cloud/apps/relay/src/splice-forwarder.ts#L47
 [orca-stream]: https://github.com/stablyai/orca/blob/6b937c7e5f5a8d2cfcb755c6708ac38a632b3012/src/shared/structured-agent-session-coalescer.ts#L8
 [orca-skills]: https://github.com/stablyai/orca/blob/6b937c7e5f5a8d2cfcb755c6708ac38a632b3012/src/shared/skill-package-manifest.ts#L14
-
-## P3 first metadata foundation (delivered460b60d)
-
-The online Registry reuses registered sessions for version1 identity, directional
-sharedBot grants and endpoint metadata; it never grants sync from the local directory
-fallback or execution policy. The current slice adds no listener, direct proof, E2EE
-or transport fallback. Trusted parent publication takes a bound syncPort, discovers
-Tailscale Self IPs and can withdraw them; candidate metadata is not reachability.
-The Bot-owned read port and `/v1/bots/:id/sync/access` use the actual local binding,
-then recheck binding/tombstone after the remote request. See DEVICES/PROTOCOL for the
-exact contract and PLAN/CHECKPOINTS for actual evidence. P4 transport begins below; P5/P6 remain planned.
-
-## P4 first authenticated one-page pull (implementation contract)
-
-This slice starts at460b60d. A explicitly requests one page from B; B checks its own
-B-to-A grant using readonly sync.peer.authorize. A uses existing access(B). Both decisions
-use current Registry sessions, keys, nonempty shared group, epochs and credentials;
-no directory fallback, reverse grant or owner-online execution prerequisite exists.
-Both sides reauthorize after signing/page-preparation awaits. Binding/tombstone checks
-fence B before page read/send and A before applying; ambiguous local sharedBot aliases
-are refused. Unauthenticated handshakes never open/touch the SDK.
-
-The existing Bots startDaemon owns a separate listener, configured by optional syncPort,
---sync-port/BOTS_SYNC_PORT (absent=disabled;0=kernel-selected). Management HTTP stays
-127.0.0.1. Readonly sync.endpoints.self returns bounded actual Tailscale Self addresses
-and canonical-set digest. Every address must bind the same actual port before ready;
-any failure closes the partial set. No wildcard, loopback or ordinary LAN listener is
-accepted in production. Missing/logged-out Self gives no listener; real discovery errors
-remain failures. Losing Self withdraws readiness/publication without stopping local chat.
-
-Local bearer/no-Origin GET /v1/sync/status exposes only instance/pid/device-port binding,
-ready/actualPort/SelfDigest. Existing App supervisor ownership checks and narrow
-DeviceSettingsViewModel-to-DeviceControl/XPC/Host management bridge publish the ready
-port; stopping/invalidating publishes null. Optional expectedSelfDigest is compared to
-new Node discovery before publication and cannot select caller IPs. Standalone daemons
-without a trusted parent cannot claim publication. Device private frames remain512KiB.
-Endpoint publish/withdraw alone are serialized in Node management receive order across
-Self discovery/digest checks/Registry writes; failures release that chain. Digest is
-not a write-order fence. App drops undispatched stale daemon generations. Normal quit,
-including the public recorded-daemon termination path, finitely waits for withdrawal
-and close; timeout/unconfirmed remains unknown, without indefinitely blocking local exit.
-
-Local bearer/no-Origin POST /v1/bots/:id/sync/pull strictly accepts
-{peerDeviceId,source?,after,limit?}, derives sharedBotId from real binding and resolves
-current authorized endpoints. The separate remote listener exposes only challenge and
-one-page pull, never bind/run/tasks/management. Plaintext page remains8MiB/128events;
-ciphertext/base64 framing has its own explicit size cap, with no silent truncation.
-The decoded page uses existing replica.apply and remains passive.
-Both A and B are ready-only: only a healthy, already-held runtime handle may service
-sync. Cold/unavailable/closing Bots refuse without touch/open/recover/resume. A short
-existing serial/lease boundary pins the exact handle for each local page operation;
-no lease spans network/signing awaits. The same instance, binding and tombstone are
-rechecked before page read/send/apply. Ordinary replica/open/recover behavior is unchanged;
-a user must explicitly recover a cold local Bot before synchronization can succeed.
-
-Mutual proof is a new strictly typed helper request, not registration/approval payload
-signing. Domain eagle-bots-sync-proof-v1 binds version, Registry origin, reader/server
-role, replica.read, sharedBotId, both current full identities, both32-byte nonces,
-challenge/session generation, expiry<=60s and both X25519 ephemeral public keys.
-Helper builds signing bytes internally, validates own identity/schema/size/time, and
-replies only to the independently matched pending kind/requestId. Original signer and
-32-pending Host bound remain intact. One-use challenges and process generation fence
-replay, expiry and old callbacks. Standard Ed25519/X25519/HKDF/AES-GCM derive separate
-direction keys; sequence and transcript-bound AAD protect both boxes. Ephemeral session
-keys are never advertised as resource/cache keys.
-Expiry and original exchange generation/closed checks reach the actual pull/page/receive use
-point after directory, binding, ReplicaSync serial and public Harness.commit awaits. A command
-admitted within the lifetime keeps its original atomic apply completion. Ready positive endpoint
-publication is reconfirmed through the current Node session on existing polling rounds; unchanged
-withdrawal remains deduplicated. Unfinished private Self discovery cannot prevent the original
-local shutdown cleanup from starting under its unchanged total deadline. Body transport I/O
-retains network attribution/cause; protocol validation stays separate.
-
-Failures retain process trace/failure attribution and one innermost error origin;
-network reachability and authorization failures remain distinguishable. Logs contain
-no keys, plaintext pages, proof payloads or private paths. Real owned Registry/Node/socket
-protocol evidence is separate from actual Tailscale kernel/physical two-Mac acceptance.
-The following slice adds durable DEK envelopes. Rotation and CF first-cache+72h deletion,
-fallback/switchback remain later slices. No deployment, release, App replacement or P5 UI.
-
-
-## P4 durable page object and directed envelope (local implementation contract)
-
-Starts at delivered4f7d035/tree959dece. One immutable object uses an independent random
-32-byte DEK and96-bit AEAD nonce, with a publisher self-envelope protected by a helper-owned
-persistent X25519 wrapping key. The descriptor derives from that successfully persisted key;
-Ed registration/proof remain restricted and unchanged. New typed helper kinds carry only
-bounded key/envelope metadata; plaintext DEKs never persist in replica DB/Registry/log and
-8MiB ciphertext never enters the4096B vault or512KiB private frame.
-
-Publish cipher+signed manifest+descriptor+self-envelope as one durable, exclusive first-winner
-result in the daemon's owned object directory. Concurrent retries/lost receipt/reopen return
-the original object/keyId/cipher; corrupt committed winners fail closed. Append recipients
-independently. The first current-authorized receive fixes issuer/publisher identity and complete
-signed descriptor/envelope/object digests in that same local result. Offline open/apply accepts
-only a stored objectId and validates that fixed pin, with no identity/access/proof/cloud call.
-New retrieval/envelope issuance always uses the current directional grant and await fences;
-revocation does not erase previously learned content. Keep ready-only actual-use guards and
-passive0execution semantics; existing direct pull/page routes remain compatible.
-
-Manifest retains original source(replicaId,epoch),advertised range,actual included seq/event
-identities,nextAfter/hasMore,page digest and cipher digest. Future cache retention must use stable
-(sharedBotId,source.replicaId,source.epoch,seq), detecting conflicting event bytes. Repaging,
-hasMore changes,forwarding or new cipher/object/envelope packaging cannot renew an event's72h.
-This slice defines those inputs only: no CF storage,cache clock,automatic fallback or rotation
-framework. The additive local objects/pull selector is a strict union of peer+page query or peer+objectId;
-objects/apply accepts only stored objectId. The original direct pull remains unchanged.
-Page plaintext/pageDigest/eventDigest use original JSON.stringify order, including SDK model/data;
-only new controlled signed metadata uses canonical key ordering. A current ephemeral AEAD receipt
-binds each network object delivery to its request/session and all immutable artifact digests.
-
-Complete files are staged/file-fsynced before a short ready lease. The lease rechecks full local
-binding(localBotId/sharedBotId/replicaId/epoch),same handle,tombstone,time and online generation,
-then only exclusive-links,cleans the owned stage and directory-fsyncs. Complete winner reads,
-signature/digest verification happen outside that lease, before ACK. EEXIST always verifies the
-winner. A complete winner with exactly one owned same-inode UUID stage link can recover after a
-link-before-unlink crash; unknown links and corrupt winners refuse without replacing the object.
-Previously accepted local apply fences daemon closed and actual binding/handle/tombstone, but
-never listener Self/readiness or online exchange generation. It makes no cloud call and cannot
-open/recover a Bot. A missing wrapping key refuses opening/issuing rather than minting a replacement.

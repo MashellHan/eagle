@@ -1,11 +1,16 @@
 # Bot 与消息同步：Orca 源码分析与多端本地执行方案
 
-日期：2026-10-31。早期分析保留；本地认证直连/持久对象已交付，固定182fc内容整合正常交付ee26b2b（收据293f1f74）。CF72h显式缓存已正常交付abec9dbb（收据069c8aed），见[有限缓存合同](SYNC-CACHE.md)。本片自动回退/稳定切回与独立缓存上传见[自动传输合同](SYNC-AUTO.md)，真实本地错峰/Miniflare链与8MiB多页缺口验证的实际范围、Review及交付由独立收据绑定；真实云/物理路径未验。
-组件边界、数据模型和交互流程的集中设计见 [多端同步架构](SYNC-ARCHITECTURE.md)。
-阶段入口见 [PLAN.md](PLAN.md#多端-bot-整体实施计划2026-10-30)。
-本文补充跨设备共享聊天的设计，不直接修改现有 v1 协议。设备基础来自已集成的
-[#109](https://github.com/nocoo/eagle/pull/109)，行为以 [设备契约](../DEVICES.md) 为准；
-设备执行与聊天复制是独立能力，原有验收不证明同步已实现。
+本文保留2026-10-31的固定 Orca 源码分析、早期模型与阶段设计。正文中的“待实现”、
+AGENTS/skills 范围和早期确认状态属于当时分析，不应作为当前缺失能力或交付状态。
+当前简洁架构入口为 [SYNC-ARCHITECTURE](SYNC-ARCHITECTURE.md)，进度与准入为
+[PLAN](PLAN.md)，实际原生/物理范围为 [SYNC-NATIVE](SYNC-NATIVE.md)；原失败与
+验收事件仍见 [TESTING](TESTING.md)，本文不改现有协议。
+
+当前已交付至 `193f75bd`：原始历史/完整版本资源、认证 direct、72h cache、online-holder
+relay 与 all-path status。P5 source-v6 和受影响 normal gates 已接受；两机 API/SDK、
+A/B 实际原生发送/重启与双方被动接收已有有限原件，B `482935b0` 及最终绑定待原 Review。
+`peerApplied` 按当前完整身份/binding/source 的实际确认分开呈现，未知仍 unknown；
+不再将早期“尚未接线”当现状。固定上游为 `182fc1f`，不更新。
 
 ## 已确认的产品要求
 

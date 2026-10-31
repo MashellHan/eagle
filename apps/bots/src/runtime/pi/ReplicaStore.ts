@@ -80,6 +80,8 @@ export class ReplicaStore {
       CREATE TABLE IF NOT EXISTS outbox_keys (key TEXT PRIMARY KEY, seq INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS facts (ref TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS heads (head TEXT PRIMARY KEY, value TEXT NOT NULL, ready INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS head_changes (seq INTEGER PRIMARY KEY AUTOINCREMENT, head TEXT NOT NULL UNIQUE);
+      INSERT OR IGNORE INTO head_changes(head) SELECT head FROM heads ORDER BY rowid;
       CREATE TABLE IF NOT EXISTS local_runs (request_id TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS local_conversations (id INTEGER PRIMARY KEY, parent TEXT, cursor INTEGER NOT NULL, signature TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS local_entries (id INTEGER PRIMARY KEY, conversation_id INTEGER NOT NULL, value TEXT NOT NULL);
@@ -307,6 +309,7 @@ export class ReplicaStore {
 
   putHead(manifest: Manifest, ready: boolean): void {
     const prior = this.head(manifest.head);
+    const wasReady = this.ready(manifest.head);
     if (prior !== undefined && JSON.stringify(prior) !== JSON.stringify(manifest))
       syncReject("history head identity conflict");
     this.db
@@ -314,6 +317,25 @@ export class ReplicaStore {
         "INSERT INTO heads VALUES(?,?,?) ON CONFLICT(head) DO UPDATE SET ready=MAX(ready,excluded.ready)",
       )
       .run(manifest.head, JSON.stringify(manifest), Number(ready));
+    if (prior === undefined || (!wasReady && ready))
+      this.db
+        .prepare(
+          "INSERT INTO head_changes(head) VALUES(?) ON CONFLICT(head) DO UPDATE SET seq=excluded.seq",
+        )
+        .run(manifest.head);
+  }
+
+  headChanges(after: number, limit: number) {
+    return this.db
+      .prepare(
+        "SELECT head_changes.seq, heads.value, heads.ready FROM head_changes JOIN heads USING(head) WHERE head_changes.seq>? ORDER BY head_changes.seq LIMIT ?",
+      )
+      .all(after, limit)
+      .map((row) => ({
+        seq: Number(row.seq),
+        manifest: parse(manifestSchema, JSON.parse(String(row.value))),
+        ready: row.ready === 1,
+      }));
   }
 
   head(head: string): Manifest | undefined {

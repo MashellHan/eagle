@@ -61,6 +61,28 @@ private struct DeviceServiceState: Decodable {
   let error: String?
 }
 
+public struct DeviceSyncIdentity: Decodable, Equatable, Sendable {
+  public let deviceId: String
+  public let publicKey: String
+  public let groupId: String?
+  public let membershipEpoch: Int
+  public let credentialVersion: Int
+}
+
+public struct DeviceSyncIncoming: Decodable, Equatable, Identifiable, Sendable {
+  public let sharedBotId: String
+  public let holder: DeviceSyncIdentity
+  public var id: String { holder.deviceId + "/" + sharedBotId }
+}
+
+private struct DeviceSyncIncomingPage: Decodable {
+  let version: Int
+  let local: DeviceSyncIdentity
+  let items: [DeviceSyncIncoming]
+  let nextAfter: Int
+  let hasMore: Bool
+}
+
 /// One App-wide control surface. Pairing codes stay in memory; only their hash binds a saved request ID.
 @MainActor public final class DeviceSettingsViewModel: ObservableObject {
   public static let shared = DeviceSettingsViewModel()
@@ -80,6 +102,10 @@ private struct DeviceServiceState: Decodable {
   @Published public private(set) var errorCode: String?
   @Published public private(set) var isStarting = false
   @Published public private(set) var isBusy = false
+  @Published public private(set) var incoming: [DeviceSyncIncoming] = []
+  @Published public private(set) var incomingIsStale = true
+  @Published public private(set) var incomingHasMore = false
+  private var incomingAfter = 0
 
   private let control: any DeviceControl
   private let defaults: UserDefaults
@@ -167,6 +193,41 @@ private struct DeviceServiceState: Decodable {
     var params: [String: DeviceJSON] = ["syncPort": port.map { .number(Double($0)) } ?? .null]
     if let expectedSelfDigest { params["expectedSelfDigest"] = .string(expectedSelfDigest) }
     _ = try await control.call("sync.endpoints.publish", params: .object(params))
+  }
+
+  /// Metadata hints only. Every later receive still checks the current directional grant.
+  public func loadIncoming(more: Bool = false) async {
+    incomingIsStale = true
+    await perform {
+      let value = try await self.control.call(
+        "sync.incoming",
+        params: .object([
+          "after": .number(Double(more ? self.incomingAfter : 0)), "limit": .number(128),
+        ]))
+      let page = try value.decoded(DeviceSyncIncomingPage.self)
+      guard page.version == 1, page.local.deviceId == self.localDeviceId,
+        page.items.count <= 128
+      else { throw DeviceHostError.invalidResponse }
+      self.incoming = page.items
+      self.incomingAfter = page.nextAfter
+      self.incomingHasMore = page.hasMore
+      self.incomingIsStale = false
+    }
+  }
+
+  public func shareSync(sharedBotId: String, peerDeviceId: String, enabled: Bool) async -> Bool {
+    var confirmed = false
+    await perform {
+      let result = try await self.control.call(
+        "sync.share",
+        params: .object([
+          "sharedBotId": .string(sharedBotId), "peerDeviceId": .string(peerDeviceId),
+          "enabled": .bool(enabled),
+        ]))
+      guard result["enabled"] == .bool(enabled) else { throw DeviceHostError.invalidResponse }
+      confirmed = true
+    }
+    return confirmed
   }
 
   public func startIfNeeded() async {
@@ -567,6 +628,14 @@ private struct DeviceServiceState: Decodable {
 
   private func applyDirectory(_ value: DeviceJSON) throws {
     let current = try value.decoded(DeviceDirectoryState.self)
+    if directory?.groupId != current.groupId || directory?.revision != current.revision
+      || directory?.localDeviceId != current.localDeviceId
+    {
+      incoming = []
+      incomingAfter = 0
+      incomingHasMore = false
+      incomingIsStale = true
+    }
     if directory?.groupId != current.groupId || directory?.localDeviceId != current.localDeviceId
       || directory?.revision != current.revision
       || directory?.observationRevision != current.observationRevision

@@ -19,6 +19,19 @@ export const SyncAccess = z.strictObject({
 export const SyncShare = SyncAccess.omit({ purpose: true }).extend({
   enabled: z.boolean(),
 });
+export const SyncIncomingRequest = z.strictObject({
+  after: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).default(0),
+  limit: z.number().int().min(1).max(128).default(128),
+});
+export const SyncIncomingResult = z.strictObject({
+  version: z.literal(1),
+  local: SyncIdentity,
+  items: z
+    .array(z.strictObject({ sharedBotId: DeviceId, holder: SyncIdentity }))
+    .max(128),
+  nextAfter: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  hasMore: z.boolean(),
+});
 export const SyncPort = z.number().int().min(1).max(65535).nullable();
 export const SyncPublish = z.strictObject({
   syncPort: SyncPort,

@@ -3,18 +3,27 @@ import Foundation
 
 @MainActor public final class EagleApplicationDelegate: NSObject, NSApplicationDelegate {
   private let supervisor: BotsDaemonSupervisor
+  private let devices: DeviceSettingsViewModel?
   private let reply: @MainActor () -> Void
   private var quitting = false
   private var replied = false
 
   public override convenience init() {
     self.init(
-      supervisor: .shared, reply: { NSApplication.shared.reply(toApplicationShouldTerminate: true) }
+      composition: .live, reply: { NSApplication.shared.reply(toApplicationShouldTerminate: true) }
     )
   }
 
-  public init(supervisor: BotsDaemonSupervisor, reply: @escaping @MainActor () -> Void) {
+  public convenience init(composition: BotsComposition, reply: @escaping @MainActor () -> Void) {
+    self.init(supervisor: composition.supervisor, devices: composition.devices, reply: reply)
+  }
+
+  public init(
+    supervisor: BotsDaemonSupervisor, devices: DeviceSettingsViewModel? = nil,
+    reply: @escaping @MainActor () -> Void
+  ) {
     self.supervisor = supervisor
+    self.devices = devices
     self.reply = reply
     super.init()
   }
@@ -35,8 +44,9 @@ import Foundation
   public func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
     NSApp.activate(ignoringOtherApps: true)
-    DeviceApprovalWindowController.shared.observe(DeviceSettingsViewModel.shared)
-    Task { @MainActor in await DeviceSettingsViewModel.shared.startIfNeeded() }
+    guard let devices else { return }
+    DeviceApprovalWindowController.shared.observe(devices)
+    Task { @MainActor in await devices.startIfNeeded() }
   }
 
   public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

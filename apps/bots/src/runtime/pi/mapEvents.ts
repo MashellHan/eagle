@@ -28,6 +28,7 @@ import {
   provisionalMessageId,
   stopReasonOf,
 } from "./convert.ts";
+import { MergeContribution } from "./HistoryReplica.ts";
 import { RESOURCE_USER_KIND } from "./HistoryResources.ts";
 import { MAX_MESSAGE_BYTES, OVERSIZED_NOTICE, WINDOW_MESSAGES } from "./limits.ts";
 
@@ -375,11 +376,14 @@ export class EventMapper {
       entry.kind !== "pi.user" &&
       !(entry.kind === RESOURCE_USER_KIND && entry.model?.[0]?.role === "user") &&
       entry.kind !== "pi.assistant" &&
-      entry.kind !== "pi.tool-result"
+      entry.kind !== "pi.tool-result" &&
+      !MergeContribution.is(entry)
     ) {
       return [];
     }
-    const toolResult = entry.kind === "pi.tool-result";
+    const toolResult =
+      entry.kind === "pi.tool-result" ||
+      (MergeContribution.is(entry) && entry.model?.[0]?.role === "toolResult");
     const replaces = entry.kind === "pi.assistant" ? (this.#provisional ?? undefined) : undefined;
     const message = this.#convertEntry(entry);
     // A tool result is a transcript row of its own; it neither ends nor replaces the
@@ -471,7 +475,8 @@ export class EventMapper {
       entry.kind !== "pi.user" &&
       !(entry.kind === RESOURCE_USER_KIND && model.role === "user") &&
       entry.kind !== "pi.assistant" &&
-      entry.kind !== "pi.tool-result"
+      entry.kind !== "pi.tool-result" &&
+      !MergeContribution.is(entry)
     ) {
       return undefined;
     }

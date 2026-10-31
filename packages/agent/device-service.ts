@@ -29,6 +29,8 @@ import {
   SyncAccess,
   SyncAccessResult,
   SyncIdentityResult,
+  SyncIncomingRequest,
+  SyncIncomingResult,
   SyncProofRequest,
   SyncPublish,
   SyncShare,
@@ -94,6 +96,7 @@ const approval = z.strictObject({
 });
 const managementMethods = new Set([
   "sync.share",
+  "sync.incoming",
   "sync.endpoints.publish",
   "policy.get",
   "policy.set",
@@ -292,6 +295,13 @@ export async function runDeviceService(): Promise<void> {
     switch (method) {
       case "sync.share":
         return cloud.manage("/sync/share", SyncShare.parse(params));
+      case "sync.incoming":
+        return SyncIncomingResult.parse(
+          await cloud.manage(
+            "/sync/incoming",
+            SyncIncomingRequest.parse(params),
+          ),
+        );
       case "sync.endpoints.publish": {
         const publicationCloud = cloud;
         const publish = async () => {

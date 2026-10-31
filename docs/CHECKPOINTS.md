@@ -4089,3 +4089,392 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   over genuine Tail DERP, owned Miniflare fallback, no deployment claim.
 - No commit/push, P5 source, new native rendering, live production collection,
   authentication/D1 or cloud deployment fact. Final docs/tree/candidate remain next.
+
+
+## 2026-10-31 16:14:44 +0800 — all-path delivered; physical scene5 starts
+
+- Normal commit193f75bd has unique parent6575f53f/tree73695d14,23 paths. Both
+  actual hook child exits0; pre-push root269/browser191+original11 conditional
+  exclusions/Swift208/51/60. Independent own ls-remote/API ref and tracking0/0,
+  clean were verified at delivery. Final25b2ea37 binds3056 refs plus itself.
+- Full six delivery697/741 maps match; all51 started Git SIDs are terminal. Two
+  internal git describe128 remain explicitly recorded. No blanket all-Git-zero
+  claim. No source gates were rerun outside normal authorized hooks.
+- This new PLAN/checkpoint change starts the next physical contract after clean
+  delivery; it is separate from the accepted candidate/final receipt.
+- Scene5 now uses Root's genuine two Running Self routes. Prepare new owned193f
+  instances/backend, product syncPort0, direct mutual-auth/native history, owned
+  connection/daemon barriers for cache fallback and >=2 spaced complete probes/
+  30s stable return. Existing bridge is control/evidence only. No Tail control,
+  CLI inventory, deployment/daily App replacement or old2440/physical recheck.
+- Actual scene5 product transfer has not run yet. Minimal native P5 and remaining
+  six-scene PR admission are open; no new native UI/live production auth/D1 claim.
+
+
+## 2026-10-31 16:27:11 +0800 — physical scene5 actual direct/cache/direct
+
+- New owned193f A/B copies use real product syncPort0 listeners and current
+  paired directional grants. No old6575 state/body copy or Tail client/settings
+  change. Source697 is still delivered193f; only next-task docs are edited.
+- Actual history5→10 direct,14 via cache while owned B daemon is stopped,
+  stable direct after restart/endpoint publication, then18 via direct. Original
+  fixed-head native request completed once; bridge output truncation affected
+  evidence only. Both heads/resources/local script outputs are exact; passive0,
+  intended provider A2/B6 and local runs A1/B3, no peer/PR files.
+- Two complete authenticated probes are22.307s apart; next direct round follows.
+  Bready→direct34.691s; conservative first-observed-cache residency79.055s.
+  Warmup relay exchange1 remains separate. Cache completion adds get200=2 and
+  total R2get6 (includes independent upload/list work); return adds cache/get0,
+  relay/exchange0. Initial nested-log parser error is corrected in a new receipt,
+  with original bytes/logs retained. No relay history-supply claim for this chain.
+- Actual A/B741/697 copies/helpers/launch/runtime reuse are bound separately from
+  root741 maps. Normal all-path delivery193f/final25b2 remains closed. Minimal
+  native P5 and owned72h/remaining PR scenarios are next; no new native-rendering,
+  live production collection/auth/D1, CF deployment or PR-completion claim.
+
+## 2026-10-31 16:42:43 +0800 — minimum P5 SDK core TDD, contextual admission in progress
+
+- Base remains normally delivered193f/tree73695d14 on main. Scene5 final-v2
+  f5b7827b and whole-window6766880e are closed physical API/SDK evidence; new P5
+  work preserves3194 inherited references without another hash sweep. Only this
+  repository is written; no Tail/system/daily App/deployment or upstream changes.
+- Short contract is docs/bots/SYNC-NATIVE.md. Complete runtime history/replica
+  files first fail on missing merge/head APIs, then25/25 pass b5a72dd1 after the
+  real SDK tool/compaction two-branch merge, explicit replace/omit/resource
+  choices, origin mapping, reopen/old-target edit, actual provider resources and
+  explicit colliding tool-call/result mapping. No passive replay or original
+  parent rewrite. A real system-baseline ordering red070104d8 is retained;
+  a later helper resource-prepare gap is recorded as fixture scope, not a new
+  product red. These are evolving core inputs, not final normal P5 gates.
+- Complete adapter file b1ea5a79 is6/7 on missing durable context. The first
+  implementation d5c22ef6 remains6/7: an SDK transaction draft escaped the commit
+  and was read after settling. The fix projects plain context fields inside the
+  commit; next full-file run will verify actual contextual admission/queues,
+  watch/history/lookup/restart and resource/ID isolation. No native UI/P5 physical
+  pass is claimed, and no new full production collection/auth/D1 fact is claimed.
+- Root supplied the future owned72h alarm-only clock route. It is documented,
+  not executed. Native thin composition, trusted manage share/incoming, Outbox,
+  concurrent physical branches/candidate-App restart and remaining PR admission
+  continue after core behavior. No permission wait or new framework is added.
+
+
+## 2026-10-31 16:57:08 +0800 — P5 SDK/Wire core and scoped Outbox TDD
+
+- Main remains delivered193f/tree73695d14; no Git mutation, upstream update,
+  deployment, daily App/data or Tail control. Scene5 Review accepted final-v2
+  f5b7827b + whole-window6766880e + timing38377da4. Only the derived timing receipt
+  was appended; earlier labels are historical and superseded, with no new run.
+- Four original whole Node files pass35/35,0skip/cancel, log132598af. Actual
+  two-branch SDK merge, full origin/explicit omit, per-message typed entries,
+  group expansion/reopen/shrink and another real daemon's mapper/history/Wire/
+  first provider input are covered. Passive editing is preserved in a fork
+  receipt and rederived to a new immutable head; no live raw multi-message
+  first-entry rendering claim is made. Context handle retarget/whole-Bot observer
+  reds505bb59c/10711293 are fixed on those inputs. These are evolving TDD runs.
+- Original complete Swift package redc16bf5c8 proves root reconciliation wrongly
+  replayed two foreign-context requests and dropped their fields. Minimal
+  CommandContext/socket/Outbox/Conversation wiring preserves context/resources/
+  whenBusy and atomic terminal metadata. After a retained first-implementation
+  Swift closure-signature compile failure28956e47, full package2b287dea passes
+  BotsCore52/BotsTransport40/BotsFeatures48. FakeConversation is component evidence;
+  the new owned selector→native composer→real daemon/SDK chain is not verified yet.
+- Current strict has a test-only unbranded entry projection error from the last
+  type run; corrected against actual SDK entries, awaiting the next current-input
+  check. Trusted incoming/share management, owned composition, native head UI,
+  remaining physical concurrency/App restart/72h and final gates/Review remain.
+  No live production collection/auth/D1 or new rendered native pass is claimed.
+- At final PR admission only, normally fast-forward existing own bot-sync/base
+  from165d154 to already local fixed182fc1f; do not fetch or update development
+  code. This is authorized later work, not a current gate or early PR.
+
+## 2026-10-31 17:12:00 +0800 — P5 native selection and owned composer chain
+
+- Main remains delivered193f/tree73695d14; no Git mutation, upstream update,
+  deployment, daily App/data or Tail control. Scene5 inherits accepted
+  f5b7827b/6766880e/38377da4 without rerunning the closed evidence graph.
+- Same merge operation now has bounded metadata-only preview. Complete runtime
+  history/replica/e2e files pass28/28 d60e6326; complete Bots client package
+  bd988a6d and selection d41b1131 pass. Native typed bearer client, persistent
+  context/resource selection and same-composer Outbox are evolving TDD inputs,
+  not final P5 gates. Owned composition99113336 and inspector b03fc6f also pass
+  the complete macOS package; no rendered or physical native pass is claimed.
+- Owned liveApp→HTTP/socket→real SDK chain second3765b512 fails before its first
+  response: the fixture mixed context-tip export with resource injection, which
+  the production selector correctly rejects. Corrected fixture creates a real
+  resource carrier before each context/run and exports only its context tip.
+  This is a fixture premise correction, not a product red/green claim. The next
+  original complete macOS package run will test the actual native composer path.
+- Actual production Herdr collection/auth/D1 has no new verification here.
+  Controlled-provider/local SDK evidence stays separate. Trusted share/incoming
+  management, signed owned XPC composition, contextual lifecycle checks, rendered
+  inspector, physical concurrency/App restart/72h and final normal gates remain.
+
+
+## 2026-10-31 17:26:40 +0800 — P5 owned management and native composer evidence
+
+- Main remains delivered193f/tree73695d14; no Git/upstream/Tail/daily-App or
+  deployment changes. Closed scene5 evidence and inherited3194 references remain
+  unchanged. Current source is evolving P5, not a final normal-gate candidate.
+- The complete native-trusted-control-green package38ede6c1 is211/51/60. Its
+  injected DeviceSettings calls/error state are component evidence; the Host loop
+  proves Node management admission and Bot-socket refusal. In that loop incoming
+  {} is a valid default request; its returned Node error is not parser evidence.
+  Existing wrong-signature XPC coverage is separate. Only its comment is corrected.
+- Later complete native-signed-management-first passes212/51/60,exit0,log6e1cf165,
+  source before=after. The owned composition performs legal pairing, incoming
+  discovery/share and grant revocation through current-process signature-checked
+  anonymous XPC, this slice's Host, independent Node and real Registry SQL.
+  Scope/binary-after inputs are bound in native-management-scope-first.json
+  (08c3a84e); no fabricated binary-before or installed LaunchAgent/release claim.
+- Actual production Herdr collection/auth/D1 has no new verification. Controlled
+  SDK/native view-model evidence does not certify physical App interaction. Next:
+  current strict/check-only lint, stable source handoff, owned candidate App and
+  physical concurrency/restart/72h acceptance. Fresh P5 App/Host binaries will be
+  bound to their actual inputs, separately from old scene5 helpers/dependencies.
+
+
+## 2026-10-31 17:30:25 +0800 — P5 source freeze and first normal gate
+
+- Stable source-v1 is99eb9ca2: base193f/tree73695d14, current747 full files,
+  canonical699 non-Markdown source files, exact49 source delta. Current/base
+  archives and binary patch are immutable.3194 accepted references are inherited
+  without rehash;398 new P5 references were hashed,3592 total plus source receipt.
+  This source-count selection is explicit; it does not rewrite older697 counts.
+- Formatting/import ordering are complete. Root/Bots strict types/check-only
+  lint and official apps/macos strict format pass on their recorded inputs.
+  Normal Bots check4633d153 exits0 with ordinary and coverage full suites, original
+  thresholds and92.93/87.00/90.15 line/branch/function coverage. No skip/focus or
+  limit change. Root/devices/Swift-client coverage/crash/eval still pending.
+- Source is frozen for the existing Review; its Lead-owned core/Outbox snapshot
+  will be compared path by path. Owned candidate App/physical concurrency/restart/
+  alarm-window72h are not yet verified. No new Herdr production collection,
+  authentication/D1 or daily-App/Tail/deployment/PR fact is claimed. Next broken
+  hop is the new P5 owned execution copy/native App input and remaining acceptance.
+
+
+## 2026-10-31 17:48 +0800 — P5 normal gates and two Review corrections
+
+- Source-v1 99eb remains archived unchanged. Its normal Bots920 ordinary/coverage,
+  root269/types/lint/build, devices33, client91.3% and macOS93.8% coverage,
+  strict macOS format, crash17 and eval14 cases exited0 on their actual maps.
+  These inputs precede the Review fixes and are not v2 gates.
+- Review P2 #1: first cold-budget fixture32e16838 timed out closing its deliberately
+  held provider; not a product red. A real SDK/SQLite child then committed32
+  context inputs, was SIGKILLed by its owner, and reopened with only another
+  context subscribed: complete adapter2c20f9d7 was7/8, missing the budget refusal.
+  P2 #2: complete client9401e24e exposed late command errors and recover success
+  crossing selection generations. Minimal fixes currently pass complete
+  adapter+service56/56 (faaaba15) and full client1f5f86c2 before formatting.
+- A owned99eb App copy is independently bound, exact-code anonymous XPC/real
+  Host/Node/local Registry/SDK are ready. Earlier fixture startup failures are
+  retained; corrected harness config starts2ea94666 and renders the real shell.
+  No GUI send/SDK invocation has passed yet; cross-process AX reports trusted
+  but did not expose a usable window/control tree. Same-window public
+  NSAccessibility inspection/actions are being prepared only in ignored harness.
+- No new production Herdr collection/authentication/D1 fact, two-Mac GUI result,
+  daily-App change or Tail configuration is claimed. Next broken hops are v2
+  static/freeze/affected gates, first actual owned control action, physical
+  concurrency/restart and owned alarm-window72h. Scene5 timing38377da4/1948B
+  will be explicitly appended to final protected references without old rehash.
+
+
+## 2026-10-31 17:58:16 +0800 — P5 context report ownership correction
+
+- Review closed frozen source-v2 dd42055a P2 #1/#2 and the prior99eb remaining
+  scope. V2 normal Bots921 ordinary/coverage, client91.3% and devices33 all
+  completed naturally with exit0 on their own748-file inputs. These are not #3
+  gates. Source-v2, original failures and their accepted references stay immutable.
+- P2 #3 uses real SDK tasks/Registry/extensions/agent resolution over real SQLite.
+  Complete adapter first2e709a69 hit an asynchronous fixture assertion, not product
+  red. Complete adapter86025bef then exposed4 child-only errors delivered to root.
+  Minimal synchronous conversation-ID routing to existing context handles preserves
+  their trace/subscribers/deferred buffer and the shared classifier. Complete
+  adapter96509025 passes9/9; after formatting, full adapter/classify/failures
+  c6f8d18b passes18/18. Child original failures each have one error origin; root
+  gets none, and report delivery does not replay the3 original provider calls.
+  Bots strict types/check-only lint7b727f0d exits0 on stable748 inputs.
+- Owned GUI still executes separate99eb binaries. Public same-window accessibility
+  inspection exposes only outer nodes, with no composer action/request yet; this
+  is not a TCC denial or native GUI pass. No new two-Mac/72h acceptance, production
+  Herdr collection/auth/D1, daily-App/Tail/upstream/Git/deployment/PR fact. Next:
+  freeze the exact #3 delta for existing Review, affected normal gates, then the
+  owned actual-control/physical acceptance chain.
+
+
+## 2026-10-31 18:09:24 +0800 — P5 cold child report and owned App evidence
+
+- V3 d571c7c2 is preserved, not source-accepted: Review found the same P2 #3
+  also affects child reports emitted before a local handle exists. V3 normal
+  Bots922 ordinary/coverage3019a5b0, devices33 ef69edf9, crash17/eval14
+  3800b1f0 and macOS212/51/60/93.8%34c4b6d7 completed0 on their exact inputs.
+- Real SDK child input/SQLite task ran in an owned subprocess, then its parent
+  SIGKILLed only that process. Complete adapter23cf7ba8 was9/10: SDK openTasks
+  emitted child task_parked before Harness.open returned; root consumed it.
+  The existing deferred-error buffer now retains its SDK conversation key until
+  legal child handle registration. Same failure/origin/boot trace transfer once;
+  root/global behavior remains. Full adapter/classify/failures e5509a72 is19/19;
+  formatted full files plus Bots strict types/check-only lint b6c81de5 exit0,
+ 749 inputs stable. No cold-open-all, retry, passive provider call or new queue.
+- Separate99eb A App first real control receiptbc97b613 is original TextField
+  Return/onSubmit, not successful waveform click: one original request, SDK
+  submission10/done, provider1, visible transcript and cleared draft. Supplement
+  8faadad9 preserves exact Outbox269B, daemon47457B prefix and export17803B.
+  No request was resent. V3 new A/B copies/App/helper are separately bound;
+  controlled backend, fresh identities/grants and real product endpoints are
+  prepared, still no native selector/merge/concurrency/restart/72h pass.
+- Next: freeze #3 cold delta for existing Review and affected Node gates; reuse
+  unchanged Swift/helper inputs. Then complete owned physical native/retention
+  acceptance. No daily App/Tail/system time/upstream/Git/deployment/PR change,
+  or new production Herdr collection/auth/D1 assertion.
+
+
+## 2026-10-31 18:16:37 +0800 — P5 unregistered child report trace
+
+- V4 2d4f5d98 preserves cold SIGKILL ownership19/19 and normal Bots923
+  ordinary/coverage3cabcd98, devices33 2602f8af, crash17/eval14 55e150be,
+  all exit0 on stable749 inputs. Review found the same #3 trace branch: an
+  explicit child without a local handle could borrow an active root trace.
+- Complete adapter first4f6bc30c was a fixture status oracle (placed, not
+  running), not product red. Corrected full filec11096fd is10/11: the actual
+  SDK extension/task reports while a real root provider is held; later child
+  delivery has root trace instead of boot trace. Only that unmatched explicit
+  child trace now selects spec.trace; registered child and root/global rules stay.
+  Full adapter/classify/failures3ca06229 passes20/20; formatted final5a215a7f
+  plus strict types/check-only lint exits0,749 before/after stable. No cold-open
+  all, second queue, execution replay, passive provider or new error framework.
+- Two physical owned v3-prepared copies received the exact v4 Node/test/docs
+  delta while daemons were stopped; overlay1c6a6951 is0. Actual749/701 maps
+  and reused App/helper binary SHAs are bound separately. Two earlier overlay
+  preparation failures remain fixture-only. A new real SDK root/tool history
+  and6 original resources synchronized byte-for-byte to B, whose provider/
+  submission/task counts remained0 (546ffb6a); this is API preparation only,
+  not native selector/merge/concurrency/restart/72h acceptance. Copies remain
+  v4 scope until a separately recorded Node update; helper/Swift inputs unchanged.
+- Next: freeze final #3 trace delta for existing Review and affected Node gates,
+  then resume native/physical acceptance. No new Herdr collection/auth/D1, daily
+  App, system time/Tail/upstream/Git/deployment/PR assertion or change.
+
+
+## 2026-10-31 18:33:00 +0800 — P5 physical concurrency and owned retention window
+
+- Source-v5 fd41c3c6 is accepted for all three P2 fixes. Normal Bots924
+  ordinary/coverage, devices33 and crash17/eval14 settled0 on their exact749
+  inputs (436f6f13); unchanged layers retain their earlier precise input scope.
+- Two physical Macs now ran concurrent same-Bot API/SDK branches, actual selected
+  resources and local skill/tool, then each continued its own branch. Both
+  immutable histories/resources synchronized exactly; passive provider delta0
+  (dc891c81). This is API/SDK evidence, not native selector/merge/composer.
+- With original A offline and both owned daemons stopped/traffic settled, the
+  private Sync DO temporarily advanced only its alarm call beyond eight original
+  objects' expiry. Original super.alarm tombstoned/deleted actual R2 bodies;
+  uploaded/firstCachedAt/expiresAt stayed unchanged. Real time was restored before
+  fresh Registry authority returned same-object GET410 (08fec137). This is the
+  owned alarm deadline window, not wall-clock72h or deployed CF. Fresh empty C
+  on A has verified v5 Node inputs and separately bound reused App/helper; its
+  pairing/grant/relay restoration remains next, with B online holder.
+- A interactive desktop is pending user notification. Existing B18:28:30 public
+  NSWorkspace read also reports loginwindow; no owned window/control readiness
+  claim, no further input/activation/Tail/settings inventory. Actual GUI acceptance
+  remains pending; original99eb Return/control evidence keeps its own scope.
+- No new live Herdr collection/authentication/D1 or production rendering success
+  is asserted. No daily App, system clock/Tail/upstream/Git/deployment/PR change.
+
+
+
+## 2026-10-31 18:45:00 +0800 — P5 real native resource selector repair
+
+- Scene6 API/SDK closes at114d482d: original A daemon offline, online B supplies
+  original A/B histories and six resources to fresh empty C on A after eight real
+  R2 objects are deleted by the owned original-alarm deadline window. Four actual
+  relay exchanges, R2get0/put0, passive execution0; one original C request then
+  completes real SDK/local skill. WorkerGET410 and owned Bots HTTP403 are separate
+  boundaries (1b733989); no wall72h/deployment claim or changed original clocks.
+- User unlocked A; actual public external AX controls now select immutable parents
+  and AGENTS version in the owned App. One merge creates readyd693d210, but the
+  UI's advertised resource-manifest digest has no local fact (3d2841f0). Provider
+  stays5, composer not sent. B desktop remains with Root/user; no Service polling.
+- Lead narrowly unfreezes only ReplicaSync.ts and original replica-sync.test.ts.
+  Complete first2192d890 is a fixture parent oracle, not productred; corrected
+  bc08aef6 is actual resource-head/context rejection14/15. Metadata now returns
+  its already-valid ready head; no new fact/source event/protocol. Full green
+  f932c7a4 is15/15. Static first6b443e02 rejects only new fixture type inference;
+  final complete file/types/lint96d199c5 is0,749 stable. Existing resource bytes,
+  imported ready selection, no backfill and passive execution are asserted.
+- Next: freeze exact two-source delta for existing Review, affected Node gates,
+  then continue the same original physical merge through original native UI.
+  Oldfd41, scene6 and failures remain immutable. No new Herdr collection/auth/D1,
+  daily App, system time/Tail/upstream/Git/deployment/PR change is asserted.
+
+## 2026-10-31 19:00:00 +0800 — P5 A native complete; B actual AX boundary
+
+- Lead/Reviewer accepted source-v6a4e8d4b3's two-path metadata repair and the
+  normal-v63511bbd7 exact inputs; prior three P2 closures remain. Scene6
+  114d482d+1b733989 and concurrentdc891c81 are accepted at their real v5 API/SDK
+  scope. No old graph, source gate or physical run is replayed.
+- After the user's actual desktop change, A selects the same originald693 merge
+  and presses the actual labelled send control once. Original request
+  r_2D083507…/submission160 completes; provider5→7 has both branch contexts,
+  selected six resources and actual local script output. Finitea0ca410d binds
+  actual701-source copy/749 separate map, six reused compiled modules, App/helper
+  binaries, exact pending/terminal Outbox and daemon-log byte prefix. Input
+  supplement421f922c adds the twelve existing runner/driver/AX inputs.
+- Actual A App96585→55452/daemon38270→55513 same-identity restart preserves
+  complete SDK export, Outbox bytes, original selection/resource/request and
+  real visible transcript. Provider/task/submission/local-run delta0. Verified
+  owned-PID-only SIGTERM collects EOF cleanup; original failure/exit scope stays.
+- B bridge9d00a6fc was denied/revoked_agent before activation. Root later hands
+  off the current same caller/target identity; new operations activate actual
+  owned App42619, then actual external AX read fails AXIsProcessTrusted() with
+  helper exit-5. Boundaryff597b09 keeps these distinct; no old-ID rerun, control
+  press, system/TCC change or repeated unlock request. Existing in-process
+  hitTest reaches a text field but not a pressable labelled library control.
+- Next: resolve only that concrete B actual-control path, then complete B native
+  continuation/restart and final two-Mac evidence/candidate binding. A original
+  merge/send stays unchanged. No new Herdr collection/D1 rendering, daily App,
+  Tail/network inventory, upstream update, commit/push/deployment/PR is claimed.
+
+## 2026-10-31 19:14:40 +0800 — current architecture entry and B manual handoff
+
+- A finitea0ca+421f+7b7f is accepted. Append-onlyee54 clarifies that the file
+  named A-instance-after-restart contains the earlier prefix only through
+  10:21:54Z; the actual10:55 restart remains evidenced by e42 control responses,
+  persistent before/after and actual AX. Original failures/bytes remain unchanged.
+- Root's single B AX handoff is pending. On explicit authorization only, new
+  same-target operationea215893 opens the public Accessibility Settings URL and
+  Finder-reveals the exact bundled EagleDeviceHelper; both commands exit0.
+  Fresh19:12:06 frontmost is Finder816 and Settings770 is running; signature/path
+  match Root's responsible helper. Receipt76213d27/log2f4cc260 preserves original
+  start/raw/exit and749stable. No AX/trust test, TCC write or permission toggle;
+  command completion does not prove a panel's contents or user authorization.
+- Architecture entry271→123 lines keeps all9 fixed Orca links and the core data,
+  direct,72h and holder rules. SYNC/SYNC-STATUS now distinguish historical analysis
+  and stage records from delivered193f/source-v6, finite evidence and B native
+  still pending. Protocol and original TESTING events are unchanged.
+- Two fixed owned B scripts are prepared, not executed: reuse existing public
+  read/fill/press, choose ready2f685a07 with explicit resources, capture A passive
+  before before a single original B send, query the original Outbox on uncertainty,
+  then SDK/local skill and same-identity App/daemon restart. Local AST parsing of
+  two files/four embedded programs only; B requests0/AX0, no new gate/framework.
+  Preparation00ecb31b records exact docs/scripts. No new Herdr collection/D1,
+  daily App/source/normal-gate/upstream/index/commit/push/PR change is claimed.
+
+
+## 2026-10-31 19:27:03 +0800 — B actual native continuation and restart
+
+- Root's user permission change is observed by one public no-prompt boolean read:
+  be8782f6/4a838650, trusted=true through exact responsible EagleDeviceHelper67663.
+  The earlier path assertion stopped before AX; no repeated trust probe or TCC write.
+- Actual owned B controls choose existing A2f685a07 and explicit same-head resources,
+  then original composer sends only r_421B189D…/submission171. SDK/provider3→5 has
+  full A+B context and real local skill output. Same-identity App5198→6962 and
+  daemon68572→6987 preserve full export/Outbox/selection/request; replay0. A before
+  is captured before B sends; new e8f5a483/resources arrive with passive execution0.
+- Finite482935b0 binds99 new originals and18 actual records (10exit0/8exit1), all
+  749stable/701=v6. Real controls, request trace, compiler inputs/modules/binaries
+  and each actual copy are separately bound. Preparation/reader/EOF/transfer failures
+  stay in their real scopes. Original interrupted read-only02f get completes; prior
+  chunks reconstruct the exact PNG without replay. No new Herdr collection/D1 or
+  website rendering run is claimed; current same-profile bridge supplies evidence.
+- Existing Review receives finite B evidence. Final docs/tree/candidate binding is
+  next; accepted source-v6/normal checks and old finite evidence are reused. Main
+  HEAD193f/index remain unchanged; no commit/push/PR/base update has occurred.

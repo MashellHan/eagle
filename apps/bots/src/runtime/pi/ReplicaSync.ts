@@ -16,11 +16,14 @@ import type { RuntimeHandle, SubmitInput } from "../../core/RuntimePort.ts";
 import { FailureClassifier } from "./classify.ts";
 import {
   bundleSchema,
+  contextSchema,
   entrySchema,
   exportSchema,
   type HistoryBundle,
   type HistoryReplica,
   hash,
+  LocalContext,
+  mergeRequestSchema,
   validateBundle,
   validateHistory,
   validateResource,
@@ -97,8 +100,9 @@ export class ReplicaSync {
     // Every pending version is prepared before the first submit can resume the scheduler.
     for (const intent of this.store.pending()) {
       if (intent.mode === "root" && intent.resourceHead !== undefined) {
+        const conversationId = await this.conversationId(intent.contextId);
         const existing = await this.#harness.commit(
-          (tx) => tx.submissionByRequest(this.#rootId, intent.requestId),
+          (tx) => tx.submissionByRequest(conversationId, intent.requestId),
           ctx,
         );
         if (existing !== undefined) continue;
@@ -112,13 +116,18 @@ export class ReplicaSync {
     for (const intent of this.store.pending()) {
       if (intent.mode === "branch") await this.#run(intent);
       else {
-        const root = await this.#harness.root(ctx);
+        const root = await this.#harness.conversation(
+          await this.conversationId(intent.contextId),
+          ctx,
+        );
+        if (root === undefined) return syncReject("missing recovery context");
         await this.root(
           {
             requestId: intent.requestId,
             text: intent.text,
             whenBusy: intent.whenBusy ?? "followUp",
             trace: "tr_replica_recovery",
+            ...(intent.contextId === undefined ? {} : { contextId: intent.contextId }),
             ...(intent.resourceHead === undefined ? {} : { resourceHead: intent.resourceHead }),
           },
           (entry) =>
@@ -171,6 +180,12 @@ export class ReplicaSync {
     await this.#history.prepareResources();
   }
 
+  async conversationId(contextId?: string): Promise<ConversationId> {
+    return contextId === undefined
+      ? this.#rootId
+      : ((await this.#history.contextInfo(contextId)).conversationId as ConversationId);
+  }
+
   #serial<T>(action: () => Promise<T>): Promise<T> {
     const next = this.#tail.then(action);
     this.#tail = next.catch(() => undefined);
@@ -217,11 +232,13 @@ export class ReplicaSync {
     return this.#bundle(manifest) ?? syncReject("incomplete resource manifest");
   }
 
-  checkRootRetry(input: Pick<SubmitInput, "requestId" | "whenBusy">) {
+  checkRootRetry(input: Pick<SubmitInput, "requestId" | "whenBusy" | "contextId">) {
     const prior = this.store.run(input.requestId);
     if (
       prior !== undefined &&
-      (prior.intent.mode !== "root" || (prior.intent.whenBusy ?? "followUp") !== input.whenBusy)
+      (prior.intent.mode !== "root" ||
+        prior.intent.contextId !== input.contextId ||
+        (prior.intent.whenBusy ?? "followUp") !== input.whenBusy)
     )
       syncReject("local run request ID binding conflict");
     return prior;
@@ -232,6 +249,11 @@ export class ReplicaSync {
     admit: (entry?: InputEntry) => Promise<Submission>,
   ): Promise<Submission> {
     return this.#serial(async () => {
+      const selectedContext =
+        input.contextId === undefined
+          ? undefined
+          : await this.#history.contextInfo(input.contextId);
+      const conversationId = (selectedContext?.conversationId ?? this.#rootId) as ConversationId;
       const prior = this.checkRootRetry(input);
       if (
         prior !== undefined &&
@@ -248,20 +270,28 @@ export class ReplicaSync {
               ? {}
               : { resourceHead: prior.intent.resourceHead }),
           };
-      } else if (input.resourceHead !== undefined) {
-        const bundle = this.#resourceBundle(input.resourceHead);
+      } else if (
+        input.resourceHead !== undefined ||
+        (selectedContext !== undefined && input.whenBusy !== "steer")
+      ) {
+        const resourceHead =
+          input.resourceHead ??
+          selectedContext?.resourceHead ??
+          syncReject("missing context resource selection");
+        const bundle = this.#resourceBundle(resourceHead);
         selection = {
-          resourceHead: input.resourceHead,
+          resourceHead,
           resourceVersion: bundle.resources.length === 0 ? "" : hash(bundle.resources),
         };
       } else if (input.whenBusy === "steer")
-        selection = (await runResources(this.#harness, this.#rootId))?.selection;
+        selection = (await runResources(this.#harness, conversationId))?.selection;
       this.store.intent(
         prior?.intent ?? {
           kind: "run",
           mode: "root",
+          ...(input.contextId === undefined ? {} : { contextId: input.contextId }),
           requestId: input.requestId,
-          head: prior === undefined ? this.store.latestHead(this.#rootId) : prior.intent.head,
+          head: prior === undefined ? this.store.latestHead(conversationId) : prior.intent.head,
           text: input.text,
           whenBusy: input.whenBusy,
           ...selection,
@@ -269,7 +299,7 @@ export class ReplicaSync {
       );
       try {
         const existing = await this.#harness.commit(
-          (tx) => tx.submissionByRequest(this.#rootId, input.requestId),
+          (tx) => tx.submissionByRequest(conversationId, input.requestId),
           ctx,
         );
         if (existing !== undefined) {
@@ -287,11 +317,11 @@ export class ReplicaSync {
         // SDK boundaries run while installation awaits: read current state after preflight.
         let checked = false;
         while (!checked) {
-          const active = await runResources(this.#harness, this.#rootId);
+          const active = await runResources(this.#harness, conversationId);
           checked = await this.#harness.commit(async (tx) => {
-            const live = await tx.doc(LiveDoc, this.#rootId);
+            const live = await tx.doc(LiveDoc, conversationId);
             if (live.run?.inputs[0] !== active?.id) return false;
-            const inbox = await tx.doc(InboxDoc, this.#rootId);
+            const inbox = await tx.doc(InboxDoc, conversationId);
             const version = selection?.resourceVersion ?? "";
             if (
               input.whenBusy === "steer" &&
@@ -308,7 +338,7 @@ export class ReplicaSync {
                 syncReject("queued resource versions would share one run");
             }
             if (selection !== undefined) {
-              const agent = await tx.doc(AgentDoc, this.#rootId);
+              const agent = await tx.doc(AgentDoc, conversationId);
               const extensions = agent.extensions;
               agent.extensions = Array.isArray(extensions)
                 ? [...new Set([...extensions, RESOURCE_EXTENSION])]
@@ -384,6 +414,94 @@ export class ReplicaSync {
       bounded(command.params);
       await this.#harness.commit(() => undefined, ctx);
       switch (command.method) {
+        case "context": {
+          const input = parse(contextSchema, command.params);
+          if (input.head === undefined) {
+            const info = await this.#history.contextInfo(input.contextId);
+            guard();
+            return {
+              contextId: input.contextId,
+              seedHead: info.head,
+              resourceHead: info.resourceHead,
+              tip: this.store.latestHead(info.conversationId),
+            };
+          }
+          await this.#scan();
+          if (!this.store.ready(input.head)) return syncReject("context seed head is not ready");
+          const parent = this.store.head(input.head) ?? syncReject("missing context seed");
+          if (input.resourceHead !== undefined) this.#resourceBundle(input.resourceHead);
+          const created = await this.#history.createContext(
+            this.#bundle(parent) ?? syncReject("incomplete context seed"),
+            input,
+            guard,
+          );
+          const info = await this.#history.contextInfo(input.contextId);
+          const receipt = await this.#history.receipt(info.head);
+          this.store.conversation(
+            info.conversationId,
+            info.head,
+            receipt?.entries[String(parent.entries.at(-1)?.id)] ?? 0,
+          );
+          return created;
+        }
+        case "heads": {
+          const input = parse(
+            z.strictObject({
+              after: integer.default(0),
+              limit: integer.min(1).max(128).default(128),
+            }),
+            command.params,
+          );
+          await this.#scan();
+          guard();
+          const rows = this.store.headChanges(input.after, input.limit + 1);
+          const items: ReturnType<ReplicaSync["headMetadata"]>[] = [];
+          let nextAfter = input.after;
+          for (const row of rows.slice(0, input.limit)) {
+            const item = this.headMetadata(row.manifest, row.ready);
+            if (
+              Buffer.byteLength(JSON.stringify({ items: [...items, item] })) >
+              8 * 1024 * 1024 - 128
+            ) {
+              if (items.length === 0) syncReject("head metadata exceeds local page limit");
+              break;
+            }
+            items.push(item);
+            nextAfter = row.seq;
+          }
+          return { items, nextAfter, hasMore: rows.some((row) => row.seq > nextAfter) };
+        }
+        case "head": {
+          const { head } = parse(z.strictObject({ head: bundleSchema.shape.head }), command.params);
+          await this.#scan();
+          guard();
+          const manifest = this.store.head(head) ?? syncReject("unknown history head");
+          return {
+            ...this.headMetadata(manifest, this.store.ready(head)),
+            resourceFiles: manifest.resources.map((ref) => {
+              const fact = this.store.fact(ref);
+              if (fact?.kind !== "resource") return { ref };
+              const { name, kind, sha256 } = fact.resource;
+              return { ref, name, kind, sha256 };
+            }),
+          };
+        }
+        case "merge": {
+          const input = parse(mergeRequestSchema, command.params);
+          await this.#scan();
+          const parents = input.heads.map((head) => {
+            if (!this.store.ready(head)) return syncReject("merge parent head is not ready");
+            const manifest = this.store.head(head) ?? syncReject("unknown merge head");
+            return this.#bundle(manifest) ?? syncReject("incomplete merge head");
+          });
+          if ("preview" in input) return this.#history.previewMerge(parents, input, guard);
+          const result = await this.#history.mergeFrom(parents, input, guard);
+          const receipt = await this.#history.receipt(result.head);
+          const bundle = validateBundle(JSON.parse(receipt?.bundle ?? "null"));
+          this.#index(bundle, true);
+          await this.#map(bundle);
+          return result;
+        }
         case "receipts":
           return this.#history.receipts(command.params);
         case "bind": {
@@ -469,6 +587,22 @@ export class ReplicaSync {
             return carrier;
           }
           let bundle: HistoryBundle;
+          if (input.contextId !== undefined) {
+            if (
+              input.head !== undefined ||
+              input.branch !== undefined ||
+              input.resources !== undefined
+            )
+              return syncReject("select one context tip");
+            const context = await this.#history.contextInfo(input.contextId);
+            await this.#scan();
+            const tip =
+              this.store.latestHead(context.conversationId) ??
+              syncReject("context has no ready tip");
+            return validateBundle(
+              this.#bundle(this.store.head(tip) ?? syncReject("missing context tip")),
+            );
+          }
           if (input.head !== undefined) {
             if (input.branch !== undefined) syncReject("select one immutable head");
             const manifest = this.store.head(input.head);
@@ -519,6 +653,18 @@ export class ReplicaSync {
         }
       }
     });
+  }
+
+  private headMetadata(manifest: Manifest, ready: boolean) {
+    return {
+      head: manifest.head,
+      parents: manifest.meta.parents,
+      source: manifest.meta.source,
+      ready,
+      entries: manifest.entries.length,
+      resources: manifest.resources,
+      resourceHead: manifest.resources.length === 0 ? null : manifest.head,
+    };
   }
 
   async #run(intent: { requestId: string; head: string | null; text: string }): Promise<unknown> {
@@ -865,11 +1011,17 @@ export class ReplicaSync {
           { conversationId: conversation.id as ConversationId, order: "descending" },
           1,
         );
+        const context = await tx.doc(LocalContext, conversation.id as ConversationId);
         return {
           agent: JSON.parse(
             JSON.stringify(await tx.doc(AgentDoc, conversation.id as ConversationId)),
           ),
           tail: tail.items[0]?.id,
+          context: {
+            contextId: context.contextId,
+            head: context.head,
+            resourceHead: context.resourceHead,
+          },
         };
       }, ctx);
       if (state === undefined) continue;
@@ -884,13 +1036,31 @@ export class ReplicaSync {
       );
       const headers = [...inherited, ...own].sort((a, b) => a.id - b.id);
       if (headers.length === 0 || headers.at(-1)?.id !== state.tail) continue;
-      const resourceHead = this.store.latestHead(conversation.id) ?? conversation.parent;
+      const selectedInput = [...own]
+        .reverse()
+        .map((header) => this.store.fact(header.ref))
+        .find((fact) => fact?.kind === "entry" && fact.content.kind === RESOURCE_USER_KIND);
+      const inputSelection =
+        selectedInput?.kind === "entry"
+          ? inputResources({
+              kind: selectedInput.content.kind,
+              ...(selectedInput.content.data === undefined
+                ? {}
+                : { data: selectedInput.content.data }),
+            })
+          : undefined;
+      const selectedResourceHead =
+        inputSelection?.resourceHead ?? (state.context.resourceHead || undefined);
+      const resourceHead =
+        selectedResourceHead ?? this.store.latestHead(conversation.id) ?? conversation.parent;
       const resources =
         resourceHead === null
           ? []
-          : this.#bundle(
-              this.store.head(resourceHead) ?? syncReject("missing resource version head"),
-            )?.resources;
+          : selectedResourceHead !== undefined
+            ? this.#resourceBundle(selectedResourceHead).resources
+            : this.#bundle(
+                this.store.head(resourceHead) ?? syncReject("missing resource version head"),
+              )?.resources;
       const signature = hash({ headers, agent: state.agent, resources });
       if (signature === conversation.signature) continue;
       const entries: HistoryBundle["entries"] = [];

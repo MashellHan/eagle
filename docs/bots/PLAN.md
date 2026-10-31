@@ -47,37 +47,51 @@ candidate803c6f09 after the sole registration-ownership P2 closed. Normal delive
 is clean/ahead0/behind0. Authoritative relay-delivery-final.json SHA5870b595 binds
 2439 references; the next slice protects its final itself as reference2440.
 Normal hooks and their exact counts/scopes are in that receipt and TESTING.
-Direct/cache sender confirmation and connection peerApplied
-remain unknown. The next authorized narrow status-report/status-read slice closes
-those paths; it is not a prerequisite for the first physical history run.
-The active additive contract is [SYNC-STATUS.md](SYNC-STATUS.md): authenticated
-receiver persistent status-report and independent holder status-read, with exact
-identity/binding/source keys and a separate bounded metadata action. It changes no
-offline apply, event retention or direct handshake signing semantics.
-Its source-v1 is now frozen as f790dafc with697 canonical source entries and16
-actual base deltas. Complete status windows11/11 and normal root269, Bots916
-ordinary/same coverage, Worker26 and devices33 pass on that source; final candidate
-binding and independent Review/Lead acceptance are pending. It is not delivered.
+Authenticated all-path status is normally delivered as `193f75bd` / tree
+`73695d14`, single parent `6575f53f`. The accepted source-v2 `863cd483` closes
+status-report/status-read and its transaction-boundary P2; final25b2ea37 binds
+normal hooks, exact own ref and clean/tracking0/0 at delivery. Receiver reports
+and holder reads retain exact identity/binding/source keys and a separate bounded
+metadata action; offline apply, retention and direct handshake signing stay intact.
 
 The first two-physical-Mac round is independently closed at API/SDK scope:
 physical finaldc9c65da binds actual6575 copies and A→B→A5/10/14/19-entry continuation,
 A offline/B continuation, A catch-up and daemon restarts, with passive execution0.
-Native composer/App remains a later minimal P5 connection; this round used no
-hand-copied history and does not certify native App behavior.
-The six physical scenarios in TESTING are final sync-PR admission requirements:
-history/context relay; offline continuation/catch-up; concurrent branches; restart
-durability/no tool replay; actual direct/relay switching; and72h online-holder reread.
-The last can use two physical Macs and a third isolated C instance on A after old A
-exits. Only the owned backend clock advances; system time and event clocks stay intact.
-Scenario5 currently lacks running genuine Tailscale Self and published/listenable,
-two-Mac reachable sync endpoints. Accepted6575 admits only100.64/10 or
-fd7a:115c:a1e0:: Self addresses. Prior fresh A CLI lookup and B Stopped/Online=false
-do not establish that route; owned10.172.44.34 cannot substitute for Self. Do not
-repeat polling, start/login/change Tailscale, spoof endpoints or replace listeners.
-Cache/relay, owned72h, status and P5 proceed independently of this prerequisite.
-Root alone prepares the official Tailscale clients and hands login to the user;
-Service does not start/login/join or change routes. Scene5 is tested only after
-actual same-tailnet login and reachable product endpoints, and remains unpassed.
+It used no hand-copied history and does not certify native App behavior.
+The six physical scenarios in TESTING remain final sync-PR admission requirements.
+Scene5 is accepted only as the combination finalf5b7827b, whole-window6766880e
+and timing38377da4: genuine product direct over Tailscale DERP, owned Miniflare
+cache fallback and stable return, with exact path/counter/history evidence.
+The earlier Stopped/NeedsLogin facts are historical. Neither UDP P2P nor deployed
+CF is claimed, and Service does not change the user's Tailscale configuration.
+
+The active P5 contract is [SYNC-NATIVE.md](SYNC-NATIVE.md). Source-v6 `a4e8d4b3`
+and all three earlier P2 repairs are accepted; normal-v6 `3511bbd7` binds the
+actual affected Node checks. Physical concurrent branchesdc891c81 and owned-alarm
+scene6 `114d482d` + authority1b733989 are accepted at their actual v5 API/SDK
+scope: two physical Macs and a third empty isolated C on A, original A offline,
+online B relay supply, unchanged event clocks, actual R2 deletion and passive0.
+This is the bounded original-alarm deadline window, not real elapsed wall72h.
+
+A native selector/merge/composer plus same-identity App/daemon restart is now
+accepted at finite `a0ca410d` + input421f922c + passive7b7f6794 scope.
+The same original d693 merge is continued once with selected resources; complete
+SDK history/Outbox/selection/request survive restart and execution counts do not
+increase. Its actual source copy/modules/binaries are separately bound; supplement
+ee54bb0b limits the earlier instance-log prefix to its actual10:21:54 content.
+B's earlier bridge denial and AX trust rejection remain boundaryff597b09 history.
+After the user's exact-helper permission change, one public no-prompt trust read
+returns true through the same responsible host. Finite B receipt482935b0 binds
+real native selection of already-ready A head2f685a07, explicit same-head resources
+and one composer request r_421B189D…/submission171. Actual SDK/local skill completes,
+provider3→5; same-identity App5198→6962/daemon68572→6987 restart preserves complete
+export/Outbox/selection/request with no execution replay. A receives the complete
+new head e8f5a483/resources with passive execution0 from an actual before captured
+before B sends. All18 new execution records retain their real10exit0/8exit1;
+preparation/cleanup/transfer failures are not product reds. Actual copy701/749 and
+native modules/binaries are separate from repository input stability. Existing
+Review is binding this finite B scope and the final docs/tree; normal delivery
+remains ahead. No duplicate merge/send or denied-operation replay is used.
 Keep messages, inputs/outputs/tool results, attachments, AGENTS.md and full versioned
 skill bytes with actual local execution evidence. Shared-backend reachability and
 current directed grants require their own facts; the paired command bridge is not
@@ -233,9 +247,9 @@ Tailscale 直连进入本版范围；专用同步入口仅向 Tailscale 网络�
 | P1 — 本地副本与分支 | in progress | 持久来源日志、outbox、ID 映射、缺口补读与本端恢复 | A 停止后 B 可运行；重复/乱序同步保留两支；不恢复其他端任务 |
 | P2 - resources | local verified | fixed-head696f649, ordinary-root265b0db/repair9475e2e and fresh264cc9e delivered normally | Complete local version loading; raw contents/tool associations retained |
 | P3 — 设备底座接入 | first metadata slice delivered460b60d | 复用 #109 的安装/配对/helper/权限；新增同步身份授权、Tailscale 端点发布和共享访问接口 | 现有设备能力保持有效；无 Tailscale 可走云通道；端点身份、群成员和同步权限真实生效 |
-| P4 — 直连、中转与 3 天缓存 | first direct-page slice delivered4f7d035; local durable objects/envelopes delivered8b5ca36; fixed182fc1f baseline delivered ee26b2b; explicit CF72h cache delivered abec9dbb; automatic fallback/stable return follows SYNC-AUTO with exact verification/delivery receipts; remaining relay/discovery/peer ACK follows | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
-| P5 — 原生多端流程 | planned | 共享目录、各端运行状态、直连/中继状态、分支选择/合并、同步覆盖范围与资源冲突 | 从 App 完成双端执行、错峰补齐、过期恢复；路径切换不打断本地 run，缺口不误报完整 |
-| P6 — 多机验证与交付 | planned | 物理双 Mac、真实 Tailscale 路径、断网/重启/升级、性能与成本、发布门禁 | 直连/回退/切回、同时运行、A 关机、B 重启、过期补读及新设备初始化有实际证据 |
+| P4 — 直连、中转与 3 天缓存 | delivered through193f75bd: automatic direct/cache return, online-holder relay/discovery and all-path persistent status | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
+| P5 — 原生多端流程 | source-v6/normal accepted; finite A native/restart accepted; B482935b0 observed, final binding pending | 有界目录、持久 context、两父合并/资源选择、同一原 composer/Outbox 与 owned composition | A/B 真实控件各一次接续、本机 SDK/skill、同身份 App/daemon 重启、完整历史/资源及零重放 |
+| P6 — 多机验证与交付 | six scenarios have separately scoped physical evidence; final Review/delivery/PR pending | 两台物理 Mac、按需隔离 C，API/SDK 并发、Tail DERP 上的 direct/cache 切换、owned alarm 到期补读 | 各收据保留其实际层级；不扩称 native 并发、真实墙钟72h、UDP P2P、发行信任或部署 CF |
 
 依赖：已集成 #109 基线 → P0 → P1/P2/P3 → P4 → P5 → P6。P3 尽早做物理双 Mac 验证；
 P6 验证最终候选，C/D 隔离实例证据与真实机器分开记录。
@@ -1322,4 +1336,33 @@ Exact6575 execution copies/helper inputs and real A-return call are bound by
 physical-first-round-final.json SHA dc9c65da9060faa5959bc5e384bae218b8467f8c51eec14b2915fdd94c2eba77.
 This is controlled-provider/API/SDK/local-tools scope over the owned shared HTTPS
 backend; composer, physical direct/switching and remaining PR scenarios stay open.
-Continue all-path status from complete-file404 red525b3efa, then minimum P5.
+All-path status is now normally delivered as193f75bd/tree73695d14, with accepted
+source863cd483 and final receipt25b2ea37. Both hooks/own ref/clean0/0 are verified.
+Next is physical scene5 over the genuine Tail Self routes supplied by Root,
+using only owned application endpoints/connection barriers and the isolated
+Miniflare backend. The closed6575 API/SDK history round remains unchanged.
+Scene5 uses a product Self-only listener (`BOTS_SYNC_PORT=0`), real mutual-auth
+pages, actual network refusal/cache fallback and two spaced full probes/30s
+stable return. No CLI inventory or Tail settings change; report Root's DERP
+scope honestly. Minimum native P5 and the remaining physical PR scenes follow.
+The short execution contract is `.local/sync-physical-scene5/CONTRACT.md`.
+
+
+Scene5 API/SDK execution on new owned193f copies now proves actual product
+Tail Self direct→owned R2 cache→stable direct. A original5/B continuation10,
+B cached continuation14 and final direct continuation18 entries preserve exact
+heads, raw bodies/origins/sections and six selected resource files. The final
+B native request completed once; later bridge output truncation affected only
+evidence retrieval and did not trigger a repeated run. B endpoint recovery to
+stable direct took34.691s, with complete mutual-auth probes22.307s apart and
+conservative observed cache residency79.055s. Passive execution delta0; actual
+provider calls A2/B6 and local runs A1/B3 account for the intended local runs.
+Receipt: `.local/sync-physical-scene5/physical-scene5-final.json`.
+The initial warmup has one relay exchange; it is retained, not counted as a
+relay history-supply pass. Cache completion uses two actual cache/get200 calls;
+returning direct/new head adds no cache/get or relay/exchange. Application direct
+uses genuine Tail addresses; Root observed DERP(tok), not proven UDP P2P. The
+fallback is isolated Miniflare/R2, not deployed CF. Actual A/B copies741/697,
+reused dependency paths and each native helper are separately bound. Native
+composer/context/merge P5 and remaining physical PR scenarios, including owned
+72h online-holder supply, remain open. No old6575 history/gates are rerun.

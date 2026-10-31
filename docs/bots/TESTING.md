@@ -1853,3 +1853,181 @@ Closed2440 and physicaldc9c65da are not revalidated or enlarged. Original lint
 infos/build advisory remain. Subsequent changes are final evidence docs only.
 Browser and original normal commit/pre-push hooks remain after formal acceptance;
 no commit/push, P5, physical scene5 completion or cloud deployment is claimed.
+
+
+Physical scene5 uses two new empty owned instances of delivered193f, real Swift
+helper/Node/Bots/Registry/Miniflare and product Self-only listeners. Actual A/B
+source copies741/697 and each machine's existing native helper inputs/binary,
+Node26.9.0, runtime-dependency reuse paths and owned launch/bundle inputs are bound
+in `.local/sync-physical-scene5/a-execution-copy.json` and `b-execution-copy.json`.
+This is a post-run copy observation, not a reconstructed historical before map;
+root741 before/after stability is recorded separately. No dependency install,
+system trust/Tail change, daily App/data replacement or deployment occurred.
+
+The actual sequence is A5→B direct, B10→A direct, B14 independently cloud-cached
+then B daemon stopped/A automatic cache receive, B restarted/real endpoint
+republished, two complete authenticated probes22.307s apart, and next stable
+direct followed by B18→A direct. Exact history/resources/heads persist. The
+observed cache-residency lower bound is79.055s (first observed cache to first
+observed direct), not the83.163s since enabling the preference; the latter also
+includes initial direct attempt time. Bready→direct observation is34.691s.
+The probe window contains two successful complete probe traces and the following
+direct turn; it is not three probes. Whole-window passive provider/tasks/submissions/
+local runs have zero deltas. Peer/PR files are observed empty only at the end;
+there is no before/after delta claim for them. Total intended provider calls are
+A2/B6, local runs A1/B3. Six actual resource files and local script bytes match on
+each Mac.
+
+Counters decode Miniflare's structured-log message JSON. The first parser missed
+that nesting; original receipts/logs are retained and exact recorded log prefixes
+(bytes/SHA) are corrected in `first-direct-metrics-correction.json`. Initial
+warmup has relay/exchange200=1; direct object-provenance observation has only
+publisher records on both peers. The B-stopped cache completion adds cache/get200=2,
+R2get=6/R2put=2 across the broader continuation/upload/receive window; R2gets
+include publication verification and list validation. That window adds no relay
+exchange. Cache→direct and final new direct head add cache/get=0/relay exchange=0.
+Do not relabel cache hits as online-holder relay supply. Controlled API/SDK/tool
+scope is separate from native composer/P5 and remaining physical scenarios.
+
+`cache-to-direct-first` completed the original native request and branch export,
+then the bridge explicitly truncated cumulative model-input evidence near60KiB.
+No new native request was issued. Evidence-only followups preserve the original
+failure and recover the same request/head/provider files by compressed bounded
+bridge reads. A subsequent receipt-preparation count assumption and oversized
+metrics/binding retrieval failures are also retained as fixture/evidence failures,
+not product reds. `original-return-readonly-confirmation` verifies the original
+request done, both exact18-entry heads, A2/B6 provider calls and A1/B3 local runs.
+The authoritative finite receipt is `.local/sync-physical-scene5/physical-scene5-final.json`.
+
+
+Scene5 timing interpretation supplement (no new execution):
+`.local/sync-physical-scene5/physical-scene5-timing-supplement.json`
+SHA38377da422630431c048fba55c4e88bd5d7dab693ba907399ea2cf1e33b97852
+supersedes the earlier timing labels only. Original v1/v2/raw remain immutable.
+The last cache/cache_incomplete observation is5003.743229, the first
+transport-direct/cache_incomplete is5004.762651, and complete direct/direct is
+5007.821098. First-cache4928.765822→last-cache is74.977407s;
+first-cache→first-complete-direct is79.055276s, an observation span rather than a
+cache residence lower bound. Bready→first transport-direct is31.632653s;
+Bready→first complete-direct is34.691100s. No request or physical test was rerun.
+
+
+P5 evolving native-control evidence (not final normal gates): the complete
+`swift test --package-path apps/macos` run native-trusted-control-green/log38ede6c1
+is211/51/60, not211/52/60. Its DeviceSettings injected-control case proves calls
+and error state; its Host loop proves real Node management admission and Bot
+socket rejection. `sync.incoming {}` is valid with SyncIncomingRequest defaults,
+so the offline Node error is not parser-rejection evidence. Existing signature
+XPC cases remain separate. Only the stale comment/issue wording is corrected.
+
+The later complete native-signed-management-first/log6e1cf165 is212/51/60,exit0
+with stable execution input. Its owned composition uses current-process code
+requirements over anonymous XPC, a real ServiceHost/independent Node and real
+Registry SQL for legal pairing, incoming/share and revocation. This is single-Mac
+owned harness evidence, not installed LaunchAgent/release trust or a physical
+App pass. `.local/sync-p5-native/native-management-scope-first.json`08c3a84e binds
+the actual executed test binaries after execution and current Host/fixture/dist
+inputs; it does not fabricate earlier binary hashes. Fresh candidate App/helper
+execution will have a separate input/binary binding. Old scene5 reuse stays in
+its original scope.
+
+
+P5 resource-head metadata repair preserves source-v5 fd41c3c6 and the original
+physical ready merge d693d210/missing standalone manifest d2a87284. The complete
+original `node --test apps/bots/test/runtime/replica-sync.test.ts` first2192d890
+is14/15 on a fixture parent expectation (resource export creates a child of the
+merge), not a product red. Corrected complete file bc08aef6 is14/15: an already
+imported ready head's actual `head.resourceHead` fails the existing `context`
+command with `resource head is not ready`. Returning that ready immutable head
+fixes the complete file15/15 f932c7a4. First formatted static6b443e02 has15/15
+but rejects the new fixture's inferred resource kind type; explicit existing
+HistoryBundle resource type repairs only that test declaration. Final complete
+file/types/check-only lint96d199c5 is0,749 before/after stable. It also checks
+resource bytes, passive selection and no standalone manifest backfill. These
+runs are the narrow TDD/static scope; affected normal gates bind their own inputs.
+
+Source-v6 `a4e8d4b3` is accepted for the exact two-source metadata delta; the
+previous three P2 closures remain. Normal-v6 `3511bbd7` binds complete ordinary
+Bots924 and coverage924, devices33, crash17 and invocation eval14, all exit0 with
+701 canonical sources equal to v6 and749 before/after stable. Unchanged native
+modules/helper/client checks retain their original explicit reuse scopes.
+
+A actual GUI/restart finite receipt
+`.local/sync-p5-native/physical-v6/physical-A-native-final.json` (`a0ca410d`)
+binds46 new originals and seven execution records. The same original ready merge
+is selected, actual external AX set-value/labelled send-button press submits one
+request through the original composer/Outbox/Socket/daemon/SDK, and real provider
+inputs include both branches and selected resources. Native-composer logb83e301a
+and actual App+daemon restart loge42b3b00 are exit0/749stable. The complete SDK
+export, Outbox bytes and selection/request survive restart; provider7 and persisted
+task/submission/local-run counts do not increase. Actual restored AX transcript
+and screenshots are bound separately from the root source map, with actual copy,
+module and binary provenance. This is A GUI scope; B GUI/restart is not inferred.
+
+The preservation collector's first `settled.trace` KeyError is fixture-only;
+its already-saved exact Outbox/stdout remain, and the actual daemon log prefix
+is recovered by the original request ID without resending. B's original Swift
+interpreter read timeout and subsequent bridge `denied/revoked_agent` remain
+preparation/authority failures; the latter precedes App activation and is not
+retried without Root's current authority handoff. No new test or old gate rerun
+is used to reclassify these originals. Root subsequently hands off the current
+same identity/target. New operations transfer exact AX helper binaries and
+activate actual B42619, but public external AX read fails
+`AXIsProcessTrusted()` with helper exit-5. Finite boundaryff597b09 binds these
+new original statuses separately; the old denied ID is not replayed. It does not
+claim a B control press or native pass, and no system permission is changed.
+The subsequent read-only physical A→B passive supplement7b7f6794 binds complete
+export/resource equality for the actual A native head, B provider3→3 and zero
+task/submission/local-run delta. Its original log5ccf538e is exit0/749stable;
+no new run, context, merge or B GUI action occurs.
+Root's subsequent read-only attribution operation
+`b7c5845b-7319-471f-9b02-d2e3bacb7920` completed0: the responsible TCC client is
+the existing candidate App's bundled `EagleDeviceHelper`, not Terminal/Python,
+the owned App42619 or the `native-ax-v6/read` child. That is a Root-reported
+attribution, separate from Service's original failed AX execution. Root's one
+user handoff remains pending; no further AX action or permission mutation is run.
+
+Reviewer/Lead accept A's finitea0ca410d +421f922c +7b7f6794 scope. Preserve the
+seven original A records as three exit0/four exit1, including the owned App's
+EOF7s verified-PID SIGTERM cleanup. The archive named
+`A-instance-after-restart.log-prefix.jsonl` actually contains the earlier instance
+prefix only through10:21:54Z. It is not evidence of10:55 restart events. The
+actual restart remains proven by original e42b3b00 control responses, persistent
+before/after and actual AX. This is an evidence-label clarification, not a
+product finding or a reason to rerun or alter any original bytes.
+
+
+B native finite receipt482935b0 records the later actual user permission change
+and one no-prompt public AX trust read through the exact responsible helper:
+operationbe8782f6, true at19:17:33. The first path guard exits before that API;
+its failed raw is retained. The successful real selector persists A's existing
+2f685a07 head, then explicit resource selection and one original composer press
+produce r_421B189D…/submission171. Original resources-composer483a8465,
+request-collectd3902b85, App+daemon restart91c8fe02 and A whole-window passive
+451f3336 each exit0 with749 stable/701 canonical equal accepted source-v6.
+Actual B provider3→5 inputs contain both branches and A's native continuation;
+six selected resource hashes and actual local skill output bfa2a3e1 are verified.
+App5198→6962/daemon68572→6987 retain identity, full SDK export and exact Outbox
+ada97ba4; original context/resources/request and real AX transcript survive with
+zero provider/task/submission/local-run replay. A's before precedes B's send;
+its complete new e8f5a483 export/resources match and all those execution deltas0.
+
+All18 new execution records remain10exit0/8exit1, not18 passing gates. The first
+selector driver used the press helper's pre-action tree. Later actual selection
+was durable, but a one-window reader premise and harness snapshot failed; no
+product/platform cause is assigned. B App-only pre-send recovery retains its
+original selection/Outbox/daemon/counts. Both owned cleanup windows use the real
+EOF7s then immediate exact PID/PPID/executable verification before SIGTERM;
+actual response/event journals are retained. The Swift-interpreter timeout,
+sample JSON/whole-gzip truncations, and final read-only chunk disconnect retain
+separate fixture/transport scopes. The last chunk comes from get of original
+operation02f0b195, joined to already-recorded bytes, with full PNG SHA equality;
+no product/native action or request is repeated. Two actual PNGs, all AX actions,
+complete original-request trace and restart events are local; the B full daemon
+prefix/sample stay separately at their original paths/SHA and the local sample
+prefix is explicitly partial. Receipt482935b0 binds99 new artifacts and reuses
+4351 protected references by value. Actual B copy701/separate749 map, source,
+dependency inputs, six native modules, App83a8/helper3262 and exact compiler
+inputs are separate from repository snapshots. Existing source/normal/old A,
+scene5 and scene6 checks are not rerun or expanded to native concurrency,
+wall-clock72h, UDP P2P, installed release trust or deployed CF.

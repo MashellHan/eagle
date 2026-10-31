@@ -1252,3 +1252,46 @@ progress, complete history or native run. A failed refresh retains the last
 timestamped authenticated snapshot. CloudCached and local received/applied remain
 separate. No report is added to offline applyObject; failed reporting cannot undo
 apply or block inbound/upload/native work. Details are in [SYNC-STATUS.md](SYNC-STATUS.md).
+
+
+## Native fixed-head contexts and merge (P5 additive slice)
+
+The same authenticated `/v1/bots/:id/replica/*` POST boundary adds:
+
+| Method | Strict request | Response |
+| --- | --- | --- |
+| `heads` | `{after?:nonnegative safe integer,limit?:1..128}` | `{items:[{head,parents,source,ready,entries,resources,resourceHead}],nextAfter,hasMore}`; defaults0/128, metadata only, existing8MiB page bound |
+| `head` | `{head:SHA256}` | one head's metadata and `resourceFiles:[{ref,name?,kind?,sha256?}]`; no resource bodies |
+| `context` | `{contextId,head?:SHA256,resourceHead?:SHA256}` | `{contextId,seedHead,resourceHead,tip}`; absent head reads an existing identity, present immutable ready seed creates it idempotently |
+| `merge` | `{preview:true,heads:[SHA256,SHA256]}` | bounded `conflicts:[{origin,options:[{head,action,messageCount,digest}]}]` and `resources:[{name,versions:[{sha256,kind,heads}]}]` |
+| `merge` | `{requestId,heads:[SHA256,SHA256],choices?:[{origin,head}],resources?:[{name,sha256}]}` | `{head}`; two ready immutable parents, idempotent on the complete request binding |
+
+Head paging visits actual changed head records and preserves readiness updates;
+`receipts` remains the older complete-carrier inventory. Context IDs follow the
+existing invocation-ID syntax. A context fixes its seed and initial resources;
+its current tip changes only as its own durable SDK conversation evolves. Merge
+retains both logical parent heads, deduplicates common full original origins,
+and requires explicit replace/omit and same-path different-resource choices.
+Original parent raw entries/resources remain immutable. Each effective visible
+message is one typed derived entry, with persistent original-origin, selected-edit,
+group/order and tool-call/result mapping. Explicit omissions keep a mapping.
+Later old-origin edits are passively retained and rederived into a complete ordered
+immutable group; no opaque multi-message marker or passive provider work is used.
+
+`subscribe` adds optional `contextId`; the connection remains fixed to one Bot
+and that context until closed. `send` adds the same optional field alongside
+`resourceHead`. Omission retains root behavior. History, entry lookup, submission
+status, watch, abort, export and retry follow the captured context, including
+reconnection. A connection cannot send into a different context. Bot-wide running,
+capacity, shared Harness, and existing followUp/steer queue rules remain in force.
+Each context has its own rendered event stream; a whole-Bot observer is used only
+where a lifecycle wait really needs all contexts.
+
+Before sending, Outbox atomically retains contextId/resourceHead/whenBusy with
+the original requestId. Switching selection cannot retarget pending work; retry
+uses the captured selection. Durable terminal metadata retains these fields and
+is committed in the same file write that removes the pending entry. A root
+connection never reconciles another context's pending work. Native selection,
+resource choices and two-head merge feed the existing composer and bearer/socket
+paths. The incoming selector's trusted management contract is SYNC-NATIVE.md;
+it grants no management access to the Bot socket.

@@ -316,6 +316,17 @@ test("paired private services expose current sync identity without treating exec
       "same-group all-approve never shares Bot history",
     );
     assert.equal(
+      (await source.port("sync.incoming", {})).error,
+      "management_requires_private_helper",
+    );
+    const emptyIncoming = await source.call("sync.incoming", {});
+    assert.equal(
+      emptyIncoming.error,
+      undefined,
+      "trusted incoming discovery reaches the actual Registry",
+    );
+    assert.deepEqual((emptyIncoming.result as { items: unknown[] }).items, []);
+    assert.equal(
       (await target.port("sync.share", share)).error,
       "management_requires_private_helper",
     );
@@ -347,6 +358,85 @@ test("paired private services expose current sync identity without treating exec
     assert.equal(metadata.local.deviceId, a.deviceId);
     assert.equal(metadata.peer.deviceId, b.deviceId);
     assert.equal(metadata.endpoints, null);
+    const incoming = (await source.call("sync.incoming", {})).result as {
+      version: number;
+      local: unknown;
+      items: { sharedBotId: string; holder: unknown }[];
+      nextAfter: number;
+      hasMore: boolean;
+    };
+    assert.equal(incoming.version, 1);
+    assert.deepEqual(incoming.local, metadata.local);
+    assert.deepEqual(incoming.items, [{ sharedBotId, holder: metadata.peer }]);
+    assert.ok(incoming.nextAfter > 0);
+    assert.equal(incoming.hasMore, false);
+    const staleShare = randomUUID(),
+      laterShare = randomUUID();
+    await storage.exec(
+      "INSERT INTO sync_grants VALUES(?,?,?,?)",
+      b.deviceId,
+      staleShare,
+      a.deviceId,
+      "stale full identity",
+    );
+    await storage.exec(
+      "INSERT INTO sync_grants VALUES(?,?,?,?)",
+      b.deviceId,
+      laterShare,
+      a.deviceId,
+      JSON.stringify([metadata.peer, metadata.local]),
+    );
+    const staleWindow = (
+      await source.call("sync.incoming", {
+        after: incoming.nextAfter,
+        limit: 1,
+      })
+    ).result as typeof incoming;
+    assert.deepEqual(staleWindow.items, []);
+    assert.equal(staleWindow.hasMore, true);
+    assert.ok(
+      staleWindow.nextAfter > incoming.nextAfter,
+      "cursor advances over the actual inspected stale row",
+    );
+    const tailWindow = (
+      await source.call("sync.incoming", {
+        after: staleWindow.nextAfter,
+        limit: 1,
+      })
+    ).result as typeof incoming;
+    assert.deepEqual(tailWindow.items, [
+      { sharedBotId: laterShare, holder: metadata.peer },
+    ]);
+    assert.equal(tailWindow.hasMore, false);
+    await storage.exec(
+      "DELETE FROM sync_grants WHERE sharedBotId IN (?,?)",
+      staleShare,
+      laterShare,
+    );
+    await storage.exec(
+      "ALTER TABLE sync_grants RENAME TO owned_unavailable_sync_grants",
+    );
+    try {
+      const unavailable = await call("/sync/incoming", a.token, {});
+      assert.equal(unavailable.status, 503);
+      assert.deepEqual(unavailable.body, {
+        error: "sync_directory_storage_failed",
+      });
+      assert.equal(
+        (await source.call("sync.incoming", {})).error,
+        "sync_directory_storage_failed",
+        "real SQL failure is never an empty directory",
+      );
+    } finally {
+      await storage.exec(
+        "ALTER TABLE owned_unavailable_sync_grants RENAME TO sync_grants",
+      );
+    }
+    assert.deepEqual(
+      ((await source.call("sync.incoming", {})).result as typeof incoming)
+        .items,
+      incoming.items,
+    );
     const beforePublish = Date.now();
     assert.equal(
       (await target.call("sync.endpoints.publish", { syncPort: 7015 })).error,
@@ -466,6 +556,12 @@ test("paired private services expose current sync identity without treating exec
       (await source.port("sync.access", access)).error,
       "sync_not_shared",
       "current peer epoch invalidates grant and publication",
+    );
+    assert.deepEqual(
+      ((await source.call("sync.incoming", {})).result as typeof incoming)
+        .items,
+      [],
+      "old full-identity grants cannot be advertised as current",
     );
     await target.call("sync.share", share);
     assert.equal(

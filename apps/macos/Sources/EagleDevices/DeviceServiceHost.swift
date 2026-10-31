@@ -201,7 +201,7 @@ public final class DeviceServiceHost {
       [
         "pairing.create", "pairing.revoke", "pairing.redeem", "pairing.result", "member.remove",
         "policy.get", "policy.set",
-        "sync.share", "sync.endpoints.publish",
+        "sync.share", "sync.incoming", "sync.endpoints.publish",
       ].contains(method)
     else { throw DeviceHostError.forbidden }
     guard pending.count < 32 else { throw DeviceHostError.unavailable }

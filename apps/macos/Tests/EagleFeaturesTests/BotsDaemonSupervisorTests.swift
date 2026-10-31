@@ -12,6 +12,31 @@ import Testing
 @Suite("Bots daemon supervisor")
 @MainActor
 struct BotsDaemonSupervisorTests {
+  @Test("one owned composition shares settings, defaults and trusted control across its consumers")
+  func ownedComposition() async throws {
+    let suite = "eagle-composition-" + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+    let control = DeviceSettingsControlStub()
+    let composition = BotsComposition(
+      settings: BotsSettings(rootPath: root.path, port: "49991"), defaults: defaults,
+      control: control, environment: [:])
+    #expect(composition.supervisor.rootPath == root.path)
+    #expect(composition.settings.clientDirectory.path == root.appendingPathComponent("client").path)
+    composition.supervisor.autoStart = false
+    #expect(defaults.bool(forKey: "eagle.bots.autoStart") == false)
+    control.handler = { method, _ in method == "sync.endpoints.publish" ? .object([:]) : nil }
+    await composition.devices.startIfNeeded()
+    try await composition.devices.publishSyncEndpoints(
+      port: 49992, expectedSelfDigest: "owned-self")
+    #expect(control.calls.last?.0 == "sync.endpoints.publish")
+    #expect(control.calls.last?.1?["syncPort"] == .number(49992))
+    let delegate = EagleApplicationDelegate(composition: composition, reply: {})
+    #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateLater)
+    #expect(composition.supervisor.autoStart == false)
+  }
+
   @Test("owned endpoint publication revalidates current Registry identity after pairing")
   func publicationAfterPairing() async throws {
     let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
