@@ -2499,3 +2499,17 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   successful upgrades plus physical peer-command evidence remain applicable.
   Next: observe the new CI run; diagnose a repeated focus failure rather than
   cycling retries or adding unrelated implementation changes.
+
+## 2026-10-31 17:10 device Worker redeployed for revision parity
+
+- `wrangler deploy --config apps/web/wrangler.devices.jsonc --var BUILD_REVISION:debb662…`
+  after a dry run: `Uploaded eagle-devices`, custom domain `eagle-devices.hexly.ai`,
+  Cloudflare version `f742ce78-e28a-4c46-b5e2-b1db772a5e09`, startup 15 ms.
+- Verified `GET https://eagle-devices.hexly.ai/api/live` five times: 200 with
+  `revision = debb662` (the exact main HEAD); anonymous `/api/devices/v1/directory`
+  401 `session_required`. Its `/api/live` reports no `macos` field, which is correct:
+  the App's update check reads the website origin, not this service.
+- Redeploying changed no behaviour: the only Worker source change since the previous
+  revision was the website `/api/live` `macos` block. The App's "cloud not ready" state
+  comes from the local agent's register/heartbeat, which the relay answers
+  `session_required` until this Mac's release identity is authorized on the web.
