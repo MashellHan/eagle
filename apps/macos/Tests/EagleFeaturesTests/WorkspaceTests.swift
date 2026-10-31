@@ -35,8 +35,8 @@ struct MockWorkspaceTests {
 
   @Test("inspector fixtures are deep")
   func inspector() {
-    #expect(MockWorkspace.artifacts.count >= 5)
-    #expect(MockWorkspace.artifacts.allSatisfy { !$0.title.isEmpty })
+    #expect(MockWorkspace.pulls.count >= 2)
+    #expect(MockWorkspace.pulls.allSatisfy { !$0.title.isEmpty && $0.url.hasPrefix("https://") })
   }
 }
 

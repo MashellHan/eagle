@@ -15,6 +15,8 @@ public enum ConversationEvent: Sendable, Equatable {
   case tasks([TaskSummary])
   /// The bot's own triggers, whole-list replacement (PROTOCOL.md, "Triggers").
   case triggers([TriggerSummary])
+  /// The bot's reported pull requests, whole-list replacement.
+  case pulls([PullSummary])
   /// Tokens and cost so far, whenever the daemon's totals move.
   case usage(Usage)
   /// The bot's complete current model, thinking level and instructions.

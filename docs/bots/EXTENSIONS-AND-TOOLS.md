@@ -208,6 +208,21 @@ helpers have 100% in those three measured metrics. This is not 95% in all four
 L1 metrics, not full coverage of all tools, and not a fresh run for this
 documentation-only change. Planned tools have no implementation/test evidence.
 
+### Coding reports: the pull requests a bot opened
+
+The coding group also carries two eager tools, because a PR is what a coding bot produces:
+
+| Tool | Input | Result | Replay |
+| --- | --- | --- | --- |
+| `pr_register` | `url, title, status` | Stores one entry per link and returns it; any `http(s)` forge is accepted | Safe (keyed by the durable tool-task id) |
+| `pr_list` | — | The bot's own reports, newest first | Safe |
+
+`status` is the closed set `draft`, `open`, `reviewing`, `merged`, `closed`, `failed`; the App
+draws each one with its own glyph and colour, so a state the daemon does not know is refused
+rather than guessed. The daemon **stores and never queries**: a forge's state reaches the App
+only when the bot reports it again, which the prompt says explicitly. One journal per bot
+(`pulls.journal.jsonl`), the last record per URL wins, and the newest 20 rows are kept.
+
 ## 4. Discovery and refresh are different operations
 
 1. **Register:** host code installs an extension in this Harness's Registry.

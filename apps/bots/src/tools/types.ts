@@ -136,3 +136,33 @@ export type PeerToolHost = {
     readonly limit: number;
   }): Promise<readonly PeerReceiptView[]>;
 };
+
+/** The states a person sees as a colour; a forge's own vocabulary maps onto these. */
+export const PULL_STATUSES = ["draft", "open", "reviewing", "merged", "closed", "failed"] as const;
+
+export type PullStatus = (typeof PULL_STATUSES)[number];
+
+/** One pull request as the App draws it: a link, a title and a state. */
+export type PullView = {
+  readonly url: string;
+  readonly title: string;
+  readonly status: string;
+  /** The host the row labels itself with, so any forge reads alike. */
+  readonly host: string;
+  readonly updatedAt: string;
+};
+
+/**
+ * What the pull-request tools may do (docs/bots/EXTENSIONS-AND-TOOLS.md, coding group). The
+ * daemon stores reports; it never asks a forge and never invents a state.
+ */
+export type PullToolHost = {
+  readonly botId: string;
+  register(input: {
+    readonly opId: string;
+    readonly url: string;
+    readonly title: string;
+    readonly status: string;
+  }): Promise<{ readonly pull: PullView; readonly created: boolean }>;
+  list(): Promise<readonly PullView[]>;
+};

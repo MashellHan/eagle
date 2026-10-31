@@ -135,6 +135,17 @@ export type Usage = {
   readonly costUsd?: number;
 };
 
+/** One pull request a bot reported: a link, a title and a state (coding group). */
+export type PullSummary = {
+  readonly url: string;
+  readonly title: string;
+  /** draft, open, reviewing, merged, closed or failed. */
+  readonly status: string;
+  /** The row's label for any forge: github.com, dev.azure.com, … */
+  readonly host: string;
+  readonly updatedAt: string;
+};
+
 export type AgentView = {
   readonly model: { readonly provider: string; readonly modelId: string };
   readonly thinkingLevel: string;
@@ -234,6 +245,8 @@ export type ConversationSnapshot = {
   readonly tasks?: readonly TaskSummary[];
   /** The bot's own triggers, newest page of the sidebar's trigger section (TRIGGERS.md §8). */
   readonly triggers?: readonly TriggerSummary[];
+  /** Pull requests the bot reported, newest first; the App never asks a forge. */
+  readonly pulls?: readonly PullSummary[];
   readonly pending: readonly Submission[];
   readonly inbox: readonly InboxItem[];
   readonly running: boolean;

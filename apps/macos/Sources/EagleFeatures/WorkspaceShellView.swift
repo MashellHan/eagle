@@ -248,7 +248,7 @@ public struct WorkspaceShellView: View {
           subtitle: selectedIsBot ? "Bots" : (selectedIsMock ? (item?.tag ?? "示例") : ""),
           tintIndex: selectedIsBot ? bots.tintIndex : (item?.tintIndex ?? 2),
           width: layout.inspectorWidth,
-          artifacts: selectedIsMock ? inspector.artifacts : [],
+          pulls: selectedIsBot ? bots.pullRows : (selectedIsMock ? inspector.pulls : []),
           tasks: selectedIsBot ? bots.tasks : [],
           usage: selectedIsBot ? bots.usage : [],
           choices: selectedIsBot ? bots.choices : [],

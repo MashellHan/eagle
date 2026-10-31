@@ -40,7 +40,7 @@ import type { Log } from "../../log/log.ts";
 import { createHerdrClient } from "../../tools/herdr/client.ts";
 import { createToolRegistry, selectToolExtensions } from "../../tools/registry.ts";
 import type { SearchClient } from "../../tools/search/client.ts";
-import type { PeerToolHost, TriggerToolHost } from "../../tools/types.ts";
+import type { PeerToolHost, PullToolHost, TriggerToolHost } from "../../tools/types.ts";
 import type { UsageMeter } from "../../tools/usage.ts";
 import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
@@ -149,6 +149,8 @@ export type PiRuntimeOptions = {
   readonly trigger?: (spec: RuntimeBotSpec) => Promise<TriggerToolHost | undefined>;
   /** The peer tools' host for a bot, bound to that bot as the sender. */
   readonly peers?: (spec: RuntimeBotSpec) => Promise<PeerToolHost | undefined>;
+  /** The pull-request tools' host for a bot, bound to that bot's own reports. */
+  readonly pulls?: (spec: RuntimeBotSpec) => Promise<PullToolHost | undefined>;
   /** Where a tool that costs something books it (docs/bots/PROTOCOL.md, "Usage statistics"). */
   readonly usage?: UsageMeter;
 };
@@ -180,6 +182,7 @@ export class PiDurableRuntime implements RuntimePort {
       const search = this.#options.search?.(spec);
       const trigger = await this.#options.trigger?.(spec);
       const peers = await this.#options.peers?.(spec);
+      const pulls = await this.#options.pulls?.(spec);
       const registry = createToolRegistry(workspace, {
         ...(this.#options.deviceSocket === undefined
           ? {}
@@ -198,6 +201,7 @@ export class PiDurableRuntime implements RuntimePort {
             }),
         ...(trigger === undefined ? {} : { trigger }),
         ...(peers === undefined ? {} : { peers }),
+        ...(pulls === undefined ? {} : { pulls }),
       });
       const installed = selectToolExtensions(registry, groups);
       const harness = await HarnessFactory.open(

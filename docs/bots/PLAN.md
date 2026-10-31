@@ -708,6 +708,14 @@ Stage order: 0 interface and its contract tests (including the four adapter,
 registry and lifecycle fixes it needs), 1 `trigger` group with schedule plus origin
 field and app surface, 2 webhook ingress, 3 `peers`.
 
+### Coding reports, as built (2026-10-30)
+
+The coding group carries `pr_register` and `pr_list`: a bot reports one pull request — link,
+title, one of six states — and the inspector's 编码 section draws it with that state's glyph
+and colour, one click away from the link. The daemon stores reports in
+`pulls.journal.jsonl` per bot (last record per URL wins, newest 20 kept) and deliberately
+never queries a forge, so a state changes when the bot reports it again.
+
 ### Peers, as built (2026-10-29)
 
 Daemon side: `core/PeerExchangeStore.ts` (durable exchange, request-keyed receipts, ten

@@ -1,15 +1,5 @@
 import SwiftUI
 
-public struct InspectorArtifact: Identifiable, Hashable, Sendable {
-  public let id: String
-  public let title: String
-
-  public init(id: String, title: String) {
-    self.id = id
-    self.title = title
-  }
-}
-
 /// Right column: participant summary, text tabs, then the decorated sections of the
 /// selected tab. Every section is a header (glyph, title, hairline) plus rows or an empty
 /// state, so the column keeps one grid whether or not a bot has anything to show.
@@ -26,7 +16,8 @@ public struct InspectorColumn: View {
   private let subtitle: String
   private let tintIndex: Int
   private let width: CGFloat
-  private let artifacts: [InspectorArtifact]
+  /// The reported pull requests the 编码 section shows.
+  private let pulls: [InspectorPullRow]
   private let tasks: [InspectorTaskRow]
   private let usage: [InspectorUsageRow]
   private let choices: [InspectorChoiceRow]
@@ -51,7 +42,7 @@ public struct InspectorColumn: View {
     subtitle: String,
     tintIndex: Int,
     width: CGFloat = Theme.Metric.inspectorWidth,
-    artifacts: [InspectorArtifact],
+    pulls: [InspectorPullRow] = [],
     tasks: [InspectorTaskRow] = [],
     usage: [InspectorUsageRow] = [],
     choices: [InspectorChoiceRow] = [],
@@ -74,7 +65,7 @@ public struct InspectorColumn: View {
     self.subtitle = subtitle
     self.tintIndex = tintIndex
     self.width = width
-    self.artifacts = artifacts
+    self.pulls = pulls
     self.tasks = tasks
     self.usage = usage
     self.choices = choices
@@ -148,13 +139,13 @@ public struct InspectorColumn: View {
   private var sections: [InspectorSectionModel] {
     switch tab {
     case .detail:
-      return InspectorSections.detail(artifacts: artifacts, tasks: tasks)
+      return InspectorSections.detail(pulls: pulls, tasks: tasks)
     case .model:
       return InspectorSections.model(choices: choices, usage: usage)
     case .triggers:
       return [InspectorSections.triggersSection.with(.usage(triggers))]
     case .library:
-      return InspectorSections.library(artifacts: artifacts)
+      return InspectorSections.library()
     case .computer:
       return InspectorSections.computer()
     }

@@ -503,6 +503,19 @@ final class BotsWorkspaceViewModel: ObservableObject {
   }
 
   /// The selected bot as the catalog describes it, for the inspector's profile.
+  /// The reported pull requests as the 编码 section draws them, newest first.
+  var pullRows: [InspectorPullRow] {
+    (app?.conversation.pulls ?? []).map { pull in
+      InspectorPullRow(
+        id: pull.url,
+        title: pull.title,
+        host: pull.host,
+        status: pull.status,
+        url: pull.url
+      )
+    }
+  }
+
   var selectedBot: BotSummary? {
     guard let app, let selectedId else { return nil }
     return app.bots.first { $0.id == selectedId }

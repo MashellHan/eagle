@@ -311,10 +311,15 @@ public struct TemplateGallery: View {
             name: "依赖修复专家",
             subtitle: "GitHub",
             tintIndex: 2,
-            artifacts: [
-              InspectorArtifact(id: "1", title: "deps 2026-10-24 sleepy"),
-              InspectorArtifact(id: "2", title: "deps 2026-10-24 next-ai"),
-              InspectorArtifact(id: "3", title: "deps 2026-10-24 meowth"),
+            pulls: [
+              InspectorPullRow(
+                id: "p1", title: "deps: 依赖升级到 2.4.0",
+                host: "github.com", status: "merged",
+                url: "https://github.com/nocoo/eagle/pull/490"),
+              InspectorPullRow(
+                id: "p2", title: "fix: reconnect after sleep",
+                host: "dev.azure.com", status: "reviewing",
+                url: "https://dev.azure.com/hexly/eagle/_git/eagle/pullrequest/12"),
             ],
             tasks: [
               InspectorTaskRow(
@@ -336,7 +341,7 @@ public struct TemplateGallery: View {
             name: "新的 Bot",
             subtitle: "Bots",
             tintIndex: 5,
-            artifacts: [],
+            pulls: [],
             tab: .constant(.detail)
           )
           .frame(height: 620)

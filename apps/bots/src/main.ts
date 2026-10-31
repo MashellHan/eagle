@@ -27,6 +27,7 @@ import { FileLogSink } from "./log/sink.ts";
 import { peerApi } from "./peers/api.ts";
 import { peerHostFor } from "./peers/host.ts";
 import { encodeServerEvent } from "./protocol/encode.ts";
+import { composePulls, pullPublisher } from "./pulls/host.ts";
 import { createDaemonModels } from "./runtime/pi/models.ts";
 import { PiDurableRuntime, type PiSettings } from "./runtime/pi/PiDurableRuntime.ts";
 import { loadToken } from "./server/auth.ts";
@@ -197,6 +198,12 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   // Exchanges between bots live next to the catalog: one durable record each, with the budget.
   const peerStore = new PeerExchangeStore(join(root, "peers"));
   await peerStore.open();
+  // One pull-request journal per bot, opened on demand: a bot that reports nothing reads none.
+  const pullSink = pullPublisher();
+  const pulls = composePulls({
+    botDir: directory.botDir.bind(directory),
+    publish: pullSink,
+  });
   // One store per bot, opened on demand: a bot that never uses a trigger reads no journal.
   const triggers = new Map<string, Promise<TriggerStore>>();
   /** Webhook credentials per bot, and every token the log must redact. */
@@ -318,6 +325,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
         const queue = queues.get(`${spec.id}/${triggerId}`);
         return queue === undefined ? undefined : (await queue).cursor();
       }),
+    pulls: pulls.runtimeHost,
     peers: async (spec) =>
       peerHostFor({
         botId: spec.id,
@@ -363,6 +371,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       release: (botId) => registry.release(botId),
     },
     triggersOf: { list: summarize },
+    pullsOf: { list: pulls.list },
     // Every admission is labelled, so an unlabelled message means "unknown", never
     // "human" (TRIGGERS.md §6.2). One file per bot, under its own directory.
     origins: {
@@ -399,6 +408,9 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
       broadcast?.();
     },
   });
+
+  // The store exists before the runtime; the sink forwards its changes to the service now.
+  pullSink.set(service.publishPulls.bind(service));
 
   // Producers: one pump per bot and one schedule ticker, stopped before admissions drain.
   let triggerTraces = 0;

@@ -360,7 +360,7 @@ struct SnapshotRenderer {
         status: "休眠", depth: 0, isRunning: false, isBlocked: false),
     ]
     for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
-      let taskSection = InspectorSections.detail(artifacts: [], tasks: inspectorTasks)[1]
+      let taskSection = InspectorSections.detail(pulls: [], tasks: inspectorTasks)[1]
       let taskHeight =
         Theme.Metric.sectionHeaderHeight + Theme.Metric.panelSectionBodyGap
         + CGFloat(inspectorTasks.count) * Theme.Metric.panelTaskRowHeight
@@ -381,9 +381,19 @@ struct SnapshotRenderer {
           name: "研究员",
           subtitle: "Bots",
           tintIndex: 2,
-          artifacts: [
-            InspectorArtifact(id: "a1", title: "deps 2026-10-24 sleepy"),
-            InspectorArtifact(id: "a2", title: "deps 2026-10-24 next-ai"),
+          pulls: [
+            InspectorPullRow(
+              id: "p1", title: "deps: 依赖升级到 2.4.0",
+              host: "github.com", status: "merged",
+              url: "https://github.com/nocoo/eagle/pull/490"),
+            InspectorPullRow(
+              id: "p2", title: "fix: reconnect after sleep",
+              host: "dev.azure.com", status: "reviewing",
+              url: "https://dev.azure.com/hexly/eagle/_git/eagle/pullrequest/12"),
+            InspectorPullRow(
+              id: "p3", title: "wip: split the transcript renderer",
+              host: "github.com", status: "draft",
+              url: "https://github.com/nocoo/eagle/pull/491"),
           ],
           tasks: inspectorTasks,
           tab: .constant(.detail)
@@ -400,7 +410,7 @@ struct SnapshotRenderer {
         name: "新的 Bot",
         subtitle: "Bots",
         tintIndex: 5,
-        artifacts: [],
+        pulls: [],
         tasks: [],
         tab: .constant(.detail)
       )

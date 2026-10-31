@@ -212,14 +212,17 @@ public enum MockWorkspace {
         at: Date(timeIntervalSince1970: 1_790_001_440)),
     ])
 
-  public static let artifacts: [InspectorArtifact] = [
-    InspectorArtifact(id: "d1", title: "deps 2026-10-24 sleepy"),
-    InspectorArtifact(id: "d2", title: "deps 2026-10-24 next-ai"),
-    InspectorArtifact(id: "d3", title: "deps 2026-10-24 meowth"),
-    InspectorArtifact(id: "d4", title: "deps 2026-10-24 his.fm"),
-    InspectorArtifact(id: "d5", title: "deps 2026-10-24 hexly.ai"),
-    InspectorArtifact(id: "d6", title: "deps 2026-10-24 octo"),
-    InspectorArtifact(id: "d7", title: "deps 2026-10-24 base-mcp"),
+  /// The sample conversation's pull requests, so the 编码 section has rows to review.
+  public static let pulls: [InspectorPullRow] = [
+    InspectorPullRow(
+      id: "p1", title: "deps: 依赖升级到 2.4.0", host: "github.com", status: "merged",
+      url: "https://github.com/nocoo/eagle/pull/490"),
+    InspectorPullRow(
+      id: "p2", title: "fix: reconnect after sleep", host: "dev.azure.com", status: "reviewing",
+      url: "https://dev.azure.com/hexly/eagle/_git/eagle/pullrequest/12"),
+    InspectorPullRow(
+      id: "p3", title: "wip: split the transcript renderer", host: "github.com", status: "draft",
+      url: "https://github.com/nocoo/eagle/pull/491"),
   ]
 
 }
@@ -434,10 +437,11 @@ public final class BotChatViewModel: ObservableObject {
 
 /// Right column state.
 public final class InspectorViewModel: ObservableObject {
-  @Published public var artifacts: [InspectorArtifact]
+  /// The sample pull requests the 编码 section draws.
+  @Published public var pulls: [InspectorPullRow]
   @Published public var tab: InspectorColumn.Tab = .detail
 
-  public init(artifacts: [InspectorArtifact] = MockWorkspace.artifacts) {
-    self.artifacts = artifacts
+  public init(pulls: [InspectorPullRow] = MockWorkspace.pulls) {
+    self.pulls = pulls
   }
 }

@@ -8,6 +8,7 @@ import type {
   ConversationSnapshot,
   DeltaChange,
   Message,
+  PullSummary,
   TaskSummary,
   TriggerSummary,
 } from "../core/domain.ts";
@@ -58,6 +59,15 @@ export const encodeMessage = (m: Message): Wire => {
   }
   return wire;
 };
+
+/** A reported pull request: the link opens it, the status decides its colour. */
+const encodePull = (pull: PullSummary): Wire => ({
+  url: pull.url,
+  title: pull.title,
+  status: pull.status,
+  host: pull.host,
+  updatedAt: pull.updatedAt,
+});
 
 const encodeTask = (task: TaskSummary): Wire => {
   const wire: Wire = {
@@ -131,6 +141,7 @@ export const encodeSnapshot = (s: ConversationSnapshot): Wire => {
   const value: Wire = { botId: s.botId };
   if (s.tasks !== undefined) value.tasks = s.tasks.map(encodeTask);
   if (s.triggers !== undefined) value.triggers = s.triggers.map(encodeTrigger);
+  if (s.pulls !== undefined) value.pulls = s.pulls.map(encodePull);
   if (s.agent) value.agent = encodeAgent(s.agent);
   value.messages = s.messages.map(encodeMessage);
   if (s.truncatedBefore !== undefined) value.truncatedBefore = s.truncatedBefore;
@@ -232,6 +243,9 @@ export const encodeServerEvent = (event: ServerEvent): Wire => {
       return wire;
     case "triggers":
       wire.triggers = event.triggers.map(encodeTrigger);
+      return wire;
+    case "pulls":
+      wire.pulls = event.pulls.map(encodePull);
       return wire;
     case "tasks":
       wire.tasks = event.tasks.map(encodeTask);

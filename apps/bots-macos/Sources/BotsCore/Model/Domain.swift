@@ -643,6 +643,28 @@ public struct AgentView: Codable, Hashable, Sendable {
   }
 }
 
+/// One pull request a bot reported: the link opens it, the status decides its colour. The
+/// daemon stores reports and never queries a forge, so this is exactly what the model said.
+public struct PullSummary: Codable, Sendable, Equatable, Hashable, Identifiable {
+  public var url: String
+  public var title: String
+  /// draft, open, reviewing, merged, closed or failed.
+  public var status: String
+  /// github.com, dev.azure.com, … — the row's label for any forge.
+  public var host: String
+  public var updatedAt: String
+
+  public var id: String { url }
+
+  public init(url: String, title: String, status: String, host: String, updatedAt: String) {
+    self.url = url
+    self.title = title
+    self.status = status
+    self.host = host
+    self.updatedAt = updatedAt
+  }
+}
+
 public struct ConversationSnapshot: Codable, Sendable, Equatable {
   public var botId: String
   public var messages: [Message]
@@ -659,6 +681,8 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
   /// The bot's own triggers; empty means none, and the capability decides whether to show
   /// the section at all (PROTOCOL.md, "Triggers").
   public var triggers: [TriggerSummary]
+  /// Pull requests the bot reported; empty means it reported none.
+  public var pulls: [PullSummary]
   /// Tokens and cost so far; absent until the first answered turn.
   public var usage: Usage?
   /// What the bot runs with, when the daemon reports it.
@@ -676,6 +700,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     parked: Bool? = nil,
     tasks: [TaskSummary] = [],
     triggers: [TriggerSummary] = [],
+    pulls: [PullSummary] = [],
     usage: Usage? = nil,
     agent: AgentView? = nil
   ) {
@@ -690,13 +715,14 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     self.parked = parked
     self.tasks = tasks
     self.triggers = triggers
+    self.pulls = pulls
     self.usage = usage
     self.agent = agent
   }
 
   private enum CodingKeys: String, CodingKey {
     case botId, messages, truncatedBefore, streaming, pending, inbox, running, unavailable, parked
-    case tasks, triggers, agent, usage
+    case tasks, triggers, pulls, agent, usage
   }
 
   /// `streaming` is `{ "messageId": "p_a1" }` on the wire and `null` when no attempt is in
@@ -713,6 +739,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     parked = try container.decodeIfPresent(Bool.self, forKey: .parked)
     tasks = try container.decodeIfPresent([TaskSummary].self, forKey: .tasks) ?? []
     triggers = try container.decodeIfPresent([TriggerSummary].self, forKey: .triggers) ?? []
+    pulls = try container.decodeIfPresent([PullSummary].self, forKey: .pulls) ?? []
     usage = try container.decodeIfPresent(Usage.self, forKey: .usage)
     agent = try container.decodeIfPresent(AgentView.self, forKey: .agent)
     if let pointer = try container.decodeIfPresent(StreamingPointer.self, forKey: .streaming) {
@@ -734,6 +761,7 @@ public struct ConversationSnapshot: Codable, Sendable, Equatable {
     try container.encodeIfPresent(parked, forKey: .parked)
     try container.encode(tasks, forKey: .tasks)
     try container.encode(triggers, forKey: .triggers)
+    try container.encode(pulls, forKey: .pulls)
     try container.encodeIfPresent(usage, forKey: .usage)
     try container.encodeIfPresent(agent, forKey: .agent)
     if let streaming {

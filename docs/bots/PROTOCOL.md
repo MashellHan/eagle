@@ -224,6 +224,28 @@ It is a whole-list replacement, never a delta; an empty list means the Bot has n
   daemon without trigger storage omits the field rather than inventing an empty list.
 - Normative sample: `triggers.server.json`.
 
+## Reported pull requests
+
+`pulls` lists the pull requests a bot reported through `pr_register` — a coding-group tool —
+and each `snapshot` carries the current list as `pulls`. It is a whole-list replacement,
+never a delta; an empty list or an absent field means the Bot reported none. The daemon
+stores reports and never queries a forge, so this list is only as fresh as the model's last
+report.
+
+```json
+{ "url": "https://github.com/nocoo/eagle/pull/490", "title": "deps: 依赖升级到 2.4.0",
+  "status": "merged", "host": "github.com", "updatedAt": "2026-10-30T10:00:00.000Z" }
+```
+
+- `url` is opened verbatim: any `http(s)` forge (GitHub, Azure DevOps, GitLab, …) is valid,
+  and `host` is only the row's label.
+- `status` is `draft`, `open`, `reviewing`, `merged`, `closed` or `failed`; the tool refuses
+  anything else, so a client can map every value to one colour.
+- Order is newest report first. Reporting the same URL again replaces that row, so the list
+  never holds two rows for one pull request.
+- The `pulls` field is additive in v1: a client that predates it ignores it, and a daemon
+  without a store omits it.
+
 ## Per-bot agent
 
 `PATCH /v1/bots/:id` accepts `model` (an id the gateway lists) and `thinkingLevel` (one of

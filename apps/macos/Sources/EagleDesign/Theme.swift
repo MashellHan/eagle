@@ -18,6 +18,8 @@ public enum Theme {
     public static let accentFill = Color(light: 0x2FB457, dark: 0x2FB457)
     public static let accentStrong = Color(light: 0x2FB457, dark: 0x3DD068)
     public static let info = Color(light: 0x0B6FBE, dark: 0x7FC8FF)
+    /// Waiting on someone else: a review, a check, a person.
+    public static let warning = Color(light: 0xB46A00, dark: 0xF0A93A)
     public static let infoFill = Color(light: 0xE4F4FD, dark: 0x10293C)
     public static let destructive = Color(light: 0xE5372F, dark: 0xFF5F57)
     public static let hover = Color(light: 0x000000, dark: 0xFFFFFF).opacity(0.06)

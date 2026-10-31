@@ -115,7 +115,7 @@ struct BotsInspectorTaskTests {
   func empty() {
     #expect(presenter.inspectorTasks(for: []).isEmpty)
     let sections = InspectorSections.detail(
-      artifacts: [], tasks: presenter.inspectorTasks(for: []))
+      pulls: [], tasks: presenter.inspectorTasks(for: []))
     #expect(sections[1].isEmpty)
     #expect(sections[1].placeholder.title == "没有正在运行的任务")
   }
