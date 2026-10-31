@@ -8,6 +8,7 @@ import type {
   DeltaChange,
   ErrorKind,
   Message,
+  PullSummary,
   Submission,
   TaskSummary,
   TriggerSummary,
@@ -31,6 +32,7 @@ export type RuntimeEvent = { readonly trace: string } & (
   | { readonly type: "submission"; readonly record: Submission }
   | { readonly type: "tasks"; readonly tasks: readonly TaskSummary[] }
   | { readonly type: "triggers"; readonly triggers: readonly TriggerSummary[] }
+  | { readonly type: "pulls"; readonly pulls: readonly PullSummary[] }
   | { readonly type: "usage"; readonly usage: Usage }
   | { readonly type: "agent"; readonly agent: AgentView }
   | { readonly type: "snapshot"; readonly value: ConversationSnapshot }
@@ -111,6 +113,8 @@ export interface RuntimeHandle {
       | { submissionId: string }
       | { requestId: string; retry?: Pick<SubmitInput, "whenBusy" | "trace"> },
   ): Promise<Submission | undefined>;
+  /** One committed message by entry id: how a peer reads the answer it was pointed at. */
+  entryById?(entryId: string): Promise<Message | undefined>;
   /** Older messages, oldest first. The trace names the command that asked for them. */
   history(input: {
     beforeEntryId?: string;

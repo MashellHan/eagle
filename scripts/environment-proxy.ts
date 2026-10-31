@@ -3,11 +3,14 @@ import type { IncomingMessage } from "node:http";
 import { promisify } from "node:util";
 import type { ProxyOptions } from "vite";
 
-const production = "https://eagle.hexly.ai";
+// The dev server only proxies when a run names both origins; the source holds neither.
+const production = process.env.EAGLE_PROXY_TARGET?.trim();
+const devHost = process.env.EAGLE_DEV_HOST?.trim();
 const prefix = "/__local/prod";
 const execute = promisify(execFile);
 
 async function accessToken() {
+  if (production === undefined) throw new Error("set EAGLE_PROXY_TARGET");
   const { stdout } = await execute(
     "cloudflared",
     ["access", "token", "--app", production],
@@ -19,7 +22,7 @@ async function accessToken() {
 function allowed(request: IncomingMessage) {
   const host = request.headers.host ?? "";
   const origin =
-    host === "eagle.dev.hexly.ai"
+    host === devHost
       ? `https://${host}`
       : /^(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/.test(host)
         ? `http://${host}`
@@ -69,9 +72,11 @@ function sanitize(response: IncomingMessage) {
 }
 
 export function productionProxy(
-  target = production,
+  target: string | undefined = production,
   token: () => Promise<string> = accessToken,
-): ProxyOptions {
+): ProxyOptions | undefined {
+  // A development machine without a named deployment gets no proxy entry at all.
+  if (target === undefined || target === "") return undefined;
   return {
     target,
     ws: true,

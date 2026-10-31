@@ -3,7 +3,6 @@ import SwiftUI
 /// One decorated section: the shared header, then either its rows or its empty state.
 public struct InspectorSectionView: View {
   private let section: InspectorSectionModel
-  private let onToggleJob: (String, Bool) -> Void
   private let onExpand: () -> Void
   private let onRetryTask: (String) -> Void
   private let onStopTask: (String) -> Void
@@ -11,14 +10,12 @@ public struct InspectorSectionView: View {
 
   public init(
     section: InspectorSectionModel,
-    onToggleJob: @escaping (String, Bool) -> Void = { _, _ in },
     onExpand: @escaping () -> Void = {},
     onRetryTask: @escaping (String) -> Void = { _ in },
     onStopTask: @escaping (String) -> Void = { _ in },
     onChoose: @escaping (String, String) -> Void = { _, _ in }
   ) {
     self.section = section
-    self.onToggleJob = onToggleJob
     self.onExpand = onExpand
     self.onRetryTask = onRetryTask
     self.onStopTask = onStopTask
@@ -40,26 +37,10 @@ public struct InspectorSectionView: View {
   @ViewBuilder
   private var rows: some View {
     switch section.rows {
-    case .artifacts(let artifacts):
-      VStack(spacing: Theme.Metric.panelSectionBodyGap) {
-        ForEach(artifacts) { artifact in
-          ChevronRow(
-            systemName: "chevron.left.forwardslash.chevron.right", title: artifact.title)
-        }
-        TextAction("展开", action: onExpand)
-          .frame(maxWidth: .infinity)
-      }
-    case .jobs(let jobs):
-      VStack(spacing: Theme.Metric.panelSectionBodyGap) {
-        ForEach(jobs) { job in
-          ToggleRow(
-            title: job.title,
-            detail: job.detail,
-            isOn: Binding(
-              get: { job.isOn },
-              set: { onToggleJob(job.id, $0) }
-            )
-          )
+    case .pulls(let pulls):
+      VStack(alignment: .leading, spacing: 2) {
+        ForEach(pulls) { pull in
+          InspectorPullRowView(row: pull)
         }
       }
     case .choices(let rows):
@@ -187,5 +168,53 @@ struct InspectorTaskRowView: View {
     .onHover { hovering = $0 }
     .accessibilityElement(children: .combine)
     .accessibilityLabel("\(row.title) \(row.status)")
+  }
+}
+
+/// One reported pull request: its state's glyph and colour, the title, and the forge it lives
+/// on. The whole row is the link, so one click opens it in the default browser.
+private struct InspectorPullRowView: View {
+  let row: InspectorPullRow
+  @State private var hovering = false
+
+  var body: some View {
+    Button {
+      guard let url = URL(string: row.url) else { return }
+      NSWorkspace.shared.open(url)
+    } label: {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Image(systemName: row.appearance.symbol)
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(row.appearance.tint)
+          .frame(width: Theme.Metric.panelSectionGlyphWidth)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(row.title)
+            .font(.system(size: 12.5))
+            .foregroundStyle(Theme.Palette.textPrimary)
+            .lineLimit(2)
+          Text("\(row.appearance.label) · \(row.host)")
+            .font(Theme.TypeScale.pill)
+            .foregroundStyle(row.appearance.tint)
+            .lineLimit(1)
+        }
+        Spacer(minLength: 4)
+        Image(systemName: "arrow.up.forward")
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundStyle(Theme.Palette.textMuted)
+          .opacity(hovering ? 1 : 0)
+      }
+      .padding(.vertical, 4)
+      .padding(.horizontal, 6)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+          .fill(hovering ? Theme.Palette.hover : .clear)
+      )
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .onHover { hovering = $0 }
+    .help(row.url)
+    .accessibilityLabel("\(row.appearance.label)：\(row.title)，打开 \(row.host)")
   }
 }

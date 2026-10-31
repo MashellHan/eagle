@@ -118,6 +118,7 @@ type ModelStep = { name: string; args: JSONRecord } | { text: string };
 async function modelFixture(key: string) {
   const steps: ModelStep[] = [];
   const failures: string[] = [];
+  const inputs: JSONRecord[] = [];
   let requests = 0;
   const server = createServer(async (request, response) => {
     try {
@@ -130,6 +131,7 @@ async function modelFixture(key: string) {
       let body = "";
       for await (const chunk of request) body += chunk;
       const input = JSON.parse(body) as { tools: { name: string }[] };
+      inputs.push(JSON.parse(body) as JSONRecord);
       const step = steps.shift();
       assert(step, "unexpected model request");
       requests++;
@@ -215,8 +217,10 @@ async function modelFixture(key: string) {
     server,
     baseUrl: `http://127.0.0.1:${address.port}/v1`,
     failures,
-    script(name: string, args: JSONRecord) {
+    inputs,
+    script(name: string, args: JSONRecord, extraReplies = 0) {
       steps.push({ name, args }, { text: "done" });
+      for (let i = 0; i < extraReplies; i++) steps.push({ text: "done" });
     },
     verify() {
       assert.deepEqual(failures, []);
@@ -258,16 +262,42 @@ async function botConnection(origin: string, token: string, botId: string) {
       trace: `tr_sub_${randomUUID()}`,
     }),
   );
-  await frame("snapshot");
+  const snapshot = await frame("snapshot");
+  const request = async (input: JSONRecord) => {
+    messages.length = 0;
+    socket.send(
+      JSON.stringify({
+        type: "send",
+        whenBusy: "followUp",
+        trace: `tr_retry_${randomUUID()}`,
+        ...input,
+      }),
+    );
+    return until(
+      async () =>
+        messages.find(
+          (message) =>
+            message.requestId === input.requestId &&
+            (message.type === "error" ||
+              (message.type === "submission" &&
+                ["done", "unanswered"].includes(String(message.status)))),
+        ),
+      "actual SDK request outcome",
+    );
+  };
   return {
     socket,
+    snapshot,
+    messages,
+    request,
     async run(
       name: string,
       model: Awaited<ReturnType<typeof modelFixture>>,
       args: JSONRecord = {},
+      options: { resourceHead?: string; extraReplies?: number } = {},
     ) {
       messages.length = 0;
-      model.script(name, args);
+      model.script(name, args, options.extraReplies);
       const requestId = `r_${randomUUID()}`;
       socket.send(
         JSON.stringify({
@@ -276,6 +306,9 @@ async function botConnection(origin: string, token: string, botId: string) {
           text: `Integration: ${name}`,
           whenBusy: "followUp",
           trace: `tr_run_${randomUUID()}`,
+          ...(options.resourceHead === undefined
+            ? {}
+            : { resourceHead: options.resourceHead }),
         }),
       );
       await until(
@@ -319,7 +352,8 @@ async function botConnection(origin: string, token: string, botId: string) {
       );
       assert(result, `missing actual SDK tool result for ${name}`);
       return {
-        value: JSON.parse(result.text) as JSONRecord,
+        requestId,
+        text: result.text,
         isError: result.isError,
       };
     },
@@ -401,7 +435,7 @@ async function daemon(
   socketPath: string,
   baseUrl: string,
   key: string,
-  owned: { listener?: boolean; peerPort?: number } = {},
+  owned: { listener?: boolean; peerPort?: number; listenerPort?: number } = {},
 ) {
   mkdirSync(root, { mode: 0o700, recursive: true });
   const script = join(root, "daemon.mjs");
@@ -444,7 +478,7 @@ const daemon=await startDaemon(readConfig({argv:['--root',config.root,'--port','
 let server;
 if(config.owned.listener){
  const {createServer}=await import('node:http');server=createServer(daemon.sync.handler);
- await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ await new Promise(resolve=>server.listen(config.owned.listenerPort??0,'127.0.0.1',resolve));
 }
 process.stdout.write(JSON.stringify({type:'ready',port:daemon.port,peerPort:server?.address().port})+'\\n');
 for await(const line of lines){
@@ -493,9 +527,9 @@ await daemon.close();await dispatcher?.close();reader.close();`,
           (m) => m.type === "controlled" && m.requestId === requestId,
         );
       },
-      async post<T = RecordJSON>(path: string, body: unknown) {
+      async post<T = RecordJSON>(path: string, body: unknown, method = "POST") {
         const response = await fetch(`http://127.0.0.1:${ready.port}${path}`, {
-          method: "POST",
+          method,
           headers: {
             authorization: `Bearer ${token}`,
             "content-type": "application/json",
@@ -516,7 +550,7 @@ await daemon.close();await dispatcher?.close();reader.close();`,
   }
 }
 
-test("real history object cold-starts offline with exact bytes/head/sections and passive zero execution", {
+test("real main peer/PR history object cold-starts offline with exact bytes/head/sections and passive zero execution", {
   timeout: 90000,
 }, async () => {
   const root = realpathSync(mkdtempSync("/tmp/eagle-encrypted-entry-"));
@@ -550,7 +584,7 @@ test("real history object cold-starts offline with exact bytes/head/sections and
       requestId: randomUUID(),
       code: invitation.code,
     });
-    const bd = await daemon(
+    let bd = await daemon(
       join(root, "b-bots"),
       b.socketPath,
       modelOrigin,
@@ -587,16 +621,200 @@ test("real history object cold-starts offline with exact bytes/head/sections and
       after: 0,
     });
     assert.equal(initial.events.length, resources.length + 1);
-    const sourceClient = await botConnection(bd.origin, bd.token, bb);
+    let sourceClient = await botConnection(bd.origin, bd.token, bb);
     clients.push(sourceClient);
-    const native = await sourceClient.run("bash", model, {
-      command: "printf source-history",
-    });
+    const native = await sourceClient.run(
+      "bash",
+      model,
+      {
+        command: "printf source-history",
+      },
+      { resourceHead: String(carrier.head) },
+    );
     assert.equal(native.isError, false);
+    const target = (
+      await bd.post<{ bot: { id: string } }>("/v1/bots", {
+        title: "Local peer",
+      })
+    ).bot.id;
+    const targetResources = await bd.post(`/v1/bots/${target}/replica/export`, {
+      kind: "resources",
+      resources,
+    });
+    const targetClient = await botConnection(bd.origin, bd.token, target);
+    clients.push(targetClient);
+    assert.equal(
+      (
+        await targetClient.run(
+          "bash",
+          model,
+          { command: "printf target-selected" },
+          { resourceHead: String(targetResources.head) },
+        )
+      ).isError,
+      false,
+    );
+    await bd.post(
+      "/v1/settings",
+      { toolGroups: ["core", "coding", "peers"] },
+      "PUT",
+    );
+    assert.deepEqual(
+      await bd.post(`/v1/bots/${bb}/replica/export`, {
+        kind: "resources",
+        head: carrier.head,
+      }),
+      carrier,
+    );
+    const pull = {
+      url: "https://github.com/nocoo/eagle/pull/109",
+      title: "combined journal fixture",
+      status: "merged",
+    };
+    const reported = await sourceClient.run("pr_register", model, pull, {
+      resourceHead: String(carrier.head),
+    });
+    assert.equal(reported.isError, false);
+    const pullEvent = sourceClient.messages.find(
+      (message) => message.type === "pulls",
+    );
+    assert(
+      pullEvent,
+      "production main connects the pull publisher to the subscribed client",
+    );
+    const reportedPulls = pullEvent.pulls;
+    assert.match(JSON.stringify(reportedPulls), /combined journal fixture/);
+    const peerStart = model.inputs.length;
+    const sent = await sourceClient.run(
+      "peer_send",
+      model,
+      { botId: target, message: "combined-local-peer" },
+      { resourceHead: String(carrier.head), extraReplies: 1 },
+    );
+    assert.equal(sent.isError, false);
+    const exchanges = (await (
+      await fetch(`${bd.origin}/v1/bots/${bb}/exchanges`, {
+        headers: { authorization: `Bearer ${bd.token}` },
+      })
+    ).json()) as { exchanges: { id: string }[] };
+    assert.equal(exchanges.exchanges.length, 1);
+    const [summary] = exchanges.exchanges;
+    assert(summary);
+    const exchangeId = summary.id;
+    const exchange = await until(async () => {
+      const result = (await (
+        await fetch(`${bd.origin}/v1/bots/${bb}/exchanges/${exchangeId}`, {
+          headers: { authorization: `Bearer ${bd.token}` },
+        })
+      ).json()) as {
+        exchange: {
+          turns: { requestId: string; text: string; answer?: string }[];
+        };
+      };
+      return result.exchange.turns[0]?.answer === "done"
+        ? result.exchange
+        : undefined;
+    }, "real peer answer through main HTTP API");
+    const [peerTurn] = exchange.turns;
+    assert(peerTurn);
+    const peerRequestId = peerTurn.requestId;
+    const peerInputs = model.inputs
+      .slice(peerStart)
+      .filter(
+        (input) =>
+          JSON.stringify(input).includes("combined-local-peer") &&
+          !JSON.stringify(input).includes("Integration: peer_send"),
+      );
+    assert.equal(peerInputs.length, 1);
+    const instructions = Buffer.from(resources[0].base64, "base64")
+      .toString("utf8")
+      .trim();
+    assert.equal(
+      JSON.stringify(peerInputs[0]).includes(instructions),
+      false,
+      "new peer invocation never inherits sender or target active resources",
+    );
+    const sourceInputs = model.inputs
+      .slice(peerStart)
+      .filter((input) =>
+        JSON.stringify(input).includes("Integration: peer_send"),
+      );
+    assert(
+      sourceInputs.some((input) =>
+        JSON.stringify(input).includes(instructions),
+      ),
+      "tool refresh retains the bots-resources extension",
+    );
+    const targetDb = new DatabaseSync(
+      join(root, "b-bots/bots", target, "replica.sqlite"),
+      { readOnly: true },
+    );
+    try {
+      const row = targetDb
+        .prepare("SELECT value FROM local_runs WHERE request_id=?")
+        .get(peerRequestId);
+      assert(row);
+      const intent = JSON.parse(String(row.value)).intent;
+      assert.equal(intent.resourceHead, undefined);
+      assert.equal(intent.resourceVersion, undefined);
+    } finally {
+      targetDb.close();
+    }
+    const providerBeforeRetry = model.verify();
+    const peerRetry = await targetClient.request({
+      requestId: peerRequestId,
+      text: "combined-local-peer",
+    });
+    assert.equal(peerRetry.type, "submission");
+    assert.equal(peerRetry.status, "done");
+    const conflict = await targetClient.request({
+      requestId: peerRequestId,
+      text: "combined-local-peer",
+      resourceHead: targetResources.head,
+    });
+    assert.equal(conflict.type, "error");
+    assert.equal(conflict.disposition, "not_admitted");
+    assert.equal(model.verify(), providerBeforeRetry);
+    console.log(
+      JSON.stringify({
+        combinedMain: {
+          peerAnswer: peerTurn.answer,
+          peerLegacyEmpty: true,
+          retryNoNewExecution: true,
+          conflictingResourcesRejected: true,
+          pullEvent: true,
+          refreshedResourcesIntact: true,
+        },
+      }),
+    );
+    const journalFile = join(root, "b-bots/bots", bb, "pulls.journal.jsonl");
+    const journal = readFileSync(journalFile);
+    for (const client of [sourceClient, targetClient])
+      await new Promise<void>((done) => {
+        client.socket.once("close", () => done());
+        client.socket.close();
+      });
+    const listenerPort = bd.peerPort;
+    await bd.stop();
+    bd = await daemon(join(root, "b-bots"), b.socketPath, modelOrigin, key, {
+      listener: true,
+      listenerPort,
+    });
+    bots.push(bd);
+    sourceClient = await botConnection(bd.origin, bd.token, bb);
+    clients.push(sourceClient);
+    assert.deepEqual(
+      (sourceClient.snapshot.value as JSONRecord).pulls,
+      reportedPulls,
+    );
+    assert.deepEqual(readFileSync(journalFile), journal);
     baseline = model.verify();
-    assert.equal(baseline, 2);
+    assert.equal(baseline, 9);
     const history = await bd.post<History>(`/v1/bots/${bb}/replica/export`, {});
     assert(history.entries.length > 0);
+    assert.match(JSON.stringify(history.entries), /pr_register/);
+    assert.match(JSON.stringify(history.entries), /peer_send/);
+    assert.match(JSON.stringify(history.entries), /combined journal fixture/);
     const sectionOrders = (bundle: History) =>
       bundle.entries.flatMap((entry) =>
         (entry.model ?? []).flatMap((message) =>
@@ -1156,6 +1374,11 @@ test("real history object cold-starts offline with exact bytes/head/sections and
         )
         .filter((log) => log.evt === "runtime.open.start").length;
     const beforeSync = opens();
+    const peerDirectory = join(root, "a-bots/peers");
+    const peersBefore = readdirSync(peerDirectory).map((file) => [
+      file,
+      readFileSync(join(peerDirectory, file)).toString("base64"),
+    ]);
     await assert.rejects(
       offlineDaemon.post(`/v1/bots/${ab}/sync/objects/apply`, { objectId }),
       /400|403/,
@@ -1173,6 +1396,14 @@ test("real history object cold-starts offline with exact bytes/head/sections and
     );
     clients.push(openedClient);
     assert.equal(model.verify(), baseline);
+    const executionCounts = () =>
+      Object.fromEntries(
+        Object.entries(counts(join(root, "a-bots/bots", ab))).filter(([name]) =>
+          /submission|task|local_runs/.test(name),
+        ),
+      );
+    const executionBeforePassive = executionCounts();
+    assert("replica.sqlite:local_runs" in executionBeforePassive);
     await offlineDaemon.control("holdKey");
     const passive = offlineDaemon.post(`/v1/bots/${ab}/sync/objects/apply`, {
       objectId,
@@ -1197,6 +1428,24 @@ test("real history object cold-starts offline with exact bytes/head/sections and
       JSON.stringify(history.entries),
     );
     assert.deepEqual(sectionOrders(restored), originalSections);
+    assert.deepEqual(
+      executionCounts(),
+      executionBeforePassive,
+      "passive import admits no local submission, invocation or tool task",
+    );
+    assert.deepEqual(
+      readdirSync(peerDirectory).map((file) => [
+        file,
+        readFileSync(join(peerDirectory, file)).toString("base64"),
+      ]),
+      peersBefore,
+      "passive history import does not create local peer exchanges",
+    );
+    assert.equal(
+      existsSync(join(root, "a-bots/bots", ab, "pulls.journal.jsonl")),
+      false,
+      "historical PR tool records do not replay the report tool",
+    );
     const { manifest, envelope } = record.carrier,
       { pin } = record;
     const keyResult = (await localCall(offlineA.socketPath, "sync.key.open", {
@@ -1296,7 +1545,7 @@ test("real history object cold-starts offline with exact bytes/head/sections and
         sectionOrders: originalSections,
         originalPlaintextBytes: plaintext.length,
         passiveProviderDelta: 0,
-        explicitSourceProvider: baseline,
+        explicitSetupProvider: baseline,
         explicitNativeProviderDelta: 2,
       }),
     );

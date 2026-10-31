@@ -180,11 +180,8 @@ test("private helper config boots offline local tools; Bot port cannot change po
       let recoveredCommand: { status: string; output?: string } = {
         status: "running",
       };
-      for (
-        let attempt = 0;
-        attempt < 100 && recoveredCommand.status !== "completed";
-        attempt++
-      ) {
+      const recoveredBy = Date.now() + 10_000;
+      for (;;) {
         if (
           !droppedAfterAdmission &&
           existsSync(lostFile) &&
@@ -203,8 +200,9 @@ test("private helper config boots offline local tools; Bot port cannot change po
           recoveredCommand = (
             await request("operation.get", { ...lostRequest, action: "get" })
           ).result as { status: string; output?: string };
-        if (recoveredCommand.status !== "completed")
-          await new Promise((resolve) => setTimeout(resolve, 10));
+        if (recoveredCommand.status === "completed" || Date.now() > recoveredBy)
+          break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
       }
       assert.equal(
         droppedAfterAdmission,
@@ -212,7 +210,11 @@ test("private helper config boots offline local tools; Bot port cannot change po
         "drop follows actual execution",
       );
       assert.equal(lostReply, "", "the original response was never received");
-      assert.equal(recoveredCommand.status, "completed");
+      assert.equal(
+        recoveredCommand.status,
+        "completed",
+        `the lost admission was still ${recoveredCommand.status}`,
+      );
       assert.equal(
         (
           (

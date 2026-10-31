@@ -61,6 +61,8 @@ public final class ConversationViewModel: ObservableObject {
   public var tasks: [TaskSummary] { state.tasks }
   /// The bot's own triggers, as the sidebar's trigger section renders them.
   public var triggers: [TriggerSummary] { state.triggers }
+  /// The pull requests the bot reported, newest first.
+  public var pulls: [PullSummary] { state.pulls }
   /// Tokens and cost so far, for the inspector's 用量 section.
   public var usage: Usage? { state.usage }
   public var canSend: Bool {
@@ -353,6 +355,8 @@ public final class ConversationViewModel: ObservableObject {
       state = Reducer.apply(.tasks(tasks), to: state)
     case .triggers(let triggers):
       state = Reducer.apply(.triggers(triggers), to: state)
+    case .pulls(let pulls):
+      state = Reducer.apply(.pulls(pulls), to: state)
     case .usage(let usage):
       state = Reducer.apply(.usage(usage), to: state)
     case .agent(let agent):
@@ -407,6 +411,7 @@ public final class ConversationViewModel: ObservableObject {
     next.running = false
     next.tasks = []
     next.triggers = []
+    next.pulls = []
     return next
   }
 

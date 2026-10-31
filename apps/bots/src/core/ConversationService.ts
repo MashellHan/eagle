@@ -10,6 +10,7 @@ import type {
   ErrorKind,
   Failure,
   Message,
+  PullSummary,
   Submission,
   TriggerSummary,
   Usage,
@@ -102,6 +103,13 @@ export type ConversationServiceOptions = {
     readonly list: (botId: string) => Promise<readonly TriggerSummary[]>;
   };
   /**
+   * The bot's reported pull requests, read when its view opens. Absent means no coding
+   * reports are stored; every existing path still works.
+   */
+  readonly pullsOf?: {
+    readonly list: (botId: string) => Promise<readonly PullSummary[]>;
+  };
+  /**
    * The per-bot origin record (docs/bots/TRIGGERS.md §6). Absent means the daemon does not
    * label admissions, which is the phase-1 behavior; every caller still works.
    */
@@ -180,6 +188,7 @@ export class ConversationService implements InvocationPort {
   readonly #lease: ConversationServiceOptions["lease"];
   readonly #origins: ConversationServiceOptions["origins"];
   readonly #triggersOf: ConversationServiceOptions["triggersOf"];
+  readonly #pullsOf: ConversationServiceOptions["pullsOf"];
   /** Resolved views by bot id, so `observe` can answer synchronously without opening. */
   readonly #current = new Map<string, Bot>();
   /** Invocation observers, keyed by bot id and bound to the value, not to one Bot object. */
@@ -215,6 +224,7 @@ export class ConversationService implements InvocationPort {
     this.#lease = options.lease;
     this.#origins = options.origins;
     this.#triggersOf = options.triggersOf;
+    this.#pullsOf = options.pullsOf;
     this.#hubOptions = {
       measure: options.measure,
       ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
@@ -454,6 +464,18 @@ export class ConversationService implements InvocationPort {
    * Replaces the bot's trigger list and tells its subscribers. Called by whoever owns the
    * store after a mutation, so a sidebar follows a model's own edit (TRIGGERS.md §8.3).
    */
+  /** A reported pull request reaches every open view, exactly as a trigger list does. */
+  publishPulls(
+    botId: string,
+    pulls: readonly PullSummary[],
+    trace = `tr_pulls_${Date.now().toString(36)}`,
+  ): void {
+    const bot = this.#current.get(botId);
+    if (bot === undefined) return;
+    bot.snapshot = { ...bot.snapshot, pulls };
+    bot.hub.publish({ type: "pulls", trace, pulls });
+  }
+
   publishTriggers(botId: string, triggers: readonly TriggerSummary[], trace: string): void {
     const bot = this.#current.get(botId);
     if (bot === undefined) return;
@@ -1039,6 +1061,11 @@ export class ConversationService implements InvocationPort {
       const bot = await this.#attach(handle, hub, trace);
       const triggers = await this.#triggersOf?.list(botId).catch(() => undefined);
       if (triggers !== undefined) bot.snapshot = { ...bot.snapshot, triggers };
+      if (this.#pullsOf !== undefined)
+        bot.snapshot = {
+          ...bot.snapshot,
+          pulls: await this.#pullsOf.list(botId).catch(() => [] as readonly PullSummary[]),
+        };
       bot.origins = await this.#openOrigins(botId, trace);
       if (bot.origins !== undefined) bot.snapshot = this.#withOrigins(bot.snapshot, bot.origins);
       // The view is live whether or not a client ever subscribes: a port caller must see

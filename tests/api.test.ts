@@ -39,7 +39,7 @@ let aiHold: Promise<void> | undefined;
 let aiHoldMatch: string | undefined;
 let aiInvalid = false;
 let aiRequests: string[] | undefined;
-const issuer = "https://nocoo.cloudflareaccess.com";
+const issuer = "https://team.cloudflareaccess.com";
 const audience =
   "d1ffdb7fe2787e2a9e8f957a68ed5feec2b944c44c6fdbfd54341887eab6f873";
 async function accessToken(aud = audience, iss = issuer, expires = "1h") {
@@ -82,7 +82,7 @@ before(async () => {
     [
       "deploy",
       "--config",
-      "apps/web/wrangler.jsonc",
+      "apps/web/wrangler.example.jsonc",
       "--dry-run",
       "--outdir",
       resolve(".local/test-worker"),
@@ -193,8 +193,12 @@ before(async () => {
           }),
           ACCESS_TEAM_URL: issuer,
           ACCESS_AUD: audience,
+          DEV_HOSTS: "dev.example.com",
+          INGEST_HOST: "ingest.example.com",
           LOCAL_DEV: "false",
           BUILD_REVISION: "test-build-sha",
+          MACOS_VERSION: "1.2.3",
+          MACOS_RELEASE_URL: "https://github.com/example/eagle/releases/latest",
         },
       },
     ],
@@ -285,7 +289,7 @@ test("viewer profile uses verified Access email and hashed avatar service with a
   }
   assert.equal(
     (
-      await mf.dispatchFetch("https://eagle-ingest.hexly.ai/api/v1/me", {
+      await mf.dispatchFetch("https://ingest.example.com/api/v1/me", {
         headers: { "Cf-Access-Jwt-Assertion": viewer },
       })
     ).status,
@@ -412,7 +416,9 @@ test("the dashboard does not expose or provision the independent device service"
     const response = await request(path, undefined, viewer);
     assert.equal(response.status, 404);
   }
-  const config = JSON.parse(readFileSync("apps/web/wrangler.jsonc", "utf8"));
+  const config = JSON.parse(
+    readFileSync("apps/web/wrangler.example.jsonc", "utf8"),
+  );
   assert.equal(
     config.durable_objects.bindings.some((binding: { name: string }) =>
       binding.name.startsWith("DEVICE_"),
@@ -771,11 +777,13 @@ test("local viewing needs no token but a local hostname never bypasses productio
   const env = {
     ACCESS_TEAM_URL: issuer,
     ACCESS_AUD: audience,
+    DEV_HOSTS: "dev.example.com",
+    INGEST_HOST: "ingest.example.com",
     LOCAL_DEV: "true",
   } as Env;
   assert.equal(
     await viewerAuthorized(
-      new Request("https://eagle.dev.hexly.ai/api/v1/overview"),
+      new Request("https://dev.example.com/api/v1/overview"),
       env,
     ),
     true,
@@ -789,14 +797,14 @@ test("local viewing needs no token but a local hostname never bypasses productio
   );
   assert.equal(
     await viewerAuthorized(
-      new Request("https://eagle.hexly.ai/api/v1/overview"),
+      new Request("https://app.example.com/api/v1/overview"),
       env,
     ),
     false,
   );
   assert.equal(
     await viewerAuthorized(
-      new Request("https://eagle.dev.hexly.ai/api/v1/overview"),
+      new Request("https://dev.example.com/api/v1/overview"),
       { ...env, LOCAL_DEV: "false" },
     ),
     false,
@@ -817,6 +825,11 @@ test("public health identifies the deployed revision without exposing inventory"
   );
   assert.equal(result.revision, "test-build-sha");
   assert(!("machines" in result));
+  // The app has its own release line; the check reads it from here.
+  assert.deepEqual(result.macos, {
+    latest: "1.2.3",
+    releaseUrl: "https://github.com/example/eagle/releases/latest",
+  });
 });
 
 test("an ordinary heartbeat and old retry cannot clear a collector failure warning", async () => {
@@ -884,25 +897,25 @@ test("the machine ingress exposes only Bearer-protected ingestion and public hea
     "/api/v1/history",
   ]) {
     const response = await mf.dispatchFetch(
-      `https://eagle-ingest.hexly.ai${path}`,
+      `https://ingest.example.com${path}`,
       { headers: { "Cf-Access-Jwt-Assertion": viewer } },
     );
     assert.equal(response.status, 404);
   }
   assert.equal(
-    (await mf.dispatchFetch("https://eagle-ingest.hexly.ai/api/live")).status,
+    (await mf.dispatchFetch("https://ingest.example.com/api/live")).status,
     200,
   );
   assert.equal(
     (
-      await mf.dispatchFetch("https://eagle-ingest.hexly.ai/api/v1/reports", {
+      await mf.dispatchFetch("https://ingest.example.com/api/v1/reports", {
         method: "POST",
       })
     ).status,
     401,
   );
   const response = await mf.dispatchFetch(
-    "https://eagle-ingest.hexly.ai/api/v1/reports",
+    "https://ingest.example.com/api/v1/reports",
     {
       method: "POST",
       headers: {

@@ -137,7 +137,14 @@ const parse = (line: string): OriginRecord | undefined => {
 
 const parseOrigin = (value: unknown): MessageOrigin | undefined => {
   if (typeof value !== "object" || value === null) return undefined;
-  const origin = value as { kind?: unknown; triggerId?: unknown; fromBotId?: unknown };
+  const origin = value as {
+    kind?: unknown;
+    triggerId?: unknown;
+    fromBotId?: unknown;
+    exchangeId?: unknown;
+    label?: unknown;
+  };
+  const label = typeof origin.label === "string" ? origin.label : undefined;
   switch (origin.kind) {
     case "human":
       return { kind: "human" };
@@ -150,7 +157,12 @@ const parseOrigin = (value: unknown): MessageOrigin | undefined => {
         : undefined;
     case "peer":
       return typeof origin.fromBotId === "string"
-        ? { kind: "peer", fromBotId: origin.fromBotId }
+        ? {
+            kind: "peer",
+            fromBotId: origin.fromBotId,
+            ...(typeof origin.exchangeId === "string" ? { exchangeId: origin.exchangeId } : {}),
+            ...(label === undefined ? {} : { label }),
+          }
         : undefined;
     default:
       return undefined;

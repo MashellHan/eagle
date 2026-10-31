@@ -10,3 +10,6 @@ playwright-report/
 test-results/
 .local/
 .DS_Store
+# Real deployment configuration is local. Tracked files carry examples only.
+apps/web/wrangler.jsonc
+apps/web/wrangler.devices.jsonc

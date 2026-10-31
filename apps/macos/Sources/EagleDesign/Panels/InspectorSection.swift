@@ -50,6 +50,39 @@ public struct InspectorTaskRow: Identifiable, Hashable, Sendable {
   }
 }
 
+/// One reported pull request in the 编码 section: the link opens it, the state colours it.
+public struct InspectorPullRow: Identifiable, Hashable, Sendable {
+  public let id: String
+  public let title: String
+  /// github.com, dev.azure.com, … — the row's own label for any forge.
+  public let host: String
+  /// draft, open, reviewing, merged, closed or failed.
+  public let status: String
+  public let url: String
+
+  public init(id: String, title: String, host: String, status: String, url: String) {
+    self.id = id
+    self.title = title
+    self.host = host
+    self.status = status
+    self.url = url
+  }
+
+  /// The glyph and colour a state is shown with; an unknown state stays neutral rather than
+  /// guessing a colour. The model reports the state, so it is always one of the six.
+  public var appearance: (symbol: String, tint: Color, label: String) {
+    switch status {
+    case "draft": return ("pencil.circle", Theme.Palette.textMuted, "草稿")
+    case "open": return ("arrow.triangle.pull", Theme.Palette.info, "进行中")
+    case "reviewing": return ("eye.circle", Theme.Palette.warning, "审查中")
+    case "merged": return ("arrow.triangle.merge", Theme.Palette.accentStrong, "已合并")
+    case "closed": return ("xmark.circle", Theme.Palette.textMuted, "已关闭")
+    case "failed": return ("exclamationmark.triangle", Theme.Palette.destructive, "失败")
+    default: return ("questionmark.circle", Theme.Palette.textMuted, status)
+    }
+  }
+}
+
 /// One read-only figure of the 用量 section: a label and its already-formatted value.
 public struct InspectorUsageRow: Identifiable, Hashable, Sendable {
   public let id: String
@@ -100,8 +133,7 @@ public struct InspectorChoiceRow: Identifiable, Hashable, Sendable {
 /// One decorated section of the inspector: its header and either rows or a placeholder.
 public struct InspectorSectionModel: Identifiable, Hashable, Sendable {
   public enum Rows: Hashable, Sendable {
-    case artifacts([InspectorArtifact])
-    case jobs([InspectorJob])
+    case pulls([InspectorPullRow])
     case tasks([InspectorTaskRow])
     case usage([InspectorUsageRow])
     case choices([InspectorChoiceRow])
@@ -131,8 +163,7 @@ public struct InspectorSectionModel: Identifiable, Hashable, Sendable {
 
   public var isEmpty: Bool {
     switch rows {
-    case .artifacts(let rows): return rows.isEmpty
-    case .jobs(let rows): return rows.isEmpty
+    case .pulls(let rows): return rows.isEmpty
     case .tasks(let rows): return rows.isEmpty
     case .usage(let rows): return rows.isEmpty
     case .choices(let rows): return rows.isEmpty
@@ -144,27 +175,15 @@ public struct InspectorSectionModel: Identifiable, Hashable, Sendable {
 /// The inspector's sections as data: which ones exist, in which order, and what they say when
 /// they hold nothing. Pure, so the decoration is decided without a running view.
 public enum InspectorSections {
-  public static let artifactsSection = InspectorSectionModel(
-    id: "artifacts",
+  public static let codingSection = InspectorSectionModel(
+    id: "pulls",
     title: "编码",
     symbolName: "chevron.left.forwardslash.chevron.right",
-    rows: .artifacts([]),
+    rows: .pulls([]),
     placeholder: InspectorPlaceholder(
-      symbolName: "shippingbox",
-      title: "还没有产物",
-      detail: "这个 Bot 生成的文件会出现在这里。"
-    )
-  )
-
-  public static let jobsSection = InspectorSectionModel(
-    id: "jobs",
-    title: "例行任务",
-    symbolName: "clock",
-    rows: .jobs([]),
-    placeholder: InspectorPlaceholder(
-      symbolName: "clock.arrow.circlepath",
-      title: "没有例行任务",
-      detail: "按计划自动运行的调度会出现在这里。"
+      symbolName: "arrow.triangle.pull",
+      title: "还没有 Pull Request",
+      detail: "Bot 打开的 PR 会出现在这里，点一行就到它的链接。"
     )
   )
 
@@ -220,7 +239,7 @@ public enum InspectorSections {
     id: "library",
     title: "资料库",
     symbolName: "books.vertical",
-    rows: .artifacts([]),
+    rows: .none,
     placeholder: InspectorPlaceholder(
       symbolName: "books.vertical",
       title: "资料库还是空的",
@@ -240,28 +259,31 @@ public enum InspectorSections {
     )
   )
 
-  /// 编码, 例行任务, 任务 — the detail tab always shows all three, so a section never folds
-  /// away and shifts the ones below it.
+  /// 编码 and 任务 — what the open conversation is doing right now. The model and its spend
+  /// have their own tab, and triggers are a tab of their own rather than a line here.
   public static func detail(
-    artifacts: [InspectorArtifact],
-    jobs: [InspectorJob],
-    tasks: [InspectorTaskRow],
-    usage: [InspectorUsageRow],
-    choices: [InspectorChoiceRow] = [],
-    triggers: [InspectorUsageRow] = []
+    pulls: [InspectorPullRow],
+    tasks: [InspectorTaskRow]
+  ) -> [InspectorSectionModel] {
+    [
+      codingSection.with(.pulls(pulls)),
+      tasksSection.with(.tasks(tasks)),
+    ]
+  }
+
+  /// 模型 and 用量: how the open bot thinks and what that has cost so far.
+  public static func model(
+    choices: [InspectorChoiceRow],
+    usage: [InspectorUsageRow]
   ) -> [InspectorSectionModel] {
     [
       modelSection.with(.choices(choices)),
-      artifactsSection.with(.artifacts(artifacts)),
-      jobsSection.with(.jobs(jobs)),
-      triggersSection.with(.usage(triggers)),
-      tasksSection.with(.tasks(tasks)),
       usageSection.with(.usage(usage)),
     ]
   }
 
-  public static func library(artifacts: [InspectorArtifact]) -> [InspectorSectionModel] {
-    [librarySection.with(.artifacts(artifacts))]
+  public static func library() -> [InspectorSectionModel] {
+    [librarySection.with(.none)]
   }
 
   public static func computer() -> [InspectorSectionModel] {

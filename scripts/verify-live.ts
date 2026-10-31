@@ -1,3 +1,12 @@
+const requireOrigin = (): string => {
+  const value = process.env.EAGLE_VERIFY_ORIGIN?.trim();
+  if (value === undefined || value === "") {
+    // No origin in the source: a verification run names its own deployment.
+    throw new Error("set EAGLE_VERIFY_ORIGIN to the origin being verified");
+  }
+  return value;
+};
+
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
@@ -8,7 +17,7 @@ import {
 } from "../packages/agent/collector.ts";
 import type { Overview } from "../packages/contracts/src/schema.ts";
 
-const origin = process.env.EAGLE_VERIFY_ORIGIN || "https://eagle.dev.hexly.ai";
+const origin = requireOrigin();
 const config: AgentConfig = JSON.parse(
   await readFile(process.env.EAGLE_CONFIG || ".local/agent-dev.json", "utf8"),
 );
@@ -40,10 +49,11 @@ try {
   });
   assert.equal(anonymous.status(), production ? 302 : 200);
   if (production) {
-    assert.equal(
-      new URL(anonymous.headers().location).hostname,
-      "nocoo.cloudflareaccess.com",
-    );
+    const accessHost = process.env.EAGLE_ACCESS_HOST?.trim();
+    if (accessHost === undefined || accessHost === "") {
+      throw new Error("set EAGLE_ACCESS_HOST to the Access team hostname");
+    }
+    assert.equal(new URL(anonymous.headers().location).hostname, accessHost);
     assert(accessToken);
     await context.addCookies([
       {

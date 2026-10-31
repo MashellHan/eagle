@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Left column on the reference grid: traffic lights at (16, 15), toolbar at
-/// 36 pt, profile avatar 55 pt starting at 79, first section header at 214,
-/// 58 pt rows, unread pill at 28 pt and a 62 pt user card.
+/// Left column on the reference grid: traffic lights and the toolbar in the window's top corner,
+/// then the list, 58 pt rows, unread pill at 28 pt and a 62 pt user card.
 public struct SidebarPanel: View {
   private let sections: [SidebarSection]
   private let selection: String?
@@ -99,26 +98,61 @@ public struct SidebarPanel: View {
     self.onMoveGroup = onMoveGroup
   }
 
-  private static var version: String {
-    (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev"
-  }
-
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      BrandHeader(
-        version: Self.version,
-        onSearch: onSearch,
-        onCompose: onCreateBot,
-        onCreateGroup: onCreateGroup,
-        canCompose: canCreateBot,
-        onCollapse: onCollapse
-      )
+      header
       list
       footer
     }
     .frame(width: width)
     .frame(maxHeight: .infinity)
     .background(Theme.Palette.canvas)
+  }
+
+  /// The toolbar shares the window's top corner with the traffic lights. The list follows it, so
+  /// the panel's first section sits one content inset under the controls rather than on the
+  /// three-column grid the other panels use.
+  private var header: some View {
+    HStack(spacing: 6) {
+      Spacer(minLength: 0)
+      toolbar
+    }
+    .frame(height: Theme.Metric.headerControlHeight)
+    .padding(.horizontal, Theme.Metric.contentInset)
+    .padding(.top, Theme.Metric.headerTopInset)
+  }
+
+  private var toolbar: some View {
+    HStack(spacing: 6) {
+      IconButton(
+        systemName: "magnifyingglass",
+        label: "搜索",
+        size: Theme.Metric.headerControlHeight,
+        style: .circled,
+        action: onSearch
+      )
+      MenuIconButton(
+        systemName: "plus",
+        label: "新建",
+        size: Theme.Metric.headerControlHeight
+      ) {
+        Button(action: onCreateBot) {
+          Label("新建 Bot", systemImage: "person.badge.plus")
+        }
+        .disabled(!canCreateBot)
+        Button(action: onCreateGroup) {
+          Label("新建分组", systemImage: "folder.badge.plus")
+        }
+        .disabled(!canCreateBot)
+      }
+      IconButton(
+        systemName: "sidebar.left",
+        label: "收起侧栏",
+        size: Theme.Metric.headerControlHeight,
+        style: .circled,
+        action: onCollapse
+      )
+    }
   }
 
   private var list: some View {
@@ -130,7 +164,7 @@ public struct SidebarPanel: View {
           }
         }
         .padding(.horizontal, Theme.Metric.listCardInset)
-        .padding(.top, Theme.Metric.edgeFadeHeight + 8)
+        .padding(.top, Theme.Metric.contentInset)
         .padding(.bottom, 8)
       }
       .scrollIndicators(.never)

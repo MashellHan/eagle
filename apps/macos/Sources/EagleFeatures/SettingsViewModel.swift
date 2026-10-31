@@ -28,7 +28,12 @@ public final class SettingsViewModel: ObservableObject {
   @Published public var showUnfocusedSpaces = true
   @Published public var followTerminal = true
   @Published public var allowRemoteInput = false
-  @Published public var updateState: UpdateState = .current("0.14.1")
+  @Published public var updateState: UpdateState = .idle
+  /// The app's own version and where it looks; injectable so a test never touches the network.
+  public let appVersion: AppVersion
+  public let links: ProductLinks
+  /// One automatic check per launch, and never for a development build.
+  private var checkedForUpdates = false
   @Published public private(set) var renameTarget: String?
   /// The model gateway tab: values are loaded only when that tab is opened.
   @Published public var gateway: GatewaySettings?
@@ -47,7 +52,9 @@ public final class SettingsViewModel: ObservableObject {
   ]
   public static let defaultThinkingLevel = "medium"
   /// Every group the daemon knows, in display order; the daemon owns which are installed.
-  public static let toolGroups = ["core", "coding", "herdr", "agents", "search", "trigger"]
+  public static let toolGroups = [
+    "core", "coding", "herdr", "agents", "search", "trigger", "peers",
+  ]
   /// What a daemon that predates a new group is assumed to run: new groups stay off.
   public static let defaultToolGroups = ["core", "coding", "herdr", "agents", "trigger"]
   public static let mandatoryToolGroups: Set<String> = ["core", "coding"]
@@ -55,6 +62,7 @@ public final class SettingsViewModel: ObservableObject {
   public static let agentsToolGroup = "agents"
   public static let searchToolGroup = "search"
   public static let triggerToolGroup = "trigger"
+  public static let peersToolGroup = "peers"
   private var gatewayThinkingLevelChosen = false
   private var gatewayToolGroupsChosen = false
   private var gatewayLoaded = false
@@ -65,12 +73,16 @@ public final class SettingsViewModel: ObservableObject {
     machines: [MachineDevice] = MockSettings.machines,
     usage: UsageSummary = MockSettings.usage,
     botsSettings: BotsSettings = BotsSettings(),
-    urlSession: URLSession = .shared
+    urlSession: URLSession = .shared,
+    appVersion: AppVersion = .current(),
+    links: ProductLinks = .current()
   ) {
     self.machines = machines
     self.usage = usage
     self.botsSettings = botsSettings
     self.urlSession = urlSession
+    self.appVersion = appVersion
+    self.links = links
   }
 
   public var onlineCount: Int {
@@ -347,9 +359,36 @@ public final class SettingsViewModel: ObservableObject {
     ]
   }
 
-  public func checkForUpdates() {
+  /// One check per launch, only for a signed product build with a published version to reach.
+  public func checkForUpdatesIfNeeded() async {
+    guard !checkedForUpdates else { return }
+    checkedForUpdates = true
+    await checkForUpdates()
+  }
+
+  /// Asks the live endpoint which app version is published. A development build, a missing
+  /// endpoint or an unreachable one all settle quietly: no prompt is not an error.
+  public func checkForUpdates() async {
+    guard appVersion.isRelease, let endpoint = links.updates else {
+      updateState = .unavailable
+      return
+    }
     updateState = .checking
-    updateState = .current("0.14.1")
+    var request = URLRequest(url: endpoint)
+    request.timeoutInterval = 8
+    request.cachePolicy = .reloadIgnoringLocalCacheData
+    guard
+      let (data, response) = try? await urlSession.data(for: request),
+      (response as? HTTPURLResponse)?.statusCode == 200,
+      let published = PublishedAppVersion.parse(data)
+    else {
+      updateState = .unavailable
+      return
+    }
+    updateState =
+      AppVersion.isNewer(published.latest, than: appVersion.short)
+      ? .available(latest: published.latest, release: published.releaseURL ?? links.release)
+      : .current(appVersion.short)
   }
 }
 

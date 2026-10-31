@@ -8,9 +8,23 @@ Status snapshot. The contracts live in
 lives. Update it whenever a stage closes.
 
 The current tool taxonomy, native extension integration and test-evidence map are
-in [Extensions and tools](EXTENSIONS-AND-TOOLS.md). That guide also
-specifies planned optional `memory`, `search` and `peers` groups and child-agent
-discovery. Those additions are not implemented or enabled by this plan update.
+in [Extensions and tools](EXTENSIONS-AND-TOOLS.md). The fixed upstream input includes
+bounded peer exchanges and per-bot pull-request journals/tools with client presentation;
+this integration preserves them alongside synchronization. Historical planned/phase-1
+wording does not disable those implemented capabilities.
+
+Current content integration pins `182fc1f704774eb37bdbc11cde017f8ff61f1c1a`, fetched once
+after delivered sync chain `cb64658ef30b1634459263bc8e8bb85347654e5f` (receipt `aaabb90c`).
+Its common ancestor is `5d48ba0a`; 29 upstream commits touch 132 paths, with 17 paths
+overlapping the 133-path local sync delta. Native merge conflicts were limited to two
+test fixtures and are resolved without removing either side's assertions. The combined
+local checks and exact source/gate scopes are recorded in [TESTING.md](TESTING.md) and
+`.local/sync-upstream-content`; actual normal commit/remote results belong to this step's
+final delivery receipt. The source freeze is `source-v1.json` SHA90021cf1 (614 selected
+inputs,707 full index/disk files), retaining both peer/PR behavior and the sync fences.
+This pin is the last upstream update until the overall synchronization project completes:
+do not fetch, pull or merge a newer upstream, or reopen the baseline when its head moves.
+Preserve `cb64658` and all published sync commits; #109 monitoring remains closed.
 
 ## 多端 Bot 整体实施计划（2026-10-30）
 
@@ -88,9 +102,9 @@ tree 与 `165d154` 完全相同。在已交付干净节点 `8b5ca36` 后，实�
 同步身份、握手及密钥元数据通过独立版本化的 Bots `DeviceSyncPort` 接入。
 不重新实现设备底座，也不把现有注册 signer 当作通用签名接口。
 
-后续单独向 nocoo 提交同步 PR：从届时最新 `nocoo/main` 准备候选，复核实际祖先与
-最终同步 diff，不把 #109 的实现再次带入 PR。历史 `bot-sync/base@165d154` 保留为
-原同步提交的比较点，不改写已发布提交。本步无 PR 创建/合并或发布操作。
+后续同步 PR 的候选基于本轮固定 `182fc1f704774eb37bdbc11cde017f8ff61f1c1a`，
+同步整体完成前不再更新 upstream；复核实际祖先与最终同步 diff，不重复带入 #109。
+历史 `bot-sync/base@165d154` 保留为原比较点，不改写已发布提交。本步无 PR 操作。
 
 ### 已确定的行为
 
@@ -103,8 +117,8 @@ tree 与 `165d154` 完全相同。在已交付干净节点 `8b5ca36` 后，实�
 - 本机先保存并执行，再异步同步。历史导入不触发模型或工具，不复制另一设备的任务队列。
 - Tailscale 可达且通过应用身份验证时优先直连；失败自动回退 Cloudflare，恢复后稳定切回。
   新增增量仍独立后台上传 3 天缓存，直连接收确认与云端缓存确认分别记录。
-- 安装后本机环境就绪；App 设置中的设备配对、默认 All approve、Always ask/暂停、
-  多 Bot 共用设备及按目标设备串行的要求继续有效。
+- 安装后本机环境就绪；App 配对后对新增可管理在线设备请求 Always ask，用户仍可选择
+  All approve/Always ask/暂停。多 Bot 共用设备及按目标设备串行的要求继续有效。
 
 ### 组件与数据归属
 
@@ -155,7 +169,7 @@ Tailscale 直连进入本版范围；专用同步入口仅向 Tailscale 网络�
 | P1 — 本地副本与分支 | in progress | 持久来源日志、outbox、ID 映射、缺口补读与本端恢复 | A 停止后 B 可运行；重复/乱序同步保留两支；不恢复其他端任务 |
 | P2 - resources | local verified | fixed-head696f649, ordinary-root265b0db/repair9475e2e and fresh264cc9e delivered normally | Complete local version loading; raw contents/tool associations retained |
 | P3 — 设备底座接入 | first metadata slice delivered460b60d | 复用 #109 的安装/配对/helper/权限；新增同步身份授权、Tailscale 端点发布和共享访问接口 | 现有设备能力保持有效；无 Tailscale 可走云通道；端点身份、群成员和同步权限真实生效 |
-| P4 — 直连、中转与 3 天缓存 | first direct-page slice delivered4f7d035; local durable objects/envelopes delivered8b5ca36; remaining network/cache scope planned | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
+| P4 — 直连、中转与 3 天缓存 | first direct-page slice delivered4f7d035; local durable objects/envelopes delivered8b5ca36; fixed182fc1f baseline preserves peers/PR and sync with combined local evidence; remaining network/cache scope planned | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
 | P5 — 原生多端流程 | planned | 共享目录、各端运行状态、直连/中继状态、分支选择/合并、同步覆盖范围与资源冲突 | 从 App 完成双端执行、错峰补齐、过期恢复；路径切换不打断本地 run，缺口不误报完整 |
 | P6 — 多机验证与交付 | planned | 物理双 Mac、真实 Tailscale 路径、断网/重启/升级、性能与成本、发布门禁 | 直连/回退/切回、同时运行、A 关机、B 重启、过期补读及新设备初始化有实际证据 |
 
@@ -252,7 +266,9 @@ pre-push尚待完成、未push；P1–P6及云/物理Mac边界不变。
 ## 共享设备与配对重构（2026-10-29）
 
 用户最新要求替代旧 M0–M1 的“手填部署信息、每 Bot 机器授权”产品流程：
-安装并首次启动 Eagle 后本机环境自动就绪、默认 All approve；设备由整个 App 共享，
+安装并首次启动 Eagle 后本机环境自动就绪；固定上游82d6f0d的 App 配对流程对新加入、
+在线且支持 policy.manage 的机器请求 Always ask，失败时保留该机器实际报告的状态，
+不批量改写既有持久 policy。设备由整个 App 共享，
 通过默认 1 小时、最长 24 小时的单次配对码加入设备群。配对成功后的设备身份持续
 有效，直到撤销。App 内 menu 弹窗（含“会话状态、基础控件”等入口）必须能打开
 真实设置，不能只有系统状态栏/菜单栏入口；设置统一提供“设备”、配对和设备级
@@ -292,8 +308,9 @@ worktree；旧 `main@c34be59` 只作按需复用来源。当前尚未完成设�
 | D4 — 设备权限与恢复 | planned | All approve / Always ask / 暂停，设备端真实执行策略、审批绑定与过期、journal 去重及原 ID 恢复；不存在只改 UI 的权限模式 |
 | D5 — 安装与多设备交付 | planned | 完整门禁、签名安装包、真实 Mac A/B 联动与退出 UI 验收、补充 C/D 验证四成员群；真实硬件与隔离实例分别报告，部署/发布按具体操作授权执行 |
 
-首个贯通切片覆盖安装即用、默认 All approve、配对、A/B 双向执行和多 Bot 共享，
+首个贯通切片覆盖安装即用、配对后新机器的 Always ask 请求、A/B 双向执行和多 Bot 共享，
 尽早实测两台 Mac；并发执行、多路复用和复杂调度不作为本轮前置工作。
+执行 policy 不替代同步授权；跨设备同步仍独立核当前 B→A grant。
 
 工作分成 App/集成与设备服务两条不重叠的实现线。迭代遵守行为 TDD 并只跑受影响
 检查；完整候选统一执行仓库门禁，不建立额外验收脚本、重复评审或流程任务。
@@ -943,7 +960,44 @@ callers that will use it. Design decisions frozen with the owner:
 
 Stage order: 0 interface and its contract tests (including the four adapter,
 registry and lifecycle fixes it needs), 1 `trigger` group with schedule plus origin
-field and app surface, 2 webhook ingress, 3 `peers`. Each stage states its exit
+field and app surface, 2 webhook ingress, 3 `peers`.
+
+### Coding reports, as built (2026-10-30)
+
+The coding group carries `pr_register` and `pr_list`: a bot reports one pull request — link,
+title, one of six states — and the inspector's 编码 section draws it with that state's glyph
+and colour, one click away from the link. The daemon stores reports in
+`pulls.journal.jsonl` per bot (last record per URL wins, newest 20 kept) and deliberately
+never queries a forge, so a state changes when the bot reports it again.
+
+### Peers, as built (2026-10-29)
+
+Daemon side: `core/PeerExchangeStore.ts` (durable exchange, request-keyed receipts, ten
+messages per side before the exchange closes), `peers/host.ts` (catalog + invocation +
+receipts, refusals with reasons), `tools/peers/tools.ts` (`peer_list`/`peer_send`/
+`peer_read` and a prompt that states the budget and the stopping rule), and
+`RuntimeHandle.entryById` for reading an answer. `apps/bots/test/peers` proves it with two
+real Harnesses over real sqlite: a message lands as a peer-originated turn and the sender
+reads the recipient's answer; ownership and receipts are the sender's only.
+
+The read path landed the same day: `GET /v1/bots/:id/exchanges` and
+`/exchanges/:exchangeId` (owner-scoped), turns that keep their message and answer, and a
+client that folds a round trip into one row in both chats (`PeerExchangeRow`) and reads the
+dialog's messages on open (`PeerConversationDialog`, each side in its own bot's colour, a
+centred time divider whenever the conversation resumes after five minutes or more).
+`peers` stays false on the wire: there is no peer frame, the app reads HTTP.
+
+### Peers UI, as built (2026-10-29, client only)
+
+The presentation half of stage 3 landed before its daemon side, against a fixture:
+`PeerExchangeRow` (the folded line inside the transcript), `PeerConversationDialog`
+(the read-only round trip, its pair chip, sender labels and trailing avatars) and
+`PeerOriginRow` (whose message caused an answer) live in `EagleDesign/Peers`, with
+`MockWorkspace.vesExchange` as the only data. `TranscriptEntry` gained
+`.peerExchange` and an optional `from` on `.assistant` for that origin line. No
+daemon record, no capability change and no wire field exists yet, so `peers` stays
+false and no live bot shows one; the data source is the owner's decision A: the
+daemon keeps one durable exchange record and the client reads it over HTTP once. Each stage states its exit
 criteria in TRIGGERS.md §12.
 
 ### Stage 1, in progress

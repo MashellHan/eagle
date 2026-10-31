@@ -66,7 +66,7 @@ struct TranscriptRowCostTests {
 
   private static func prepared(_ entries: [TranscriptEntry]) -> [String: [RenderedMarkdownBlock]] {
     entries.reduce(into: [:]) { result, entry in
-      if case .assistant(let id, let blocks) = entry {
+      if case .assistant(let id, let blocks, _) = entry {
         result[id] = [.paragraph(AttributedString(blocks.markdown))]
       }
     }
@@ -79,7 +79,7 @@ struct TranscriptRowCostTests {
           switch entry {
           case .user(_, let text, _), .note(_, let text, _):
             Text(text)
-          case .assistant(_, let blocks):
+          case .assistant(_, let blocks, _):
             Text(blocks.markdown)
           default:
             EmptyView()

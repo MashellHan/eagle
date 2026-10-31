@@ -1,5 +1,69 @@
 # 用户视角检查点
 
+## 2026-10-31 08:50 +0800 - Stable fixed-upstream source ready for independent Review
+
+- Source-v1 SHA90021cf1 freezes614 selected inputs and707 complete live index/disk files;
+  all256 production paths equal the native merge result. Parents remain cb64658 + fixed
+  182fc1f; only fixture/test adaptations and current contract/state docs were written locally.
+  The four upstream deletions remain explicit. No later upstream fetch or commit/push ran.
+- Final devices23/23, crash17 and seven exact eval cases pass. Combined history has actual
+  peer/PR calls, event/journal reopen, selected resources preserved, peer legacy-empty and
+  same-ID conflict/retry, exact29-event/40443-byte offline object and provider delta0; later
+  native run adds2. Root267 and Bots881 retain exact original scopes; final TS types/lint
+  bind the added integration test. macOS build/formal strict and208/51/60 tests with default
+  filtered93.2% pass. Independent client40/46/52 tests and default filtered90.9% pass after
+  two peer/PR regressions, retaining the original88.6% failure and all fixture/tool failures.
+- PLAN calibrates new joined online/manageable machines to the upstream App's Always ask
+  request, preserving actual persisted policy/failure reporting. Execution policy remains
+  distinct from current B→A sync authorization. Last upstream pin stays frozen until the
+  whole sync project completes; #109 monitoring stays closed.
+- Next hop is final docs/evidence candidate and existing read-only Review/Lead acceptance;
+  normal delivery hooks/browser have not run for this candidate. Live Herdr collection/auth,
+  production D1/rendering, physical Tailscale/Mac/App, CF72h/fallback and deployment/npm/PR
+  operations remain unverified or outside this slice. No source behavior gate is inferred
+  from configuration, UI, lifecycle labels or previous slice delivery.
+
+## 2026-10-31 08:47 +0800 - Fixed upstream combined behavior verified; client coverage pending
+
+- Fixed182fc1f is still the sole upstream input over cb64658. No later fetch, commit or
+  push ran. The production merge preserves local sync and upstream peers/PR journals;
+  moved device fixtures use the tracked example config and the recovery waiter keeps
+  U's single10-second budget plus L's true admission/socket-drop/finally assertions.
+- Real main peer/PR calls, event delivery, journal reopen, resource refresh and peer
+  legacy-empty/retry/conflict passed inside the durable history/offline flow. Its29-event
+  page/40443 plaintext bytes,15 history entries/head/sections and passive provider0 survive
+  cold offline apply; explicit setup9 and later native2 provider calls are separate.
+  Full devices23 and crash17 passed. The added test's syntax/JSON-result fixture failures,
+  three lint warnings and original npm metadata/receipt-tool failures remain archived.
+- Root267/types/lint/build passed after bounded locked-cache recovery; the changed test's
+  explicit-assert types/check-only lint passed. Formal macOS strict passed; the broader
+  client lint exit1 is extra scope only, with no format rewrites. macOS coverage passed
+ 208/51/60 tests and existing-filter93.2% default90. Independent client tests pass but its
+  original-filter coverage is88.6% (1975/2229), a real pending gate; next hop is narrow tests
+  for new peer/PR client behavior, then unchanged default coverage and stable source Review.
+- Personal identity/owned Registry SQLite/process fixtures do not verify installed App,
+  live Herdr collection/authentication, production D1/rendering or physical multi-Mac/Tailscale.
+  CF/cache/fallback/deployment/npm/App replacement/PR operations remain outside this slice.
+
+## 2026-10-31 08:32 +0800 - Fixed upstream content integration in progress
+
+- Previous ancestry/docs slice is closed at cb64658/treef5dccfe4, authoritative receipt
+  aaabb90c. This step preserved its complete681 tree/disk bytes,550 inputs and458 protected
+  files (457 prior references plus that final receipt) before one normal fetch.
+- Fixed upstream182fc1f704774eb37bdbc11cde017f8ff61f1c1a has29 commits after common
+  ancestor5d48ba0a,132 changed paths;17 overlap the133-path local sync delta. It is the last
+  upstream update until the overall sync project completes. #109 monitoring stays closed.
+- Normal no-commit merge encountered only two fixture conflicts. Original stages and native
+  exit1 remain archived; moved owned helpers/actual admission-drop assertions are retained,
+  with upstream example-config inputs and deadline waiting incorporated. Production auto-merge
+  still needs behavioral gates; no new product red or passing final candidate is claimed.
+- Personal GitHub /user and own ref were verified; this does not verify installed App/live
+  collection/authentication, production D1/rendering or physical Tailscale. No live operation ran.
+  New Biome2.6.4 lock bytes are intact; its missing offline tarballs are being recovered with
+  SRI checks before normal independent root/Bots installs. Next hop is locked installation,
+  then affected root/Bots/Swift/devices/crash/eval gates and independent Review. No CF code,
+  deployment/npm/App replacement/PR operation or commit/push has begun.
+
 ## 2026-10-31 04:20 +0800 - Durable objects delivered; same-tree #109 ancestry merge prepared
 
 - Local durable objects/directed envelopes are formally closed and normally delivered as

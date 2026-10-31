@@ -58,6 +58,40 @@ struct SnapshotRenderer {
       )
     }
 
+    for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
+      capture(
+        ConversationColumn(
+          title: "依赖修复专家", subtitle: "Bots", tintIndex: 4,
+          entries: [
+            .user(id: "u1", text: "PR #490 已开好，我先过闸门再合并发版。", origin: nil),
+            .peerExchange(id: "x1", exchange: MockWorkspace.vesExchange),
+            .assistant(
+              id: "a1",
+              blocks: [
+                .paragraph("哥，v3.1.1 好了。"),
+                .bullets([
+                  "PR #490 已用 merge commit 合进 main（bb6ee42）",
+                  "Release: v3.1.1 —— 修的是 dashboard 里 `useSearchParams` / `usePathname` 可能为 null 的类型问题",
+                  "已叫 VPS管家去升 us2 / jp1",
+                ]),
+              ],
+              from: PeerOrigin(peer: MockWorkspace.ves, exchangeId: "x1")),
+          ],
+          draft: .constant(""),
+          onSend: {}
+        )
+        .preferredColorScheme(scheme),
+        size: CGSize(width: 760, height: 520), named: "peers-inline-\(name)", in: directory,
+        appearance: scheme == .dark ? .darkAqua : .aqua
+      )
+      capture(
+        PeerConversationDialog(exchange: MockWorkspace.vesExchange) {}
+          .preferredColorScheme(scheme),
+        size: CGSize(width: 1186, height: 820), named: "peers-dialog-\(name)", in: directory,
+        appearance: scheme == .dark ? .darkAqua : .aqua
+      )
+    }
+
     capture(
       WorkspaceShellView().preferredColorScheme(.light),
       size: CGSize(width: 1728, height: 1082),
@@ -104,6 +138,54 @@ struct SnapshotRenderer {
     defer { deviceDefaults.removePersistentDomain(forName: "EagleDeviceSnapshots") }
     let devices = DeviceSettingsViewModel(control: deviceFixture, defaults: deviceDefaults)
     await devices.startIfNeeded()
+    // The inspector's 电脑 tab: three machines, one of them this one and one offline.
+    for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
+      capture(
+        DeviceInspectorList(
+          entries: [
+            DeviceInspectorEntry(
+              id: "d1", name: "MBPHome.LZ", isLocal: true, online: true, policy: "始终允许"),
+            DeviceInspectorEntry(
+              id: "d2", name: "MacMini-2", isLocal: false, online: true, policy: "每次询问"),
+            DeviceInspectorEntry(
+              id: "d3", name: "MacMini-1", isLocal: false, online: false, policy: "暂停"),
+            DeviceInspectorEntry(
+              id: "d4", name: "studio-away", isLocal: false, online: nil, policy: "策略未知"),
+          ]
+        )
+        .padding(Theme.Metric.panelInset)
+        .frame(width: Theme.Metric.inspectorWidth)
+        .background(Theme.Palette.surface)
+        .preferredColorScheme(scheme),
+        size: CGSize(width: Theme.Metric.inspectorWidth, height: 260),
+        named: "inspector-computer-\(name)", in: directory,
+        appearance: scheme == .dark ? .darkAqua : .aqua
+      )
+    }
+
+    // The about page, with an update available: the only state a person cannot reach by
+    // building a development copy, so it is reviewed as an image instead.
+    let about = SettingsViewModel(
+      appVersion: AppVersion(short: "0.15.0", build: "1761000000", isRelease: true),
+      links: ProductLinks(
+        github: URL(string: "https://github.com/nocoo/eagle"),
+        release: URL(string: "https://github.com/nocoo/eagle/releases/latest"),
+        updates: URL(string: "https://eagle.example.com/api/live")
+      )
+    )
+    about.selection = .about
+    about.updateState = .available(
+      latest: "0.16.0",
+      release: URL(string: "https://github.com/nocoo/eagle/releases/latest")
+    )
+    capture(
+      SettingsView(model: about).preferredColorScheme(.light),
+      size: CGSize(
+        width: CGFloat(Theme.Metric.settingsWidth), height: CGFloat(Theme.Metric.settingsHeight)),
+      named: "settings-about",
+      in: directory
+    )
+
     let machines = SettingsViewModel()
     machines.selection = .machines
     capture(
@@ -278,8 +360,7 @@ struct SnapshotRenderer {
         status: "休眠", depth: 0, isRunning: false, isBlocked: false),
     ]
     for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
-      let taskSection = InspectorSections.detail(
-        artifacts: [], jobs: [], tasks: inspectorTasks, usage: [])[3]
+      let taskSection = InspectorSections.detail(pulls: [], tasks: inspectorTasks)[1]
       let taskHeight =
         Theme.Metric.sectionHeaderHeight + Theme.Metric.panelSectionBodyGap
         + CGFloat(inspectorTasks.count) * Theme.Metric.panelTaskRowHeight
@@ -300,13 +381,19 @@ struct SnapshotRenderer {
           name: "研究员",
           subtitle: "Bots",
           tintIndex: 2,
-          artifacts: [
-            InspectorArtifact(id: "a1", title: "deps 2026-10-24 sleepy"),
-            InspectorArtifact(id: "a2", title: "deps 2026-10-24 next-ai"),
-          ],
-          jobs: [
-            InspectorJob(id: "j1", title: "每日依赖修复调度", detail: "每天 8:47", isOn: true),
-            InspectorJob(id: "j2", title: "依赖修复进度 10-24", detail: "每小时", isOn: false),
+          pulls: [
+            InspectorPullRow(
+              id: "p1", title: "deps: 依赖升级到 2.4.0",
+              host: "github.com", status: "merged",
+              url: "https://github.com/nocoo/eagle/pull/490"),
+            InspectorPullRow(
+              id: "p2", title: "fix: reconnect after sleep",
+              host: "dev.azure.com", status: "reviewing",
+              url: "https://dev.azure.com/hexly/eagle/_git/eagle/pullrequest/12"),
+            InspectorPullRow(
+              id: "p3", title: "wip: split the transcript renderer",
+              host: "github.com", status: "draft",
+              url: "https://github.com/nocoo/eagle/pull/491"),
           ],
           tasks: inspectorTasks,
           tab: .constant(.detail)
@@ -323,8 +410,7 @@ struct SnapshotRenderer {
         name: "新的 Bot",
         subtitle: "Bots",
         tintIndex: 5,
-        artifacts: [],
-        jobs: [],
+        pulls: [],
         tasks: [],
         tab: .constant(.detail)
       )

@@ -51,12 +51,18 @@ export default defineConfig(({ mode, command, isPreview }) => ({
     host: "127.0.0.1",
     port: 7053,
     strictPort: true,
-    allowedHosts: ["eagle.dev.hexly.ai"],
+    // A development hostname is named by the machine, never committed.
+    allowedHosts: (process.env.EAGLE_DEV_HOST?.trim() ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0),
     proxy:
       mode === "test" || command !== "serve" || isPreview
         ? undefined
         : {
-            "/__local/prod/": productionProxy(),
+            ...(productionProxy() === undefined
+              ? {}
+              : { "/__local/prod/": productionProxy() }),
             "/api": {
               target: "http://127.0.0.1:37053",
               changeOrigin: false,

@@ -6,7 +6,7 @@ import { basename, join, resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 
-const configuration = "apps/web/wrangler.devices.jsonc";
+const configuration = "apps/web/wrangler.devices.example.jsonc";
 const config = JSON.parse(readFileSync(configuration, "utf8")) as {
   name: string;
   main: string;
@@ -97,12 +97,14 @@ test("the standalone deployment builds only device code and binds only its two S
   assert.deepEqual(JSON.parse(readFileSync(configuration, "utf8")), {
     $schema: "node_modules/wrangler/config-schema.json",
     name: "eagle-devices",
-    account_id: "e369b6206bd9481c027e1974c45756a2",
+    // The deployment is the owner's account (whatever wrangler is logged into) on its own
+    // custom domain, never a `workers.dev` hostname and never a committed account id.
     main: "src/worker/device-service.ts",
     compatibility_date: "2026-09-19",
     compatibility_flags: ["nodejs_compat"],
-    workers_dev: true,
+    workers_dev: false,
     preview_urls: false,
+    routes: [{ pattern: "devices.example.com", custom_domain: true }],
     durable_objects: {
       bindings: [
         { name: "DEVICE_REGISTRY", class_name: "DeviceRegistry" },

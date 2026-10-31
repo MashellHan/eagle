@@ -2,7 +2,9 @@
   "name": "eagle",
   "version": "0.14.2",
   "config": {
-    "publishedAgentVersion": "1.0.0"
+    "publishedAgentVersion": "1.0.0",
+    "macosReleaseUrl": "https://github.com/nocoo/eagle/releases/latest",
+    "repositoryUrl": "https://github.com/nocoo/eagle"
   },
   "private": true,
   "type": "module",
@@ -36,7 +38,7 @@
     "source-map-js": "1.2.2"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.3",
+    "@biomejs/biome": "^2.6.4",
     "@playwright/test": "^1.64.1",
     "@types/node": "^26.6.5",
     "miniflare": "5.20260918.0-alpha",

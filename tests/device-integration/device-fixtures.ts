@@ -306,7 +306,7 @@ export default worker;
       join(directory, "entry.ts"),
       "--dry-run",
       "--config",
-      "apps/web/wrangler.devices.jsonc",
+      "apps/web/wrangler.devices.example.jsonc",
       "--outdir",
       join(directory, "worker"),
     ],

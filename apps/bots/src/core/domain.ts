@@ -69,7 +69,13 @@ export type MessageOrigin =
   | { readonly kind: "human"; readonly label?: string }
   | { readonly kind: "schedule"; readonly triggerId?: string; readonly label?: string }
   | { readonly kind: "webhook"; readonly triggerId?: string; readonly label?: string }
-  | { readonly kind: "peer"; readonly fromBotId?: string; readonly label?: string }
+  | {
+      readonly kind: "peer";
+      readonly fromBotId?: string;
+      /** The exchange this message belongs to, so a client folds the whole round trip. */
+      readonly exchangeId?: string;
+      readonly label?: string;
+    }
   | { readonly kind: "unknown"; readonly label?: string };
 export type MessageState = "streaming" | "complete" | "aborted" | "error";
 
@@ -127,6 +133,17 @@ export type Usage = {
   readonly totalTokens: number;
   /** What the provider reported as cost for these tokens, when it reports any. */
   readonly costUsd?: number;
+};
+
+/** One pull request a bot reported: a link, a title and a state (coding group). */
+export type PullSummary = {
+  readonly url: string;
+  readonly title: string;
+  /** draft, open, reviewing, merged, closed or failed. */
+  readonly status: string;
+  /** The row's label for any forge: github.com, dev.azure.com, … */
+  readonly host: string;
+  readonly updatedAt: string;
 };
 
 export type AgentView = {
@@ -228,6 +245,8 @@ export type ConversationSnapshot = {
   readonly tasks?: readonly TaskSummary[];
   /** The bot's own triggers, newest page of the sidebar's trigger section (TRIGGERS.md §8). */
   readonly triggers?: readonly TriggerSummary[];
+  /** Pull requests the bot reported, newest first; the App never asks a forge. */
+  readonly pulls?: readonly PullSummary[];
   readonly pending: readonly Submission[];
   readonly inbox: readonly InboxItem[];
   readonly running: boolean;
@@ -319,7 +338,15 @@ export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 export const isThinkingLevel = (value: unknown): value is ThinkingLevel =>
   typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
 
-export const TOOL_GROUP_NAMES = ["core", "coding", "herdr", "agents", "search", "trigger"] as const;
+export const TOOL_GROUP_NAMES = [
+  "core",
+  "coding",
+  "herdr",
+  "agents",
+  "search",
+  "trigger",
+  "peers",
+] as const;
 
 export type ToolGroup = (typeof TOOL_GROUP_NAMES)[number];
 

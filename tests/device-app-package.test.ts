@@ -157,7 +157,15 @@ test("candidate assembly honors and normalizes an explicit HTTPS origin while re
 
 test("rebuilding a candidate changes its build and launch configuration while keeping the release version", () => {
   const f = fixture();
-  const version = JSON.parse(readFileSync("package.json", "utf8")).version;
+  // The app's version is its own file, not the website/Worker number beside it.
+  const version = JSON.parse(
+    readFileSync("apps/macos/Support/Version.json", "utf8"),
+  ).version;
+  assert.match(
+    readFileSync("apps/macos/Scripts/assemble-device-app.ts", "utf8"),
+    /apps\/macos\/Support\/Version\.json/,
+    "the assembly must read the app's own version file",
+  );
   const readVersion = (key: string) => {
     const info = readFileSync(join(f.app, "Contents/Info.plist"), "utf8");
     return info.match(

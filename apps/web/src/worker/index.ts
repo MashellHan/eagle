@@ -317,6 +317,17 @@ async function route(request: Request, env: Env): Promise<Response> {
         schedule: "23:59",
         templateVersion: TEMPLATE_VERSION,
       },
+      // The macOS app ships on its own cadence, so it asks which app version is published.
+      ...(env.MACOS_VERSION === undefined
+        ? {}
+        : {
+            macos: {
+              latest: env.MACOS_VERSION,
+              ...(env.MACOS_RELEASE_URL === undefined
+                ? {}
+                : { releaseUrl: env.MACOS_RELEASE_URL }),
+            },
+          }),
     });
   }
   if (path === "/api/v1/reports" || path === "/api/v1/heartbeat") {
@@ -700,7 +711,8 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (
-      url.hostname === "eagle-ingest.hexly.ai" &&
+      env.INGEST_HOST !== undefined &&
+      url.hostname === env.INGEST_HOST &&
       ![
         "/api/v1/reports",
         "/api/v1/heartbeat",

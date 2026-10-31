@@ -24,6 +24,8 @@ import {
   herdrSection,
 } from "./herdr/tools.ts";
 import { createListTool } from "./list.ts";
+import { PEERS_TOOLS_EXTENSION, peersExtension } from "./peers/tools.ts";
+import { PULLS_TOOLS_EXTENSION, pullsExtension } from "./pulls/tools.ts";
 import { SEARCH_TOOLS_EXTENSION, searchExtension } from "./search/tools.ts";
 import {
   type createTriggerTools,
@@ -36,11 +38,12 @@ export const BOTS_TOOLS_EXTENSION = "bots-tools";
 const toolSearch = createToolSearchExtension();
 const GROUP_EXTENSIONS: Record<ToolGroup, readonly string[]> = {
   core: [BOTS_TOOLS_EXTENSION],
-  coding: [CodingTools.name],
+  coding: [CodingTools.name, PULLS_TOOLS_EXTENSION],
   herdr: [HERDR_TOOLS_EXTENSION, toolSearch.name],
   agents: [AGENTS_TOOLS_EXTENSION],
   search: [SEARCH_TOOLS_EXTENSION, toolSearch.name],
   trigger: [TRIGGER_TOOLS_EXTENSION, toolSearch.name],
+  peers: [PEERS_TOOLS_EXTENSION, toolSearch.name],
 };
 
 export const selectToolExtensions = (registry: RegistryReader, groups: readonly string[]) => {
@@ -89,6 +92,10 @@ export type ToolRegistryOptions = {
   };
   /** Trigger tools act on this bot's own definitions; absent in a build without storage. */
   readonly trigger?: Parameters<typeof createTriggerTools>[0];
+  /** Peer tools message other local bots; absent in a build without a daemon around them. */
+  readonly peers?: Parameters<typeof peersExtension>[0];
+  /** Pull-request reports belong to the coding group; absent without a store to keep them. */
+  readonly pulls?: Parameters<typeof pullsExtension>[0];
 };
 
 export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistryOptions = {}) => {
@@ -138,8 +145,17 @@ export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistr
   registry.install(agentsExtension());
   if (options.search !== undefined) registry.install(searchExtension(options.search));
   if (options.trigger !== undefined) registry.install(triggerExtension(options.trigger));
+  if (options.peers !== undefined) registry.install(peersExtension(options.peers));
+  if (options.pulls !== undefined) registry.install(pullsExtension(options.pulls));
+  if (options.peers !== undefined) registry.install(peersExtension(options.peers));
+  if (options.pulls !== undefined) registry.install(pullsExtension(options.pulls));
   // Deferred tools need their loader; without one the model would never see them.
-  if (herdr !== undefined || options.search !== undefined || options.trigger !== undefined) {
+  if (
+    herdr !== undefined ||
+    options.search !== undefined ||
+    options.trigger !== undefined ||
+    options.peers !== undefined
+  ) {
     registry.install(toolSearch);
   }
   if (herdr !== undefined) {

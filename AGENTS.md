@@ -7,7 +7,13 @@ Durable Objects/D1 and a standalone Node Agent. Human overview: [README.md](READ
 
 Maintain project instructions only in this root AGENTS.md; do not create a
 CLAUDE.md alias or copy. Root `package.json` is the npm workspace root and owns
-the website/Worker release version; keep its lockfile synchronized. `packages/agent/package.json` owns the independent
+the website/Worker release version; keep its lockfile synchronized. Releases are
+independent per surface: the website/Worker take the root version, the Agent takes
+`packages/agent/package.json`, and the macOS app takes
+`apps/macos/Support/Version.json` (a release bumps only the surface it ships).
+`scripts/deploy.ts` publishes that app version as `MACOS_VERSION`, so `/api/live`
+answers `macos.latest`; only a release-profile app build asks that endpoint, and a
+newer answer is a link to the release page, never an automatic replacement. `packages/agent/package.json` owns the independent
 Agent version; CLI output and packed artifacts derive from it. Website onboarding
 uses root `config.publishedAgentVersion`, which must reference a verified published
 Agent version and can differ from an unpublished source candidate.
@@ -128,9 +134,11 @@ product that lives in this repository:
 - Layer attribution is part of correctness: every crossing logs its layer with
   the shared `trace`, the innermost failure is the only error logged, and the
   diagnosis recipes in `docs/bots/OBSERVABILITY.md` are asserted by tests.
-- Phase 1 is chat only. Tools, tasks, usage, raw entries, agent settings and
-  bot-to-bot conversation stay behind protocol capability flags and are not
-  rendered; they are not deleted or stubbed out.
+- Phase 1 began with chat only. Current documented capabilities include tools,
+  tasks, usage, peer exchanges and reported pull requests; preserve their runtime,
+  journals and client presentation. Historical phase-1 exclusions do not hide or
+  remove those delivered features. Raw entries and agent settings retain their
+  respective protocol capability boundaries.
 
 ## Quality contract and current evidence
 

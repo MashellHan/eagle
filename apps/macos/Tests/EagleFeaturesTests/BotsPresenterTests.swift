@@ -68,11 +68,15 @@ struct BotsPresenterTests {
       }())
     #expect(
       {
-        if case .assistant(_, [.paragraph("回答")]) = entries[1] { return true } else { return false }
+        if case .assistant(_, [.paragraph("回答")], _) = entries[1] {
+          return true
+        } else {
+          return false
+        }
       }())
     #expect(
       {
-        if case .assistant(_, [.note("回答超出传输上限")]) = entries[2] {
+        if case .assistant(_, [.note("回答超出传输上限")], _) = entries[2] {
           return true
         } else {
           return false
@@ -130,7 +134,7 @@ struct BotsPresenterTests {
   }
 
   private func noteText(_ entry: TranscriptEntry?) -> String? {
-    guard case .assistant(_, let blocks) = entry else { return nil }
+    guard case .assistant(_, let blocks, _) = entry else { return nil }
     for block in blocks {
       if case .note(let text) = block { return text }
     }
@@ -159,7 +163,7 @@ struct BotsPresenterTests {
     // The answer is its own bubble: no thinking, no call, no result text inside it.
     #expect(
       {
-        if case .assistant(_, let blocks) = entries.first {
+        if case .assistant(_, let blocks, _) = entries.first {
           return blocks == [.paragraph("可见")]
         }
         return false
@@ -171,7 +175,7 @@ struct BotsPresenterTests {
       })
     #expect(
       entries.contains {
-        if case .assistant(_, [.note("回答因为长度上限被截断。")]) = $0 { true } else { false }
+        if case .assistant(_, [.note("回答因为长度上限被截断。")], _) = $0 { true } else { false }
       })
   }
 
@@ -188,7 +192,7 @@ struct BotsPresenterTests {
     let entry = presenter.transcript(for: state).first
     #expect(
       {
-        if case .assistant(_, [.paragraph("一半"), .note("回答已中止")]) = entry { return true }
+        if case .assistant(_, [.paragraph("一半"), .note("回答已中止")], _) = entry { return true }
         return false
       }())
   }
@@ -322,7 +326,7 @@ struct BotsToolRowTests {
     // The answer text on the same message keeps its own bubble, in order.
     #expect(
       entries.contains {
-        if case .assistant(_, [.paragraph("我先看一下。")]) = $0 { true } else { false }
+        if case .assistant(_, [.paragraph("我先看一下。")], _) = $0 { true } else { false }
       })
   }
 
@@ -390,7 +394,7 @@ struct BotsToolRowTests {
     )
     let entries = presenter.transcript(for: state)
     #expect(entries.count == 1)
-    if case .assistant(let id, let blocks) = entries[0] {
+    if case .assistant(let id, let blocks, _) = entries[0] {
       #expect(id == "e_13")
       #expect(blocks == [.paragraph("回答")])
     } else {
@@ -418,7 +422,7 @@ struct BotsToolRowTests {
     let entries = presenter.transcript(for: state)
     #expect(toolRows(entries).count == 1)
     #expect(
-      entries.contains { if case .assistant(_, [.note("回答已中止")]) = $0 { true } else { false } }
+      entries.contains { if case .assistant(_, [.note("回答已中止")], _) = $0 { true } else { false } }
     )
   }
 }
@@ -676,4 +680,187 @@ struct BotsWebhookDetailTests {
 
 extension Array where Element == InspectorUsageRow {
   fileprivate var tokenRow: InspectorUsageRow? { first { $0.id == "token" } }
+}
+
+@Suite("Peers in the transcript")
+struct BotsPresenterPeerTests {
+  private let presenter = BotsPresenter()
+
+  /// Each message lands one step after the last, so an exchange's place in the chat is decided by
+  /// time and not by the order this test happened to build.
+  private final class Clock { var value = 0 }
+  private let clock = Clock()
+
+  private func message(
+    _ id: String,
+    role: MessageRole,
+    text: String,
+    origin: MessageOrigin? = nil,
+    blocks: [ContentBlock]? = nil
+  ) -> Message {
+    clock.value += 1
+    return Message(
+      id: id,
+      role: role,
+      state: .complete,
+      createdAt: String(format: "2026-10-29T12:%02d:00.000Z", clock.value),
+      blocks: blocks ?? [.text(text)],
+      origin: origin
+    )
+  }
+
+  private func state(_ messages: [Message]) -> ConversationState {
+    var state = ConversationState(botId: "b_1")
+    for message in messages {
+      state = Reducer.apply(.append(message: message, replaces: nil), to: state)
+    }
+    return state
+  }
+
+  private func summary(updatedAt: String = "2026-10-29T12:03:30.000Z") -> PeerExchangeSummary {
+    PeerExchangeSummary(
+      id: "x_0123456789ab",
+      participants: [
+        PeerExchangeParticipant(id: "b_a", title: "A"),
+        PeerExchangeParticipant(id: "b_b", title: "B"),
+      ],
+      count: 4,
+      status: "open",
+      startedAt: "2026-10-29T12:00:30.000Z",
+      updatedAt: updatedAt
+    )
+  }
+
+  @Test("a peer message never becomes a bubble: the chat keeps one folded row")
+  func folded() {
+    let peer = MessageOrigin(kind: .peer, label: "A", exchangeId: "x_0123456789ab")
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "去和 B 讨论"),
+        message("e_2", role: .assistant, text: "已发给 B"),
+        message("e_3", role: .user, text: "问题一", origin: peer),
+        message("e_4", role: .assistant, text: "只给 A 的回答"),
+        message("e_5", role: .user, text: "再问一句"),
+        message("e_6", role: .assistant, text: "结论"),
+        message("e_7", role: .user, text: "追问", origin: peer),
+      ]),
+      exchanges: [summary()],
+      bots: []
+    )
+
+    // One row for the exchange, placed after the turn it last moved in; the person's own turns
+    // and the answers given to them stay.
+    let rows = entries.map(\.id)
+    #expect(rows == ["e_1", "e_2", "x_0123456789ab", "e_5", "e_6"])
+    guard case .peerExchange(_, let exchange) = entries[2] else {
+      Issue.record("the folded row is an exchange")
+      return
+    }
+    #expect(exchange.count == 4)
+    #expect(exchange.participants.map(\.title) == ["A", "B"])
+  }
+
+  @Test("the tools a bot uses on another bot stay out of the chat")
+  func peerToolsHidden() {
+    let call = ContentBlock.toolCall(callId: "call-1", name: "peer_send", args: [:])
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "去问 B"),
+        message("e_2", role: .assistant, text: "", blocks: [call]),
+        message(
+          "e_3", role: .tool, text: "",
+          blocks: [
+            .toolResult(
+              callId: "call-1", name: "peer_send", text: "admitted", isError: false, durationMs: 3)
+          ]),
+        message("e_4", role: .assistant, text: "已发出"),
+      ]),
+      exchanges: [summary()],
+      bots: []
+    )
+    #expect(entries.map(\.id) == ["e_1", "e_4", "x_0123456789ab"])
+  }
+
+  @Test("the answer a peer message caused stays inside the exchange too")
+  func peerRunHidden() {
+    let peer = MessageOrigin(kind: .peer, label: "A", exchangeId: "x_0123456789ab")
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "问题", origin: peer),
+        message("e_2", role: .assistant, text: "只给 A 的回答"),
+        message("e_3", role: .user, text: "人问的话"),
+        message("e_4", role: .assistant, text: "给人的回答"),
+      ]),
+      exchanges: [summary()],
+      bots: []
+    )
+    // The recipient's own chat keeps the row and the person's turn, never the exchange's answer.
+    #expect(entries.map(\.id) == ["e_3", "e_4", "x_0123456789ab"])
+  }
+
+  @Test("a peer run stays out of the chat until the daemon can name and count it")
+  func withoutSummary() {
+    let peer = MessageOrigin(kind: .peer, label: "A", exchangeId: "x_0123456789ab")
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "问题", origin: peer),
+        message("e_2", role: .assistant, text: "只给 A 的回答"),
+      ]),
+      exchanges: [],
+      bots: []
+    )
+    #expect(entries.isEmpty, "no row with an invented count, and no leaked answer")
+  }
+
+  @Test("the sender's own chat carries the same entry, without any peer message in it")
+  func senderSide() {
+    // This bot only sent: no peer message ever reached this transcript.
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "去和 B 讨论"),
+        message("e_2", role: .assistant, text: "已发给 B"),
+        message("e_3", role: .assistant, text: "结论"),
+      ]),
+      exchanges: [summary()],
+      bots: []
+    )
+    #expect(entries.map(\.id) == ["e_1", "e_2", "e_3", "x_0123456789ab"])
+    guard case .peerExchange(_, let exchange) = entries[3] else {
+      Issue.record("the sender's chat has the folded row")
+      return
+    }
+    #expect(exchange.count == 4)
+    #expect(exchange.participants.map(\.title) == ["A", "B"])
+  }
+
+  @Test("a send that happened in one run keeps its row under that run's answer")
+  func rowAfterItsRun() {
+    // e_1 → e_2 is the run that sent; e_3 starts the next turn, so the row belongs before it.
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "去和 B 讨论"),
+        message("e_2", role: .assistant, text: "问题已发出，本轮不等待或编造回答。"),
+        message("e_3", role: .user, text: "再说一句"),
+        message("e_4", role: .assistant, text: "好"),
+      ]),
+      exchanges: [summary(updatedAt: "2026-10-29T12:02:30.000Z")],
+      bots: []
+    )
+    #expect(entries.map(\.id) == ["e_1", "e_2", "x_0123456789ab", "e_3", "e_4"])
+  }
+
+  @Test("a peer message recorded before exchanges had ids leaves no row behind")
+  func legacyPeerMessage() {
+    let legacy = MessageOrigin(kind: .peer, label: "A")
+    let entries = presenter.transcript(
+      for: state([
+        message("e_1", role: .user, text: "问题", origin: legacy),
+        message("e_2", role: .assistant, text: "只给 A 的回答"),
+        message("e_3", role: .user, text: "人问的话"),
+      ]),
+      exchanges: [summary()],
+      bots: []
+    )
+    #expect(entries.map(\.id) == ["e_3", "x_0123456789ab"])
+  }
 }

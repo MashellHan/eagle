@@ -18,6 +18,8 @@ public enum Theme {
     public static let accentFill = Color(light: 0x2FB457, dark: 0x2FB457)
     public static let accentStrong = Color(light: 0x2FB457, dark: 0x3DD068)
     public static let info = Color(light: 0x0B6FBE, dark: 0x7FC8FF)
+    /// Waiting on someone else: a review, a check, a person.
+    public static let warning = Color(light: 0xB46A00, dark: 0xF0A93A)
     public static let infoFill = Color(light: 0xE4F4FD, dark: 0x10293C)
     public static let destructive = Color(light: 0xE5372F, dark: 0xFF5F57)
     public static let hover = Color(light: 0x000000, dark: 0xFFFFFF).opacity(0.06)
@@ -50,19 +52,24 @@ public enum Theme {
     public static let inspectorMinWidth: CGFloat = 280
     public static let inspectorMaxWidth: CGFloat = 460
 
-    /// Traffic lights: 13.5 pt circles at (16, 15) with a 23 pt pitch.
-    public static let trafficLightInset: CGFloat = 15
-    public static let trafficLightsEnd: CGFloat = 75
+    /// Traffic lights: three 13.5 pt circles from x 16 with a 23 pt pitch, in the window's own
+    /// top-left corner. The brand row clears them rather than moving them.
+    public static let trafficLightLeading: CGFloat = 16
+    public static let trafficLightSize: CGFloat = 13.5
+    public static let trafficLightPitch: CGFloat = 23
+    public static let trafficLightsEnd: CGFloat =
+      trafficLightLeading + trafficLightPitch * 2 + trafficLightSize
     public static let toolbarHeight: CGFloat = 32
     public static let toolbarTopInset: CGFloat = 0
     public static let headerHeight: CGFloat = 72
-    public static let headerBottomInset: CGFloat = 8
-    /// The logo matches the list avatars and is bounded by the header.
-    public static let logoSize: CGFloat = min(avatarRow, headerControlHeight)
-    /// The brand header starts after the traffic lights.
-    public static let headerLeadingInset: CGFloat = 20
+    /// The tallest control in the header band is the participant card, so the band is its height.
+    public static let headerBandHeight: CGFloat = participantHeight
+    /// One content inset above every column's header: the card and both side columns start here.
+    public static let headerTopInset: CGFloat = contentInset
+    /// Content that shares the window's top corner with the traffic lights starts past them.
+    public static let trafficLightsClearance: CGFloat = trafficLightsEnd + 8
     public static let headerControlHeight: CGFloat = 34
-    public static let participantHeight: CGFloat = 46
+    public static let participantHeight: CGFloat = 40
     public static let participantInset: CGFloat = 12
     public static let participantGap: CGFloat = 12
     public static let participantAvatar: CGFloat = 26
@@ -107,6 +114,22 @@ public enum Theme {
     public static let panelTaskSpinner: CGFloat = 10
     public static let panelEmptyGlyph: CGFloat = 15
     public static let panelEmptyVertical: CGFloat = 8
+    /// A peer exchange: an inline collapsed row in the transcript and a read-only dialog with a
+    /// two-sided conversation. Rows are signed at the end, so the avatar sits under the last bubble.
+    public static let peerFace: CGFloat = 15
+    public static let peerChipFace: CGFloat = 20
+    public static let peerGutter: CGFloat = 8
+    public static let peerGroupGap: CGFloat = 18
+    public static let peerMessageGap: CGFloat = 6
+    public static let peerLabelGap: CGFloat = 6
+    public static let peerBubbleMaxWidth: CGFloat = 560
+    public static let peerBubbleRadius: CGFloat = 12
+    /// The dialog's conversation column: narrower than the panel, so a 560 pt bubble does not
+    /// stretch a line across the window.
+    public static let peerDialogColumnWidth: CGFloat = 900
+    public static let peerDialogRadius: CGFloat = 18
+    public static let peerDialogInset: CGFloat = 22
+    public static let peerDialogFooter: CGFloat = 56
     public static let conversationInset: CGFloat = 24
     public static let turnGap: CGFloat = 24
     public static let inspectorRowHeight: CGFloat = 40

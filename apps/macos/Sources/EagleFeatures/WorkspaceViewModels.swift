@@ -126,16 +126,17 @@ public enum MockWorkspace {
         )
       ]
     ),
-    .note(id: "n2", text: "2 条消息往来：", tintIndices: [5, 2]),
+    .peerExchange(id: "x1", exchange: MockWorkspace.vesExchange),
     .assistant(
       id: "a3",
       blocks: [
         .paragraph(
           "2026-10-24 09:00 北京时间，base-mcp 合并了：PR #73，merge commit fd621be，关掉 3 个 issue（#70 #71 #72）。其中 2 个是 CVE，body-parser 升到了 2.4.0，fast-uri 升到了 3.1.9。Codex 审查 1 轮就通过了。排队的 next-ai 已经接着开始修。"
         )
-      ]
+      ],
+      from: PeerOrigin(peer: MockWorkspace.ves, exchangeId: "x1")
     ),
-    .note(id: "n3", text: "2 条消息往来：", tintIndices: [4, 3]),
+    .peerExchange(id: "x2", exchange: MockWorkspace.fireflyExchange),
     .assistant(
       id: "a4",
       blocks: [
@@ -158,24 +159,72 @@ public enum MockWorkspace {
     .typing(id: "typing"),
   ]
 
-  public static let artifacts: [InspectorArtifact] = [
-    InspectorArtifact(id: "d1", title: "deps 2026-10-24 sleepy"),
-    InspectorArtifact(id: "d2", title: "deps 2026-10-24 next-ai"),
-    InspectorArtifact(id: "d3", title: "deps 2026-10-24 meowth"),
-    InspectorArtifact(id: "d4", title: "deps 2026-10-24 his.fm"),
-    InspectorArtifact(id: "d5", title: "deps 2026-10-24 hexly.ai"),
-    InspectorArtifact(id: "d6", title: "deps 2026-10-24 octo"),
-    InspectorArtifact(id: "d7", title: "deps 2026-10-24 base-mcp"),
+  /// The counterpart of the sample exchange, and the exchange itself: one round trip with four
+  /// messages, the shape the collapsed row and the dialog are built for.
+  public static let ves = PeerRef(
+    id: "ves", title: "VPS管家",
+    face: BotFace.Style(shape: .blob, tint: .sky), tintIndex: 1)
+
+  public static let depsExpert = PeerRef(
+    id: "deps", title: "依赖修复专家",
+    face: BotFace.Style(shape: .pebble, tint: .violet), tintIndex: 4)
+
+  public static let firefly = PeerRef(
+    id: "firefly", title: "发布管家",
+    face: BotFace.Style(shape: .squircle, tint: .orange), tintIndex: 3)
+
+  public static let fireflyExchange = PeerExchange(
+    id: "x2",
+    participants: [firefly, depsExpert],
+    messages: [
+      PeerMessage(
+        id: "x2m1", senderId: "firefly",
+        text: "firefly 的 v3.1.1 补丁版已经在 CI 里了，通过就合并。",
+        at: Date(timeIntervalSince1970: 1_790_000_000)),
+      PeerMessage(
+        id: "x2m2", senderId: "deps",
+        text: "好，合并后我同步给依赖清单，next-ai 接着开始修。",
+        at: Date(timeIntervalSince1970: 1_790_000_040)),
+    ])
+
+  public static let vesExchange = PeerExchange(
+    id: "x1",
+    participants: [ves, depsExpert],
+    messages: [
+      PeerMessage(
+        id: "x1m1", senderId: "ves",
+        text: "us2 和 jp1 上 dashboard 的 `tsc --noEmit` 都过不了，帮我看下是不是 `useSearchParams` 可能为 null。",
+        at: Date(timeIntervalSince1970: 1_790_000_000)),
+      PeerMessage(
+        id: "x1m2", senderId: "deps",
+        text: "收到，已经定位到 `packages/dashboard/sidebar.tsx` 和 `request-table.tsx` 两处没有判空，一共十来个调用点。",
+        at: Date(timeIntervalSince1970: 1_790_000_055)),
+      PeerMessage(
+        id: "x1m3", senderId: "ves",
+        text: "要发补丁版吗？两台机器都在等，旧依赖一共占了大概 7G。",
+        at: Date(timeIntervalSince1970: 1_790_001_400)),
+      PeerMessage(
+        id: "x1m4", senderId: "deps",
+        text: "发 v3.1.1：\n\n"
+          + "- 修 `useSearchParams` / `usePathname` 的判空\n"
+          + "- 全新 `bun install` 下 `build` 和 `tsc` 都过\n"
+          + "- 合并后我通知你升 us2 / jp1",
+        at: Date(timeIntervalSince1970: 1_790_001_440)),
+    ])
+
+  /// The sample conversation's pull requests, so the 编码 section has rows to review.
+  public static let pulls: [InspectorPullRow] = [
+    InspectorPullRow(
+      id: "p1", title: "deps: 依赖升级到 2.4.0", host: "github.com", status: "merged",
+      url: "https://github.com/nocoo/eagle/pull/490"),
+    InspectorPullRow(
+      id: "p2", title: "fix: reconnect after sleep", host: "dev.azure.com", status: "reviewing",
+      url: "https://dev.azure.com/hexly/eagle/_git/eagle/pullrequest/12"),
+    InspectorPullRow(
+      id: "p3", title: "wip: split the transcript renderer", host: "github.com", status: "draft",
+      url: "https://github.com/nocoo/eagle/pull/491"),
   ]
 
-  public static let jobs: [InspectorJob] = [
-    InspectorJob(
-      id: "j1", title: "每日依赖修复调度", detail: "每天 8:47", isOn: true),
-    InspectorJob(
-      id: "j2", title: "依赖修复进度 10-24", detail: "每小时 · 10:00–20:00", isOn: true),
-    InspectorJob(
-      id: "j3", title: "Codex 审查轮次上限", detail: "最多 10 轮，通过即合并", isOn: true),
-  ]
 }
 
 /// Left column state. Every item is a bot; the groups are how the user files them.
@@ -388,21 +437,11 @@ public final class BotChatViewModel: ObservableObject {
 
 /// Right column state.
 public final class InspectorViewModel: ObservableObject {
-  @Published public var artifacts: [InspectorArtifact]
-  @Published public var jobs: [InspectorJob]
+  /// The sample pull requests the 编码 section draws.
+  @Published public var pulls: [InspectorPullRow]
   @Published public var tab: InspectorColumn.Tab = .detail
 
-  public init(
-    artifacts: [InspectorArtifact] = MockWorkspace.artifacts,
-    jobs: [InspectorJob] = MockWorkspace.jobs
-  ) {
-    self.artifacts = artifacts
-    self.jobs = jobs
-  }
-
-  public func setJob(_ id: String, isOn: Bool) {
-    guard let index = jobs.firstIndex(where: { $0.id == id }) else { return }
-    let job = jobs[index]
-    jobs[index] = InspectorJob(id: job.id, title: job.title, detail: job.detail, isOn: isOn)
+  public init(pulls: [InspectorPullRow] = MockWorkspace.pulls) {
+    self.pulls = pulls
   }
 }

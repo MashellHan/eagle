@@ -1,9 +1,70 @@
 # Bots — test contract
 
-Status: **phase 1 contract**. Tests are the specification of each layer and the
+Status: **contracts for current implemented capabilities**. Peer exchanges and reported
+pull-request journals are included from fixed upstream182fc1f; historical phase-1 labels
+below retain their original scope. Tests are the specification of each layer and the
 enforcement of the boundaries in [ARCHITECTURE.md](ARCHITECTURE.md). Runtime
 behaviour under test is described in [RUNTIME.md](RUNTIME.md); log assertions in
 [OBSERVABILITY.md](OBSERVABILITY.md).
+
+Current integration input is fixed upstream182fc1f704774eb37bdbc11cde017f8ff61f1c1a
+over delivered sync parentcb64658. This is the last upstream update before the overall
+sync project completes; no later fetch/pull/merge or restarted #109 monitor is part of it.
+Native merge exit1 was a two-fixture conflict, not a product red. The owned admission/drop
+assertions and all sync tests remain; upstream example-config inputs and wall-clock recovery
+waiting are combined with them. Both original conflict stages and the editing-context failure
+are retained under `.local/sync-upstream-content`.
+
+Planned necessary checks for this combined input: normal root `npm run check`; independent
+Bots `npm run check` (fixtures/tests/types/lint/coverage) and `npm run test:crash`; full
+`npm run test:devices`; Swift build, strict format and both existing macOS/client default90
+coverage scripts, recording their existing filter scopes. Exact eval cases are `chat-basic`,
+`coding-fix-loop`, `replica-incremental`, `replica-local-run`, `replica-resources`,
+`root-resources` and `fresh-resources` through the normal `--case` API. The new peer/pull
+tool, journal, protocol and actual runtime tests are retained in the normal Bots suite.
+Browser stays the normal delivery pre-push gate. No perf/live/App installation or CF gate
+is claimed; this paragraph is a check plan, not evidence that these commands passed.
+
+The recovery fixture merges U's existing single10-second wall-clock observation budget
+with L's actual x-byte admission, original socket destruction/close, then barrier release.
+It retains the empty original reply, same-ID exactly-once and finally cleanup assertions;
+the former100 attempts were not a product deadline and no second wait budget was added.
+The combined encrypted-history fixture uses actual startDaemon peer/PR tools, live PR events,
+reopened journals and HTTP exchange answers, then the existing offline stored-object apply.
+It checks resource refresh, a new peer's legacy-empty selection, same-ID retry/conflict and
+exact page/history/section bytes with no passive local submission, tool task or peer exchange.
+The first added-case failures were a duplicate test variable and an incorrect JSON-only
+tool-result fixture assumption; neither is a product red. Original logs remain unchanged.
+Formal Swift strict scope remains apps/macos Sources/Scripts/Tests (CI/pre-commit). The
+extra bots-macos whole-package lint produced six-file diagnostics outside that formal scope;
+its exit1 is retained, no client formatting was rewritten. The formal macOS strict run passed;
+bots-macos follows its existing Swift test/build and filtered coverage checks.
+
+Fixed-input local results (2026-10-31; source-v1 SHA90021cf1, complete707/selected614):
+
+| Actual command/evidence label | Result and precise scope |
+| --- | --- |
+| `npm run check` / root-check-after-metadata | 267/267, types/lint/build exit0 after exact locked ws/zod registry metadata recovery; ENOTCACHED original retained. Root tests/build inputs stay unchanged by the later integration/client test additions. |
+| `npm run typecheck && npm run lint` / combined-types-lint | exit0 on final TypeScript input, check-only;24 existing informational diagnostics. The preceding combined root run passed tests/types but failed lint on three new non-null assertions; replaced only by explicit asserts, original failure retained. |
+| `npm --prefix apps/bots run check` / bots-check-first | ordinary881 and coverage881 are the same suite, not1762 different tests; fixtures/types/lint pass. Aggregate92.19 lines/88.77 branches/90.31 functions. Entire Bots inputs unchanged by the later external integration/client tests, so this exact scope is reused. |
+| `npm run test:devices` / devices-combined-final | 23/23, including actual main peer/PR/history/offline combination, publisher/recipient first-winner, expiry/generation/binding/close, cold-unavailable and single-origin/network failures. All selected614 inputs match the freeze before/after. |
+| `npm --prefix apps/bots run test:crash` / bots-crash | 17/17, including ready-only pending recovery. Bots input scope unchanged; no new unrelated perf matrix. |
+| exact `eval -- --case` runs | chat-basic2 rows, coding-fix-loop10, replica-incremental2, replica-local-run0, replica-resources0, root-resources2, fresh-resources2; each actual case exit0 under the normal runner. A zero-row case is not relabeled as a provider interaction. |
+| `swift build --package-path apps/macos` and formal macOS strict | both exit0 on combined production; upstream/existing build warnings retained. No client whole-package formatting added. |
+| `sh apps/macos/Scripts/coverage.sh` | default90,208/51/60 tests; existing filtered1484/1593=93.2%. Actual script includes its existing repeated design-file report rows; no filter/script change or claim of all new logic90%. |
+| `sh apps/bots-macos/Scripts/coverage.sh` / swift-client-coverage-peer-pull | default90,40/46/52 tests; existing filtered2026/2229=90.9%. Original1975/2229=88.6% failure retained. Two added peer/PR client regressions cover selected reads, failure preserving the last list, selection reset, PR whole-list replacement and no send; no production/threshold/filter change. |
+
+Every command retains cwd/start/raw log/exit hashes and before/after file maps. Original
+710/711 map entries include four explicitly deleted legacy paths; the final live tree has707
+files. Later source selection adds the whole independent client and macOS script inputs to
+the old550 rule (four upstream removals and68 additions give614); the full index map also
+binds locks/config/owners/assets. Earlier gate receipts retain their original scope rather
+than claiming all614 ran then. Runner-v3 snapshots use read-only ls-files, avoiding the
+original write-tree/index-lock helper collision; that collision never started a root gate.
+The optional installed-lock inventory's two false missing leaves remain unchanged, with a
+separate ancestry correction90ebbfb0. No user secret/vault or physical App/live verification
+is claimed. Browser remains the normal delivery pre-push gate; the native focus probe retains
+its existing interactive CI-only boundary in pre-push, and was not run by this background slice.
 
 The root `npm run check` and Linux CI job use only the root lock and top-level
 `tests/*.test.ts`; they never require the independent Bots installation. Bots keeps

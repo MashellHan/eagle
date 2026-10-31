@@ -62,11 +62,25 @@ struct SettingsTests {
     #expect(model.onlineCount > 0)
   }
 
-  @Test("checking for updates settles on the current version")
-  func updates() {
-    let model = SettingsViewModel()
-    model.checkForUpdates()
-    #expect(model.updateState == .current("0.14.1"))
+  @Test("a development build never asks and settles quietly")
+  func updatesInDevelopment() async {
+    let model = SettingsViewModel(
+      appVersion: AppVersion(short: "0.15.0", build: "1", isRelease: false),
+      links: ProductLinks(
+        github: nil, release: nil, updates: URL(string: "https://example.com/api/live"))
+    )
+    await model.checkForUpdates()
+    #expect(model.updateState == .unavailable)
+  }
+
+  @Test("a release build without a check endpoint settles quietly too")
+  func updatesWithoutEndpoint() async {
+    let model = SettingsViewModel(
+      appVersion: AppVersion(short: "0.15.0", build: "1", isRelease: true),
+      links: ProductLinks(github: nil, release: nil, updates: nil)
+    )
+    await model.checkForUpdates()
+    #expect(model.updateState == .unavailable)
   }
 
   @Test("setPermission writes the chosen option")

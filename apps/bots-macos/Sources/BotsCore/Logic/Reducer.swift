@@ -18,6 +18,8 @@ public struct ConversationState: Sendable, Equatable {
   public var tasks: [TaskSummary]
   /// The bot's own triggers; a snapshot or a `triggers` event replaces the list whole.
   public var triggers: [TriggerSummary]
+  /// Pull requests the bot reported; a snapshot or a `pulls` event replaces the list whole.
+  public var pulls: [PullSummary]
   /// Tokens and cost so far; a snapshot is the first place it appears.
   public var usage: Usage?
   /// What the bot runs with, when the daemon reports it.
@@ -39,6 +41,7 @@ public struct ConversationState: Sendable, Equatable {
     parked: Bool = false,
     tasks: [TaskSummary] = [],
     triggers: [TriggerSummary] = [],
+    pulls: [PullSummary] = [],
     usage: Usage? = nil,
     agent: AgentView? = nil,
     lastRev: Int? = nil,
@@ -55,6 +58,7 @@ public struct ConversationState: Sendable, Equatable {
     self.parked = parked
     self.tasks = tasks
     self.triggers = triggers
+    self.pulls = pulls
     self.usage = usage
     self.agent = agent
     self.lastRev = lastRev
@@ -102,6 +106,7 @@ public enum Reducer {
       parked: value.parked ?? false,
       tasks: value.tasks,
       triggers: value.triggers,
+      pulls: value.pulls,
       usage: value.usage,
       agent: value.agent,
       lastRev: rev,
@@ -154,6 +159,9 @@ public enum Reducer {
       next.tasks = tasks
     case .triggers(let triggers):
       next.triggers = triggers
+    case .pulls(let pulls):
+      // Whole-list replacement: the newest report is the row's state, never a merge.
+      next.pulls = pulls
     case .usage(let usage):
       next.usage = usage
     case .agent(let agent):

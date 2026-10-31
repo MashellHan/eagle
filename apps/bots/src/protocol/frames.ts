@@ -16,6 +16,7 @@ import type {
   MessageOrigin,
   MessageRole,
   MessageState,
+  PullSummary,
   StopReason,
   Submission,
   SubmissionStatus,
@@ -114,6 +115,12 @@ export type ServerEvent =
       readonly rev: number;
       readonly trace: string;
       readonly triggers: readonly TriggerSummary[];
+    }
+  | {
+      readonly type: "pulls";
+      readonly rev: number;
+      readonly trace: string;
+      readonly pulls: readonly PullSummary[];
     }
   | {
       readonly type: "usage";
@@ -369,7 +376,27 @@ const decodeOrigin = (ctx: Ctx, raw: unknown): MessageOrigin => {
   const kind = oneOf(ctx, raw.kind, ORIGIN_KINDS, "message.origin.kind");
   const label =
     raw.label === undefined ? undefined : anyStr(ctx, raw.label, "message.origin.label");
-  return { kind, ...(label === undefined ? {} : { label }) } as MessageOrigin;
+  const exchangeId =
+    raw.exchangeId === undefined
+      ? undefined
+      : anyStr(ctx, raw.exchangeId, "message.origin.exchangeId");
+  return {
+    kind,
+    ...(exchangeId === undefined ? {} : { exchangeId }),
+    ...(label === undefined ? {} : { label }),
+  } as MessageOrigin;
+};
+
+/** Additive (PROTOCOL.md v1): a client that predates `pulls` simply never sees them. */
+const decodePull = (ctx: Ctx, raw: unknown): PullSummary => {
+  if (!isObject(raw)) fail(ctx, "pull must be an object");
+  return {
+    url: str(ctx, raw.url, "pull.url"),
+    title: anyStr(ctx, raw.title, "pull.title"),
+    status: anyStr(ctx, raw.status, "pull.status"),
+    host: anyStr(ctx, raw.host, "pull.host"),
+    updatedAt: anyStr(ctx, raw.updatedAt, "pull.updatedAt"),
+  };
 };
 
 const TRIGGER_KINDS = ["schedule", "webhook"] as const;
@@ -620,6 +647,9 @@ const decodeSnapshot = (ctx: Ctx, raw: unknown): ConversationSnapshot => {
             decodeTriggerSummary(ctx, trigger),
           ),
         }),
+    ...(raw.pulls === undefined
+      ? {}
+      : { pulls: arr(ctx, raw.pulls, "pulls").map((pull) => decodePull(ctx, pull)) }),
     ...(agent === undefined ? {} : { agent }),
     ...(unavailable === undefined ? {} : { unavailable }),
   };
@@ -864,6 +894,15 @@ export function decodeServerEvent(raw: Record<string, unknown>): ServerEvent {
         tasks: arr(ctx, required(ctx, raw, "tasks"), "tasks").map((task) =>
           decodeTaskSummary(ctx, task),
         ),
+      };
+    }
+    case "pulls": {
+      const { rev, trace } = requireEnvelope(ctx, raw, true);
+      return {
+        type,
+        rev: rev as number,
+        trace,
+        pulls: arr(ctx, required(ctx, raw, "pulls"), "pulls").map((pull) => decodePull(ctx, pull)),
       };
     }
     case "triggers": {

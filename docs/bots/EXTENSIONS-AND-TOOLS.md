@@ -208,6 +208,21 @@ helpers have 100% in those three measured metrics. This is not 95% in all four
 L1 metrics, not full coverage of all tools, and not a fresh run for this
 documentation-only change. Planned tools have no implementation/test evidence.
 
+### Coding reports: the pull requests a bot opened
+
+The coding group also carries two eager tools, because a PR is what a coding bot produces:
+
+| Tool | Input | Result | Replay |
+| --- | --- | --- | --- |
+| `pr_register` | `url, title, status` | Stores one entry per link and returns it; any `http(s)` forge is accepted | Safe (keyed by the durable tool-task id) |
+| `pr_list` | — | The bot's own reports, newest first | Safe |
+
+`status` is the closed set `draft`, `open`, `reviewing`, `merged`, `closed`, `failed`; the App
+draws each one with its own glyph and colour, so a state the daemon does not know is refused
+rather than guessed. The daemon **stores and never queries**: a forge's state reaches the App
+only when the bot reports it again, which the prompt says explicitly. One journal per bot
+(`pulls.journal.jsonl`), the last record per URL wins, and the newest 20 rows are kept.
+
 ## 4. Discovery and refresh are different operations
 
 1. **Register:** host code installs an extension in this Harness's Registry.
@@ -268,7 +283,7 @@ the current `DEFAULT_TOOL_GROUPS = [...TOOL_GROUP_NAMES]` expression.
 | --- | --- | --- | --- |
 | `memory` | `bots-memory` | `memory_list`, `memory_search`, `memory_read`, `memory_write`, `memory_delete` | Deferred |
 | `trigger` | `bots-trigger` | `trigger_create`, `trigger_list`, `trigger_update`, `trigger_enable`, `trigger_delete` | Deferred; shipped and on by default |
-| `peers` | `bots-peers` | `peer_list`, `peer_send`, `peer_read` | Deferred |
+| `peers` | `bots-peers` | `peer_list`, `peer_send`, `peer_read` | Deferred; shipped behind a toggle |
 | Existing `agents` | `bots-agents` | Add `agent_list`; retain the existing three names/semantics | Eager when selected |
 
 Each deferred group selects the same native `tool-search` extension. Install it
@@ -409,6 +424,11 @@ reject repeated recipients and cap the initial route at four Bots. Do not wait
 synchronously for peers from within a peer send. Test A -> B -> A and longer
 cycles so communication cannot silently turn into an unbounded model loop.
 This is product routing/cost control, not an execution sandbox.
+
+As built (2026-10-29): the three tools exist, deferred behind `tool_search`, and the
+daemon enforces a ten-message budget per side per exchange
+(`core/PeerExchangeStore.ts`, TRIGGERS.md §10 "Stage 3, as built"). The route/visited-path
+spike below is still open for routes longer than a pair.
 
 `peer_send` is not registered until the route-enforcement spike in
 [TRIGGERS.md](TRIGGERS.md) §10 decides its mechanism: a numeric-only release would

@@ -10,6 +10,8 @@
 # EAGLE_DEVICE_PROFILE     device-candidate (default) or device-release
 # EAGLE_DEVICE_SERVICE_URL HTTPS origin override; candidate defaults to localhost,
 #                         required for device-release
+# EAGLE_UPDATES_URL       where the App asks which macOS version is published; unset
+#                         means "this build never asks"
 # EAGLE_CODESIGN_IDENTITY  '-' for local candidate, real identity for release
 set -eu
 cd "$(dirname "$0")/.."
@@ -61,7 +63,10 @@ if [ ! -f Support/AppIcon.icns ]; then
 fi
 "$NODE_BINARY" Scripts/assemble-device-app.ts --app "$STAGED_APP" \
   --binary "$BINARY" --helper "$HELPER" --profile "$PROFILE" \
-  --service-url "${EAGLE_DEVICE_SERVICE_URL:-}" >/dev/null
+  --service-url "${EAGLE_DEVICE_SERVICE_URL:-}" \
+  --github-url "${EAGLE_GITHUB_URL:-$(node -p "require('../../package.json').config.repositoryUrl" 2>/dev/null || true)}" \
+  --release-url "${EAGLE_RELEASE_URL:-$(node -p "require('../../package.json').config.macosReleaseUrl" 2>/dev/null || true)}" \
+  --updates-url "${EAGLE_UPDATES_URL:-}" >/dev/null
 "$NODE_BINARY" Scripts/assemble-device-runtime.ts \
   --destination "$STAGED_APP/Contents/Resources/DeviceRuntime" \
   --node "$NODE_BINARY" --agent-cache "$AGENT_CACHE" --bots-cache "$BOTS_CACHE" >/dev/null

@@ -7,13 +7,17 @@ actor BotsTranscriptProjector {
   private let renderer = MarkdownRenderer()
   private var prepared: [String: (text: String, blocks: [RenderedMarkdownBlock])] = [:]
 
-  func project(_ state: ConversationState) async throws -> BotsTranscriptProjection {
+  func project(
+    _ state: ConversationState,
+    exchanges: [PeerExchangeSummary],
+    bots: [BotSummary]
+  ) async throws -> BotsTranscriptProjection {
     try Task.checkCancellation()
-    let entries = BotsPresenter().transcript(for: state)
+    let entries = BotsPresenter().transcript(for: state, exchanges: exchanges, bots: bots)
     var next: [String: (text: String, blocks: [RenderedMarkdownBlock])] = [:]
     for entry in entries {
       switch entry {
-      case .assistant(_, let blocks), .streamingAssistant(_, let blocks):
+      case .assistant(_, let blocks, _), .streamingAssistant(_, let blocks):
         let text = blocks.markdown
         if let cached = prepared[entry.id], cached.text == text {
           next[entry.id] = cached
@@ -39,16 +43,29 @@ final class BotsTranscriptViewModel: ObservableObject {
   @Published private(set) var entries: [TranscriptEntry] = []
   private(set) var markdown: [String: [RenderedMarkdownBlock]] = [:]
   private let projector = BotsTranscriptProjector()
-  private var input: ConversationState?
+  /// Everything the projection reads, so a change in any of it re-projects once.
+  private struct Input: Equatable {
+    let state: ConversationState
+    let exchanges: [PeerExchangeSummary]
+    let bots: [BotSummary]
+  }
+
+  private var input: Input?
   private var projection: Task<Void, Never>?
 
-  func update(_ state: ConversationState) {
-    guard input != state else { return }
-    if input?.botId != state.botId { clear() }
-    input = state
+  func update(
+    _ state: ConversationState, exchanges: [PeerExchangeSummary] = [], bots: [BotSummary] = []
+  ) {
+    let next = Input(state: state, exchanges: exchanges, bots: bots)
+    guard input != next else { return }
+    if input?.state.botId != state.botId { clear() }
+    input = next
     projection?.cancel()
     projection = Task { [weak self, projector] in
-      guard let next = try? await projector.project(state), !Task.isCancelled else { return }
+      guard
+        let next = try? await projector.project(state, exchanges: exchanges, bots: bots),
+        !Task.isCancelled
+      else { return }
       self?.markdown = next.markdown
       if self?.entries != next.entries { self?.entries = next.entries }
     }

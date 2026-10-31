@@ -15,6 +15,8 @@ public enum ConversationEvent: Sendable, Equatable {
   case tasks([TaskSummary])
   /// The bot's own triggers, whole-list replacement (PROTOCOL.md, "Triggers").
   case triggers([TriggerSummary])
+  /// The bot's reported pull requests, whole-list replacement.
+  case pulls([PullSummary])
   /// Tokens and cost so far, whenever the daemon's totals move.
   case usage(Usage)
   /// The bot's complete current model, thinking level and instructions.
@@ -170,6 +172,87 @@ public struct TriggerDetail: Sendable, Equatable, Identifiable {
   }
 
   public var id: String { summary.id }
+}
+
+/// One bot that takes part in an exchange, as the app draws it.
+public struct PeerExchangeParticipant: Sendable, Equatable, Identifiable {
+  public var id: String
+  public var title: String
+
+  public init(id: String, title: String) {
+    self.id = id
+    self.title = title
+  }
+}
+
+/// What a transcript needs to fold an exchange into one row.
+public struct PeerExchangeSummary: Sendable, Equatable, Identifiable {
+  public var id: String
+  public var participants: [PeerExchangeParticipant]
+  /// Question and answer pairs, as the person counts them: "4 条消息来往".
+  public var count: Int
+  public var status: String
+  public var startedAt: String
+  /// When the exchange last moved: the transcript keeps the row beside the latest turn.
+  public var updatedAt: String
+
+  public init(
+    id: String, participants: [PeerExchangeParticipant], count: Int, status: String,
+    startedAt: String, updatedAt: String
+  ) {
+    self.id = id
+    self.participants = participants
+    self.count = count
+    self.status = status
+    self.startedAt = startedAt
+    self.updatedAt = updatedAt
+  }
+}
+
+/// One message inside an exchange: what a bot sent, and what it got back.
+public struct PeerExchangeMessage: Sendable, Equatable, Identifiable {
+  public var id: String
+  public var fromBotId: String
+  public var toBotId: String
+  public var at: String
+  public var text: String
+  public var answer: String?
+
+  public init(
+    id: String, fromBotId: String, toBotId: String, at: String, text: String, answer: String?
+  ) {
+    self.id = id
+    self.fromBotId = fromBotId
+    self.toBotId = toBotId
+    self.at = at
+    self.text = text
+    self.answer = answer
+  }
+}
+
+/// The whole round trip, read once when a person opens the row.
+public struct PeerExchangeDetail: Sendable, Equatable, Identifiable {
+  public var id: String
+  public var participants: [PeerExchangeParticipant]
+  public var status: String
+  public var startedAt: String
+  public var messages: [PeerExchangeMessage]
+
+  public init(
+    id: String, participants: [PeerExchangeParticipant], status: String, startedAt: String,
+    messages: [PeerExchangeMessage]
+  ) {
+    self.id = id
+    self.participants = participants
+    self.status = status
+    self.startedAt = startedAt
+    self.messages = messages
+  }
+}
+
+public protocol PeerPort: AnyObject, Sendable {
+  func list(botId: String) async throws -> [PeerExchangeSummary]
+  func detail(botId: String, exchangeId: String) async throws -> PeerExchangeDetail
 }
 
 public protocol TriggerPort: AnyObject, Sendable {

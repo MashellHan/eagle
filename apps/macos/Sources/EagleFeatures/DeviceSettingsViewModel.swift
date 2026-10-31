@@ -603,8 +603,30 @@ private struct DeviceServiceState: Decodable {
     guard value["requestId"]?.string == requestId, let current = value["directory"] else {
       throw DeviceHostError.invalidResponse
     }
+    let known = Set(directory?.devices.map(\.deviceId) ?? [])
     try applyDirectory(current)
     clearPendingRedemption()
+    let joined =
+      directory?.devices.filter { $0.deviceId != localDeviceId && !known.contains($0.deviceId) }
+      ?? []
+    for device in joined { Task { await self.askBeforeRunning(on: device) } }
+  }
+
+  /// A machine that was just added starts out asking: nothing runs on it silently until the
+  /// person chooses otherwise. A target that cannot take the change stays as it is; the pairing
+  /// itself already succeeded, and the row shows the policy it reports.
+  private func askBeforeRunning(on device: DeviceDirectoryEntry) async {
+    guard device.online == true, device.capabilities?.contains("policy.manage") == true,
+      device.policy?.mode != .alwaysAsk
+    else { return }
+    _ = try? await control.call(
+      "policy.set",
+      params: .object([
+        "mode": .string(DevicePolicyState.Mode.alwaysAsk.rawValue),
+        "deviceId": .string(device.deviceId),
+        "requestId": .string(UUID().uuidString.lowercased()),
+      ]))
+    await readState()
   }
 
   private func clearPendingRedemption() {

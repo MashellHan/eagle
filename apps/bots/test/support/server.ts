@@ -8,16 +8,20 @@ import { WebSocket } from "ws";
 import { BotDirectory, nodeDirectoryFs } from "../../src/core/BotDirectory.ts";
 import { BotRegistry, type RegistryOptions } from "../../src/core/BotRegistry.ts";
 import { ConversationService } from "../../src/core/ConversationService.ts";
-import type { TriggerSummary } from "../../src/core/domain.ts";
+import { resolveToolGroups, type TriggerSummary } from "../../src/core/domain.ts";
 import { OriginStore, originPath } from "../../src/core/OriginStore.ts";
+import { PeerExchangeStore } from "../../src/core/PeerExchangeStore.ts";
 import type { RuntimePort } from "../../src/core/RuntimePort.ts";
 import { captureLog, type LogRecord } from "../../src/log/log.ts";
 import { measureEvent } from "../../src/main.ts";
+import { peerApi } from "../../src/peers/api.ts";
+import { peerHostFor } from "../../src/peers/host.ts";
 import { PiDurableRuntime } from "../../src/runtime/pi/PiDurableRuntime.ts";
 import type { GatewayApi } from "../../src/server/gateway.ts";
 import type { TriggerApi, TriggerIngress } from "../../src/server/http.ts";
 import { startServer } from "../../src/server/http.ts";
 import { FakeRuntime, type FakeScript } from "../../src/testing/FakeRuntime.ts";
+import type { PeerToolHost } from "../../src/tools/types.ts";
 
 /** A decoded frame: tests read one field at a time, so the shape stays open here. */
 export type Frame = Record<string, unknown>;
@@ -42,6 +46,8 @@ export type Stack = {
   /** Puts a bot id in the quarantined state the transport refuses with 4090. */
   quarantine(botId: string): void;
   connect(options?: { token?: string; headers?: Record<string, string> }): WebSocket;
+  /** The peer tools' host for one bot: what a model's peer_send would call. */
+  peersFor(botId: string): PeerToolHost;
   close(): Promise<void>;
 };
 
@@ -68,6 +74,8 @@ export type StackOptions = {
   /** The baseline trigger list a bot's view opens with. */
   readonly triggersOf?: readonly TriggerSummary[];
   readonly windowMessages?: number;
+  /** The tool groups every bot of this stack gets; the daemon's defaults when absent. */
+  readonly toolGroups?: readonly string[];
   /** Model streaming pace, for a test that has to attach mid-answer. */
   readonly tokensPerSecond?: number;
   /** A runtime whose close never resolves, so the registry times out and quarantines. */
@@ -109,6 +117,8 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
         ? {}
         : { maxMessageBytes: options.maxMessageBytes }),
       ...(options.windowMessages === undefined ? {} : { windowMessages: options.windowMessages }),
+      // The host needs the registry and the service, which exist after the adapter does.
+      peers: async (spec) => peersHolder.current?.(spec.id),
     });
     openRuntime = (spec) => adapter.open(spec);
     readReplicaBinding = (spec) => adapter.readReplicaBinding(spec);
@@ -139,6 +149,9 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
       };
     };
   }
+  const peerStore = new PeerExchangeStore(join(root, "peers"));
+  await peerStore.open();
+  const peersHolder: { current?: (botId: string) => PeerToolHost } = {};
   const directory = new BotDirectory(root, await nodeDirectoryFs());
   await options.prepare?.({ root, directory });
   let opens = 0;
@@ -151,6 +164,9 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     ...(readReplicaBinding === undefined ? {} : { readReplicaBinding }),
     model,
     log,
+    ...(options.toolGroups === undefined
+      ? {}
+      : { toolGroups: resolveToolGroups(options.toolGroups) }),
     idleCloseMs: options.idleCloseMs ?? 10 * 60 * 1000,
     quarantineRetryMs: 30_000,
     closeDeadlineMs: options.closeDeadlineMs ?? 500,
@@ -198,6 +214,35 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     },
     ...(options.windowMessages === undefined ? {} : { windowMessages: options.windowMessages }),
   });
+  const textOfBlocks = (blocks: readonly { type: string; text?: string }[]): string | undefined => {
+    const text = blocks.map((block) => (block.type === "text" ? (block.text ?? "") : "")).join("");
+    return text === "" ? undefined : text;
+  };
+  const peersApi = peerApi({
+    store: peerStore,
+    bots: () => registry.summaries(),
+    submission: (query) => service.submission(query),
+    entryText: async (target, entryId) => {
+      const message = await registry.handleOf(target)?.entryById?.(entryId);
+      return message === undefined ? undefined : textOfBlocks(message.blocks);
+    },
+  });
+  peersHolder.current = (botId) =>
+    peerHostFor({
+      botId,
+      store: peerStore,
+      bots: () => registry.summaries(),
+      invoke: (input) => service.invoke(input),
+      submission: (query) => service.submission(query),
+      entryText: async (target, entryId) => {
+        const message = await registry.handleOf(target)?.entryById?.(entryId);
+        if (message === undefined) return undefined;
+        const text = message.blocks
+          .map((block) => (block.type === "text" ? block.text : ""))
+          .join("");
+        return text === "" ? undefined : text;
+      },
+    });
   const daemon = await startServer({
     token,
     log,
@@ -216,6 +261,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
       triggers: true,
     },
     ...(options.triggers === undefined ? {} : { triggers: options.triggers }),
+    peers: peersApi,
     ...(options.ingress === undefined ? {} : { ingress: options.ingress }),
     port: 0,
   });
@@ -232,6 +278,10 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     service,
     daemon,
     opens: () => opens,
+    peersFor: (botId: string) => {
+      if (peersHolder.current === undefined) throw new Error("the stack has no peer host yet");
+      return peersHolder.current(botId);
+    },
     createBot: async (title) => (await registry.create(title, "tr_create_probe")).id,
     quarantine: (botId) => quarantined.add(botId),
     connect: (connectOptions = {}) =>

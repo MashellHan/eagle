@@ -18,13 +18,15 @@ function initialEnvironment(): "local" | "prod" {
 
 export const environment = initialEnvironment();
 export const localProduction = localFrontend && environment === "prod";
+// Both origins are deployment configuration, supplied at build time (VITE_*), never committed.
+const productionOrigin = import.meta.env.VITE_PRODUCTION_ORIGIN?.trim() ?? "";
+const productionIngestOrigin =
+  import.meta.env.VITE_PRODUCTION_INGEST_ORIGIN?.trim() ?? "";
 export const authenticationMessage = localProduction
-  ? "请在本机终端运行 cloudflared access login --quiet https://eagle.hexly.ai，然后重试。"
+  ? `请在本机终端运行 cloudflared access login --quiet ${productionOrigin}，然后重试。`
   : "请通过 Cloudflare Access 重新登录";
 export const ingestOrigin =
-  environment === "local"
-    ? window.location.origin
-    : "https://eagle-ingest.hexly.ai";
+  environment === "local" ? window.location.origin : productionIngestOrigin;
 
 export function apiPath(path: string) {
   return localProduction ? `/__local/prod${path}` : path;

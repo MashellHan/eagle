@@ -18,6 +18,9 @@ public struct WorkspaceShellView: View {
   @State private var showsAccountMenu = false
   @State private var showsBotCreate = false
   @State private var showsBotFaceEditor = false
+  @State private var showsSettings = false
+  /// The exchange a person opened from a folded row; nil while no dialog is up.
+  @State private var openedPeerExchange: PeerExchange?
   @AppStorage("eagle.appearance") private var appearance = "system"
   @AppStorage("eagle.hideToolCalls") private var hideToolCalls = false
   @AppStorage("eagle.loadMockData") private var loadMockData = false
@@ -98,6 +101,19 @@ public struct WorkspaceShellView: View {
 
   private var selectedIsBot: Bool { bots.owns(list.selection) }
 
+  /// The inspector belongs to an open conversation: with nothing selected there is nothing to
+  /// inspect, so the column (and its drag handle) stay away instead of showing an empty panel.
+  private var showsInspector: Bool { layout.showsInspector && list.selection != nil }
+
+  /// The sample transcript carries its own exchanges, so opening one only needs the entry that
+  /// holds it. A bot's exchanges will be read from the daemon by id.
+  private func openPeerExchange(_ id: String) {
+    for case .peerExchange(_, let exchange) in chat.entries where exchange.id == id {
+      openedPeerExchange = exchange
+      return
+    }
+  }
+
   /// The sample transcript is only reachable while the sample data is switched on.
   private var selectedIsMock: Bool {
     loadMockData && list.selection != nil && !selectedIsBot
@@ -108,7 +124,7 @@ public struct WorkspaceShellView: View {
     ZStack(alignment: .bottomLeading) {
       ThreeColumnShell(
         showsSidebar: layout.showsSidebar,
-        showsInspector: layout.showsInspector,
+        showsInspector: showsInspector,
         sidebarWidth: layout.sidebarWidth,
         inspectorWidth: layout.inspectorWidth,
         onResizeSidebar: { layout.setSidebarWidth($0) },
@@ -168,7 +184,7 @@ public struct WorkspaceShellView: View {
           },
           onCollapse: { layout.toggleSidebar() },
           onAccount: { showsAccountMenu = true },
-          onGallery: { onShowGallery { showSettings() } },
+          onGallery: { onShowGallery { showsSettings = true } },
           onPinItem: { id in chrome.togglePin(id) },
           moveTargets: { id in moveTargets(for: id) },
           onToggleItem: { id in
@@ -211,9 +227,10 @@ public struct WorkspaceShellView: View {
               draft: $chat.draft,
               onSend: { chat.send() },
               showsSidebar: layout.showsSidebar,
-              showsInspector: layout.showsInspector,
+              showsInspector: showsInspector,
               onShowSidebar: { layout.toggleSidebar() },
-              onToggleInspector: { layout.toggleInspector() }
+              onToggleInspector: { layout.toggleInspector() },
+              onOpenPeerExchange: { openPeerExchange($0) }
             )
           } else {
             NoConversationPlaceholder(
@@ -231,8 +248,7 @@ public struct WorkspaceShellView: View {
           subtitle: selectedIsBot ? "Bots" : (selectedIsMock ? (item?.tag ?? "示例") : ""),
           tintIndex: selectedIsBot ? bots.tintIndex : (item?.tintIndex ?? 2),
           width: layout.inspectorWidth,
-          artifacts: selectedIsMock ? inspector.artifacts : [],
-          jobs: selectedIsMock ? inspector.jobs : [],
+          pulls: selectedIsBot ? bots.pullRows : (selectedIsMock ? inspector.pulls : []),
           tasks: selectedIsBot ? bots.tasks : [],
           usage: selectedIsBot ? bots.usage : [],
           choices: selectedIsBot ? bots.choices : [],
@@ -242,7 +258,6 @@ public struct WorkspaceShellView: View {
             Task { await bots.choose(row, value: value) }
           },
           tab: $inspector.tab,
-          onToggleJob: { inspector.setJob($0, isOn: $1) },
           onRetryTask: { id in
             guard selectedIsBot else { return }
             Task { await bots.retryTask(id) }
@@ -262,7 +277,7 @@ public struct WorkspaceShellView: View {
           computerContent: AnyView(
             DeviceInspectorView(model: devices) {
               settings.selection = .machines
-              showSettings()
+              showsSettings = true
             })
         )
         .sheet(isPresented: $showsBotFaceEditor) {
@@ -282,7 +297,7 @@ public struct WorkspaceShellView: View {
         bots.onSelect = { id in list.selection = id }
         bots.onOpenSettings = {
           settings.selection = .bots
-          showSettings()
+          showsSettings = true
         }
         await daemon.startIfNeeded()
       }
@@ -320,13 +335,31 @@ public struct WorkspaceShellView: View {
         layout.toggleInspector()
       }
 
+      if let exchange = openedPeerExchange ?? bots.openedExchange {
+        // The sidebar stays visible, as the transcript behind the dialog keeps its context.
+        Color.black.opacity(0.001)
+          .ignoresSafeArea()
+          .onTapGesture {
+            openedPeerExchange = nil
+            bots.closeExchange()
+          }
+        PeerConversationDialog(exchange: exchange) {
+          openedPeerExchange = nil
+          bots.closeExchange()
+        }
+        .padding(.leading, layout.showsSidebar ? layout.sidebarWidth + 20 : 20)
+        .padding(.trailing, 46)
+        .padding(.vertical, 28)
+        .transition(.opacity.combined(with: .scale(scale: 0.995)))
+      }
+
       if showsAccountMenu {
         Color.black.opacity(0.001)
           .ignoresSafeArea()
           .onTapGesture { showsAccountMenu = false }
         AccountMenu(rows: account.rows) { row in
           showsAccountMenu = false
-          if row.id == "settings" { showSettings() }
+          if row.id == "settings" { showsSettings = true }
         }
         .padding(.leading, Theme.Metric.contentInset)
         .padding(.bottom, Theme.Metric.footerHeight + Theme.Metric.footerBottom + 6)
@@ -334,12 +367,45 @@ public struct WorkspaceShellView: View {
       }
     }
     .animation(.snappy(duration: 0.18), value: showsAccountMenu)
+    .animation(.easeOut(duration: 0.16), value: openedPeerExchange)
+    // A small blur under the settings card: the window stays recognisable, only softened.
+    .blur(radius: showsSettings ? 5 : 0)
+    .animation(.easeOut(duration: 0.18), value: showsSettings)
+    .overlay {
+      if showsSettings {
+        settingsOverlay
+      }
+    }
     .onReceive(NotificationCenter.default.publisher(for: .eagleToggleSettings)) { _ in
-      showSettings()
+      showsSettings = true
     }
   }
 
-  private func showSettings() {
-    SettingsWindowController.shared.show(model: settings, daemon: daemon, devices: devices)
+  /// Centred settings card over a blurred, dimmed copy of the window. The traffic lights are
+  /// hidden while it is open so the card owns the chrome.
+  private var settingsOverlay: some View {
+    ZStack {
+      // The blur lives on the window itself (a few points); this layer only dims.
+      Color.black.opacity(0.32)
+        .ignoresSafeArea()
+        .onTapGesture { showsSettings = false }
+
+      SettingsView(
+        model: settings, onClose: { showsSettings = false }, daemon: daemon, devices: devices
+      )
+      .frame(width: Theme.Metric.settingsWidth, height: Theme.Metric.settingsHeight)
+      .background(
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+          .fill(Theme.Palette.surface)
+      )
+      .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+      .overlay(
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+          .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+      )
+      .shadow(color: .black.opacity(0.28), radius: 40, y: 18)
+      .background(TrafficLights(hidden: true))
+    }
+    .transition(.opacity)
   }
 }
