@@ -4,7 +4,10 @@ This slice starts at delivered `193f75bd` / tree `73695d14`. The two-Mac
 scene5 receipt `f5b7827b` is independent API/SDK evidence; it does not certify
 native composition. New execution inputs and evidence live under
 `.local/sync-p5-native`. The 3194 inherited references remain immutable and are
-reused without another hash sweep. Upstream remains fixed at `182fc1f`.
+reused without another hash sweep. `182fc1f` is that historical common baseline.
+P5 source, final tree and the finite A/B native/restart scopes are accepted;
+B's pre-send interruption remains cause-not-assigned. PR112 now integrates
+the separately fixed upstream8674; new checks belong to that merged input.
 
 ## Heads and contexts
 

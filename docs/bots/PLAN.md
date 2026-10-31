@@ -88,19 +88,21 @@ provider3→5; same-identity App5198→6962/daemon68572→6987 restart preserves
 export/Outbox/selection/request with no execution replay. A receives the complete
 new head e8f5a483/resources with passive execution0 from an actual before captured
 before B sends. All18 new execution records retain their real10exit0/8exit1;
-preparation/cleanup/transfer failures are not product reds. Actual copy701/749 and
-native modules/binaries are separate from repository input stability. Existing
-Review is binding this finite B scope and the final docs/tree; normal delivery
-remains ahead. No duplicate merge/send or denied-operation replay is used.
+B pre-send interruption remains cause-not-assigned; recovery is not a claimed
+fix. Actual copy701/749 and native modules/binaries are separate from repository
+input stability. Review formally accepted this finite B scope and final docs/tree;
+P5 was normally delivered as5bfb7cc, with CI fixture follow-ups through60e4.
+No duplicate merge/send or denied-operation replay is used.
 Keep messages, inputs/outputs/tool results, attachments, AGENTS.md and full versioned
 skill bytes with actual local execution evidence. Shared-backend reachability and
 current directed grants require their own facts; the paired command bridge is not
 sync authorization. P5/P6 work follows the actual first broken hop. Create the sync
-PR only after all authorized goals and these scenarios pass; do not merge it.
+PR only after all authorized goals and these scenarios pass; PR112 is now open
+for review against `nocoo/eagle:main`. Do not merge it.
 
-`182fc1f` is the last upstream update until the overall synchronization project
-completes: never fetch, pull or merge a newer upstream, or reopen a moving baseline.
-Preserve all published sync commits; #109 monitoring remains closed.
+`182fc1f` is the historical common development baseline. The user authorized this
+one integration of exact upstream main8674a3ee for PR112; do not chase a moving
+upstream. Preserve all published sync commits; #109 monitoring remains closed.
 
 ## 多端 Bot 整体实施计划（2026-10-30）
 
@@ -180,9 +182,9 @@ tree 与 `165d154` 完全相同。在已交付干净节点 `8b5ca36` 后，实�
 同步身份、握手及密钥元数据通过独立版本化的 Bots `DeviceSyncPort` 接入。
 不重新实现设备底座，也不把现有注册 signer 当作通用签名接口。
 
-后续同步 PR 的候选基于本轮固定 `182fc1f704774eb37bdbc11cde017f8ff61f1c1a`，
-同步整体完成前不再更新 upstream；复核实际祖先与最终同步 diff，不重复带入 #109。
-历史 `bot-sync/base@165d154` 保留为原比较点，不改写已发布提交。本步无 PR 操作。
+历史同步候选基于 `182fc1f704774eb37bdbc11cde017f8ff61f1c1a`；当前 PR112
+按授权整合固定 upstream8674a3ee，复核实际祖先与最终同步 diff，不重复带入 #109。
+个人验证 PR 的 `bot-sync/base` 已从历史165d154正常快进至182；upstream PR 目标为 `main`。
 
 ### 已确定的行为
 
@@ -248,7 +250,7 @@ Tailscale 直连进入本版范围；专用同步入口仅向 Tailscale 网络�
 | P2 - resources | local verified | fixed-head696f649, ordinary-root265b0db/repair9475e2e and fresh264cc9e delivered normally | Complete local version loading; raw contents/tool associations retained |
 | P3 — 设备底座接入 | first metadata slice delivered460b60d | 复用 #109 的安装/配对/helper/权限；新增同步身份授权、Tailscale 端点发布和共享访问接口 | 现有设备能力保持有效；无 Tailscale 可走云通道；端点身份、群成员和同步权限真实生效 |
 | P4 — 直连、中转与 3 天缓存 | delivered through193f75bd: automatic direct/cache return, online-holder relay/discovery and all-path persistent status | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
-| P5 — 原生多端流程 | source-v6/normal accepted; finite A native/restart accepted; B482935b0 observed, final binding pending | 有界目录、持久 context、两父合并/资源选择、同一原 composer/Outbox 与 owned composition | A/B 真实控件各一次接续、本机 SDK/skill、同身份 App/daemon 重启、完整历史/资源及零重放 |
+| P5 — 原生多端流程 | source-v6/normal, finite A/B native/restart and final binding accepted; B pre-send cause-not-assigned | 有界目录、持久 context、两父合并/资源选择、同一原 composer/Outbox 与 owned composition | A/B 真实控件各一次接续、本机 SDK/skill、同身份 App/daemon 重启、完整历史/资源及零重放 |
 | P6 — 多机验证与交付 | six scenarios have separately scoped physical evidence; final Review/delivery/PR pending | 两台物理 Mac、按需隔离 C，API/SDK 并发、Tail DERP 上的 direct/cache 切换、owned alarm 到期补读 | 各收据保留其实际层级；不扩称 native 并发、真实墙钟72h、UDP P2P、发行信任或部署 CF |
 
 依赖：已集成 #109 基线 → P0 → P1/P2/P3 → P4 → P5 → P6。P3 尽早做物理双 Mac 验证；

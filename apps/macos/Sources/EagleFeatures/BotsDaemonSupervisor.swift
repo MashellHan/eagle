@@ -90,7 +90,7 @@ public final class BotsDaemonSupervisor: ObservableObject {
     packaged = bundle.pathExtension == "app"
     let executable =
       packaged
-      ? bundle.appendingPathComponent("Contents/MacOS/EagleApp") : Bundle.main.executableURL
+      ? bundle.appendingPathComponent("Contents/MacOS/Eagle") : Bundle.main.executableURL
     daemonDirectory = Self.resolveDaemonDirectory(
       explicit: environment["BOTS_DAEMON_DIR"],
       executable: executable

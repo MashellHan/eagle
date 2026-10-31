@@ -4518,3 +4518,66 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Next: read-only Review of this fixture delta and records, then normal hooks/push
   and actual CI. No Herdr collection/authentication, D1, dashboard rendering, old
   physical scenario, daily App, system setting or fixed182 upstream change occurs.
+
+## 2026-10-31 17:10 device Worker redeployed for revision parity
+
+- `wrangler deploy --config apps/web/wrangler.devices.jsonc --var BUILD_REVISION:debb662…`
+  after a dry run: `Uploaded eagle-devices`, custom domain `eagle-devices.hexly.ai`,
+  Cloudflare version `f742ce78-e28a-4c46-b5e2-b1db772a5e09`, startup 15 ms.
+- Verified `GET https://eagle-devices.hexly.ai/api/live` five times: 200 with
+  `revision = debb662` (the exact main HEAD); anonymous `/api/devices/v1/directory`
+  401 `session_required`. Its `/api/live` reports no `macos` field, which is correct:
+  the App's update check reads the website origin, not this service.
+- Redeploying changed no behaviour: the only Worker source change since the previous
+  revision was the website `/api/live` `macos` block. The App's "cloud not ready" state
+  comes from the local agent's register/heartbeat, which the relay answers
+  `session_required` until this Mac's release identity is authorized on the web.
+
+## 2026-10-31 21:33 +0800 — PR112 integrates its fixed upstream point
+
+- User authorizes resolving PR112 against the exact upstream main8674a3ee. Only
+  that object was fetched; main began clean at60e4/tree1876. Original fork
+  Check41202852256 is successful evidence for that earlier input, not this merge.
+- Normal no-commit merge exposes three text conflicts. Preserve the instance-owned
+  P5 composition/delegate and move upstream development Dock icon initialization
+  into it; preserve both service-address setup and sync management methods, plus
+  both sides' original checkpoint records. Automatic overlap paths are also read.
+- Upstream's native-probe compile/runtime budgets are inherited unchanged from8674,
+  separate from the already accepted hover cleanup and its42/42 at46.648s. New
+  normal hooks, affected owner checks and natural CI remain pending for this input.
+- No fresh physical/GUI scenario, live collection/authentication, D1 write, system
+  setting, deployment or publication. Root sends only the final review request
+  after technical readiness. The PR itself will not be merged by this writer.
+
+- Integration red on candidate03581ba6: full devices33/25pass/8fail/0skip,
+  log23cc72cb; original input stayed fixed through termination. Upstream's new
+  always-ask default exposes missing fixture decisions. The two owning fixtures
+  now explicitly allow via trusted service/Host policy management; product
+  defaults and sync authorization remain unchanged. Complete rerun is next.
+
+- Candidate18c6773f complete devices33/33/0skip (468c917d), Bots owner check
+  (f43b9db1) and full macOS strict format all finish0, with stable tree and no
+  unstaged delta. Later summary-only docs remove stale B/final-binding pending
+  and distinguish historical182 from fixed8674; nine Orca links stay unchanged.
+  Normal merge commit/hooks/push and new natural CI remain the next live hop.
+
+## 2026-10-31 21:53 +0800 — profile-scoped service origin red
+
+- Original full Swift package run on the address regression finishes1. The new
+  two-profile case writes App-owned defaults but independent profile readers
+  cannot see either origin; red1970449b is preserved. No live helper or daily
+  preference domain is used. Service origins now follow only the control's
+  validated bundle profile; injected controls explicitly own test storage.
+- That same run separately exposes stale packaged Agent dist (three Host policy
+  assertions) and an upstream icon load failure still under diagnosis. Rebuild
+  Agent normally before the next complete Swift run; do not lower its fresh
+  always-ask default. v3 checks retain their original scope.
+- No new collection/authentication, live D1, GUI or physical scenario. PR112 still
+  awaits the profile P2 review, normal merge hooks/push and new natural CI. The
+  Node and Swift fixture approval is explicit setup, not restart-persistence proof.
+
+- Complete Swift profile-fix input finishese8a6d8ca/exit0:215 Features,57 Devices,
+  60 Design plus1 icon XCTest, all unfiltered. Address isolation/reopen and
+  missing/invalid-profile refusal pass. A normal Agent build resolves the stale
+  dist Host mismatch; the unchanged icon also passes, without a cause/fix claim.
+  P2 source review and normal merge delivery remain pending; no fresh live work.

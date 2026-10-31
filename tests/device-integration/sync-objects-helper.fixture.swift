@@ -34,6 +34,11 @@ import Foundation
         await host.stop()
         throw DevicePortError(host.failure ?? "fixture_registration_timeout")
       }
+      // Each startup explicitly supplies tool approval when the current mode is not all-approve.
+      let policy = try await host.call("policy.get")
+      if policy["mode"]?.string != "all-approve" {
+        _ = try await host.call("policy.set", params: .object(["mode": .string("all-approve")]))
+      }
       emit(
         .object([
           "type": .string("ready"), "deviceId": .string(identity.deviceId),

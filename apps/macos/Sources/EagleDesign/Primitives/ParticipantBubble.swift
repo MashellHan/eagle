@@ -12,6 +12,18 @@ public struct ParticipantBubble: View {
   private let onRetry: () -> Void
   private let onDismissError: () -> Void
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  private var statusTint: Color {
+    guard let status else { return Theme.Palette.textMuted }
+    if status.error != nil { return Theme.Palette.destructive }
+    switch status.phase {
+    case .idle: return Theme.Palette.accentStrong
+    case .working: return Theme.Palette.accent
+    case .connecting: return Theme.Palette.info
+    case .attention: return Theme.Palette.warning
+    case .offline: return Theme.Palette.textMuted
+    }
+  }
   @State private var hovering = false
   @State private var showsError = false
 
@@ -37,19 +49,18 @@ public struct ParticipantBubble: View {
       Button(action: action) {
         HStack(spacing: Theme.Metric.participantGap) {
           avatar
-          VStack(alignment: .leading, spacing: 2) {
-            Text(name)
-              .font(Theme.TypeScale.cardTitle)
-              .foregroundStyle(Theme.Palette.textPrimary)
-              .lineLimit(1)
-            if let status {
-              Text(status.label)
-                .font(Theme.TypeScale.activity)
-                .foregroundStyle(tint)
-                .lineLimit(1)
-                .id(status.label)
-                .transition(.opacity)
-            }
+          Text(name)
+            .font(.system(size: 13.5, weight: .semibold))
+            .foregroundStyle(Theme.Palette.textPrimary)
+            .lineLimit(1)
+          if let status {
+            Image(systemName: status.glyph)
+              .font(.system(size: 12, weight: .semibold))
+              .foregroundStyle(statusTint)
+              .id(status.glyph)
+              .transition(.opacity)
+              .help(status.label)
+              .accessibilityLabel(status.label)
           }
         }
         .frame(height: Theme.Metric.headerControlHeight)
@@ -112,9 +123,17 @@ public struct ParticipantBubble: View {
     .buttonStyle(.plain)
     .padding(.horizontal, Theme.Metric.participantInset)
     .frame(height: Theme.Metric.participantHeight)
+    // The reference pill is a capsule: half-height corners on white, with a soft shadow that
+    // separates it from the transcript instead of a border.
     .background(
-      RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
-        .fill(hovering ? Theme.Palette.hover : Theme.Palette.card)
+      Capsule(style: .continuous)
+        .fill(Theme.Palette.card)
+        .overlay { if hovering { Capsule(style: .continuous).fill(Theme.Palette.hover) } }
+        .shadow(
+          color: .black.opacity(Theme.Metric.participantShadowOpacity),
+          radius: Theme.Metric.participantShadowRadius,
+          y: Theme.Metric.participantShadowY
+        )
     )
     .overlay {
       if status?.isActive == true {

@@ -11,12 +11,17 @@ the website/Worker release version; keep its lockfile synchronized. Releases are
 independent per surface: the website/Worker take the root version, the Agent takes
 `packages/agent/package.json`, and the macOS app takes
 `apps/macos/Support/Version.json` (a release bumps only the surface it ships).
-`scripts/deploy.ts` publishes that app version as `MACOS_VERSION`, so `/api/live`
-answers `macos.latest`; only a release-profile app build asks that endpoint, and a
-newer answer is a link to the release page, never an automatic replacement. `packages/agent/package.json` owns the independent
-Agent version; CLI output and packed artifacts derive from it. Website onboarding
-uses root `config.publishedAgentVersion`, which must reference a verified published
-Agent version and can differ from an unpublished source candidate.
+`packages/agent/package.json` owns the independent Agent version; CLI output and
+packed artifacts derive from it. Website onboarding uses root
+`config.publishedAgentVersion`, which must reference a verified published Agent
+version and can differ from an unpublished source candidate. The App may ship or be
+skipped at will: root `config.publishedMacosVersion` is `/api/live`'s `macos.latest`
+and changes only in a release that attaches an app to a GitHub release, never because
+`apps/macos/Support/Version.json` moved; only a release-profile app build asks that
+endpoint, and a newer answer is a link to the release page, never an automatic
+replacement. Published App builds are ad-hoc signed and not notarized, so the download
+instructions carry the quarantine removal and approvals by hand; `spctl
+--master-disable` is never the fix.
 Website-only releases may keep the currently published Agent version and skip npm
 publication when Agent behavior, dependencies and protocol requirements are
 unchanged. Changes to those require an Agent version bump and publication before

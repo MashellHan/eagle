@@ -1,4 +1,5 @@
 import AppKit
+import EagleDesign
 import Foundation
 
 @MainActor public final class EagleApplicationDelegate: NSObject, NSApplicationDelegate {
@@ -43,6 +44,8 @@ import Foundation
 
   public func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
+    // A swift-run binary has no bundle icon, so keep the development Dock icon explicit.
+    if Bundle.main.bundleIdentifier == nil { NSApp.applicationIconImage = EagleIcon.image }
     NSApp.activate(ignoringOtherApps: true)
     guard let devices else { return }
     DeviceApprovalWindowController.shared.observe(devices)

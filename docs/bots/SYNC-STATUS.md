@@ -1,7 +1,7 @@
 # Authenticated persistent replica status
 
 This document retains the all-path status slice contract and its dated execution
-records. Current delivery is `193f75bd` / tree `73695d14`, single parent6575f53f;
+records. The all-path slice was delivered as `193f75bd` / tree `73695d14`, single parent6575f53f;
 accepted source-v2863cd483 and final25b2ea37 close its Review, normal hooks and
 own-ref/tracking checks. Direct/cache/relay receiver reporting and sender reads
 are implemented. `peerApplied` remains unknown when the current complete key has
@@ -11,10 +11,12 @@ Later paragraphs about pending candidates or physical route prerequisites descri
 those earlier stages, not current progress. Scene5 is accepted only with
 f5b7827b+6766880e+timing38377da4 (application direct over Tail DERP, owned Miniflare
 cache fallback/return). P5 source-v6/normal gates and finite A native/restart are
-accepted; finite B native/restart/passive482935b0 is observed and awaits final
-Review/evidence binding. See [current architecture](SYNC-ARCHITECTURE.md),
+accepted, as are finite B native/restart/passive482935b0 and final Review/tree
+binding. B's pre-send interruption remains cause-not-assigned. See
+[current architecture](SYNC-ARCHITECTURE.md),
 [PLAN](PLAN.md) and [SYNC-NATIVE](SYNC-NATIVE.md) for present scope, and
-[TESTING](TESTING.md) for original runs and failures. Fixed upstream182fc1f remains.
+[TESTING](TESTING.md) for original runs and failures. Historical common baseline182fc1f
+is distinct from the fixed upstream8674 integrated for PR112.
 
 The smallest connection uses two additional typed metadata operations,
 `status-report` and `status-read`, through existing Node manage, Registry authority

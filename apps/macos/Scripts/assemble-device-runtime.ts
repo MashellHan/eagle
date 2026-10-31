@@ -193,6 +193,57 @@ function verifyInstalled(directory: string, lock: Lock) {
       throw new Error(`installed package differs from lock: ${path}`);
   }
 }
+/// Files and directories a package ships for its own development. Nothing under a bundled
+/// `node_modules` reads them at runtime, and together they are a third of the runtime's bytes.
+const PRUNED_DIRECTORIES = new Set([
+  "test",
+  "tests",
+  "__tests__",
+  "docs",
+  "doc",
+  "examples",
+  "example",
+  "benchmark",
+  "benchmarks",
+  "coverage",
+  ".github",
+  ".circleci",
+]);
+const PRUNED_SUFFIXES = [".map", ".d.ts", ".d.mts", ".d.cts", ".md"];
+
+/** Removes development-only files from every bundled `node_modules`, keeping executables and
+ *  symlinks intact: the receipt records what a build dropped. */
+export function pruneDevelopmentFiles(root: string): {
+  files: number;
+  directories: number;
+} {
+  const counts = { files: 0, directories: 0 };
+  const visit = (directory: string, inside: boolean): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      // `.bin` holds the executable links a package's scripts rely on.
+      if (entry.name === ".bin") continue;
+      const path = join(directory, entry.name);
+      const prunable = inside || entry.name === "node_modules";
+      if (entry.isDirectory()) {
+        if (prunable && PRUNED_DIRECTORIES.has(entry.name)) {
+          rmSync(path, { recursive: true, force: true });
+          counts.directories += 1;
+          continue;
+        }
+        visit(path, prunable);
+      } else if (
+        !entry.isSymbolicLink() &&
+        prunable &&
+        PRUNED_SUFFIXES.some((suffix) => entry.name.endsWith(suffix))
+      ) {
+        rmSync(path, { force: true });
+        counts.files += 1;
+      }
+    }
+  };
+  visit(root, false);
+  return counts;
+}
 export function verifyRuntimeLinks(root: string, directory = root): void {
   const boundary = realpathSync(root);
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -356,6 +407,9 @@ export function assembleRuntime(options: Options): void {
     );
     npm(botsCache, bots, ["ci", "--omit=dev", "--no-audit", "--no-fund"]);
     verifyInstalled(bots, botsLock);
+    // Every locked manifest has been verified, so the trees can lose what only their own
+    // developers need.
+    const pruned = pruneDevelopmentFiles(stage);
     verifyRuntimeLinks(stage);
     if (
       originalLocks[0] !== digest(rootLockPath) ||
@@ -378,6 +432,7 @@ export function assembleRuntime(options: Options): void {
         tarSha256: digest(join(agent, "agent.tgz")),
       },
       bots: { version: botsManifest.version, lockSha256: originalLocks[1] },
+      pruned,
       verified,
     });
     renameSync(stage, destination);

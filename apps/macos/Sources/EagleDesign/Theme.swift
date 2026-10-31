@@ -59,7 +59,7 @@ public enum Theme {
     public static let trafficLightPitch: CGFloat = 23
     public static let trafficLightsEnd: CGFloat =
       trafficLightLeading + trafficLightPitch * 2 + trafficLightSize
-    public static let toolbarHeight: CGFloat = 32
+    public static let toolbarHeight: CGFloat = 35
     public static let toolbarTopInset: CGFloat = 0
     public static let headerHeight: CGFloat = 72
     /// The tallest control in the header band is the participant card, so the band is its height.
@@ -68,11 +68,26 @@ public enum Theme {
     public static let headerTopInset: CGFloat = contentInset
     /// Content that shares the window's top corner with the traffic lights starts past them.
     public static let trafficLightsClearance: CGFloat = trafficLightsEnd + 8
-    public static let headerControlHeight: CGFloat = 34
+    /// The reference header control: a 35 pt circle, a 16 pt glyph, a hairline ring and a soft
+    /// drop shadow. Sized once here so every header group stays identical.
+    public static let headerControlHeight: CGFloat = 35
+    public static let roundGlyphRatio: CGFloat = 0.46
+    public static let roundShadowRadius: CGFloat = 7
+    public static let roundShadowY: CGFloat = 2.5
+    public static let roundShadowOpacity: Double = 0.10
+    /// Room a header control's shadow needs below its frame; without it the next panel paints
+    /// over the shadow and it reads as cut off.
+    public static let roundShadowBleed: CGFloat =
+      roundShadowRadius + roundShadowY
+    /// Gap between header circles, measured from the reference: 9 pt of air between rings.
+    public static let headerControlGap: CGFloat = 9
     public static let participantHeight: CGFloat = 40
-    public static let participantInset: CGFloat = 12
-    public static let participantGap: CGFloat = 12
-    public static let participantAvatar: CGFloat = 26
+    public static let participantInset: CGFloat = 15
+    public static let participantGap: CGFloat = 10
+    public static let participantAvatar: CGFloat = 25
+    public static let participantShadowRadius: CGFloat = 9
+    public static let participantShadowY: CGFloat = 3
+    public static let participantShadowOpacity: Double = 0.12
 
     public static let contentInset: CGFloat = 20
     /// Rows sit on cards inset from the panel edges; avatars keep the 20 pt line.

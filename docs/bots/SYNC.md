@@ -6,11 +6,12 @@ AGENTS/skills 范围和早期确认状态属于当时分析，不应作为当前
 [PLAN](PLAN.md)，实际原生/物理范围为 [SYNC-NATIVE](SYNC-NATIVE.md)；原失败与
 验收事件仍见 [TESTING](TESTING.md)，本文不改现有协议。
 
-当前已交付至 `193f75bd`：原始历史/完整版本资源、认证 direct、72h cache、online-holder
+all-path 历史交付 `193f75bd` 已含原始历史/完整版本资源、认证 direct、72h cache、online-holder
 relay 与 all-path status。P5 source-v6 和受影响 normal gates 已接受；两机 API/SDK、
-A/B 实际原生发送/重启与双方被动接收已有有限原件，B `482935b0` 及最终绑定待原 Review。
+A/B 实际原生发送/重启与双方被动接收、B `482935b0` 及最终绑定已在有限范围正式接受。
+B 发送前中断仍未定因，恢复后的通过不扩大该结论。
 `peerApplied` 按当前完整身份/binding/source 的实际确认分开呈现，未知仍 unknown；
-不再将早期“尚未接线”当现状。固定上游为 `182fc1f`，不更新。
+不再将早期“尚未接线”当现状。`182fc1f` 为历史共同基线；PR112 本轮整合固定 upstream `8674a3ee`。
 
 ## 已确认的产品要求
 

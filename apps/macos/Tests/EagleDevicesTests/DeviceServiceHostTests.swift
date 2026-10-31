@@ -99,7 +99,10 @@ struct DeviceServiceHostTests {
       let port = DeviceLocalPort(path: host.socketPath)
       let status = try await port.call("status")
       #expect(status["localReady"]?.bool == true)
-      #expect(status["policy"]?["mode"]?.string == "all-approve")
+      // A device nobody decided about asks before it acts...
+      #expect(status["policy"]?["mode"]?.string == "always-ask")
+      // ...and this case is about the tool path once the person has allowed it.
+      _ = try await host.call("policy.set", params: .object(["mode": .string("all-approve")]))
       let output = host.stateDirectory.appendingPathComponent("proof.txt")
       let operation: DeviceJSON = .object([
         "kind": .string("file.write"), "path": .string(output.path), "content": .string("真实本机"),
@@ -218,7 +221,7 @@ struct DeviceServiceHostTests {
     await #expect(throws: DevicePortError.self) {
       try await client.call("policy.set", params: .object(["mode": .string("paused")]))
     }
-    #expect(try await host.call("policy.get")["mode"]?.string == "all-approve")
+    #expect(try await host.call("policy.get")["mode"]?.string == "always-ask")
     client.invalidate()
     withExtendedLifetime(server) { listener.invalidate() }
     let trustedListener = NSXPCListener.anonymous()
@@ -262,7 +265,7 @@ struct DeviceServiceHostTests {
       #expect(host.failure == nil)
       #expect(try String(contentsOf: starts, encoding: .utf8).split(separator: "\n").count == 2)
       #expect(try await host.call("service.status")["localReady"]?.bool == true)
-      #expect(try await host.call("policy.get")["mode"]?.string == "all-approve")
+      #expect(try await host.call("policy.get")["mode"]?.string == "always-ask")
     } catch {
       await host.stop()
       throw error

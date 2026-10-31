@@ -16,6 +16,7 @@ public struct DeviceSettingsView: View {
   public var body: some View {
     VStack(alignment: .leading, spacing: 18) {
       connectionStatus
+      serviceAddressCard
       SettingsCard {
         pairingContent.padding(.vertical, 18)
       }
@@ -59,6 +60,32 @@ public struct DeviceSettingsView: View {
       }
       .font(Theme.TypeScale.note)
       serviceRecovery
+    }
+  }
+
+  /// A published App names no relay: this field is where a person points it at their own.
+  private var serviceAddressCard: some View {
+    SettingsCard {
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 12) {
+          SettingsTextField(
+            "https://devices.example.com", text: $model.serviceAddressDraft)
+          SettingsActionButton("保存") {
+            Task { await model.saveServiceAddress() }
+          }
+          .disabled(model.controlsBusy)
+        }
+        Text(
+          model.needsServiceAddress
+            ? "这台 Mac 还没有可连接的设备服务地址。填写你自己部署的 relay 地址后才会连接；App 不自带任何默认地址。"
+            : "设备服务地址由你配置，App 不内置默认值；修改后会重启本机服务。"
+        )
+        .font(Theme.TypeScale.note)
+        .foregroundStyle(Theme.Palette.textMuted)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityIdentifier("devices.serviceAddress")
+      }
+      .padding(.vertical, 18)
     }
   }
 

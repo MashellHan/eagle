@@ -204,6 +204,8 @@ export function deviceProcess(
       await process.message(
         (message) => message.type === "cloud" && message.status === "online",
       );
+      // These cases exercise tools after the person's decision, not the fresh-device default.
+      await this.manage("policy.set", { mode: "all-approve" });
     },
     async manage(method: string, params?: unknown) {
       const requestId = randomUUID();

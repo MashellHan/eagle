@@ -24,8 +24,6 @@ public struct SidebarPanel: View {
   private let userName: String
   private let onPinItem: (String) -> Void
   private let moveTargets: (String) -> [SidebarItemGroup]
-  /// The trailing switch's one action: a trigger row toggles, it never opens a menu.
-  private let onToggleItem: (String) -> Void
   private let onMoveItem: (String, String?) -> Void
   private let onMarkUnread: (String) -> Void
   private let onCopyId: (String) -> Void
@@ -61,7 +59,7 @@ public struct SidebarPanel: View {
     userName: String = "Zheng Li",
     onPinItem: @escaping (String) -> Void = { _ in },
     moveTargets: @escaping (String) -> [SidebarItemGroup] = { _ in [] },
-    onToggleItem: @escaping (String) -> Void = { _ in },
+
     onMoveItem: @escaping (String, String?) -> Void = { _, _ in },
     onMarkUnread: @escaping (String) -> Void = { _ in },
     onCopyId: @escaping (String) -> Void = { _ in },
@@ -90,7 +88,6 @@ public struct SidebarPanel: View {
     self.userName = userName
     self.onPinItem = onPinItem
     self.moveTargets = moveTargets
-    self.onToggleItem = onToggleItem
     self.onMoveItem = onMoveItem
     self.onMarkUnread = onMarkUnread
     self.onCopyId = onCopyId
@@ -117,13 +114,16 @@ public struct SidebarPanel: View {
       Spacer(minLength: 0)
       toolbar
     }
-    .frame(height: Theme.Metric.headerControlHeight)
+    .frame(height: Theme.Metric.headerControlHeight, alignment: .top)
     .padding(.horizontal, Theme.Metric.contentInset)
+    // The list below would paint over the controls' shadows without this room.
+    .padding(.bottom, Theme.Metric.roundShadowBleed)
     .padding(.top, Theme.Metric.headerTopInset)
   }
 
   private var toolbar: some View {
-    HStack(spacing: 6) {
+    // One spacing for every header group, so the circle rhythm matches the reference.
+    HStack(spacing: Theme.Metric.headerControlGap) {
       IconButton(
         systemName: "magnifyingglass",
         label: "搜索",
@@ -200,7 +200,7 @@ public struct SidebarPanel: View {
 
   @ViewBuilder
   private func sectionHeader(_ section: SidebarSection, isFirst: Bool) -> some View {
-    if section.role == .ungrouped || section.role == .owned {
+    if section.role == .ungrouped {
       sectionHeaderContent(section, isFirst: isFirst)
     } else {
       sectionHeaderContent(section, isFirst: isFirst)
@@ -290,20 +290,7 @@ public struct SidebarPanel: View {
 
   @ViewBuilder
   private func row(_ item: SidebarItem) -> some View {
-    HStack(spacing: Theme.Metric.rowToggleGap) {
-      selectableRow(item)
-      if let toggle = item.toggle {
-        // Outside the row's button, so one click switches and never selects.
-        SwitchToggle(
-          isOn: Binding(get: { toggle.isOn }, set: { _ in onToggleItem(item.id) }),
-          label: toggle.label,
-          size: .compact
-        )
-        .padding(.trailing, Theme.Metric.rowContentInset)
-        .help(toggle.label)
-      }
-    }
-    .id(item.id)
+    selectableRow(item).id(item.id)
   }
 
   @ViewBuilder
@@ -427,12 +414,17 @@ public struct SidebarPanel: View {
       .buttonStyle(.plain)
       .accessibilityLabel("账户与设置")
       Spacer(minLength: 0)
-      HStack(spacing: 12) {
-        Image(systemName: "bell")
-          .font(.system(size: 13))
-          .foregroundStyle(Theme.Palette.textSecondary)
+      HStack(spacing: Theme.Metric.headerControlGap) {
+        IconButton(
+          systemName: "bell", label: "通知",
+          size: Theme.Metric.headerControlHeight,
+          tint: Theme.Palette.textSecondary,
+          style: .circled,
+          action: onUnread
+        )
         IconButton(
           systemName: "square.grid.2x2", label: "Eagle 模板库",
+          size: Theme.Metric.headerControlHeight,
           style: .circled, action: onGallery
         )
       }

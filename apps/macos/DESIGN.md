@@ -153,7 +153,7 @@ keeps a label and 24 pt hit target, and the green bubble uses white text.
    `#55A471`/`#5DB57B`; white text on the bubble stays above 4.5:1.
 5. **First slice**: template gallery plus the three-column shell on mock data,
    with a composer that appends locally.
-6. **App shell**: SPM package with an `EagleApp` executable. No Xcode project,
+6. **App shell**: SPM package whose `Eagle` product is the `EagleApp` executable. No Xcode project,
    so the tree builds with Command Line Tools; a bundled `.app` and signing are
    a later, separately scoped step.
 

@@ -1008,3 +1008,28 @@ passes; runtime success remains for the next normal CI, without a manual rerun.
 A no-window clock comparison did not support timer-tolerance attribution; an
 idle-loop observer failed a private-event consumption control and was not adopted.
 Original timeout and diagnostic failures remain under `.local/sync-ci-focus/`.
+
+
+### 2026-10-31 — explicit permission prerequisites after the upstream merge
+
+The fixed upstream8674 changes a fresh device from implicit allow to always-ask.
+The sync integration fixtures still assumed the old initial decision: the complete
+33-test suite produced three tool-settlement timeouts and five tool-error failures
+on the first merged input. Preserve that red and the stronger product default.
+The test-owned Node service and Swift Host now receive an explicit trusted allow
+before the tool-path scenarios; on each startup the Swift fixture explicitly sets
+all-approve if the current mode differs. This setup does not prove permission
+persistence across restarts or bypass the Bot port or live policy.
+The original full suite, owner checks and normal hooks validate the merged input.
+
+
+### 2026-10-31 — helper address ownership after composition integration
+
+The upstream Settings address used the App defaults, but P5's owned composition
+uses root-specific defaults and the helper read standard preferences. Saving in
+one process therefore did not configure the other. The signed helper profile now
+owns the address domain; the real control exposes that read-only profile and both
+processes use it. Same-profile Bot roots intentionally share the helper origin,
+while registration/pairing/Outbox keep their existing storage. The full Swift red
+and green use private domains and an independent preferences reader, without
+starting a live helper or changing daily data.

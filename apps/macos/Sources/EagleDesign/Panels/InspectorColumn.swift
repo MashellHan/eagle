@@ -22,8 +22,9 @@ public struct InspectorColumn: View {
   private let usage: [InspectorUsageRow]
   private let choices: [InspectorChoiceRow]
   /// The selected trigger's read-only detail; empty leaves the section's placeholder.
-  private let triggers: [InspectorUsageRow]
+  private let triggers: [InspectorTriggerRow]
   private let onChoose: (String, String) -> Void
+  private let onToggleTrigger: (String, Bool) -> Void
   @Binding private var tab: Tab
   private let onRetryTask: (String) -> Void
   private let onStopTask: (String) -> Void
@@ -47,8 +48,9 @@ public struct InspectorColumn: View {
     tasks: [InspectorTaskRow] = [],
     usage: [InspectorUsageRow] = [],
     choices: [InspectorChoiceRow] = [],
-    triggers: [InspectorUsageRow] = [],
+    triggers: [InspectorTriggerRow] = [],
     onChoose: @escaping (String, String) -> Void = { _, _ in },
+    onToggleTrigger: @escaping (String, Bool) -> Void = { _, _ in },
     tab: Binding<Tab>,
     onRetryTask: @escaping (String) -> Void = { _ in },
     onStopTask: @escaping (String) -> Void = { _ in },
@@ -73,6 +75,7 @@ public struct InspectorColumn: View {
     self.choices = choices
     self.triggers = triggers
     self.onChoose = onChoose
+    self.onToggleTrigger = onToggleTrigger
     self._tab = tab
     self.onRetryTask = onRetryTask
     self.onStopTask = onStopTask
@@ -91,10 +94,11 @@ public struct InspectorColumn: View {
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       HeaderRow {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.Metric.headerControlGap) {
           Spacer(minLength: 0)
           IconButton(
-            systemName: "square.and.arrow.up", label: "分享", style: .circled, action: onShare)
+            systemName: "square.and.arrow.up", label: "分享",
+            size: Theme.Metric.headerControlHeight, style: .circled, action: onShare)
           IconButton(
             systemName: "xmark",
             label: "收起检查器",
@@ -146,7 +150,7 @@ public struct InspectorColumn: View {
     case .model:
       return InspectorSections.model(choices: choices, usage: usage)
     case .triggers:
-      return [InspectorSections.triggersSection.with(.usage(triggers))]
+      return [InspectorSections.triggersSection.with(.triggers(triggers))]
     case .library:
       return InspectorSections.library()
     case .computer:
@@ -166,7 +170,8 @@ public struct InspectorColumn: View {
           onExpand: onExpand,
           onRetryTask: onRetryTask,
           onStopTask: onStopTask,
-          onChoose: onChoose
+          onChoose: onChoose,
+          onToggleTrigger: onToggleTrigger
         )
       }
     }

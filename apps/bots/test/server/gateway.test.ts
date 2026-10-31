@@ -97,6 +97,11 @@ test("a gateway URL must be http(s), without a trailing slash", () => {
 
 test("the probe reports reachability, auth and model count", async () => {
   const server = createServer((request, response) => {
+    if (request.url === "/api/live") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ status: "ok", version: "2.3.4", revision: "abc123" }));
+      return;
+    }
     if (request.headers.authorization !== "Bearer good") {
       response.writeHead(401).end();
       return;
@@ -118,6 +123,11 @@ test("the probe reports reachability, auth and model count", async () => {
     assert.equal(ok.ok, true);
     assert.equal(ok.models, 2);
     assert.match(ok.message, /2 个模型/);
+    // The origin's own health endpoint names the build a person is talking to.
+    assert.deepEqual(
+      { ok: ok.health?.ok, version: ok.health?.version, revision: ok.health?.revision },
+      { ok: true, version: "2.3.4", revision: "abc123" },
+    );
 
     const refused = await testGateway({
       provider: "magpie",
@@ -128,6 +138,7 @@ test("the probe reports reachability, auth and model count", async () => {
     assert.equal(refused.ok, false);
     assert.equal(refused.status, 401);
     assert.match(refused.message, /API Key/);
+    assert.equal(refused.health?.ok, true, "a rejected key still leaves the gateway reachable");
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

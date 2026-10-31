@@ -13,7 +13,7 @@ public struct MenuIconButton<Content: View>: View {
   public init(
     systemName: String,
     label: String,
-    size: CGFloat = Theme.Metric.iconButton,
+    size: CGFloat = Theme.Metric.headerControlHeight,
     @ViewBuilder content: () -> Content
   ) {
     self.systemName = systemName
@@ -27,16 +27,12 @@ public struct MenuIconButton<Content: View>: View {
       content
     } label: {
       Image(systemName: systemName)
-        .font(.system(size: size * 0.55, weight: .medium))
+        .font(
+          .system(size: size * Theme.Metric.roundGlyphRatio, weight: .regular)
+        )
         .foregroundStyle(Theme.Palette.textPrimary)
         .frame(width: size, height: size)
-        .background {
-          Circle()
-            .fill(hovering ? Theme.Palette.hover : Theme.Palette.card)
-            .overlay(
-              Circle().strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
-            )
-        }
+        .background { RoundControlSurface(size: size, hovering: hovering) }
     }
     .menuStyle(.button)
     .buttonStyle(.plain)

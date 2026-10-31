@@ -7,17 +7,20 @@
 
 - 已交付：本地副本/原始历史和完整资源、定向授权与互证、72h 加密缓存、
   自动回退/稳定切回、在线 holder 补读，以及独立的持久状态上报/读取。
-  当前交付基线为 `193f75bd` / tree `73695d14`。
+  all-path 历史交付为 `193f75bd` / tree `73695d14`。
 - P5 source-v6 `a4e8d4b3` 及正常受影响门禁已接受：有界 head 目录、持久 context、
   两父合并/资源选择、原 composer/Outbox 和 owned 原生 composition 已接通。
   A/B 真实原生选择/发送与同身份 App/daemon 重启、两机 API/SDK 接力和并发、
-  过期后 B→新 C relay 补齐均有各自有限收据；B `482935b0` 与最终文档/树待原 Review 绑定。
+  过期后 B→新 C relay 补齐均有各自有限收据，B `482935b0` 与最终文档/树已正式接受。
+  B 发送前中断仍未定因；恢复后的有限实链通过不表示中断已修复。
 - 物理 scene5 已证产品 direct→owned cache→direct；direct 运行在 Tailscale DERP
   上，后备是隔离 Miniflare。scene6 使用 owned 原 alarm 的到期时间窗口；
   不将这些证据扩称 UDP P2P、真实墙钟72h或已部署 Cloudflare。
 
-固定上游为 `182fc1f704774eb37bdbc11cde017f8ff61f1c1a`，开发期间不再更新。
-末尾 PR 比较 base 只正常快进到这个已在本地的提交；PR 准入和准确收据见
+`182fc1f704774eb37bdbc11cde017f8ff61f1c1a` 是本次开发的历史共同基线。
+本轮按授权整合固定 upstream main `8674a3eeebd02005d086cb75fd99a06ced68b572`，
+[PR #112](https://github.com/nocoo/eagle/pull/112) 的目标为 `nocoo/eagle:main`。
+各 head 的正常检查、PR 准入与有限证据分别记录，见
 [PLAN](PLAN.md)、[SYNC-NATIVE](SYNC-NATIVE.md) 与 [TESTING](TESTING.md)。
 
 ## 组件与数据边界

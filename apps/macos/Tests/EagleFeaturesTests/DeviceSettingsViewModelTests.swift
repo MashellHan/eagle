@@ -1,3 +1,4 @@
+import CryptoKit
 import EagleDevices
 import Foundation
 import Testing
@@ -443,6 +444,7 @@ struct DeviceSettingsViewModelTests {
 
 @MainActor final class DeviceSettingsControlStub: DeviceControl {
   let domain = "EagleDeviceSettingsTests.\(UUID().uuidString)"
+  var serviceProfile: String?
   var socketPath: String? { "/test/access.sock" }
   var starts = 0
   var stops = 0
@@ -513,12 +515,16 @@ func deviceDirectory(observation: String = "first", online: Bool? = nil) -> Devi
 }
 
 @MainActor func deviceSettingsFixture(
+  requiresServiceAddress: Bool? = false,
   now: @escaping @MainActor () -> Date = { Date() }
 ) -> (DeviceSettingsViewModel, DeviceSettingsControlStub, UserDefaults) {
   let control = DeviceSettingsControlStub()
   let defaults = UserDefaults(suiteName: control.domain)!
   return (
-    DeviceSettingsViewModel(control: control, defaults: defaults, now: now), control, defaults
+    DeviceSettingsViewModel(
+      control: control, defaults: defaults, serviceAddressDefaults: defaults,
+      requiresServiceAddress: requiresServiceAddress, now: now),
+    control, defaults
   )
 }
 
@@ -532,4 +538,117 @@ func deviceApproval(expiresAt: Int64) throws -> DeviceApprovalRequest {
     "operation": operation, "digest": .string(try DeviceApprovalRequest.digest(operation)),
     "policyVersion": .number(1), "expiresAt": .number(Double(expiresAt)),
   ]).decoded(DeviceApprovalRequest.self)
+}
+
+@Suite("Device service address configuration", .serialized)
+@MainActor
+struct DeviceServiceAddressConfigurationTests {
+  @Test(
+    "the signed profile address crosses App defaults and a cold helper reader without crossing profiles"
+  )
+  func profileAddressOwnership() async throws {
+    let profiles = ["address-a-" + UUID().uuidString, "address-b-" + UUID().uuidString]
+    var helperDomains: [String] = []
+    var appDomains: [String] = []
+    defer {
+      for domain in helperDomains + appDomains {
+        UserDefaults(suiteName: domain)?.removePersistentDomain(forName: domain)
+      }
+    }
+    for (index, profile) in profiles.enumerated() {
+      let digest = SHA256.hash(data: Data(profile.utf8)).map { String(format: "%02x", $0) }.joined()
+      let helperDomain = "ai.hexly.eagle.devices.address." + digest
+      helperDomains.append(helperDomain)
+      let control = DeviceSettingsControlStub()
+      control.serviceProfile = profile
+      appDomains.append(control.domain)
+      let appDefaults = try #require(UserDefaults(suiteName: control.domain))
+      let helperDefaults = try #require(UserDefaults(suiteName: helperDomain))
+      let origin = "https://profile-\(index).example.com"
+      let model = DeviceSettingsViewModel(
+        control: control, defaults: appDefaults, requiresServiceAddress: true)
+      model.serviceAddressDraft = origin
+      await model.saveServiceAddress()
+      #expect(model.errorCode == nil)
+      #expect(
+        DeviceServiceAddress.saved(appDefaults) == nil, "root-owned settings do not own this origin"
+      )
+      helperDefaults.synchronize()
+      let read = Process()
+      let output = Pipe()
+      let errors = Pipe()
+      read.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+      read.arguments = ["read", helperDomain, DeviceServiceAddress.defaultsKey]
+      read.standardOutput = output
+      read.standardError = errors
+      try read.run()
+      read.waitUntilExit()
+      #expect(
+        read.terminationStatus == 0, "an independent profile reader must see the selected origin")
+      #expect(
+        String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+          .trimmingCharacters(in: .whitespacesAndNewlines) == origin)
+      #expect(DeviceServiceAddress.saved(profile: profile) == origin)
+      let reopenedControl = DeviceSettingsControlStub()
+      reopenedControl.serviceProfile = profile
+      appDomains.append(reopenedControl.domain)
+      let reopened = DeviceSettingsViewModel(
+        control: reopenedControl,
+        defaults: try #require(UserDefaults(suiteName: reopenedControl.domain)),
+        requiresServiceAddress: true)
+      #expect(reopened.savedServiceAddress == origin)
+      if index == 1 {
+        #expect(
+          DeviceServiceAddress.saved(try #require(UserDefaults(suiteName: helperDomains[0])))
+            == "https://profile-0.example.com")
+      }
+    }
+  }
+
+  @Test(
+    "missing or invalid profiles cannot read root preferences or save an address",
+    arguments: [nil, "", String(repeating: "x", count: 81)] as [String?])
+  func invalidProfile(profile: String?) async throws {
+    let control = DeviceSettingsControlStub()
+    control.serviceProfile = profile
+    let defaults = try #require(UserDefaults(suiteName: control.domain))
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    DeviceServiceAddress.save("https://root-only.example.com", defaults: defaults)
+    let model = DeviceSettingsViewModel(
+      control: control, defaults: defaults, requiresServiceAddress: true)
+    #expect(model.savedServiceAddress.isEmpty)
+    model.serviceAddressDraft = "https://refused.example.com"
+    await model.saveServiceAddress()
+    #expect(model.errorCode == "invalid_configuration")
+    #expect(model.needsServiceAddress && control.starts == 0)
+    #expect(DeviceServiceAddress.saved(defaults) == "https://root-only.example.com")
+  }
+
+  @Test("a bundle without a relay never starts the service before a person names one")
+  func unconfiguredStaysIdle() async throws {
+    let (model, control, defaults) = deviceSettingsFixture(requiresServiceAddress: true)
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    #expect(model.needsServiceAddress)
+    await model.startIfNeeded()
+    #expect(control.starts == 0)
+    #expect(!model.localReady)
+  }
+
+  @Test("saving an origin is stored and starts the service; a bad value is refused")
+  func savingOrigin() async throws {
+    let (model, control, defaults) = deviceSettingsFixture(requiresServiceAddress: true)
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    model.serviceAddressDraft = "http://devices.example.com"
+    await model.saveServiceAddress()
+    #expect(model.errorCode == "invalid_service_address")
+    #expect(control.starts == 0)
+    #expect(DeviceServiceAddress.saved(defaults) == nil)
+
+    model.serviceAddressDraft = "https://Devices.Example.com/"
+    await model.saveServiceAddress()
+    #expect(model.errorCode == nil)
+    #expect(DeviceServiceAddress.saved(defaults) == "https://devices.example.com")
+    #expect(!model.needsServiceAddress)
+    #expect(control.starts == 1)
+  }
 }

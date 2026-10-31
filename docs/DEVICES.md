@@ -179,11 +179,28 @@ The local candidate is delivered at `~/Applications/Eagle Device Candidate.app`.
 artifact. Install the signed bundle without re-signing, then open the installed copy;
 the candidate bundle/profile and data remain separate from the daily App. This local
 ad-hoc candidate is not a distribution-signed or notarized release.
-An explicit nonempty `EAGLE_DEVICE_SERVICE_URL` at candidate build time selects a
-validated, canonical HTTPS origin; omitted or empty keeps `http://127.0.0.1:17053`.
-The candidate profile, bundle ID, Mach service, credential directory and device data
-paths stay the same. Release builds still require HTTPS and an explicit signing
-identity. This is a build input, not a user setting or deployment action.
+## Where the relay address comes from
+
+A **published App ships no relay address**: `Support/DeviceHost.release.json` carries an empty
+`baseUrl`, and nothing in the Swift sources names a host. The person who runs the App names
+their own service in **设置 → 设备 → 服务地址**. The choice is stored as
+`eagle.deviceServiceAddress` in the preference domain
+`ai.hexly.eagle.devices.address.<SHA-256 of signed profile UTF-8 bytes>`: an origin only
+(HTTPS, or `http` on loopback, with no path, query or credentials). The App gets that
+read-only profile from its `DeviceSystemControl` configuration; the helper reads the same
+profile at start, so changing the address restarts the local service with the new relay.
+Different Bot roots using the same profile share this helper address; independent helpers
+need distinct signed profiles and controls. No profile is inferred from Bot roots or sockets,
+and missing/invalid configuration does not fall back to daily preferences. Registration,
+pairing and Outbox retain their own storage; injected test controls explicitly own address
+storage. Until an address exists the App does not register the background service at all
+and nothing is contacted; the helper parks without starting its agent.
+
+`EAGLE_DEVICE_SERVICE_URL` remains an optional build input for a bundle that must name an
+origin up front (a candidate pointing at a local service, or a deployment that deliberately
+pins one). Omitted or empty keeps whatever the profile file says: `http://127.0.0.1:17053`
+for a candidate, nothing for a release. The address is validated the same way either way, and
+a built-in address is never a requirement for publishing.
 
 Unix socket is JSONL request/response, one response per request:
 `{requestId,method,params?}` → `{requestId,result}` or `{requestId,error}`.

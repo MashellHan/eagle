@@ -146,6 +146,16 @@ public struct SettingsView: View {
               )
               .font(Theme.TypeScale.note)
               .foregroundStyle(probe.ok ? Theme.Palette.accentStrong : Theme.Palette.destructive)
+              // The gateway's own live endpoint names the build behind the address.
+              if let health = probe.health, health.ok {
+                Text(health.version.map { "live 报告 \($0)" } ?? "live 报告正常")
+                  .font(Theme.TypeScale.note)
+                  .foregroundStyle(Theme.Palette.textSecondary)
+              } else if probe.health?.status == 404 {
+                Text("该地址没有 /api/live，已用 /models 探测")
+                  .font(Theme.TypeScale.note)
+                  .foregroundStyle(Theme.Palette.textMuted)
+              }
             } else if let message = model.gatewayMessage {
               Text(message)
                 .font(Theme.TypeScale.note)
@@ -219,7 +229,10 @@ public struct SettingsView: View {
         }
       }
     }
-    .task { @MainActor in await model.loadGatewayIfNeeded() }
+    .task { @MainActor in
+      await model.loadGatewayIfNeeded()
+      await model.probeGatewayIfNeeded()
+    }
   }
 
   private func toolGroupBinding(_ name: String) -> Binding<Bool> {
@@ -659,7 +672,7 @@ public struct SettingsView: View {
         HStack(alignment: .center, spacing: 18) {
           aboutMark
           VStack(alignment: .leading, spacing: 4) {
-            Text("Eagle")
+            Text("Eagle for Mac")
               .font(.system(size: 20, weight: .semibold))
               .foregroundStyle(Theme.Palette.textPrimary)
             Text("多机工作态势 · 本地优先")

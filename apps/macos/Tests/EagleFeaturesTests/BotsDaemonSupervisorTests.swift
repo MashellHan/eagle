@@ -192,7 +192,7 @@ struct BotsDaemonSupervisorTests {
     try Data().write(to: bots.appendingPathComponent("scripts/serve.ts"))
     #expect(
       BotsDaemonSupervisor.resolveDaemonDirectory(
-        explicit: nil, executable: app.appendingPathComponent("Contents/MacOS/EagleApp"))?.path
+        explicit: nil, executable: app.appendingPathComponent("Contents/MacOS/Eagle"))?.path
         == bots.path)
   }
 

@@ -2075,3 +2075,51 @@ and all42 assertions, removing only those repeated intermediate waits. Original
 15/60s process bounds remain. Complete47-input compilation passes with the existing
 Markdown deprecation warning; no local HID/physical replay or runtime green is
 claimed. Next normal hooks/CI supply their own results; no manual workflow rerun.
+
+
+### 2026-10-31 — fixed upstream8674 integration and explicit fixture approval
+
+- Normal merge of exact upstream8674 into60e4 preserves the P5 composition,
+  trusted sync management and upstream service-address setup. Original parents,
+  three conflict stages and candidate03581ba6 are retained under the ignored
+  `sync-upstream-merge-8674` evidence directory. No PR merge or deployment occurs.
+- The complete original `npm run test:devices` on that input finishes33 tests,
+  25 pass/8 fail/0 skip. Three Bot tool cases time out; five encrypted-history
+  cases receive a real tool error. Raw23cc72cb is the new integration red and
+  does not alter earlier accepted CI or physical evidence.
+- Upstream makes a fresh device ask before it acts. The owning Node fixture now
+  records its explicit allow decision through private `policy.set`; the owning
+  Swift fixture uses real Host `policy.get/set` on each startup, explicitly setting
+  all-approve when the current mode differs. This is setup, not proof of policy
+  persistence across restarts.
+  These tool-path cases supply their prerequisite decision;
+  production defaults, grants, current-use checks and error handling stay intact.
+  The same complete suite and normal affected gates follow on the new input.
+- Upstream's native-probe budgets are inherited from8674, separate from the
+  accepted hover cleanup and its old42/42 at46.648s. New merged-head CI results
+  must be recorded separately; old green is never assigned to the new input.
+
+- The new complete devices input18c6773f finishes33/33/0skip, exit0, raw468c917d;
+  Bots owner `npm run check` and macOS full strict format also finish0 on that
+  same tree, with no unstaged changes. Normal hooks and new natural CI follow.
+  Subsequent summary-only docs remove stale pending/fixed-upstream wording;
+  source and the actual execution input are not relabelled.
+
+### 2026-10-31 — service address follows the signed helper profile
+
+The original complete Swift package run records address red1970449b: App-owned
+preferences contain the chosen origin, while independent profile-domain readers
+cannot read it. The fix exposes only the real control's validated configuration
+profile and uses that profile for both Settings and helper address storage.
+Registration/pairing/Outbox storage stays unchanged; injected controls explicitly
+supply owned address storage. There is no live-helper start or daily preference write.
+
+Complete unfiltered Swift greene8a6d8ca finishes0 with215 Features,57 Devices,
+60 Design tests and1 icon XCTest. It proves two profile origins remain separate,
+a fresh control/model with different App defaults sees the same profile origin,
+an independent `/usr/bin/defaults` process can read it, and missing/invalid
+profiles cannot save or read root-owned origins. This is profile-storage/component
+evidence, not installed-helper or physical restart evidence. Inputs remain stable.
+The first run also had three stale Agent-dist Host policy failures; a normal Agent
+build precedes green. Its icon failure passes unchanged on the later complete run;
+the original failure remains without a claimed fix or assigned cause.

@@ -33,12 +33,69 @@ export type PublicGateway = {
   readonly toolGroups: readonly ToolGroup[];
 };
 
+/** What the gateway's own health endpoint says, when that origin has one. */
+export type GatewayHealth = {
+  readonly ok: boolean;
+  readonly status?: number;
+  readonly version?: string;
+  readonly revision?: string;
+  readonly latencyMs: number;
+};
+
 export type GatewayTest = {
   readonly ok: boolean;
   readonly status?: number;
   readonly message: string;
   readonly latencyMs: number;
   readonly models?: number;
+  readonly health?: GatewayHealth;
+};
+
+/** `/v1` is a path on the gateway, so health asks the origin that serves it. */
+export const gatewayOrigin = (baseUrl: string): string | undefined => {
+  try {
+    const url = new URL(baseUrl);
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * A gateway that publishes `/api/live` states its own health and version; asking it is cheaper
+ * than inferring liveness from a model list and says which build a person is actually talking to.
+ */
+export const checkGatewayHealth = async (
+  baseUrl: string,
+  options: { readonly timeoutMs?: number } = {},
+): Promise<GatewayHealth> => {
+  const started = performance.now();
+  const origin = gatewayOrigin(baseUrl);
+  if (!origin) return { ok: false, latencyMs: 0 };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? TEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${origin}/api/live`, { signal: controller.signal });
+    const latencyMs = Math.round(performance.now() - started);
+    if (!response.ok) return { ok: false, status: response.status, latencyMs };
+    const body = (await response.json().catch(() => undefined)) as
+      | { status?: unknown; version?: unknown; revision?: unknown }
+      | undefined;
+    const version = typeof body?.version === "string" ? body.version : undefined;
+    const revision = typeof body?.revision === "string" ? body.revision : undefined;
+    const healthy = body?.status === "ok" || version !== undefined;
+    return {
+      ok: healthy,
+      status: response.status,
+      latencyMs,
+      ...(version === undefined ? {} : { version }),
+      ...(revision === undefined ? {} : { revision }),
+    };
+  } catch {
+    return { ok: false, latencyMs: Math.round(performance.now() - started) };
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 export type GatewayInput = {
@@ -191,6 +248,7 @@ export const testGateway = async (
   const started = performance.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? TEST_TIMEOUT_MS);
+  const health = await checkGatewayHealth(config.baseUrl, options);
   try {
     const response = await fetch(`${config.baseUrl.replace(/\/$/, "")}/models`, {
       headers: { authorization: `Bearer ${config.apiKey}` },
@@ -203,6 +261,7 @@ export const testGateway = async (
         status: response.status,
         message: response.status === 401 ? "API Key 被拒绝" : `网关返回 ${response.status}`,
         latencyMs,
+        health,
       };
     }
     const body = (await response.json().catch(() => undefined)) as { data?: unknown } | undefined;
@@ -212,6 +271,7 @@ export const testGateway = async (
       status: response.status,
       message: models === undefined ? "连接成功" : `连接成功，网关报告 ${models} 个模型`,
       latencyMs,
+      health,
       ...(models === undefined ? {} : { models }),
     };
   } catch (error) {
@@ -220,6 +280,7 @@ export const testGateway = async (
       ok: false,
       message: aborted ? "连接超时" : "无法连接网关",
       latencyMs: Math.round(performance.now() - started),
+      health,
     };
   } finally {
     clearTimeout(timer);

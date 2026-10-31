@@ -77,11 +77,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var usage: [InspectorUsageRow] = []
   /// The selected bot's model and reasoning level, as menus.
   @Published private(set) var choices: [InspectorChoiceRow] = []
-  /// The trigger a person opened from the sidebar, and its read-only detail.
-  @Published private(set) var selectedTriggerId: String?
-  @Published private(set) var triggerDetail: TriggerDetail?
-  /// The selected trigger's detail as the inspector's label/value rows.
-  @Published private(set) var triggerRows: [InspectorUsageRow] = []
+  /// Every trigger this bot owns, with its plan and a switch: they live in the bot's own panel.
+  @Published private(set) var triggerItems: [InspectorTriggerRow] = []
   @Published private(set) var connection: ConnectionState = .connecting
   /// The bot's exchanges with other bots, as the transcript folds them into one row each.
   @Published private(set) var exchanges: [PeerExchangeSummary] = []
@@ -223,22 +220,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   func owns(_ id: String?) -> Bool {
     guard let id else { return false }
-    if Self.triggerId(from: id) != nil { return true }
     // Membership follows the catalog, not whether a deferred publish has projected rows yet.
     return app?.bots.contains { $0.id == id } ?? false
-  }
-
-  /// A trigger row addresses one definition of the selected bot; the prefix keeps it apart
-  /// from a bot id and from the sample workspace.
-  static func triggerRowId(botId: String, triggerId: String) -> String {
-    "tr:\(botId):\(triggerId)"
-  }
-
-  static func triggerId(from rowId: String) -> String? {
-    guard rowId.hasPrefix("tr:") else { return nil }
-    let parts = rowId.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
-    guard parts.count == 3, !parts[2].isEmpty else { return nil }
-    return String(parts[2])
   }
 
   /// Whether a section id belongs to this window's groups (a daemon group or 未分组).
@@ -382,19 +365,9 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   func select(_ id: String) {
     guard let app, owns(id) else { return }
-    if let triggerId = Self.triggerId(from: id) {
-      // A trigger row never changes the open bot: it opens that definition's detail.
-      selectedTriggerId = triggerId
-      Task { await loadTriggerDetail(triggerId) }
-      onSelect?(id)
-      return
-    }
     // The sender's side starts an exchange without ever receiving a peer message, so the list is
     // read on selection and again when a run settles, not only when peer traffic arrives.
     selectedId = id
-    selectedTriggerId = nil
-    triggerDetail = nil
-    if !triggerRows.isEmpty { triggerRows = [] }
     app.select(id)
     // The sidebar's selection is the shell's, so a programmatic selection (a new bot, a
     // development shell) moves the list too.
@@ -403,36 +376,16 @@ final class BotsWorkspaceViewModel: ObservableObject {
     Task { await refreshExchanges() }
   }
 
-  /// One click on a row's switch. The daemon republishes the list, so the row follows.
-  func toggleTrigger(_ rowId: String) {
-    guard
-      let app,
-      let triggerId = Self.triggerId(from: rowId),
-      let botId = selectedId,
-      let current = app.conversation.state.triggers.first(where: { $0.id == triggerId })
-    else { return }
+  /// One click on a switch in the bot's own panel; the daemon republishes the list.
+  func setTriggerEnabled(_ triggerId: String, _ enabled: Bool) {
+    guard let app, let botId = selectedId else { return }
     Task {
       do {
         _ = try await app.setTriggerEnabled(
-          botId: botId, triggerId: triggerId, enabled: !current.enabled)
-        if selectedTriggerId == triggerId { await loadTriggerDetail(triggerId) }
+          botId: botId, triggerId: triggerId, enabled: enabled)
       } catch {
         self.error = (error as? ClientError)?.message ?? error.localizedDescription
       }
-    }
-  }
-
-  /// Read-only detail for the inspector; a fetch failure leaves the rows empty, not wrong.
-  func loadTriggerDetail(_ triggerId: String) async {
-    guard let app, let botId = selectedId else { return }
-    do {
-      let detail = try await app.triggerDetail(botId: botId, triggerId: triggerId)
-      triggerDetail = detail
-      let rows = detail.map(presenter.inspectorTrigger) ?? []
-      if triggerRows != rows { triggerRows = rows }
-    } catch {
-      triggerDetail = nil
-      if !triggerRows.isEmpty { triggerRows = [] }
     }
   }
 
@@ -663,6 +616,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       if !tasks.isEmpty { tasks = [] }
       if !usage.isEmpty { usage = [] }
       if !choices.isEmpty { choices = [] }
+      if !triggerItems.isEmpty { triggerItems = [] }
       return
     }
     let conversation = app.conversation
@@ -703,6 +657,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       if !tasks.isEmpty { tasks = [] }
       if !usage.isEmpty { usage = [] }
       if !choices.isEmpty { choices = [] }
+      if !triggerItems.isEmpty { triggerItems = [] }
       return
     }
     if title != selected.title { title = selected.title }
@@ -720,6 +675,15 @@ final class BotsWorkspaceViewModel: ObservableObject {
     let nextChoices = presenter.agentChoices(
       for: selected, agent: conversation.state.agent, models: app.models)
     if choices != nextChoices { choices = nextChoices }
+    let nextTriggers = conversation.state.triggers.map { trigger in
+      InspectorTriggerRow(
+        id: trigger.id,
+        name: trigger.name,
+        detail: presenter.triggerSubtitle(trigger),
+        isOn: trigger.enabled
+      )
+    }
+    if triggerItems != nextTriggers { triggerItems = nextTriggers }
     if running != conversation.state.running { running = conversation.state.running }
     noteRunSettled(conversation.state.running)
     if connection != conversation.connection { connection = conversation.connection }
@@ -740,37 +704,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
       groups: groups.map { SidebarItemGroup(id: $0.id, title: $0.title) },
       collapsed: collapsed
     )
-    let next = botSections + triggerSections()
+    let next = botSections
     if sections != next { sections = next }
-  }
-
-  /// The selected bot's triggers, right under the bot list: one row per definition with a
-  /// one-click switch, and no section menu because the model owns the definitions.
-  private func triggerSections() -> [SidebarSection] {
-    guard let selectedId, let state = app?.conversation.state else { return [] }
-    guard !state.triggers.isEmpty else { return [] }
-    let sectionId = "owned:\(selectedId)"
-    let items = state.triggers.map { trigger in
-      SidebarItem(
-        id: Self.triggerRowId(botId: selectedId, triggerId: trigger.id),
-        title: trigger.name,
-        subtitle: presenter.triggerSubtitle(trigger),
-        tintIndex: tintIndex,
-        toggle: SidebarToggle(
-          isOn: trigger.enabled,
-          label: "\(trigger.enabled ? "停用" : "启用") \(trigger.name)"
-        )
-      )
-    }
-    return [
-      SidebarSection(
-        id: sectionId,
-        title: "触发器",
-        isExpanded: !collapsed.contains(sectionId),
-        items: items,
-        role: .owned
-      )
-    ]
   }
 
   private func mirrorConversationDraftIntoComposer() {
@@ -1247,9 +1182,10 @@ struct BotsPresenter {
       id: bot.id,
       title: bot.title,
       subtitle: preview,
-      tag: bot.state == .running ? "回答中" : bot.label,
+      tag: bot.label,
       tintIndex: tintIndex(for: bot),
-      face: faceStyle(for: bot)
+      face: faceStyle(for: bot),
+      busy: bot.state == .running
     )
   }
 
