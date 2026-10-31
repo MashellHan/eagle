@@ -96,6 +96,22 @@ public struct InspectorUsageRow: Identifiable, Hashable, Sendable {
   }
 }
 
+/// One trigger the selected bot owns: its plan on the left, a switch on the right. Triggers live
+/// in the bot's own panel, never in the sidebar's bot list.
+public struct InspectorTriggerRow: Identifiable, Hashable, Sendable {
+  public let id: String
+  public let name: String
+  public let detail: String
+  public let isOn: Bool
+
+  public init(id: String, name: String, detail: String, isOn: Bool) {
+    self.id = id
+    self.name = name
+    self.detail = detail
+    self.isOn = isOn
+  }
+}
+
 /// One row of the 模型 section: a label, the current choice, and the choices a menu offers.
 public struct InspectorChoiceRow: Identifiable, Hashable, Sendable {
   public struct Choice: Identifiable, Hashable, Sendable {
@@ -134,6 +150,7 @@ public struct InspectorChoiceRow: Identifiable, Hashable, Sendable {
 public struct InspectorSectionModel: Identifiable, Hashable, Sendable {
   public enum Rows: Hashable, Sendable {
     case pulls([InspectorPullRow])
+    case triggers([InspectorTriggerRow])
     case tasks([InspectorTaskRow])
     case usage([InspectorUsageRow])
     case choices([InspectorChoiceRow])
@@ -164,6 +181,7 @@ public struct InspectorSectionModel: Identifiable, Hashable, Sendable {
   public var isEmpty: Bool {
     switch rows {
     case .pulls(let rows): return rows.isEmpty
+    case .triggers(let rows): return rows.isEmpty
     case .tasks(let rows): return rows.isEmpty
     case .usage(let rows): return rows.isEmpty
     case .choices(let rows): return rows.isEmpty
@@ -215,11 +233,11 @@ public enum InspectorSections {
     id: "triggers",
     title: "触发器",
     symbolName: "bolt.badge.clock",
-    rows: .usage([]),
+    rows: .triggers([]),
     placeholder: InspectorPlaceholder(
       symbolName: "bolt.slash",
-      title: "没有选中触发器",
-      detail: "侧栏里点开一个触发器，它的计划与计数会出现在这里。"
+      title: "还没有触发器",
+      detail: "让这个 Bot 创建定时或 webhook 触发器，它们会出现在这里。"
     )
   )
 

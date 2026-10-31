@@ -129,7 +129,9 @@ struct BotsPresenterTests {
     )
     let item = presenter.sidebarItem(for: bot)
     #expect(item.title == "研究员")
-    #expect(item.tag == "回答中")
+    // A working bot animates its own face instead of wearing a tag.
+    #expect(item.busy)
+    #expect(item.tag != "回答中")
     #expect((0..<Theme.Palette.avatarTints.count).contains(item.tintIndex))
   }
 

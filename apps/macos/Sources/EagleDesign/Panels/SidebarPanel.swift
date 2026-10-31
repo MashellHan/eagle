@@ -24,8 +24,6 @@ public struct SidebarPanel: View {
   private let userName: String
   private let onPinItem: (String) -> Void
   private let moveTargets: (String) -> [SidebarItemGroup]
-  /// The trailing switch's one action: a trigger row toggles, it never opens a menu.
-  private let onToggleItem: (String) -> Void
   private let onMoveItem: (String, String?) -> Void
   private let onMarkUnread: (String) -> Void
   private let onCopyId: (String) -> Void
@@ -61,7 +59,7 @@ public struct SidebarPanel: View {
     userName: String = "Zheng Li",
     onPinItem: @escaping (String) -> Void = { _ in },
     moveTargets: @escaping (String) -> [SidebarItemGroup] = { _ in [] },
-    onToggleItem: @escaping (String) -> Void = { _ in },
+
     onMoveItem: @escaping (String, String?) -> Void = { _, _ in },
     onMarkUnread: @escaping (String) -> Void = { _ in },
     onCopyId: @escaping (String) -> Void = { _ in },
@@ -90,7 +88,6 @@ public struct SidebarPanel: View {
     self.userName = userName
     self.onPinItem = onPinItem
     self.moveTargets = moveTargets
-    self.onToggleItem = onToggleItem
     self.onMoveItem = onMoveItem
     self.onMarkUnread = onMarkUnread
     self.onCopyId = onCopyId
@@ -200,7 +197,7 @@ public struct SidebarPanel: View {
 
   @ViewBuilder
   private func sectionHeader(_ section: SidebarSection, isFirst: Bool) -> some View {
-    if section.role == .ungrouped || section.role == .owned {
+    if section.role == .ungrouped {
       sectionHeaderContent(section, isFirst: isFirst)
     } else {
       sectionHeaderContent(section, isFirst: isFirst)
@@ -290,20 +287,7 @@ public struct SidebarPanel: View {
 
   @ViewBuilder
   private func row(_ item: SidebarItem) -> some View {
-    HStack(spacing: Theme.Metric.rowToggleGap) {
-      selectableRow(item)
-      if let toggle = item.toggle {
-        // Outside the row's button, so one click switches and never selects.
-        SwitchToggle(
-          isOn: Binding(get: { toggle.isOn }, set: { _ in onToggleItem(item.id) }),
-          label: toggle.label,
-          size: .compact
-        )
-        .padding(.trailing, Theme.Metric.rowContentInset)
-        .help(toggle.label)
-      }
-    }
-    .id(item.id)
+    selectableRow(item).id(item.id)
   }
 
   @ViewBuilder

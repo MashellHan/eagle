@@ -724,51 +724,30 @@ struct BotsTriggerTests {
     return (bots, port, triggers)
   }
 
-  @Test("a bot's triggers are a sidebar section with one toggle per row")
+  @Test("a bot's triggers live in its own panel with one switch per definition")
   func section() async throws {
     let (bots, _, _) = try await ready()
-    guard let section = bots.sections.first(where: { $0.title == "触发器" }) else {
-      Issue.record("no trigger section")
-      return
-    }
-    #expect(section.role == .owned, "the model owns the definitions, not the window")
-    #expect(section.items.count == 1)
-    #expect(section.items[0].title == "morning triage")
-    #expect(section.items[0].subtitle.contains("定时"))
-    #expect(section.items[0].toggle?.isOn == true)
-    #expect(bots.owns(section.items[0].id), "the row routes to this window")
+    #expect(
+      !bots.sections.contains { $0.title == "触发器" },
+      "the sidebar lists bots, never their triggers")
+    #expect(bots.triggerItems.count == 1)
+    let row = try #require(bots.triggerItems.first)
+    #expect(row.name == "morning triage")
+    #expect(row.detail.contains("定时"))
+    #expect(row.isOn)
   }
 
-  @Test("one click switches a trigger through the port and never opens its menu")
+  @Test("one switch sends the chosen value and follows the daemon's event")
   func toggle() async throws {
     let (bots, port, triggers) = try await ready()
-    guard let row = bots.sections.first(where: { $0.title == "触发器" })?.items.first else {
-      Issue.record("no trigger row")
-      return
-    }
-    bots.toggleTrigger(row.id)
+    let row = try #require(bots.triggerItems.first)
+    bots.setTriggerEnabled(row.id, false)
     try await waitUntil { triggers.switches.count == 1 }
-    #expect(triggers.switches[0].2 == false, "the switch sends the inverted value")
+    #expect(triggers.switches[0].2 == false, "the switch sends what the person chose")
 
     port.emit(.triggers([summary(enabled: false)]))
     await bots.awaitScheduledPublishDrain()
-    try await waitUntil {
-      bots.sections.first(where: { $0.title == "触发器" })?.items.first?.toggle?.isOn == false
-    }
-  }
-
-  @Test("opening a trigger row keeps the bot and fills the inspector")
-  func detail() async throws {
-    let (bots, _, _) = try await ready()
-    guard let row = bots.sections.first(where: { $0.title == "触发器" })?.items.first else {
-      Issue.record("no trigger row")
-      return
-    }
-    bots.select(row.id)
-    #expect(bots.selectedId == "b_1", "a trigger row never changes the open bot")
-    try await waitUntil { !bots.triggerRows.isEmpty }
-    #expect(bots.triggerRows.contains { $0.label == "计划" && $0.value == "0 9 * * *" })
-    #expect(bots.triggerRows.contains { $0.label == "指令" && $0.value == "triage the queue" })
+    try await waitUntil { bots.triggerItems.first?.isOn == false }
   }
 }
 
