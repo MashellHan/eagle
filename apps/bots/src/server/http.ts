@@ -7,6 +7,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { DirectoryError } from "../core/BotDirectory.ts";
 import type { BotRegistry } from "../core/BotRegistry.ts";
 import type { ConversationService } from "../core/ConversationService.ts";
+import { cacheListInput, cachePublishInput, cacheReceiveInput } from "../core/DeviceSyncCache.ts";
 import { syncObjectApplyInput, syncObjectPullInput } from "../core/DeviceSyncObjects.ts";
 import { deviceSyncInput, type SyncApi, syncPullInput } from "../core/DeviceSyncPort.ts";
 import {
@@ -446,6 +447,82 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       return;
     }
     try {
+      const cacheMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/sync\/cache\/(publish|list|receive)$/.exec(
+        path,
+      );
+      if (cacheMatch !== null && request.method === "POST") {
+        if (request.headers.origin !== undefined) {
+          json(response, 403, {
+            error: { kind: "auth_failed", message: "origin is not accepted" },
+          });
+          return;
+        }
+        const sync = options.sync;
+        if (!sync?.cachePublish || !sync.cacheList || !sync.cacheReceive) {
+          json(response, 409, {
+            error: { kind: "invalid_command", message: "cache synchronization is not configured" },
+          });
+          return;
+        }
+        let body: unknown;
+        try {
+          body = await readBody(request);
+        } catch {
+          json(response, 400, {
+            error: { kind: "invalid_command", message: "invalid cache request" },
+          });
+          return;
+        }
+        const trace = `tr_http_${++sequence}`,
+          botId = cacheMatch[1] as string;
+        try {
+          let result: unknown;
+          if (cacheMatch[2] === "publish") {
+            const parsed = cachePublishInput.safeParse(body);
+            if (!parsed.success) {
+              json(response, 400, {
+                error: { kind: "invalid_command", message: "invalid cache publish selector" },
+              });
+              return;
+            }
+            result = await sync.cachePublish(botId, parsed.data, trace);
+          } else if (cacheMatch[2] === "list") {
+            const parsed = cacheListInput.safeParse(body);
+            if (!parsed.success) {
+              json(response, 400, {
+                error: { kind: "invalid_command", message: "invalid cache list selector" },
+              });
+              return;
+            }
+            result = await sync.cacheList(botId, parsed.data, trace);
+          } else {
+            const parsed = cacheReceiveInput.safeParse(body);
+            if (!parsed.success) {
+              json(response, 400, {
+                error: { kind: "invalid_command", message: "invalid cache object id" },
+              });
+              return;
+            }
+            result = await sync.cacheReceive(botId, parsed.data, trace);
+          }
+          json(response, 200, result);
+        } catch (error) {
+          if (!(error instanceof ClassifiedFailure)) throw error;
+          const kind = error.failure.kind;
+          json(
+            response,
+            kind === "auth_failed"
+              ? 403
+              : kind === "unknown_bot"
+                ? 404
+                : kind === "invalid_command"
+                  ? 400
+                  : 503,
+            { error: { kind, message: error.message, failure: error.failure.id }, trace },
+          );
+        }
+        return;
+      }
       const objectMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/sync\/objects\/(pull|apply)$/.exec(path);
       if (objectMatch !== null && request.method === "POST") {
         if (request.headers.origin !== undefined) {

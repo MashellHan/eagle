@@ -6,12 +6,17 @@ import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import {
+  SyncCacheAuthority,
+  SyncCacheAuthorityRequest,
+} from "../contracts/src/device-cache.ts";
+import {
   SyncEnvelopeRequest,
   SyncKeyBytes,
   SyncKeyDescriptor,
   SyncKeyDescriptorRequest,
   SyncKeyEnvelope,
   SyncOpenRequest,
+  SyncPublishedDescriptor,
   SyncSealRequest,
   SyncSealResult,
   syncDescriptorPayload,
@@ -377,6 +382,72 @@ export async function runDeviceService(): Promise<void> {
           ),
           registryOrigin: new URL(configuration?.baseUrl ?? "").origin,
         };
+      case "sync.key.lookup": {
+        const input = SyncAccess.parse(params);
+        const syncCloud = cloud;
+        const result = SyncPublishedDescriptor.parse(
+          await syncCloud.manage("/sync/keys/lookup", input),
+        );
+        const descriptor = verifyWrappingDescriptor(
+          result.descriptor,
+          result.identity,
+          new URL(configuration?.baseUrl ?? "").origin,
+        );
+        const access = SyncAccessResult.parse(
+          await syncCloud.manage("/sync/peer/authorize", input),
+        );
+        if (
+          stopping ||
+          session.closed ||
+          cloud !== syncCloud ||
+          canonicalDeviceJSON(access.peer) !==
+            canonicalDeviceJSON(result.identity)
+        )
+          throw new Error("sync_identity_changed");
+        return { ...result, descriptor };
+      }
+      case "sync.cache.authority": {
+        const input = SyncCacheAuthorityRequest.parse(params);
+        const syncCloud = cloud;
+        const result = SyncCacheAuthority.parse(
+          await syncCloud.manage("/sync/cache/authority", input),
+        );
+        const access = SyncAccessResult.parse(
+          await syncCloud.manage(
+            input.operation === "publish"
+              ? "/sync/peer/authorize"
+              : "/sync/access",
+            {
+              sharedBotId: input.sharedBotId,
+              peerDeviceId: input.peerDeviceId,
+              purpose: "replica.read",
+            },
+          ),
+        );
+        const uploader =
+          input.operation === "publish" ? access.local : access.peer;
+        const recipient =
+          input.operation === "publish" ? access.peer : access.local;
+        if (
+          stopping ||
+          session.closed ||
+          cloud !== syncCloud ||
+          result.registryOrigin !==
+            new URL(configuration?.baseUrl ?? "").origin ||
+          result.operation !== input.operation ||
+          result.sharedBotId !== input.sharedBotId ||
+          result.requestDigest !== input.requestDigest ||
+          result.expiresAt <= Date.now() ||
+          result.expiresAt > Date.now() + 60000 ||
+          canonicalDeviceJSON(result.uploader) !==
+            canonicalDeviceJSON(uploader) ||
+          canonicalDeviceJSON(result.recipient) !==
+            canonicalDeviceJSON(recipient)
+        )
+          throw new Error("invalid_sync_cache_authority");
+        return result;
+      }
+      case "sync.key.publish":
       case "sync.key.descriptor": {
         z.strictObject({}).parse(params ?? {});
         const syncCloud = cloud;
@@ -434,7 +505,32 @@ export async function runDeviceService(): Promise<void> {
           canonicalDeviceJSON(identity) !== canonicalDeviceJSON(after)
         )
           throw new Error("sync_identity_changed");
-        return descriptor;
+        if (method === "sync.key.descriptor") return descriptor;
+        const result = SyncPublishedDescriptor.parse(
+          await syncCloud.manage("/sync/keys/publish", {
+            version: 1,
+            identity,
+            descriptor,
+          }),
+        );
+        verifyWrappingDescriptor(
+          result.descriptor,
+          identity,
+          request.registryOrigin,
+        );
+        const { signature: _saved, ...savedBody } = result.descriptor;
+        if (
+          canonicalDeviceJSON(savedBody) !== canonicalDeviceJSON(body) ||
+          canonicalDeviceJSON(result.identity) !==
+            canonicalDeviceJSON(identity) ||
+          canonicalDeviceJSON(await current()) !==
+            canonicalDeviceJSON(identity) ||
+          stopping ||
+          session.closed ||
+          cloud !== syncCloud
+        )
+          throw new Error("sync_identity_changed");
+        return result;
       }
       case "sync.key.seal":
       case "sync.key.envelope":

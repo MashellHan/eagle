@@ -1,5 +1,154 @@
 # 用户视角检查点
 
+## 2026-10-31 10:30 +0800 - CF SQL attribution fix frozen; affected normal gates pass
+
+- Baseee26b2bb and fixed upstream182fc1f remain unchanged. No newer upstream
+  fetch/pull/merge, commit/push or automatic fallback work. Old source-v1/v2,
+  candidate-v1 and1407 references plus candidate itself stay read-only protected.
+- Accepted Review P2#1 now has real SQL table-rename reds at both Cache DO and
+  Registry authority RPC. Source-v3 SHA67ead90b freezes only seven authorized
+  source/test/fixture deltas,685 selected/726 full; independent delta acceptance
+  is pending. DO reads return503/storage_failed; internal Registry SQL faults use
+  existing503/internal RPC path. Known input/crypto/grant refusals remain refusals.
+- Normal Worker24/24 (04a4c35d), complete devices24/24 (20861827), then serialized
+  root268/268/types/check-only lint/build (8952586b) pass with stable726 maps,
+  all685 matching. Unchanged Bots/Swift/crash/exact eval scopes are separately
+  byte-bound, not rerun or relabeled. Browser remains normal pre-push.
+- The process chain retains16564 original page bytes/head/sections, seven actual
+  SQL refusal windows, unchanged DB/pin/provider/execution and table restoration
+  to original objects. The cross-RPC message oracle and test type failure remain.
+  Exact red-input archives disclose four unmatched intermediate test SHAs rather
+  than substituting later bytes; original maps/logs and subsequent delta remain.
+- No new live Herdr collection/authentication, D1, dashboard rendering, physical
+  Mac/Tailscale, installed App or cloud deployment verification. Next hop is final
+  docs/index/candidate binding and existing independent Review/Lead acceptance.
+
+## 2026-10-31 10:22 +0800 - CF Review P2 SQL read attribution reproduced
+
+- Lead accepted independent Review P2#1; only Worker SQL read classification and
+  necessary regressions are unfrozen. Prior source-v1/v2,candidatefc2d9769 and all
+ 1407 cited originals plus candidate itself are protected; HEAD remains ee26b2bb.
+- Actual authorized Miniflare cached objects with original tables temporarily
+  renamed reproduce four403/auth_failed and recipient-list200/gap failures. The
+  original18 tests pass; five new child windows fail (aggregate18/24,including
+  their failed parent). Restore preserves each original table/object.
+- Real Swift/helper+Node/Registry/Bots cache chain also reaches the exact defect:
+  objects table unavailable makes receive403/auth_failed,1/2 file cases passes.
+  Both reds have stable726 before/after maps and original Worker SHA48ac673f.
+- Next hop is a narrow SQL exec/materialization classification with original
+  cause, plus keeping list recipient SQL outside catch-and-gap. R2 missing/corrupt
+  gaps and crypto refusals retain their contracts. No commit/push/upstream action,
+  deployment/live collection/auth/D1/rendering/physical App or fallback evidence.
+
+## 2026-10-31 10:07 +0800 - CF explicit cache frozen local gates pass; independent Review pending
+
+- Source-v1 ba1bc514 freezes726 complete files/685 source-test-config inputs over
+  ee26b2bb;47 changed paths include35 source inputs. Prior1019 protected originals
+  remain intact. Fixed182fc1f is still the final upstream; no commit/push/fetch.
+- Normal Bots ordinary/coverage same suite884/884 passes with unchanged thresholds
+  (92.76/88.35/90.49 lines/branches/functions); Worker check18/18 and dry-run passes;
+  full devices24/24 binds the real staggered helper/Node/Registry SQLite/DO/R2 chain,
+  all stage fences and single origin on stable726 before/after inputs. Crash17/17
+  plus exact chat-basic/root-resources evals pass on the same frozen source.
+- First concurrent root check267/268 failed its unchanged styled-redaction timing
+  ratio3.1545. Original whole-file isolation6/6 and serialized normal root268/268
+  pass without source/threshold changes; original failure and timing diagnostics
+  remain. No definitive external-contention cause is claimed.
+- Unchanged Swift build/official strict/default coverage is explicitly bound to
+  prior input scopes by swift-scope-reuse9868e0f5; no new Swift-wide run is claimed.
+  The first reuse helper's variable-shadowing error is retained as tool scope.
+- Current hop is final docs/index/candidate and existing read-only Review/Lead
+  acceptance. Browser belongs to normal eventual pre-push. Live collection/auth,
+  production D1/rendering, physical Mac/App, deployed CF and automatic fallback/
+  switchback remain unverified; this is local code/Miniflare acceptance evidence.
+
+## 2026-10-31 10:02 +0800 - CF explicit cache boundaries complete; source freeze and normal gates next
+
+- Base ee26b2bb/tree92d79c1e and final upstream182fc1f remain fixed. All1019
+  prior protected artifacts retain their hashes; no commit/push/upstream operation.
+- Worker Miniflare boundary suite is18/18 locally: event identity/immutable clocks,
+  pending/reopen/late put cleanup, current Registry await, signature/binding denial
+  and distinct-object bounded body validation. These are local fixture-RPC tests,
+  not deployed CF evidence. Root/Bots/Worker types and check-only lint now pass.
+- cache-origin-offline-first878911cb is2/2 with real helper/Node/Registry SQLite
+  and staggered two-Bots/R2 history flow,16564 original bytes and passive delta0.
+  During that run its726 map changed in production device-sync.ts and its test;
+  it remains WIP combination evidence. Final frozen normal devices must cover it.
+  Adapter attribution red56c39b87→green2df48d0e and all earlier failures stay intact.
+- Current contract/status docs now describe implemented explicit cache and pending
+  stable-source gates/Review. The independent-lock recovery has a project runbook,
+  minimal AGENTS pointer and incident; original SRI/metadata/ci evidence is retained.
+  Next: freeze source, then normal root/Bots ordinary+coverage/Worker/devices gates.
+  Live Herdr collection/authentication, production D1/rendering, physical Mac/App,
+  deployed CF and automatic fallback/switchback remain unverified.
+
+## 2026-10-31 09:48 +0800 - CF cache real staggered chain and remaining boundary work
+
+- Base ee26b2bb/tree92d79c1e and final upstream182fc1f remain unchanged; all1019
+  protected historical artifacts verify. No commit/push/upstream operation.
+- Real Swift/helper+Node/Registry SQLite, Sync DO/R2 and two owned Bots now pass
+  the explicit staggered chain (cache-chain-third aac8d907): A publishes its durable
+  descriptor and closes before B produces new native history/resources; B closes
+  before A cold starts, lists/receives and passively applies exact16564 page bytes,
+  history head/sections with execution delta0, then explicit local native run +2.
+  This is local source/Miniflare evidence, not deployed CF or physical Mac/App.
+- First real assembled publish447580a6 failed at the missing private-channel
+  lookup/authority allowlist; diagnostic244e23aa confirms device_method_forbidden.
+  Minimal two-method wiring84d8f08f passes publishing. Earlier source/fixture/
+  signature-oracle failures remain untouched. Third chain map changed only while
+  independent Worker tests were added; it is not a frozen full-source gate.
+- Worker19f3f144 passes11/11 narrow DO/R2 + fixture RPC cases, including real DO
+  eviction/reconstruction, reference failure, winner uploaded recovery, last RPC
+  await crossing expiry and same-object concurrency. First expanded run7ea06c0d
+  failed because the fixture resolved an RPC promise from a completed context;
+  its correction uses the existing owned polling barrier, no production flags.
+- Root/Bots and independent Worker affected types pass locally; final full gates
+  remain pending stable source. Next hop is cache stage use-point/identity windows,
+  bounded truthful listing and failure attribution, followed by stable manifests.
+  Live collection/auth/D1/rendering, CF deployment, physical/App and automatic
+  fallback/switchback remain unverified.
+
+## 2026-10-31 09:33 +0800 - CF descriptor and metadata authority local boundaries; Worker WIP
+
+- Base remains delivered ee26b2bb/tree92d79c1e, fixed upstream182fc1f with no new
+  upstream operation. Old1018 refs plus final remain hash-protected; no commit/push.
+- Real Swift/helper+Node/Registry SQLite/pair/B→A grant/bound resource-page
+  descriptor entry red2c996399 reaches unknown_local_method. After minimal metadata
+  publication/lookup, full encrypted-object file12bf5388 is2/2; helper reopen and
+  offline recipient lookup retain original published descriptor bytes. Original
+  descriptor signature oracle exit1, TDZ editing error and no-op-capable badCipher
+  assertion failure retain their exact raw scope, not new product findings.
+- Actual Registry authority red55ed2a88 (404)→b3fb9a66 (1/1) binds operation/sharedBot/
+  full current identities/grant and rejects revocation/misuse. Local cache publish
+  red127ae353 is reached only after A closes and B creates a new valid resource
+  page. Earlier a0a71415 is resource bytes/digest fixture failure, not cache red.
+- Independent apps/bots-sync own lock/install is in progress with real source:
+  missing metadata/tarball ENOTCACHED originals retained;54 original tarballs SRI/
+  package identities verified, normal ci executes native postinstall and passes.
+  Worker strict compile/real Miniflare R2/DO tests are not yet accepted gates.
+- Live Herdr collection/auth, production D1/rendering, physical Mac/Tailscale/App,
+  deployed CF cache and automatic fallback/switchback remain unverified. Next hop
+  is Worker actual namespace/claims/R2/72h/pending/deletion tests and Bots explicit
+  cache APIs, then the required true offline-recipient/cold-reader history chain.
+
+## 2026-10-31 09:19 +0800 - CF72h contract and genuine missing-interface preparation
+
+- Fixed182fc baseline is delivered as ee26b2bb/tree92d79c1e; Lead independently
+  closed receipt293f1f74, own remote/clean0/0 and normal hooks. New ignored
+  .local/sync-p4-cf72h-cache/baseline.json protects all1018 cited originals plus
+  final itself and maps707 full/614 selected base inputs. No newer upstream runs.
+- Existing durable helper wrapping key, immutable object/recipient slots, full-binding
+  ready lease and stored offline apply are read-only reuse points. Registry offline
+  descriptor publication/query and independent Sync Worker cache are not implemented.
+  This slice is contract/API wiring and real-first-red preparation, not a passed gate.
+- Publish uses uploader B's session; list/get uses reader A's session and current
+  B→A grant/current identities, without B online or its former session. Cache TTL
+  is72h from immutable R2 uploaded/event clocks, separate from short authority expiry.
+- Live Herdr collection/authentication, production D1/rendering, physical Tailscale/
+  dual Mac/installed App, CF deployment and automatic fallback/switchback remain
+  unverified. Next broken hop: publish a durable helper descriptor through the real
+  Node/Registry port after valid independent registration/pair/grant/page prerequisites.
+
 ## 2026-10-31 08:50 +0800 - Stable fixed-upstream source ready for independent Review
 
 - Source-v1 SHA90021cf1 freezes614 selected inputs and707 complete live index/disk files;

@@ -1,5 +1,23 @@
 # Retrospective
 
+## 2026-10-31 — Recover the new independent Worker lock without changing versions
+
+The new Bots Sync Worker lock resolved undici7.29.0/sharp0.35.4, while the root's
+existing overrides resolve7.30.1/0.35.5. Offline ci then stopped at missing nested
+undici7.29.1 metadata. A root cache hit could not establish this independent
+package's locked inputs. The raw ENOTCACHED/install/type/fixture failures remain
+in `.local/sync-p4-cf72h-cache/`; none is called a product behavior red.
+
+One platform inventory reused original cache entries by SRI, fetched only missing
+original tarballs through the task's approved registry, verified all54 package
+identities/locked SRI and rebuilt registry-specific metadata. Normal ci then ran
+both workerd postinstall versions and esbuild and exited0. The independent,
+root and Bots lock bytes remained unchanged throughout recovery; no version was
+selected just to hit cache, no global policy changed and ignore-scripts was not
+accepted as an install. [The project runbook](docs/NPM-RECOVERY.md) records the
+actual receipt/lock hashes and repeatable boundary. Full runtime/build/gate
+claims remain bound to their own subsequent command receipts.
+
 ## 2026-10-30 — Establish admission before losing a device-operation response
 
 The first normal push of Bots commit `265b0db` stopped in the root pre-push

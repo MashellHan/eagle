@@ -1229,3 +1229,128 @@ and their delivery/candidate receipt hashes remain intact. Only the five authori
 are prepared for Review. Static diff checks cover this step;no unchanged Bots/crash/eval/coverage
 gate is repeated or relabeled. Merge commit/push and their normal hooks await candidate
 acceptance;MERGE_HEAD alone is not integrated or delivered ancestry. No CF/physical/App scope added.
+
+### P4 CF72h local cache slice: contract and first-red scope
+
+Base ee26b2bb/tree92d79c1e is delivered and independently closed, receipt293f1f74.
+New evidence root .local/sync-p4-cf72h-cache protects1018 prior refs plus final itself.
+[SYNC-CACHE.md](SYNC-CACHE.md) fixes the additive API and strict boundary cases.
+At the initial contract checkpoint no cache gate had run. The real capability red follows durable
+Swift helper keys, independent Node registration/pair/grant, Registry SQLite and
+actual bound ready page prerequisites, with production exactly base before/after.
+Later first-red/green and actual gate rows will distinguish tool/fixture/oracle
+errors. The main chain requires A descriptor/offline before new B history/cache,
+then B offline before A cold receive/apply; passive execution delta0, native run.
+Full root/Bots/Worker/devices and affected Swift/crash/eval will bind stable inputs.
+Browser remains normal pre-push; no deployment/physical/App/automatic fallback claim.
+
+Local implementation evidence now includes descriptor-entry-fourth12bf5388 (2/2),
+Registry authority404 red55ed2a88→b3fb9a66 (1/1), and genuine cache-publish entry404
+127ae353. The earlier resource bytes/digest mismatcha0a71415 is a fixture failure.
+Worker pending7/8 red and failure/list12/14 reds precede their narrow fixes; latest
+worker-bindings-firstf813ec8c is18/18 with real Miniflare DO/R2 and a fixture Registry
+RPC. It covers immutable winners, repaging/forwarding clocks, unknown pending,
+late put/deletion, DO reconstruction, final authorization/expiry and bounded truthful
+listing; one distinct object's body is verified once per request, including failure.
+
+cache-origin-offline-first878911cb is2/2 WIP process evidence: actual Swift helper,
+Registry SQLite, two Node/Bots and Sync DO/R2 exercise A offline before new B history,
+B offline before A cold receive/apply, exact16564 bytes/head/sections and native +2.
+Execution baselines precede list/receive. It also checks four publisher/slot and eight
+receive stage fences, Worker error1/Bots error0 with shared failure/trace/Bot, and cold
+stored apply after Registry stops. Its726 map changed during execution in production
+apps/bots/src/device-sync.ts and test/device-sync.test.ts; it is not stable-source gate
+evidence. The new port attribution red56c39b87→green2df48d0e is separately retained.
+Final ordinary/coverage Bots suites include tracked cache tests; root process tests
+do not replace that independent gate. At source freeze, full root/Bots/Worker/devices
+were pending; their actual results follow below. Old scopes require exact input binding.
+
+All original fixture/oracle/tool failures remain: descriptor signature-byte equality,
+TDZ edit, no-op-capable badCipher mutation, localBotId503 oracle, RPC barrier context,
+formatter wrong cwd and static import ordering. The corrected cipher fixture XORs an
+actual byte and asserts inequality; no claim recovers the old random failed byte.
+Dependency recovery is recorded in [the project runbook](../NPM-RECOVERY.md), its raw
+receipt and Retrospective; normal offline ci ran real native postinstall, locks intact.
+
+Frozen source-v1 SHAba1bc514 maps726 complete files and685 selected source/test/config
+inputs (prior614 extended to every non-document input, including unchanged inputs).
+Its relative ee26 delta is47 paths,35 selected. All1019 previous delivery originals
+are protected. The following normal executions have identical726 before/after maps,
+matching all685 frozen source inputs; later edits only add actual results to docs.
+
+| Actual command/evidence label | Result and precise scope |
+| --- | --- |
+| `npm run check` / root-check-frozen | exit1,267/268; unchanged styled redaction performance ratio3.1545 exceeded its existing assertion while the other three gates ran. No source/threshold change. |
+| `node --test tests/realtime-redaction-perf.test.ts` / root-timing-diagnostic | Original whole file6/6 in isolation, styled128k/256k12.06/23.22ms versus first26.16/82.52ms. This is diagnostic evidence, not a substitute root gate or a proven cause. |
+| `npm run check` / root-check-serialized | exit0,268/268, types/check-only lint/build; original styled timings15.20/40.78ms. Original failure retained; no weakening or automatic retry loop. |
+| `npm --prefix apps/bots run check` / bots-check-frozen | exit0; fixtures/types/check-only lint and identical ordinary884/coverage884 suite. Existing aggregate thresholds unchanged:92.76% lines,88.35% branches,90.49% functions. New cache/metadata denial tests are in that ordinary suite. |
+| `npm --prefix apps/bots-sync run check` / worker-check-frozen | exit0; strict types/check-only lint,18/18 actual Miniflare DO/R2 with fixture Registry RPC, Wrangler dry-run build. No remote resource or deployment. |
+| `npm run test:devices` / devices-frozen | exit0,24/24; full real Swift helper/Node/Registry SQLite/Bots/Miniflare cache chain and existing direct expiry/binding/network/first-winner/offline/peer/PR cases.16564-byte new staggered chain/passive delta0/native+2 now runs on stable final source. |
+| `npm --prefix apps/bots run test:crash` / bots-crash-frozen | exit0,17/17 normal suite, rebinding the changed main/config/HTTP/private-channel startup inputs. |
+| `npm --prefix apps/bots run eval -- --case chat-basic` / eval-chat-basic-frozen | exit0,1 case, real daemon startup/ordinary chat under changed main/config/HTTP. |
+| `npm --prefix apps/bots run eval -- --case root-resources` / eval-root-resources-frozen | exit0,1 case, passive import plus explicit native root resource execution under changed entry wiring. |
+
+Swift source/manifests/scripts/fixtures are unchanged. Reuse the fixed-baseline
+swift-build-first,swift-strict-official,swift-macos-coverage (208/51/60;93.2% default
+filtered coverage) and swift-client-coverage-peer-pull (40/46/52;90.9%) only for their
+recorded input scopes; no new Swift-wide gate is claimed. The devices gate actually
+rebuilds/uses the real helper. Other prior exact eval cases retain historical scopes,
+not a claim they reran on this full map. Browser remains normal delivery pre-push.
+Independent Review/Lead candidate acceptance and normal commit/push are still pending.
+
+Final staged diff-check found five trailing ASCII-space runs in the new Wrangler
+generated worker-configuration.d.ts. Original index-check exit2, exact626388-byte
+original file, proposala9d0acca and receipt315a1bc3 are retained. Lead approved only
+those five removals (lines12599/13113/13181/13749/14261); no regeneration, full-file
+formatting or ignore change. Source-v2 differs from v1 in this one source path,
+SHA0c30471d→c67155ea. Normal Worker typecheck and both diff/cached checks pass.
+All preceding full gates retain their exact v1 execution maps; they are reused
+through this pure generated-declaration whitespace delta, not labeled v2 full runs.
+
+### CF Review P2#1: real SQLite read attribution
+
+The original source-v1/v2, candidate-v1/tree0baf8df8 and its1407 references plus
+candidate itself remain protected. Owned Miniflare renames preserve original rows:
+objects/get, events/list, recipients/get+list and event_objects/list. Worker red
+725418df returns403/auth_failed or a swallowed200 gap; green dacf6273 passes24/24
+with503/storage_failed, actual local SQL cause identity and one runtime origin.
+The original process red e9f5accb reaches the same legal get refusal.
+
+Registry red8291864c retains original Registry6c9b8f16 and returns ok:false/403
+after renaming sync_cache_authorities with a legitimate existing authority row;
+the Worker was already fixed, so this is not all-production-equals-old evidence.
+Process red174b2182 gates after legitimate mint and before actual RPC SQL read,
+then reaches403/auth_failed. Registry green e6f2d886 checks actual cause identity
+at the throwing layer; known invalid input/JSON/schema/scope/grant still refuse.
+The first named green96993903 failed a cross-RPC exception-text oracle and remains
+an oracle failure. Static66986452 failed the new test's inferred type.
+The inferred-type error is fixed by an explicit test annotation; the successful567e6493
+run binds source-v3, including the separately reviewed Registry SQL fix.
+
+Full encrypted-objects file dd9434b9 is2/2 on a stable726 map. Its five DO read
+windows return503/storage_failed and two Registry get/list windows503/internal,
+all with one Worker origin, original trace/Bot/failure propagated as Bots warn,
+unchanged DB/pin/execution/provider and no supplied body/raw SQL. Restoring each
+table permits reading the original object. Existing R2 gap/crypto and offline
+history/passive0/native+2 assertions remain. Source-v3 SHA67ead90b freezes exactly
+seven authorized source/test/fixture deltas from v2,685 selected/726 full inputs.
+
+| Actual new command/evidence label | Result and precise scope |
+| --- | --- |
+| `npm --prefix apps/bots-sync run check` / worker-check-v3 | exit0,24/24, strict types/check-only lint and dry-run build; log04a4c35d. |
+| `npm run test:devices` / devices-v3 | exit0,24/24, including all seven SQL windows and the original real Swift/helper/cache/offline/peer/PR chains; log20861827. |
+| `npm run check` / root-check-v3 | exit0,268/268 plus strict types/check-only lint/build; log8952586b. Ran after Worker/devices completed, without concurrent owned heavy gates. |
+
+Each new gate has an identical726 before/after map matching all685 frozen inputs.
+reuse-v3.json SHA3e32be3a binds307 unchanged independent Bots/fixtures/eval/PROTOCOL
+inputs to original ordinary884/coverage884, crash17 and the two exact eval cases.
+OBSERVABILITY's changed classification narrative leaves the exact consumed event
+table lines unchanged. The four original Swift input scopes181/142/181/71 also
+match exactly. No new Bots/Swift/crash/eval-wide execution is claimed. Browser
+remains normal pre-push; independent delta/candidate acceptance precedes delivery.
+
+review-p2-sql/red-input-archive-v1.json and its supplement bind exact matching
+historical test/fixture bytes where available. Four distinct intermediate test
+SHAs have no matching byte archive:755bd007,bab630bc,5e6fa392,fd8ab06a. Their
+original execution maps/logs remain; later formatted/current bytes are separate
+and are never substituted as those historical versions.

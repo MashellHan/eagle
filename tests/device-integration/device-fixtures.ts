@@ -244,7 +244,8 @@ export async function localCall(
   }
 }
 
-export async function workerFixture(directory: string) {
+export async function workerFixture(directory: string, cache = false) {
+  const logs: { level: string; message: string }[] = [];
   // Only a test transport fault: the real target finishes and the real relay
   // authorizes its result, then the caller loses that one response. No executor,
   // registry, SDK or device-port implementation is replaced.
@@ -252,7 +253,34 @@ export async function workerFixture(directory: string) {
     join(directory, "entry.ts"),
     `
 import worker,{DeviceRegistry as Registry,DeviceExecution as Execution} from "../../apps/web/src/worker/device-service.ts";
+export {SyncCacheRegistry} from "../../apps/web/src/worker/device-service.ts";
+let registryContext;
+const verify=crypto.subtle.verify.bind(crypto.subtle);
+crypto.subtle.verify=async(...args)=>{
+ const result=await verify(...args);
+ if(result&&new TextDecoder().decode(args[3]).startsWith('eagle-bots-wrap-descriptor-v1\\n')&&registryContext?.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_descriptor_gate'").toArray().length){
+  const gate=()=>registryContext.storage.sql.exec('SELECT * FROM test_descriptor_gate').toArray()[0];
+  if(!gate().started){registryContext.storage.sql.exec('UPDATE test_descriptor_gate SET started=1');const end=Date.now()+12000;while(!gate().released){if(Date.now()>end)throw new Error('owned descriptor verify gate timeout');await new Promise(r=>setTimeout(r,10));}}
+ }
+ return result;
+};
 export class DeviceRegistry extends Registry {
+ constructor(ctx,env){super(ctx,env);registryContext=ctx;}
+ one(...args) {
+  try {return super.one(...args);} catch(error) {this.lastSqlCause=error;throw error;}
+ }
+ cacheSqlCausePreserved(){return this.sqlCausePreserved===true&&this.safeCacheError===true;}
+ async checkCacheAuthority(value) {
+  if(this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_cache_sql_gate'").toArray().length) {
+   this.ctx.storage.sql.exec('UPDATE test_cache_sql_gate SET started=1');
+   const deadline=Date.now()+5000;
+   while(!this.ctx.storage.sql.exec('SELECT released FROM test_cache_sql_gate').toArray()[0].released) {
+    if(Date.now()>deadline)throw new Error('test cache SQL gate timeout');
+    await new Promise(resolve=>setTimeout(resolve,10));
+   }
+  }
+  try {return await super.checkCacheAuthority(value);} catch(error) {this.sqlCausePreserved=!!this.lastSqlCause&&error.cause===this.lastSqlCause;this.safeCacheError=error.message==='sync_cache_registry_unavailable';throw error;}
+ }
  async fetch(request) {
   if(request.url.endsWith('/sync/endpoints')&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_endpoint_gate'").toArray().length&&(await request.clone().json()).candidates.length) {
    this.ctx.storage.sql.exec("UPDATE test_endpoint_gate SET started=1");
@@ -296,7 +324,10 @@ export class DeviceExecution extends Execution {
   return super.respond(socket,request,result,unauthorized);
  }
 }
-export default worker;
+export default {fetch(request,env,ctx){
+ if(${cache}&&new URL(request.url).pathname.startsWith('/v1/cache/'))return env.CACHE.fetch(request);
+ return worker.fetch(request,env,ctx);
+}};
 `,
   );
   execFileSync(
@@ -312,8 +343,23 @@ export default worker;
     ],
     { stdio: "pipe" },
   );
-  const mf = new Miniflare({
+  if (cache)
+    execFileSync(
+      resolve("apps/bots-sync/node_modules/.bin/wrangler"),
+      [
+        "deploy",
+        "--dry-run",
+        "--config",
+        "apps/bots-sync/wrangler.jsonc",
+        "--outdir",
+        join(directory, "sync-worker"),
+      ],
+      { stdio: "pipe" },
+    );
+  const options = (registryOrigin: string, port?: number) => ({
     ...convertV4MiniflareOptions({
+      port,
+      handleStructuredLogs: (entry) => logs.push(entry),
       workers: [
         {
           name: "eagle",
@@ -326,13 +372,37 @@ export default worker;
             DEVICE_EXECUTION: { className: "DeviceExecution", useSQLite: true },
           },
           bindings: { BUILD_REVISION: "local-device-integration" },
+          ...(cache ? { serviceBindings: { CACHE: "bots-sync" } } : {}),
         },
+        ...(cache
+          ? [
+              {
+                name: "bots-sync",
+                modules: true,
+                scriptPath: join(directory, "sync-worker/index.js"),
+                compatibilityDate: "2026-09-19",
+                compatibilityFlags: ["nodejs_compat"],
+                durableObjects: {
+                  SYNC: { className: "SyncCache", useSQLite: true },
+                },
+                r2Buckets: { CIPHERS: "owned-sync-ciphers" },
+                bindings: { REGISTRY_ORIGIN: registryOrigin },
+                serviceBindings: {
+                  REGISTRY: { name: "eagle", entrypoint: "SyncCacheRegistry" },
+                },
+              },
+            ]
+          : []),
       ],
     }),
     unsafeInspectDurableObjects: true,
   });
+  const mf = new Miniflare(options("https://not-yet-configured.invalid"));
   try {
-    return { mf, origin: (await mf.ready).origin };
+    const ready = await mf.ready;
+    if (cache) await mf.setOptions(options(ready.origin, Number(ready.port)));
+    assert.equal((await mf.ready).origin, ready.origin);
+    return { mf, origin: ready.origin, logs };
   } catch (error) {
     await mf.dispose();
     throw error;

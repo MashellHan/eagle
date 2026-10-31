@@ -3,6 +3,14 @@ import type { IncomingMessage, RequestListener, ServerResponse } from "node:http
 import { z } from "zod";
 import type { BotRegistry, ReadyReplica } from "./core/BotRegistry.ts";
 import {
+  cacheGetResult,
+  type cacheListInput,
+  cacheListResult,
+  cachePublishResult,
+  type cacheReceiveInput,
+  cacheWireRequest,
+} from "./core/DeviceSyncCache.ts";
+import {
   type KeyEnvelope,
   SyncKeyDescriptor,
   SyncObjectCarrier,
@@ -10,6 +18,7 @@ import {
 } from "./core/DeviceSyncObjects.ts";
 import {
   type DeviceSyncPort,
+  type deviceSyncPeer,
   deviceSyncProof,
   type SyncApi,
   type SyncStatus,
@@ -125,6 +134,7 @@ export class AuthenticatedSync implements SyncApi {
   readonly #binding: string | null;
   readonly #instance: string;
   readonly #objects: SyncObjectStore | undefined;
+  readonly #cacheOrigin: string | undefined;
   #generation = nonce();
   #closed = false;
   readonly #pending = new Map<string, Pending>();
@@ -136,8 +146,10 @@ export class AuthenticatedSync implements SyncApi {
     deviceSocket?: string;
     instance?: string;
     root?: string;
+    cacheOrigin?: string;
   }) {
     this.#registry = options.registry;
+    this.#cacheOrigin = options.cacheOrigin;
     this.#objects = options.root === undefined ? undefined : new SyncObjectStore(options.root);
     this.#device = options.device;
     this.#log = options.log;
@@ -382,22 +394,18 @@ export class AuthenticatedSync implements SyncApi {
     this.#ownedRecord(result, replica);
     return result;
   }
-  async #object(input: z.infer<typeof pageInput>, fields: Context) {
-    const pending = this.#pending.get(input.sessionId);
-    this.#pending.delete(input.sessionId);
-    if (!pending || !this.#objects) throw new Error("sync_challenge_unknown");
-    const { proof, privateKey, replica } = pending;
-    fields.botId = replica.botId;
-    const use = () => this.#use(proof, proof.generation);
-    use();
-    verifyProof({ ...proof, role: "reader" }, input.signature);
-    const params = objectQuery.parse(
-      JSON.parse(unseal(proof, privateKey, "reader", input.box).toString("utf8")),
-    );
-    verifyDescriptor(params.recipientDescriptor, proof.reader, proof.registryOrigin);
-    await this.#authorize(proof, fields);
-    await replica.check();
-    use();
+  async #objectCarrier(
+    replica: ReadyReplica,
+    params: z.infer<typeof objectQuery>,
+    server: z.infer<typeof deviceSyncPeer>,
+    reader: z.infer<typeof deviceSyncPeer>,
+    registryOrigin: string,
+    current: () => Promise<void>,
+    use: () => void,
+    fields: Context,
+  ) {
+    if (!this.#objects) throw new Error("sync_unconfigured");
+    verifyDescriptor(params.recipientDescriptor, reader, registryOrigin);
     let record: StoredObject;
     if ("objectId" in params) {
       const existing = this.#objects.read(params.objectId);
@@ -410,7 +418,7 @@ export class AuthenticatedSync implements SyncApi {
         { source: params.source, after: params.after, limit: params.limit },
         use,
       );
-      const selected = preparePage(page, proof.server, proof.registryOrigin);
+      const selected = preparePage(page, server, registryOrigin);
       const existing = this.#objects.read(selected.objectId);
       if (existing) {
         this.#ownedRecord(existing, replica);
@@ -423,7 +431,7 @@ export class AuthenticatedSync implements SyncApi {
           sealed = await this.#device.sealKey(
             {
               version: 1,
-              identity: proof.server,
+              identity: server,
               manifest: prepared.manifest,
               dek: prepared.key.toString("base64url"),
             },
@@ -448,7 +456,7 @@ export class AuthenticatedSync implements SyncApi {
           pin: acceptedPin(carrier),
         });
         try {
-          await this.#authorize(proof, fields);
+          await current();
           record = await this.#publish(replica, staged, use, fields);
         } finally {
           staged.discard();
@@ -457,20 +465,20 @@ export class AuthenticatedSync implements SyncApi {
     }
     if (
       record.kind !== "publisher" ||
-      record.carrier.manifest.publisher.deviceId !== proof.server.deviceId ||
-      record.carrier.manifest.publisher.publicKey !== proof.server.publicKey
+      record.carrier.manifest.publisher.deviceId !== server.deviceId ||
+      record.carrier.manifest.publisher.publicKey !== server.publicKey
     )
       throw new Error("sync_object_publisher_invalid");
     if (!this.#device.descriptor || !this.#device.envelope) throw new Error("sync_unconfigured");
     const descriptor = verifyDescriptor(
       await this.#device.descriptor(fields),
-      proof.server,
-      proof.registryOrigin,
+      server,
+      registryOrigin,
     );
     const slot = this.#objects.recipient(
       record,
-      proof.server,
-      proof.reader,
+      server,
+      reader,
       descriptor,
       params.recipientDescriptor,
     );
@@ -479,17 +487,17 @@ export class AuthenticatedSync implements SyncApi {
       const issued = await this.#device.envelope(
         {
           version: 1,
-          identity: proof.server,
+          identity: server,
           manifest: record.carrier.manifest,
           envelope: record.carrier.envelope,
-          recipient: proof.reader,
+          recipient: reader,
           recipientDescriptor: params.recipientDescriptor,
         },
         fields,
       );
       const staged = await slot.stage(issued);
       try {
-        await this.#authorize(proof, fields);
+        await current();
         await replica.publish(
           () => {
             try {
@@ -514,6 +522,34 @@ export class AuthenticatedSync implements SyncApi {
     }
     if (!envelope) throw new Error("sync_object_envelope_invalid");
     const carrier = verifyCarrier({ ...record.carrier, envelope });
+    return carrier;
+  }
+  async #object(input: z.infer<typeof pageInput>, fields: Context) {
+    const pending = this.#pending.get(input.sessionId);
+    this.#pending.delete(input.sessionId);
+    if (!pending || !this.#objects) throw new Error("sync_challenge_unknown");
+    const { proof, privateKey, replica } = pending;
+    fields.botId = replica.botId;
+    const use = () => this.#use(proof, proof.generation);
+    use();
+    verifyProof({ ...proof, role: "reader" }, input.signature);
+    const params = objectQuery.parse(
+      JSON.parse(unseal(proof, privateKey, "reader", input.box).toString("utf8")),
+    );
+    verifyDescriptor(params.recipientDescriptor, proof.reader, proof.registryOrigin);
+    await this.#authorize(proof, fields);
+    await replica.check();
+    use();
+    const carrier = await this.#objectCarrier(
+      replica,
+      params,
+      proof.server,
+      proof.reader,
+      proof.registryOrigin,
+      () => this.#authorize(proof, fields),
+      use,
+      fields,
+    );
     await this.#authorize(proof, fields);
     await replica.check();
     use();
@@ -696,12 +732,327 @@ export class AuthenticatedSync implements SyncApi {
       throw this.#failure(cause, fields);
     }
   }
+  async #cacheSession(
+    replica: ReadyReplica,
+    peerDeviceId: string,
+    role: "uploader" | "reader",
+    fields: Context,
+  ) {
+    if (!this.#cacheOrigin || !this.#device.cacheAuthority)
+      throw new Error("sync_cache_unconfigured");
+    let expiresAt = Date.now() + 60000;
+    let registryOrigin: string | undefined;
+    const use = (objectExpiry?: number) => {
+      if (this.#closed) throw new Error("sync_closed");
+      if (Date.now() >= expiresAt || (objectExpiry !== undefined && Date.now() >= objectExpiry))
+        throw new Error("sync_cache_expired");
+    };
+    use();
+    const input = {
+      sharedBotId: replica.sharedBotId,
+      peerDeviceId,
+      purpose: "replica.read" as const,
+    };
+    const read = async () =>
+      role === "uploader"
+        ? this.#device.authorize?.(input, fields)
+        : this.#device.access(input, fields);
+    const before = await read();
+    if (
+      !before ||
+      before.sharedBotId !== replica.sharedBotId ||
+      before.purpose !== input.purpose ||
+      before.peer.deviceId !== peerDeviceId ||
+      before.peer.deviceId === before.local.deviceId ||
+      !before.local.groupId ||
+      before.local.groupId !== before.peer.groupId
+    )
+      throw new Error("sync_identity_changed");
+    if ("registryOrigin" in before && typeof before.registryOrigin === "string")
+      registryOrigin = before.registryOrigin;
+    const current = async () => {
+      const after = await read();
+      if (
+        !after ||
+        after.sharedBotId !== before.sharedBotId ||
+        !same(after.local, before.local) ||
+        !same(after.peer, before.peer) ||
+        ("registryOrigin" in after && registryOrigin !== after.registryOrigin)
+      )
+        throw new Error("sync_identity_changed");
+      use();
+    };
+    const ticket = async (value: z.infer<typeof cacheWireRequest>) => {
+      if (!this.#device.cacheAuthority) throw new Error("sync_cache_unconfigured");
+      let requestDigest = metadataDigest(value);
+      if (value.operation === "publish") {
+        const { ciphertext, ...metadata } = value.carrier;
+        const bytes = Buffer.from(ciphertext, "base64url");
+        requestDigest = metadataDigest({
+          ...value,
+          carrier: {
+            ...metadata,
+            cipherDigest: createHash("sha256").update(bytes).digest("hex"),
+            cipherLength: bytes.length,
+          },
+        });
+      }
+      const result = await this.#device.cacheAuthority(
+        {
+          version: 1,
+          operation: value.operation,
+          sharedBotId: replica.sharedBotId,
+          peerDeviceId,
+          requestDigest,
+        },
+        fields,
+      );
+      const uploader = role === "uploader" ? before.local : before.peer;
+      const recipient = role === "uploader" ? before.peer : before.local;
+      if (
+        result.sharedBotId !== replica.sharedBotId ||
+        result.operation !== value.operation ||
+        result.requestDigest !== requestDigest ||
+        !same(result.uploader, uploader) ||
+        !same(result.recipient, recipient) ||
+        (registryOrigin !== undefined && result.registryOrigin !== registryOrigin)
+      )
+        throw new Error("sync_cache_authority_mismatch");
+      registryOrigin = result.registryOrigin;
+      expiresAt = Math.min(expiresAt, result.expiresAt);
+      use();
+      return result;
+    };
+    use();
+    return { before, current, use, ticket };
+  }
+  async cachePublish(
+    botId: string,
+    input: z.infer<typeof syncObjectPullInput>,
+    trace: string,
+  ): Promise<unknown> {
+    const fields = { trace, botId };
+    this.#log.emit("info", "runtime", Events.start, fields);
+    try {
+      if (this.#closed) throw new Error("sync_closed");
+      const replica = await this.#registry.readyReplica(botId, trace);
+      this.#objectBinding(replica);
+      const session = await this.#cacheSession(replica, input.peerDeviceId, "uploader", fields);
+      if (
+        !this.#device.lookup ||
+        !("registryOrigin" in session.before) ||
+        typeof session.before.registryOrigin !== "string"
+      )
+        throw new Error("sync_cache_unconfigured");
+      const published = await this.#device.lookup(
+        {
+          sharedBotId: replica.sharedBotId,
+          peerDeviceId: input.peerDeviceId,
+          purpose: "replica.read",
+        },
+        fields,
+      );
+      if (!same(published.identity, session.before.peer)) throw new Error("sync_identity_changed");
+      const params = objectQuery.parse(
+        "objectId" in input
+          ? { objectId: input.objectId, recipientDescriptor: published.descriptor }
+          : {
+              source: input.source,
+              after: input.after,
+              limit: input.limit,
+              recipientDescriptor: published.descriptor,
+            },
+      );
+      await session.current();
+      await replica.check();
+      session.use();
+      const carrier = await this.#objectCarrier(
+        replica,
+        params,
+        session.before.local,
+        session.before.peer,
+        session.before.registryOrigin,
+        session.current,
+        session.use,
+        fields,
+      );
+      const wire = cacheWireRequest.parse({
+        version: 1,
+        operation: "publish",
+        sharedBotId: replica.sharedBotId,
+        peerDeviceId: input.peerDeviceId,
+        carrier,
+      });
+      const authority = await session.ticket(wire);
+      await session.current();
+      await replica.check();
+      session.use();
+      const result = cachePublishResult.parse(
+        await this.#exchange(
+          this.#cacheOrigin as string,
+          "/v1/cache/publish",
+          wire,
+          fields,
+          MAX_OBJECT_FRAME,
+          authority.authority,
+        ),
+      );
+      await session.current();
+      await replica.check();
+      session.use();
+      if (
+        result.cloudCached &&
+        (result.objectId !== carrier.manifest.objectId ||
+          result.expiresAt > result.firstCachedAt + 72 * 60 * 60 * 1000)
+      )
+        throw new Error("sync_cache_invalid");
+      this.#log.emit("info", "runtime", Events.ok, fields);
+      return result;
+    } catch (cause) {
+      throw this.#failure(cause, fields);
+    }
+  }
+  async cacheList(
+    botId: string,
+    input: z.infer<typeof cacheListInput>,
+    trace: string,
+  ): Promise<unknown> {
+    const fields = { trace, botId };
+    this.#log.emit("info", "runtime", Events.start, fields);
+    try {
+      if (this.#closed) throw new Error("sync_closed");
+      const replica = await this.#registry.readyReplica(botId, trace);
+      this.#objectBinding(replica);
+      const session = await this.#cacheSession(replica, input.peerDeviceId, "reader", fields);
+      const wire = cacheWireRequest.parse({
+        version: 1,
+        operation: "list",
+        sharedBotId: replica.sharedBotId,
+        ...input,
+      });
+      const authority = await session.ticket(wire);
+      await replica.check();
+      session.use();
+      const result = cacheListResult.parse(
+        await this.#exchange(
+          this.#cacheOrigin as string,
+          "/v1/cache/list",
+          wire,
+          fields,
+          MAX_OBJECT_FRAME,
+          authority.authority,
+        ),
+      );
+      await session.current();
+      await replica.check();
+      session.use();
+      for (const object of result.objects) session.use(object.expiresAt);
+      this.#log.emit("info", "runtime", Events.ok, fields);
+      return result;
+    } catch (cause) {
+      throw this.#failure(cause, fields);
+    }
+  }
+  async cacheReceive(
+    botId: string,
+    input: z.infer<typeof cacheReceiveInput>,
+    trace: string,
+  ): Promise<unknown> {
+    const fields = { trace, botId };
+    this.#log.emit("info", "runtime", Events.start, fields);
+    try {
+      if (this.#closed) throw new Error("sync_closed");
+      if (!this.#objects || !this.#device.openKey) throw new Error("sync_unconfigured");
+      const replica = await this.#registry.readyReplica(botId, trace);
+      this.#objectBinding(replica);
+      const session = await this.#cacheSession(replica, input.peerDeviceId, "reader", fields);
+      const wire = cacheWireRequest.parse({
+        version: 1,
+        operation: "get",
+        sharedBotId: replica.sharedBotId,
+        ...input,
+      });
+      const authority = await session.ticket(wire);
+      await replica.check();
+      session.use();
+      const result = cacheGetResult.parse(
+        await this.#exchange(
+          this.#cacheOrigin as string,
+          "/v1/cache/get",
+          wire,
+          fields,
+          MAX_OBJECT_FRAME,
+          authority.authority,
+        ),
+      );
+      const carrier = verifyCarrier(result.carrier),
+        manifest = carrier.manifest,
+        envelope = carrier.envelope;
+      if (
+        manifest.objectId !== input.objectId ||
+        manifest.sharedBotId !== replica.sharedBotId ||
+        manifest.registryOrigin !== authority.registryOrigin ||
+        manifest.publisher.deviceId !== authority.uploader.deviceId ||
+        manifest.publisher.publicKey !== authority.uploader.publicKey ||
+        !same(envelope.issuer, authority.uploader) ||
+        !same(envelope.recipient, authority.recipient) ||
+        result.expiresAt > result.firstCachedAt + 72 * 60 * 60 * 1000
+      )
+        throw new Error("sync_cache_identity_mismatch");
+      const use = () => session.use(result.expiresAt);
+      use();
+      const pin = acceptedPin(carrier);
+      const opened = await this.#device.openKey(
+        {
+          version: 1,
+          manifest,
+          envelope,
+          publisherPin: pin.publisher,
+          issuerPin: pin.issuer,
+          recipientPin: pin.recipient,
+        },
+        fields,
+      );
+      const key = Buffer.from(opened.dek, "base64url");
+      try {
+        decodePage(carrier, key);
+      } finally {
+        key.fill(0);
+      }
+      const staged = await this.#objects.stage({
+        version: 1,
+        kind: "recipient",
+        botId,
+        binding: this.#objectBinding(replica),
+        carrier,
+        pin,
+      });
+      let record: StoredObject;
+      try {
+        await session.current();
+        record = await this.#publish(replica, staged, use, fields);
+      } finally {
+        staged.discard();
+      }
+      this.#log.emit("info", "runtime", Events.ok, fields);
+      return {
+        version: 1,
+        objectId: record.carrier.manifest.objectId,
+        stored: true,
+        applied: false,
+        cipherDigest: record.carrier.manifest.cipherDigest,
+      };
+    } catch (cause) {
+      throw this.#failure(cause, fields);
+    }
+  }
   async #exchange(
     origin: string,
     path: string,
     value: unknown,
     fields: Context,
     maximum = MAX_SYNC_FRAME,
+    cacheAuthority?: string,
   ): Promise<unknown> {
     const text = JSON.stringify(value);
     if (Buffer.byteLength(text) > maximum) throw new Error("sync_frame_too_large");
@@ -711,7 +1062,12 @@ export class AuthenticatedSync implements SyncApi {
         method: "POST",
         redirect: "error",
         signal: AbortSignal.timeout(10000),
-        headers: { "content-type": "application/json", "x-bots-sync-trace": fields.trace },
+        headers: {
+          "content-type": "application/json",
+          "x-bots-sync-trace": fields.trace,
+          "x-bots-sync-bot": fields.botId,
+          ...(cacheAuthority === undefined ? {} : { authorization: `Bearer ${cacheAuthority}` }),
+        },
         body: text,
       });
     } catch (error) {

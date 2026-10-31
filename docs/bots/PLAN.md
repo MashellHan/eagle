@@ -13,18 +13,30 @@ bounded peer exchanges and per-bot pull-request journals/tools with client prese
 this integration preserves them alongside synchronization. Historical planned/phase-1
 wording does not disable those implemented capabilities.
 
-Current content integration pins `182fc1f704774eb37bdbc11cde017f8ff61f1c1a`, fetched once
-after delivered sync chain `cb64658ef30b1634459263bc8e8bb85347654e5f` (receipt `aaabb90c`).
-Its common ancestor is `5d48ba0a`; 29 upstream commits touch 132 paths, with 17 paths
-overlapping the 133-path local sync delta. Native merge conflicts were limited to two
-test fixtures and are resolved without removing either side's assertions. The combined
-local checks and exact source/gate scopes are recorded in [TESTING.md](TESTING.md) and
-`.local/sync-upstream-content`; actual normal commit/remote results belong to this step's
-final delivery receipt. The source freeze is `source-v1.json` SHA90021cf1 (614 selected
-inputs,707 full index/disk files), retaining both peer/PR behavior and the sync fences.
-This pin is the last upstream update until the overall synchronization project completes:
-do not fetch, pull or merge a newer upstream, or reopen the baseline when its head moves.
-Preserve `cb64658` and all published sync commits; #109 monitoring remains closed.
+Fixed-content baseline integration is normally delivered as
+`ee26b2bb5d0ab2530156843898e9b86c8611fb70` / tree `92d79c1e`, preserving the
+sync chain and pinned upstream `182fc1f704774eb37bdbc11cde017f8ff61f1c1a`.
+Authoritative `.local/sync-upstream-content/content-delivery-final.json`
+SHA293f1f74 binds1018 originals; own remote/clean/ahead0/behind0 and both normal
+hooks were independently accepted. Exact root267/browser191+11 existing skips/
+Swift208/51/60 scopes belong to that delivery, not the next slice.
+
+P4 CF72h explicit cache has a frozen local implementation with normal root/Bots/
+Worker/devices and affected crash/eval gates passed; independent Review and delivery
+are pending. Accepted Review P2#1's Cache DO/Registry SQL-read attribution fix is
+frozen as source-v3 SHA67ead90b; new Worker24/24, devices24/24 and root268/268 plus
+strict types/check-only lint/build pass. Independent delta/candidate acceptance
+is still required; old source-v1/v2/candidate and failures remain unchanged.
+The bounded slice is an
+independent Bots Sync Worker, per-sharedBot SQLite DO, ciphertext-only R2, current
+Registry authorization and explicit cache publish/list/receive followed by existing
+offline stored-object apply. [SYNC-CACHE.md](SYNC-CACHE.md) owns this slice's contract.
+Automatic fallback/switchback follows separately; no cloud deployment or physical
+Mac/App evidence is claimed. Preserve all old receipts including final itself.
+
+`182fc1f` is the last upstream update until the overall synchronization project
+completes: never fetch, pull or merge a newer upstream, or reopen a moving baseline.
+Preserve all published sync commits; #109 monitoring remains closed.
 
 ## 多端 Bot 整体实施计划（2026-10-30）
 
@@ -53,7 +65,8 @@ and40 delivery originals,including settled trace correctiona40bae3e. Own remote 
 clean/ahead0/behind0 were verified. Source-v3,target-slot P2 closure,both22/23 fixture failures
 and the final normal gates retain their exact recorded scope; TESTING records the delivery.
 Future cache identity must preserve original source epoch/seq across repaging/forwarding;
-CF72h cache/fallback/switching, physical paths and P5/P6 remain planned.
+The explicit CF72h cache slice is in local verification; automatic fallback/switching,
+physical paths and P5/P6 remain planned.
 Historical candidate and per-event evidence below retains its original scope.
 
 
@@ -169,7 +182,7 @@ Tailscale 直连进入本版范围；专用同步入口仅向 Tailscale 网络�
 | P1 — 本地副本与分支 | in progress | 持久来源日志、outbox、ID 映射、缺口补读与本端恢复 | A 停止后 B 可运行；重复/乱序同步保留两支；不恢复其他端任务 |
 | P2 - resources | local verified | fixed-head696f649, ordinary-root265b0db/repair9475e2e and fresh264cc9e delivered normally | Complete local version loading; raw contents/tool associations retained |
 | P3 — 设备底座接入 | first metadata slice delivered460b60d | 复用 #109 的安装/配对/helper/权限；新增同步身份授权、Tailscale 端点发布和共享访问接口 | 现有设备能力保持有效；无 Tailscale 可走云通道；端点身份、群成员和同步权限真实生效 |
-| P4 — 直连、中转与 3 天缓存 | first direct-page slice delivered4f7d035; local durable objects/envelopes delivered8b5ca36; fixed182fc1f baseline preserves peers/PR and sync with combined local evidence; remaining network/cache scope planned | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
+| P4 — 直连、中转与 3 天缓存 | first direct-page slice delivered4f7d035; local durable objects/envelopes delivered8b5ca36; fixed182fc1f baseline delivered ee26b2b; explicit CF72h cache frozen with normal local gates passed, Review/delivery pending; automatic fallback/switchback remains next | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
 | P5 — 原生多端流程 | planned | 共享目录、各端运行状态、直连/中继状态、分支选择/合并、同步覆盖范围与资源冲突 | 从 App 完成双端执行、错峰补齐、过期恢复；路径切换不打断本地 run，缺口不误报完整 |
 | P6 — 多机验证与交付 | planned | 物理双 Mac、真实 Tailscale 路径、断网/重启/升级、性能与成本、发布门禁 | 直连/回退/切回、同时运行、A 关机、B 重启、过期补读及新设备初始化有实际证据 |
 

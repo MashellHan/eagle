@@ -1,5 +1,10 @@
 import { z } from "zod";
 import {
+  cacheAuthority,
+  cacheAuthorityRequest,
+  publishedDescriptor,
+} from "./core/DeviceSyncCache.ts";
+import {
   SyncEnvelopeRequest,
   SyncKeyBytes,
   SyncKeyDescriptor,
@@ -63,6 +68,12 @@ export class SocketDeviceSyncPort implements DeviceSyncPort {
           "revoked_session",
           "session_required",
           "unknown_device",
+          "sync_wrapping_key_unavailable",
+          "sync_wrapping_key_conflict",
+          "invalid_sync_key_descriptor",
+          "invalid_sync_cache_authority",
+          "sync_cache_authority_expired",
+          "sync_identity_changed",
         ].includes(reason)
           ? "auth_failed"
           : "internal",
@@ -85,6 +96,28 @@ export class SocketDeviceSyncPort implements DeviceSyncPort {
   descriptor(context: { trace: string; botId: string }) {
     return this.#call("sync.key.descriptor", {}, context, (value) =>
       SyncKeyDescriptor.parse(value),
+    );
+  }
+  lookup(
+    input: Parameters<DeviceSyncPort["access"]>[0],
+    context: { trace: string; botId: string },
+  ) {
+    return this.#call("sync.key.lookup", input, context, (value) => {
+      const result = publishedDescriptor.parse(value);
+      if (result.identity.deviceId !== input.peerDeviceId)
+        throw new Error("invalid_device_sync_response");
+      return result;
+    });
+  }
+  cacheAuthority(
+    input: z.infer<typeof cacheAuthorityRequest>,
+    context: { trace: string; botId: string },
+  ) {
+    return this.#call(
+      "sync.cache.authority",
+      cacheAuthorityRequest.parse(input),
+      context,
+      (value) => cacheAuthority.parse(value),
     );
   }
   sealKey(input: z.infer<typeof SyncSealRequest>, context: { trace: string; botId: string }) {

@@ -74,3 +74,66 @@ test("the private sync adapter preserves refusal cause/trace and rejects mismatc
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("dedicated cache metadata denials retain auth attribution and the original private-port cause", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-cache-denials-"));
+  await chmod(root, 0o700);
+  const path = join(root, "cache.sock");
+  let reason = "sync_wrapping_key_unavailable";
+  const server = createServer((socket) => {
+    socket.setEncoding("utf8");
+    let buffer = "";
+    socket.on("data", (part) => {
+      buffer += part;
+      if (!buffer.includes("\n")) return;
+      const input = JSON.parse(buffer);
+      socket.end(JSON.stringify({ requestId: input.requestId, error: reason }) + "\n");
+    });
+  });
+  await new Promise<void>((done) => server.listen(path, done));
+  await chmod(path, 0o600);
+  const { log, records } = captureLog(),
+    port = new SocketDeviceSyncPort(path, log),
+    context = { trace: "tr_cache_denied", botId: "b_cache_denied" };
+  const input = {
+    sharedBotId: "11111111-1111-4111-8111-111111111111",
+    peerDeviceId: "22222222-2222-4222-8222-222222222222",
+    purpose: "replica.read" as const,
+  };
+  try {
+    for (const denial of [
+      "sync_wrapping_key_unavailable",
+      "invalid_sync_key_descriptor",
+      "sync_identity_changed",
+      "invalid_sync_cache_authority",
+      "sync_cache_authority_expired",
+    ]) {
+      reason = denial;
+      const pending = denial.includes("authority")
+        ? port.cacheAuthority(
+            {
+              version: 1,
+              operation: "get",
+              sharedBotId: input.sharedBotId,
+              peerDeviceId: input.peerDeviceId,
+              requestDigest: "a".repeat(64),
+            },
+            context,
+          )
+        : port.lookup(input, context);
+      await assert.rejects(pending, (error: unknown) => {
+        assert(error instanceof ClassifiedFailure);
+        assert.equal(error.failure.kind, "auth_failed");
+        assert.equal((error.cause as Error).message, denial);
+        assert.equal(
+          records.filter((row) => row.err?.failure === error.failure.id && row.err.origin).length,
+          1,
+        );
+        return true;
+      });
+    }
+  } finally {
+    await new Promise<void>((done) => server.close(() => done()));
+    await rm(root, { recursive: true, force: true });
+  }
+});

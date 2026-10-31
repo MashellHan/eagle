@@ -588,6 +588,9 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
           log,
           deviceSocket: canonical.deviceSocket as string,
           instance,
+          ...(canonical.syncCacheOrigin === undefined
+            ? {}
+            : { cacheOrigin: canonical.syncCacheOrigin }),
         });
   const syncListener =
     sync === undefined || deviceSync === undefined

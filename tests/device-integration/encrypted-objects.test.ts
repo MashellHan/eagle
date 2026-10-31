@@ -22,7 +22,10 @@ import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
+import type { DurableObjectStorageHandle } from "miniflare";
 import WebSocket from "ws";
+import { verifySyncKeyDescriptor } from "../../packages/contracts/src/device-objects.ts";
+import { SyncIdentityResult } from "../../packages/contracts/src/device-sync.ts";
 import { canonicalDeviceJSON } from "../../packages/contracts/src/devices.ts";
 import {
   localCall,
@@ -435,7 +438,12 @@ async function daemon(
   socketPath: string,
   baseUrl: string,
   key: string,
-  owned: { listener?: boolean; peerPort?: number; listenerPort?: number } = {},
+  owned: {
+    listener?: boolean;
+    peerPort?: number;
+    listenerPort?: number;
+    cacheOrigin?: string;
+  } = {},
 ) {
   mkdirSync(root, { mode: 0o700, recursive: true });
   const script = join(root, "daemon.mjs");
@@ -474,7 +482,7 @@ if(config.owned.peerPort){
  const {Agent,buildConnector,setGlobalDispatcher}=await import(pathToFileURL(config.repository+'/node_modules/undici/index.js').href);
  const connector=buildConnector({});dispatcher=new Agent({connect(options,callback){connector(options.hostname==='100.64.1.2'&&Number(options.port)===config.owned.peerPort?{...options,hostname:'127.0.0.1',host:'127.0.0.1'}:options,callback);}});setGlobalDispatcher(dispatcher);
 }
-const daemon=await startDaemon(readConfig({argv:['--root',config.root,'--port','0'],env:{BOTS_DEVICE_SOCKET:config.socketPath}}));
+const daemon=await startDaemon(readConfig({argv:['--root',config.root,'--port','0'],env:{BOTS_DEVICE_SOCKET:config.socketPath,BOTS_SYNC_CACHE_ORIGIN:config.owned.cacheOrigin}}));
 let server;
 if(config.owned.listener){
  const {createServer}=await import('node:http');server=createServer(daemon.sync.handler);
@@ -1097,7 +1105,14 @@ test("real main peer/PR history object cold-starts offline with exact bytes/head
       ),
     );
     const badCipher = JSON.parse(originalA.toString());
-    badCipher.carrier.ciphertext = "A" + badCipher.carrier.ciphertext.slice(1);
+    const originalCiphertext = badCipher.carrier.ciphertext;
+    const changedCipher = Buffer.from(
+      badCipher.carrier.ciphertext,
+      "base64url",
+    );
+    changedCipher[0] = (changedCipher[0] ?? 0) ^ 1;
+    badCipher.carrier.ciphertext = changedCipher.toString("base64url");
+    assert.notEqual(badCipher.carrier.ciphertext, originalCiphertext);
     writeFileSync(aFile, JSON.stringify(badCipher));
     const cryptoDenied = await fetch(
       ad.origin + `/v1/bots/${ab}/sync/objects/apply`,
@@ -1583,6 +1598,884 @@ test("real main peer/PR history object cold-starts offline with exact bytes/head
       server.close(() => done());
       server.closeAllConnections();
     });
+    rmSync(root, { recursive: true, force: true });
+    rmSync(workerRoot, { recursive: true, force: true });
+  }
+});
+
+test("durable helper descriptor and cache deliver a page created after the recipient closes", {
+  timeout: 90000,
+}, async () => {
+  const root = realpathSync(mkdtempSync("/tmp/eagle-cache-descriptor-"));
+  const workerRoot = mkdtempSync(resolve(".local/cache-descriptor-worker-"));
+  const key = randomBytes(32).toString("base64url");
+  const model = await modelFixture(key);
+  const services: { stop(): Promise<void> }[] = [];
+  const bots: { stop(): Promise<void> }[] = [];
+  const clients: Awaited<ReturnType<typeof botConnection>>[] = [];
+  let worker: Awaited<ReturnType<typeof workerFixture>> | undefined;
+  try {
+    worker = await workerFixture(workerRoot, true);
+    const a = await helper(join(root, "a"), worker.origin);
+    services.push(a);
+    const b = await helper(join(root, "b"), worker.origin);
+    services.push(b);
+    assert.notEqual(a.deviceId, b.deviceId);
+    assert.notEqual(a.publicKey, b.publicKey);
+    const invitation = await a.manage("pairing.create", {});
+    await b.manage("pairing.redeem", {
+      requestId: randomUUID(),
+      code: invitation.code,
+    });
+    const ad = await daemon(
+      join(root, "a-bots"),
+      a.socketPath,
+      model.baseUrl,
+      key,
+      { cacheOrigin: worker.origin },
+    );
+    bots.push(ad);
+    const bd = await daemon(
+      join(root, "b-bots"),
+      b.socketPath,
+      model.baseUrl,
+      key,
+      { cacheOrigin: worker.origin },
+    );
+    bots.push(bd);
+    const ab = (
+      await ad.post<{ bot: { id: string } }>("/v1/bots", {
+        title: "Offline reader",
+      })
+    ).bot.id;
+    const bb = (
+      await bd.post<{ bot: { id: string } }>("/v1/bots", {
+        title: "Cache publisher",
+      })
+    ).bot.id;
+    const sharedBotId = randomUUID();
+    await ad.post(`/v1/bots/${ab}/replica/bind`, { sharedBotId });
+    await bd.post(`/v1/bots/${bb}/replica/bind`, { sharedBotId });
+    const resources = JSON.parse(
+      readFileSync("fixtures/bots-sync/resources.v1.json", "utf8"),
+    );
+    await bd.post(`/v1/bots/${bb}/replica/export`, {
+      kind: "resources",
+      resources,
+    });
+    const page = await bd.post<Page>(`/v1/bots/${bb}/replica/pull`, {
+      after: 0,
+    });
+    assert.equal(page.events.length, resources.length + 1);
+    await b.manage("sync.share", {
+      sharedBotId,
+      peerDeviceId: a.deviceId,
+      enabled: true,
+    });
+    const access = (await localCall(b.socketPath, "sync.peer.authorize", {
+      sharedBotId,
+      peerDeviceId: a.deviceId,
+      purpose: "replica.read",
+    })) as Access;
+    assert.equal(access.local.deviceId, b.deviceId);
+    assert.equal(access.peer.deviceId, a.deviceId);
+    const descriptor = (await localCall(
+      a.socketPath,
+      "sync.key.descriptor",
+      {},
+    )) as RecordJSON;
+    assert.equal(descriptor.deviceId, a.deviceId);
+    assert.equal(descriptor.publicKey, a.publicKey);
+    assert.match(String(descriptor.keyId), /^[a-f0-9]{64}$/);
+    console.log(
+      JSON.stringify({
+        kind: "cache-descriptor-real-prerequisites",
+        independentEd: true,
+        registrySQLite: true,
+        paired: true,
+        currentDirectionalGrant: true,
+        boundReadyBots: 2,
+        originalPageEvents: page.events.length,
+        durableHelperDescriptor: true,
+        providerCalls: model.verify(),
+      }),
+    );
+    const identity = SyncIdentityResult.parse(
+      await localCall(a.socketPath, "sync.identity", {}),
+    ).identity;
+    await verifySyncKeyDescriptor(descriptor, identity, worker.origin);
+    const descriptorStorage = await worker.mf.unsafeGetDurableObjectStorage(
+      "eagle",
+      "DeviceRegistry",
+      { name: "registry" },
+    );
+    const marker = join(root, "a/hold-helper"),
+      held = join(root, "a/helper-held");
+    writeFileSync(marker, "sync_key_descriptor_result");
+    const lateDescriptor = localCall(a.socketPath, "sync.key.publish", {});
+    void lateDescriptor.catch(() => {});
+    await until(
+      async () => (existsSync(held) ? true : undefined),
+      "real helper descriptor reply before Node identity recheck",
+    );
+    await descriptorStorage.exec(
+      "UPDATE devices SET membershipEpoch=membershipEpoch+1 WHERE deviceId=?",
+      a.deviceId,
+    );
+    unlinkSync(marker);
+    await assert.rejects(lateDescriptor, /sync_identity_changed/);
+    unlinkSync(held);
+    assert.equal(
+      (
+        await descriptorStorage.exec(
+          "SELECT * FROM sync_wrapping_keys WHERE deviceId=?",
+          a.deviceId,
+        )
+      ).length,
+      0,
+    );
+    await descriptorStorage.exec(
+      "UPDATE devices SET membershipEpoch=membershipEpoch-1 WHERE deviceId=?",
+      a.deviceId,
+    );
+    const published = (await localCall(
+      a.socketPath,
+      "sync.key.publish",
+      {},
+    )) as { version: number; descriptor: RecordJSON };
+    assert.equal(published.version, 1);
+    await verifySyncKeyDescriptor(
+      published.descriptor,
+      identity,
+      worker.origin,
+    );
+    const unsigned = (value: RecordJSON) => {
+      const { signature: _signature, ...body } = value;
+      return body;
+    };
+    assert.deepEqual(unsigned(published.descriptor), unsigned(descriptor));
+    assert.deepEqual(
+      await localCall(a.socketPath, "sync.key.publish", {}),
+      published,
+    );
+    await a.stop();
+    services.splice(services.indexOf(a), 1);
+    const reopened = await helper(join(root, "a"), worker.origin);
+    services.push(reopened);
+    assert.equal(reopened.deviceId, a.deviceId);
+    assert.deepEqual(
+      await localCall(reopened.socketPath, "sync.key.publish", {}),
+      published,
+    );
+    await ad.stop();
+    bots.splice(bots.indexOf(ad), 1);
+    await reopened.stop();
+    services.splice(services.indexOf(reopened), 1);
+    const found = (await localCall(b.socketPath, "sync.key.lookup", {
+      sharedBotId,
+      peerDeviceId: a.deviceId,
+      purpose: "replica.read",
+    })) as { descriptor: unknown };
+    assert.deepEqual(found.descriptor, published.descriptor);
+    const newInstructions = Buffer.from(
+      "# created after reader went offline\n",
+    );
+    const newResources = await bd.post(`/v1/bots/${bb}/replica/export`, {
+      kind: "resources",
+      resources: [
+        {
+          ...resources[0],
+          base64: newInstructions.toString("base64"),
+          sha256: createHash("sha256").update(newInstructions).digest("hex"),
+        },
+        ...resources.slice(1),
+      ],
+    });
+    const publisher = await botConnection(bd.origin, bd.token, bb);
+    clients.push(publisher);
+    assert.equal(
+      (
+        await publisher.run(
+          "bash",
+          model,
+          { command: "printf cache-new-history" },
+          { resourceHead: String(newResources.head) },
+        )
+      ).isError,
+      false,
+    );
+    const history = await bd.post<History>(`/v1/bots/${bb}/replica/export`, {});
+    assert.match(JSON.stringify(history), /cache-new-history/);
+    const sections = (bundle: History) =>
+      bundle.entries.flatMap((entry) =>
+        (entry.model ?? []).flatMap((message) =>
+          message.sections ? [Object.keys(message.sections)] : [],
+        ),
+      );
+    const originalSections = sections(history);
+    assert(originalSections.some((keys) => keys.includes("bots-resources")));
+    const newPage = await bd.post<Page>(`/v1/bots/${bb}/replica/pull`, {
+      after: 0,
+    });
+    assert(newPage.events.length > page.events.length);
+    const baseline = model.verify();
+    assert.equal(baseline, 2);
+    console.log(
+      JSON.stringify({
+        kind: "cache-publish-real-prerequisites",
+        readerOffline: true,
+        durableRegistryDescriptor: true,
+        currentGrant: true,
+        newPageAfterReaderOffline: true,
+        providerCalls: model.verify(),
+      }),
+    );
+    for (const boundary of [
+      "publisher-epoch",
+      "publisher-expiry",
+      "slot-epoch",
+      "slot-expiry",
+    ]) {
+      const directory = join(root, "b-bots/bots", bb),
+        before = counts(directory);
+      await bd.control(boundary.startsWith("slot") ? "holdSlot" : "holdStage");
+      const pending = bd.post(`/v1/bots/${bb}/sync/cache/publish`, {
+        peerDeviceId: a.deviceId,
+        after: 0,
+      });
+      void pending.catch(() => {});
+      await bd.message((m) => m.type === "stageHeld");
+      const restore = boundary.endsWith("epoch")
+        ? changeBinding(directory, "epoch", randomUUID())
+        : () => {};
+      if (boundary.endsWith("expiry")) await bd.control("advance");
+      await bd.control("releaseStage");
+      try {
+        await assert.rejects(pending, /400|403/);
+      } finally {
+        restore();
+        if (boundary.endsWith("expiry")) await bd.control("resetClock");
+      }
+      assert.deepEqual(counts(directory), before);
+      assert.equal(model.verify(), baseline);
+      const objects = join(root, "b-bots/sync-objects/v1");
+      assert.equal(
+        readdirSync(objects).filter((name) => name.endsWith(".json")).length,
+        boundary.startsWith("slot") ? 1 : 0,
+      );
+      for (const name of readdirSync(objects).filter((name) =>
+        name.endsWith(".recipients"),
+      ))
+        assert.equal(readdirSync(join(objects, name)).length, 0);
+      console.log(
+        JSON.stringify({
+          kind: "cache-publish-stage-boundary",
+          boundary,
+          cloudCached: false,
+          executionDelta: 0,
+        }),
+      );
+    }
+    await bd.control("holdSlot");
+    const publishing = bd.post<{
+      cloudCached: boolean;
+      objectId: string;
+      firstCachedAt: number;
+      expiresAt: number;
+    }>(`/v1/bots/${bb}/sync/cache/publish`, {
+      peerDeviceId: a.deviceId,
+      after: 0,
+    });
+    void publishing.catch(() => {});
+    await bd.message((m) => m.type === "stageHeld");
+    await bd.control("clearReady");
+    await bd.control("releaseStage");
+    const cached = await publishing;
+    assert.equal(cached.cloudCached, true);
+    const publisherRecord = JSON.parse(
+      readFileSync(
+        join(root, "b-bots/sync-objects/v1", cached.objectId + ".json"),
+        "utf8",
+      ),
+    );
+    assert.equal(
+      publisherRecord.carrier.manifest.pageDigest,
+      createHash("sha256").update(JSON.stringify(newPage)).digest("hex"),
+    );
+    await new Promise<void>((done) => {
+      publisher.socket.once("close", () => done());
+      publisher.socket.close();
+    });
+    await bd.stop();
+    bots.splice(bots.indexOf(bd), 1);
+    await b.stop();
+    services.splice(services.indexOf(b), 1);
+    const registryStorage = await worker.mf.unsafeGetDurableObjectStorage(
+      "eagle",
+      "DeviceRegistry",
+      { name: "registry" },
+    );
+    await registryStorage.exec(
+      "UPDATE sessions SET expires=0 WHERE deviceId=?",
+      b.deviceId,
+    );
+    await registryStorage.exec(
+      "UPDATE sync_cache_authorities SET expires=0 WHERE json_extract(authorization,'$.operation')='publish'",
+    );
+    const coldA = await helper(join(root, "a"), worker.origin);
+    services.push(coldA);
+    assert.equal(coldA.deviceId, a.deviceId);
+    let reader = await daemon(
+      join(root, "a-bots"),
+      coldA.socketPath,
+      model.baseUrl,
+      key,
+      { cacheOrigin: worker.origin },
+    );
+    bots.push(reader);
+    let opened = await botConnection(reader.origin, reader.token, ab);
+    clients.push(opened);
+    const directory = join(root, "a-bots/bots", ab);
+    const executionCounts = () =>
+      Object.fromEntries(
+        Object.entries(counts(directory)).filter(([name]) =>
+          /submission|task|local_runs/.test(name),
+        ),
+      );
+    const before = executionCounts();
+    assert("replica.sqlite:local_runs" in before);
+    const peersBefore = readdirSync(join(root, "a-bots/peers")).map((name) => [
+      name,
+      readFileSync(join(root, "a-bots/peers", name)).toString("base64"),
+    ]);
+    const journalPath = join(directory, "pulls.journal.jsonl");
+    const prBefore = existsSync(journalPath)
+      ? readFileSync(journalPath)
+      : undefined;
+    const list = await reader.post<{
+      objects: { objectId: string }[];
+      complete: boolean;
+    }>(`/v1/bots/${ab}/sync/cache/list`, {
+      peerDeviceId: b.deviceId,
+      source: newPage.source,
+      after: 0,
+    });
+    assert(list.objects.some((value) => value.objectId === cached.objectId));
+    assert.equal(list.complete, false);
+    const objectFile = join(
+      root,
+      "a-bots/sync-objects/v1",
+      cached.objectId + ".json",
+    );
+    for (const boundary of [
+      "epoch",
+      "replicaId",
+      "localBotId",
+      "sharedBotId",
+      "expiry",
+      "grant",
+      "handle",
+      "close",
+    ]) {
+      const dbBefore = counts(directory);
+      assert.equal(existsSync(objectFile), false);
+      await reader.control("holdStage");
+      const pending = reader.post(`/v1/bots/${ab}/sync/cache/receive`, {
+        peerDeviceId: b.deviceId,
+        objectId: cached.objectId,
+      });
+      void pending.catch(() => {});
+      await reader.message((m) => m.type === "stageHeld");
+      let restore = () => {};
+      if (
+        ["epoch", "replicaId", "localBotId", "sharedBotId"].includes(boundary)
+      )
+        restore = changeBinding(directory, boundary, randomUUID());
+      if (boundary === "expiry") await reader.control("advance");
+      if (boundary === "grant") {
+        const storage: DurableObjectStorageHandle =
+          await worker.mf.unsafeGetDurableObjectStorage(
+            "eagle",
+            "DeviceRegistry",
+            { name: "registry" },
+          );
+        const grant = (
+          await storage.exec(
+            "SELECT binding FROM sync_grants WHERE sharedBotId=?",
+            sharedBotId,
+          )
+        )[0]?.binding;
+        assert.equal(typeof grant, "string");
+        await storage.exec(
+          "UPDATE sync_grants SET binding='owned-revoked' WHERE sharedBotId=?",
+          sharedBotId,
+        );
+        restore = () => {};
+        await reader.control("releaseStage");
+        await assert.rejects(pending, /403/);
+        await storage.exec(
+          "UPDATE sync_grants SET binding=? WHERE sharedBotId=?",
+          grant as string,
+          sharedBotId,
+        );
+      } else {
+        if (boundary === "handle") await reader.control("shutdownRegistry");
+        if (boundary === "close") await reader.control("closeSync");
+        await reader.control("releaseStage");
+        try {
+          await assert.rejects(
+            pending,
+            boundary === "localBotId" ? /503/ : /400|403/,
+          );
+        } finally {
+          restore();
+          if (boundary === "expiry") await reader.control("resetClock");
+        }
+      }
+      assert.equal(existsSync(objectFile), false);
+      assert.deepEqual(counts(directory), dbBefore);
+      assert.equal(model.verify(), baseline);
+      console.log(
+        JSON.stringify({
+          kind: "cache-receive-stage-boundary",
+          boundary,
+          stored: false,
+          executionDelta: 0,
+        }),
+      );
+      if (boundary === "handle" || boundary === "close") {
+        await new Promise<void>((done) => {
+          opened.socket.once("close", () => done());
+          opened.socket.close();
+        });
+        await reader.stop();
+        bots.splice(bots.indexOf(reader), 1);
+        reader = await daemon(
+          join(root, "a-bots"),
+          coldA.socketPath,
+          model.baseUrl,
+          key,
+          { cacheOrigin: worker.origin },
+        );
+        bots.push(reader);
+        opened = await botConnection(reader.origin, reader.token, ab);
+        clients.push(opened);
+      }
+    }
+    await reader.control("holdStage");
+    const receiving = reader.post(`/v1/bots/${ab}/sync/cache/receive`, {
+      peerDeviceId: b.deviceId,
+      objectId: cached.objectId,
+    });
+    void receiving.catch(() => {});
+    await reader.message((m) => m.type === "stageHeld");
+    await reader.control("clearReady");
+    await reader.control("releaseStage");
+    const received = await receiving;
+    assert.equal(received.stored, true);
+    assert.equal(received.applied, false);
+    const record = JSON.parse(
+      readFileSync(
+        join(root, "a-bots/sync-objects/v1", cached.objectId + ".json"),
+        "utf8",
+      ),
+    );
+    assert.equal(record.carrier.ciphertext, publisherRecord.carrier.ciphertext);
+    assert.deepEqual(record.carrier.manifest, publisherRecord.carrier.manifest);
+    await reader.post(`/v1/bots/${ab}/sync/objects/apply`, {
+      objectId: cached.objectId,
+    });
+    const restoredPage = await reader.post<Page>(
+      `/v1/bots/${ab}/replica/pull`,
+      { source: newPage.source, after: 0 },
+    );
+    assert.equal(JSON.stringify(restoredPage), JSON.stringify(newPage));
+    const restored = await reader.post<History>(
+      `/v1/bots/${ab}/replica/export`,
+      { head: history.head },
+    );
+    assert.equal(restored.head, history.head);
+    assert.equal(
+      JSON.stringify(restored.entries),
+      JSON.stringify(history.entries),
+    );
+    assert.deepEqual(sections(restored), originalSections);
+    const { manifest, envelope } = record.carrier,
+      { pin } = record;
+    const keyResult = (await localCall(coldA.socketPath, "sync.key.open", {
+      version: 1,
+      manifest,
+      envelope,
+      publisherPin: pin.publisher,
+      issuerPin: pin.issuer,
+      recipientPin: pin.recipient,
+    })) as { dek: string };
+    const {
+      signature: _signature,
+      cipherDigest: _cipherDigest,
+      ...header
+    } = manifest;
+    const cipher = Buffer.from(record.carrier.ciphertext, "base64url");
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      Buffer.from(keyResult.dek, "base64url"),
+      Buffer.from(manifest.nonce, "base64url"),
+    );
+    decipher.setAAD(
+      Buffer.from("eagle-bots-page-object-v1\n" + canonicalDeviceJSON(header)),
+    );
+    decipher.setAuthTag(cipher.subarray(-16));
+    const plaintext = Buffer.concat([
+      decipher.update(cipher.subarray(0, -16)),
+      decipher.final(),
+    ]);
+    assert.deepEqual(plaintext, Buffer.from(JSON.stringify(newPage)));
+    assert.deepEqual(executionCounts(), before);
+    assert.deepEqual(
+      readdirSync(join(root, "a-bots/peers")).map((name) => [
+        name,
+        readFileSync(join(root, "a-bots/peers", name)).toString("base64"),
+      ]),
+      peersBefore,
+    );
+    assert.deepEqual(
+      existsSync(journalPath) ? readFileSync(journalPath) : undefined,
+      prBefore,
+    );
+    assert.equal(model.verify(), baseline);
+    const localLogs = () =>
+      readdirSync(join(root, "a-bots/logs")).flatMap((file) =>
+        readFileSync(join(root, "a-bots/logs", file), "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line)),
+      );
+    const cacheStorage = await worker.mf.unsafeGetDurableObjectStorage(
+      "bots-sync",
+      "SyncCache",
+      { name: sharedBotId },
+    );
+    for (const [sqlStorage, table, method, failureKind] of [
+      [cacheStorage, "objects", "receive", "storage_failed"],
+      [cacheStorage, "events", "list", "storage_failed"],
+      [cacheStorage, "recipients", "receive", "storage_failed"],
+      [cacheStorage, "recipients", "list", "storage_failed"],
+      [cacheStorage, "event_objects", "list", "storage_failed"],
+      [registryStorage, "sync_cache_authorities", "receive", "internal"],
+      [registryStorage, "sync_cache_authorities", "list", "internal"],
+    ] as const) {
+      const beforeSqlFailure = counts(directory);
+      const originalPin = readFileSync(objectFile);
+      let originalRows = await sqlStorage.exec(`SELECT * FROM ${table}`);
+      const registryGate = table === "sync_cache_authorities";
+      if (registryGate)
+        await registryStorage.exec(
+          "CREATE TABLE test_cache_sql_gate(started INTEGER,released INTEGER); INSERT INTO test_cache_sql_gate VALUES(0,0)",
+        );
+      else
+        await sqlStorage.exec(
+          `ALTER TABLE ${table} RENAME TO owned_unavailable_${table}`,
+        );
+      let renamed = !registryGate;
+      try {
+        const pending = fetch(
+          reader.origin + `/v1/bots/${ab}/sync/cache/${method}`,
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${reader.token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(
+              method === "receive"
+                ? { peerDeviceId: b.deviceId, objectId: cached.objectId }
+                : {
+                    peerDeviceId: b.deviceId,
+                    source: newPage.source,
+                    after: 0,
+                    limit: 128,
+                  },
+            ),
+          },
+        );
+        if (registryGate) {
+          await until(
+            async () =>
+              (
+                await registryStorage.exec(
+                  "SELECT started FROM test_cache_sql_gate",
+                )
+              )[0]?.started
+                ? true
+                : undefined,
+            "cache authority minted before actual Registry SQL read",
+          );
+          originalRows = await sqlStorage.exec(`SELECT * FROM ${table}`);
+          assert(originalRows.length > 0);
+          await sqlStorage.exec(
+            `ALTER TABLE ${table} RENAME TO owned_unavailable_${table}`,
+          );
+          renamed = true;
+          await registryStorage.exec(
+            "UPDATE test_cache_sql_gate SET released=1",
+          );
+        }
+        const response = await pending;
+        const text = await response.text();
+        const result = JSON.parse(text) as {
+          error: { kind: string; failure: string };
+          trace: string;
+        };
+        console.log(
+          JSON.stringify({
+            kind: "real-cache-sql-refusal",
+            table,
+            method,
+            status: response.status,
+            failureKind: result.error?.kind,
+          }),
+        );
+        assert.equal(response.status, 503);
+        assert.equal(result.error.kind, failureKind);
+        assert.equal(text.includes("carrier"), false);
+        assert.equal(text.includes("no such table"), false);
+        await until(
+          async () =>
+            worker?.logs.some((row) =>
+              row.message.includes(result.error.failure),
+            )
+              ? true
+              : undefined,
+          "SQL storage origin",
+        );
+        const origins: { level: string; message: string }[] =
+          worker.logs.filter((row) =>
+            row.message.includes(result.error.failure),
+          );
+        assert.equal(origins.length, 1);
+        assert.equal(origins[0]?.level, "error");
+        assert(origins[0]?.message.includes(result.trace));
+        assert(origins[0]?.message.includes(ab));
+        assert.equal(JSON.stringify(origins).includes("no such table"), false);
+        assert.equal(
+          JSON.stringify(origins).includes(record.carrier.ciphertext),
+          false,
+        );
+        await until(
+          async () =>
+            localLogs().some(
+              (row) =>
+                row.err?.failure === result.error.failure &&
+                row.level === "warn",
+            )
+              ? true
+              : undefined,
+          "SQL storage propagation",
+        );
+        const propagated = localLogs().filter(
+          (row) => row.err?.failure === result.error.failure,
+        );
+        assert.equal(
+          propagated.filter((row) => row.level === "error").length,
+          0,
+        );
+        assert(
+          propagated.every(
+            (row) =>
+              row.trace === result.trace &&
+              row.botId === ab &&
+              row.err?.kind === failureKind,
+          ),
+        );
+        assert.deepEqual(counts(directory), beforeSqlFailure);
+        assert.deepEqual(readFileSync(objectFile), originalPin);
+        assert.deepEqual(executionCounts(), before);
+        assert.equal(model.verify(), baseline);
+      } finally {
+        if (renamed) {
+          await sqlStorage.exec(
+            `ALTER TABLE owned_unavailable_${table} RENAME TO ${table}`,
+          );
+          assert.deepEqual(
+            await sqlStorage.exec(`SELECT * FROM ${table}`),
+            originalRows,
+          );
+        }
+        if (registryGate)
+          await registryStorage.exec("DROP TABLE test_cache_sql_gate");
+      }
+      const retry = await reader.post<{ stored: boolean }>(
+        `/v1/bots/${ab}/sync/cache/receive`,
+        {
+          peerDeviceId: b.deviceId,
+          objectId: cached.objectId,
+        },
+      );
+      assert.equal(retry.stored, true);
+      assert.deepEqual(readFileSync(objectFile), originalPin);
+      assert.deepEqual(counts(directory), beforeSqlFailure);
+      assert.equal(model.verify(), baseline);
+    }
+    const bucket = (await worker.mf.getR2Bucket(
+      "CIPHERS",
+      "bots-sync",
+    )) as unknown as {
+      head(
+        key: string,
+      ): Promise<{ customMetadata: Record<string, string> } | null>;
+      put(key: string, body: Uint8Array, options: unknown): Promise<unknown>;
+    };
+    const r2key = `v1/${sharedBotId}/${cached.objectId}`,
+      r2head = await bucket.head(r2key);
+    assert(r2head);
+    const corruptBody = Buffer.from(record.carrier.ciphertext, "base64url");
+    corruptBody[0] = (corruptBody[0] ?? 0) ^ 1;
+    await bucket.put(r2key, corruptBody, {
+      customMetadata: r2head.customMetadata,
+    });
+    const beforeFailure = counts(directory);
+    const refused = await fetch(
+      reader.origin + `/v1/bots/${ab}/sync/cache/receive`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${reader.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          peerDeviceId: b.deviceId,
+          objectId: cached.objectId,
+        }),
+      },
+    );
+    assert.equal(refused.status, 503);
+    const refusedBody = (await refused.json()) as {
+      error: { kind: string; failure: string };
+      trace: string;
+    };
+    assert.equal(refusedBody.error.kind, "storage_failed");
+    const failureId = refusedBody.error.failure;
+    await until(
+      async () =>
+        worker?.logs.some((row) => row.message.includes(failureId))
+          ? true
+          : undefined,
+      "cache originating failure log",
+    );
+    const origins = worker.logs.filter((row) =>
+      row.message.includes(failureId),
+    );
+    assert.equal(origins.length, 1);
+    assert.equal(origins[0]?.level, "error");
+    assert(origins[0]?.message.includes(refusedBody.trace));
+    assert(origins[0]?.message.includes(ab));
+    await until(
+      async () =>
+        localLogs().some(
+          (row) => row.err?.failure === failureId && row.level === "warn",
+        )
+          ? true
+          : undefined,
+      "Bots cache propagated failure",
+    );
+    const propagated = localLogs().filter(
+      (row) => row.err?.failure === failureId,
+    );
+    assert.equal(propagated.filter((row) => row.level === "error").length, 0);
+    assert(
+      propagated.every(
+        (row) => row.trace === refusedBody.trace && row.botId === ab,
+      ),
+    );
+    assert.deepEqual(counts(directory), beforeFailure);
+    assert.equal(model.verify(), baseline);
+    console.log(
+      JSON.stringify({
+        kind: "real-cache-origin",
+        failureId,
+        trace: refusedBody.trace,
+        botId: ab,
+        workerOrigins: 1,
+        botsErrors: 0,
+        zeroApply: true,
+      }),
+    );
+    await registryStorage.exec(
+      "UPDATE devices SET credentialVersion=credentialVersion+1 WHERE deviceId=?",
+      a.deviceId,
+    );
+    await assert.rejects(
+      reader.post(`/v1/bots/${ab}/sync/cache/receive`, {
+        peerDeviceId: b.deviceId,
+        objectId: cached.objectId,
+      }),
+      /403/,
+    );
+    const originalRecord = readFileSync(objectFile),
+      origin = worker.origin;
+    await new Promise<void>((done) => {
+      opened.socket.once("close", () => done());
+      opened.socket.close();
+    });
+    await reader.stop();
+    bots.splice(bots.indexOf(reader), 1);
+    await coldA.stop();
+    services.splice(services.indexOf(coldA), 1);
+    await worker.mf.dispose();
+    worker = undefined;
+    const offline = await helper(join(root, "a"), origin, false);
+    services.push(offline);
+    reader = await daemon(
+      join(root, "a-bots"),
+      offline.socketPath,
+      model.baseUrl,
+      key,
+    );
+    bots.push(reader);
+    opened = await botConnection(reader.origin, reader.token, ab);
+    clients.push(opened);
+    const offlineBefore = executionCounts();
+    await reader.post(`/v1/bots/${ab}/sync/objects/apply`, {
+      objectId: cached.objectId,
+    });
+    assert.deepEqual(readFileSync(objectFile), originalRecord);
+    assert.deepEqual(executionCounts(), offlineBefore);
+    assert.equal(model.verify(), baseline);
+    assert.equal(
+      (
+        await opened.run("bash", model, {
+          command: "printf cache-reader-native",
+        })
+      ).isError,
+      false,
+    );
+    assert.equal(model.verify(), baseline + 2);
+    console.log(
+      JSON.stringify({
+        kind: "real-cache-staggered-chain",
+        readerOffBeforeNewPage: true,
+        publisherOffBeforeColdReader: true,
+        registrySQLite: true,
+        syncDOAndR2: true,
+        originalPlaintextBytes: plaintext.length,
+        historyEntries: history.entries.length,
+        head: history.head,
+        sectionOrders: originalSections,
+        passiveExecutionDelta: 0,
+        nativeProviderDelta: 2,
+      }),
+    );
+  } finally {
+    for (const client of clients)
+      if (client.socket.readyState === WebSocket.OPEN)
+        await new Promise<void>((done) => {
+          client.socket.once("close", () => done());
+          client.socket.close();
+        });
+    for (const service of bots.reverse()) await service.stop();
+    for (const service of services.reverse()) await service.stop();
+    await worker?.mf.dispose();
+    await new Promise<void>((done) => model.server.close(() => done()));
     rmSync(root, { recursive: true, force: true });
     rmSync(workerRoot, { recursive: true, force: true });
   }

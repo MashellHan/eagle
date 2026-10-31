@@ -1,6 +1,16 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 import {
+  SyncCacheAuthorityCheck,
+  SyncCacheAuthorityRequest,
+  SyncCacheAuthorization,
+} from "../../../../packages/contracts/src/device-cache.ts";
+import {
+  SyncKeyDescriptor,
+  SyncPublishedDescriptor,
+  verifySyncKeyDescriptor,
+} from "../../../../packages/contracts/src/device-objects.ts";
+import {
   SyncAccess,
   SyncCandidate,
   SyncIdentity,
@@ -122,6 +132,8 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
     CREATE TABLE IF NOT EXISTS rates(key TEXT PRIMARY KEY,count INTEGER NOT NULL,until INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS sync_grants(grantingDeviceId TEXT NOT NULL,sharedBotId TEXT NOT NULL,peerDeviceId TEXT NOT NULL,binding TEXT NOT NULL,PRIMARY KEY(grantingDeviceId,sharedBotId,peerDeviceId));
     CREATE TABLE IF NOT EXISTS sync_endpoints(deviceId TEXT PRIMARY KEY,binding TEXT NOT NULL,publishedAt INTEGER NOT NULL,candidates TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS sync_wrapping_keys(deviceId TEXT PRIMARY KEY,binding TEXT NOT NULL,descriptor TEXT NOT NULL,publishedAt INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS sync_cache_authorities(hash TEXT PRIMARY KEY,sessionHash TEXT NOT NULL,authorization TEXT NOT NULL,expires INTEGER NOT NULL);
   `);
     for (const [table, column, definition] of [
       ["devices", "localRevision", "INTEGER NOT NULL DEFAULT 0"],
@@ -198,6 +210,87 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
     this.ctx.storage.sql.exec("DELETE FROM rates WHERE until<=?", now);
     this.ctx.storage.sql.exec("DELETE FROM sessions WHERE expires<=?", now);
     this.ctx.storage.sql.exec("DELETE FROM challenges WHERE expires<=?", now);
+    this.ctx.storage.sql.exec(
+      "DELETE FROM sync_cache_authorities WHERE expires<=?",
+      now,
+    );
+  }
+  private cacheGrant(
+    uploader: z.infer<typeof SyncIdentity>,
+    recipient: z.infer<typeof SyncIdentity>,
+    sharedBotId: string,
+  ): void {
+    if (
+      uploader.deviceId === recipient.deviceId ||
+      !uploader.groupId ||
+      uploader.groupId !== recipient.groupId ||
+      canonicalDeviceJSON(syncIdentity(this.device(uploader.deviceId))) !==
+        canonicalDeviceJSON(uploader) ||
+      canonicalDeviceJSON(syncIdentity(this.device(recipient.deviceId))) !==
+        canonicalDeviceJSON(recipient) ||
+      this.one<{ binding: string }>(
+        "SELECT binding FROM sync_grants WHERE grantingDeviceId=? AND sharedBotId=? AND peerDeviceId=?",
+        uploader.deviceId,
+        sharedBotId,
+        recipient.deviceId,
+      )?.binding !== JSON.stringify([uploader, recipient])
+    )
+      throw new DeviceHttpError(403, "sync_not_shared");
+  }
+  async checkCacheAuthority(value: unknown) {
+    try {
+      const input = SyncCacheAuthorityCheck.parse(value);
+      const hash = await deviceDigest(input.authority);
+      return this.ctx.storage.transactionSync(() => {
+        const row = this.one<{
+          sessionHash: string;
+          authorization: string;
+          expires: number;
+        }>(
+          "SELECT sessionHash,authorization,expires FROM sync_cache_authorities WHERE hash=?",
+          hash,
+        );
+        if (!row || row.expires <= Date.now())
+          throw new DeviceHttpError(403, "sync_cache_authority_expired");
+        const authorization = SyncCacheAuthorization.parse(
+          JSON.parse(row.authorization),
+        );
+        const requester = syncIdentity(this.sessionDevice(row.sessionHash));
+        const expected =
+          authorization.operation === "publish"
+            ? authorization.uploader
+            : authorization.recipient;
+        if (
+          authorization.expiresAt !== row.expires ||
+          authorization.operation !== input.operation ||
+          authorization.sharedBotId !== input.sharedBotId ||
+          authorization.requestDigest !== input.requestDigest ||
+          canonicalDeviceJSON(requester) !== canonicalDeviceJSON(expected)
+        )
+          throw new DeviceHttpError(403, "invalid_sync_cache_authority");
+        this.cacheGrant(
+          authorization.uploader,
+          authorization.recipient,
+          authorization.sharedBotId,
+        );
+        return { ok: true as const, authorization };
+      });
+    } catch (error) {
+      if (
+        !(error instanceof DeviceHttpError) &&
+        !(error instanceof z.ZodError) &&
+        !(error instanceof SyntaxError)
+      )
+        throw new Error("sync_cache_registry_unavailable", { cause: error });
+      return {
+        ok: false as const,
+        status: error instanceof DeviceHttpError ? error.status : 403,
+        error:
+          error instanceof DeviceHttpError
+            ? error.message
+            : "invalid_sync_cache_authority",
+      };
+    }
   }
   async authorize(
     token: string,
@@ -472,6 +565,178 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
         version: 1,
         identity: syncIdentity(this.sessionDevice(sessionHash)),
       });
+    if (path === "/sync/cache/authority" && post) {
+      const input = SyncCacheAuthorityRequest.parse(await deviceBody(request));
+      const authority = deviceBase64(
+        crypto.getRandomValues(new Uint8Array(32)),
+      );
+      const hash = await deviceDigest(authority);
+      return write((current) => {
+        const local = syncIdentity(current),
+          peer = syncIdentity(this.device(input.peerDeviceId));
+        const uploader = input.operation === "publish" ? local : peer;
+        const recipient = input.operation === "publish" ? peer : local;
+        this.cacheGrant(uploader, recipient, input.sharedBotId);
+        const authorization = SyncCacheAuthorization.parse({
+          version: 1,
+          purpose: "replica.cache",
+          operation: input.operation,
+          registryOrigin: new URL(request.url).origin,
+          sharedBotId: input.sharedBotId,
+          requestDigest: input.requestDigest,
+          uploader,
+          recipient,
+          expiresAt: Date.now() + 60000,
+        });
+        this.ctx.storage.sql.exec(
+          "INSERT INTO sync_cache_authorities VALUES(?,?,?,?)",
+          hash,
+          sessionHash,
+          JSON.stringify(authorization),
+          authorization.expiresAt,
+        );
+        return deviceJSON({ ...authorization, authority });
+      });
+    }
+    if (path === "/sync/keys/publish" && post) {
+      const input = z
+        .strictObject({
+          version: z.literal(1),
+          identity: SyncIdentity,
+          descriptor: SyncKeyDescriptor,
+        })
+        .parse(await deviceBody(request));
+      const identity = syncIdentity(self);
+      const binding = canonicalDeviceJSON(identity);
+      if (canonicalDeviceJSON(input.identity) !== binding)
+        throw new DeviceHttpError(403, "sync_identity_changed");
+      const origin = new URL(request.url).origin;
+      const verify = async (value: unknown) => {
+        try {
+          return await verifySyncKeyDescriptor(value, identity, origin);
+        } catch {
+          throw new DeviceHttpError(403, "invalid_sync_key_descriptor");
+        }
+      };
+      const descriptor = await verify(input.descriptor);
+      for (;;) {
+        const previous = this.one<{
+          binding: string;
+          descriptor: string;
+          publishedAt: number;
+        }>(
+          "SELECT binding,descriptor,publishedAt FROM sync_wrapping_keys WHERE deviceId=?",
+          identity.deviceId,
+        );
+        let winner = descriptor;
+        if (previous?.binding === binding) {
+          try {
+            winner = await verify(JSON.parse(previous.descriptor));
+          } catch {
+            throw new DeviceHttpError(403, "invalid_sync_key_descriptor");
+          }
+          const { signature: _incoming, ...incomingBody } = descriptor;
+          const { signature: _saved, ...savedBody } = winner;
+          if (
+            canonicalDeviceJSON(incomingBody) !== canonicalDeviceJSON(savedBody)
+          )
+            throw new DeviceHttpError(409, "sync_wrapping_key_conflict");
+        }
+        const result = write((current) => {
+          if (canonicalDeviceJSON(syncIdentity(current)) !== binding)
+            throw new DeviceHttpError(403, "sync_identity_changed");
+          const actual = this.one<{
+            binding: string;
+            descriptor: string;
+            publishedAt: number;
+          }>(
+            "SELECT binding,descriptor,publishedAt FROM sync_wrapping_keys WHERE deviceId=?",
+            identity.deviceId,
+          );
+          // A concurrent winner must be read and fully verified before returning it.
+          if (
+            canonicalDeviceJSON(actual ?? null) !==
+            canonicalDeviceJSON(previous ?? null)
+          )
+            return undefined;
+          const publishedAt =
+            previous?.binding === binding ? previous.publishedAt : Date.now();
+          if (previous?.binding !== binding)
+            this.ctx.storage.sql.exec(
+              "INSERT INTO sync_wrapping_keys VALUES(?,?,?,?) ON CONFLICT(deviceId) DO UPDATE SET binding=excluded.binding,descriptor=excluded.descriptor,publishedAt=excluded.publishedAt",
+              identity.deviceId,
+              binding,
+              JSON.stringify(winner),
+              publishedAt,
+            );
+          return { version: 1, identity, descriptor: winner, publishedAt };
+        });
+        if (result) return deviceJSON(SyncPublishedDescriptor.parse(result));
+      }
+    }
+    if (path === "/sync/keys/lookup" && post) {
+      const input = SyncAccess.parse(await deviceBody(request));
+      const local = syncIdentity(self);
+      const peer = syncIdentity(this.device(input.peerDeviceId));
+      const grant = () => {
+        const current = syncIdentity(this.sessionDevice(sessionHash));
+        const recipient = syncIdentity(this.device(input.peerDeviceId));
+        if (
+          canonicalDeviceJSON(current) !== canonicalDeviceJSON(local) ||
+          canonicalDeviceJSON(recipient) !== canonicalDeviceJSON(peer) ||
+          !current.groupId ||
+          current.groupId !== recipient.groupId ||
+          current.deviceId === recipient.deviceId ||
+          this.one<{ binding: string }>(
+            "SELECT binding FROM sync_grants WHERE grantingDeviceId=? AND sharedBotId=? AND peerDeviceId=?",
+            current.deviceId,
+            input.sharedBotId,
+            recipient.deviceId,
+          )?.binding !== JSON.stringify([current, recipient])
+        )
+          throw new DeviceHttpError(403, "sync_not_shared");
+      };
+      grant();
+      const row = this.one<{
+        binding: string;
+        descriptor: string;
+        publishedAt: number;
+      }>(
+        "SELECT binding,descriptor,publishedAt FROM sync_wrapping_keys WHERE deviceId=?",
+        peer.deviceId,
+      );
+      if (!row || row.binding !== canonicalDeviceJSON(peer))
+        throw new DeviceHttpError(403, "sync_wrapping_key_unavailable");
+      let descriptor: z.infer<typeof SyncKeyDescriptor>;
+      try {
+        descriptor = await verifySyncKeyDescriptor(
+          JSON.parse(row.descriptor),
+          peer,
+          new URL(request.url).origin,
+        );
+      } catch {
+        throw new DeviceHttpError(403, "invalid_sync_key_descriptor");
+      }
+      return write(() => {
+        grant();
+        const after = this.one<{
+          binding: string;
+          descriptor: string;
+          publishedAt: number;
+        }>(
+          "SELECT binding,descriptor,publishedAt FROM sync_wrapping_keys WHERE deviceId=?",
+          peer.deviceId,
+        );
+        if (canonicalDeviceJSON(after ?? null) !== canonicalDeviceJSON(row))
+          throw new DeviceHttpError(403, "sync_wrapping_key_unavailable");
+        return deviceJSON({
+          version: 1,
+          identity: peer,
+          descriptor,
+          publishedAt: row.publishedAt,
+        });
+      });
+    }
     if (
       ["/sync/share", "/sync/access", "/sync/peer/authorize"].includes(path) &&
       post

@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { SyncIdentity } from "./device-sync.ts";
-import { canonicalDeviceJSON, DeviceId } from "./devices.ts";
+import {
+  canonicalDeviceJSON,
+  DeviceId,
+  deviceBytes,
+  verifyDeviceSignature,
+} from "./devices.ts";
 
 export const SyncDigest = z.string().regex(/^[a-f0-9]{64}$/);
 export const SyncKeyBytes = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
@@ -22,6 +27,41 @@ export const SyncKeyDescriptorBody = z.strictObject({
 export const SyncKeyDescriptor = SyncKeyDescriptorBody.extend({
   signature: z.string().regex(/^[A-Za-z0-9_-]{86}$/),
 });
+export const SyncPublishedDescriptor = z.strictObject({
+  version: z.literal(1),
+  identity: SyncIdentity,
+  descriptor: SyncKeyDescriptor,
+  publishedAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+});
+
+export async function verifySyncKeyDescriptor(
+  input: unknown,
+  identity: z.infer<typeof SyncIdentity>,
+  registryOrigin: string,
+) {
+  const value = SyncKeyDescriptor.parse(input);
+  const { signature, ...body } = value;
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", deviceBytes(value.wrappingPublicKey)),
+  );
+  const keyId = Array.from(digest, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  if (
+    value.registryOrigin !== registryOrigin ||
+    value.deviceId !== identity.deviceId ||
+    value.publicKey !== identity.publicKey ||
+    value.credentialVersion !== identity.credentialVersion ||
+    value.keyId !== keyId ||
+    !(await verifyDeviceSignature(
+      identity.publicKey,
+      syncDescriptorPayload(body),
+      signature,
+    ))
+  )
+    throw new Error("invalid_sync_key_descriptor");
+  return value;
+}
 export function syncDescriptorPayload(input: unknown): string {
   return (
     "eagle-bots-wrap-descriptor-v1\n" +

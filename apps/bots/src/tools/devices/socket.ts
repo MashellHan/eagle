@@ -9,6 +9,8 @@ const METHODS = new Set([
   "sync.peer.authorize",
   "sync.proof",
   "sync.key.descriptor",
+  "sync.key.lookup",
+  "sync.cache.authority",
   "sync.key.seal",
   "sync.key.envelope",
   "sync.key.open",

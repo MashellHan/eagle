@@ -1134,3 +1134,28 @@ Plaintext remains8MiB/128events. Cipher is at most8MiB+16 bytes; the object JSON
 its base64url encoding plus64KiB metadata. Private512KiB/vault4096B limits do not change.
 `fixtures/bots-protocol/sync-objects-v1/canonical.json` contains actual CryptoKit signatures
 and exact shared Node/Swift canonical metadata texts; it contains no private key or DEK.
+
+## P4 explicit encrypted cache (additive v1)
+
+Loopback authenticated POST `/v1/bots/:id/sync/cache/publish` accepts the same strict
+page-or-object selector as objects/pull. `/sync/cache/list` accepts
+`{peerDeviceId,source:{replicaId,epoch},after,limit?}` (limit1–128, default128).
+`/sync/cache/receive` accepts only `{peerDeviceId,objectId}`. Receive durably stores a
+fully verified object/pin and returns stored:true,applied:false; explicit objects/apply
+remains separate. No caller endpoint, authority, pin or external body is accepted.
+
+The independent Sync Worker accepts POST `/v1/cache/publish`, `/list`, `/get` with
+strict version1/operation/sharedBotId/peerDeviceId plus carrier, source/after/limit,
+or objectId respectively. Dedicated metadata authority is obtained through the
+private `sync.cache.authority` port; Worker recomputes its digest from actual fields
+and verifies operation, namespace, both current identities and directional grant via
+Registry RPC. Publish uses uploader B's session; list/get use reader A's session and
+never require B online or its former session. `sync.key.publish {}` publishes only
+the helper's durable descriptor; lookup requires current B→A authorization.
+
+Existing signed carrier/page bytes and all8MiB/128/private512KiB limits remain.
+cloudCached:true certifies a verified immutable R2 cipher and committed metadata
+references, not peer application or execution. Empty pages return cloudCached:false.
+Lists are bounded, report expired/pending/unavailable gaps and always complete:false;
+they do not advance an applied cursor. Event identity and immutable72h clocks,
+pending recovery and physical deletion are specified in [SYNC-CACHE.md](SYNC-CACHE.md).

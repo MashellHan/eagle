@@ -31,6 +31,17 @@ Three rules make that possible, and each is tested:
 Client-side layers use the same vocabulary: `client.ui`, `client.vm`,
 `client.transport` (`os.Logger`, subsystem `ai.hexly.bots`).
 
+The independent encrypted-cache Worker/DO uses `runtime.sync.fail` as the sole
+error origin for its refusal. Worker forwarding retains the bounded incoming
+trace/Bot context; returned failure ID/kind/layer is propagated by Bots as the
+existing ClassifiedFailure at warn, without a second error origin. R2 I/O/corrupt
+storage and Cache DO SQL reads are storage_failed, Registry RPC transport/internal
+SQL faults are internal, and protocol/crypto/
+authorization refusal is auth_failed. Original causes stay local; logs/wire never
+include authority, descriptor, cipher, plaintext or raw upstream error text.
+Header context must match the existing bounded trace/Bot grammar. Local metadata
+port denials retain their original cause and auth_failed origin.
+
 ## Trace ownership
 
 | Originator | Trace shape | Example |

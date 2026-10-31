@@ -1,5 +1,12 @@
 import { z } from "zod";
 import type {
+  cacheAuthority,
+  cacheAuthorityRequest,
+  cacheListInput,
+  cacheReceiveInput,
+  publishedDescriptor,
+} from "./DeviceSyncCache.ts";
+import type {
   SyncEnvelopeRequest,
   SyncKeyDescriptor,
   SyncKeyEnvelope,
@@ -71,6 +78,14 @@ export interface DeviceSyncPort {
     trace: string;
     botId: string;
   }): Promise<z.infer<typeof SyncKeyDescriptor>>;
+  lookup?(
+    input: z.infer<typeof deviceSyncInput> & { sharedBotId: string },
+    context: { trace: string; botId: string },
+  ): Promise<z.infer<typeof publishedDescriptor>>;
+  cacheAuthority?(
+    input: z.infer<typeof cacheAuthorityRequest>,
+    context: { trace: string; botId: string },
+  ): Promise<z.infer<typeof cacheAuthority>>;
   sealKey?(
     input: z.infer<typeof SyncSealRequest>,
     context: { trace: string; botId: string },
@@ -135,6 +150,17 @@ export type SyncStatus = {
 };
 export interface SyncApi {
   status(): SyncStatus;
+  cachePublish?(
+    botId: string,
+    input: z.infer<typeof syncObjectPullInput>,
+    trace: string,
+  ): Promise<unknown>;
+  cacheList?(botId: string, input: z.infer<typeof cacheListInput>, trace: string): Promise<unknown>;
+  cacheReceive?(
+    botId: string,
+    input: z.infer<typeof cacheReceiveInput>,
+    trace: string,
+  ): Promise<unknown>;
   pullObject?(
     botId: string,
     input: z.infer<typeof syncObjectPullInput>,
