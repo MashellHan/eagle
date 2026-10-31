@@ -169,6 +169,19 @@ public final class SettingsViewModel: ObservableObject {
   }
 
   /// Probes the typed values; an empty key field tests the one already stored.
+  /// A read-only probe when the page opens, so a stale or unreachable address is visible
+  /// without asking. Once per page appearance, and only when an address is configured.
+  public func probeGatewayIfNeeded() async {
+    guard gateway?.configured == true, gatewayProbe == nil, !gatewayBusy else { return }
+    let baseURL = gatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !baseURL.isEmpty else { return }
+    gatewayProbe = try? await client().testGateway(
+      baseURL: baseURL,
+      model: gatewayModel.trimmingCharacters(in: .whitespacesAndNewlines),
+      apiKey: gatewayAPIKey
+    )
+  }
+
   public func testGateway() async {
     gatewayBusy = true
     gatewayProbe = nil

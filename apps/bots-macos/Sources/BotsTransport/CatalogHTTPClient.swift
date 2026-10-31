@@ -34,11 +34,20 @@ public struct GatewaySettings: Decodable, Sendable, Equatable {
 
 /// The daemon's probe of a gateway: reachability, auth and how long it took.
 public struct GatewayProbe: Decodable, Sendable, Equatable {
+  /// What the gateway's own `/api/live` says, when its origin has one.
+  public struct Health: Decodable, Sendable, Equatable {
+    public var ok: Bool
+    public var status: Int?
+    public var version: String?
+    public var revision: String?
+    public var latencyMs: Int
+  }
   public var ok: Bool
   public var status: Int?
   public var message: String
   public var latencyMs: Int
   public var models: Int?
+  public var health: Health?
 }
 
 /// The catalog over HTTP (docs/bots/PROTOCOL.md, "HTTP endpoints"). Every call carries the
