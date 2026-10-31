@@ -3897,3 +3897,195 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   successful upgrades plus physical peer-command evidence remain applicable.
   Next: observe the new CI run; diagnose a repeated focus failure rather than
   cycling retries or adding unrelated implementation changes.
+
+
+## 2026-10-31 14:18 +0800 — physical history first after relay delivery
+
+- Relay6575f53f/treeca3ea404 is normally delivered; final5870b595 and2439 refs
+  are independently accepted. Normal hooks0, exact own ref and delivery-time clean0/0
+  remain historical delivery facts; PLAN/TESTING now change for the new physical task.
+- Existing Eagle bridge authenticates both physical MacMinis online. A local status
+  and B real command operation4bca999e completed0; B bundled Node24.13/Swift6.4 work.
+  This is actual preparation/command reachability, not synchronized Bot history.
+- B raw TCP request to A owned10.18.215.76:58659 returns Broken pipe; A IPv6
+  2404:f801:c002:c0:47d:b897:2a96:6e46 returns No route to host. No environment proxy
+  variables are present. A same-server loopback nonce control returns200; no remote
+  request reached its log. Earlier premature startup-file and interrupted owned
+  nonce-server preparations remain fixture/tool scope, not sync behavior red.
+- No production D1/cloud write, deployment, daily App/data change, system trust or
+  global Node change. No new rendering/native composer/physical sync success claim.
+  Next hop: test one bounded reverse owned endpoint; if reachable, use native
+  Miniflare HTTPS with temporary per-process CA and real Registry/Sync named RPC.
+  If no common route exists, report exact network prerequisite and keep advancing
+  authorized all-path status/minimal P5. First physical history/API run does not wait
+  for peerApplied or composer; all six final PR admission scenarios are in TESTING.
+
+## 2026-10-31 14:33 +0800 — shared physical backend preparation
+
+- Current route evidence is A→B10.172.44.34: the owned HTTP nonce and code-only
+  upload reached B. Current absolute-path Tailscale reads supersede the old brief:
+  A has no discovered CLI; B reports Stopped/Self offline. Nothing was started or
+  reconfigured. The paired command bridge is preparation access, not sync authority.
+- Exact6575 source,121 existing runtime dependencies, actual Worker dry-run bundles
+  and real Swift helper were prepared without installation or lock changes. B verified
+  the82,705,887-byte archive SHA669dea0d; A's upload receipt timed out and remains a
+  failure even though the later remote immutable artifact receipt proves receipt.
+- B inline basic/RPC controls both return200. Real file modules failed under both
+  bundled Node24.13 and the verified owned copy of Node26.9.0/SHA8bebc3d8. With only
+  the owned backend's root/scriptPath canonicalized to/private/tmp, the unchanged
+  Worker bundles start. This is a bounded environment contrast, not a product fix.
+- B loopback HTTPS validates the owned CA and returns live revision6575; A's actual
+  HTTPS request times out. The actual workerd listener is IPv6 *:49290. No physical
+  Bot history has synchronized, no native/composer claim, and no new rendering,
+  production authentication/D1/deployment, daily App/data, global Node or system
+  trust change. Next: resolve this listener's minimum IPv4 exposure or report the
+  exact shared HTTPS endpoint gap and continue authorized all-path status/minimal P5.
+
+
+## 2026-10-31 14:48 +0800 — physical shared HTTPS ready, helper startup pending
+
+- A validates the owned CA and gets HTTPS200/revision6575 through physical
+  A→B Node TCP entry49290→B loopback HTTPS Miniflare49291 (e4999659). This is
+  the explicitly owned local backend route, not Tailscale/direct or deployment.
+- A isolated real helper and Bots daemon are ready. B has not reached localReady;
+  its owned sample273914fc shows the Swift async entry without a child Node.
+  The earlier helper timeouts do not prove a TLS or Registry registration failure.
+  Original launcher SyntaxError9a7a59cc and all later failures remain separate.
+  A same-source B-native helper build exceeded its22s command budget (e4625ad0);
+  no success or root cause is inferred. Next hop is that exact helper startup,
+  followed by real pairing/grants and the fixed-head API physical history chain.
+- All-path complete-file first red525b3efa is11 tests/10 pass/1 fail,0skip:
+  the legitimate status-report local HTTP entry returns404 after actual persisted
+  apply. Only that missing entry is proven; Worker/authority/status are unimplemented.
+- No physical history acceptance yet, no App/UI/composer claim, and no production
+  D1/authentication/deployment, system trust/global Node or daily-data modification.
+
+
+## 2026-10-31 15:03 +0800 — physical first round closed; authenticated status first green
+
+- Lead/Root accepted physical final dc9c65da, including actual A POST replica/run
+  from B's14-entry head to19 entries and B passive execution0. Actual isolated6575
+  copies/dependencies/helper inputs are bound separately from stable repo maps.
+  This is two physical Macs/API/SDK/controlled provider/local-tools scope, not
+  native composer, physical direct switching or all six final PR scenarios.
+- Product data uses A/B→B owned TCP49290→loopback HTTPS Miniflare49291 with per-process
+  CA validation. Existing Eagle bridge is control/evidence only. No daily App/data,
+  global Node/trust/settings, production cloud/authentication/D1/deployment change.
+  Actual isolated Registry authentication/current directional grants succeeded.
+- All-path complete-file red525b3efa (real404) now has first green a2071865:
+  node --test tests/device-integration/encrypted-objects.test.ts is11/11,0skip/cancel,
+  exit0 and741 maps stable. Actual persistent cache apply is reported as receiver
+  and independently read as holder, keyed by complete identities/binding/source.
+- Component auto red43d4fbcd is27/28, missing automatic report0!==1. Minimal independent
+  metadata slot green6b16cd54 is28/28, original full file,0skip/cancel; this is a
+  component fixture, not real all-path acceptance. Its green fixture also supplies
+  the valid relayRegister prerequisite. Next: actual automatic/direct/cache and
+  pendingApply report recovery, real SQL classification, grant/epoch/use-point windows.
+- No new UI/rendering/native App verification. No extra closed2440 artifact/gate or
+  remote-resource inventory rerun; protected originals remain referenced unchanged.
+
+
+## 2026-10-31 15:17 +0800 — all-path status recovery windows
+
+- Physical final dc9c65da remains formally closed at the exact API/SDK scope. No
+  old2440 revalidation, remote inventory, App replacement or production cloud work.
+- Status entry a2071865 is full11/11. Independent metadata component43d4fbcd red
+  reaches missing automatic report0!==1; componentcbb0b942 is31/31 after the new
+  binding comparison parses both full bindings before comparing field order.
+  The earlier component1de3ea00 exposes that new comparison bug, not an old product
+  finding. Static/type/fixture failures remain separate original receipts.
+- Full windows43bb9ba3/a0f843a2 both end10/11,0skip/cancel,741 maps stable. Actual
+  direct continues with failed metadata/cache responses; recovery independently
+  learns persistent progress. Real received-commit/apply SQLite failure reports
+  received27/applied22 honestly and restores through the same local object/get0.
+  Both new status SQL reads/report writes return503/storage_failed with original
+  owned cause and Worker single origin; grant/digest/namespace and final-RPC
+  revocation windows pass. No App rendering/native composer acceptance added.
+- Remaining failed oracle expects a503 lost reply but the Worker stream fixture
+  actually yields a readable invalid JSON reply: second run captures SyntaxError
+  and403. Original first failure did not capture its exact cause. Do not recast
+  those as true I/O or production repair red/green. Next uses one lazy owned fixed
+  metadata HTTP endpoint to await real Worker commit then destroy that actual
+  client socket; no product transport or failure classifier changes.
+- Root/Bots/Worker types and normal check-only lint dbb60852 pass on their exact
+  intermediate inputs. Next broken hop is actual post-commit network loss/restart
+  reporting, then source freeze/independent Review and normal affected gates.
+
+## 2026-10-31 15:19 +0800 — complete status windows green; physical direct prerequisite
+
+- Complete original `node --test tests/device-integration/encrypted-objects.test.ts`
+  status-windows-third finishes11/11,0skip/cancel,exit0;741 full maps match.
+  Log5a82fd45 binds actual Worker200 commit followed by a destroyed client socket,
+  local503/sync_network_unreachable and cold report reconstruction from the original
+  persistent DB. Recovery adds no object get/apply/provider or retention-clock change.
+  Earlier10/11 malformed-JSON oracle failures remain separate, unchanged originals.
+- Real direct apply survives metadata/cache channel failure; sender learns exact
+  persistent snapshots only after report/read recovery. Actual receive-commit I/O
+  fault reports received27/applied22, then local pendingApply recovers with get0.
+  Report/read SQL faults retain original cause and one Worker error origin/trace/Bot.
+  Static final inputs, source freeze/Review and normal affected gates remain next.
+- Physical PR scenario5 is not ready: accepted6575 only admits real Tailscale
+  Self100.64/10 or fd7a:115c:a1e0:: endpoints. The prior fresh A CLI lookup and B
+  Stopped/Online=false facts provide no running/publishable/listenable two-Mac
+  direct route. Owned10.172.44.34 is not a permitted Self. No address spoof,
+  listener replacement, further polling, Tailscale login/start or system change.
+- Physical finaldc9c65da remains closed at API/SDK scope. Cache/relay, owned72h,
+  all-path status and later minimal P5 continue; no new native UI/rendering,
+  live Herdr collection, production authentication/D1/deployment verification.
+
+## 2026-10-31 15:26 +0800 — frozen status source, normal gates complete
+
+- Stable source-v1-completef790dafc is with Lead/existing Reviewer:697 canonical
+  source entries,16 actual base deltas,741 full paths; source remains frozen.
+- Normal root51eb59f3 passes269/269/types/lint/build. Botsf6cf7041 passes916 ordinary
+  and identical916 coverage,92.44/87.07/90.09 at original90/85/90. Worker1af943ee
+  passes26/types/lint/dry-run. Complete devices6214852c passes33/33,0skip/cancel.
+  Static624fc6fd and all four normal gates bind this source with741 stable maps.
+- Final docs/tree/candidate binding is next. Review/Lead acceptance and normal
+  commit/hooks/push have not happened. Reuseb075fd7c lists exact unchanged Swift
+  scopes and historical crash/eval scope; no old2440 revalidation or extra gates.
+- User authorized Root to prepare official Tailscale clients and hand login to
+  the user. Service makes no start/login/join/routes/settings change. Physical
+  scene5 stays unpassed until actual same-tailnet product endpoints are verified.
+  Closed physicaldc9c65da remains API/SDK; minimal native P5 follows this delivery.
+- No fresh App rendering, live Herdr collection/authentication/D1/cloud deployment
+  fact is added. Real isolated Registry/helper/Node/Bots/Miniflare is the gate scope.
+
+
+## 2026-10-31 15:44 +0800 — all-path candidate paused for transaction boundary P2
+
+- Lead accepted Reviewer P2 #1: candidate c0e6bb8d/tree8acc5fdc is paused;
+  source-v1 f790dafc, preflight and candidate-after B status originals are preserved
+  by reference in review-p2-transaction/baseline.json. No commit/push occurred.
+- The status-report callback classifies SQL statements, but native transaction
+  establishment/commit can escape as403/auth_failed. Next: owned SQLite boundary
+  fault in the complete encrypted-objects file, then the narrow status transaction
+  wrapper and complete-file recovery. All11 production inputs remain frozen before red.
+- Existing normal gates/closed2440/physicaldc9c65da and other Review scopes remain
+  closed. No fresh native UI, live collection, production auth/D1/deployment claim.
+- Fresh B15:37 Stopped/Online=false and Root A15:36 NeedsLogin are historical
+  observations sent to Root. Root owns client/login work; Service does no further
+  polling or configuration. Physical scene5 remains pending real product endpoints.
+
+
+## 2026-10-31 15:59:01 +0800 — transaction P2 stable source sent, affected gates continue
+
+- Source-v2 863cd483 freezes697 canonical/741 full with only relay.ts and the
+  two owned test/fixture paths changed from f790. It is sent to Lead for existing
+  Reviewer delta review. Old c0e6 candidate/preflight/source and all failures remain.
+- Owned boundary red1e1ddfa8 is complete10/11, old403 versus503, after the real
+  callback/transactionSync returned. Native deferred FK532c94ef resets at the DO
+  output gate and is a platform limitation, not this synchronous product red.
+- Final complete-file50a46c80 is11/11,0skip/cancel; strictb0ad7b12 exit0. It proves
+  same cause/trace/Bot and one Worker origin, no extra get/apply/provider or clock
+  change on retry. CacheError429/ZodError/SyntaxError retain their original semantics.
+- Normal root344ae7c1 passes269/269 and Worker97bbb145 passes26/types/lint/dry-run;
+  each741 map is stable and all697 source inputs matchv2. Complete devices is next,
+  serialized. Bots/Swift/crash/eval remain exact prior scope reuse; no extra matrix.
+- Root supplied B15:54:40 Running/Online and A Running. A's Tail TCP49290 request
+  to B preserved TLS host/ownedCA and returned fixed6575/api/live200. Reported
+  disco usesDERP(tok), not UDP direct. No Service network/client polling/control.
+  Physical product scene5 follows this normal clean delivery: application direct
+  over genuine Tail DERP, owned Miniflare fallback, no deployment claim.
+- No commit/push, P5 source, new native rendering, live production collection,
+  authentication/D1 or cloud deployment fact. Final docs/tree/candidate remain next.

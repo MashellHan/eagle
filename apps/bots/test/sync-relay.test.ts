@@ -90,7 +90,7 @@ test("owned outbound websocket retains a generation on renewal, dispatches bound
     assert.equal(registrations, 2);
     await relay.directory(replica.sharedBotId, fields);
     const metadata = {
-      version: 1,
+      version: 1 as const,
       operation: "receipts" as const,
       sharedBotId: replica.sharedBotId,
       peerDeviceId: f.publisher.deviceId,
@@ -192,8 +192,14 @@ test("Bots relay metadata projects the real ready status and preserves the actua
   const f = objectFixture(),
     { log, records } = captureLog(),
     server = createServer();
-  const posted: { operation: string; binding?: unknown; received?: number; applied?: number }[] =
-    [];
+  const posted: {
+    operation: string;
+    binding?: unknown;
+    streams?: unknown;
+    received?: number;
+    applied?: number;
+  }[] = [];
+  let statusSnapshots: unknown[] = [];
   server.on("request", async (request, response) => {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -202,11 +208,15 @@ test("Bots relay metadata projects the real ready status and preserves the actua
     response.setHeader("content-type", "application/json");
     response.end(
       JSON.stringify(
-        value.operation === "discover"
-          ? { version: 1, holders: [] }
-          : value.operation === "receipts"
-            ? { version: 1, receipts: [], peerApplied: "unknown" }
-            : { version: 1, peerApplied: value },
+        value.operation === "status-report"
+          ? { version: 1, recorded: true }
+          : value.operation === "status-read"
+            ? { version: 1, snapshots: statusSnapshots, hasMore: false }
+            : value.operation === "discover"
+              ? { version: 1, holders: [] }
+              : value.operation === "receipts"
+                ? { version: 1, receipts: [], peerApplied: "unknown" }
+                : { version: 1, peerApplied: value },
       ),
     );
   });
@@ -293,6 +303,74 @@ test("Bots relay metadata projects the real ready status and preserves the actua
     assert.deepEqual(ack.binding, f.record.binding);
     assert.equal(ack.received, 6);
     assert.equal(ack.applied, 2);
+    await sync.statusReport(replica.botId, { peerDeviceId }, "tr_actual_status");
+    const report = posted.find((v) => v.operation === "status-report");
+    assert.deepEqual(report?.binding, f.record.binding);
+    assert.deepEqual(report?.streams, [{ source: f.manifest.source, received: 6, applied: 2 }]);
+    assert.deepEqual(await sync.statusRead(replica.botId, { peerDeviceId }, "tr_read_status"), {
+      version: 1,
+      snapshots: [],
+      hasMore: false,
+    });
+    statusSnapshots = [
+      {
+        registryOrigin: "http://127.0.0.1:17053",
+        sharedBotId: replica.sharedBotId,
+        holder: f.publisher,
+        receiver: { ...f.publisher, deviceId: peerDeviceId },
+        binding: f.record.binding,
+        source: f.manifest.source,
+        received: 6,
+        applied: 2,
+        recordedAt: Date.now(),
+      },
+    ];
+    assert.equal(
+      (await sync.statusRead(replica.botId, { peerDeviceId }, "tr_partial_status")).snapshots[0]
+        ?.applied,
+      2,
+    );
+    const beforeInvalid = posted.length;
+    await assert.rejects(
+      sync.statusReport(replica.botId, { peerDeviceId, received: 99 }, "tr_no_supplied_status"),
+    );
+    await assert.rejects(
+      sync.statusRead(
+        replica.botId,
+        { peerDeviceId, binding: f.record.binding },
+        "tr_no_supplied_binding",
+      ),
+    );
+    assert.equal(posted.length, beforeInvalid);
+    const authority = device.relayAuthority;
+    assert(authority);
+    let releaseMetadata: (() => void) | undefined,
+      active = true;
+    device.relayAuthority = async (...args) => {
+      await new Promise<void>((done) => {
+        releaseMetadata = done;
+      });
+      assert(authority);
+      return authority(...args);
+    };
+    const pendingMetadata = sync.statusReport(replica.botId, { peerDeviceId }, "tr_metadata_late", {
+      replica,
+      signal: new AbortController().signal,
+      guard: () => {
+        if (!active) throw new Error("sync_attempt_cancelled");
+      },
+    });
+    while (!releaseMetadata) await setImmediate();
+    active = false;
+    releaseMetadata();
+    await assert.rejects(pendingMetadata);
+    assert.equal(
+      posted.length,
+      beforeInvalid,
+      "authority await cannot revive a disabled metadata attempt",
+    );
+    device.relayAuthority = authority;
+
     await assert.rejects(
       sync.relayPull(replica.botId, { peerDeviceId, after: 0, limit: 128 }, "tr_offline_holder"),
       (error) =>

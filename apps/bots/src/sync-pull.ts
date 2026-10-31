@@ -29,8 +29,12 @@ import {
   RelayAck,
   RelayBinding,
   RelayDelivery,
+  RelayProgress,
   RelayReceipts,
+  RelayStatusRead,
+  RelayStatusReport,
   RelayStream,
+  relayStatusResult,
 } from "./core/DeviceSyncRelay.ts";
 import { ClassifiedFailure, type Failure } from "./core/domain.ts";
 import { newFailure } from "./core/failures.ts";
@@ -1419,6 +1423,95 @@ export class AuthenticatedSync implements SyncApi {
         fields,
       );
       await replica.check();
+      return result;
+    } catch (error) {
+      throw this.#failure(error, fields);
+    }
+  }
+  async statusReport(botId: string, input: unknown, trace: string, attempt?: SyncAttempt) {
+    const fields = { trace, botId };
+    try {
+      if (!this.#relay) throw new Error("sync_unconfigured");
+      const peer = z.strictObject({ peerDeviceId: z.uuid() }).parse(input);
+      const replica = await this.#replica(botId, trace, attempt);
+      const actual = z
+        .object({
+          ...RelayBinding.shape,
+          streams: z.array(z.object({ ...RelayProgress.shape })).max(128),
+        })
+        .parse(await replica.command("status", {}, () => attempt?.guard()));
+      const binding = RelayBinding.parse({
+        localBotId: actual.localBotId,
+        sharedBotId: actual.sharedBotId,
+        replicaId: actual.replicaId,
+        epoch: actual.epoch,
+      });
+      if (!same(binding, RelayBinding.parse(replica.binding)))
+        throw new Error("sync_identity_changed");
+      const body = RelayStatusReport.parse({
+        version: 1,
+        operation: "status-report",
+        sharedBotId: replica.sharedBotId,
+        ...peer,
+        binding,
+        streams: actual.streams.map(({ source, received, applied }) => ({
+          source,
+          received,
+          applied,
+        })),
+      });
+      await replica.check();
+      attempt?.guard();
+      const result = z.strictObject({ version: z.literal(1), recorded: z.literal(true) }).parse(
+        await this.#relay.metadata(body, fields, attempt?.signal, async () => {
+          await replica.check();
+          attempt?.guard();
+          this.#live(this.#relayClientGeneration);
+        }),
+      );
+      await replica.check();
+      attempt?.guard();
+      this.#live(this.#relayClientGeneration);
+      return result;
+    } catch (error) {
+      throw this.#failure(error, fields);
+    }
+  }
+  async statusRead(botId: string, input: unknown, trace: string, attempt?: SyncAttempt) {
+    const fields = { trace, botId };
+    try {
+      if (!this.#relay) throw new Error("sync_unconfigured");
+      const peer = z.strictObject({ peerDeviceId: z.uuid() }).parse(input);
+      const replica = await this.#replica(botId, trace, attempt);
+      const result = relayStatusResult.parse(
+        await this.#relay.metadata(
+          RelayStatusRead.parse({
+            version: 1,
+            operation: "status-read",
+            sharedBotId: replica.sharedBotId,
+            ...peer,
+          }),
+          fields,
+          attempt?.signal,
+          async () => {
+            await replica.check();
+            attempt?.guard();
+            this.#live(this.#relayClientGeneration);
+          },
+        ),
+      );
+      if (
+        result.snapshots.some(
+          (s) =>
+            s.sharedBotId !== replica.sharedBotId ||
+            s.binding.sharedBotId !== replica.sharedBotId ||
+            s.receiver.deviceId !== peer.peerDeviceId,
+        )
+      )
+        throw new Error("sync_relay_status_mismatch");
+      await replica.check();
+      attempt?.guard();
+      this.#live(this.#relayClientGeneration);
       return result;
     } catch (error) {
       throw this.#failure(error, fields);

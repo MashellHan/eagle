@@ -12,6 +12,9 @@ import {
   type RelayReceipts,
   RelayRegister,
   RelayRequest,
+  type RelayStatusRead,
+  type RelayStatusReport,
+  RelayStatusSnapshot,
 } from "./relay-wire.ts";
 import { Carrier, MAX_FRAME } from "./wire.ts";
 
@@ -67,6 +70,9 @@ export class Relay {
     ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS relay_holders(deviceId TEXT PRIMARY KEY,identity TEXT NOT NULL,metadata TEXT NOT NULL,until INTEGER NOT NULL)",
     );
+    ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS replica_status(key TEXT PRIMARY KEY,holder TEXT NOT NULL,reader TEXT NOT NULL,snapshot TEXT NOT NULL)",
+    );
   }
   private rows<T extends Record<string, SqlStorageValue>>(
     query: string,
@@ -112,10 +118,14 @@ export class Relay {
       a.sharedBotId !== input.sharedBotId ||
       a.requestDigest !== requestDigest ||
       a.registryOrigin !== this.#env.REGISTRY_ORIGIN ||
-      (input.operation === "exchange" || input.operation === "ack" || input.operation === "receipts"
+      (input.operation === "exchange" ||
+      input.operation === "ack" ||
+      input.operation === "receipts" ||
+      input.operation === "status-report" ||
+      input.operation === "status-read"
         ? !a.holder ||
           !a.reader ||
-          (input.operation === "receipts"
+          (input.operation === "receipts" || input.operation === "status-read"
             ? a.reader.deviceId !== input.peerDeviceId || !same(a.requester, a.holder)
             : a.holder.deviceId !== input.peerDeviceId || !same(a.requester, a.reader))
         : a.holder !== null || a.reader !== null)
@@ -137,6 +147,8 @@ export class Relay {
           "/v1/relay/exchange",
           "/v1/relay/ack",
           "/v1/relay/receipts",
+          "/v1/relay/status-report",
+          "/v1/relay/status-read",
         ].includes(path)
       )
         return json({ error: "not_found" }, 404);
@@ -155,6 +167,8 @@ export class Relay {
         return await this.#ack(input, authority, initial.authorization);
       if (input.operation === "receipts")
         return await this.#receipts(input, authority, initial.authorization);
+      if (input.operation === "status-report" || input.operation === "status-read")
+        return await this.#status(input, authority, initial.authorization);
       RelayDiscover.parse(input);
       const holders = [];
       for (const identity of initial.holders ?? []) {
@@ -195,6 +209,87 @@ export class Relay {
     } catch (error) {
       return failure(error, request);
     }
+  }
+  async #status(
+    input: z.infer<typeof RelayStatusReport> | z.infer<typeof RelayStatusRead>,
+    authority: string,
+    auth: z.infer<typeof RelayAuthorization>,
+  ) {
+    const holder = JSON.stringify(auth.holder),
+      reader = JSON.stringify(auth.reader);
+    const final = await this.#authorize(input, authority);
+    this.#deadline(final.authorization.expiresAt);
+    if (input.operation === "status-report") {
+      try {
+        this.#ctx.storage.transactionSync(() => {
+          for (const stream of input.streams) {
+            const key = metadataDigest({
+              registryOrigin: auth.registryOrigin,
+              sharedBotId: input.sharedBotId,
+              holder: auth.holder,
+              receiver: auth.reader,
+              binding: input.binding,
+              source: stream.source,
+            });
+            const old = this.rows<{ snapshot: string }>(
+              "SELECT snapshot FROM replica_status WHERE key=?",
+              key,
+            )[0];
+            const previous = old ? RelayStatusSnapshot.parse(JSON.parse(old.snapshot)) : undefined;
+            if (
+              previous &&
+              stream.received <= previous.received &&
+              stream.applied <= previous.applied
+            )
+              continue;
+            if (
+              !old &&
+              (this.rows<{ n: number }>("SELECT COUNT(*) AS n FROM replica_status")[0]?.n ?? 0) >=
+                8192
+            )
+              throw new CacheError(429, "sync_relay_status_capacity");
+            const snapshot = RelayStatusSnapshot.parse({
+              registryOrigin: auth.registryOrigin,
+              sharedBotId: input.sharedBotId,
+              holder: auth.holder,
+              receiver: auth.reader,
+              binding: input.binding,
+              source: stream.source,
+              received: Math.max(stream.received, previous?.received ?? 0),
+              applied: Math.max(stream.applied, previous?.applied ?? 0),
+              recordedAt: Date.now(),
+            });
+            this.rows(
+              "INSERT OR REPLACE INTO replica_status VALUES(?,?,?,?)",
+              key,
+              holder,
+              reader,
+              JSON.stringify(snapshot),
+            );
+          }
+        });
+      } catch (cause) {
+        if (
+          cause instanceof CacheError ||
+          cause instanceof z.ZodError ||
+          cause instanceof SyntaxError
+        )
+          throw cause;
+        throw new CacheError(503, "sync_relay_storage_failed", { cause });
+      }
+      this.#deadline(final.authorization.expiresAt);
+      return json({ version: 1, recorded: true });
+    }
+    const rows = this.rows<{ snapshot: string }>(
+      "SELECT snapshot FROM replica_status WHERE holder=? AND reader=? ORDER BY key LIMIT 129",
+      holder,
+      reader,
+    );
+    const snapshots = rows
+      .slice(0, 128)
+      .map((row) => RelayStatusSnapshot.parse(JSON.parse(row.snapshot)));
+    this.#deadline(final.authorization.expiresAt);
+    return json({ version: 1, snapshots, hasMore: rows.length > 128 });
   }
   async #ack(
     input: z.infer<typeof RelayAck>,

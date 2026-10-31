@@ -1218,3 +1218,37 @@ Only current-authorized explicit410 `sync_relay_delivery_unavailable` can discar
 an obsolete pending ACK reference; generic expiry/auth/binding/SQL failures cannot.
 The connection status field peerApplied and direct/cache sender confirmation are
 still unknown in this slice. See SYNC-RELAY for limits and the following status slice.
+
+### Authenticated persistent status (additive v1)
+
+`sync.relay.authority` adds distinct `status-report|status-read` operations under
+the existing replica.relay purpose. Each binds the complete actual request digest,
+operation, namespace/session and current holder→receiver identities/grant. A report
+uses the receiver session; an independent read uses the holder session. Neither
+requires a reverse data-read grant or reuses a cache/other relay operation ticket.
+
+Local bearer/no-Origin POST `/v1/bots/:id/sync/relay/status-report` and `/status-read`
+accept only `{peerDeviceId}`. Report reconstructs the same ready handle's durable
+status, not caller cursors/binding. Worker POST `/v1/relay/status-report` accepts
+`{version:1,operation,sharedBotId,peerDeviceId,binding,streams}`; streams contains
+at most128 unique `{source:{replicaId,epoch},received,applied}` entries with
+0<=applied<=received. Binding is the complete receiver
+`{localBotId,sharedBotId,replicaId,epoch}`. The response is
+`{version:1,recorded:true}`. Worker recomputes the digest and rechecks authorization
+at the metadata use point. No object/delivery reference is required for plain direct.
+
+Worker status-read accepts `{version:1,operation,sharedBotId,peerDeviceId}` and
+returns `{version:1,snapshots,hasMore}` with at most128 snapshots. Each includes
+registryOrigin,sharedBotId,complete holder/receiver identities,binding,original
+source,actual received/applied and server recordedAt. The exact complete key is
+idempotent/monotonic; an old binding or source epoch remains separate history.
+Reports are current receiver statements, not independent proofs of execution.
+
+Automatic receive/both reports and publish/both reads use one independent bounded
+metadata action. Connection peerApplied is `"unknown"` until a nonempty authenticated
+read, then `{version:1,current:"unknown",authenticatedAt,snapshots,hasMore}`.
+Current receiver binding stays unknown; snapshots never imply a new instance's
+progress, complete history or native run. A failed refresh retains the last
+timestamped authenticated snapshot. CloudCached and local received/applied remain
+separate. No report is added to offline applyObject; failed reporting cannot undo
+apply or block inbound/upload/native work. Details are in [SYNC-STATUS.md](SYNC-STATUS.md).

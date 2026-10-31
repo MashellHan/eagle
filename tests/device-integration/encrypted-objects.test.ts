@@ -497,6 +497,8 @@ const originalReceive=ReplicaStore.prototype.receive;
 ReplicaStore.prototype.receive=function(page){const result=originalReceive.call(this,page);if(faultReceive){faultReceive=false;faultStore=this;this.db.exec('ALTER TABLE facts RENAME TO owned_failed_facts');process.stdout.write(JSON.stringify({type:'receiveCommittedIO',source:page.source,through:page.nextAfter})+'\\n');}return result;};
 for(const name of ['fact','putFact']){const original=ReplicaStore.prototype[name];ReplicaStore.prototype[name]=function(...args){try{return original.apply(this,args);}catch(cause){if(this===faultStore)sqlCause=cause;throw cause;}};}
 const {AuthenticatedSync}=await import(pathToFileURL(config.source+'/src/sync-pull.ts').href);
+const statusReportTracked=AuthenticatedSync.prototype.statusReport;
+AuthenticatedSync.prototype.statusReport=async function(...args){try{return await statusReportTracked.apply(this,args);}catch(error){process.stdout.write(JSON.stringify({type:'ownedStatusReportFailure',trace:args[2],causeName:error.cause?.name,causeCode:error.cause?.message?.match(/^[a-z_]+$/)?.[0],issues:error.cause?.issues?.map(i=>({path:i.path,code:i.code}))})+'\\n');throw error;}};
 const originalRelayRegister=AuthenticatedSync.prototype.relayRegister;
 AuthenticatedSync.prototype.relayRegister=async function(...args){try{return await originalRelayRegister.apply(this,args);}catch(error){process.stdout.write(JSON.stringify({type:'ownedRelayRegisterFailure',causeName:error.cause?.name,causeCode:error.cause?.message?.match(/^[a-z_]+$/)?.[0],issues:error.cause?.issues?.map(i=>({path:i.path,code:i.code}))})+'\\n');throw error;}};
 const originalApply=AuthenticatedSync.prototype.applyObject;
@@ -514,6 +516,12 @@ AuthenticatedSync.prototype.relayRegister=async function(...args){registerCalls+
 const originalAutoStart=AutomaticSync.prototype.start;let automatic;
 AutomaticSync.prototype.start=function(){automatic=this;if(!config.owned.holdAuto)originalAutoStart.call(this);};
 const daemon=await startDaemon(readConfig({argv:['--root',config.root,'--port','0'],env:{BOTS_DEVICE_SOCKET:config.socketPath,BOTS_SYNC_CACHE_ORIGIN:config.owned.cacheOrigin}}));
+let metadataDrop,dropStatusReply=false,lostStatusReplies=0,lastStatusReply;
+const originalFetch=globalThis.fetch;
+globalThis.fetch=(url,options)=>{
+ if(dropStatusReply&&String(url).endsWith('/v1/relay/status-report')){dropStatusReply=false;return originalFetch('http://127.0.0.1:'+metadataDrop.address().port+'/v1/relay/status-report',options);}
+ return originalFetch(url,options);
+};
 let server,listenerPort,networkMode='',networkReleased=[],pageSuccess=0,challengeSeen=0;
 const serve=async(request,response)=>{
  if(request.url==='/v1/sync/challenge'){
@@ -554,6 +562,21 @@ for await(const line of lines){
  if(input.command==='holdRegistration'){registerGate=input.stage;registerStatusDone=false;}
  if(input.command==='releaseRegistration'){releaseRegisterGate?.();releaseRegisterGate=undefined;}
  if(input.command==='registrationStats'){await new Promise(resolve=>setImmediate(resolve));result={registerCalls,registerPending};}
+ if(input.command==='dropStatusReply'){
+  if(!metadataDrop){
+   const {createServer}=await import('node:http');
+   metadataDrop=createServer(async(request,response)=>{
+    try{
+     const chunks=[];let bytes=0;for await(const chunk of request){bytes+=chunk.length;if(bytes>65536)throw new Error('owned metadata budget');chunks.push(chunk);}
+     const upstream=await originalFetch(config.owned.cacheOrigin+'/v1/relay/status-report',{method:'POST',headers:{'content-type':'application/json',authorization:request.headers.authorization,'x-bots-sync-trace':request.headers['x-bots-sync-trace'],'x-bots-sync-bot':request.headers['x-bots-sync-bot']},body:Buffer.concat(chunks)});
+     await upstream.arrayBuffer();lastStatusReply=upstream.status;if(upstream.ok)lostStatusReplies++;
+    }catch{lastStatusReply=0;}finally{response.destroy();}
+   });
+   await new Promise(resolve=>metadataDrop.listen(0,'127.0.0.1',resolve));
+  }
+  dropStatusReply=true;
+ }
+ if(input.command==='statusReplyStats')result={lostStatusReplies,lastStatusReply};
  if(input.command==='startAuto')originalAutoStart.call(automatic);
  if(input.command==='stopRelay')daemon.sync.relayStop(input.botId);
  if(input.command==='syncObjectCalls')result={applyCalls};
@@ -567,6 +590,7 @@ for await(const line of lines){
 };
 for(const release of networkReleased)release();
 if(server)await new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});
+if(metadataDrop)await new Promise(resolve=>{metadataDrop.close(resolve);metadataDrop.closeAllConnections();});
 await daemon.close();await dispatcher?.close();reader.close();`,
   );
   const service = processPort(script, root);
@@ -2861,6 +2885,112 @@ test("automatic direct, CF, stable return and staggered cold receive preserve re
       Number(directStats.pageSuccess) > 0,
       "server must verify the reader and complete the authenticated page exchange",
     );
+    const statusStorage = await worker.mf.unsafeGetDurableObjectStorage(
+      "bots-sync",
+      "SyncCache",
+      { name: sharedBotId },
+    );
+    await statusStorage.exec(
+      "INSERT INTO test_status_fault VALUES('status-report','malformed',1000,0)",
+    );
+    await statusStorage.exec(
+      "INSERT INTO test_status_fault VALUES('status-read','malformed',1000,0)",
+    );
+    await statusStorage.exec(
+      "INSERT INTO test_status_fault VALUES('publish','malformed',1000,0)",
+    );
+    await ad.post(
+      `/v1/bots/${ab}/sync/connections/${b.deviceId}`,
+      { direction: "receive" },
+      "PUT",
+    );
+    await bd.post(
+      `/v1/bots/${bb}/sync/connections/${a.deviceId}`,
+      { direction: "publish" },
+      "PUT",
+    );
+    await publisher.run("bash", model, {
+      command: "printf direct-while-metadata-and-cache-fail",
+    });
+    const directOnly = await bd.post<History>(
+      `/v1/bots/${bb}/replica/export`,
+      {},
+    );
+    const directPage = await bd.post<Page & { nextAfter: number }>(
+      `/v1/bots/${bb}/replica/pull`,
+      { after: 0 },
+    );
+    await until(
+      async () =>
+        (await connectionState(ad, ab)).replica.heads.some(
+          (h) => h.head === directOnly.head && h.ready,
+        )
+          ? true
+          : undefined,
+      "direct receive must finish while both independent cloud channels fail",
+    );
+    await until(
+      async () =>
+        (
+          await statusStorage.exec(
+            "SELECT hits FROM test_status_fault WHERE operation='status-report'",
+          )
+        )[0]?.hits
+          ? true
+          : undefined,
+      "real malformed metadata response refuses confirmation",
+    );
+    const blockedState = await bd.post<{
+      connections: {
+        peerApplied: unknown;
+        cloudCached: { nextAfter: number } | null;
+      }[];
+    }>(`/v1/bots/${bb}/sync/connections`, undefined, "GET");
+    assert.equal(blockedState.connections[0]?.peerApplied, "unknown");
+    assert(
+      Number(blockedState.connections[0]?.cloudCached?.nextAfter ?? 0) <
+        directPage.nextAfter,
+    );
+    const providerAfterDirectOnly = model.verify();
+    await statusStorage.exec("DELETE FROM test_status_fault");
+    await until(async () => {
+      const state = await bd.post<{
+        connections: {
+          peerApplied:
+            | string
+            | {
+                current: string;
+                snapshots: { source: unknown; applied: number }[];
+              };
+        }[];
+      }>(`/v1/bots/${bb}/sync/connections`, undefined, "GET");
+      const ack = state.connections[0]?.peerApplied;
+      if (!ack || typeof ack === "string") return undefined;
+      assert.equal(
+        ack.current,
+        "unknown",
+        "last authenticated full-key snapshots do not infer a current receiver binding",
+      );
+      return ack.snapshots.some(
+        (v) =>
+          canonicalDeviceJSON(v.source) === canonicalDeviceJSON(page.source) &&
+          v.applied === directPage.nextAfter,
+      )
+        ? true
+        : undefined;
+    }, "automatic sender independently learns the receiver's actual persistent direct apply after channel recovery");
+    assert.equal(model.verify(), providerAfterDirectOnly);
+    assert.deepEqual(executionCounts(), beforeDB);
+    console.log(
+      JSON.stringify({
+        kind: "direct-status-channel-recovery",
+        directApplied: true,
+        cacheAndReportFault: true,
+        senderFirstUnknown: true,
+        recoveredFromPersistentStatus: true,
+        passiveExecutionDelta: 0,
+      }),
+    );
     const waitHistory = async (target: typeof ad, wanted: History) => {
       await until(
         async () =>
@@ -2967,8 +3097,32 @@ test("automatic direct, CF, stable return and staggered cold receive preserve re
         trace: failed.trace,
       }),
     );
+    const reported = async () => {
+      const rows = await cacheIO.exec("SELECT snapshot FROM replica_status");
+      return rows
+        .map((row) => JSON.parse(String(row.snapshot)))
+        .find(
+          (row) =>
+            canonicalDeviceJSON(row.source) ===
+            canonicalDeviceJSON(committed.source),
+        );
+    };
+    await until(async () => {
+      const snapshot = await reported();
+      return snapshot?.received === stored?.received &&
+        snapshot?.applied === stored?.applied
+        ? snapshot
+        : undefined;
+    }, "status report preserves actual received greater than applied during real I/O failure");
     await ad.control("restoreReceiveIO");
     await waitHistory(ad, fallback.history);
+    await until(
+      async () =>
+        (await reported())?.applied === fallback.page.nextAfter
+          ? true
+          : undefined,
+      "local pending apply recovery reports durable completion without another get",
+    );
     assert.equal(streams()?.applied, fallback.page.nextAfter);
     assert.equal(
       await cacheGets(),
@@ -4912,6 +5066,724 @@ test("automatic holder registration retains configuration ownership across real 
         },
       );
   } finally {
+    for (const service of services.reverse()) await service.stop();
+    await worker?.mf.dispose();
+    await new Promise<void>((done) => model.server.close(() => done()));
+    rmSync(workerRoot, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("authenticated receiver status reports actual persistent cache apply and holder independently reads its full key", {
+  timeout: 90000,
+}, async () => {
+  const root = realpathSync(mkdtempSync("/tmp/eagle-allpath-status-"));
+  const workerRoot = mkdtempSync(resolve(".local/allpath-status-worker-"));
+  const key = randomBytes(32).toString("base64url");
+  const model = await modelFixture(key);
+  const services: { stop(): Promise<void> }[] = [];
+  const bots: { stop(): Promise<void> }[] = [];
+  let worker: Awaited<ReturnType<typeof workerFixture>> | undefined;
+  try {
+    worker = await workerFixture(workerRoot, true);
+    const currentWorker = worker;
+    const a = await helper(join(root, "a"), worker.origin);
+    services.push(a);
+    const b = await helper(join(root, "b"), worker.origin);
+    services.push(b);
+    const invitation = await a.manage("pairing.create", {});
+    await b.manage("pairing.redeem", {
+      requestId: randomUUID(),
+      code: invitation.code,
+    });
+    const ad = await daemon(
+      join(root, "a-bots"),
+      a.socketPath,
+      model.baseUrl,
+      key,
+      {
+        cacheOrigin: worker.origin,
+        holdAuto: true,
+      },
+    );
+    bots.push(ad);
+    const bd = await daemon(
+      join(root, "b-bots"),
+      b.socketPath,
+      model.baseUrl,
+      key,
+      {
+        cacheOrigin: worker.origin,
+        holdAuto: true,
+      },
+    );
+    bots.push(bd);
+    const ab = (
+      await ad.post<{ bot: { id: string } }>("/v1/bots", {
+        title: "Status receiver",
+      })
+    ).bot.id;
+    const bb = (
+      await bd.post<{ bot: { id: string } }>("/v1/bots", {
+        title: "Status holder",
+      })
+    ).bot.id;
+    const sharedBotId = randomUUID();
+    await ad.post(`/v1/bots/${ab}/replica/bind`, { sharedBotId });
+    await bd.post(`/v1/bots/${bb}/replica/bind`, { sharedBotId });
+    await bd.post(`/v1/bots/${bb}/replica/export`, {
+      kind: "resources",
+      resources: JSON.parse(
+        readFileSync("fixtures/bots-sync/resources.v1.json", "utf8"),
+      ),
+    });
+    await b.manage("sync.share", {
+      sharedBotId,
+      peerDeviceId: a.deviceId,
+      enabled: true,
+    });
+    await localCall(a.socketPath, "sync.key.publish", {});
+    const before = counts(join(root, "a-bots/bots", ab));
+    const cached = await bd.post(`/v1/bots/${bb}/sync/cache/publish`, {
+      peerDeviceId: a.deviceId,
+      after: 0,
+      limit: 128,
+    });
+    assert.equal(cached.cloudCached, true);
+    const stored = await ad.post(`/v1/bots/${ab}/sync/cache/receive`, {
+      peerDeviceId: b.deviceId,
+      objectId: cached.objectId,
+    });
+    await ad.post(`/v1/bots/${ab}/sync/objects/apply`, {
+      objectId: stored.objectId,
+    });
+    const actual = await ad.post<RecordJSON>(
+      `/v1/bots/${ab}/replica/status`,
+      {},
+    );
+    const streams = actual.streams as {
+      source: object;
+      received: number;
+      applied: number;
+    }[];
+    const source = streams.find((stream) => stream.applied > 0);
+    assert(source, "actual persistent apply must precede any report");
+    const transactionNamespace = (await worker.mf.getDurableObjectNamespace(
+      "SYNC",
+      "bots-sync",
+    )) as unknown as {
+      idFromName(name: string): string;
+      get(id: string): {
+        armStatusTransaction(): Promise<void>;
+        statusTransactionResult(): Promise<RecordJSON>;
+        restoreStatusTransaction(): Promise<void>;
+      };
+    };
+    const transactionDO = transactionNamespace.get(
+      transactionNamespace.idFromName(sharedBotId),
+    );
+    const transactionStorage = await worker.mf.unsafeGetDurableObjectStorage(
+      "bots-sync",
+      "SyncCache",
+      { name: sharedBotId },
+    );
+    const transactionBefore = {
+      events: await transactionStorage.exec(
+        "SELECT * FROM events ORDER BY replicaId,epoch,seq",
+      ),
+      io: await transactionStorage.exec("SELECT * FROM test_cache_io"),
+      applyCalls: Number((await ad.control("syncObjectCalls")).applyCalls),
+      local: counts(join(root, "a-bots/bots", ab)),
+    };
+    let committedStatus: unknown;
+    await transactionDO.armStatusTransaction();
+    try {
+      const failed = await fetch(
+        ad.origin + `/v1/bots/${ab}/sync/relay/status-report`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${ad.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ peerDeviceId: b.deviceId }),
+        },
+      );
+      const value = (await failed.json()) as {
+        error: { kind: string; failure: string };
+        trace: string;
+      };
+      const evidence = await transactionDO.statusTransactionResult();
+      console.log(
+        JSON.stringify({
+          kind: "owned-status-transaction-boundary",
+          status: failed.status,
+          value,
+          evidence,
+        }),
+      );
+      assert.equal(
+        evidence.callbackReturned,
+        true,
+        "real SQL callback must return before the injected boundary failure",
+      );
+      assert.equal(evidence.transactionReturned, true);
+      assert.equal(evidence.injectedBoundary, true);
+      await until(
+        async () =>
+          currentWorker.logs.some((row) =>
+            row.message.includes(value.error.failure),
+          )
+            ? true
+            : undefined,
+        "transaction boundary origin",
+      );
+      const origins = currentWorker.logs.filter((row) =>
+        row.message.includes(value.error.failure),
+      );
+      assert.equal(origins.length, 1);
+      assert.equal(origins[0]?.level, "error");
+      assert(origins[0]?.message.includes(value.trace));
+      assert(origins[0]?.message.includes(ab));
+      const propagated = readdirSync(join(root, "a-bots/logs")).flatMap((f) =>
+        readFileSync(join(root, "a-bots/logs", f), "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line)),
+      );
+      assert(
+        propagated.some(
+          (row) =>
+            row.err?.failure === value.error.failure &&
+            row.level === "warn" &&
+            row.trace === value.trace &&
+            row.botId === ab,
+        ),
+      );
+      assert.equal(
+        propagated.filter(
+          (row) =>
+            row.err?.failure === value.error.failure && row.level === "error",
+        ).length,
+        0,
+      );
+      assert(
+        !JSON.stringify({ value, origins }).includes(
+          "owned status transaction boundary failure",
+        ),
+      );
+      assert.equal(failed.status, 503);
+      assert.equal(value.error.kind, "storage_failed");
+      assert.equal(evidence.sameCause, true);
+      committedStatus = await transactionStorage.exec(
+        "SELECT * FROM replica_status ORDER BY key",
+      );
+      assert((committedStatus as unknown[]).length > 0);
+    } finally {
+      await transactionDO.restoreStatusTransaction();
+    }
+    const report = await ad.post(`/v1/bots/${ab}/sync/relay/status-report`, {
+      peerDeviceId: b.deviceId,
+    });
+    assert.equal(report.recorded, true);
+    assert.equal(
+      Number((await ad.control("syncObjectCalls")).applyCalls),
+      transactionBefore.applyCalls,
+    );
+    assert.deepEqual(
+      await transactionStorage.exec(
+        "SELECT * FROM replica_status ORDER BY key",
+      ),
+      committedStatus,
+      "the retry preserves the already-written snapshot and original recording time",
+    );
+    assert.deepEqual(
+      counts(join(root, "a-bots/bots", ab)),
+      transactionBefore.local,
+    );
+    assert.deepEqual(
+      await transactionStorage.exec("SELECT * FROM test_cache_io"),
+      transactionBefore.io,
+    );
+    assert.deepEqual(
+      await transactionStorage.exec(
+        "SELECT * FROM events ORDER BY replicaId,epoch,seq",
+      ),
+      transactionBefore.events,
+    );
+    assert.equal(model.verify(), 0);
+    const read = await bd.post<{ snapshots: RecordJSON[]; hasMore: boolean }>(
+      `/v1/bots/${bb}/sync/relay/status-read`,
+      { peerDeviceId: a.deviceId },
+    );
+    const confirmation = read.snapshots.find(
+      (snapshot) =>
+        canonicalDeviceJSON(snapshot.source) ===
+        canonicalDeviceJSON(source.source),
+    );
+    assert(confirmation);
+    assert.equal(confirmation.registryOrigin, worker.origin);
+    assert.equal(confirmation.sharedBotId, sharedBotId);
+    assert.equal((confirmation.holder as RecordJSON).deviceId, b.deviceId);
+    assert.equal((confirmation.receiver as RecordJSON).deviceId, a.deviceId);
+    assert.deepEqual(confirmation.binding, {
+      localBotId: actual.localBotId,
+      sharedBotId,
+      replicaId: actual.replicaId,
+      epoch: actual.epoch,
+    });
+    assert.equal(confirmation.received, source.received);
+    assert.equal(confirmation.applied, source.applied);
+    assert.equal(typeof confirmation.recordedAt, "number");
+    assert.equal(read.hasMore, false);
+    const metadataStorage = await worker.mf.unsafeGetDurableObjectStorage(
+      "bots-sync",
+      "SyncCache",
+      { name: sharedBotId },
+    );
+    const eventsBeforeStatus = await metadataStorage.exec(
+      "SELECT * FROM events ORDER BY replicaId,epoch,seq",
+    );
+    const ioBeforeStatus = await metadataStorage.exec(
+      "SELECT * FROM test_cache_io",
+    );
+    const statusRows = await metadataStorage.exec(
+      "SELECT * FROM replica_status ORDER BY key",
+    );
+    await ad.post(`/v1/bots/${ab}/sync/relay/status-report`, {
+      peerDeviceId: b.deviceId,
+    });
+    assert.deepEqual(
+      await metadataStorage.exec("SELECT * FROM replica_status ORDER BY key"),
+      statusRows,
+      "an unchanged durable report is idempotent including its original server recording time",
+    );
+    const selector = { peerDeviceId: b.deviceId };
+    for (const extra of [
+      { received: 999999 },
+      { binding: confirmation.binding },
+      { source: source.source },
+    ])
+      await assert.rejects(
+        ad.post(`/v1/bots/${ab}/sync/relay/status-report`, {
+          ...selector,
+          ...extra,
+        }),
+        /403/,
+      );
+    const binding = confirmation.binding as RecordJSON;
+    const body = {
+      version: 1,
+      operation: "status-report",
+      sharedBotId,
+      ...selector,
+      binding,
+      streams: streams.map(({ source, received, applied }) => ({
+        source,
+        received,
+        applied,
+      })),
+    };
+    const mint = async (input: RecordJSON, digestBody: unknown = input) =>
+      localCall(a.socketPath, "sync.relay.authority", {
+        version: 1,
+        operation: input.operation,
+        sharedBotId: input.sharedBotId,
+        peerDeviceId: input.peerDeviceId,
+        requestDigest: createHash("sha256")
+          .update(canonicalDeviceJSON(digestBody))
+          .digest("hex"),
+      }) as Promise<{ authority: string }>;
+    const raw = async (input: RecordJSON, ticket: { authority: string }) =>
+      fetch(currentWorker.origin + `/v1/relay/${input.operation}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${ticket.authority}`,
+          "x-bots-sync-trace": `tr_status_${randomUUID().replaceAll("-", "")}`,
+          "x-bots-sync-bot": ab,
+        },
+        body: JSON.stringify(input),
+      });
+    for (const wrong of [
+      {
+        ...body,
+        sharedBotId: randomUUID(),
+        binding: { ...binding, sharedBotId: randomUUID() },
+      },
+      { ...body, peerDeviceId: randomUUID() },
+      {
+        version: 1,
+        operation: "status-read",
+        sharedBotId,
+        peerDeviceId: b.deviceId,
+      },
+    ]) {
+      if (
+        wrong.operation === "status-report" &&
+        wrong.sharedBotId !== sharedBotId
+      )
+        (wrong as typeof body).binding.sharedBotId = wrong.sharedBotId;
+      const denied = await raw(wrong, await mint(body, wrong));
+      assert.equal(
+        denied.status,
+        403,
+        "a caller-selected exact digest does not replace namespace, peer and operation binding",
+      );
+    }
+    const namespace = (await worker.mf.getDurableObjectNamespace(
+      "SYNC",
+      "bots-sync",
+    )) as unknown as {
+      idFromName(name: string): string;
+      get(id: string): { relaySqlCausePreserved(): Promise<boolean> };
+    };
+    for (const [target, botId, operation, peerDeviceId] of [
+      [ad, ab, "status-report", b.deviceId],
+      [bd, bb, "status-read", a.deviceId],
+    ] as const) {
+      await metadataStorage.exec(
+        "ALTER TABLE replica_status RENAME TO owned_failed_replica_status",
+      );
+      try {
+        const failed = await fetch(
+          target.origin + `/v1/bots/${botId}/sync/relay/${operation}`,
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${target.token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ peerDeviceId }),
+          },
+        );
+        const value = (await failed.json()) as {
+          error: { kind: string; failure: string };
+          trace: string;
+        };
+        assert.equal(failed.status, 503);
+        assert.equal(value.error.kind, "storage_failed");
+        assert.equal(
+          await namespace
+            .get(namespace.idFromName(sharedBotId))
+            .relaySqlCausePreserved(),
+          true,
+        );
+        await until(
+          async () =>
+            currentWorker.logs.some((row) =>
+              row.message.includes(value.error.failure),
+            )
+              ? true
+              : undefined,
+          "status SQL one Worker origin",
+        );
+        const origins: { level: string; message: string }[] =
+          worker.logs.filter((row) =>
+            row.message.includes(value.error.failure),
+          );
+        assert.equal(origins.length, 1);
+        assert.equal(origins[0]?.level, "error");
+        assert(origins[0]?.message.includes(value.trace));
+        assert(origins[0]?.message.includes(botId));
+        const logs = readdirSync(
+          join(root, botId === ab ? "a-bots/logs" : "b-bots/logs"),
+        ).flatMap((f) =>
+          readFileSync(
+            join(root, botId === ab ? "a-bots/logs" : "b-bots/logs", f),
+            "utf8",
+          )
+            .split("\n")
+            .filter(Boolean)
+            .map((l) => JSON.parse(l)),
+        );
+        assert(
+          logs.some(
+            (l) =>
+              l.err?.failure === value.error.failure &&
+              l.level === "warn" &&
+              l.trace === value.trace &&
+              l.botId === botId,
+          ),
+        );
+        assert.equal(
+          logs.filter(
+            (l) =>
+              l.err?.failure === value.error.failure && l.level === "error",
+          ).length,
+          0,
+        );
+        assert(!JSON.stringify({ value, origins }).includes("no such table"));
+        console.log(
+          JSON.stringify({
+            kind: "real-status-sql",
+            operation,
+            status: 503,
+            originalCause: true,
+            workerOrigins: 1,
+            botsErrors: 0,
+          }),
+        );
+      } finally {
+        await metadataStorage.exec(
+          "ALTER TABLE owned_failed_replica_status RENAME TO replica_status",
+        );
+      }
+      assert.deepEqual(
+        await metadataStorage.exec("SELECT * FROM replica_status ORDER BY key"),
+        statusRows,
+      );
+    }
+    const registrySql = await worker.mf.unsafeGetDurableObjectStorage(
+      "eagle",
+      "DeviceRegistry",
+      { name: "registry" },
+    );
+    const rpcTicket = await mint(body);
+    await registrySql.exec(
+      "ALTER TABLE sync_relay_authorities RENAME TO owned_failed_status_authorities",
+    );
+    try {
+      const denied = await raw(body, rpcTicket);
+      assert.equal(denied.status, 503);
+      const failure = (await denied.json()) as {
+        error: { failure: { id: string; kind: string } };
+        trace: string;
+      };
+      assert.equal(failure.error.failure.kind, "internal");
+      await until(
+        async () =>
+          currentWorker.logs.some((row) =>
+            row.message.includes(failure.error.failure.id),
+          )
+            ? true
+            : undefined,
+        "status Registry SQL failure origin",
+      );
+      assert.equal(
+        worker.logs.filter((row) =>
+          row.message.includes(failure.error.failure.id),
+        ).length,
+        1,
+      );
+      const ns = (await worker.mf.getDurableObjectNamespace(
+        "DEVICE_REGISTRY",
+        "eagle",
+      )) as unknown as {
+        idFromName(name: string): string;
+        get(id: string): { relaySqlFailure(input: unknown): Promise<string> };
+      };
+      assert.deepEqual(
+        JSON.parse(
+          await ns.get(ns.idFromName("registry")).relaySqlFailure({
+            authority: rpcTicket.authority,
+            operation: body.operation,
+            sharedBotId,
+            requestDigest: createHash("sha256")
+              .update(canonicalDeviceJSON(body))
+              .digest("hex"),
+          }),
+        ),
+        { message: "sync_relay_registry_unavailable", originalSqlCause: true },
+      );
+      assert(!JSON.stringify(failure).includes("no such table"));
+    } finally {
+      await registrySql.exec(
+        "ALTER TABLE owned_failed_status_authorities RENAME TO sync_relay_authorities",
+      );
+    }
+    await registrySql.exec(
+      "CREATE TABLE test_status_registry_gate(operation TEXT,seen INTEGER,started INTEGER,released INTEGER)",
+    );
+    await registrySql.exec(
+      "INSERT INTO test_status_registry_gate VALUES('status-report',0,0,0)",
+    );
+    const finalTicket = await mint(body);
+    const finalPending = raw(body, finalTicket);
+    try {
+      await until(
+        async () =>
+          (
+            await registrySql.exec(
+              "SELECT started FROM test_status_registry_gate",
+            )
+          )[0]?.started
+            ? true
+            : undefined,
+        "actual final status Registry await",
+      );
+      await b.manage("sync.share", {
+        sharedBotId,
+        peerDeviceId: a.deviceId,
+        enabled: false,
+      });
+      await registrySql.exec("UPDATE test_status_registry_gate SET released=1");
+      assert.equal((await finalPending).status, 403);
+      assert.deepEqual(
+        await metadataStorage.exec("SELECT * FROM replica_status ORDER BY key"),
+        statusRows,
+      );
+    } finally {
+      await registrySql.exec("UPDATE test_status_registry_gate SET released=1");
+      await registrySql.exec("DROP TABLE test_status_registry_gate");
+      await b.manage("sync.share", {
+        sharedBotId,
+        peerDeviceId: a.deviceId,
+        enabled: true,
+      });
+    }
+    const staleTicket = await mint(body);
+    await b.manage("sync.share", {
+      sharedBotId,
+      peerDeviceId: a.deviceId,
+      enabled: false,
+    });
+    assert.equal(
+      (await raw(body, staleTicket)).status,
+      403,
+      "revoked current directional grant refuses an already minted status ticket",
+    );
+    await b.manage("sync.share", {
+      sharedBotId,
+      peerDeviceId: a.deviceId,
+      enabled: true,
+    });
+    // These are trusted-device metadata/key-isolation probes, not native apply evidence.
+    const newEpoch = { ...body, binding: { ...binding, epoch: randomUUID() } };
+    assert.equal((await raw(newEpoch, await mint(newEpoch))).status, 200);
+    const previousKeyLate = {
+      ...body,
+      streams: body.streams.map((s) => ({
+        ...s,
+        received: Math.max(0, s.received - 1),
+        applied: Math.max(0, s.applied - 1),
+      })),
+    };
+    assert.equal(
+      (await raw(previousKeyLate, await mint(previousKeyLate))).status,
+      200,
+    );
+    const separated = await bd.post<{ snapshots: RecordJSON[] }>(
+      `/v1/bots/${bb}/sync/relay/status-read`,
+      { peerDeviceId: a.deviceId },
+    );
+    assert(
+      separated.snapshots.some(
+        (s) => (s.binding as RecordJSON).epoch === newEpoch.binding.epoch,
+      ),
+    );
+    assert.deepEqual(
+      separated.snapshots.find(
+        (s) =>
+          canonicalDeviceJSON(s.source) ===
+            canonicalDeviceJSON(confirmation.source) &&
+          canonicalDeviceJSON(s.binding) ===
+            canonicalDeviceJSON(confirmation.binding),
+      ),
+      confirmation,
+    );
+    await metadataStorage.exec(
+      "DELETE FROM replica_status WHERE key NOT IN (" +
+        statusRows.map(() => "?").join(",") +
+        ")",
+      ...statusRows.map((r) => r.key),
+    );
+    await ad.control("dropStatusReply");
+    const lostResponse = await fetch(
+      ad.origin + `/v1/bots/${ab}/sync/relay/status-report`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${ad.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(selector),
+      },
+    );
+    const lostBody = (await lostResponse.json()) as { trace: string };
+    const lostCause = await ad.message(
+      (m) =>
+        m.type === "ownedStatusReportFailure" && m.trace === lostBody.trace,
+    );
+    console.log(
+      JSON.stringify({
+        kind: "owned-status-lost-reply",
+        status: lostResponse.status,
+        causeName: lostCause.causeName,
+        causeCode: lostCause.causeCode,
+      }),
+    );
+    assert.equal(lostResponse.status, 503);
+
+    assert.equal(lostCause.causeCode, "sync_network_unreachable");
+    const lostStats = await ad.control("statusReplyStats");
+    assert.equal(lostStats.lostStatusReplies, 1);
+    assert.equal(lostStats.lastStatusReply, 200);
+    const callsBeforeRestart = await ad.control("syncObjectCalls");
+    await ad.stop();
+    bots.splice(bots.indexOf(ad), 1);
+    const restarted = await daemon(
+      join(root, "a-bots"),
+      a.socketPath,
+      model.baseUrl,
+      key,
+      { cacheOrigin: worker.origin, holdAuto: true },
+    );
+    bots.push(restarted);
+    const opened = await botConnection(restarted.origin, restarted.token, ab);
+    try {
+      await restarted.post(`/v1/bots/${ab}/sync/relay/status-report`, selector);
+      assert.deepEqual(
+        (
+          await bd.post<{ snapshots: RecordJSON[]; hasMore: boolean }>(
+            `/v1/bots/${bb}/sync/relay/status-read`,
+            { peerDeviceId: a.deviceId },
+          )
+        ).snapshots,
+        read.snapshots,
+      );
+      assert.equal(
+        Number((await restarted.control("syncObjectCalls")).applyCalls),
+        0,
+      );
+      assert.equal(Number(callsBeforeRestart.applyCalls), 1);
+      assert.deepEqual(
+        await metadataStorage.exec("SELECT * FROM test_cache_io"),
+        ioBeforeStatus,
+        "status recovery does not reread any R2 or relay body",
+      );
+      assert.deepEqual(
+        await metadataStorage.exec(
+          "SELECT * FROM events ORDER BY replicaId,epoch,seq",
+        ),
+        eventsBeforeStatus,
+        "status does not refresh event retention clocks",
+      );
+    } finally {
+      await new Promise<void>((done) => {
+        opened.socket.once("close", () => done());
+        opened.socket.close();
+      });
+    }
+    console.log(
+      JSON.stringify({
+        kind: "allpath-persistent-status",
+        cacheApply: true,
+        independentRead: true,
+        completeBinding: true,
+        monotonicKeys: true,
+        lostReplyRestart: true,
+        additionalGetApply: 0,
+        passiveExecutionDelta: 0,
+      }),
+    );
+    const after = counts(join(root, "a-bots/bots", ab));
+    for (const [name, value] of Object.entries(before))
+      if (/submission|task|local_run/.test(name))
+        assert.equal(after[name], value, name);
+    assert.equal(model.verify(), 0);
+  } finally {
+    for (const bot of bots.reverse()) await bot.stop();
     for (const service of services.reverse()) await service.stop();
     await worker?.mf.dispose();
     await new Promise<void>((done) => model.server.close(() => done()));

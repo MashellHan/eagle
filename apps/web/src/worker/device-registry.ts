@@ -673,9 +673,10 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
           const peer = input.peerDeviceId
             ? syncIdentity(this.device(input.peerDeviceId))
             : null;
-          const holder = input.operation === "receipts" ? requester : peer;
-          const reader =
-            input.operation === "receipts" ? peer : peer ? requester : null;
+          const holderReads =
+            input.operation === "receipts" || input.operation === "status-read";
+          const holder = holderReads ? requester : peer;
+          const reader = holderReads ? peer : peer ? requester : null;
           if (holder && reader)
             this.cacheGrant(holder, reader, input.sharedBotId);
           const authorization = SyncRelayAuthorization.parse({

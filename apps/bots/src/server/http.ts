@@ -451,7 +451,7 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
     }
     try {
       const relayMatch =
-        /^\/v1\/bots\/([A-Za-z0-9_-]+)\/sync\/relay\/(register|discover|pull|ack|receipts)$/.exec(
+        /^\/v1\/bots\/([A-Za-z0-9_-]+)\/sync\/relay\/(register|discover|pull|ack|receipts|status-report|status-read)$/.exec(
           path,
         );
       if (relayMatch && request.method === "POST") {
@@ -481,6 +481,12 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
           } else if (relayMatch[2] === "receipts") {
             if (!sync.relayReceipts) throw new Error("sync_unconfigured");
             result = await sync.relayReceipts(botId, input, trace);
+          } else if (relayMatch[2] === "status-report") {
+            if (!sync.statusReport) throw new Error("sync_unconfigured");
+            result = await sync.statusReport(botId, input, trace);
+          } else if (relayMatch[2] === "status-read") {
+            if (!sync.statusRead) throw new Error("sync_unconfigured");
+            result = await sync.statusRead(botId, input, trace);
           } else {
             z.strictObject({}).parse(input);
             result =

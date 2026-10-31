@@ -168,7 +168,7 @@ test("Registry relay metadata authority keeps current directional roles, scope a
       ),
       [b.deviceId],
     );
-    for (const operation of ["exchange", "ack"]) {
+    for (const operation of ["exchange", "ack", "status-report"]) {
       const x = await mint(operation, a.token, b.deviceId);
       assert.equal((await check(x.ticket, x.input)).ok, true);
       assert.equal(
@@ -180,6 +180,33 @@ test("Registry relay metadata authority keeps current directional roles, scope a
         a.deviceId,
       );
     }
+    const statusRead = await mint("status-read", b.token, a.deviceId);
+    assert.equal((await check(statusRead.ticket, statusRead.input)).ok, true);
+    for (const operation of ["ack", "receipts", "status-report", "exchange"])
+      assert.equal(
+        (await check(statusRead.ticket, statusRead.input, { operation })).ok,
+        false,
+      );
+    assert.equal(
+      (
+        await call(
+          "/sync/relay/authority",
+          b.token,
+          request("status-report", a.deviceId),
+        )
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await call(
+          "/sync/relay/authority",
+          a.token,
+          request("status-read", b.deviceId),
+        )
+      ).status,
+      403,
+    );
     const query = await mint("receipts", b.token, a.deviceId);
     assert.equal((await check(query.ticket, query.input)).ok, true);
     assert.equal(

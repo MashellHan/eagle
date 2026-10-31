@@ -3,7 +3,12 @@ import { WebSocket } from "ws";
 import { z } from "zod";
 import type { ReadyReplica } from "./core/BotRegistry.ts";
 import type { DeviceSyncPort } from "./core/DeviceSyncPort.ts";
-import { RelayRegister, relayDirectory } from "./core/DeviceSyncRelay.ts";
+import {
+  type RelayOperation,
+  RelayRegister,
+  type RelayRequest,
+  relayDirectory,
+} from "./core/DeviceSyncRelay.ts";
 import { nonce } from "./sync-crypto.ts";
 import { MAX_OBJECT_FRAME, metadataDigest } from "./sync-objects.ts";
 
@@ -97,7 +102,7 @@ export class SyncRelay {
   }
   async authority(
     input: {
-      operation: "register" | "discover" | "exchange" | "ack" | "receipts";
+      operation: z.infer<typeof RelayOperation>;
       sharedBotId: string;
       peerDeviceId?: string;
     },
@@ -119,11 +124,16 @@ export class SyncRelay {
     return result.authority;
   }
   async metadata(
-    input: { operation: "ack" | "receipts"; sharedBotId: string; peerDeviceId: string },
+    input: Extract<
+      z.infer<typeof RelayRequest>,
+      { operation: "ack" | "receipts" | "status-report" | "status-read" }
+    >,
     fields: Fields,
     signal?: AbortSignal,
+    beforeSend?: () => Promise<void>,
   ) {
     const authority = await this.authority(input, input, fields);
+    if (beforeSend) await beforeSend();
     return this.#exchange(`/v1/relay/${input.operation}`, input, fields, authority, signal);
   }
   async directory(sharedBotId: string, fields: Fields, signal?: AbortSignal) {

@@ -1048,3 +1048,75 @@ for (const [status, code, cleared] of [
       reopened.close();
     }
   });
+
+test("durable status metadata has one independent slot and never waits for a direct or upload attempt", async (t) => {
+  const h = fixture(t);
+  let reports = 0,
+    reads = 0,
+    release: (() => void) | undefined;
+  const api = h.api as typeof h.api & {
+    canRelay(): boolean;
+    relayRegister(): Promise<unknown>;
+    statusReport(
+      bot: string,
+      input: unknown,
+      trace: string,
+      attempt: SyncAttempt,
+    ): Promise<unknown>;
+    statusRead(bot: string, input: unknown, trace: string, attempt: SyncAttempt): Promise<unknown>;
+  };
+  api.canRelay = () => true;
+  api.relayRegister = async () => ({});
+  api.statusReport = async (_bot, _input, _trace, attempt) => {
+    reports++;
+    await new Promise<void>((done) => {
+      release = done;
+    });
+    attempt.guard();
+    return { version: 1, recorded: true };
+  };
+  api.statusRead = async (_bot, _input, _trace, attempt) => {
+    reads++;
+    attempt.guard();
+    return {
+      version: 1,
+      snapshots: [
+        {
+          registryOrigin: h.f.manifest.registryOrigin,
+          sharedBotId: h.f.manifest.sharedBotId,
+          holder: h.f.publisher,
+          receiver: h.f.publisher,
+          binding: h.f.record.binding,
+          source: h.remote,
+          received: 6,
+          applied: 2,
+          recordedAt: Date.now(),
+        },
+      ],
+      hasMore: false,
+    };
+  };
+  await h.configure();
+  h.auto.start();
+  await h.tick();
+  assert.equal(reports, 1, "receive direction automatically reports persistent status");
+  await h.tick(3000);
+  assert.equal(reports, 1, "a held metadata action consumes the sole slot");
+  assert(h.calls.pull > 0);
+  assert(h.calls.upload > 0, "metadata is independent of upload");
+  release?.();
+  await settle();
+  await h.tick();
+  assert.equal(reads, 1, "publish direction independently reads peer progress");
+  const learned = await h.auto.list(h.f.record.botId, "tr_metadata_snapshot");
+  const snapshot = learned.connections[0]?.peerApplied;
+  assert(snapshot && typeof snapshot !== "string");
+  assert.equal(snapshot.current, "unknown");
+  assert.equal(snapshot.snapshots[0]?.applied, 2);
+  assert.equal(snapshot.snapshots[0]?.received, 6);
+
+  await h.auto.remove(h.f.record.botId, h.f.descriptor.deviceId, "tr_metadata_delete");
+  await h.tick(5000);
+  assert.equal(reports, 1);
+  assert.equal(reads, 1);
+});

@@ -1,6 +1,14 @@
 import { z } from "zod";
 import { SyncDigest, SyncIdentity, SyncKeyBytes } from "./wire.ts";
-export const RelayOperation = z.enum(["register", "discover", "exchange", "ack", "receipts"]);
+export const RelayOperation = z.enum([
+  "register",
+  "discover",
+  "exchange",
+  "ack",
+  "receipts",
+  "status-report",
+  "status-read",
+]);
 const sequence = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const RelaySource = z.strictObject({ replicaId: z.uuid(), epoch: z.uuid() });
 export const RelayBinding = RelaySource.extend({
@@ -100,10 +108,41 @@ export const RelayAck = base
   })
   .refine((v) => v.applied <= v.received && v.binding.sharedBotId === v.sharedBotId);
 export const RelayReceipts = base.extend({ operation: z.literal("receipts") });
+export const RelayProgress = z
+  .strictObject({ source: RelaySource, received: sequence, applied: sequence })
+  .refine((value) => value.applied <= value.received);
+export const RelayStatusReport = base
+  .extend({
+    operation: z.literal("status-report"),
+    binding: RelayBinding,
+    streams: z.array(RelayProgress).max(128),
+  })
+  .refine(
+    (value) =>
+      value.binding.sharedBotId === value.sharedBotId &&
+      new Set(value.streams.map((s) => `${s.source.replicaId}/${s.source.epoch}`)).size ===
+        value.streams.length,
+  );
+export const RelayStatusRead = base.extend({ operation: z.literal("status-read") });
+export const RelayStatusSnapshot = RelayProgress.safeExtend({
+  registryOrigin: RelayAuthorization.shape.registryOrigin,
+  sharedBotId: z.uuid(),
+  holder: SyncIdentity,
+  receiver: SyncIdentity,
+  binding: RelayBinding,
+  recordedAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+});
+export const relayStatusResult = z.strictObject({
+  version: z.literal(1),
+  snapshots: z.array(RelayStatusSnapshot).max(128),
+  hasMore: z.boolean(),
+});
 export const RelayRequest = z.union([
   RelayRegister,
   RelayDiscover,
   RelayExchange,
   RelayAck,
   RelayReceipts,
+  RelayStatusReport,
+  RelayStatusRead,
 ]);

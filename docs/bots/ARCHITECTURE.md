@@ -666,3 +666,21 @@ for cold local retry and lost ACK recovery. Local apply precedes network work;
 current-authorized explicit delivery-unavailable can release only ACK waiting.
 No generic queue, scheduler, crypto session, drain API or new reverse grant.
 This slice reports only relay-associated receipts; all-path status follows before P5.
+
+## All-path persistent status ownership
+
+The additive status-report/status-read path uses existing metadata authority and
+named Registry RPC. The current receiver rebuilds bounded source progress from
+the same ReadyReplica durable status; the holder independently reads exact-key
+snapshots under the original holder→receiver grant. Worker persists metadata only,
+keyed by registry/sharedBot/full identities/receiver binding/original source; it
+does not touch bodies, R2 or retention. Receiver reports are authenticated statements,
+not Worker-verifiable direct receipts or remote execution proof.
+
+AutomaticSync owns a single independent metadata action beside inbound and upload.
+Original configuration/ready/attempt guards apply after authority waits and at send;
+close cancels it, while direct Self loss does not disable legitimate cloud status.
+No persistent ACK queue or core/drain API is introduced: restart reports the actual
+DB again without another get/apply. Local offline apply keeps its fixed-pin path.
+Sender connection status preserves full timestamped snapshots and keeps the
+receiver's current binding unknown. See SYNC-STATUS for the exact bounded schema.

@@ -172,6 +172,8 @@ export interface SyncApi {
   ): Promise<unknown>;
   relayAck?(botId: string, input: unknown, trace: string): Promise<unknown>;
   relayReceipts?(botId: string, input: unknown, trace: string): Promise<unknown>;
+  statusReport?(botId: string, input: unknown, trace: string): Promise<unknown>;
+  statusRead?(botId: string, input: unknown, trace: string): Promise<unknown>;
   relayRegister?(botId: string, trace: string): Promise<unknown>;
   relayDiscover?(botId: string, trace: string): Promise<unknown>;
   relayPull?(botId: string, input: z.infer<typeof syncPullInput>, trace: string): Promise<unknown>;

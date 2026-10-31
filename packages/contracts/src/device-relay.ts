@@ -9,6 +9,8 @@ export const SyncRelayOperation = z.enum([
   "exchange",
   "ack",
   "receipts",
+  "status-report",
+  "status-read",
 ]);
 const scope = z.strictObject({
   operation: SyncRelayOperation,

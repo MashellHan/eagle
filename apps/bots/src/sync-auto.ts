@@ -24,7 +24,7 @@ import {
   syncSource,
   syncUploadPage,
 } from "./core/DeviceSyncConnections.ts";
-import { RelayDelivery, relayDirectory } from "./core/DeviceSyncRelay.ts";
+import { RelayDelivery, relayDirectory, relayStatusResult } from "./core/DeviceSyncRelay.ts";
 import { ClassifiedFailure } from "./core/domain.ts";
 import { newFailure } from "./core/failures.ts";
 import { declareEvent } from "./log/events.ts";
@@ -57,6 +57,7 @@ type State = {
   scan: Map<string, { after: number; gap: number | undefined; revisit: boolean }>;
   sourceIndex: number;
   switchPending: boolean;
+  peerApplied?: z.infer<typeof relayStatusResult> & { current: "unknown"; authenticatedAt: number };
 };
 const sourceKey = (source: Source) => `${source.replicaId}/${source.epoch}`;
 
@@ -75,8 +76,10 @@ export class AutomaticSync implements SyncConnectionsApi {
   #probe: { pref: SyncPreference; cancel(): void } | undefined;
   #inboundTimer: ReturnType<typeof setTimeout> | undefined;
   #uploadTimer: ReturnType<typeof setTimeout> | undefined;
+  #metadataTimer: ReturnType<typeof setTimeout> | undefined;
   #receiveIndex = 0;
   #uploadIndex = 0;
+  #metadataIndex = 0;
   constructor(root: string, registry: BotRegistry, sync: AuthenticatedSync, log: Log) {
     this.#directory = join(root, "sync-connections");
     this.#registry = registry;
@@ -216,7 +219,7 @@ export class AutomaticSync implements SyncConnectionsApi {
               ? p.upload.cloudCached
               : null,
           expiredThrough: p.upload.expiredThrough,
-          peerApplied: "unknown",
+          peerApplied: this.#state(p).peerApplied ?? "unknown",
         })),
     };
   }
@@ -327,13 +330,72 @@ export class AutomaticSync implements SyncConnectionsApi {
     };
     loop(false);
     loop(true);
+    const metadata = () => {
+      this.#metadataTimer = setTimeout(() => {
+        void this.#metadataTurn().finally(() => {
+          if (!this.#closed) metadata();
+        });
+      }, 1000);
+      this.#metadataTimer.unref();
+    };
+    metadata();
   }
   close() {
     this.#closed = true;
     clearTimeout(this.#inboundTimer);
     clearTimeout(this.#uploadTimer);
+    clearTimeout(this.#metadataTimer);
     for (const pref of this.#connections) this.#cancel(pref);
     this.#probe?.cancel();
+  }
+  async #metadataTurn() {
+    if (this.#closed || this.#storageUncertain || !this.#sync.canRelay?.()) return;
+    const actions = this.#connections.flatMap((pref) => [
+      ...(pref.direction !== "publish" ? [{ pref, report: true }] : []),
+      ...(pref.direction !== "receive" ? [{ pref, report: false }] : []),
+    ]);
+    if (!actions.length) return;
+    const action = actions[this.#metadataIndex++ % actions.length];
+    if (!action) return;
+    const { pref, report } = action,
+      trace = `tr_metadata_${randomUUID().replaceAll("-", "")}`;
+    try {
+      const replica = await this.#ready(pref, trace);
+      this.#owner(pref);
+      const attempt = this.#attempt(pref, replica);
+      try {
+        if (report)
+          await this.#sync.statusReport(
+            pref.botId,
+            { peerDeviceId: pref.peerDeviceId },
+            trace,
+            attempt.context,
+          );
+        else {
+          const result = relayStatusResult.parse(
+            await this.#sync.statusRead(
+              pref.botId,
+              { peerDeviceId: pref.peerDeviceId },
+              trace,
+              attempt.context,
+            ),
+          );
+          attempt.context.guard();
+          if (result.snapshots.length)
+            this.#state(pref).peerApplied = {
+              ...result,
+              current: "unknown",
+              authenticatedAt: Date.now(),
+            };
+          else delete this.#state(pref).peerApplied;
+        }
+      } finally {
+        attempt.cancel();
+        attempt.release();
+      }
+    } catch {
+      // Metadata failures retain their own origin; applied data and the other slots continue.
+    }
   }
   async #turn(upload: boolean) {
     if (this.#closed || this.#storageUncertain) return;

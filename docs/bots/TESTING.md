@@ -1634,3 +1634,222 @@ live/perf/deployment check is added. Normal browser/Swift pre-push follows forma
 acceptance; source/doc/candidate evidence is not commit/hook/push success.
 Direct/cache sender confirmation and connection peerApplied remain unknown until
 the already authorized next all-path status slice.
+
+### Physical MacMini acceptance before the sync PR
+
+Relay is normally delivered as6575f53f/treeca3ea404, single parent01d90a70.
+relay-delivery-final.json SHA5870b595 binds actual pre-commit/pre-push child exits0,
+root269/269, browser191 passes/11 existing conditional exclusions and actual Swift
+counts208/51/60. Independent own ls-remote equals6575f53f; main is clean0/0.
+All52 started Git SIDs have terminal exit/atexit; the two Swift package exact-tag
+describe probes exit128 and are listed independently. This is delivery evidence,
+not physical synchronization evidence. Prior artifacts and this final stay read-only.
+
+Physical A is904177ab-b719-4718-b831-313e6d23d30e; B is
+1d6c7b68-0c06-47a7-b760-a41120fa4dff. Those are the existing paired execution-bridge
+identities, not a substitute for isolated helper identity or current sync grant.
+Use only owned temporary roots, helper vaults, data and ports with the same delivered
+candidate and available bundled Node. Preserve daily Apps/data and global tools.
+No CF deployment, remote cloud test resource, npm publication, newer upstream or
+system-clock change is authorized by this verification.
+
+| Final PR admission scenario | Required physical fact |
+| --- | --- |
+|1 A→B→A history/context handoff | Product synchronization preserves the complete original history and resource bytes; real SDK runs continue from the chosen fixed head on each Mac. |
+|2 A offline, B continues, A catches up | B's actual local continuation does not wait for A or sync ACK; A later receives the new original events/context without replaying prior model/tools. |
+|3 Concurrent same-Bot work | Both branches remain present and each Mac can continue its selected branch; device progress is not collapsed into a single inferred head. |
+|4 App/daemon restart | History/resources and actual execution records persist; passive recovery repeats no model, tool, submission, task, peer or PR execution. Report App and daemon scope separately. |
+|5 Actual available direct/relay and switching | Report the real route and endpoints, with no lost/duplicate facts. A local Miniflare or stopped Tailscale observation cannot certify physical direct. |
+|6 Expired72h cache, online holder reread | After old A exits, fresh C may use another owned root on the same physical A while B remains holder: two physical Macs, three isolated instances as needed. Advance only the owned backend clock, never event firstCachedAt/system time; never copy A/B history into C. |
+
+Across all scenarios compare original message/input/output/tool-result, attachment,
+AGENTS.md and complete versioned skill bytes, selected heads/sections and real local
+execution records. Cache/stored receipts are not peerApplied; all-path ACK remains
+its separate narrow contract and cannot delay the initial history test.
+
+The first round is deliberately A small complete history/resources→B product sync
+and actual SDK/context continuation→A offline/B native continuation→A restored
+catch-up→both daemons restarted with original bytes/execution counts checked.
+Use existing product HTTP fixed-head run first where available and name its
+API/SDK scope. The native composer follows the smallest P5 connection. Do not
+hand-transfer history or describe a single-host fixture as physical success.
+If the jointly reachable isolated Registry/Sync backend, current sync grant or
+an actual continuation API is missing, record exact bounded reachability/authority
+or product failure and continue independent authorized work. The previous P6
+read-only brief supplies leads, not proof of these runtime prerequisites.
+
+
+### First physical history round (6575, API/SDK)
+
+The two actual Macs complete A→B→A continuation:5→10→14→19 entries. A starts the
+original run, B continues A's selected fixed head, A daemon/helper stop while B
+continues locally, A cold-opens and automatically receives B's14-entry head. Both
+daemons restart without replay. A then actually POSTs replica/run from that exact
+14-entry head; provider input contains B's new context and selected resources, and
+the actual A package shell tool succeeds. B passively receives the19-entry head
+without provider/submission/task/local_runs execution. All previous fixed heads,
+original kind/model/data bytes, origins and six resource files stay available.
+Local mapped IDs are not original IDs: first oracle d94feb9c is preserved as an
+oracle failure; its corrected comparison did not rerun the already admitted work.
+
+Physical final dc9c65da9060faa5959bc5e384bae218b8467f8c51eec14b2915fdd94c2eba77
+binds332 physical artifacts and2440 protected relay references. Actual A/B copies
+both bind740 source and15363 runtime dependency files/links to archive669dea0d;
+the same ten helper inputs and each actual native binary are recorded. Binding
+was taken after the first stages and before A return, not invented as a historical
+before map. Per-command741 root maps are stable but prove only repository inputs.
+A-return raw log784d60062969838a1d2ee4403b03916c8f57ff7835229c88792fcf0faf3f6777
+and exit9d3ef2929b62577007e3e77cc49c1dbfe64293687ee0fe3c6b1ec98418d94493
+bind the final explicit native call. Earlier failures remain immutable.
+
+The bridge prepares/controls/collects evidence only. Product data uses A/B→B owned
+Node TCP49290→B loopback HTTPS Miniflare49291, verifying the owned CA per process.
+Connection mode is cache; this round does not isolate cache from relay per page.
+It is real physical API/SDK with controlled provider/local shell tools, not daily
+App/native composer, physical Tailscale/direct switching, deployed CF or all six
+PR scenarios. Sender peerApplied remains unknown pending SYNC-STATUS.
+
+### All-path status: behavioral evidence before freeze
+
+Contract [SYNC-STATUS.md](SYNC-STATUS.md) adds only receiver status-report and
+independent holder status-read. Evidence root is `.local/sync-p4-allpath-status`;
+baseline is delivered6575f53f/treeca3ea404. The closed physical/relay originals are
+reused by reference, not revalidated on each execution. No new physical, native
+composer, live CF or Tailscale verification belongs to these local fixtures.
+
+| Original run | Exact scope/result |
+| --- | --- |
+| status-entry-first / receipt525b3efa | Complete encrypted-objects file10/11: actual legal local status-report404 after durable apply. It proves the missing entry only. |
+| status-entry-second / loga2071865 | Same complete file11/11,0skip/cancel,exit0,741 maps stable: first real cache apply→report→independent read, before automatic metadata hookup. |
+| status-auto-first / log43d4fbcd | Complete controller component file27/28, automatic report0!==1. Component fixture scope. |
+| status-auto-second / log6b16cd54 | Complete component file28/28. Green fixture also supplies the valid relayRegister prerequisite. |
+| status-components-third / log1de3ea00 | Both complete component files30/31: new statusReport's binding equality depends on JSON field order. This is new-code behavior, not an old product finding. |
+| status-components-fourth / logcbb0b942 | Both complete component files31/31 after parsing both complete bindings; exact-key snapshots, authority-wait cancellation and independent metadata slot also pass. |
+| status-windows-first / log43bb9ba3 | Complete encrypted-objects file10/11,0skip/cancel,741 stable. Last lost-reply oracle expects503; exact first error cause was not captured. |
+| status-windows-second / loga0f843a2 | Complete file10/11,0skip/cancel,741 stable. Last oracle explicitly captures readable malformed JSON→SyntaxError/403, not actual body-I/O failure. |
+| status-windows-third / log5a82fd45 | Complete file11/11,0skip/cancel,exit0,741 stable. A lazy owned fixed metadata HTTP endpoint forwards to the actual Worker, consumes200 then destroys the actual client socket; local503/sync_network_unreachable, cold report-only retry with extra get/apply/provider0. |
+
+The final behavioral log's exact SHA is
+5a82fd45df40fd4a22e36b7aa836f0591632b9ab45cf3089c89b14f6f1d2f870.
+No product classifier was changed to satisfy the malformed-JSON oracle. Original
+failures, input maps/raw starts/exits and available exact input archives remain
+unchanged. Static type/fixture failures are separate: b47ec843/8679e024/086ddf60/
+99ea42d2/f3c8f7cc do not count as behavioral red. Static-sixthdbb60852 passes root,
+Bots and Worker strict types/check-only lint on its intermediate input; the final
+socket-loss fixture changed afterward, so final static/normal gates follow.
+Some intermediate static inputs have maps/raw only, not archived exact bytes;
+no later content is backfilled as those historical inputs.
+
+Actual integration assertions include direct apply despite failed cache/report
+channels, sender unknown until independent report/read recovery, a committed
+receive with real SQLite materialization failure reporting27received/22applied,
+then the same pending local object recovering without another get/provider.
+Both report and read rename the owned replica_status table while preserving its
+data:503/storage_failed with original cause, same trace/Bot/failure, Worker1 origin
+and Bots0 errors. Registry authority SQL unavailability remains internal503.
+Wrong operation/peer/namespace with caller-selected digest, revoked grants and
+final Registry-await revocation fail closed. Same-key updates are monotonic;
+old receiver binding/source epochs remain separately identified snapshots.
+Reports/read leave event firstCachedAt and all R2 I/O counters unchanged.
+
+Scenario5's physical prerequisite is currently unmet: genuine running Tailscale
+Self on both Macs plus publishable/listenable/two-Mac-reachable sync endpoints.
+Accepted6575 allows only100.64/10 or fd7a:115c:a1e0::; the owned10.172.44.34 route
+cannot stand in for direct Self. Prior fresh A CLI lookup and B Stopped/Online=false
+are retained without new polling/start/login/settings changes. The accepted first
+physical API/SDK round remains closed; cache/relay/owned72h/status/P5 continue.
+
+### Frozen status source and normal gates
+
+Authoritative source-v1-complete.json SHA
+f790dafc76543315269d02e875c4e66b9e19962a137afd5fcd7e365b1a7edb3f
+binds697 canonical mode/blob/SHA/byte entries,741 full files and16 actual base
+source deltas (11 production,5 tests/fixture). Both current/base bytes and the
+source patch are archived. First freeze-script counting failed because it omitted
+three existing source-selected README files; production did not change. Draft
+921f7cda is preserved. Its own active freeze log was initially hashed empty; the
+complete receipt explicitly replaces only that reference with actual settled
+b814306f and retains the draft. It does not relabel an active log as terminal.
+
+| Normal command / label | Actual frozen-source result |
+| --- | --- |
+| Root/Bots/Worker types and check-only lint / status-static-seventh | exit0;624fc6fd. Final socket-loss fixture included; no autofix. |
+| `npm run check` / status-root-first | complete269/269, types/lint/build;exit0;51eb59f3. |
+| `npm --prefix apps/bots run check` / status-bots-first | fixtures34;ordinary916/916 and identical coverage916/916;types/lint;exit0;f6cf7041. Actual92.44lines/87.07branches/90.09functions at unchanged90/85/90. |
+| `npm --prefix apps/bots-sync run check` / status-worker-first | strict types/lint, complete26/26 Miniflare tests,dry-run build;exit0;1af943ee. Real new status SQL/grant/recovery routes also execute in devices, not26 invented new Worker cases. |
+| `npm run test:devices` / status-devices-first | complete33/33,0skip/cancel;exit0;6214852c. Includes the original encrypted-objects file11 and real Registry/Swift helper/independent Node/Bots/Worker chain. |
+
+gates-v1.json SHA8da2d96c22956c7ae159af4a32a41d3e6c86e4e02d3d9fab563b996cc990ee54
+binds each actual start/log/exit/Trace2 and697 frozen sources;741 before/after maps
+are stable for every run. Only final docs are subsequently updated. Root build's
+existing chunk-size advisory and lint informational diagnostics remain visible.
+No thresholds, include/exclude scope, timeout or test inputs were changed to pass.
+
+reuse-v1.json SHAb075fd7c retains unchanged Swift181/142/181/71 exact input scopes
+and their original executions. Historical crash17/log1252d3d8 and exact
+chat-basic/root-resources two-row evaluations28761e3e/cc11463c keep their prior
+scope: unchanged main/eval without deviceSocket instantiates no sync objects;
+new HTTP metadata routes require that injection. Loaded source differences are
+listed, not claimed byte-identical or fresh executions. No extra unchanged
+perf/live/platform check. Normal browser and original Swift pre-push remain after
+formal acceptance. Physical finaldc9c65da is reused without repeating old2440
+artifact verification or remote inventory. Root alone handles official client
+preparation and user login handoff; physical scene5 is still unpassed.
+
+The source is under existing independent Review. Final docs/tree/candidate binding,
+formal acceptance and normal commit/hooks/push remain pending. No P5 source is mixed.
+
+
+### All-path Review P2 #1: status-report transaction boundary
+
+Candidate c0e6bb8d/tree8acc5fdc was paused for this single confirmed P2. Its source
+f790dafc, preflight and candidate-after B read-only records remain immutable by
+reference. The repair changes only Worker relay.ts plus the existing real devices
+fixture and encrypted-objects test; no generic failure classifier or old CF path.
+The status-only catch preserves CacheError (including capacity429), ZodError and
+SyntaxError. Other raw transaction-boundary errors become503/storage_failed with
+sync_relay_storage_failed and the same local cause.
+
+Every row below ran the complete original encrypted-objects file, without focus,
+skip or cancellation. Each741 before/after map was stable. Both real-platform
+attempts and the injected red keep all11 production inputs equal to f790.
+
+| Original run / log | Actual scope and terminal result |
+| --- | --- |
+| status-transaction-native-first /041fb868 | 2/11,exit1; constructor-wide ctx/storage Proxy fixture failed before the new window. Legal cache publish returned403. No product boundary red or platform conclusion. |
+| status-transaction-native-second /532c94ef | 10/11,exit1; real owning DO DEFERRABLE FK triggered reset/rollback at the output commit gate. It did not supply a synchronous transactionSync Error to this catch. Native-commit limitation, not the P2 classification red. |
+| status-transaction-injected-red /1e1ddfa8 | 10/11,exit1; owning fixture arm injects one original Error only after actual SQL callback and native transactionSync return. Old production403/auth_failed fails503 assertion. This is boundary injection, not a real SQLite commit fault. Same trace/Bot, single Worker error and Bots warn propagation are checked before the failed classification assertion. |
+| status-transaction-green /7f25aff3 | 11/11,exit0; first status-only catch green, before the later explicit ZodError/SyntaxError passthrough. Recovery oracle compares actual apply count rather than the control envelope's random requestId. Original red bytes are retained. |
+| status-transaction-green-final /50a46c80 | 11/11,exit0; final protocol-preserving source.503/storage_failed, exact cause object, one Worker origin, same trace/Bot, zero Bots error origins. Retry keeps already-written status/time, no extra get/apply/provider or event-clock changes. Existing current-grant/identity/final-await and cold report-only recovery still pass. |
+
+The fixture's WeakMap/instanceof observer checks exact cause identity locally and
+preserves normal instanceof behavior; no raw cause, SQL or injected error text is
+placed on product wire/logs. Normal report/retry reads the same durable source
+status. The earlier real table-rename statement failures remain separate evidence.
+The first formatting command4253841e formatted the test then failed on a nested
+Worker config; the same Worker formatter from its own cwd f671c58a exits0 with no
+changes. Configs/limits were not altered.
+
+Source-v2 receipt review-p2-transaction/source-v2.json SHA
+863cd4832239c8b8b185df3a9fa466a431b96506fb3638e8e1c9a004a2aa8373
+binds697 canonical entries/741 full paths, exact before/after archives and three
+path deltas from f790. Worker relay SHA77b53315 becomes064a890a; only the status
+transaction catch and its indentation change. Source is frozen for existing
+Reviewer increment; no self-declared Review closure or normal delivery yet.
+
+| Affected normal command / log | Result on source-v2 |
+| --- | --- |
+| Root/Worker strict types and check-only lint /b0ad7b12 | exit0; no autofix. |
+| `npm run check` /344ae7c1 | complete269/269,types/lint/build;exit0. Root Registry tests import the changed real Worker fixture. |
+| `npm --prefix apps/bots-sync run check` /97bbb145 | complete26/26,types/lint/dry-run;exit0. The added status boundary evidence is in the devices file. |
+| `npm run test:devices` /364218f2 | complete33/33,0skip/cancel;exit0, including the final status window and all original integration files. |
+
+review-p2-transaction/gates-v2.json SHA 1e856a377530d19a7f2238e12fc52cc083ed35d6fdb4a93b469935d3677ff216
+binds original start/log/exit/Trace2 and exact697/741 maps. Normal gates ran
+serially. Bots' unchanged own inputs reuse ordinary916/coverage916, fixtures34,
+92.44/87.07/90.09 at original90/85/90; Swift/crash/eval keep the reviewed exact
+reuse-v1 scope. The three repair source differences are outside those inputs.
+Closed2440 and physicaldc9c65da are not revalidated or enlarged. Original lint
+infos/build advisory remain. Subsequent changes are final evidence docs only.
+Browser and original normal commit/pre-push hooks remain after formal acceptance;
+no commit/push, P5, physical scene5 completion or cloud deployment is claimed.

@@ -279,6 +279,10 @@ export class DeviceRegistry extends Registry {
    const gate=()=>this.ctx.storage.sql.exec('SELECT * FROM test_relay_registry_gate').toArray()[0];
    if(!gate().released){this.ctx.storage.sql.exec('UPDATE test_relay_registry_gate SET started=1');const end=Date.now()+5000;while(!gate().released){if(Date.now()>end)throw new Error('owned relay renewal gate timeout');await new Promise(r=>setTimeout(r,10));}}
   }
+  if(value.operation.startsWith('status-')&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_status_registry_gate'").toArray().length) {
+   const gate=()=>this.ctx.storage.sql.exec('SELECT * FROM test_status_registry_gate').toArray()[0];
+   if(gate().operation===value.operation){this.ctx.storage.sql.exec('UPDATE test_status_registry_gate SET seen=seen+1');if(gate().seen===2){this.ctx.storage.sql.exec('UPDATE test_status_registry_gate SET started=1');const end=Date.now()+5000;while(!gate().released){if(Date.now()>end)throw new Error('owned status final authorization gate timeout');await new Promise(r=>setTimeout(r,10));}}}
+  }
   return super.checkRelayAuthority(value);
  }
  async checkCacheAuthority(value) {
@@ -359,20 +363,47 @@ export default {fetch(request,env,ctx){
       join(directory, "sync-entry.ts"),
       `
 import worker,{SyncCache as Production} from '../../apps/bots-sync/src/index.ts';
+import {CacheError} from '../../apps/bots-sync/src/errors.ts';
+// Observe exact cause identity locally without changing instanceof semantics.
+const transactionErrors=new WeakMap();
+Object.defineProperty(CacheError,Symbol.hasInstance,{value(error){
+ const evidence=error&&transactionErrors.get(error.cause);
+ if(evidence)evidence.sameCause=true;
+ return Function.prototype[Symbol.hasInstance].call(this,error);
+}});
 export class SyncCache extends Production {
  constructor(ctx,env){
   ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS test_cache_io(operation TEXT,after INTEGER)');
   ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS test_relay_network(blocked INTEGER)');
   ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS test_relay_ack_reply(remaining INTEGER,lost INTEGER)');
+  ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS test_status_fault(operation TEXT,mode TEXT,remaining INTEGER,hits INTEGER)');
   const bucket=env.CIPHERS;
+  const evidence={callbackReturned:false,transactionReturned:false,injectedBoundary:false,sameCause:false};
   super(ctx,{...env,CIPHERS:new Proxy(bucket,{get(target,key){
    if(key==='get')return(...args)=>{ctx.storage.sql.exec("INSERT INTO test_cache_io VALUES('r2',NULL)");return target.get(...args);};
    const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
   }})});
+  this.statusTransactionEvidence=evidence;
   const relayRows=this.relay.rows.bind(this.relay);
   this.relay.rows=(...args)=>{try{return relayRows(...args);}catch(error){this.relaySqlCause=error.cause instanceof Error&&/no such table/.test(error.cause.message);throw error;}};
  }
  relaySqlCausePreserved(){return this.relaySqlCause===true;}
+ // Native deferred FK fails at the output gate; inject only after the actual transaction returns.
+ armStatusTransaction(){
+  const storage=this.ctx.storage;
+  const transaction=storage.transactionSync;
+  const cause=new Error('owned status transaction boundary failure');
+  this.restoreTransaction=()=>{storage.transactionSync=transaction;};
+  storage.transactionSync=callback=>{
+   transaction.call(storage,()=>{const result=callback();this.statusTransactionEvidence.callbackReturned=true;return result;});
+   this.statusTransactionEvidence.transactionReturned=true;
+   this.statusTransactionEvidence.injectedBoundary=true;
+   transactionErrors.set(cause,this.statusTransactionEvidence);
+   throw cause;
+  };
+ }
+ statusTransactionResult(){return this.statusTransactionEvidence;}
+ restoreStatusTransaction(){this.restoreTransaction();}
  async fetch(request){
   if(new URL(request.url).pathname==='/v1/relay/connect'&&this.ctx.storage.sql.exec('SELECT blocked FROM test_relay_network').toArray()[0]?.blocked)return Response.json({error:'owned_relay_network_unavailable'},{status:503});
   const operation=new URL(request.url).pathname.split('/').pop();
@@ -381,6 +412,9 @@ export class SyncCache extends Production {
   if(operation==='list'||operation==='get'){
    const value=await request.clone().json();this.ctx.storage.sql.exec('INSERT INTO test_cache_io VALUES(?,?)',operation,value.after??null);
   }
+  const fault=this.ctx.storage.sql.exec('SELECT mode,remaining FROM test_status_fault WHERE operation=?',operation).toArray()[0];
+  const lose=()=>{this.ctx.storage.sql.exec('UPDATE test_status_fault SET hits=hits+1,remaining=remaining-1 WHERE operation=?',operation);return new Response('{"version":',{status:200,headers:{'content-type':'application/json'}});};
+  if(fault?.mode==='malformed'&&fault.remaining>0)return lose();
   const response=await super.fetch(request);
   if(operation==='ack'&&response.ok&&this.ctx.storage.sql.exec('SELECT remaining FROM test_relay_ack_reply').toArray()[0]?.remaining>0){
    this.ctx.storage.sql.exec('UPDATE test_relay_ack_reply SET remaining=remaining-1,lost=lost+1');

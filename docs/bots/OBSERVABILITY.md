@@ -448,3 +448,19 @@ owned fault assertions inspect cause directly; production logs do not expose it.
 Relay delivery receipt means actual persistent apply progress for its complete
 receiver/source key. It is distinct from cloudCached, stored, native completion
 and all-path sender status. The latter remains unknown until its next slice.
+
+All-path status-report/status-read reuse runtime.sync.fail and existing HTTP/private
+metadata crossings with one trace and actual Bot. Their real DO SQL faults return
+503/storage_failed with the original owned cause; Registry SQL uses its existing
+RPC-unavailable/internal503 path. Worker is the sole error origin for its classified
+failure and Bots propagates the same failure at warn. Local ready/configuration
+refusals retain their owning failure. Logs/wire contain no SQL text, authority,
+status body or raw error message.
+
+The independent automatic metadata action may fail while direct/cache apply and
+native work succeed. Unknown or the last authenticated exact-key/timestamped
+snapshot remains visible; missing refresh is not a new confirmation. Received and
+applied stay distinct during real materialization failure. Actual transport loss
+after a Worker commit is retryable from persistent status, without body download,
+apply/provider replay or a second failure origin. Complete malformed JSON remains
+protocol/auth failure and is not labeled transport I/O.

@@ -453,6 +453,8 @@ export async function runDeviceService(): Promise<void> {
       }
       case "sync.relay.authority": {
         const input = SyncRelayAuthorityRequest.parse(params);
+        const holderReads =
+          input.operation === "receipts" || input.operation === "status-read";
         const syncCloud = cloud;
         const result = SyncRelayAuthority.parse(
           await syncCloud.manage("/sync/relay/authority", input),
@@ -465,9 +467,7 @@ export async function runDeviceService(): Promise<void> {
         if (input.peerDeviceId) {
           const access = SyncAccessResult.parse(
             await syncCloud.manage(
-              input.operation === "receipts"
-                ? "/sync/peer/authorize"
-                : "/sync/access",
+              holderReads ? "/sync/peer/authorize" : "/sync/access",
               {
                 sharedBotId: input.sharedBotId,
                 peerDeviceId: input.peerDeviceId,
@@ -475,8 +475,8 @@ export async function runDeviceService(): Promise<void> {
               },
             ),
           );
-          holder = input.operation === "receipts" ? access.local : access.peer;
-          reader = input.operation === "receipts" ? access.peer : access.local;
+          holder = holderReads ? access.local : access.peer;
+          reader = holderReads ? access.peer : access.local;
         }
         if (
           stopping ||

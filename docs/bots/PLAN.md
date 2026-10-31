@@ -41,13 +41,48 @@ its authoritative auto-delivery-final.json SHAaecf6d49 binds1934 references with
 normal commit/hooks/push and independently verified own remote/clean0/0.
 The current finite slice is [SYNC-RELAY.md](SYNC-RELAY.md): authorized online holders,
 outbound relay, original-source discovery/missing-or-expired-cache reread and relay
-delivery-associated actual apply receipts. Old source088cf33d/candidate911653b9
-remain preserved; Review closed their nonfinding scope and retained one registration
-ownership P2. Source-v26ab23ace repairs that finding and is in incremental Review;
-normal gates/reuse and the next candidate binding are recorded in TESTING. This
-relay slice is not yet accepted or delivered. Direct/cache sender confirmation and connection peerApplied
+delivery-associated actual apply receipts. Review/Lead accepted source-v26ab23ace /
+candidate803c6f09 after the sole registration-ownership P2 closed. Normal delivery is
+`6575f53f` / tree `ca3ea404`, single parent `01d90a70`; own remote matches and main
+is clean/ahead0/behind0. Authoritative relay-delivery-final.json SHA5870b595 binds
+2439 references; the next slice protects its final itself as reference2440.
+Normal hooks and their exact counts/scopes are in that receipt and TESTING.
+Direct/cache sender confirmation and connection peerApplied
 remain unknown. The next authorized narrow status-report/status-read slice closes
-those paths after clean relay delivery; P5 native setup follows that slice.
+those paths; it is not a prerequisite for the first physical history run.
+The active additive contract is [SYNC-STATUS.md](SYNC-STATUS.md): authenticated
+receiver persistent status-report and independent holder status-read, with exact
+identity/binding/source keys and a separate bounded metadata action. It changes no
+offline apply, event retention or direct handshake signing semantics.
+Its source-v1 is now frozen as f790dafc with697 canonical source entries and16
+actual base deltas. Complete status windows11/11 and normal root269, Bots916
+ordinary/same coverage, Worker26 and devices33 pass on that source; final candidate
+binding and independent Review/Lead acceptance are pending. It is not delivered.
+
+The first two-physical-Mac round is independently closed at API/SDK scope:
+physical finaldc9c65da binds actual6575 copies and A→B→A5/10/14/19-entry continuation,
+A offline/B continuation, A catch-up and daemon restarts, with passive execution0.
+Native composer/App remains a later minimal P5 connection; this round used no
+hand-copied history and does not certify native App behavior.
+The six physical scenarios in TESTING are final sync-PR admission requirements:
+history/context relay; offline continuation/catch-up; concurrent branches; restart
+durability/no tool replay; actual direct/relay switching; and72h online-holder reread.
+The last can use two physical Macs and a third isolated C instance on A after old A
+exits. Only the owned backend clock advances; system time and event clocks stay intact.
+Scenario5 currently lacks running genuine Tailscale Self and published/listenable,
+two-Mac reachable sync endpoints. Accepted6575 admits only100.64/10 or
+fd7a:115c:a1e0:: Self addresses. Prior fresh A CLI lookup and B Stopped/Online=false
+do not establish that route; owned10.172.44.34 cannot substitute for Self. Do not
+repeat polling, start/login/change Tailscale, spoof endpoints or replace listeners.
+Cache/relay, owned72h, status and P5 proceed independently of this prerequisite.
+Root alone prepares the official Tailscale clients and hands login to the user;
+Service does not start/login/join or change routes. Scene5 is tested only after
+actual same-tailnet login and reachable product endpoints, and remains unpassed.
+Keep messages, inputs/outputs/tool results, attachments, AGENTS.md and full versioned
+skill bytes with actual local execution evidence. Shared-backend reachability and
+current directed grants require their own facts; the paired command bridge is not
+sync authorization. P5/P6 work follows the actual first broken hop. Create the sync
+PR only after all authorized goals and these scenarios pass; do not merge it.
 
 `182fc1f` is the last upstream update until the overall synchronization project
 completes: never fetch, pull or merge a newer upstream, or reopen a moving baseline.
@@ -1279,3 +1314,12 @@ its open, a baseline that raced a flushed delta, a release buffer that went live
 early, failures that lost their classification, snapshots that bypassed submission
 ranking, a resync reply that could be replayed after a newer frame, and a resync
 snapshot without its command trace.
+
+
+Physical first round now completes real A→B→A SDK continuation through5/10/14/19
+entries, offline B work/A cold recovery and dual-daemon restart with passive0.
+Exact6575 execution copies/helper inputs and real A-return call are bound by
+physical-first-round-final.json SHA dc9c65da9060faa5959bc5e384bae218b8467f8c51eec14b2915fdd94c2eba77.
+This is controlled-provider/API/SDK/local-tools scope over the owned shared HTTPS
+backend; composer, physical direct/switching and remaining PR scenarios stay open.
+Continue all-path status from complete-file404 red525b3efa, then minimum P5.
