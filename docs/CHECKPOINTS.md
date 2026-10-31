@@ -4500,3 +4500,21 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   Existing PR1 stays open/unmerged. No new Herdr collection/authentication, D1,
   website rendering, physical scenario, daily App, system configuration, upstream,
   index, commit or push result is claimed by this checkpoint.
+
+
+## 2026-10-31 20:42 +0800 — next CI reaches native focus
+
+- Reviewed fixture-owner cleanup is normally committed/pushed asf6299798, parent
+  5bfb/treeeda82722. Both hook children exit0; root269/0skip, browser191/11 original
+  conditions and Swift212/51/60 pass. Personal ownref exact, tracking0/0 and clean.
+- Natural Check41201022762 passes Linux/Sync/devices/Swift build, then native focus
+  reaches41 true checks and its unchanged60s deadline; format/coverage are not run.
+  Full original macOS rawfc2b9cdd and exact failed trace are retained. No full-green
+  PR text, manual rerun or root-cause claim is made.
+- Two no-window controls reject timer-tolerance attribution and a beforeWaiting
+  event-drain assumption. The narrower candidate removes only repeated settles
+  between hover interpolation points; all moves/final wait/42 checks remain. Full
+  fixture compilation47 inputs is stable/exit0; runtime acceptance remains pending.
+- Next: read-only Review of this fixture delta and records, then normal hooks/push
+  and actual CI. No Herdr collection/authentication, D1, dashboard rendering, old
+  physical scenario, daily App, system setting or fixed182 upstream change occurs.

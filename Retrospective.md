@@ -993,3 +993,18 @@ Moving it into Bots' existing strictly checked test/support and updating the sol
 Swift caller preserves both product isolation and type coverage. Original failures,
 full logs and input maps remain under `.local/sync-ci-fixture/`; old physical and
 accepted product findings are unchanged. The next normal push supplies CI evidence.
+
+
+The next natural run41201022762/headf629 passed Linux (269/269 and browser191/11
+original conditional skips), Sync Worker26/26, devices33/33 and Swift build. Its
+native focus fixture then hit its unchanged60-second process deadline:41 checks
+had passed, stdout was incomplete, and format/coverage were not reached. Original
+stage markers show hover alone used17.938 seconds; its13 intermediate move points
+had no assertions but each ran a full20-round settle before another final settle.
+The narrow fixture candidate retains all moves and the endpoint's full settling
+and subsequent selection checks, removing only intermediate repeated waits.
+All42 checks and original15/60-second deadlines stay. Full47-input compilation
+passes; runtime success remains for the next normal CI, without a manual rerun.
+A no-window clock comparison did not support timer-tolerance attribution; an
+idle-loop observer failed a private-event consumption control and was not adopted.
+Original timeout and diagnostic failures remain under `.local/sync-ci-focus/`.

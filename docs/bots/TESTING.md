@@ -2061,3 +2061,17 @@ macOS Swift tests actually launch the moved fixture and pass, retaining existing
 conditional live-daemon/trigger exclusions. Original timeouts/assertions remain.
 These are local fixture checks, not new physical or distribution-signing evidence;
 normal hooks and the next naturally triggered CI retain their independent results.
+
+
+### 2026-10-31 — subsequent native focus deadline
+
+Natural Check41201022762/headf629 passes Linux269/269 plus browser191 passed/11
+original conditional skips, Sync26/26, devices33/33 and Swift build. Native focus
+then times out with41 observed checks true and no complete42-check report;
+format/coverage do not run. The old fixture's only hover spans17.938s and settles
+fully at each of13 intermediate points despite having no intermediate assertion.
+The narrow candidate keeps every move, the final20-round settle, subsequent drain
+and all42 assertions, removing only those repeated intermediate waits. Original
+15/60s process bounds remain. Complete47-input compilation passes with the existing
+Markdown deprecation warning; no local HID/physical replay or runtime green is
+claimed. Next normal hooks/CI supply their own results; no manual workflow rerun.
