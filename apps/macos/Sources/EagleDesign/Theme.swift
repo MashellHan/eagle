@@ -57,6 +57,12 @@ public enum Theme {
     public static let trafficLightLeading: CGFloat = 16
     public static let trafficLightSize: CGFloat = 13.5
     public static let trafficLightPitch: CGFloat = 23
+    /// A hidden-titlebar window lets the system park the buttons about 10 pt in; these nudge them
+    /// onto the leading/top grid above so they do not hug the corner.
+    public static let trafficLightNudgeX: CGFloat = 7
+    /// Downward in the titlebar's own coordinates, so the lights' top edge lands on the same
+    /// line as the header control row (both start at `headerTopInset`).
+    public static let trafficLightNudgeY: CGFloat = -11.5
     public static let trafficLightsEnd: CGFloat =
       trafficLightLeading + trafficLightPitch * 2 + trafficLightSize
     public static let toolbarHeight: CGFloat = 35
