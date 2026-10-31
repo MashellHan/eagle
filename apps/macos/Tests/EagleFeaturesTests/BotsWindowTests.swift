@@ -23,7 +23,7 @@ struct BotsWindowTests {
     let input = Pipe()
     let errors = Pipe()
     fixture.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    fixture.arguments = ["node", "tests/device-integration/native-context.fixture.ts"]
+    fixture.arguments = ["node", "apps/bots/test/support/native-context.fixture.ts"]
     fixture.currentDirectoryURL = repository
     fixture.standardOutput = output
     fixture.standardInput = input

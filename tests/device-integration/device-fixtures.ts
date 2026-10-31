@@ -428,7 +428,7 @@ export default worker;
     );
   if (cache)
     execFileSync(
-      resolve("apps/bots-sync/node_modules/.bin/wrangler"),
+      resolve("node_modules/.bin/wrangler"),
       [
         "deploy",
         join(directory, "sync-entry.ts"),

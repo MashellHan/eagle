@@ -40,6 +40,7 @@ type Access = { local: { deviceId: string }; peer: { deviceId: string } };
 const storeFixture = resolve(
   "tests/device-integration/sync-objects-store.fixture.mjs",
 );
+mkdirSync(".local", { recursive: true });
 function counts(directory: string): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const name of ["replica.sqlite", "session.sqlite"]) {

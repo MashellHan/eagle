@@ -6,16 +6,9 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import type { HistoryBundle } from "../../apps/bots/src/runtime/pi/HistoryReplica.ts";
-import {
-  assistant,
-  getCurrentSystemMessage,
-  text,
-  toolCall,
-  trace,
-  waitFor,
-} from "../../apps/bots/test/support/pi.ts";
-import { startStack } from "../../apps/bots/test/support/server.ts";
+import type { HistoryBundle } from "../../src/runtime/pi/HistoryReplica.ts";
+import { assistant, getCurrentSystemMessage, text, toolCall, trace, waitFor } from "./pi.ts";
+import { startStack } from "./server.ts";
 
 const root = await mkdtemp(join(tmpdir(), "eagle-native-context-"));
 const stack = await startStack({ real: true, root });
@@ -23,10 +16,8 @@ try {
   await writeFile(join(root, "token"), stack.token, { mode: 0o600 });
   const bot = await stack.createBot("本机历史接力");
   const handle = await stack.registry.open(bot, trace);
-  const command = async (
-    method: "export" | "context" | "merge",
-    params: unknown,
-  ) => handle.replica?.({ method, params, trace });
+  const command = async (method: "export" | "context" | "merge", params: unknown) =>
+    handle.replica?.({ method, params, trace });
   stack.faux?.setResponses([
     assistant(
       [
@@ -46,9 +37,7 @@ try {
     trace,
   });
   await waitFor(
-    async () =>
-      (await handle.submission({ requestId: "native_fixture_seed" }))
-        ?.status === "done",
+    async () => (await handle.submission({ requestId: "native_fixture_seed" }))?.status === "done",
     "seed commits",
   );
   const seed = (await command("export", {})) as HistoryBundle;
@@ -100,9 +89,7 @@ try {
     (request) => {
       providerInputs.push(request.messages);
       providerResources.push(
-        getCurrentSystemMessage(request.messages)?.sections?.[
-          "bots-resources"
-        ] ?? "",
+        getCurrentSystemMessage(request.messages)?.sections?.["bots-resources"] ?? "",
       );
       return text("原生合并继续完成");
     },

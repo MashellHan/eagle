@@ -74,7 +74,11 @@ App/device integration lives in `tests/device-integration/` and runs explicitly 
 `npm run test:devices` from the root, after root `npm ci`, independent
 `npm --prefix apps/bots ci`, and `npm --workspace @nocoo/eagle-agent run build`.
 Those tests cross real process/HTTP/socket ports; Bots product code never imports
-Eagle, Agent or Worker sources. Missing dependencies fail this explicit suite.
+Eagle, Agent or Worker sources. The native SDK fixture lives in
+`apps/bots/test/support/native-context.fixture.ts`, is strictly checked by the
+Bots tsconfig, and is launched by the macOS tests. The root-owned device fixture
+uses the root-installed Wrangler for both local Worker bundles; each test owns
+preparing its `.local` parent before allocating private state. Missing dependencies fail this explicit suite.
 The macOS CI job prepares these two independent installs, runs the integration
 suite, and retains its Swift build/format/coverage gates. Local candidate acceptance
 also runs the Bots and Bots-macOS gates; no default root test silently opts into
@@ -2031,3 +2035,29 @@ dependency inputs, six native modules, App83a8/helper3262 and exact compiler
 inputs are separate from repository snapshots. Existing source/normal/old A,
 scene5 and scene6 checks are not rerun or expanded to native concurrency,
 wall-clock72h, UDP P2P, installed release trust or deployed CF.
+
+
+### 2026-10-31 — PR #1 clean-install fixture repair
+
+Original Check41198863922/head5bfb remains failed: root268/269 reaches a missing
+independent Sync Wrangler executable; macOS31/33 reaches two missing `.local`
+parents before Swift. Full original job logs are retained under
+`.local/sync-ci-fixture/`; neither workflow nor dependency installation changes.
+The test fixture now reuses root Wrangler and all affected file owners prepare
+the private parent. A real SDK fixture moves to Bots test/support with its sole
+Swift caller updated, preserving strict owner typing without root SDK imports.
+
+Fresh owned archive copies start without `.local`, use an actual root-only npm ci
+installation, and keep npm cache/logs outside the copy. Complete cache1/1,
+relay1/1 and encrypted11/11 pass without independent Sync modules. The encrypted
+suite separately uses the existing independent Bots SDK installation as required.
+Two long-copy whole-root attempts retain their policy startup failures: unchanged
+DeviceService probes show92-byte Unix socket startup succeeds while113-byte
+startup fails with EINVAL. A short owned path then passes269/269 before exposing
+the original misplaced-fixture typecheck red. After the owner move, the complete
+root-only check passes269/269,0skip plus types/lint/build; both independent module
+directories remain absent. Bots strict types and check-only lint pass. The full
+macOS Swift tests actually launch the moved fixture and pass, retaining existing
+conditional live-daemon/trigger exclusions. Original timeouts/assertions remain.
+These are local fixture checks, not new physical or distribution-signing evidence;
+normal hooks and the next naturally triggered CI retain their independent results.

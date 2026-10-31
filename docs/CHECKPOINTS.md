@@ -4478,3 +4478,25 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Existing Review receives finite B evidence. Final docs/tree/candidate binding is
   next; accepted source-v6/normal checks and old finite evidence are reused. Main
   HEAD193f/index remain unchanged; no commit/push/PR/base update has occurred.
+
+
+## 2026-10-31 20:15 +0800 — PR #1 clean-install CI fixture boundary
+
+- Exact failed Check41198863922/head5bfb remains preserved: root268/269 fails on
+  absent independent Sync Wrangler; macOS31/33 fails on two missing `.local`
+  parents before Swift. Full original job logs and metadata are retained, not rerun.
+- Four test-only edits reuse installed root Wrangler and prepare the owning tests'
+  private `.local` parent. Fresh owned archive copies start without `.local`;
+  root-only normal npm ci installs no independent product. Complete cache1/1,
+  relay1/1 and encrypted11/11 pass; the original parent-startup red is retained.
+- Two long-copy full checks retain actual policy startup timeouts. Outside-copy
+  unchanged DeviceService probes show92-byte Unix socket ready/exit0 versus
+  113-byte initialization_failed/exit1 (Node listen EINVAL). A new short owned
+  copy changes no product timeout and passes all269 root tests, then reaches a
+  genuine typecheck red: a root-located native SDK fixture imports independent
+  Bots sources without their dependencies. Full check is not yet green.
+- Next: retain strict fixture typing under its independent owner and update the
+  sole Swift caller, then complete root-only checks and affected native verification.
+  Existing PR1 stays open/unmerged. No new Herdr collection/authentication, D1,
+  website rendering, physical scenario, daily App, system configuration, upstream,
+  index, commit or push result is claimed by this checkpoint.

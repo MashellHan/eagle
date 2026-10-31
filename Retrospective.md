@@ -973,3 +973,23 @@ collection, not a demonstrated timeout fix; the 60-second CI limit, all 42 check
 execution mode and gates remain unchanged. The local verification compiles the
 fixture and checks formatting without running the interactive probe while the
 user tests the installed App. The next normal CI run supplies runtime evidence.
+
+
+## 2026-10-31 — sync PR clean-install fixture assumptions
+
+PR #1's first Check run41198863922 failed at two test prerequisites: the root-only
+Linux job could not find the independent Sync Wrangler executable, and the macOS
+device file allocated temporary children before creating `.local`. A root fixture
+already used the root-installed Wrangler for the first Worker; the second bundle
+now uses that same tool. The owning test files create their private parent. No CI
+install, lockfile, threshold or product behavior changes.
+
+Clean-copy validation also exposed two local verification assumptions. Long copy
+paths produced Unix socket startup failures (92-byte real DeviceService path ready,
+113-byte path failed/EINVAL); a short owned copy resolved that validation artifact
+without extending timeouts. Its full root check then exposed a native SDK fixture
+under root tests that pulled independent Bots dependencies into root typechecking.
+Moving it into Bots' existing strictly checked test/support and updating the sole
+Swift caller preserves both product isolation and type coverage. Original failures,
+full logs and input maps remain under `.local/sync-ci-fixture/`; old physical and
+accepted product findings are unchanged. The next normal push supplies CI evidence.

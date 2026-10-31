@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, randomUUID, sign } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { test } from "node:test";
 import { syncDescriptorPayload } from "../packages/contracts/src/device-objects.ts";
 import { canonicalDeviceJSON } from "../packages/contracts/src/devices.ts";
 import { workerFixture } from "./device-integration/device-fixtures.ts";
+
+mkdirSync(".local", { recursive: true });
 
 test("Registry descriptor winner, current grant and cache authority bind actual metadata operations", {
   timeout: 30000,
