@@ -172,18 +172,18 @@ public struct DeviceInspectorList: View {
   /// An observation, not a promise: unknown stays gray rather than looking online.
   private func statusTint(_ device: DeviceInspectorEntry) -> Color {
     switch device.online {
-    case true: return Theme.Palette.accentStrong
-    case false: return Theme.Palette.textMuted
-    case nil: return Theme.Palette.line
+    case .some(true): return Theme.Palette.accentStrong
+    case .some(false): return Theme.Palette.textMuted
+    case .none: return Theme.Palette.line
     }
   }
 
   private func statusLabel(_ device: DeviceInspectorEntry) -> String {
     if stale { return "状态未确认" }
     switch device.online {
-    case true: return "在线"
-    case false: return "离线"
-    case nil: return "状态未知"
+    case .some(true): return "在线"
+    case .some(false): return "离线"
+    case .none: return "状态未知"
     }
   }
 }
