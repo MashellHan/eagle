@@ -179,11 +179,21 @@ The local candidate is delivered at `~/Applications/Eagle Device Candidate.app`.
 artifact. Install the signed bundle without re-signing, then open the installed copy;
 the candidate bundle/profile and data remain separate from the daily App. This local
 ad-hoc candidate is not a distribution-signed or notarized release.
-An explicit nonempty `EAGLE_DEVICE_SERVICE_URL` at candidate build time selects a
-validated, canonical HTTPS origin; omitted or empty keeps `http://127.0.0.1:17053`.
-The candidate profile, bundle ID, Mach service, credential directory and device data
-paths stay the same. Release builds still require HTTPS and an explicit signing
-identity. This is a build input, not a user setting or deployment action.
+## Where the relay address comes from
+
+A **published App ships no relay address**: `Support/DeviceHost.release.json` carries an empty
+`baseUrl`, and nothing in the Swift sources names a host. The person who runs the App names
+their own service in **设置 → 设备 → 服务地址**; the choice is stored in the app's defaults as
+`eagle.deviceServiceAddress` (an origin only: HTTPS, or `http` on loopback, with no path,
+query or credentials) and the helper reads it at start, so changing it restarts the local
+service with the new relay. Until an address exists the App does not register the background
+service at all and nothing is contacted; the helper parks without starting its agent.
+
+`EAGLE_DEVICE_SERVICE_URL` remains an optional build input for a bundle that must name an
+origin up front (a candidate pointing at a local service, or a deployment that deliberately
+pins one). Omitted or empty keeps whatever the profile file says: `http://127.0.0.1:17053`
+for a candidate, nothing for a release. The address is validated the same way either way, and
+a built-in address is never a requirement for publishing.
 
 Unix socket is JSONL request/response, one response per request:
 `{requestId,method,params?}` → `{requestId,result}` or `{requestId,error}`.

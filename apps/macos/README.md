@@ -36,6 +36,19 @@ which turns off Gatekeeper for every app on the Mac. The device service is a per
 background item, so approve **Eagle** under **System Settings → General → Login Items &
 Extensions** when it asks, or the App stays at "service not running".
 
+The App itself ships **no** device service address. After the first launch, open
+**设置 → 设备 → 服务地址** and enter the origin of the relay you run (HTTPS; `http` is accepted
+only for loopback). Until then the App registers no background service and contacts nothing.
+
+**Replacing an installed copy** (an upgrade, or a rebuild of the same version) must unregister
+the background service first, or macOS kills the new helper with a code-signing failure:
+
+```sh
+"/Applications/Eagle for Mac.app/Contents/MacOS/Eagle" --prepare-device-update
+```
+
+Then replace the bundle and open the new copy; it registers its service again on launch.
+
 Every upgrade repeats the unblock step: a new download carries quarantine again, and an
 ad-hoc signature changes with each build, so replace the whole bundle instead of patching it.
 Nothing verifies the publisher, and the bundle carries no Apple notarization ticket —
@@ -48,7 +61,6 @@ without a signing identity; without it a release build still refuses to sign ad-
 
 ```sh
 export EAGLE_DEVICE_PROFILE=device-release
-export EAGLE_DEVICE_SERVICE_URL=https://devices.example.com
 export EAGLE_UPDATES_URL=https://app.example.com/api/live
 export EAGLE_CODESIGN_IDENTITY=-
 export EAGLE_ADHOC_RELEASE=1

@@ -202,9 +202,10 @@ site and the app sharing a number. See [macOS app releases](#macos-app-releases)
 that declaration changes.
 
 After deployment, verify the exact `/api/live` revision and anonymous device directory
-401 response, then build the isolated candidate with
-`EAGLE_DEVICE_SERVICE_URL=<your device origin>`. There is no address
-form in the App; both Macs must use the same origin for registration, pairing and WSS.
+401 response. A published App ships no relay address: each machine names its own origin in
+设置 → 设备 → 服务地址 (`eagle.deviceServiceAddress`), and paired Macs must use the same one.
+A build may still pin an origin with `EAGLE_DEVICE_SERVICE_URL=<your device origin>`; that is
+optional and never required for a release.
 Use the complete signed bundle and candidate installer described in
 `apps/macos/README.md`; the installer prepares the old service before replacing it.
 An uncertain operation is recovered by its original ID, never by resubmission with

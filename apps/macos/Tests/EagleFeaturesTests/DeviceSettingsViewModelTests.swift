@@ -339,12 +339,16 @@ func deviceDirectory(observation: String = "first", online: Bool? = nil) -> Devi
 }
 
 @MainActor func deviceSettingsFixture(
+  requiresServiceAddress: Bool? = false,
   now: @escaping @MainActor () -> Date = { Date() }
 ) -> (DeviceSettingsViewModel, DeviceSettingsControlStub, UserDefaults) {
   let control = DeviceSettingsControlStub()
   let defaults = UserDefaults(suiteName: control.domain)!
   return (
-    DeviceSettingsViewModel(control: control, defaults: defaults, now: now), control, defaults
+    DeviceSettingsViewModel(
+      control: control, defaults: defaults,
+      requiresServiceAddress: requiresServiceAddress, now: now),
+    control, defaults
   )
 }
 
@@ -358,4 +362,36 @@ func deviceApproval(expiresAt: Int64) throws -> DeviceApprovalRequest {
     "operation": operation, "digest": .string(try DeviceApprovalRequest.digest(operation)),
     "policyVersion": .number(1), "expiresAt": .number(Double(expiresAt)),
   ]).decoded(DeviceApprovalRequest.self)
+}
+
+@Suite("Device service address configuration", .serialized)
+@MainActor
+struct DeviceServiceAddressConfigurationTests {
+  @Test("a bundle without a relay never starts the service before a person names one")
+  func unconfiguredStaysIdle() async throws {
+    let (model, control, defaults) = deviceSettingsFixture(requiresServiceAddress: true)
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    #expect(model.needsServiceAddress)
+    await model.startIfNeeded()
+    #expect(control.starts == 0)
+    #expect(!model.localReady)
+  }
+
+  @Test("saving an origin is stored and starts the service; a bad value is refused")
+  func savingOrigin() async throws {
+    let (model, control, defaults) = deviceSettingsFixture(requiresServiceAddress: true)
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    model.serviceAddressDraft = "http://devices.example.com"
+    await model.saveServiceAddress()
+    #expect(model.errorCode == "invalid_service_address")
+    #expect(control.starts == 0)
+    #expect(DeviceServiceAddress.saved(defaults) == nil)
+
+    model.serviceAddressDraft = "https://Devices.Example.com/"
+    await model.saveServiceAddress()
+    #expect(model.errorCode == nil)
+    #expect(DeviceServiceAddress.saved(defaults) == "https://devices.example.com")
+    #expect(!model.needsServiceAddress)
+    #expect(control.starts == 1)
+  }
 }

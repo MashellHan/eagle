@@ -8,8 +8,8 @@
 # EAGLE_AGENT_NPM_CACHE    private cache verified against the root lock
 # EAGLE_BOTS_NPM_CACHE     private cache verified against the Bots lock
 # EAGLE_DEVICE_PROFILE     device-candidate (default) or device-release
-# EAGLE_DEVICE_SERVICE_URL HTTPS origin override; candidate defaults to localhost,
-#                         required for device-release
+# EAGLE_DEVICE_SERVICE_URL optional HTTPS origin baked into the bundle; a release normally
+#                         ships none, and the person configures the address in Settings
 # EAGLE_UPDATES_URL       where the App asks which macOS version is published; unset
 #                         means "this build never asks"
 # EAGLE_CODESIGN_IDENTITY  '-' for local candidate, real identity for release
@@ -40,10 +40,6 @@ if [ -z "$AGENT_CACHE" ] || [ -z "$BOTS_CACHE" ]; then
   exit 1
 fi
 if [ "$PROFILE" = device-release ]; then
-  if [ -z "${EAGLE_DEVICE_SERVICE_URL:-}" ]; then
-    echo "Release needs EAGLE_DEVICE_SERVICE_URL" >&2
-    exit 1
-  fi
   if [ "$IDENTITY" = - ] && [ "${EAGLE_ADHOC_RELEASE:-}" != 1 ]; then
     echo "Release needs an explicit signing identity, or EAGLE_ADHOC_RELEASE=1 for an un-notarized package" >&2
     exit 1

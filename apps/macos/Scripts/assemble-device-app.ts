@@ -42,8 +42,10 @@ type PrepareOptions = {
 type Execute = (program: string, args: string[]) => unknown;
 const save = (path: string, value: unknown) =>
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
-function origin(value: string | undefined, profile: Profile): string {
-  const requirement = `${profile === "device-release" ? "release" : "candidate"} requires a build-time HTTPS origin`;
+/** A build-time origin is optional: a published App ships none and the person names one. */
+function origin(value: string | undefined): string {
+  const requirement =
+    "a service origin must be an HTTPS origin without path, query or credentials";
   if (!value) throw new Error(requirement);
   const url = new URL(value);
   if (
@@ -82,8 +84,7 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
       "utf8",
     ),
   ) as HostConfig;
-  if (profile === "device-release" || options.serviceUrl)
-    config.baseUrl = origin(options.serviceUrl, profile);
+  if (options.serviceUrl) config.baseUrl = origin(options.serviceUrl);
   if (!existsSync(binary) || !existsSync(helper))
     throw new Error("Eagle and EagleDeviceHelper binaries are required");
   // The app's version is its own: releases of the website, the Agent and the app are

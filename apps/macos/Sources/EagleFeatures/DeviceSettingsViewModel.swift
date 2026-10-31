@@ -78,11 +78,15 @@ private struct DeviceServiceState: Decodable {
   @Published public private(set) var pendingRedeemRequestId: String?
   @Published public private(set) var pendingApproval: DeviceApprovalRequest?
   @Published public private(set) var errorCode: String?
+  /// The relay the person runs. A published App ships none, so this is the only source.
+  @Published public var serviceAddressDraft: String = ""
+  @Published public private(set) var savedServiceAddress: String = ""
   @Published public private(set) var isStarting = false
   @Published public private(set) var isBusy = false
 
   private let control: any DeviceControl
   private let defaults: UserDefaults
+  private let requiresServiceAddress: Bool
   private let now: @MainActor () -> Date
   private let observationWait: @MainActor () async throws -> Void
   private var started = false
@@ -99,6 +103,8 @@ private struct DeviceServiceState: Decodable {
 
   public init(
     control: any DeviceControl = DeviceSystemControl(), defaults: UserDefaults = .standard,
+    /// `nil` derives it from the bundle; tests state it instead.
+    requiresServiceAddress: Bool? = nil,
     now: @escaping @MainActor () -> Date = { Date() },
     observationWait: @escaping @MainActor () async throws -> Void = {
       try await Task.sleep(for: .seconds(5))
@@ -106,10 +112,17 @@ private struct DeviceServiceState: Decodable {
   ) {
     self.control = control
     self.defaults = defaults
+    // A bundle that names no relay (every published build) needs the person's choice first.
+    self.requiresServiceAddress =
+      requiresServiceAddress
+      ?? (try? DeviceHostConfiguration.load(bundle: Bundle.main.bundleURL)).map(\.baseUrl.isEmpty)
+      ?? false
     self.now = now
     self.observationWait = observationWait
     enabled = true
     defaults.removeObject(forKey: Self.disabledKey)
+    savedServiceAddress = DeviceServiceAddress.saved(defaults) ?? ""
+    serviceAddressDraft = savedServiceAddress
     let record = defaults.dictionary(forKey: Self.pendingRedeemKey)
     // Older candidate records contain an ID only: they can be queried, never blindly retried.
     let savedID = record?["requestId"] as? String ?? defaults.string(forKey: Self.pendingRedeemKey)
@@ -122,6 +135,8 @@ private struct DeviceServiceState: Decodable {
   }
 
   public var needsBackgroundApproval: Bool { errorCode == "background_approval_required" }
+  /// True when nothing may be contacted yet: no relay is baked in and none was chosen.
+  public var needsServiceAddress: Bool { requiresServiceAddress && savedServiceAddress.isEmpty }
   public var socketPath: String? { enabled && localReady ? control.socketPath : nil }
   public var isRefreshing: Bool { refreshGeneration != nil }
   public var controlsBusy: Bool { isStarting || isBusy }
@@ -132,6 +147,8 @@ private struct DeviceServiceState: Decodable {
   public var errorMessage: String? {
     guard let errorCode else { return nil }
     switch errorCode {
+    case "invalid_service_address":
+      return "请填写服务地址：https 的裸域名，本机调试可用 http://127.0.0.1:端口。"
     case "background_approval_required":
       return "请在系统设置中允许 Eagle 在后台运行，然后重试。"
     case "group_conflict": return "两台设备已属于不同设备群。请先退出原群，再配对。"
@@ -161,12 +178,40 @@ private struct DeviceServiceState: Decodable {
     }
   }
 
+  /// Stores the origin and restarts the service so the helper picks it up.
+  public func saveServiceAddress() async {
+    guard let origin = DeviceServiceAddress.normalize(serviceAddressDraft) else {
+      errorCode = "invalid_service_address"
+      return
+    }
+    DeviceServiceAddress.save(origin, defaults: defaults)
+    savedServiceAddress = origin
+    serviceAddressDraft = origin
+    errorCode = nil
+    guard started else {
+      await startIfNeeded()
+      return
+    }
+    do {
+      try await control.stop()
+    } catch {
+      started = false
+      record(error)
+      return
+    }
+    started = false
+    localReady = false
+    cloudStatus = "unknown"
+    directoryIsStale = true
+    await start(retrying: false)
+  }
+
   public func startIfNeeded() async {
     await start(retrying: false)
   }
 
   private func start(retrying: Bool) async {
-    guard enabled, !stopping, !isBusy else { return }
+    guard enabled, !stopping, !isBusy, !needsServiceAddress else { return }
     if let startTask {
       await startTask.value
       return
