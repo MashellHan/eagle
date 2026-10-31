@@ -244,7 +244,7 @@ test("private remote policy management confirms the real target, persists IDs an
       "a private remote write must confirm target persistence even when paused",
     );
     assert.deepEqual((await source.call("policy.get")).result, {
-      mode: "all-approve",
+      mode: "always-ask",
       version: 1,
     });
     assert.equal(
@@ -439,7 +439,7 @@ test("remote policy authorization is rechecked immediately before target side ef
       "revoked_session",
     );
     assert.deepEqual((await target.call("policy.get")).result, {
-      mode: "all-approve",
+      mode: "always-ask",
       version: 1,
     });
   } finally {
@@ -750,6 +750,9 @@ test("real outbound WebSockets execute bidirectionally with original-ID dedup an
   };
   const runtimeA = new DeviceRuntime(deviceA, join(stateA, "journal.sqlite"));
   const runtimeB = new DeviceRuntime(deviceB, join(stateB, "journal.sqlite"));
+  // Fresh devices ask first; these cases are about everything after that decision.
+  runtimeA.setPolicy("all-approve");
+  runtimeB.setPolicy("all-approve");
   const localBase = (await mf.ready).origin;
   const cloudA = new DeviceCloud(
     localBase,
@@ -1278,6 +1281,8 @@ test("relay rechecks Registry at forwarding after a membership change during aut
   };
   const ra = new DeviceRuntime(da, join(state, "a.sqlite"));
   const rb = new DeviceRuntime(db, join(state, "b.sqlite"));
+  ra.setPolicy("all-approve");
+  rb.setPolicy("all-approve");
   const ca = new DeviceCloud((await mf.ready).origin, da, ra, async (payload) =>
     sign(null, Buffer.from(payload), a.keys.privateKey).toString("base64url"),
   );
@@ -1623,6 +1628,7 @@ test("caller authentication closure refreshes the cached session without an HTTP
     device,
     join(root, "caller-refresh.sqlite"),
   );
+  runtime.setPolicy("all-approve");
   let signatures = 0;
   const cloud = new DeviceCloud(
     (await mf.ready).origin,

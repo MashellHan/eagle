@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
@@ -56,6 +57,11 @@ test("private helper config boots offline local tools; Bot port cannot change po
       waiters.get(message.requestId)?.(message);
   });
   child.once("exit", () => readyReject(new Error(`service exited: ${stderr}`)));
+  writeFileSync(
+    join(root, "policy.json"),
+    JSON.stringify({ mode: "all-approve", version: 1 }),
+    { mode: 0o600 },
+  );
   child.stdin.write(
     `${JSON.stringify({ type: "configure", version: 1, baseUrl: "http://127.0.0.1:1", deviceId, publicKey: key.publicKey.export({ type: "spki", format: "der" }).toString("base64url"), name: "offline-test", platform: "darwin", arch: "arm64", stateDirectory: root, socketPath })}\n`,
   );
@@ -369,6 +375,13 @@ test("private helper config boots offline local tools; Bot port cannot change po
 });
 
 function serviceConfiguration(root: string) {
+  // These cases are about the transport and the journal, not about the decision that must come
+  // first: a fresh device asks, so the fixture states the allow it expects.
+  writeFileSync(
+    join(root, "policy.json"),
+    JSON.stringify({ mode: "all-approve", version: 1 }),
+    { mode: 0o600 },
+  );
   return {
     type: "configure",
     version: 1,
