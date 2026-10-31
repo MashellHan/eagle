@@ -231,9 +231,8 @@ export function pruneDevelopmentFiles(root: string): {
           continue;
         }
         visit(path, prunable);
-      } else if (entry.isSymbolicLink()) {
-        continue;
       } else if (
+        !entry.isSymbolicLink() &&
         prunable &&
         PRUNED_SUFFIXES.some((suffix) => entry.name.endsWith(suffix))
       ) {
