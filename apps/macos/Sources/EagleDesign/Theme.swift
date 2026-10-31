@@ -160,6 +160,8 @@ public enum Theme {
     public static let windowInset: CGFloat = 8
 
     public static let avatarRow: CGFloat = 34
+    /// The footer's product mark is a scaled app icon: it takes the macOS icon corner, not none.
+    public static let productMarkRadius: CGFloat = 8
     public static let avatarProfile: CGFloat = 55
     public static let avatarInspector: CGFloat = 76
     public static let avatarNote: CGFloat = 18

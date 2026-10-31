@@ -409,6 +409,10 @@ public struct SidebarPanel: View {
         .resizable()
         .interpolation(.high)
         .frame(width: Theme.Metric.avatarRow, height: Theme.Metric.avatarRow)
+        .clipShape(
+          RoundedRectangle(
+            cornerRadius: Theme.Metric.productMarkRadius, style: .continuous)
+        )
     } else {
       Avatar(initial: "e", tint: Theme.Palette.avatarTint(2), size: Theme.Metric.avatarRow)
     }
@@ -420,7 +424,7 @@ public struct SidebarPanel: View {
         HStack(spacing: Theme.Metric.rowAvatarGap) {
           productMark
           Text(userName)
-            .font(.system(size: 15, weight: .semibold))
+            .font(Theme.TypeScale.rowTitle)
             .foregroundStyle(Theme.Palette.textPrimary)
             .lineLimit(1)
           if !productVersion.isEmpty { Tag(productVersion) }
