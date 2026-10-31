@@ -30,6 +30,17 @@ public enum DeviceServiceAddress {
     defaults.string(forKey: defaultsKey).flatMap(normalize)
   }
 
+  /// The helper runs from inside the app bundle but as its own process, so `standard` would be
+  /// the helper's domain: read the App's domain by identifier instead, then fall back.
+  public static func saved(forBundle identifier: String?) -> String? {
+    if let identifier, let defaults = UserDefaults(suiteName: identifier),
+      let value = saved(defaults)
+    {
+      return value
+    }
+    return saved()
+  }
+
   /// Stores the normalized origin, or clears the choice when the value is not usable.
   @discardableResult
   public static func save(_ value: String, defaults: UserDefaults = .standard) -> String? {

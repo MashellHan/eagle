@@ -42,6 +42,19 @@ struct DeviceServiceAddressTests {
     #expect(DeviceServiceAddress.saved(defaults) == nil)
   }
 
+  @Test("the helper reads the App's domain, not its own")
+  func readsAppDomain() throws {
+    let suite = "ai.hexly.eagle.tests.appdomain"
+    let other = try #require(UserDefaults(suiteName: suite))
+    defer { other.removePersistentDomain(forName: suite) }
+    #expect(DeviceServiceAddress.saved(forBundle: suite) == nil)
+    other.set("https://Devices.Example.com/", forKey: DeviceServiceAddress.defaultsKey)
+    #expect(DeviceServiceAddress.saved(forBundle: suite) == "https://devices.example.com")
+    // An unusable stored value never becomes an address.
+    other.set("not-an-origin", forKey: DeviceServiceAddress.defaultsKey)
+    #expect(DeviceServiceAddress.saved(forBundle: suite) == nil)
+  }
+
   @Test("a configuration with no origin is unconfigured, not invalid")
   func unconfiguredBundle() throws {
     var config = DeviceHostConfiguration(
