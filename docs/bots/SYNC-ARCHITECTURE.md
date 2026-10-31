@@ -1,6 +1,6 @@
 # 多端 Bot 同步架构
 
-2026-10-31 · 本地P0-P2、P3、P4认证页与持久对象/定向信封已交付；固定182fc1f内容整合已正常交付ee26b2b/tree92d79c1e，权威收据293f1f74保留两侧行为与原门禁。当前CF72h显式缓存源码已冻结，正常本地门禁及错峰进程/Miniflare链通过，独立Review/交付待收，有限合同见[SYNC-CACHE.md](SYNC-CACHE.md)；真实云部署未验。182fc1f是同步整体完成前最后上游，不再fetch/pull/merge更新；自动回退/切回另片。
+2026-10-31 · 本地P0-P2、P3、P4认证页与持久对象/定向信封已交付；固定182fc1f内容整合已正常交付ee26b2b/tree92d79c1e（收据293f1f74）。CF72h显式缓存已正常交付abec9dbb/tree8fbe3651（收据069c8aed），见[SYNC-CACHE.md](SYNC-CACHE.md)。本片自动回退/稳定切回保留既有ready副本与定向授权，加入独立缓存上传和有界缺口扫描，见[SYNC-AUTO.md](SYNC-AUTO.md)；实际门禁、Review与交付由本片独立收据绑定；真实云部署与物理路径未验。182fc1f是同步整体完成前最后上游，不再fetch/pull/merge更新；relay/发现/过期holder补读和真实peer ACK仍是后续范围。
 
 **历史长期保存在各设备，Tailscale 直连优先、Cloudflare 中转兜底；共享对话保留并发分支。**
 同一个 Bot 在 A、B 各有独立副本与运行时；A 离线或云端不可达时，

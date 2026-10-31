@@ -187,6 +187,7 @@ test("Bots cache port preserves immutable objects and current authorization whil
           ],
           gaps: [],
           hasMore: false,
+          nextAfter: carrier.manifest.nextAfter,
           complete: false,
         }),
       );

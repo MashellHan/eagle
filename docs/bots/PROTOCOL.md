@@ -1159,3 +1159,28 @@ references, not peer application or execution. Empty pages return cloudCached:fa
 Lists are bounded, report expired/pending/unavailable gaps and always complete:false;
 they do not advance an applied cursor. Event identity and immutable72h clocks,
 pending recovery and physical deletion are specified in [SYNC-CACHE.md](SYNC-CACHE.md).
+
+### Automatic connections on an existing ready binding
+
+Bearer-authenticated loopback GET `/v1/bots/:id/sync/connections` returns version1,
+actual replica status and explicit preferences. PUT `/sync/connections/:peerDeviceId`
+accepts only `{direction:"publish"|"receive"|"both",source?:{replicaId,epoch}}`;
+DELETE disables that preference. Origin headers are rejected. The daemon captures
+the actual complete local binding, never opens a replica or creates reverse grants.
+The maximum is32 preferences across the daemon. `publish` independently caches
+local facts for authorized pulls; it is not proactive direct-send.
+
+Local cache publish results add the acknowledged immutable manifest's `page`
+metadata `{objectId,source,included,nextAfter,hasMore}`. Bounded cache list results
+add `nextAfter`, the last actual selected/inspected SQL sequence (empty keeps after).
+Whole-object included is not a query-window or applied cursor. Received/applied
+remain actual ReplicaStore facts; peerApplied is always unknown here.
+Attempt signals/guards and connection timing callbacks are internal only.
+Optional preference storage faults pause automatic work and return503/storage_failed
+without stopping daemon startup or native run. Original bytes are not repaired or
+overwritten. The owned preference can retain one pendingApply objectId per
+connection after complete cache storage and before apply; it is retried through
+the existing local stored-object path before online work and cleared on success.
+This is private persistence, not a new peer/wire cursor or applied acknowledgment.
+Detailed fallback, stable return and bounded expiry recovery are in
+[SYNC-AUTO.md](SYNC-AUTO.md).

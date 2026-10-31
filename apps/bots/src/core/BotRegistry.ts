@@ -154,14 +154,18 @@ export type ReadyReplica = {
   /** Final synchronous object/slot publication only; all staging happens before this lease. */
   publish(action: () => undefined, guard: () => void): Promise<void>;
   check(): Promise<void>;
-  command(method: "pull" | "apply", params: unknown, guard?: () => void): Promise<unknown>;
+  command(
+    method: "pull" | "apply" | "status",
+    params: unknown,
+    guard?: () => void,
+  ): Promise<unknown>;
 };
 
 export class BotRegistry {
   /** A sync request may lease an existing healthy handle, never open or recover one. */
   async readyReplica(botId: string, trace: string, uniqueShared?: string): Promise<ReadyReplica> {
     const first = await this.#syncLease(botId, trace, uniqueShared);
-    const use = (method?: "pull" | "apply", params?: unknown, guard?: () => void) =>
+    const use = (method?: "pull" | "apply" | "status", params?: unknown, guard?: () => void) =>
       this.#syncLease(botId, trace, uniqueShared, first, method, params, guard);
     return {
       botId,
@@ -243,7 +247,7 @@ export class BotRegistry {
       sharedBotId: string;
       binding: ReplicaBinding;
     },
-    method?: "pull" | "apply",
+    method?: "pull" | "apply" | "status",
     params?: unknown,
     guard?: () => void,
     publish?: () => undefined,
@@ -463,7 +467,11 @@ export class BotRegistry {
     return next;
   }
 
-  async tombstones(method: "pull" | "apply", params: unknown, trace: string): Promise<unknown> {
+  async tombstones(
+    method: "pull" | "apply" | "status",
+    params: unknown,
+    trace: string,
+  ): Promise<unknown> {
     this.#options.log.emit("info", "core", Events.replicaStart, { trace });
     try {
       let result: unknown;

@@ -344,10 +344,36 @@ export default {fetch(request,env,ctx){
     { stdio: "pipe" },
   );
   if (cache)
+    writeFileSync(
+      join(directory, "sync-entry.ts"),
+      `
+import worker,{SyncCache as Production} from '../../apps/bots-sync/src/index.ts';
+export class SyncCache extends Production {
+ constructor(ctx,env){
+  ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS test_cache_io(operation TEXT,after INTEGER)');
+  const bucket=env.CIPHERS;
+  super(ctx,{...env,CIPHERS:new Proxy(bucket,{get(target,key){
+   if(key==='get')return(...args)=>{ctx.storage.sql.exec("INSERT INTO test_cache_io VALUES('r2',NULL)");return target.get(...args);};
+   const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+  }})});
+ }
+ async fetch(request){
+  const operation=new URL(request.url).pathname.split('/').pop();
+  if(operation==='list'||operation==='get'){
+   const value=await request.clone().json();this.ctx.storage.sql.exec('INSERT INTO test_cache_io VALUES(?,?)',operation,value.after??null);
+  }
+  return super.fetch(request);
+ }
+}
+export default worker;
+`,
+    );
+  if (cache)
     execFileSync(
       resolve("apps/bots-sync/node_modules/.bin/wrangler"),
       [
         "deploy",
+        join(directory, "sync-entry.ts"),
         "--dry-run",
         "--config",
         "apps/bots-sync/wrangler.jsonc",
@@ -379,7 +405,7 @@ export default {fetch(request,env,ctx){
               {
                 name: "bots-sync",
                 modules: true,
-                scriptPath: join(directory, "sync-worker/index.js"),
+                scriptPath: join(directory, "sync-worker/sync-entry.js"),
                 compatibilityDate: "2026-09-19",
                 compatibilityFlags: ["nodejs_compat"],
                 durableObjects: {

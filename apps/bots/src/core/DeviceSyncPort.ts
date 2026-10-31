@@ -74,6 +74,10 @@ export interface DeviceSyncPort {
     context: { trace: string; botId: string },
   ): Promise<{ version: 1; signature: string }>;
 
+  publishDescriptor?(context: {
+    trace: string;
+    botId: string;
+  }): Promise<{ version: 1; descriptor: z.infer<typeof SyncKeyDescriptor> }>;
   descriptor?(context: {
     trace: string;
     botId: string;

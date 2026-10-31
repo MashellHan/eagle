@@ -411,7 +411,7 @@ export class SyncCache extends DurableObject<CacheEnv> {
           saved &&
           (saved.tombstone || (saved.expiresAt !== null && saved.expiresAt <= Date.now()))
         )
-          throw new CacheError(410, "sync_cache_expired");
+          throw new CacheError(410, "sync_cache_event_expired");
         if (saved?.pending && saved.pending !== m.objectId)
           throw new CacheError(409, "sync_cache_pending");
       }
@@ -657,6 +657,7 @@ export class SyncCache extends DurableObject<CacheEnv> {
       objects,
       gaps,
       hasMore: events.length > input.limit,
+      nextAfter: selected.at(-1)?.seq ?? input.after,
       complete: false,
     });
   }

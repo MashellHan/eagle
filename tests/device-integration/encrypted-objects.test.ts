@@ -443,6 +443,8 @@ async function daemon(
     peerPort?: number;
     listenerPort?: number;
     cacheOrigin?: string;
+    seed?: { botId: string; count: number; bytes: number };
+    holdAuto?: boolean;
   } = {},
 ) {
   mkdirSync(root, { mode: 0o700, recursive: true });
@@ -482,11 +484,40 @@ if(config.owned.peerPort){
  const {Agent,buildConnector,setGlobalDispatcher}=await import(pathToFileURL(config.repository+'/node_modules/undici/index.js').href);
  const connector=buildConnector({});dispatcher=new Agent({connect(options,callback){connector(options.hostname==='100.64.1.2'&&Number(options.port)===config.owned.peerPort?{...options,hostname:'127.0.0.1',host:'127.0.0.1'}:options,callback);}});setGlobalDispatcher(dispatcher);
 }
+if(config.owned.seed){
+ const {openReplica}=await import(pathToFileURL(config.source+'/test/support/replica.ts').href);
+ const {BACKGROUND_CONTEXT:ctx}=await import(pathToFileURL(config.source+'/node_modules/@earendil-works/chord/dist/context/index.js').href);
+ const seed=config.owned.seed,replica=await openReplica(config.root+'/bots/'+seed.botId,seed.botId);
+ try{await replica.root.commit(async tx=>{for(let i=0;i<seed.count;i++)await tx.appendEntry(replica.root.id,{kind:'fixture.auto.large',data:{i,body:'x'.repeat(seed.bytes)}});},ctx);await replica.command('status',{});}finally{await replica.close();}
+}
+const {AutomaticSync}=await import(pathToFileURL(config.source+'/src/sync-auto.ts').href);
+let faultReceive=false,faultStore,sqlCause,applyFailure;
+const {ReplicaStore}=await import(pathToFileURL(config.source+'/src/runtime/pi/ReplicaStore.ts').href);
+const originalReceive=ReplicaStore.prototype.receive;
+ReplicaStore.prototype.receive=function(page){const result=originalReceive.call(this,page);if(faultReceive){faultReceive=false;faultStore=this;this.db.exec('ALTER TABLE facts RENAME TO owned_failed_facts');process.stdout.write(JSON.stringify({type:'receiveCommittedIO',source:page.source,through:page.nextAfter})+'\\n');}return result;};
+for(const name of ['fact','putFact']){const original=ReplicaStore.prototype[name];ReplicaStore.prototype[name]=function(...args){try{return original.apply(this,args);}catch(cause){if(this===faultStore)sqlCause=cause;throw cause;}};}
+const {AuthenticatedSync}=await import(pathToFileURL(config.source+'/src/sync-pull.ts').href);
+const originalApply=AuthenticatedSync.prototype.applyObject;
+AuthenticatedSync.prototype.applyObject=async function(...args){try{return await originalApply.apply(this,args);}catch(error){if(sqlCause)applyFailure={kind:error.failure?.kind,failure:error.failure?.id,trace:args[2],botId:args[0],causeCode:error.cause?.code,originalCause:error.cause===sqlCause};throw error;}};
+const originalAutoStart=AutomaticSync.prototype.start;let automatic;
+AutomaticSync.prototype.start=function(){automatic=this;if(!config.owned.holdAuto)originalAutoStart.call(this);};
 const daemon=await startDaemon(readConfig({argv:['--root',config.root,'--port','0'],env:{BOTS_DEVICE_SOCKET:config.socketPath,BOTS_SYNC_CACHE_ORIGIN:config.owned.cacheOrigin}}));
-let server;
+let server,listenerPort,networkMode='',networkReleased=[],pageSuccess=0,challengeSeen=0;
+const serve=async(request,response)=>{
+ if(request.url==='/v1/sync/challenge'){
+  challengeSeen++;
+  if(networkMode==='hold-challenge'){
+   process.stdout.write(JSON.stringify({type:'networkHeld'})+'\\n');
+   await new Promise(resolve=>networkReleased.push(resolve));
+  }
+ }
+ response.once('finish',()=>{if(request.url==='/v1/sync/page'&&response.statusCode===200)pageSuccess++;});
+ daemon.sync.handler(request,response);
+};
 if(config.owned.listener){
- const {createServer}=await import('node:http');server=createServer(daemon.sync.handler);
+ const {createServer}=await import('node:http');server=createServer(serve);
  await new Promise(resolve=>server.listen(config.owned.listenerPort??0,'127.0.0.1',resolve));
+ listenerPort=server.address().port;
 }
 process.stdout.write(JSON.stringify({type:'ready',port:daemon.port,peerPort:server?.address().port})+'\\n');
 for await(const line of lines){
@@ -497,8 +528,18 @@ for await(const line of lines){
  if(input.command==='releaseStage'){releaseStage?.();releaseStage=undefined;}
  if(input.command==='advance')Date.now=()=>originalNow()+60001;
  if(input.command==='resetClock')Date.now=originalNow;
+ if(input.command==='clock')Date.now=()=>originalNow()+Number(input.offset);
+ if(input.command==='networkMode')networkMode=input.mode;
+ if(input.command==='releaseNetwork'){for(const release of networkReleased)release();networkReleased=[];networkMode='';}
+ if(input.command==='networkStats')result={pageSuccess,challengeSeen};
+ if(input.command==='stopListener'&&server){await new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});server=undefined;}
+ if(input.command==='restartListener'&&!server){const {createServer}=await import('node:http');server=createServer(serve);await new Promise(resolve=>server.listen(listenerPort,'127.0.0.1',resolve));}
  if(input.command==='shutdownRegistry')await daemon.registry.shutdown();
  if(input.command==='releaseKey'){releaseKey?.();releaseKey=undefined;}
+ if(input.command==='faultReceiveIO')faultReceive=true;
+ if(input.command==='receiveIOStats')result={failure:applyFailure};
+ if(input.command==='restoreReceiveIO'&&faultStore){faultStore.db.exec('ALTER TABLE owned_failed_facts RENAME TO facts');faultStore=undefined;}
+ if(input.command==='startAuto')originalAutoStart.call(automatic);
  if(input.command==='clearReady')daemon.sync.setReady(undefined);
  if(input.command==='closeSync')daemon.sync.close();
  if(input.command==='applyProbe'){
@@ -507,6 +548,7 @@ for await(const line of lines){
  }
  process.stdout.write(JSON.stringify({type:'controlled',requestId:input.requestId,...result})+'\\n');
 };
+for(const release of networkReleased)release();
 if(server)await new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});
 await daemon.close();await dispatcher?.close();reader.close();`,
   );
@@ -2474,6 +2516,1160 @@ test("durable helper descriptor and cache deliver a page created after the recip
         });
     for (const service of bots.reverse()) await service.stop();
     for (const service of services.reverse()) await service.stop();
+    await worker?.mf.dispose();
+    await new Promise<void>((done) => model.server.close(() => done()));
+    rmSync(root, { recursive: true, force: true });
+    rmSync(workerRoot, { recursive: true, force: true });
+  }
+});
+
+test("automatic direct, CF, stable return and staggered cold receive preserve real history without a manual transfer loop", {
+  timeout: 90000,
+}, async () => {
+  const root = realpathSync(mkdtempSync("/tmp/eagle-auto-transport-"));
+  const workerRoot = mkdtempSync(resolve(".local/auto-transport-worker-"));
+  const key = randomBytes(32).toString("base64url");
+  const model = await modelFixture(key);
+  const helpers: Awaited<ReturnType<typeof helper>>[] = [];
+  const bots: Awaited<ReturnType<typeof daemon>>[] = [];
+  const clients: Awaited<ReturnType<typeof botConnection>>[] = [];
+  let worker: Awaited<ReturnType<typeof workerFixture>> | undefined;
+  try {
+    worker = await workerFixture(workerRoot, true);
+    const a = await helper(join(root, "a"), worker.origin);
+    helpers.push(a);
+    const cli = join(root, "cli");
+    mkdirSync(cli);
+    writeFileSync(
+      join(cli, "tailscale"),
+      `#!/bin/sh\nprintf '%s' '{"BackendState":"Running","Self":{"TailscaleIPs":["100.64.1.2"]}}'\n`,
+    );
+    chmodSync(join(cli, "tailscale"), 0o700);
+    const b = await helper(join(root, "b"), worker.origin, true, cli);
+    helpers.push(b);
+    assert.notEqual(a.deviceId, b.deviceId);
+    assert.notEqual(a.publicKey, b.publicKey);
+    const invitation = await a.manage("pairing.create", {});
+    await b.manage("pairing.redeem", {
+      requestId: randomUUID(),
+      code: invitation.code,
+    });
+    const bd = await daemon(
+      join(root, "b-bots"),
+      b.socketPath,
+      model.baseUrl,
+      key,
+      {
+        listener: true,
+        cacheOrigin: worker.origin,
+      },
+    );
+    bots.push(bd);
+    const ad = await daemon(
+      join(root, "a-bots"),
+      a.socketPath,
+      model.baseUrl,
+      key,
+      {
+        peerPort: bd.peerPort,
+        cacheOrigin: worker.origin,
+        holdAuto: true,
+      },
+    );
+    bots.push(ad);
+    const ab = (
+      await ad.post<{ bot: { id: string } }>("/v1/bots", {
+        title: "Auto reader",
+      })
+    ).bot.id;
+    const bb = (
+      await bd.post<{ bot: { id: string } }>("/v1/bots", {
+        title: "Auto publisher",
+      })
+    ).bot.id;
+    const sharedBotId = randomUUID();
+    await ad.post(`/v1/bots/${ab}/replica/bind`, { sharedBotId });
+    await bd.post(`/v1/bots/${bb}/replica/bind`, { sharedBotId });
+    const resources = JSON.parse(
+      readFileSync("fixtures/bots-sync/resources.v1.json", "utf8"),
+    );
+    await bd.post(`/v1/bots/${bb}/replica/export`, {
+      kind: "resources",
+      resources,
+    });
+    const page = await bd.post<Page>(`/v1/bots/${bb}/replica/pull`, {
+      after: 0,
+    });
+    await ad.post(`/v1/bots/${ab}/replica/apply`, { page });
+    await b.manage("sync.share", {
+      sharedBotId,
+      peerDeviceId: a.deviceId,
+      enabled: true,
+    });
+    const access = (await localCall(a.socketPath, "sync.access", {
+      sharedBotId,
+      peerDeviceId: b.deviceId,
+      purpose: "replica.read",
+    })) as Access;
+    assert.equal(access.local.deviceId, a.deviceId);
+    assert.equal(access.peer.deviceId, b.deviceId);
+    const directory = join(root, "a-bots/bots", ab);
+    const executionCounts = () =>
+      Object.fromEntries(
+        Object.entries(counts(directory)).filter(([name]) =>
+          /submission|task|local_run/.test(name),
+        ),
+      );
+    const beforeDB = executionCounts();
+    const peers = () =>
+      readdirSync(join(root, "a-bots/peers")).map((name) => [
+        name,
+        readFileSync(join(root, "a-bots/peers", name)).toString("base64"),
+      ]);
+    const peersBefore = peers(),
+      journalPath = join(directory, "pulls.journal.jsonl");
+    const prBefore = existsSync(journalPath)
+      ? readFileSync(journalPath)
+      : undefined;
+    const before = model.verify();
+    console.log(
+      JSON.stringify({
+        kind: "auto-real-prerequisites",
+        independentEd: true,
+        paired: true,
+        currentDirectionalGrant: true,
+        readyBoundBots: 2,
+        baselineEvents: page.events.length,
+        providerCalls: before,
+      }),
+    );
+    await b.manage("sync.endpoints.publish", { syncPort: bd.peerPort });
+    const configured = await ad.post<{ direction: string }>(
+      `/v1/bots/${ab}/sync/connections/${b.deviceId}`,
+      { direction: "receive" },
+      "PUT",
+    );
+    assert.equal(configured.direction, "receive");
+    assert.equal(model.verify(), before);
+    const connectionState = async (target: typeof ad, botId: string) => {
+      const response = await fetch(
+        target.origin + `/v1/bots/${botId}/sync/connections`,
+        { headers: { authorization: `Bearer ${target.token}` } },
+      );
+      assert.equal(response.status, 200);
+      return response.json() as Promise<{
+        replica: { heads: { head: string; ready: boolean }[] };
+        connections: {
+          state: string;
+          transport: string;
+          cloudCached: { objectId: string; nextAfter: number } | null;
+        }[];
+      }>;
+    };
+    // The preference captures the old binding; the first real turn sees an already changed DB.
+    const beforeBindingTurn = counts(directory);
+    const objectDirectory = join(root, "a-bots/sync-objects/v1");
+    const objectFiles = () =>
+      existsSync(objectDirectory)
+        ? readdirSync(objectDirectory)
+            .sort()
+            .map((name) => [
+              name,
+              readFileSync(join(objectDirectory, name)).toString("base64"),
+            ])
+        : [];
+    const beforeObjectFiles = objectFiles();
+    const restoreBinding = changeBinding(directory, "epoch", randomUUID());
+    try {
+      await ad.control("startAuto");
+      await until(
+        async () =>
+          (await connectionState(ad, ab)).connections[0]?.state ===
+          "auth_failed"
+            ? true
+            : undefined,
+        "pre-turn actual binding mismatch",
+      );
+      await ad.post(
+        `/v1/bots/${ab}/sync/connections/${b.deviceId}`,
+        {},
+        "DELETE",
+      );
+      const origins = () =>
+        readdirSync(join(root, "a-bots/logs"))
+          .flatMap((file) =>
+            readFileSync(join(root, "a-bots/logs", file), "utf8")
+              .split("\n")
+              .filter(Boolean)
+              .map((line) => JSON.parse(line)),
+          )
+          .filter(
+            (row) =>
+              row.trace.startsWith("tr_auto_") &&
+              row.botId === ab &&
+              row.err?.kind === "auth_failed",
+          );
+      let rows = origins();
+      await until(async () => {
+        rows = origins();
+        return rows.length ? true : undefined;
+      }, "one actual automatic binding origin").catch(() => {
+        assert.equal(
+          rows.length,
+          1,
+          "the controller-created real binding refusal needs an origin",
+        );
+      });
+      const origin = rows[0];
+      assert(origin);
+      assert.equal(origin.evt, "runtime.sync.fail");
+      assert.equal(origin.level, "error");
+      assert.equal(origin.layer, "runtime");
+      assert.equal(origin.err.origin, true);
+      assert.match(origin.trace, /^tr_auto_[a-f0-9]{32}$/);
+      assert.match(origin.err.failure, /^f_[a-f0-9]{12}$/);
+      assert.equal(
+        rows.filter(
+          (row) =>
+            row.trace === origin.trace &&
+            row.err.failure === origin.err.failure &&
+            row.level === "error",
+        ).length,
+        1,
+      );
+      assert.deepEqual(counts(directory), beforeBindingTurn);
+      assert.deepEqual(objectFiles(), beforeObjectFiles);
+      assert.deepEqual(executionCounts(), beforeDB);
+      assert.equal(model.verify(), before);
+      console.log(
+        JSON.stringify({
+          kind: "automatic-pre-turn-binding-origin",
+          trace: origin.trace,
+          botId: ab,
+          failure: origin.err.failure,
+          runtimeOrigins: 1,
+          noObjectOrApply: true,
+          passiveExecutionDelta: 0,
+        }),
+      );
+    } finally {
+      restoreBinding();
+    }
+    await ad.post(
+      `/v1/bots/${ab}/sync/connections/${b.deviceId}`,
+      { direction: "receive" },
+      "PUT",
+    );
+    await bd.post(
+      `/v1/bots/${bb}/sync/connections/${a.deviceId}`,
+      { direction: "publish" },
+      "PUT",
+    );
+    await until(
+      async () =>
+        (await connectionState(bd, bb)).connections[0]?.cloudCached
+          ? true
+          : undefined,
+      "actual independent background cache ACK",
+    );
+    const publisher = await botConnection(bd.origin, bd.token, bb);
+    clients.push(publisher);
+    const resourcesHead = await bd.post(`/v1/bots/${bb}/replica/export`, {
+      kind: "resources",
+      resources,
+    });
+    await publisher.run(
+      "bash",
+      model,
+      { command: "printf auto-history" },
+      { resourceHead: String(resourcesHead.head) },
+    );
+    const history = await bd.post<History>(`/v1/bots/${bb}/replica/export`, {});
+    const actualPage = await bd.post<Page & { nextAfter: number }>(
+      `/v1/bots/${bb}/replica/pull`,
+      { after: 0 },
+    );
+    const providerAfterNative = model.verify();
+    await until(
+      async () =>
+        (await connectionState(bd, bb)).connections[0]?.cloudCached
+          ?.nextAfter === actualPage.nextAfter
+          ? true
+          : undefined,
+      "new native facts automatically cloud cached",
+    );
+    await until(async () => {
+      const found = await connectionState(ad, ab);
+      return found.replica.heads.some(
+        (head) => head.head === history.head && head.ready,
+      )
+        ? true
+        : undefined;
+    }, "automatic cache fallback applies original history");
+    assert.deepEqual(
+      await ad.post(`/v1/bots/${ab}/replica/export`, { head: history.head }),
+      history,
+    );
+    const receivedPage = await ad.post(`/v1/bots/${ab}/replica/pull`, {
+      source: page.source,
+      after: 0,
+    });
+    assert.deepEqual(
+      Buffer.from(JSON.stringify(receivedPage)),
+      Buffer.from(JSON.stringify(actualPage)),
+    );
+    assert.deepEqual(executionCounts(), beforeDB);
+    assert.equal(model.verify(), providerAfterNative);
+    console.log(
+      JSON.stringify({
+        kind: "automatic-first-cache-chain",
+        baselineEvents: page.events.length,
+        actualNextAfter: actualPage.nextAfter,
+        historyEntries: history.entries.length,
+        head: history.head,
+        passiveExecutionDelta: 0,
+        manualCacheOrPullAfterBaseline: false,
+      }),
+    );
+    const directStats = await bd.control("networkStats");
+    assert(
+      Number(directStats.pageSuccess) > 0,
+      "server must verify the reader and complete the authenticated page exchange",
+    );
+    const waitHistory = async (target: typeof ad, wanted: History) => {
+      await until(
+        async () =>
+          (await connectionState(target, ab)).replica.heads.some(
+            (head) => head.head === wanted.head && head.ready,
+          )
+            ? true
+            : undefined,
+        "automatic history readiness",
+      );
+      assert.deepEqual(
+        await target.post(`/v1/bots/${ab}/replica/export`, {
+          head: wanted.head,
+        }),
+        wanted,
+      );
+    };
+    const newHistory = async (label: string) => {
+      assert.equal(
+        (await publisher.run("bash", model, { command: `printf ${label}` }))
+          .isError,
+        false,
+      );
+      const history = await bd.post<History>(
+        `/v1/bots/${bb}/replica/export`,
+        {},
+      );
+      const page = await bd.post<Page & { nextAfter: number }>(
+        `/v1/bots/${bb}/replica/pull`,
+        { after: 0 },
+      );
+      await until(
+        async () =>
+          (await connectionState(bd, bb)).connections[0]?.cloudCached
+            ?.nextAfter === page.nextAfter
+            ? true
+            : undefined,
+        "independent automatic cache ACK",
+      );
+      return { history, page };
+    };
+    await bd.control("stopListener");
+    await until(
+      async () =>
+        (await connectionState(ad, ab)).connections[0]?.transport === "cache"
+          ? true
+          : undefined,
+      "real TCP refusal selects CF",
+    );
+    const cacheIO = await worker.mf.unsafeGetDurableObjectStorage(
+      "bots-sync",
+      "SyncCache",
+      { name: sharedBotId },
+    );
+    const cacheGets = async () =>
+      Number(
+        (
+          await cacheIO.exec(
+            "SELECT count(*) AS n FROM test_cache_io WHERE operation='get'",
+          )
+        )[0]?.n,
+      );
+    await ad.control("faultReceiveIO");
+    const fallback = await newHistory("auto-cf-refusal");
+    const committed = await ad.message(
+      (message) => message.type === "receiveCommittedIO",
+    );
+    assert.equal(committed.through, fallback.page.nextAfter);
+    const failed = await until(async () => {
+      const stats = await ad.control("receiveIOStats");
+      return stats.failure as RecordJSON | undefined;
+    }, "original actual SQLite apply failure");
+    assert.equal(failed.kind, "storage_failed");
+    assert.equal(failed.originalCause, true);
+    assert.equal(failed.causeCode, "ERR_SQLITE_ERROR");
+    const streams = () => {
+      const db = new DatabaseSync(join(directory, "replica.sqlite"), {
+        readOnly: true,
+      });
+      try {
+        return db
+          .prepare("SELECT received,applied FROM streams WHERE source=?")
+          .get(JSON.stringify(committed.source));
+      } finally {
+        db.close();
+      }
+    };
+    const stored = streams();
+    assert.equal(stored?.received, fallback.page.nextAfter);
+    assert(Number(stored?.applied) < Number(stored?.received));
+    const ioProvider = model.verify(),
+      ioExecution = executionCounts(),
+      gets = await cacheGets();
+    const cachedEvents = await cacheIO.exec(
+      "SELECT replicaId,epoch,seq,eventDigest FROM events ORDER BY replicaId,epoch,seq",
+    );
+    console.log(
+      JSON.stringify({
+        kind: "automatic-received-apply-io-fault",
+        received: stored?.received,
+        applied: stored?.applied,
+        originalCause: failed.originalCause,
+        failure: failed.failure,
+        trace: failed.trace,
+      }),
+    );
+    await ad.control("restoreReceiveIO");
+    await waitHistory(ad, fallback.history);
+    assert.equal(streams()?.applied, fallback.page.nextAfter);
+    assert.equal(
+      await cacheGets(),
+      gets,
+      "restored I/O must reuse the same owned body, with no new page",
+    );
+    assert.deepEqual(
+      await cacheIO.exec(
+        "SELECT replicaId,epoch,seq,eventDigest FROM events ORDER BY replicaId,epoch,seq",
+      ),
+      cachedEvents,
+    );
+    assert.equal(model.verify(), ioProvider);
+    assert.deepEqual(executionCounts(), ioExecution);
+    const errorRows = readdirSync(join(root, "a-bots/logs"))
+      .flatMap((file) =>
+        readFileSync(join(root, "a-bots/logs", file), "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line)),
+      )
+      .filter(
+        (row) =>
+          row.err?.failure === failed.failure &&
+          row.trace === failed.trace &&
+          row.botId === ab &&
+          row.level === "error",
+      );
+    assert.equal(errorRows.length, 1);
+    assert.equal(errorRows[0].err.origin, true);
+    console.log(
+      JSON.stringify({
+        kind: "automatic-received-apply-io-retry",
+        receivedCommitted: true,
+        originalCause: true,
+        failure: failed.failure,
+        trace: failed.trace,
+        botId: ab,
+        origins: errorRows.length,
+        additionalGets: 0,
+        passiveExecutionDelta: 0,
+      }),
+    );
+    assert.equal(
+      (await connectionState(ad, ab)).connections[0]?.transport,
+      "cache",
+    );
+    await bd.control("networkMode", { mode: "hold-challenge" });
+    await bd.control("restartListener");
+    await ad.control("clock", { offset: 15001 });
+    await bd.message((message) => message.type === "networkHeld");
+    const held = await newHistory("auto-cf-during-slow-probe");
+    await waitHistory(ad, held.history);
+    assert.equal(
+      (await connectionState(ad, ab)).connections[0]?.transport,
+      "cache",
+      "pending complete probe must not block CF or count as a success",
+    );
+    const beforeProbe = Number((await bd.control("networkStats")).pageSuccess);
+    await bd.control("releaseNetwork");
+    await until(
+      async () =>
+        Number((await bd.control("networkStats")).pageSuccess) > beforeProbe
+          ? true
+          : undefined,
+      "first full authenticated probe",
+    );
+    assert.equal(
+      (await connectionState(ad, ab)).connections[0]?.transport,
+      "cache",
+    );
+    await ad.control("clock", { offset: 31002 });
+    await until(
+      async () =>
+        Number((await bd.control("networkStats")).pageSuccess) > beforeProbe + 1
+          ? true
+          : undefined,
+      "second spaced full authenticated probe",
+    );
+    await until(
+      async () =>
+        (await connectionState(ad, ab)).connections[0]?.transport === "direct"
+          ? true
+          : undefined,
+      "stable switchback after two probes and CF residence",
+    );
+    await ad.control("resetClock");
+    assert.deepEqual(executionCounts(), beforeDB);
+    assert.deepEqual(peers(), peersBefore);
+    assert.deepEqual(
+      existsSync(journalPath) ? readFileSync(journalPath) : undefined,
+      prBefore,
+    );
+
+    for (const boundary of [
+      "direct-wins",
+      "cache-wins",
+      "disable",
+      "rebind",
+      "self",
+    ]) {
+      await ad.post(
+        `/v1/bots/${ab}/sync/connections/${b.deviceId}`,
+        {},
+        "DELETE",
+      );
+      await bd.control("networkMode", { mode: "hold-challenge" });
+      const next = await newHistory(`auto-stage-${boundary}`);
+      const ack = (await connectionState(bd, bb)).connections[0]?.cloudCached;
+      assert(ack);
+      const objectFile = join(
+        root,
+        "a-bots/sync-objects/v1",
+        ack.objectId + ".json",
+      );
+      assert.equal(existsSync(objectFile), false);
+      const snapshot = counts(directory),
+        provider = model.verify();
+      await ad.control("holdStage");
+      await ad.post(
+        `/v1/bots/${ab}/sync/connections/${b.deviceId}`,
+        { direction: "receive", source: page.source },
+        "PUT",
+      );
+      await bd.message((message) => message.type === "networkHeld");
+      await ad.message((message) => message.type === "stageHeld");
+      let restore = () => {};
+      if (boundary === "disable")
+        await ad.post(
+          `/v1/bots/${ab}/sync/connections/${b.deviceId}`,
+          {},
+          "DELETE",
+        );
+      if (boundary === "rebind")
+        restore = changeBinding(directory, "epoch", randomUUID());
+      if (boundary === "self") await ad.control("clearReady");
+      try {
+        if (boundary === "direct-wins") {
+          await bd.control("releaseNetwork");
+          await waitHistory(ad, next.history);
+          assert.equal(
+            existsSync(objectFile),
+            false,
+            "late CF must not publish after direct receive admission",
+          );
+        }
+        await ad.control("releaseStage");
+        await until(
+          async () =>
+            !readdirSync(join(root, "a-bots/sync-objects/v1")).some((name) =>
+              name.startsWith(".stage-"),
+            )
+              ? true
+              : undefined,
+          "owned automatic stage completed or discarded",
+        );
+        if (boundary === "cache-wins" || boundary === "self") {
+          await waitHistory(ad, next.history);
+          assert.equal(existsSync(objectFile), true);
+        }
+        const beforeLate = counts(directory);
+        await bd.control("releaseNetwork");
+        if (boundary === "disable" || boundary === "rebind") {
+          assert.equal(existsSync(objectFile), false);
+          assert.deepEqual(beforeLate, snapshot);
+        }
+        assert.deepEqual(counts(directory), beforeLate);
+        assert.deepEqual(executionCounts(), beforeDB);
+        assert.equal(model.verify(), provider);
+        console.log(
+          JSON.stringify({
+            kind: "automatic-owned-stage",
+            boundary,
+            objectPublished: existsSync(objectFile),
+            passiveExecutionDelta: 0,
+          }),
+        );
+      } finally {
+        restore();
+        await ad.control("releaseStage");
+        await bd.control("releaseNetwork");
+      }
+    }
+
+    await ad.stop();
+    bots.splice(bots.indexOf(ad), 1);
+    await a.stop();
+    helpers.splice(helpers.indexOf(a), 1);
+    const offline = await newHistory("auto-page-created-after-reader-offline");
+    const acknowledged = (await connectionState(bd, bb)).connections[0]
+      ?.cloudCached;
+    assert(acknowledged);
+    const publisherRecord = JSON.parse(
+      readFileSync(
+        join(root, "b-bots/sync-objects/v1", acknowledged.objectId + ".json"),
+        "utf8",
+      ),
+    );
+    const exactObjectPage = await bd.post(`/v1/bots/${bb}/replica/pull`, {
+      source: publisherRecord.carrier.manifest.source,
+      after: publisherRecord.carrier.manifest.included[0].seq - 1,
+      limit: 128,
+    });
+    await new Promise<void>((done) => {
+      publisher.socket.once("close", () => done());
+      publisher.socket.close();
+    });
+    await bd.stop();
+    bots.splice(bots.indexOf(bd), 1);
+    await b.stop();
+    helpers.splice(helpers.indexOf(b), 1);
+    const providerBeforeCold = model.verify();
+    const coldA = await helper(join(root, "a"), worker.origin, false);
+    helpers.push(coldA);
+    assert.equal(coldA.deviceId, a.deviceId);
+    const cold = await daemon(
+      join(root, "a-bots"),
+      coldA.socketPath,
+      model.baseUrl,
+      key,
+      { peerPort: bd.peerPort, cacheOrigin: worker.origin },
+    );
+    bots.push(cold);
+    const opened = await botConnection(cold.origin, cold.token, ab);
+    clients.push(opened);
+    const beforeCold = executionCounts();
+    assert.deepEqual(beforeCold, beforeDB);
+    await waitHistory(cold, offline.history);
+    assert.deepEqual(
+      await cold.post(`/v1/bots/${ab}/replica/pull`, {
+        source: page.source,
+        after: 0,
+      }),
+      offline.page,
+    );
+    const record = JSON.parse(
+      readFileSync(
+        join(root, "a-bots/sync-objects/v1", acknowledged.objectId + ".json"),
+        "utf8",
+      ),
+    );
+    assert.deepEqual(record.carrier.manifest, publisherRecord.carrier.manifest);
+    assert.equal(record.carrier.ciphertext, publisherRecord.carrier.ciphertext);
+    const { manifest, envelope } = record.carrier,
+      { pin } = record;
+    const openedKey = (await localCall(coldA.socketPath, "sync.key.open", {
+      version: 1,
+      manifest,
+      envelope,
+      publisherPin: pin.publisher,
+      issuerPin: pin.issuer,
+      recipientPin: pin.recipient,
+    })) as { dek: string };
+    const {
+        signature: _signature,
+        cipherDigest: _cipherDigest,
+        ...header
+      } = manifest,
+      cipher = Buffer.from(record.carrier.ciphertext, "base64url");
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      Buffer.from(openedKey.dek, "base64url"),
+      Buffer.from(manifest.nonce, "base64url"),
+    );
+    decipher.setAAD(
+      Buffer.from("eagle-bots-page-object-v1\n" + canonicalDeviceJSON(header)),
+    );
+    decipher.setAuthTag(cipher.subarray(-16));
+    const plaintext = Buffer.concat([
+      decipher.update(cipher.subarray(0, -16)),
+      decipher.final(),
+    ]);
+    assert.deepEqual(plaintext, Buffer.from(JSON.stringify(exactObjectPage)));
+    const sections = (value: History) =>
+      value.entries.flatMap((entry) =>
+        (entry.model ?? []).flatMap((message) =>
+          message.sections ? [Object.keys(message.sections)] : [],
+        ),
+      );
+    assert.deepEqual(
+      sections(
+        await cold.post<History>(`/v1/bots/${ab}/replica/export`, {
+          head: offline.history.head,
+        }),
+      ),
+      sections(offline.history),
+    );
+    assert.deepEqual(executionCounts(), beforeCold);
+    assert.deepEqual(peers(), peersBefore);
+    assert.deepEqual(
+      existsSync(journalPath) ? readFileSync(journalPath) : undefined,
+      prBefore,
+    );
+    assert.equal(model.verify(), providerBeforeCold);
+    assert.equal(
+      (
+        await opened.run("bash", model, {
+          command: "printf automatic-cold-native",
+        })
+      ).isError,
+      false,
+    );
+    assert.equal(model.verify() - providerBeforeCold, 2);
+    console.log(
+      JSON.stringify({
+        kind: "automatic-staggered-cf-chain",
+        realTCPRefusal: true,
+        slowFullProbeDidNotBlockCache: true,
+        spacedAuthenticatedProbes: 2,
+        stableReturn: true,
+        readerOffBeforeNewPage: true,
+        publisherOffBeforeColdReader: true,
+        localReadyColdStart: true,
+        originalPlaintextBytes: plaintext.length,
+        historyEntries: offline.history.entries.length,
+        head: offline.history.head,
+        sectionOrders: sections(offline.history),
+        passiveExecutionDelta: 0,
+        nativeProviderDelta: 2,
+        manualCacheOrPullAfterBaseline: false,
+      }),
+    );
+  } finally {
+    for (const client of clients)
+      if (client.socket.readyState === WebSocket.OPEN)
+        await new Promise<void>((done) => {
+          client.socket.once("close", () => done());
+          client.socket.close();
+        });
+    await Promise.all(bots.map((bot) => bot.stop()));
+    await Promise.all(helpers.map((service) => service.stop()));
+    await worker?.mf.dispose();
+    await new Promise<void>((done) => model.server.close(() => done()));
+    rmSync(root, { recursive: true, force: true });
+    rmSync(workerRoot, { recursive: true, force: true });
+  }
+});
+
+test("corrupt optional sync preferences preserve their bytes and leave real daemon native execution available", {
+  timeout: 90000,
+}, async () => {
+  const root = realpathSync(mkdtempSync("/tmp/eagle-auto-prefs-")),
+    workerRoot = mkdtempSync(resolve(".local/auto-prefs-worker-"));
+  const key = randomBytes(32).toString("base64url"),
+    model = await modelFixture(key);
+  let worker: Awaited<ReturnType<typeof workerFixture>> | undefined;
+  let service: Awaited<ReturnType<typeof helper>> | undefined,
+    bot: Awaited<ReturnType<typeof daemon>> | undefined,
+    client: Awaited<ReturnType<typeof botConnection>> | undefined;
+  try {
+    worker = await workerFixture(workerRoot);
+    service = await helper(join(root, "helper"), worker.origin);
+    const directory = join(root, "bots/sync-connections");
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const path = join(directory, "v1.json"),
+      broken = Buffer.from("{owned invalid optional sync preferences");
+    writeFileSync(path, broken, { mode: 0o600 });
+    bot = await daemon(
+      join(root, "bots"),
+      service.socketPath,
+      model.baseUrl,
+      key,
+    );
+    const id = (
+      await bot.post<{ bot: { id: string } }>("/v1/bots", {
+        title: "Native survives optional sync failure",
+      })
+    ).bot.id;
+    const failure = await fetch(
+      bot.origin + `/v1/bots/${id}/sync/connections`,
+      { headers: { authorization: `Bearer ${bot.token}` } },
+    );
+    assert.equal(failure.status, 503);
+    assert.equal(
+      ((await failure.json()) as { error: { kind: string } }).error.kind,
+      "storage_failed",
+    );
+    client = await botConnection(bot.origin, bot.token, id);
+    const before = model.verify();
+    assert.equal(
+      (
+        await client.run("bash", model, {
+          command: "printf native-with-corrupt-sync-prefs",
+        })
+      ).isError,
+      false,
+    );
+    assert.equal(model.verify() - before, 2);
+    assert.deepEqual(readFileSync(path), broken);
+    await new Promise<void>((done) => {
+      client?.socket.once("close", () => done());
+      client?.socket.close();
+    });
+    await bot.stop();
+    bot = await daemon(
+      join(root, "live-bots"),
+      service.socketPath,
+      model.baseUrl,
+      key,
+    );
+    const liveId = (
+      await bot.post<{ bot: { id: string } }>("/v1/bots", {
+        title: "Native survives sync write failure",
+      })
+    ).bot.id;
+    await bot.post(`/v1/bots/${liveId}/replica/bind`, {
+      sharedBotId: randomUUID(),
+    });
+    const obstruction = join(root, "live-bots/sync-connections/v1.json");
+    mkdirSync(obstruction, { recursive: true });
+    const writeFailure = await fetch(
+      bot.origin + `/v1/bots/${liveId}/sync/connections/${randomUUID()}`,
+      {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${bot.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ direction: "publish" }),
+      },
+    );
+    assert.equal(writeFailure.status, 503);
+    assert.equal(
+      ((await writeFailure.json()) as { error: { kind: string } }).error.kind,
+      "storage_failed",
+    );
+    client = await botConnection(bot.origin, bot.token, liveId);
+    const beforeWriteRun = model.verify();
+    assert.equal(
+      (
+        await client.run("bash", model, {
+          command: "printf native-with-sync-write-failure",
+        })
+      ).isError,
+      false,
+    );
+    assert.equal(model.verify() - beforeWriteRun, 2);
+    assert.deepEqual(readFileSync(path), broken);
+    console.log(
+      JSON.stringify({
+        kind: "optional-sync-preference-failure",
+        localReady: true,
+        storageFailed: true,
+        originalBytesKept: true,
+        nativeProviderDelta: 2,
+      }),
+    );
+  } finally {
+    if (client?.socket.readyState === WebSocket.OPEN)
+      await new Promise<void>((done) => {
+        client?.socket.once("close", () => done());
+        client?.socket.close();
+      });
+    await bot?.stop();
+    await service?.stop();
+    await worker?.mf.dispose();
+    await new Promise<void>((done) => model.server.close(() => done()));
+    rmSync(root, { recursive: true, force: true });
+    rmSync(workerRoot, { recursive: true, force: true });
+  }
+});
+
+test("automatic bounded SDK pages revisit a real cache gap without redownloading held bodies or delaying a new tail", {
+  timeout: 90000,
+}, async () => {
+  const root = realpathSync(mkdtempSync("/tmp/eagle-auto-pages-")),
+    workerRoot = mkdtempSync(resolve(".local/auto-pages-worker-"));
+  const key = randomBytes(32).toString("base64url"),
+    model = await modelFixture(key);
+  const helpers: Awaited<ReturnType<typeof helper>>[] = [],
+    bots: Awaited<ReturnType<typeof daemon>>[] = [];
+  let worker: Awaited<ReturnType<typeof workerFixture>> | undefined;
+  try {
+    worker = await workerFixture(workerRoot, true);
+    const a = await helper(join(root, "a"), worker.origin),
+      b = await helper(join(root, "b"), worker.origin);
+    helpers.push(a, b);
+    const invitation = await a.manage("pairing.create", {});
+    await b.manage("pairing.redeem", {
+      requestId: randomUUID(),
+      code: invitation.code,
+    });
+    const ad = await daemon(
+      join(root, "a-bots"),
+      a.socketPath,
+      model.baseUrl,
+      key,
+      { cacheOrigin: worker.origin },
+    );
+    bots.push(ad);
+    let bd = await daemon(
+      join(root, "b-bots"),
+      b.socketPath,
+      model.baseUrl,
+      key,
+      { cacheOrigin: worker.origin },
+    );
+    bots.push(bd);
+    const ab = (
+        await ad.post<{ bot: { id: string } }>("/v1/bots", {
+          title: "Paged reader",
+        })
+      ).bot.id,
+      bb = (
+        await bd.post<{ bot: { id: string } }>("/v1/bots", {
+          title: "Paged publisher",
+        })
+      ).bot.id;
+    const sharedBotId = randomUUID();
+    await ad.post(`/v1/bots/${ab}/replica/bind`, { sharedBotId });
+    await bd.post(`/v1/bots/${bb}/replica/bind`, { sharedBotId });
+    await bd.post(`/v1/bots/${bb}/replica/export`, {
+      kind: "resources",
+      resources: JSON.parse(
+        readFileSync("fixtures/bots-sync/resources.v1.json", "utf8"),
+      ),
+    });
+    const baseline = await bd.post<
+      Page & { source: { replicaId: string; epoch: string }; nextAfter: number }
+    >(`/v1/bots/${bb}/replica/pull`, { after: 0 });
+    await ad.post(`/v1/bots/${ab}/replica/apply`, { page: baseline });
+    await b.manage("sync.share", {
+      sharedBotId,
+      peerDeviceId: a.deviceId,
+      enabled: true,
+    });
+    await localCall(a.socketPath, "sync.key.publish", {});
+    await bd.stop();
+    bots.splice(bots.indexOf(bd), 1);
+    bd = await daemon(join(root, "b-bots"), b.socketPath, model.baseUrl, key, {
+      cacheOrigin: worker.origin,
+      seed: { botId: bb, count: 128, bytes: 100000 },
+    });
+    bots.push(bd);
+    const pages = async (target: typeof bd, botId: string) => {
+      const result: (Page & { nextAfter: number; hasMore: boolean })[] = [];
+      let after = 0;
+      do {
+        const page = await target.post<
+          Page & { nextAfter: number; hasMore: boolean }
+        >(`/v1/bots/${botId}/replica/pull`, {
+          source: baseline.source,
+          after,
+          limit: 128,
+        });
+        result.push(page);
+        assert(page.nextAfter > after || !page.hasMore);
+        after = page.nextAfter;
+      } while (result.at(-1)?.hasMore);
+      return result;
+    };
+    const original = await pages(bd, bb);
+    assert(original.length >= 2);
+    const firstPage = original[0],
+      lastPage = original.at(-1);
+    assert(firstPage && lastPage);
+    assert(firstPage.events.length < 128 && firstPage.hasMore);
+    assert(
+      original.every(
+        (page) =>
+          Buffer.byteLength(JSON.stringify({ page })) <= 8 * 1024 * 1024,
+      ),
+    );
+    const state = async (target: typeof ad, botId: string) => {
+      const response = await fetch(
+        target.origin + `/v1/bots/${botId}/sync/connections`,
+        { headers: { authorization: `Bearer ${target.token}` } },
+      );
+      assert.equal(response.status, 200);
+      return response.json() as Promise<{
+        replica: {
+          streams: {
+            source: { replicaId: string; epoch: string };
+            received: number;
+            applied: number;
+            available: { from: number; to: number }[];
+          }[];
+        };
+        connections: { cloudCached: { nextAfter: number } | null }[];
+      }>;
+    };
+    const oldTail = lastPage.nextAfter;
+    await bd.post(
+      `/v1/bots/${bb}/sync/connections/${a.deviceId}`,
+      { direction: "publish" },
+      "PUT",
+    );
+    await until(
+      async () =>
+        (await state(bd, bb)).connections[0]?.cloudCached?.nextAfter === oldTail
+          ? true
+          : undefined,
+      "all actual immutable page ACKs",
+    );
+    const storage = await worker.mf.unsafeGetDurableObjectStorage(
+      "bots-sync",
+      "SyncCache",
+      { name: sharedBotId },
+    );
+    const objects = await storage.exec(
+      "SELECT objectId,metadata FROM objects ORDER BY json_extract(metadata,'$.manifest.range.from')",
+    );
+    assert.equal(objects.length, original.length);
+    const firstObject = objects[0];
+    assert(firstObject);
+    const missing = String(firstObject.objectId);
+    // Owned metadata barrier preserves the real winner and uploaded clock while withholding availability.
+    await storage.exec(
+      "UPDATE objects SET state='pending' WHERE objectId=?",
+      missing,
+    );
+    await storage.exec("DELETE FROM test_cache_io");
+    const io = async () =>
+      await storage.exec("SELECT operation,after FROM test_cache_io");
+    const directory = join(root, "a-bots/bots", ab),
+      execution = () =>
+        Object.fromEntries(
+          Object.entries(counts(directory)).filter(([name]) =>
+            /submission|task|local_run/.test(name),
+          ),
+        );
+    const before = execution(),
+      provider = model.verify();
+    await ad.post(
+      `/v1/bots/${ab}/sync/connections/${b.deviceId}`,
+      { direction: "receive" },
+      "PUT",
+    );
+    await until(async () => {
+      const stream = (await state(ad, ab)).replica.streams.find(
+        (stream) => stream.source.replicaId === baseline.source.replicaId,
+      );
+      const requests = await io();
+      return stream?.received === baseline.nextAfter &&
+        stream.available.some((range) => range.to === oldTail) &&
+        requests.filter(
+          (row) => row.operation === "list" && row.after === baseline.nextAfter,
+        ).length >= 2
+        ? true
+        : undefined;
+    }, "second actual gap revisit with the complete suffix held locally");
+    const gapIO = await io();
+    assert.equal(
+      gapIO.filter((row) => row.operation === "get").length,
+      objects.length - 1,
+    );
+    await bd.stop();
+    bots.splice(bots.indexOf(bd), 1);
+    bd = await daemon(join(root, "b-bots"), b.socketPath, model.baseUrl, key, {
+      cacheOrigin: worker.origin,
+      seed: { botId: bb, count: 2, bytes: 1000 },
+    });
+    bots.push(bd);
+    const expected = await pages(bd, bb),
+      lastExpected = expected.at(-1);
+    assert(lastExpected);
+    const tail = lastExpected.nextAfter;
+    assert(tail > oldTail);
+    await until(
+      async () =>
+        (await state(bd, bb)).connections[0]?.cloudCached?.nextAfter === tail
+          ? true
+          : undefined,
+      "new tail cache ACK despite early reader gap",
+    );
+    await until(async () => {
+      const stream = (await state(ad, ab)).replica.streams.find(
+        (stream) => stream.source.replicaId === baseline.source.replicaId,
+      );
+      return stream?.received === baseline.nextAfter &&
+        stream.available.some((range) => range.to === tail)
+        ? true
+        : undefined;
+    }, "forward scan receives a new tail before the early gap is released");
+    assert.equal(
+      (await io()).filter((row) => row.operation === "get").length,
+      objects.length,
+    );
+    await storage.exec(
+      "UPDATE objects SET state='ready' WHERE objectId=?",
+      missing,
+    );
+    await until(async () => {
+      const stream = (await state(ad, ab)).replica.streams.find(
+        (stream) => stream.source.replicaId === baseline.source.replicaId,
+      );
+      return stream?.received === tail && stream.applied === tail
+        ? true
+        : undefined;
+    }, "actual SDK receives and drains the released prefix");
+    const actual = await pages(ad, ab);
+    assert.deepEqual(actual, expected);
+    await ad.post(
+      `/v1/bots/${ab}/sync/connections/${b.deviceId}`,
+      {},
+      "DELETE",
+    );
+    const totalIO = await io(),
+      lists = totalIO.filter((row) => row.operation === "list"),
+      gets = totalIO.filter((row) => row.operation === "get"),
+      r2 = totalIO.filter((row) => row.operation === "r2");
+    assert.equal(gets.length, objects.length + 1);
+    assert(lists.length <= 3 * (objects.length + 1) + 3);
+    assert(lists.some((row) => Number(row.after) >= oldTail));
+    assert(r2.length <= lists.length * (objects.length + 1) + gets.length);
+    assert.deepEqual(execution(), before);
+    assert.equal(model.verify(), provider);
+    console.log(
+      JSON.stringify({
+        kind: "automatic-real-paging-gap",
+        sdkEntries: 130,
+        pageCount: expected.length,
+        initialObjects: objects.length,
+        firstPageBytes: Buffer.byteLength(JSON.stringify(original[0])),
+        secondGapVisit: true,
+        newTailBeforeGap: true,
+        listRequests: lists.length,
+        getRequests: gets.length,
+        r2Gets: r2.length,
+        originalEventBytes: true,
+        passiveExecutionDelta: 0,
+      }),
+    );
+  } finally {
+    for (const bot of bots.reverse()) await bot.stop();
+    for (const service of helpers.reverse()) await service.stop();
     await worker?.mf.dispose();
     await new Promise<void>((done) => model.server.close(() => done()));
     rmSync(root, { recursive: true, force: true });

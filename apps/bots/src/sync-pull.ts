@@ -14,6 +14,7 @@ import {
   type KeyEnvelope,
   SyncKeyDescriptor,
   SyncObjectCarrier,
+  type SyncObjectManifest,
   type syncObjectPullInput,
 } from "./core/DeviceSyncObjects.ts";
 import {
@@ -98,6 +99,37 @@ const remoteFailure = z.strictObject({
 type Context = { trace: string; botId: string };
 type Pending = { proof: Proof; privateKey: KeyObject; replica: ReadyReplica };
 
+/** Internal only: a captured ready handle and use-point cancellation, never peer input. */
+export type SyncAttempt = {
+  readonly signal: AbortSignal;
+  readonly replica: ReadyReplica;
+  guard(): void;
+  admit?(): void;
+  connecting?(): void;
+  authenticated?(): void;
+  prepared?(manifest: z.infer<typeof SyncObjectManifest>): void;
+};
+export class SyncTransportError extends Error {}
+export class SyncRemoteError extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+  constructor(status: number, code: string | undefined) {
+    super("sync_peer_refused");
+    this.status = status;
+    this.code = code;
+  }
+}
+export function syncTransportFailure(error: unknown): boolean {
+  return (
+    error instanceof SyncTransportError ||
+    (error instanceof ClassifiedFailure && error.cause instanceof SyncTransportError)
+  );
+}
+export function syncRemoteFailure(error: unknown): SyncRemoteError | undefined {
+  const cause = error instanceof ClassifiedFailure ? error.cause : error;
+  return cause instanceof SyncRemoteError ? cause : undefined;
+}
+
 async function body(request: IncomingMessage, limit: number): Promise<unknown> {
   if (Number(request.headers["content-length"] ?? 0) > limit) {
     request.resume();
@@ -136,6 +168,7 @@ export class AuthenticatedSync implements SyncApi {
   readonly #objects: SyncObjectStore | undefined;
   readonly #cacheOrigin: string | undefined;
   #generation = nonce();
+  #directAbort = new AbortController();
   #closed = false;
   readonly #pending = new Map<string, Pending>();
   #ready: { port: number; digest: string } | undefined;
@@ -159,6 +192,10 @@ export class AuthenticatedSync implements SyncApi {
         : createHash("sha256").update(options.deviceSocket).digest("hex");
     this.#instance = options.instance ?? `i_${nonce()}`;
   }
+  async publishDescriptor(botId: string, trace: string) {
+    if (!this.#device.publishDescriptor) throw new Error("sync_unconfigured");
+    return this.#device.publishDescriptor({ botId, trace });
+  }
   status(): SyncStatus {
     return {
       version: 1,
@@ -173,6 +210,8 @@ export class AuthenticatedSync implements SyncApi {
   setReady(value: { port: number; digest: string } | undefined): void {
     this.#ready = value;
     if (value === undefined) {
+      this.#directAbort.abort();
+      this.#directAbort = new AbortController();
       this.#generation = nonce();
       this.#pending.clear();
     }
@@ -184,9 +223,18 @@ export class AuthenticatedSync implements SyncApi {
   #live(generation: string): void {
     if (this.#closed || generation !== this.#generation) throw new Error("sync_generation_changed");
   }
-  #use(proof: Proof, generation: string): void {
+  #use(proof: Proof, generation: string, attempt?: SyncAttempt): void {
+    attempt?.guard();
     this.#live(generation);
     checkTime(proof);
+  }
+  async #replica(botId: string, trace: string, attempt?: SyncAttempt) {
+    attempt?.guard();
+    const replica = attempt?.replica ?? (await this.#registry.readyReplica(botId, trace));
+    if (replica.botId !== botId) throw new Error("sync_identity_changed");
+    await replica.check();
+    attempt?.guard();
+    return replica;
   }
   #failure(error: unknown, fields: Context): ClassifiedFailure {
     if (error instanceof ClassifiedFailure) {
@@ -368,6 +416,7 @@ export class AuthenticatedSync implements SyncApi {
     staged: Awaited<ReturnType<SyncObjectStore["stage"]>>,
     use: () => void,
     fields: Context,
+    attempt?: SyncAttempt,
   ) {
     try {
       await replica.publish(
@@ -382,6 +431,7 @@ export class AuthenticatedSync implements SyncApi {
         () => {
           try {
             use();
+            attempt?.admit?.();
           } catch (cause) {
             throw this.#failure(cause, fields);
           }
@@ -571,6 +621,7 @@ export class AuthenticatedSync implements SyncApi {
     botId: string,
     input: z.infer<typeof syncObjectPullInput>,
     trace: string,
+    attempt?: SyncAttempt,
   ): Promise<unknown> {
     const fields = { trace, botId },
       generation = this.#generation;
@@ -579,13 +630,14 @@ export class AuthenticatedSync implements SyncApi {
       this.#live(generation);
       if (!this.#objects || !this.#device.descriptor || !this.#device.openKey)
         throw new Error("sync_unconfigured");
-      const replica = await this.#registry.readyReplica(botId, trace);
+      const replica = await this.#replica(botId, trace, attempt);
       this.#objectBinding(replica);
       const { origin, pair, proof, signature } = await this.#connect(
         replica,
         input.peerDeviceId,
         fields,
         generation,
+        attempt,
       );
       const descriptor = verifyDescriptor(
         await this.#device.descriptor(fields),
@@ -604,7 +656,7 @@ export class AuthenticatedSync implements SyncApi {
       );
       await this.#authorize(proof, fields);
       await replica.check();
-      this.#use(proof, generation);
+      this.#use(proof, generation, attempt);
       const response = z
         .strictObject({ carrier: SyncObjectCarrier, receipt: z.unknown(), trace: z.literal(trace) })
         .parse(
@@ -618,6 +670,8 @@ export class AuthenticatedSync implements SyncApi {
             },
             fields,
             MAX_OBJECT_FRAME,
+            undefined,
+            AbortSignal.any([this.#directAbort.signal, ...(attempt ? [attempt.signal] : [])]),
           ),
         );
       const carrier = verifyCarrier(response.carrier),
@@ -677,7 +731,13 @@ export class AuthenticatedSync implements SyncApi {
       let record: StoredObject;
       try {
         await this.#authorize(proof, fields);
-        record = await this.#publish(replica, staged, () => this.#use(proof, generation), fields);
+        record = await this.#publish(
+          replica,
+          staged,
+          () => this.#use(proof, generation, attempt),
+          fields,
+          attempt,
+        );
       } finally {
         staged.discard();
       }
@@ -693,16 +753,45 @@ export class AuthenticatedSync implements SyncApi {
       throw this.#failure(cause, fields);
     }
   }
-  async applyObject(botId: string, objectId: string, trace: string): Promise<unknown> {
+  async storedObject(
+    botId: string,
+    object: { objectId: string; included: { seq: number; eventDigest: string }[] },
+    source: { replicaId: string; epoch: string },
+    trace: string,
+    attempt: SyncAttempt,
+  ): Promise<boolean> {
+    try {
+      const replica = await this.#replica(botId, trace, attempt);
+      const record = this.#objects?.read(object.objectId);
+      if (!record) return false;
+      this.#ownedRecord(record, replica);
+      if (
+        !same(record.carrier.manifest.source, source) ||
+        !same(record.carrier.manifest.included, object.included)
+      )
+        throw new Error("sync_cache_invalid");
+      attempt.guard();
+      return true;
+    } catch (cause) {
+      throw this.#failure(cause, { trace, botId });
+    }
+  }
+  async applyObject(
+    botId: string,
+    objectId: string,
+    trace: string,
+    attempt?: SyncAttempt,
+  ): Promise<unknown> {
     const fields = { trace, botId };
     const use = () => {
+      attempt?.guard();
       if (this.#closed) throw new Error("sync_closed");
     };
     this.#log.emit("info", "runtime", Events.start, fields);
     try {
       use();
       if (!this.#objects || !this.#device.openKey) throw new Error("sync_unconfigured");
-      const replica = await this.#registry.readyReplica(botId, trace),
+      const replica = await this.#replica(botId, trace, attempt),
         record = this.#objects.read(objectId);
       if (!record) throw new Error("sync_object_unknown");
       this.#ownedRecord(record, replica);
@@ -725,7 +814,10 @@ export class AuthenticatedSync implements SyncApi {
       } finally {
         key.fill(0);
       }
-      const applied = await replica.command("apply", { page }, use);
+      const applied = await replica.command("apply", { page }, () => {
+        use();
+        attempt?.admit?.();
+      });
       this.#log.emit("info", "runtime", Events.ok, fields);
       return { version: 1, objectId, applied };
     } catch (cause) {
@@ -737,12 +829,14 @@ export class AuthenticatedSync implements SyncApi {
     peerDeviceId: string,
     role: "uploader" | "reader",
     fields: Context,
+    attempt?: SyncAttempt,
   ) {
     if (!this.#cacheOrigin || !this.#device.cacheAuthority)
       throw new Error("sync_cache_unconfigured");
     let expiresAt = Date.now() + 60000;
     let registryOrigin: string | undefined;
     const use = (objectExpiry?: number) => {
+      attempt?.guard();
       if (this.#closed) throw new Error("sync_closed");
       if (Date.now() >= expiresAt || (objectExpiry !== undefined && Date.now() >= objectExpiry))
         throw new Error("sync_cache_expired");
@@ -830,14 +924,22 @@ export class AuthenticatedSync implements SyncApi {
     botId: string,
     input: z.infer<typeof syncObjectPullInput>,
     trace: string,
+    attempt?: SyncAttempt,
   ): Promise<unknown> {
     const fields = { trace, botId };
     this.#log.emit("info", "runtime", Events.start, fields);
     try {
+      attempt?.guard();
       if (this.#closed) throw new Error("sync_closed");
-      const replica = await this.#registry.readyReplica(botId, trace);
+      const replica = await this.#replica(botId, trace, attempt);
       this.#objectBinding(replica);
-      const session = await this.#cacheSession(replica, input.peerDeviceId, "uploader", fields);
+      const session = await this.#cacheSession(
+        replica,
+        input.peerDeviceId,
+        "uploader",
+        fields,
+        attempt,
+      );
       if (
         !this.#device.lookup ||
         !("registryOrigin" in session.before) ||
@@ -876,6 +978,7 @@ export class AuthenticatedSync implements SyncApi {
         session.use,
         fields,
       );
+      attempt?.prepared?.(carrier.manifest);
       const wire = cacheWireRequest.parse({
         version: 1,
         operation: "publish",
@@ -895,6 +998,7 @@ export class AuthenticatedSync implements SyncApi {
           fields,
           MAX_OBJECT_FRAME,
           authority.authority,
+          attempt?.signal,
         ),
       );
       await session.current();
@@ -907,7 +1011,16 @@ export class AuthenticatedSync implements SyncApi {
       )
         throw new Error("sync_cache_invalid");
       this.#log.emit("info", "runtime", Events.ok, fields);
-      return result;
+      return {
+        ...result,
+        page: {
+          objectId: carrier.manifest.objectId,
+          source: carrier.manifest.source,
+          included: carrier.manifest.included,
+          nextAfter: carrier.manifest.nextAfter,
+          hasMore: carrier.manifest.hasMore,
+        },
+      };
     } catch (cause) {
       throw this.#failure(cause, fields);
     }
@@ -916,14 +1029,22 @@ export class AuthenticatedSync implements SyncApi {
     botId: string,
     input: z.infer<typeof cacheListInput>,
     trace: string,
+    attempt?: SyncAttempt,
   ): Promise<unknown> {
     const fields = { trace, botId };
     this.#log.emit("info", "runtime", Events.start, fields);
     try {
+      attempt?.guard();
       if (this.#closed) throw new Error("sync_closed");
-      const replica = await this.#registry.readyReplica(botId, trace);
+      const replica = await this.#replica(botId, trace, attempt);
       this.#objectBinding(replica);
-      const session = await this.#cacheSession(replica, input.peerDeviceId, "reader", fields);
+      const session = await this.#cacheSession(
+        replica,
+        input.peerDeviceId,
+        "reader",
+        fields,
+        attempt,
+      );
       const wire = cacheWireRequest.parse({
         version: 1,
         operation: "list",
@@ -941,6 +1062,7 @@ export class AuthenticatedSync implements SyncApi {
           fields,
           MAX_OBJECT_FRAME,
           authority.authority,
+          attempt?.signal,
         ),
       );
       await session.current();
@@ -957,15 +1079,23 @@ export class AuthenticatedSync implements SyncApi {
     botId: string,
     input: z.infer<typeof cacheReceiveInput>,
     trace: string,
+    attempt?: SyncAttempt,
   ): Promise<unknown> {
     const fields = { trace, botId };
     this.#log.emit("info", "runtime", Events.start, fields);
     try {
+      attempt?.guard();
       if (this.#closed) throw new Error("sync_closed");
       if (!this.#objects || !this.#device.openKey) throw new Error("sync_unconfigured");
-      const replica = await this.#registry.readyReplica(botId, trace);
+      const replica = await this.#replica(botId, trace, attempt);
       this.#objectBinding(replica);
-      const session = await this.#cacheSession(replica, input.peerDeviceId, "reader", fields);
+      const session = await this.#cacheSession(
+        replica,
+        input.peerDeviceId,
+        "reader",
+        fields,
+        attempt,
+      );
       const wire = cacheWireRequest.parse({
         version: 1,
         operation: "get",
@@ -983,6 +1113,7 @@ export class AuthenticatedSync implements SyncApi {
           fields,
           MAX_OBJECT_FRAME,
           authority.authority,
+          attempt?.signal,
         ),
       );
       const carrier = verifyCarrier(result.carrier),
@@ -1030,7 +1161,7 @@ export class AuthenticatedSync implements SyncApi {
       let record: StoredObject;
       try {
         await session.current();
-        record = await this.#publish(replica, staged, use, fields);
+        record = await this.#publish(replica, staged, use, fields, attempt);
       } finally {
         staged.discard();
       }
@@ -1053,6 +1184,7 @@ export class AuthenticatedSync implements SyncApi {
     fields: Context,
     maximum = MAX_SYNC_FRAME,
     cacheAuthority?: string,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     const text = JSON.stringify(value);
     if (Buffer.byteLength(text) > maximum) throw new Error("sync_frame_too_large");
@@ -1061,7 +1193,7 @@ export class AuthenticatedSync implements SyncApi {
       response = await fetch(origin + path, {
         method: "POST",
         redirect: "error",
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.any([AbortSignal.timeout(10000), ...(signal ? [signal] : [])]),
         headers: {
           "content-type": "application/json",
           "x-bots-sync-trace": fields.trace,
@@ -1071,7 +1203,8 @@ export class AuthenticatedSync implements SyncApi {
         body: text,
       });
     } catch (error) {
-      throw new Error("sync_network_unreachable", { cause: error });
+      if (signal?.aborted) throw new Error("sync_attempt_cancelled", { cause: error });
+      throw new SyncTransportError("sync_network_unreachable", { cause: error });
     }
     if (Number(response.headers.get("content-length") ?? 0) > maximum) {
       await response.body?.cancel();
@@ -1084,7 +1217,8 @@ export class AuthenticatedSync implements SyncApi {
       try {
         for (;;) {
           const part = await reader.read().catch((cause: unknown) => {
-            throw new Error("sync_network_unreachable", { cause });
+            if (signal?.aborted) throw new Error("sync_attempt_cancelled", { cause });
+            throw new SyncTransportError("sync_network_unreachable", { cause });
           });
           if (part.done) break;
           bytes += part.value.byteLength;
@@ -1103,17 +1237,30 @@ export class AuthenticatedSync implements SyncApi {
       const failure = remoteFailure.safeParse(
         (decoded as { error?: { failure?: unknown } })?.error?.failure,
       );
+      const codeValue = (decoded as { error?: { code?: unknown } })?.error?.code;
+      const code =
+        typeof codeValue === "string" && /^sync_[a-z_]{1,72}$/.test(codeValue)
+          ? codeValue
+          : undefined;
+      const cause = new SyncRemoteError(response.status, code);
       if (failure.success)
         throw new ClassifiedFailure(
           failure.data as Failure,
           "not_admitted",
           "peer refused synchronization",
+          { cause },
         );
-      throw new Error("sync_peer_refused");
+      throw cause;
     }
     return decoded;
   }
-  async #connect(replica: ReadyReplica, peerDeviceId: string, fields: Context, generation: string) {
+  async #connect(
+    replica: ReadyReplica,
+    peerDeviceId: string,
+    fields: Context,
+    generation: string,
+    attempt?: SyncAttempt,
+  ) {
     const { trace } = fields;
     const selected = await this.#device.access(
       {
@@ -1123,9 +1270,12 @@ export class AuthenticatedSync implements SyncApi {
       },
       fields,
     );
+    this.#live(generation);
+    attempt?.guard();
     const endpoint = selected.endpoints?.candidates[0];
-    if (!endpoint) throw new Error("sync_network_unreachable");
+    if (!endpoint) throw new SyncTransportError("sync_network_unreachable");
     const origin = `http://${endpoint.address.includes(":") ? `[${endpoint.address}]` : endpoint.address}:${endpoint.port}`;
+    attempt?.connecting?.();
     const pair = ephemeral();
     const readerNonce = nonce();
     const challenge = challengeReply.parse(
@@ -1140,6 +1290,9 @@ export class AuthenticatedSync implements SyncApi {
           readerEphemeral: pair.publicKey,
         },
         fields,
+        MAX_SYNC_FRAME,
+        undefined,
+        AbortSignal.any([this.#directAbort.signal, ...(attempt ? [attempt.signal] : [])]),
       ),
     );
     const server = challenge.proof;
@@ -1158,27 +1311,34 @@ export class AuthenticatedSync implements SyncApi {
     const proof: Proof = { ...server, role: "reader" };
     await this.#authorize(proof, fields);
     await replica.check();
-    this.#use(proof, generation);
+    this.#use(proof, generation, attempt);
     if (!this.#device.proof) throw new Error("sync_unconfigured");
     const signature = (await this.#device.proof(proof, fields)).signature;
     verifyProof(proof, signature);
     await this.#authorize(proof, fields);
     await replica.check();
-    this.#use(proof, generation);
+    this.#use(proof, generation, attempt);
     return { origin, pair, proof, signature };
   }
-  async pull(botId: string, input: z.infer<typeof syncPullInput>, trace: string): Promise<unknown> {
+  async pull(
+    botId: string,
+    input: z.infer<typeof syncPullInput>,
+    trace: string,
+    attempt?: SyncAttempt,
+    probe = false,
+  ): Promise<unknown> {
     const fields = { trace, botId };
     const generation = this.#generation;
     this.#log.emit("info", "runtime", Events.start, fields);
     try {
       this.#live(generation);
-      const replica = await this.#registry.readyReplica(botId, trace);
+      const replica = await this.#replica(botId, trace, attempt);
       const { origin, pair, proof, signature } = await this.#connect(
         replica,
         input.peerDeviceId,
         fields,
         generation,
+        attempt,
       );
       const params = query.parse({ source: input.source, after: input.after, limit: input.limit });
       const response = z.strictObject({ box: z.unknown(), trace: z.literal(trace) }).parse(
@@ -1191,6 +1351,9 @@ export class AuthenticatedSync implements SyncApi {
             box: seal(proof, pair.privateKey, "reader", Buffer.from(JSON.stringify(params))),
           },
           fields,
+          MAX_SYNC_FRAME,
+          undefined,
+          AbortSignal.any([this.#directAbort.signal, ...(attempt ? [attempt.signal] : [])]),
         ),
       );
       const page: unknown = JSON.parse(
@@ -1198,7 +1361,14 @@ export class AuthenticatedSync implements SyncApi {
       );
       await this.#authorize(proof, fields);
       await replica.check();
-      const applied = await replica.command("apply", { page }, () => this.#use(proof, generation));
+      this.#use(proof, generation, attempt);
+      attempt?.authenticated?.();
+      const applied = probe
+        ? undefined
+        : await replica.command("apply", { page }, () => {
+            this.#use(proof, generation, attempt);
+            attempt?.admit?.();
+          });
       this.#log.emit("info", "runtime", Events.ok, fields);
       return { page, applied };
     } catch (error) {

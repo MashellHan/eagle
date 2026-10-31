@@ -8,6 +8,7 @@ import { DirectoryError } from "../core/BotDirectory.ts";
 import type { BotRegistry } from "../core/BotRegistry.ts";
 import type { ConversationService } from "../core/ConversationService.ts";
 import { cacheListInput, cachePublishInput, cacheReceiveInput } from "../core/DeviceSyncCache.ts";
+import { type SyncConnectionsApi, syncConnectionInput } from "../core/DeviceSyncConnections.ts";
 import { syncObjectApplyInput, syncObjectPullInput } from "../core/DeviceSyncObjects.ts";
 import { deviceSyncInput, type SyncApi, syncPullInput } from "../core/DeviceSyncPort.ts";
 import {
@@ -37,6 +38,7 @@ const Events = {
 
 export type ServerOptions = {
   readonly sync?: SyncApi;
+  readonly syncConnections?: SyncConnectionsApi;
   /** Host configuration identity, not a credential or authorization decision. */
   readonly deviceSocket?: string;
   readonly token: string;
@@ -518,6 +520,80 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
                 : kind === "invalid_command"
                   ? 400
                   : 503,
+            { error: { kind, message: error.message, failure: error.failure.id }, trace },
+          );
+        }
+        return;
+      }
+      const connectionMatch =
+        /^\/v1\/bots\/([A-Za-z0-9_-]+)\/sync\/connections(?:\/([a-fA-F0-9-]{36}))?$/.exec(path);
+      if (connectionMatch && ["GET", "PUT", "DELETE"].includes(request.method ?? "")) {
+        if (request.headers.origin !== undefined) {
+          json(response, 403, {
+            error: { kind: "auth_failed", message: "origin is not accepted" },
+          });
+          return;
+        }
+        if (!options.syncConnections) {
+          json(response, 409, {
+            error: { kind: "invalid_command", message: "device synchronization is not configured" },
+          });
+          return;
+        }
+        const trace = `tr_http_${++sequence}`,
+          botId = connectionMatch[1] as string,
+          peerId = connectionMatch[2];
+        if (peerId && !deviceSyncInput.shape.peerDeviceId.safeParse(peerId).success) {
+          json(response, 400, { error: { kind: "invalid_command", message: "invalid sync peer" } });
+          return;
+        }
+        try {
+          let result: unknown;
+          if (request.method === "GET" && !peerId)
+            result = await options.syncConnections.list(botId, trace);
+          else if (request.method === "DELETE" && peerId)
+            result = await options.syncConnections.remove(botId, peerId.toLowerCase(), trace);
+          else if (request.method === "PUT" && peerId) {
+            let input: unknown;
+            try {
+              input = await readBody(request);
+            } catch {
+              input = undefined;
+            }
+            const parsed = syncConnectionInput.safeParse(input);
+            if (!parsed.success) {
+              json(response, 400, {
+                error: { kind: "invalid_command", message: "invalid sync connection" },
+              });
+              return;
+            }
+            result = await options.syncConnections.put(
+              botId,
+              peerId.toLowerCase(),
+              parsed.data,
+              trace,
+            );
+          } else {
+            json(response, 405, {
+              error: { kind: "invalid_command", message: "invalid connection method" },
+            });
+            return;
+          }
+          json(response, 200, result);
+        } catch (error) {
+          if (!(error instanceof ClassifiedFailure)) throw error;
+          const kind = error.failure.kind;
+          json(
+            response,
+            kind === "auth_failed"
+              ? 403
+              : kind === "unknown_bot"
+                ? 404
+                : kind === "invalid_command"
+                  ? 400
+                  : kind === "limit_exceeded"
+                    ? 409
+                    : 503,
             { error: { kind, message: error.message, failure: error.failure.id }, trace },
           );
         }

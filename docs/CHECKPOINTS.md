@@ -1,5 +1,153 @@
 # 用户视角检查点
 
+## 2026-10-31 12:07 +0800 - Automatic source-v2 affected gates complete; final candidate binding
+
+- Base abec9dbb and all1553 prior delivery references remain protected. Source-v2
+  05fee46e freezes689 selected/731 full, with exactly four incremental paths from
+  v1 for automatic P2#1/#2. The existing Reviewer is reading that delta; no final
+  acceptance, commit or push is claimed. Other v1 scope and old CF findings stay closed.
+- P2#1 pre-turn binding origin and P2#2 committed receive/drain SQLite I/O failure
+  have actual red/green records. The #2 red uses #1-fixed production. Component
+  23/23 is format-before8fcc; static3711cc78 and real green89ca6f0e use final794b.
+  Real recovered applied/head needs zero extra get, retains original cause/trace/
+  Bot/one origin and passive0. Reopen persistence is separately a component scope.
+- New normal Bots ordinary908/908+coverage908/908 retains90/85/90 thresholds,
+  actual92.75/87.88/90.68. Complete devices27/27 and strict root/Bots types plus
+  check-only lint pass. Each new execution has731 identical before/after files
+  matching all689 source-v2 bytes. Final prose changes occur after those runs.
+- Worker26/root268 test-build reuse their unchanged inputs; crash17/two exact
+  eval cases retain v1/no-device active-branch scope, not full v2 equality or new
+  execution. Swift181/142/181/71 input scopes remain equal with original filtered
+  default90 coverage. Browser remains normal pre-push. Original devices-first
+  failure and devices-second three-doc change scope remain untouched.
+- auto-pages-first d316a7b8 remains676/689 format-before5/5, separate from normal
+  full-source gates. Final docs/index/tree/candidate and independent binding are
+  next. No newer upstream, live Herdr collection/auth, production D1/rendering,
+  physical Mac/App, CF deployment/npm/PR or next relay/P5 implementation occurred.
+
+## 2026-10-31 12:00 +0800 - Automatic Review P2#1 origin green; P2#2 committed apply I/O red and bounded retry WIP
+
+- Source-v1 receipt0c42a94c and its1731 artifacts remain unchanged. Review closed
+  its other19-path scope and reported only automatic P2#1/#2. The earlier CF SQL
+  finding stays closed. No commit/push or independent acceptance of this fix yet.
+- P2#1 genuine component red5f382e73 and real pre-turn binding red e401c4ef
+  become component18/18 and real full-file5/5 b8c6782c after the one local origin
+  emit. Original lower classified errors keep their identity/trace/Bot and origin.
+  The initial non-UUID component fixture is explicitly not a behavior red.
+- P2#2 uses that #1-fixed controller0852f268, not all old v1. Real receive commits
+  before owned facts-table rename causes SQLite I/O: received advances, applied
+  stays behind and original cause identity is retained. Restoring the original
+  table without new data still fails to complete the head: a2b7b0eb,4/5. Component
+ 0db3c2a1 also shows missing pending objectId. Exact red input bytes are archived.
+- The bounded fix stores one local pendingApply ID per connection before apply,
+  retries the original fixed-pin object before online work, and clears on success.
+  Component23/23 includes reopen without peer/CF, unchanged network counts,
+  disable/rebind/close and successful dependency behavior. Actual process green,
+  stable source-v2/delta and its affected normal gates are next.
+- auto-pages-first d316a7b8 is format-before5/5: stable731 execution map but only
+ 676/689 source-v1 selected bytes match. It is not final full-source execution;
+  normal v1 gates bind all689 separately. No newer upstream, live Herdr/auth,
+  production D1/rendering, physical Mac/App or CF/npm/PR action occurred.
+
+## 2026-10-31 11:47 +0800 - Automatic transport normal gates collected; final candidate binding
+
+- Base abec9dbb and all1553 previous delivery references remain unchanged.
+  Source-v1 receipt0c42a94c still matches all689 source bytes; existing Review is
+  independently reading that freeze. No Review acceptance or commit/push is claimed.
+- Normal Bots ordinary901/coverage901, Worker26, root268, crash17 and exact
+  chat-basic/root-resources evals pass. Their full731 maps are stable. Original
+  Swift181/142/181/71 consumed input maps match exactly; no new Swift gate claim.
+- First complete devices retains15/16: two different canonical temporary roots
+  independently hash to singleton port44236, stopping daemon startup before the
+  proof-expiry assertions. An unchanged-source normal full command then passes
+ 27/27. All689 source bytes match; exactly three non-loaded current-state docs
+  changed during that run, so its731 full map is explicitly not called stable.
+- Actual automatic local chain retains full authenticated stable return, owned
+  publish/use-point races, wrong-way refusal, staggered localReady cold receive,
+  original bytes/head/sections and passive0/native+2. The130-entry SDK fixture's
+ 8320199-byte page and real gap revisit use list6/get3/R2get10. Source candidate
+  binding, exact final evidence and independent acceptance are next.
+- A proposed type-only restoration of tombstones' original pull/apply union is
+  recorded separately and has not changed the frozen code. No live Herdr/auth,
+  production D1/rendering, physical Mac/App, CF deployment/npm/PR or newer
+  upstream operation occurred. Browser remains normal pre-push.
+
+## 2026-10-31 11:40 +0800 - Automatic source frozen; independent ordinary/coverage and Worker/root gates pass
+
+- Base abec9dbb and all1553 prior protected references remain unchanged. Source-v1
+  receipt0c42a94c freezes689 selected/731 full with19 actual source/test/fixture
+  deltas and1731 artifact references. Read-only Review is requested; no acceptance
+  or commit/push is claimed. Final docs/candidate binding remains pending.
+- auto-pages-first5/5 has stable731 maps: real independent Registry/Swift/helper/
+  Node/Bots/DO/R2 automatic TCP-refusal/CF/stable-return/cold chain and five owned
+  stage windows; optional prefs parse and live rename failure preserve native run.
+  The130-entry SDK paging fixture delivers an8320199-byte first page, revisits a
+  real withheld cache prefix twice, receives a new tail first, then restores/drains
+  exact original events: list6/get3/R2get10, passive execution0.
+- Normal Bots check passes ordinary901/901 and the same coverage901/901,
+  lines92.72/branches87.85/functions90.68 at original90/85/90 thresholds.
+  Independent Worker check26/26/types/lint/dry-run and serialized root268/268/
+  types/lint/build pass. These gates have identical731 before/after maps and all
+ 689 inputs match the freeze. Complete devices is next; browser stays pre-push.
+- New narrow reds retain their actual scope: prefs constructor startup, network
+  deadline during private authorization, completion spacing and redundant apply;
+  fixture/oracle and formatter/package-boundary failures remain separate. No
+  physical Mac/App, live CF, new Herdr collection/auth, production D1/rendering,
+  deployment/npm/PR or newer upstream operation occurred.
+
+## 2026-10-31 11:26 +0800 - Automatic CF/stable return/cold chain locally passes; source remains WIP
+
+- Accepted baseline abec9dbb and1553 protected references remain unchanged.
+  auto-staggered-first passes the complete file4/4 with731 maps identical before/after.
+  It exercises real TCP refusal, CF progress during a held full probe, two spaced
+  authenticated page probes and stable return, then A offline/new B history/B
+  stopped/A localReady cold receive. Original5503-byte final object plaintext,
+  full18-entry head/section order, passive execution0 and explicit native+2 pass.
+- Optional corrupt prefs previously stopped daemon startup (prefs-cold-first).
+  prefs-cold-second4/4 retains bad bytes, exposes503/storage_failed and permits
+  native+2; the latest4/4 also covers real live prefs rename failure/native+2.
+  Controller/network component checks12/12 and current Bots types pass.
+- Next narrow edge: begin the2.5s competitor deadline at actual qualified network
+  connection, not while private authorization is pending; then actual automatic
+  late/stage races and multi-page request/gap counts before normal final gates.
+  No stable-source/Review/commit/push claim yet.
+- No new live Herdr collection/authentication, production D1/rendering, physical
+  Mac/App or deployment/npm/PR action. Fixed upstream182fc1f is unchanged.
+
+## 2026-10-31 11:12 +0800 - Automatic transport WIP; real connection red and bounded cache cursor green
+
+- CF abec9dbb remains the accepted normally delivered baseline; all1553 protected
+  references remain unchanged. Current source is WIP, with no Review/commit/push claim.
+- Real paired independent helper/Node/Bots ready baseline reached connections PUT404
+  (auto-entry-second,2/3). The first run's cleanup/method fixture errors and later
+  descriptor codec/empty-history observation failures retain their original scope.
+- Worker actual SQL-window cursor red undefined!=64 is locally green25/25. Dedicated
+  event-TTL versus generic authority expiry is locally green26/26, including a
+  test-only persisted R2 uploaded-clock proxy. Six controller adapter tests pass;
+  real automatic history chain and new slow-probe/prefs boundaries are still WIP.
+- Next broken hop: finish actual automatic receive/head observation, simultaneous CF
+  probe, durable-source inference and failed/concurrent preference admission; then
+  actual stage/lifecycle and staggered cold-start chains before stable gates.
+- No new live Herdr collection/auth, production D1/rendering or physical Mac/App
+  verification. No external device changes, deployment/npm/App replacement/PR.
+  Upstream182fc1f is still fixed, with no additional fetch/pull/merge.
+
+
+## 2026-10-31 10:59 +0800 - CF delivered; automatic transport contract and first-red preparation
+
+- CF72h is normally delivered as abec9dbb/tree8fbe3651. Lead/Root accepted
+  final receipt069c8aed, own remote and clean/ahead0/behind0; previous1552
+  artifacts plus final itself are protected by this slice's baseline.
+- Automatic transport now has a bounded short contract and concrete local
+  publish/receive/both ports. Existing pull wire, ready-only leases and immutable
+  cache objects remain the intended connections. Next broken hop is the new local
+  connection port on real paired/granted/ready independent processes; no new red
+  or automatic-loop success is claimed yet.
+- Live Herdr collection/authentication, production D1/rendering and physical
+  Mac/Tailscale/App have not been newly verified. No CF deployment, npm publication,
+  installed App replacement or upstream PR action. Upstream182fc1f remains fixed.
+
+
 ## 2026-10-31 10:30 +0800 - CF SQL attribution fix frozen; affected normal gates pass
 
 - Baseee26b2bb and fixed upstream182fc1f remain unchanged. No newer upstream

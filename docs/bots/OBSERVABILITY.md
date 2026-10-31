@@ -42,6 +42,19 @@ include authority, descriptor, cipher, plaintext or raw upstream error text.
 Header context must match the existing bounded trace/Bot grammar. Local metadata
 port denials retain their original cause and auth_failed origin.
 
+Automatic turns originate `tr_auto_<uuid-without-hyphens>` and use the same Bot,
+failure ID and origin propagation through existing sync crossings. Actual fetch
+or body I/O keeps its transport cause; active abort and remote bounded refusals
+are distinct. A preference storage failure has one runtime.sync.fail origin;
+initial read failures use tr_sync_preferences before any Bot is selected, and
+management exposes that retained failure rather than logging another origin.
+Only sync is paused; the original preference file is preserved and native work
+retains its lifecycle. No preference bytes or unbounded error text enter logs.
+The controller's own saved/current complete-binding refusal emits one
+runtime.sync.fail origin at that comparison, with the same automatic trace and
+Bot. A pending local apply retry retains the original lower-layer failure/cause;
+the turn catch neither remints nor logs a second error origin.
+
 ## Trace ownership
 
 | Originator | Trace shape | Example |

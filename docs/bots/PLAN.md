@@ -21,18 +21,20 @@ SHA293f1f74 binds1018 originals; own remote/clean/ahead0/behind0 and both normal
 hooks were independently accepted. Exact root267/browser191+11 existing skips/
 Swift208/51/60 scopes belong to that delivery, not the next slice.
 
-P4 CF72h explicit cache has a frozen local implementation with normal root/Bots/
-Worker/devices and affected crash/eval gates passed; independent Review and delivery
-are pending. Accepted Review P2#1's Cache DO/Registry SQL-read attribution fix is
-frozen as source-v3 SHA67ead90b; new Worker24/24, devices24/24 and root268/268 plus
-strict types/check-only lint/build pass. Independent delta/candidate acceptance
-is still required; old source-v1/v2/candidate and failures remain unchanged.
-The bounded slice is an
-independent Bots Sync Worker, per-sharedBot SQLite DO, ciphertext-only R2, current
-Registry authorization and explicit cache publish/list/receive followed by existing
-offline stored-object apply. [SYNC-CACHE.md](SYNC-CACHE.md) owns this slice's contract.
-Automatic fallback/switchback follows separately; no cloud deployment or physical
-Mac/App evidence is claimed. Preserve all old receipts including final itself.
+P4 CF72h explicit cache is normally delivered as `abec9dbb` / tree `8fbe3651`.
+Lead/Root independently accepted own remote and clean/ahead0/behind0;
+`.local/sync-p4-cf72h-cache/cache-delivery-final.json` SHA069c8aed binds1552
+references, with the final itself protected by the next slice. Review P2#1's
+Cache DO and Registry SQL-read classification fixes are closed. All original
+failures and exact gate scopes remain unchanged.
+
+Automatic transport on that baseline adds local publish/receive/both preferences,
+direct-first receive, network-only cache fallback, stable authenticated return and
+independent cache upload for already shared, ready bound replicas:
+[SYNC-AUTO.md](SYNC-AUTO.md). [TESTING.md](TESTING.md) and this slice's independent
+source/candidate/delivery receipts bind the actual verification and delivery state.
+This slice does not claim relay/discovery/expired holder reread/peer-applied ACK,
+full P4 or P5/P6. No cloud deployment or physical Mac/App evidence is claimed.
 
 `182fc1f` is the last upstream update until the overall synchronization project
 completes: never fetch, pull or merge a newer upstream, or reopen a moving baseline.
@@ -65,8 +67,8 @@ and40 delivery originals,including settled trace correctiona40bae3e. Own remote 
 clean/ahead0/behind0 were verified. Source-v3,target-slot P2 closure,both22/23 fixture failures
 and the final normal gates retain their exact recorded scope; TESTING records the delivery.
 Future cache identity must preserve original source epoch/seq across repaging/forwarding;
-The explicit CF72h cache slice is in local verification; automatic fallback/switching,
-physical paths and P5/P6 remain planned.
+The explicit CF72h cache slice is delivered abec9dbb. Automatic transport on
+that baseline follows SYNC-AUTO; relay/discovery, physical paths and P5/P6 remain planned.
 Historical candidate and per-event evidence below retains its original scope.
 
 
@@ -182,7 +184,7 @@ Tailscale 直连进入本版范围；专用同步入口仅向 Tailscale 网络�
 | P1 — 本地副本与分支 | in progress | 持久来源日志、outbox、ID 映射、缺口补读与本端恢复 | A 停止后 B 可运行；重复/乱序同步保留两支；不恢复其他端任务 |
 | P2 - resources | local verified | fixed-head696f649, ordinary-root265b0db/repair9475e2e and fresh264cc9e delivered normally | Complete local version loading; raw contents/tool associations retained |
 | P3 — 设备底座接入 | first metadata slice delivered460b60d | 复用 #109 的安装/配对/helper/权限；新增同步身份授权、Tailscale 端点发布和共享访问接口 | 现有设备能力保持有效；无 Tailscale 可走云通道；端点身份、群成员和同步权限真实生效 |
-| P4 — 直连、中转与 3 天缓存 | first direct-page slice delivered4f7d035; local durable objects/envelopes delivered8b5ca36; fixed182fc1f baseline delivered ee26b2b; explicit CF72h cache frozen with normal local gates passed, Review/delivery pending; automatic fallback/switchback remains next | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
+| P4 — 直连、中转与 3 天缓存 | first direct-page slice delivered4f7d035; local durable objects/envelopes delivered8b5ca36; fixed182fc1f baseline delivered ee26b2b; explicit CF72h cache delivered abec9dbb; automatic fallback/stable return follows SYNC-AUTO with exact verification/delivery receipts; remaining relay/discovery/peer ACK follows | 认证直连与连接切换、独立 Worker/DO/R2、端到端加密、密钥撤销、72 小时缓存与补读 | 本地双端和 Miniflare 验证直连失败回退、恢复切回、旧连接迟到、双路重复、ACK/到期/实际删除；读取与重传不续期 |
 | P5 — 原生多端流程 | planned | 共享目录、各端运行状态、直连/中继状态、分支选择/合并、同步覆盖范围与资源冲突 | 从 App 完成双端执行、错峰补齐、过期恢复；路径切换不打断本地 run，缺口不误报完整 |
 | P6 — 多机验证与交付 | planned | 物理双 Mac、真实 Tailscale 路径、断网/重启/升级、性能与成本、发布门禁 | 直连/回退/切回、同时运行、A 关机、B 重启、过期补读及新设备初始化有实际证据 |
 

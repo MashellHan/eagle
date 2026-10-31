@@ -110,5 +110,6 @@ export const cacheListResult = z.strictObject({
     )
     .max(128),
   hasMore: z.boolean(),
+  nextAfter: z.number().int().nonnegative(),
   complete: z.literal(false),
 });

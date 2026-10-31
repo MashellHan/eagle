@@ -614,3 +614,150 @@ test("revocation during the final Registry await fails closed after complete R2 
     await pending;
   }
 });
+
+test("list scan cursor follows the inspected SQL window rather than whole-object included, including gaps and empty windows", async () => {
+  const first = pageFixture({ count: 128 });
+  await rt.control(first.sharedBotId, { now: null });
+  await cached(rt, first);
+  const second = pageFixture({
+    sharedBotId: first.sharedBotId,
+    source: first.source,
+    publisher: first.publisher,
+    recipient: first.recipient,
+    seq: 129,
+    count: 2,
+  });
+  await cached(rt, second);
+  const storage = await rt.storage(first.sharedBotId);
+  let requests = 0;
+  const list = async (after: number, limit: number) => {
+    requests++;
+    const query: RequestValue = {
+      version: 1,
+      operation: "list",
+      sharedBotId: first.sharedBotId,
+      peerDeviceId: first.publisher.peer.deviceId,
+      source: first.source,
+      after,
+      limit,
+    };
+    const before = Number((await storage.exec("SELECT gets FROM test_io"))[0]?.gets);
+    const response = await rt.call(query, await rt.authorize(query, first));
+    assert.equal(response.status, 200);
+    const value = (await response.json()) as {
+      nextAfter: number;
+      hasMore: boolean;
+      objects: { objectId: string; included: { seq: number }[] }[];
+      gaps: { seq: number }[];
+    };
+    const reads = Number((await storage.exec("SELECT gets FROM test_io"))[0]?.gets) - before;
+    return { value, reads };
+  };
+  const partial = await list(0, 64);
+  assert.equal(partial.value.objects[0]?.included.at(-1)?.seq, 128);
+  assert.equal(partial.value.nextAfter, 64);
+  assert.equal(partial.value.hasMore, true);
+  assert.equal(partial.reads, 1);
+  const page = await list(0, 128);
+  assert.equal(page.value.nextAfter, 128);
+  assert.equal(page.reads, 1);
+  await rt.bucket.delete(`v1/${second.sharedBotId}/${second.carrier.manifest.objectId}`);
+  const gap = await list(page.value.nextAfter, 128);
+  assert.equal(gap.value.nextAfter, 130);
+  assert.equal(gap.value.hasMore, false);
+  assert.deepEqual(
+    gap.value.gaps.map((g) => g.seq),
+    [129, 130],
+  );
+  assert.equal(gap.reads, 1);
+  const empty = await list(gap.value.nextAfter, 128);
+  assert.equal(empty.value.nextAfter, 130);
+  assert.equal(empty.value.hasMore, false);
+  assert.equal(empty.reads, 0);
+  assert.equal(requests, 4);
+});
+
+test("expired event refusal is distinct from authority expiry so a fresh suffix survives an unknown old ACK across72h", async () => {
+  const old = pageFixture({ eventValue: "same immutable mixed history" });
+  const t0 = Date.now();
+  await rt.control(old.sharedBotId, { now: t0 });
+  // The actual first R2 result exists; the caller can lose this ACK and retain its objectId.
+  const first = await cached(rt, old);
+  const fresh = pageFixture({
+    sharedBotId: old.sharedBotId,
+    source: old.source,
+    publisher: old.publisher,
+    recipient: old.recipient,
+    seq: 2,
+    eventValue: "same immutable mixed history",
+  });
+  const t1 = first.expiresAt + 1;
+  await rt.control(old.sharedBotId, { now: t1, uploadAt: t1 });
+  const retry = await rt.call(old.publish, await rt.authorize(old.publish, old, t1));
+  assert.equal(retry.status, 410);
+  assert.equal(
+    ((await retry.json()) as { error: { code: string } }).error.code,
+    "sync_cache_event_expired",
+  );
+  const mixed = pageFixture({
+    sharedBotId: old.sharedBotId,
+    source: old.source,
+    publisher: old.publisher,
+    recipient: old.recipient,
+    count: 2,
+    eventValue: "same immutable mixed history",
+  });
+  assert.deepEqual(mixed.carrier.manifest.included, [
+    ...old.carrier.manifest.included,
+    ...fresh.carrier.manifest.included,
+  ]);
+  const mixedReply = await rt.call(mixed.publish, await rt.authorize(mixed.publish, mixed, t1));
+  assert.equal(mixedReply.status, 410);
+  assert.equal(
+    ((await mixedReply.json()) as { error: { code: string } }).error.code,
+    "sync_cache_event_expired",
+  );
+  const after = await rt.call(fresh.publish, await rt.authorize(fresh.publish, fresh, t1));
+  assert.equal(after.status, 200, await after.clone().text());
+  const ack = (await after.json()) as { firstCachedAt: number; expiresAt: number };
+  assert(ack.firstCachedAt >= first.firstCachedAt);
+  assert.equal(ack.expiresAt, ack.firstCachedAt + ttl);
+  const authorityExpired = await rt.call(
+    fresh.publish,
+    await rt.authorize(fresh.publish, fresh, t1, { expiresAt: t1 }),
+  );
+  assert.equal(authorityExpired.status, 410);
+  assert.notEqual(
+    ((await authorityExpired.json()) as { error: { code: string } }).error.code,
+    "sync_cache_event_expired",
+  );
+  const query: RequestValue = {
+    version: 1,
+    operation: "list",
+    sharedBotId: old.sharedBotId,
+    peerDeviceId: old.publisher.peer.deviceId,
+    source: old.source,
+    after: 0,
+    limit: 128,
+  };
+  const listed = await rt.call(query, await rt.authorize(query, old, t1));
+  assert.equal(listed.status, 200);
+  const coverage = (await listed.json()) as {
+    gaps: { seq: number; reason: string }[];
+    objects: { objectId: string }[];
+    nextAfter: number;
+  };
+  assert.deepEqual(coverage.gaps, [{ seq: 1, reason: "expired" }]);
+  assert.deepEqual(
+    coverage.objects.map((object) => object.objectId),
+    [fresh.carrier.manifest.objectId],
+  );
+  assert.equal(coverage.nextAfter, 2);
+  const rows = await (await rt.storage(old.sharedBotId)).exec(
+    "SELECT seq,firstCachedAt,expiresAt FROM events ORDER BY seq",
+  );
+  assert.equal(rows[0]?.firstCachedAt, first.firstCachedAt);
+  assert.equal(rows[0]?.expiresAt, first.expiresAt);
+  assert.equal(rows[1]?.firstCachedAt, ack.firstCachedAt);
+  await rt.control(old.sharedBotId, { now: null, uploadAt: null });
+});

@@ -214,7 +214,7 @@ export async function runtime() {
     join(root, "entry.ts"),
     `
 import worker,{SyncCache as Production} from '../../src/index.ts';
-const realNow=Date.now;let clock;Date.now=()=>clock??realNow();
+const realNow=Date.now;let clock,uploadAt;Date.now=()=>clock??realNow();
 export class SyncCache extends Production {
  constructor(ctx,env){
   ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS test_control(mode TEXT,started INTEGER,released INTEGER)");
@@ -230,17 +230,19 @@ export class SyncCache extends Production {
   ctx.storage.sql.exec=(query,...args)=>{if(control().mode==='reference-throw'&&query.startsWith("UPDATE objects SET state='ready'"))throw new Error('owned metadata reference commit I/O');try{return exec(query,...args);}catch(error){actualSqlCause=error;throw error;}};
   const gate=async(mode)=>{if(control().mode!==mode || control().started)return;ctx.storage.sql.exec('UPDATE test_control SET started=1');const end=realNow()+12000;while(!control().released){if(realNow()>end)throw new Error('owned R2 barrier timeout');await new Promise(r=>setTimeout(r,10));}};
   const bucket=env.CIPHERS;
+  ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS test_uploaded(key TEXT PRIMARY KEY,uploaded INTEGER)");
+  const uploaded=(key,result)=>{const row=exec('SELECT uploaded FROM test_uploaded WHERE key=?',key).toArray()[0];return result&&row?new Proxy(result,{get(target,key){if(key==='uploaded')return new Date(row.uploaded);const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}}):result;};
   super(ctx,{...env,CIPHERS:{
-   put:async(...args)=>{await gate('put-before');const result=await bucket.put(...args);await gate('put-after');if(control().mode==='put-after-throw')throw new Error('owned put committed, reply lost');return result;},
-   get:async(...args)=>{ctx.storage.sql.exec('UPDATE test_io SET gets=gets+1');const result=await bucket.get(...args);await gate('get-after');if(control().mode==='body-throw'&&result)return {...result,body:new ReadableStream({start(c){c.error(new Error('owned R2 body I/O'));}})};if(control().mode==='body-missing'&&result)return {...result,body:undefined};return result;},
-   head:async(...args)=>control().mode==='negative-head'?null:bucket.head(...args),
+   put:async(...args)=>{await gate('put-before');const result=await bucket.put(...args);if(result&&uploadAt!==undefined)exec('INSERT OR IGNORE INTO test_uploaded VALUES(?,?)',args[0],uploadAt);await gate('put-after');if(control().mode==='put-after-throw')throw new Error('owned put committed, reply lost');return uploaded(args[0],result);},
+   get:async(...args)=>{ctx.storage.sql.exec('UPDATE test_io SET gets=gets+1');const result=uploaded(args[0],await bucket.get(...args));await gate('get-after');if(control().mode==='body-throw'&&result)return {...result,body:new ReadableStream({start(c){c.error(new Error('owned R2 body I/O'));}})};if(control().mode==='body-missing'&&result)return {...result,body:undefined};return result;},
+   head:async(...args)=>control().mode==='negative-head'?null:uploaded(args[0],await bucket.head(...args)),
    delete:async(...args)=>{if(control().mode==='delete-throw')throw new Error('owned delete I/O');return bucket.delete(...args);},
   }});
   this.actualSqlCause=()=>actualSqlCause;
  }
  rows(...args){try{return super.rows(...args);}catch(error){this.sqlCausePreserved=error.cause===this.actualSqlCause();throw error;}}
  async fetch(request){
-  if(new URL(request.url).pathname==='/__test/control'){const input=await request.json();if('now' in input)clock=input.now??undefined;if('mode' in input)this.ctx.storage.sql.exec('UPDATE test_control SET mode=?,started=0,released=0',input.mode);if(input.release)this.ctx.storage.sql.exec('UPDATE test_control SET released=1');if(input.alarm)await super.alarm();return Response.json({...this.ctx.storage.sql.exec('SELECT * FROM test_control').toArray()[0],sqlCausePreserved:this.sqlCausePreserved??false});}
+  if(new URL(request.url).pathname==='/__test/control'){const input=await request.json();if('now' in input)clock=input.now??undefined;if('uploadAt' in input)uploadAt=input.uploadAt??undefined;if('mode' in input)this.ctx.storage.sql.exec('UPDATE test_control SET mode=?,started=0,released=0',input.mode);if(input.release)this.ctx.storage.sql.exec('UPDATE test_control SET released=1');if(input.alarm)await super.alarm();return Response.json({...this.ctx.storage.sql.exec('SELECT * FROM test_control').toArray()[0],sqlCausePreserved:this.sqlCausePreserved??false});}
   return super.fetch(request);
  }
 }

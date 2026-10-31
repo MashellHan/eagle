@@ -1354,3 +1354,144 @@ historical test/fixture bytes where available. Four distinct intermediate test
 SHAs have no matching byte archive:755bd007,bab630bc,5e6fa392,fd8ab06a. Their
 original execution maps/logs remain; later formatted/current bytes are separate
 and are never substituted as those historical versions.
+
+### Automatic transport slice on delivered abec9dbb
+
+[SYNC-AUTO.md](SYNC-AUTO.md) is the finite local contract. Source-v1 receipt
+`.local/sync-p4-auto-transport/source-v1.json` SHA0c42a94c freezes689 selected inputs,
+731 full files and19 actual source/test/fixture deltas; its archive/patch preserves
+the exact bytes. All1553 prior delivery references remain protected. This source
+freeze requests read-only Review; it does not certify candidate acceptance/delivery.
+
+- auto-entry-second is the real paired/granted/bound connection PUT404 red;
+  earlier method/cleanup fixture errors retain their scope. No manual transfer loop
+  is used after the trusted baseline in the automatic cases.
+- prefs-cold-first is a real corrupt optional file stopping daemon startup. The
+  isolated controller retains the file/failure and pauses synchronization;
+  prefs-cold-second4/4 proves native+2. The latest full file additionally tests an
+  actual live prefs rename failure/native+2. Component permission EACCES checks
+  preserve original bytes/cause and one origin; connection management returns503.
+- Actual loopback TCP refusal/truncated body differ from remote SQL/auth/bad JSON
+  and active cancellation. bots-deadline-first proves private authorization waiting
+  wrongly started the competitor; the final deadline starts at actual qualified
+  network connection and ends after the authenticated response/current auth.
+- auto-stage-first4/4 and auto-pages-first5/5 cover direct/CF alternate winners,
+  disable/rebind refusal and Self-loss preserving CF at actual owned filefsync
+  barriers. The real chain then creates history after A closes, automatically
+  caches it, closes B, cold starts A at localReady and explicitly opens locally.
+  It receives exact7788-byte final object plaintext, full38-entry head/section
+  order, zero passive submission/task/local_runs/peer/PR/provider and native+2.
+- auto-pages-first uses actual SDK commits130 entries, a first page8320199 bytes
+  cut before128 events, real DO metadata availability barrier with original R2
+  winner/uploaded preserved, second gap revisit and a new tail before release.
+  Exact full events drain with list6/get3/R2get10 and no passive execution.
+  Test-only I/O counters record metadata, not request bodies/authority/keys.
+  auto-pages-first d316a7b8 is format-before evidence: its731 execution map is
+  stable, but only676/689 source-v1 selected bytes match. It is not a final
+  full-source run; the normal v1 gates below bind all689 separately.
+- bots-probe-drain-first has two genuine component reds: successes too close
+  after a slow probe and a redundant third apply after another source drained it.
+  The second run's remaining direct expectation was a fixture that still forced
+  every direct attempt to fail. The corrected third29/29 includes the original
+  real SDK dependency suite; core drain already loops all sources and is unchanged.
+- worker-mixed-first26/26 retains actual unknown first ACK/event clocks across72h,
+  specific event-expired versus generic authority expiry and fresh suffix ACK.
+  The uploaded-clock proxy and Registry RPC double are owned fixture scope;
+  this is not elapsed72h or deployed-cloud evidence. Controller recovery separately
+  retries the persisted ID, bounds single-event probing to the original manifest
+  window and returns to128-event batching. Normal scanning never uses limit1.
+
+The initial static run retained five new test non-null warnings; a later run
+retained the resulting formatter error after the formatter was mistakenly invoked
+from root for the isolated Bots path. The corrected own-package formatter and
+static-third pass strict types/check-only lint in root/Bots/Worker and diff-check.
+All original logs/maps are retained; formatting edits are not behavior reds.
+
+| Normal gate | Current actual scope |
+| --- | --- |
+| bots-check-first | ordinary901/901 and same coverage901/901; strict types/lint/fixtures; lines92.72/branches87.85/functions90.68, original90/85/90 thresholds. |
+| worker-check-first |26/26; strict types/check-only lint and dry-run build. |
+| root-check-first |268/268/types/check-only lint/build, serialized after previous heavy gates. |
+
+Those three gates retain identical731 before/after maps matching all689 frozen
+inputs. The complete devices-first command retains its15/16 failure: daemon startup
+in proof-expiry collided with another parallel fixture's singleton port44236. The
+two raw canonical roots independently reproduce that FNV-1a port. It did not reach
+the proof-expiry assertions; no product cause or flaky label is inferred.
+
+devices-second runs the same normal complete command without source/assertion/
+timeout changes and passes27/27, including all proof-expiry subcases. All689 frozen
+source bytes match before/after. Its731 map has exactly three documentation changes
+(PLAN/SYNC-ARCHITECTURE/SYNC current-state wording) made during execution; these
+files are not loaded by the fixture. The full map is explicitly not called stable.
+No extra source gate is run for those prose-only changes.
+
+Changed main startup/close and ReadyReplica/ReplicaSync admission inputs receive a
+new normal crash17/17 and the two exact existing eval cases chat-basic and
+root-resources (one case/two rows each), all with identical731 maps matching689
+frozen inputs. This is no broader eval claim. swift-reuse-v1.json SHA c8e1b571
+compares the four original181/142/181/71 Swift package/script/fixture scopes exactly:
+macOS build, official strict scope, original filtered default90 coverage93.2%, and
+independent client default90 coverage90.9%. No new Swift gate is claimed; devices
+actually builds/runs the helper. Normal pre-push still runs its original Swift gates.
+
+Exact current gate logs: Bots4c3e6122, Worker4fde2f01, rootc393f5f9,
+devices-firstdc0eeef5, devices-second877ced61, crash11f686c1,
+eval-chat-basic28761e3e and eval-root-resourcescc11463c. Every original start/raw/exit
+is retained with its actual input map. Source/docs/index/candidate binding follows
+these records; independent Review/Lead acceptance is required before delivery.
+Browser remains normal pre-push; no physical Mac/App or live CF evidence is implied.
+
+#### Automatic transport Review P2#1/#2: origin and local apply completion
+
+Source-v2 receipt05fee46ec20d06fcb2c6f54d0d0e4fd164ad02c9ab499da37fe7126e2c9be8fd
+retains all689 selected/731 full paths and changes exactly four paths from v1:
+sync-auto, DeviceSyncConnections, its component test and encrypted-objects process
+test. The original source-v1, archives, gates and failures are unchanged. Review
+closed the other v1 scope; incremental acceptance of these two fixes is separate.
+
+P2#1's valid-UUID component red5f382e73 and real pre-turn binding red e401c4ef
+show the missing origin on the original controller926d95a0. The earlier component
+682d8fac used an invalid epoch and is a fixture failure, not that behavior red.
+The minimum fix emits runtime.sync.fail only where the controller itself creates
+the auth_failed refusal, with the original automatic trace/Bot/failure identity.
+Component18/18 and real full-file5/5 b8c6782c pass; lower ClassifiedFailure stays
+single-origin. The actual binding changes before the first turn, separately from
+late stage fences, with no object/pin/apply/provider changes.
+
+P2#2 red0db3c2a1 (component) and a2b7b0eb (real full-file4/5) use the #1-fixed
+controller0852f268, not all old-v1 production. The real ReplicaStore.receive
+commits, then an owned facts-table rename causes actual drain SQLite I/O failure:
+received21/applied15, original cause retained. Restoring the original table with
+no new B/CF data still cannot finish the head. The fix persists one pendingApply
+objectId per connection after full cache storage and before apply, retries that
+fixed-pin object before online work, and clears only on successful return. A
+successful dependency wait clears the slot, so it does not add useless retries.
+Same-binding configuration preserves the slot; disable/rebind/close guards remain.
+
+Component green7fa33721 is23/23 on format-before controller8fcc7890. Later formatting
+and static3711cc78 bind current controller794bcabf. Real green89ca6f0e is5/5 on
+that final source: restored I/O completes actual applied/head with zero additional
+get, unchanged event clocks/digests, original cause/trace/Bot and one error origin,
+passive0 and native execution preserved. Component reopen separately proves the
+persisted slot works with peer/CF ports forbidden; it is not a new physical/cold
+cloud claim. Original core drain/CF protocol semantics are unchanged.
+
+| Source-v2 normal command/evidence label | Actual result |
+| --- | --- |
+| Root/Bots strict types and normal check-only lint / p2-apply-static | exit0; log3711cc78; diff and cached checks pass. |
+| `npm --prefix apps/bots run check` / bots-check-v2 | ordinary908/908 and same coverage908/908; lines92.75/branches87.88/functions90.68 at original90/85/90 thresholds; log89705c30. |
+| `npm run test:devices` / devices-v2 | complete27/27, including both P2 windows and the original real Registry/helper/Node/Bots/DO/R2 automatic chain; logb5addb5d. |
+
+All three new executions have identical731 before/after maps matching every689
+source-v2 input. gates-v2.json SHA5b6cb188 and reuse-v2.json SHAe6b59449 bind
+the new commands and exact old scopes; review-p2-results-v2.json SHA64cdb220
+preserves each red/green production combination. Worker26 and root268 test/build
+retain their v1 execution scopes:
+the Worker package/fixtures and root test/build inputs are individually unchanged;
+new root/Bots types/lint cover the affected process tests. Crash17 and the two
+exact eval cases remain v1 runs; their no-device startup does not instantiate the
+changed controller, and their loaded unchanged branches are reused explicitly,
+not described as all-source equality or new v2 execution. Original Swift scopes
+181/142/181/71 still match; no new Swift-wide gate is claimed. Browser remains
+normal pre-push. Final candidate binding and independent acceptance precede delivery.

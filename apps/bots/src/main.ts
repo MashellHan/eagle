@@ -61,6 +61,7 @@ import {
 import { acquireLock, LockError } from "./server/singleton.ts";
 import { toServerEvent } from "./server/socket.ts";
 import { UsageStore } from "./server/usage.ts";
+import { AutomaticSync } from "./sync-auto.ts";
 import { SyncListener } from "./sync-listener.ts";
 import { AuthenticatedSync } from "./sync-pull.ts";
 import type { SearchClient } from "./tools/search/client.ts";
@@ -592,12 +593,15 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
             ? {}
             : { cacheOrigin: canonical.syncCacheOrigin }),
         });
+  const syncConnections =
+    sync === undefined ? undefined : new AutomaticSync(canonical.root, registry, sync, log);
   const syncListener =
     sync === undefined || deviceSync === undefined
       ? undefined
       : new SyncListener(sync, deviceSync, canonical.syncPort, log);
   const daemon = await startServer({
     ...(sync === undefined ? {} : { sync }),
+    ...(syncConnections === undefined ? {} : { syncConnections }),
     ...(canonical.deviceSocket === undefined ? {} : { deviceSocket: canonical.deviceSocket }),
     token,
     log,
@@ -640,6 +644,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
   });
   broadcast = daemon.broadcastCatalog;
   syncListener?.start();
+  syncConnections?.start();
   const close = async (): Promise<void> => {
     // One absolute deadline for the whole shutdown: a stalled socket grace, handle close
     // or log flush must not add up past the configured budget.
@@ -652,6 +657,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     const stopped = (async () => {
       // Producers stop first, then admissions already in flight settle, and only then may
       // the registry close handles under them (TRIGGERS.md §3.6).
+      syncConnections?.close();
       producers.stop();
       sync?.close();
       const listenerClosed = syncListener?.close();

@@ -93,6 +93,9 @@ export class SocketDeviceSyncPort implements DeviceSyncPort {
     }
   }
 
+  publishDescriptor(context: { trace: string; botId: string }) {
+    return this.#call("sync.key.publish", {}, context, (value) => publishedDescriptor.parse(value));
+  }
   descriptor(context: { trace: string; botId: string }) {
     return this.#call("sync.key.descriptor", {}, context, (value) =>
       SyncKeyDescriptor.parse(value),

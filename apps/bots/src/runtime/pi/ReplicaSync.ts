@@ -421,6 +421,7 @@ export class ReplicaSync {
         case "status": {
           const input = parse(z.strictObject({ requestId: z.string().optional() }), command.params);
           await this.#scan();
+          guard();
           return input.requestId === undefined
             ? this.store.status()
             : this.#history.command(command);
