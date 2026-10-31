@@ -895,3 +895,11 @@ to another workspace. A split using `--current` opened an empty pane there; it
 was closed immediately, without running a command in it. The active agent list
 identified Eagle's actual pane. Before controlling Herdr, compare inherited
 identifiers with the live agent list and target the verified pane explicitly.
+
+During the 0.15.2 release, the green Check triggered deployment before the tag
+push's normal pre-push checks completed and before the draft was published.
+From 13:39:23 to 13:41:27 UTC, `/api/live` advertised 0.15.2 while the Latest
+release still pointed to 0.15.1; no affected client was observed. The release
+was then published and both endpoints agreed. Before the next app release,
+coordinate the automatic deployment with publication so the downloadable asset
+is public before the update endpoint advertises it; do not bypass the hooks.
