@@ -23,6 +23,8 @@ jobs:
       - run: npm run test:browser
   macos:
     runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
       # Swift builds independently. Real App/device integration tests also exercise
