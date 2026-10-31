@@ -91,10 +91,11 @@ public struct InspectorColumn: View {
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       HeaderRow {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.Metric.headerControlGap) {
           Spacer(minLength: 0)
           IconButton(
-            systemName: "square.and.arrow.up", label: "分享", style: .circled, action: onShare)
+            systemName: "square.and.arrow.up", label: "分享",
+            size: Theme.Metric.headerControlHeight, style: .circled, action: onShare)
           IconButton(
             systemName: "xmark",
             label: "收起检查器",

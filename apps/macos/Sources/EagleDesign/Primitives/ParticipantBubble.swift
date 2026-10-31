@@ -39,7 +39,7 @@ public struct ParticipantBubble: View {
           avatar
           VStack(alignment: .leading, spacing: 2) {
             Text(name)
-              .font(Theme.TypeScale.cardTitle)
+              .font(.system(size: 13.5, weight: .semibold))
               .foregroundStyle(Theme.Palette.textPrimary)
               .lineLimit(1)
             if let status {
@@ -112,9 +112,17 @@ public struct ParticipantBubble: View {
     .buttonStyle(.plain)
     .padding(.horizontal, Theme.Metric.participantInset)
     .frame(height: Theme.Metric.participantHeight)
+    // The reference pill is a capsule: half-height corners on white, with a soft shadow that
+    // separates it from the transcript instead of a border.
     .background(
-      RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
-        .fill(hovering ? Theme.Palette.hover : Theme.Palette.card)
+      Capsule(style: .continuous)
+        .fill(Theme.Palette.card)
+        .overlay { if hovering { Capsule(style: .continuous).fill(Theme.Palette.hover) } }
+        .shadow(
+          color: .black.opacity(Theme.Metric.participantShadowOpacity),
+          radius: Theme.Metric.participantShadowRadius,
+          y: Theme.Metric.participantShadowY
+        )
     )
     .overlay {
       if status?.isActive == true {

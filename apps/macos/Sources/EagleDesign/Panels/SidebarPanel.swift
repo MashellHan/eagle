@@ -120,7 +120,8 @@ public struct SidebarPanel: View {
   }
 
   private var toolbar: some View {
-    HStack(spacing: 6) {
+    // One spacing for every header group, so the circle rhythm matches the reference.
+    HStack(spacing: Theme.Metric.headerControlGap) {
       IconButton(
         systemName: "magnifyingglass",
         label: "搜索",
@@ -411,12 +412,17 @@ public struct SidebarPanel: View {
       .buttonStyle(.plain)
       .accessibilityLabel("账户与设置")
       Spacer(minLength: 0)
-      HStack(spacing: 12) {
-        Image(systemName: "bell")
-          .font(.system(size: 13))
-          .foregroundStyle(Theme.Palette.textSecondary)
+      HStack(spacing: Theme.Metric.headerControlGap) {
+        IconButton(
+          systemName: "bell", label: "通知",
+          size: Theme.Metric.headerControlHeight,
+          tint: Theme.Palette.textSecondary,
+          style: .circled,
+          action: onUnread
+        )
         IconButton(
           systemName: "square.grid.2x2", label: "Eagle 模板库",
+          size: Theme.Metric.headerControlHeight,
           style: .circled, action: onGallery
         )
       }
