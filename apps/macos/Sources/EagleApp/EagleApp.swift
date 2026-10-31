@@ -8,7 +8,7 @@ struct EagleApp: App {
   @AppStorage("eagle.appearance") private var appearance = "system"
 
   var body: some Scene {
-    WindowGroup("Eagle") {
+    WindowGroup("Eagle for Mac") {
       WorkspaceShellView(onShowGallery: { openSettings in
         GalleryWindowController.shared.show(onShowSettings: openSettings)
       })

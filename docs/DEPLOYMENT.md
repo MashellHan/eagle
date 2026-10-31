@@ -98,7 +98,7 @@ Publishing an app release:
 node -p "require('./apps/macos/Support/Version.json').version"
 
 # 2. Attach the zip to the release before claiming it.
-gh release create v<app-version> /tmp/Eagle-<app-version>-macos.zip --title "Eagle <app-version>"
+gh release create macos-v<app-version> /tmp/Eagle-<app-version>-macos.zip --title "Eagle for Mac <app-version>"
 
 # 3. Declare what is published, then deploy so /api/live answers it.
 #    "config": { "publishedMacosVersion": "<app-version>", "macosReleaseUrl": "..." }

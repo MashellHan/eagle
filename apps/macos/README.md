@@ -19,14 +19,14 @@ blocks it on first launch. One command clears that, and nothing else should be d
 ```sh
 cd ~/Downloads
 ditto -x -k Eagle-<version>-macos.zip .
-xattr -dr com.apple.quarantine Eagle.app
-cp -R Eagle.app /Applications/
-open /Applications/Eagle.app
+xattr -dr com.apple.quarantine "Eagle for Mac.app"
+cp -R "Eagle for Mac.app" /Applications/
+open "/Applications/Eagle for Mac.app"
 ```
 
 Extract with `ditto -x -k` (or double-click the zip in Finder); plain `unzip` turns the
 archive's AppleDouble metadata into real `._*` files and breaks the code signature. After the
-step above `codesign --verify --deep --strict Eagle.app` passes and the App runs; `spctl`
+step above `codesign --verify --deep --strict "Eagle for Mac.app"` passes and the App runs; `spctl`
 still reports `rejected`, which is what "ad-hoc, un-notarized" means.
 
 `xattr -dr` removes the quarantine attribute that the browser/`gh` put on the unpacked
@@ -53,7 +53,7 @@ export EAGLE_UPDATES_URL=https://app.example.com/api/live
 export EAGLE_CODESIGN_IDENTITY=-
 export EAGLE_ADHOC_RELEASE=1
 apps/macos/Scripts/build-app.sh release
-ditto -c -k --keepParent "apps/macos/.build/device-release/Eagle.app" \
+ditto -c -k --keepParent "apps/macos/.build/device-release/Eagle for Mac.app" \
   "/tmp/Eagle-$(node -p "require('./apps/macos/Support/Version.json').version")-macos.zip"
 shasum -a 256 /tmp/Eagle-*-macos.zip
 ```

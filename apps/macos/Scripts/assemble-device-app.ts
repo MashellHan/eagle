@@ -105,7 +105,7 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
       ? "ai.hexly.eagle.macos.device-candidate"
       : "ai.hexly.eagle.macos";
   const name =
-    profile === "device-candidate" ? "Eagle Device Candidate" : "Eagle";
+    profile === "device-candidate" ? "Eagle Device Candidate" : "Eagle for Mac";
   let info = readFileSync(join(support, "Info.plist"), "utf8");
   info = info.replace(
     "</dict>",

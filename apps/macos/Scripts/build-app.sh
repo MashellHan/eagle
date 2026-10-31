@@ -28,7 +28,7 @@ case "$CONFIG" in debug|release) ;; *) echo "Expected debug or release" >&2; exi
 PROFILE="${EAGLE_DEVICE_PROFILE:-device-candidate}"
 case "$PROFILE" in
   device-candidate) APP_NAME="Eagle Device Candidate.app" ;;
-  device-release) APP_NAME="Eagle.app" ;;
+  device-release) APP_NAME="Eagle for Mac.app" ;;
   *) echo "Expected device-candidate or device-release profile" >&2; exit 1 ;;
 esac
 NODE_BINARY="${EAGLE_NODE_BINARY:-$(command -v node)}"
