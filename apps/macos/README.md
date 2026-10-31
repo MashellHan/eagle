@@ -130,7 +130,7 @@ physical A-to-B command does not establish every step on a clean machine.
 
 ```sh
 cd apps/macos
-swift run EagleApp          # same shell without a bundle; ⌘⇧G opens the gallery
+swift run Eagle             # same shell without a bundle; ⌘⇧G opens the gallery
 swift test                 # Swift Testing suites for the logic layer
 ./Scripts/coverage.sh      # same tests plus a 90% logic-coverage gate
 swift run SnapshotRenderer ../../.local/macos-snapshots   # PNGs for review
@@ -180,7 +180,7 @@ Sources/
                        ThreeColumnShell
     Gallery/           TemplateGallery
   EagleFeatures/     ObservableObject view models and mock data
-  EagleApp/          AppKit delegate, window, gallery window
+  EagleApp/          AppKit delegate, window, gallery window (the `Eagle` product)
   SnapshotRenderer/  offscreen PNG renderer
   Scripts/           build-app, make-icon, coverage
 ```

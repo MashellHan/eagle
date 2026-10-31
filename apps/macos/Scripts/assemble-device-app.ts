@@ -69,7 +69,8 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
   const { sourceRoot, app, binary, helper, profile } = options;
   if (!app.endsWith(".app") || existsSync(app))
     throw new Error("bundle destination must be a new .app");
-  const support = join(sourceRoot, "apps/macos/Support");
+  const macos = join(sourceRoot, "apps/macos");
+  const support = join(macos, "Support");
   const config = JSON.parse(
     readFileSync(
       join(
@@ -84,7 +85,7 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
   if (profile === "device-release" || options.serviceUrl)
     config.baseUrl = origin(options.serviceUrl, profile);
   if (!existsSync(binary) || !existsSync(helper))
-    throw new Error("EagleApp and EagleDeviceHelper binaries are required");
+    throw new Error("Eagle and EagleDeviceHelper binaries are required");
   // The app's version is its own: releases of the website, the Agent and the app are
   // independent, so this file is the single source for every bundle the app is built into.
   const version = JSON.parse(
@@ -143,12 +144,15 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
   mkdirSync(resources);
   mkdirSync(join(contents, "Library/LaunchServices"), { recursive: true });
   mkdirSync(join(contents, "Library/LaunchAgents"));
-  copyFileSync(binary, join(contents, "MacOS/EagleApp"));
+  copyFileSync(binary, join(contents, "MacOS/Eagle"));
   copyFileSync(helper, join(app, helperRelative));
-  chmodSync(join(contents, "MacOS/EagleApp"), 0o755);
+  chmodSync(join(contents, "MacOS/Eagle"), 0o755);
   chmodSync(join(app, helperRelative), 0o755);
   writeFileSync(join(contents, "Info.plist"), info);
-  copyFileSync(join(support, "AppIcon.icns"), join(resources, "AppIcon.icns"));
+  copyFileSync(
+    join(macos, "Sources/EagleDesign/Resources/AppIcon.icns"),
+    join(resources, "AppIcon.icns"),
+  );
   save(join(resources, "DeviceHost.json"), config);
   let launchConfiguration = readFileSync(join(support, templatePlist), "utf8");
   if (profile === "device-candidate") {

@@ -51,6 +51,9 @@ struct EagleApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
+    // A bundle carries its icon in Info.plist; a `swift run` binary has none and would show the
+    // generic executable icon in the Dock.
+    if Bundle.main.bundleIdentifier == nil { NSApp.applicationIconImage = EagleIcon.image }
     NSApp.activate(ignoringOtherApps: true)
     DeviceApprovalWindowController.shared.observe(DeviceSettingsViewModel.shared)
     Task { @MainActor in await DeviceSettingsViewModel.shared.startIfNeeded() }

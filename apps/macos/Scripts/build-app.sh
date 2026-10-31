@@ -51,7 +51,7 @@ if [ "$PROFILE" = device-release ]; then
 fi
 swift build -c "$CONFIG"
 BINARY_DIRECTORY="$(swift build -c "$CONFIG" --show-bin-path)"
-BINARY="$BINARY_DIRECTORY/EagleApp"
+BINARY="$BINARY_DIRECTORY/Eagle"
 HELPER="$BINARY_DIRECTORY/EagleDeviceHelper"
 if [ ! -x "$HELPER" ]; then
   echo "Build requires the EagleDeviceHelper SPM executable target" >&2
@@ -64,7 +64,7 @@ STAGING="$(mktemp -d "$OUTPUT_DIRECTORY/.stage.XXXXXX")"
 trap 'rm -rf "$STAGING"' EXIT HUP INT TERM
 STAGED_APP="$STAGING/$APP_NAME"
 
-if [ ! -f Support/AppIcon.icns ]; then
+if [ ! -f Sources/EagleDesign/Resources/AppIcon.icns ]; then
   swift Scripts/make-icon.swift
 fi
 "$NODE_BINARY" Scripts/assemble-device-app.ts --app "$STAGED_APP" \
