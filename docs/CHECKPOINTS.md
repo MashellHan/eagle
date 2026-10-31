@@ -4581,3 +4581,24 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   missing/invalid-profile refusal pass. A normal Agent build resolves the stale
   dist Host mismatch; the unchanged icon also passes, without a cause/fix claim.
   P2 source review and normal merge delivery remain pending; no fresh live work.
+
+## 2026-10-31 22:12 +0800 — next fixed upstream point and original CI red
+
+- Normal merge645e697/tree277e858b delivers accepted profile P2/E1 with parents
+  60e4+8674; pre-commit0 and complete pre-push0 after selecting the already
+  verified official Node only for the subprocess. The first Homebrew Node runtime
+  assembly refusal remains. Root274/274, browser191/11 conditional skips and
+  Swift215/57/60 plus icon1 pass; own refs/clean/tracking0/0 match.
+- Natural fork CI41208380150 completes with root/browser and Worker success.
+  Devices33 pass; macOS Swift6.1.2/Xcode16.4 emit-module crashes with signal11
+  during EagleFeatures ASTLowering. All three raw logs are preserved. No rerun.
+- Actual upstream main moves to19f4 while PR base metadata still names8674.
+  Root/Lead authorize this as the next fixed point. Only that object is fetched;
+  the one Retrospective text conflict preserves both histories. Upstream selects
+  Xcode26.3 for CI; a new natural run must demonstrate the resulting behavior.
+- The full device-bots file finishes16/15pass/1fail/0skip: upstream's fresh
+  always-ask assertion sees the common fixture's explicit all-approve setup.
+  Only this fresh-policy case now defers that setup, retaining both original
+  always-ask and explicit policy.set assertions. Complete devices green is next.
+- No new live collection/authentication, D1, GUI/physical, settings or release.
+  PR112 readiness still needs the actual next head/CI and narrow Review binding.

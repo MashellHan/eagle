@@ -199,13 +199,14 @@ export function deviceProcess(
       pauseProof = false;
       for (const respond of heldProofs.splice(0)) respond();
     },
-    async ready() {
+    async ready({ approveTools = true } = {}) {
       await process.message((message) => message.type === "ready");
       await process.message(
         (message) => message.type === "cloud" && message.status === "online",
       );
-      // These cases exercise tools after the person's decision, not the fresh-device default.
-      await this.manage("policy.set", { mode: "all-approve" });
+      // Tool fixtures supply approval; fresh-policy cases make their own explicit decision.
+      if (approveTools)
+        await this.manage("policy.set", { mode: "all-approve" });
     },
     async manage(method: string, params?: unknown) {
       const requestId = randomUUID();

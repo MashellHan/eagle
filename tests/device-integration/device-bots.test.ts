@@ -43,7 +43,11 @@ type JSONRecord = Record<string, unknown>;
 type Directory = {
   localDeviceId: string;
   groupId: string | null;
-  devices: { deviceId: string; online: boolean | null }[];
+  devices: {
+    deviceId: string;
+    online: boolean | null;
+    policy: { mode: string } | null;
+  }[];
 };
 type Receipt = {
   operationId: string;
@@ -450,7 +454,17 @@ test("existing and new Bots share real paired devices, native tools and original
     worker = await workerFixture(workerRoot);
     a = deviceProcess(join(root, "a"), worker.origin);
     b = deviceProcess(join(root, "b"), worker.origin);
-    await Promise.all([a.ready(), b.ready()]);
+    await Promise.all([
+      a.ready({ approveTools: false }),
+      b.ready({ approveTools: false }),
+    ]);
+    for (const device of [a, b]) {
+      assert.equal((await device.manage("policy.get")).mode, "always-ask");
+      assert.equal(
+        (await device.manage("policy.set", { mode: "all-approve" })).mode,
+        "all-approve",
+      );
+    }
     daemon = await daemonProcess(
       join(root, "bots"),
       a.socketPath,
@@ -487,7 +501,10 @@ test("existing and new Bots share real paired devices, native tools and original
         "directory",
       )) as Directory;
       return directory.devices.length === 2 &&
-        directory.devices.every((device) => device.online === true)
+        directory.devices.every(
+          (device) =>
+            device.online === true && device.policy?.mode === "all-approve",
+        )
         ? directory
         : undefined;
     }, "paired Agent observations");

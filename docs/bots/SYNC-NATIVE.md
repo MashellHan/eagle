@@ -7,7 +7,7 @@ native composition. New execution inputs and evidence live under
 reused without another hash sweep. `182fc1f` is that historical common baseline.
 P5 source, final tree and the finite A/B native/restart scopes are accepted;
 B's pre-send interruption remains cause-not-assigned. PR112 now integrates
-the separately fixed upstream8674; new checks belong to that merged input.
+the separately fixed upstream8674 and then19f4; new checks belong to each merged input.
 
 ## Heads and contexts
 

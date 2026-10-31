@@ -1033,3 +1033,28 @@ processes use it. Same-profile Bot roots intentionally share the helper origin,
 while registration/pairing/Outbox keep their existing storage. The full Swift red
 and green use private domains and an independent preferences reader, without
 starting a live helper or changing daily data.
+
+During the 0.15.2 release, the shell's inherited Herdr pane identifiers pointed
+to another workspace. A split using `--current` opened an empty pane there; it
+was closed immediately, without running a command in it. The active agent list
+identified Eagle's actual pane. Before controlling Herdr, compare inherited
+identifiers with the live agent list and target the verified pane explicitly.
+
+During the 0.15.2 release, the green Check triggered deployment before the tag
+push's normal pre-push checks completed and before the draft was published.
+From 13:39:23 to 13:41:27 UTC, `/api/live` advertised 0.15.2 while the Latest
+release still pointed to 0.15.1; no affected client was observed. The release
+was then published and both endpoints agreed. Before the next app release,
+coordinate the automatic deployment with publication so the downloadable asset
+is public before the update endpoint advertises it; do not bypass the hooks.
+
+
+### 2026-10-31 — fixture approval ownership when integrating the next upstream point
+
+The common sync tool fixture explicitly approved tools during readiness. The next
+upstream device-Bots case instead asserts fresh always-ask before making its own
+approval. Their first complete-file merge red is an ownership collision between
+fixture prerequisites, not a reason to weaken the production permission default.
+That case now defers common approval and keeps its original assertions/decision;
+the other tool fixtures keep their existing setup. The first645 CI compiler crash
+and the next input's upstream Xcode selection remain separate execution evidence.

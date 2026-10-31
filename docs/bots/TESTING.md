@@ -2123,3 +2123,19 @@ evidence, not installed-helper or physical restart evidence. Inputs remain stabl
 The first run also had three stale Agent-dist Host policy failures; a normal Agent
 build precedes green. Its icon failure passes unchanged on the later complete run;
 the original failure remains without a claimed fix or assigned cause.
+
+### 2026-10-31 — fixed19f4 integration preserves explicit policy ownership
+
+The complete original `device-bots.test.ts` on the first19f4 merge finishes
+16 tests/15pass/1fail/0skip: its new fresh always-ask assertion receives
+all-approve from the common tool fixture's accepted readiness setup. The fixture
+now lets this one case defer tool approval; the unchanged test first proves the
+fresh production policy, then performs its own trusted policy.set and waits for
+both online directional observations to report all-approve. Other tool fixtures
+retain their explicit prerequisite setup. No product default or assertion changes.
+
+Previous645e697 natural CI41208380150 is retained separately: root/browser and
+Worker succeed, devices33 succeed, then Xcode16.4/Swift6.1.2 crashes with signal11
+in EagleFeatures emit-module/ASTLowering.19f4's CI environment selects Xcode26.3;
+this changes the observed toolchain input, with success pending a new head's actual
+natural CI. No failed workflow is manually rerun or old green relabeled.

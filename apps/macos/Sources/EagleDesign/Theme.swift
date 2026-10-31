@@ -57,6 +57,12 @@ public enum Theme {
     public static let trafficLightLeading: CGFloat = 16
     public static let trafficLightSize: CGFloat = 13.5
     public static let trafficLightPitch: CGFloat = 23
+    /// A hidden-titlebar window lets the system park the buttons about 10 pt in; these nudge them
+    /// onto the leading/top grid above so they do not hug the corner.
+    public static let trafficLightNudgeX: CGFloat = 7
+    /// Downward in the titlebar's own coordinates, so the lights' top edge lands on the same
+    /// line as the header control row (both start at `headerTopInset`).
+    public static let trafficLightNudgeY: CGFloat = -11.5
     public static let trafficLightsEnd: CGFloat =
       trafficLightLeading + trafficLightPitch * 2 + trafficLightSize
     public static let toolbarHeight: CGFloat = 35
@@ -154,6 +160,8 @@ public enum Theme {
     public static let windowInset: CGFloat = 8
 
     public static let avatarRow: CGFloat = 34
+    /// The footer's product mark is a scaled app icon: it takes the macOS icon corner, not none.
+    public static let productMarkRadius: CGFloat = 8
     public static let avatarProfile: CGFloat = 55
     public static let avatarInspector: CGFloat = 76
     public static let avatarNote: CGFloat = 18

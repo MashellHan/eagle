@@ -101,7 +101,7 @@ PR only after all authorized goals and these scenarios pass; PR112 is now open
 for review against `nocoo/eagle:main`. Do not merge it.
 
 `182fc1f` is the historical common development baseline. The user authorized this
-one integration of exact upstream main8674a3ee for PR112; do not chase a moving
+integration of upstream8674a3ee followed by fixed19f4a00a for PR112; do not chase a moving
 upstream. Preserve all published sync commits; #109 monitoring remains closed.
 
 ## 多端 Bot 整体实施计划（2026-10-30）
@@ -183,7 +183,7 @@ tree 与 `165d154` 完全相同。在已交付干净节点 `8b5ca36` 后，实�
 不重新实现设备底座，也不把现有注册 signer 当作通用签名接口。
 
 历史同步候选基于 `182fc1f704774eb37bdbc11cde017f8ff61f1c1a`；当前 PR112
-按授权整合固定 upstream8674a3ee，复核实际祖先与最终同步 diff，不重复带入 #109。
+按授权先整合8674a3ee、再整合实际 main 的固定19f4a00a，复核祖先与同步 diff，不重复带入 #109。
 个人验证 PR 的 `bot-sync/base` 已从历史165d154正常快进至182；upstream PR 目标为 `main`。
 
 ### 已确定的行为
