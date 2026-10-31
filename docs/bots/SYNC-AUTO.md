@@ -107,8 +107,10 @@ Verified owned objects plus actual available ranges avoid repeated downloads and
 ineffective apply. Missing received facts retry through the stored object; the
 existing core drain already loops all sources for new dependencies. Source rotation
 allows dependencies to catch up. Scan progress cannot update received or
-applied. Empty results remain incomplete. Relay/metadata discovery, holder expired
-reread and real peer-applied ACK are a subsequent slice, before P5.
+applied. Empty results remain incomplete. The current [SYNC-RELAY.md](SYNC-RELAY.md)
+slice adds online-holder discovery/expired-or-missing-cache reread and only
+relay-delivery-associated receipts. Direct/cache sender ACK and connection-status
+peerApplied remain unknown until the next status-report/status-read slice, before P5.
 
 For upload ACK loss, persist the exact prepared objectId and immutable source,
 seq/eventDigest list and nextAfter before the request. Retry that objectId through

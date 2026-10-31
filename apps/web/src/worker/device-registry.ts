@@ -11,6 +11,11 @@ import {
   verifySyncKeyDescriptor,
 } from "../../../../packages/contracts/src/device-objects.ts";
 import {
+  SyncRelayAuthorityCheck,
+  SyncRelayAuthorityRequest,
+  SyncRelayAuthorization,
+} from "../../../../packages/contracts/src/device-relay.ts";
+import {
   SyncAccess,
   SyncCandidate,
   SyncIdentity,
@@ -42,6 +47,7 @@ export class DeviceHttpError extends Error {
     super(message);
   }
 }
+class RelayRegistryUnavailable extends Error {}
 export const deviceJSON = (data: unknown, status = 200) =>
   Response.json(data, {
     status,
@@ -134,6 +140,7 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
     CREATE TABLE IF NOT EXISTS sync_endpoints(deviceId TEXT PRIMARY KEY,binding TEXT NOT NULL,publishedAt INTEGER NOT NULL,candidates TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS sync_wrapping_keys(deviceId TEXT PRIMARY KEY,binding TEXT NOT NULL,descriptor TEXT NOT NULL,publishedAt INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS sync_cache_authorities(hash TEXT PRIMARY KEY,sessionHash TEXT NOT NULL,authorization TEXT NOT NULL,expires INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS sync_relay_authorities(hash TEXT PRIMARY KEY,sessionHash TEXT NOT NULL,authorization TEXT NOT NULL,expires INTEGER NOT NULL);
   `);
     for (const [table, column, definition] of [
       ["devices", "localRevision", "INTEGER NOT NULL DEFAULT 0"],
@@ -292,6 +299,93 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
       };
     }
   }
+  private relayHolders(
+    reader: z.infer<typeof SyncIdentity>,
+    sharedBotId: string,
+  ) {
+    const rows = this.ctx.storage.sql
+      .exec<{ grantingDeviceId: string }>(
+        "SELECT grantingDeviceId FROM sync_grants WHERE sharedBotId=? AND peerDeviceId=? ORDER BY grantingDeviceId LIMIT 129",
+        sharedBotId,
+        reader.deviceId,
+      )
+      .toArray();
+    if (rows.length > 128)
+      throw new DeviceHttpError(429, "sync_relay_holder_limit");
+    const holders: z.infer<typeof SyncIdentity>[] = [];
+    for (const row of rows) {
+      try {
+        const holder = syncIdentity(this.device(row.grantingDeviceId));
+        this.cacheGrant(holder, reader, sharedBotId);
+        holders.push(holder);
+      } catch (error) {
+        if (!(error instanceof DeviceHttpError)) throw error;
+      }
+    }
+    return holders;
+  }
+  async checkRelayAuthority(value: unknown) {
+    try {
+      const input = SyncRelayAuthorityCheck.parse(value);
+      const hash = await deviceDigest(input.authority);
+      return this.ctx.storage.transactionSync(() => {
+        const row = this.one<{
+          sessionHash: string;
+          authorization: string;
+          expires: number;
+        }>(
+          "SELECT sessionHash,authorization,expires FROM sync_relay_authorities WHERE hash=?",
+          hash,
+        );
+        if (!row || row.expires <= Date.now())
+          throw new DeviceHttpError(403, "sync_relay_authority_expired");
+        const authorization = SyncRelayAuthorization.parse(
+          JSON.parse(row.authorization),
+        );
+        const requester = syncIdentity(this.sessionDevice(row.sessionHash));
+        if (
+          authorization.expiresAt !== row.expires ||
+          authorization.operation !== input.operation ||
+          authorization.sharedBotId !== input.sharedBotId ||
+          authorization.requestDigest !== input.requestDigest ||
+          canonicalDeviceJSON(requester) !==
+            canonicalDeviceJSON(authorization.requester)
+        )
+          throw new DeviceHttpError(403, "invalid_sync_relay_authority");
+        if (authorization.holder && authorization.reader) {
+          this.cacheGrant(
+            authorization.holder,
+            authorization.reader,
+            authorization.sharedBotId,
+          );
+        }
+        return {
+          ok: true as const,
+          authorization,
+          ...(input.operation === "discover"
+            ? { holders: this.relayHolders(requester, input.sharedBotId) }
+            : {}),
+        };
+      });
+    } catch (error) {
+      if (
+        !(error instanceof DeviceHttpError) &&
+        !(error instanceof z.ZodError) &&
+        !(error instanceof SyntaxError)
+      )
+        throw new RelayRegistryUnavailable("sync_relay_registry_unavailable", {
+          cause: error,
+        });
+      return {
+        ok: false as const,
+        status: error instanceof DeviceHttpError ? error.status : 403,
+        error:
+          error instanceof DeviceHttpError
+            ? error.message
+            : "invalid_sync_relay_authority",
+      };
+    }
+  }
   async authorize(
     token: string,
     targetId: string,
@@ -394,6 +488,8 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
     try {
       return await this.route(request);
     } catch (error) {
+      if (error instanceof RelayRegistryUnavailable)
+        return deviceJSON({ error: "sync_relay_registry_unavailable" }, 503);
       return deviceFailure(error);
     }
   }
@@ -565,6 +661,60 @@ export class DeviceRegistry extends DurableObject<DeviceServiceEnv> {
         version: 1,
         identity: syncIdentity(this.sessionDevice(sessionHash)),
       });
+    if (path === "/sync/relay/authority" && post) {
+      const input = SyncRelayAuthorityRequest.parse(await deviceBody(request));
+      const authority = deviceBase64(
+        crypto.getRandomValues(new Uint8Array(32)),
+      );
+      const hash = await deviceDigest(authority);
+      try {
+        return write((current) => {
+          const requester = syncIdentity(current);
+          const peer = input.peerDeviceId
+            ? syncIdentity(this.device(input.peerDeviceId))
+            : null;
+          const holder = input.operation === "receipts" ? requester : peer;
+          const reader =
+            input.operation === "receipts" ? peer : peer ? requester : null;
+          if (holder && reader)
+            this.cacheGrant(holder, reader, input.sharedBotId);
+          const authorization = SyncRelayAuthorization.parse({
+            version: 1,
+            purpose: "replica.relay",
+            operation: input.operation,
+            registryOrigin: new URL(request.url).origin,
+            sharedBotId: input.sharedBotId,
+            requestDigest: input.requestDigest,
+            requester,
+            holder,
+            reader,
+            expiresAt: Date.now() + 60000,
+          });
+          this.ctx.storage.sql.exec(
+            "DELETE FROM sync_relay_authorities WHERE expires<=?",
+            Date.now(),
+          );
+          this.ctx.storage.sql.exec(
+            "INSERT INTO sync_relay_authorities VALUES(?,?,?,?)",
+            hash,
+            sessionHash,
+            JSON.stringify(authorization),
+            authorization.expiresAt,
+          );
+          return deviceJSON({ ...authorization, authority });
+        });
+      } catch (error) {
+        if (
+          error instanceof DeviceHttpError ||
+          error instanceof z.ZodError ||
+          error instanceof SyntaxError
+        )
+          throw error;
+        throw new RelayRegistryUnavailable("sync_relay_registry_unavailable", {
+          cause: error,
+        });
+      }
+    }
     if (path === "/sync/cache/authority" && post) {
       const input = SyncCacheAuthorityRequest.parse(await deviceBody(request));
       const authority = deviceBase64(

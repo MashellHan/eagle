@@ -1,5 +1,4 @@
 import { DurableObject } from "cloudflare:workers";
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   boundCarrier,
@@ -12,6 +11,8 @@ import {
   same,
   slotKey,
 } from "./crypto.ts";
+import { CacheError, context, failure, json } from "./errors.ts";
+import { Relay, relayBody } from "./relay.ts";
 import {
   Authorization,
   type AuthorizationValue,
@@ -28,21 +29,12 @@ export type CacheEnv = {
   SYNC: DurableObjectNamespace<SyncCache>;
   CIPHERS: R2Bucket;
   REGISTRY_ORIGIN: string;
-  REGISTRY: { checkCacheAuthority(input: unknown): Promise<unknown> };
+  REGISTRY: {
+    checkCacheAuthority(input: unknown): Promise<unknown>;
+    checkRelayAuthority(input: unknown): Promise<unknown>;
+  };
 };
 const TTL = 72 * 60 * 60 * 1000;
-class CacheError extends Error {
-  readonly status: number;
-  constructor(status: number, message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.status = status;
-  }
-}
-const json = (value: unknown, status = 200) =>
-  Response.json(value, {
-    status,
-    headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
-  });
 async function readBody(request: Request) {
   if (!request.headers.get("content-type")?.startsWith("application/json"))
     throw new CacheError(415, "expected_json");
@@ -98,52 +90,16 @@ function deadline(...deadlines: number[]): void {
   if (deadlines.some((value) => !Number.isSafeInteger(value) || value <= Date.now()))
     throw new CacheError(410, "sync_cache_expired");
 }
-function context(request: Request) {
-  const trace = request.headers.get("x-bots-sync-trace");
-  const botId = request.headers.get("x-bots-sync-bot");
-  return {
-    trace: trace && /^tr_[A-Za-z0-9_-]{1,128}$/.test(trace) ? trace : `tr_cache_${randomUUID()}`,
-    ...(botId && /^b_[A-Za-z0-9_-]{1,128}$/.test(botId) ? { botId } : {}),
-  };
-}
-function failure(error: unknown, request: Request): Response {
-  const status =
-    error instanceof CacheError
-      ? error.status
-      : error instanceof z.ZodError || error instanceof SyntaxError
-        ? 400
-        : 403;
-  const code =
-    error instanceof Error && /^sync_[a-z_]+$/.test(error.message)
-      ? error.message
-      : "sync_cache_invalid";
-  const fields = context(request);
-  const failure = {
-    id: `f_${randomUUID().replaceAll("-", "").slice(0, 12)}`,
-    kind:
-      status >= 500
-        ? code === "sync_cache_registry_unreachable"
-          ? "internal"
-          : "storage_failed"
-        : "auth_failed",
-    layer: "runtime",
-  };
-  // Keep the original local cause on CacheError; only bounded codes/identity cross the log/wire.
-  console.error(
-    JSON.stringify({
-      level: "error",
-      layer: "runtime",
-      evt: "runtime.sync.fail",
-      ...fields,
-      err: { kind: failure.kind, failure: failure.id, origin: true },
-      detail: { reason: "upstream", providerCode: code.slice(0, 40) },
-    }),
-  );
-  return json({ error: { code, failure }, trace: fields.trace }, status);
-}
 export default {
   async fetch(request: Request, env: CacheEnv) {
     try {
+      if (new URL(request.url).pathname.startsWith("/v1/relay/")) {
+        const sharedBotId =
+          request.method === "GET"
+            ? z.uuid().parse(new URL(request.url).searchParams.get("sharedBotId"))
+            : z.uuid().parse((await relayBody(request.clone())).sharedBotId);
+        return await env.SYNC.getByName(sharedBotId).fetch(request);
+      }
       const route = new URL(request.url).pathname.match(/^\/v1\/cache\/(publish|list|get)$/);
       if (!route) return json({ error: "not_found" }, 404);
       if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -200,8 +156,10 @@ type EventRow = {
 };
 
 export class SyncCache extends DurableObject<CacheEnv> {
+  readonly relay: Relay;
   constructor(ctx: DurableObjectState, env: CacheEnv) {
     super(ctx, env);
+    this.relay = new Relay(ctx, env);
     ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS objects(objectId TEXT PRIMARY KEY,metadata TEXT NOT NULL,cipherLength INTEGER NOT NULL,r2Key TEXT NOT NULL,uploaded INTEGER,firstCachedAt INTEGER,expiresAt INTEGER,state TEXT NOT NULL,unresolved INTEGER NOT NULL DEFAULT 0,physical TEXT NOT NULL DEFAULT 'unknown');
       CREATE TABLE IF NOT EXISTS events(replicaId TEXT NOT NULL,epoch TEXT NOT NULL,seq INTEGER NOT NULL,eventDigest TEXT NOT NULL,firstCachedAt INTEGER,expiresAt INTEGER,tombstone INTEGER NOT NULL DEFAULT 0,pending TEXT,PRIMARY KEY(replicaId,epoch,seq));
@@ -253,6 +211,7 @@ export class SyncCache extends DurableObject<CacheEnv> {
     }
   }
   override async fetch(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname.startsWith("/v1/relay/")) return this.relay.fetch(request);
     try {
       const input = await readBody(request);
       if (!this.ctx.id.equals(this.env.SYNC.idFromName(input.sharedBotId)))

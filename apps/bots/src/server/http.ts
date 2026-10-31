@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
+import { z } from "zod";
 import { DirectoryError } from "../core/BotDirectory.ts";
 import type { BotRegistry } from "../core/BotRegistry.ts";
 import type { ConversationService } from "../core/ConversationService.ts";
@@ -449,6 +450,60 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
       return;
     }
     try {
+      const relayMatch =
+        /^\/v1\/bots\/([A-Za-z0-9_-]+)\/sync\/relay\/(register|discover|pull|ack|receipts)$/.exec(
+          path,
+        );
+      if (relayMatch && request.method === "POST") {
+        if (request.headers.origin !== undefined) {
+          json(response, 403, {
+            error: { kind: "auth_failed", message: "origin is not accepted" },
+          });
+          return;
+        }
+        const sync = options.sync;
+        if (!sync?.relayRegister || !sync.relayDiscover || !sync.relayPull) {
+          json(response, 409, {
+            error: { kind: "invalid_command", message: "relay synchronization is not configured" },
+          });
+          return;
+        }
+        const trace = `tr_http_${++sequence}`,
+          botId = relayMatch[1] as string;
+        const input = await readBody(request);
+        try {
+          let result: unknown;
+          if (relayMatch[2] === "pull")
+            result = await sync.relayPull(botId, syncPullInput.parse(input), trace);
+          else if (relayMatch[2] === "ack") {
+            if (!sync.relayAck) throw new Error("sync_unconfigured");
+            result = await sync.relayAck(botId, input, trace);
+          } else if (relayMatch[2] === "receipts") {
+            if (!sync.relayReceipts) throw new Error("sync_unconfigured");
+            result = await sync.relayReceipts(botId, input, trace);
+          } else {
+            z.strictObject({}).parse(input);
+            result =
+              relayMatch[2] === "register"
+                ? await sync.relayRegister(botId, trace)
+                : await sync.relayDiscover(botId, trace);
+          }
+          json(response, 200, result);
+        } catch (error) {
+          if (error instanceof z.ZodError) {
+            json(response, 400, {
+              error: { kind: "invalid_command", message: "invalid relay selector" },
+            });
+            return;
+          }
+          if (!(error instanceof ClassifiedFailure)) throw error;
+          json(response, error.failure.kind === "auth_failed" ? 403 : 503, {
+            error: { kind: error.failure.kind, message: error.message, failure: error.failure.id },
+            trace,
+          });
+        }
+        return;
+      }
       const cacheMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/sync\/cache\/(publish|list|receive)$/.exec(
         path,
       );

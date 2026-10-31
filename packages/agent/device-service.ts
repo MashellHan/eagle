@@ -22,6 +22,10 @@ import {
   syncDescriptorPayload,
 } from "../contracts/src/device-objects.ts";
 import {
+  SyncRelayAuthority,
+  SyncRelayAuthorityRequest,
+} from "../contracts/src/device-relay.ts";
+import {
   SyncAccess,
   SyncAccessResult,
   SyncIdentityResult,
@@ -445,6 +449,52 @@ export async function runDeviceService(): Promise<void> {
             canonicalDeviceJSON(recipient)
         )
           throw new Error("invalid_sync_cache_authority");
+        return result;
+      }
+      case "sync.relay.authority": {
+        const input = SyncRelayAuthorityRequest.parse(params);
+        const syncCloud = cloud;
+        const result = SyncRelayAuthority.parse(
+          await syncCloud.manage("/sync/relay/authority", input),
+        );
+        const identity = SyncIdentityResult.parse(
+          await syncCloud.manage("/sync/identity"),
+        ).identity;
+        let holder = null,
+          reader = null;
+        if (input.peerDeviceId) {
+          const access = SyncAccessResult.parse(
+            await syncCloud.manage(
+              input.operation === "receipts"
+                ? "/sync/peer/authorize"
+                : "/sync/access",
+              {
+                sharedBotId: input.sharedBotId,
+                peerDeviceId: input.peerDeviceId,
+                purpose: "replica.read",
+              },
+            ),
+          );
+          holder = input.operation === "receipts" ? access.local : access.peer;
+          reader = input.operation === "receipts" ? access.peer : access.local;
+        }
+        if (
+          stopping ||
+          session.closed ||
+          cloud !== syncCloud ||
+          result.registryOrigin !==
+            new URL(configuration?.baseUrl ?? "").origin ||
+          result.operation !== input.operation ||
+          result.sharedBotId !== input.sharedBotId ||
+          result.requestDigest !== input.requestDigest ||
+          result.expiresAt <= Date.now() ||
+          result.expiresAt > Date.now() + 60000 ||
+          canonicalDeviceJSON(result.requester) !==
+            canonicalDeviceJSON(identity) ||
+          canonicalDeviceJSON(result.holder) !== canonicalDeviceJSON(holder) ||
+          canonicalDeviceJSON(result.reader) !== canonicalDeviceJSON(reader)
+        )
+          throw new Error("invalid_sync_relay_authority");
         return result;
       }
       case "sync.key.publish":

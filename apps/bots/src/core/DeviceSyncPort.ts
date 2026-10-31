@@ -15,6 +15,7 @@ import type {
   SyncSealResult,
   syncObjectPullInput,
 } from "./DeviceSyncObjects.ts";
+import type { relayAuthority, relayAuthorityRequest } from "./DeviceSyncRelay.ts";
 
 export const deviceSyncPeer = z.strictObject({
   deviceId: z.uuid(),
@@ -86,6 +87,10 @@ export interface DeviceSyncPort {
     input: z.infer<typeof deviceSyncInput> & { sharedBotId: string },
     context: { trace: string; botId: string },
   ): Promise<z.infer<typeof publishedDescriptor>>;
+  relayAuthority?(
+    input: z.infer<typeof relayAuthorityRequest>,
+    context: { trace: string; botId: string },
+  ): Promise<z.infer<typeof relayAuthority>>;
   cacheAuthority?(
     input: z.infer<typeof cacheAuthorityRequest>,
     context: { trace: string; botId: string },
@@ -165,6 +170,11 @@ export interface SyncApi {
     input: z.infer<typeof cacheReceiveInput>,
     trace: string,
   ): Promise<unknown>;
+  relayAck?(botId: string, input: unknown, trace: string): Promise<unknown>;
+  relayReceipts?(botId: string, input: unknown, trace: string): Promise<unknown>;
+  relayRegister?(botId: string, trace: string): Promise<unknown>;
+  relayDiscover?(botId: string, trace: string): Promise<unknown>;
+  relayPull?(botId: string, input: z.infer<typeof syncPullInput>, trace: string): Promise<unknown>;
   pullObject?(
     botId: string,
     input: z.infer<typeof syncObjectPullInput>,

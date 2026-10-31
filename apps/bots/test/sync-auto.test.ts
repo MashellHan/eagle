@@ -1001,3 +1001,50 @@ test("another source drains the held dependency through existing SDK semantics w
   assert.equal(h.calls.receive, 2);
   assert.equal(h.calls.apply, 2);
 });
+
+for (const [status, code, cleared] of [
+  [410, "sync_relay_delivery_unavailable", true],
+  [410, "sync_relay_expired", false],
+  [403, "sync_relay_delivery_mismatch", false],
+  [503, "sync_relay_storage_failed", false],
+] as const)
+  test(`persisted relay ACK ${code} clears only an explicitly unavailable current-authorized delivery`, async (t) => {
+    const h = fixture(t);
+    await h.configure("receive");
+    h.auto.close();
+    const saved = h.preferences();
+    saved.connections[0].pendingReceipt = {
+      peerDeviceId: h.f.descriptor.deviceId,
+      delivery: {
+        requestId: "00000000-0000-4000-8000-000000000001",
+        sessionId: "a".repeat(43),
+        objectId: h.page.objectId,
+        source: h.remote,
+      },
+    };
+    writeFileSync(join(h.root, "sync-connections/v1.json"), JSON.stringify(saved));
+    let acknowledgements = 0;
+    Object.assign(h.api, {
+      relayAck: async () => {
+        acknowledgements++;
+        throw new SyncRemoteError(status, code);
+      },
+    });
+    const reopened = new AutomaticSync(
+      h.root,
+      h.registry,
+      h.api as unknown as AuthenticatedSync,
+      h.log,
+    );
+    try {
+      reopened.start();
+      await h.tick();
+      assert.equal(acknowledgements, 1);
+      assert.equal(h.preferences().connections[0].pendingReceipt === undefined, cleared);
+      assert.equal(h.calls.apply, 0);
+      assert.equal(h.calls.receive, 0);
+      assert.equal(h.calls.list, 0);
+    } finally {
+      reopened.close();
+    }
+  });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RelayDelivery } from "./DeviceSyncRelay.ts";
 import { BOT_ID_PATTERN } from "./domain.ts";
 
 export const syncSource = z.strictObject({ replicaId: z.uuid(), epoch: z.uuid() });
@@ -28,6 +29,7 @@ export const syncPreference = syncConnectionInput.extend({
   botId: z.string().regex(BOT_ID_PATTERN),
   peerDeviceId: z.uuid(),
   binding: syncBinding,
+  pendingReceipt: z.strictObject({ peerDeviceId: z.uuid(), delivery: RelayDelivery }).optional(),
   pendingApply: z
     .string()
     .regex(/^[a-f0-9]{64}$/)

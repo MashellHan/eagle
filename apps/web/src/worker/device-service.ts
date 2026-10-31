@@ -13,6 +13,11 @@ export type DeviceServiceEnv = {
 
 /** Fixed service-binding metadata RPC; public fetch never exposes this verifier. */
 export class SyncCacheRegistry extends WorkerEntrypoint<DeviceServiceEnv> {
+  checkRelayAuthority(input: unknown) {
+    return this.env.DEVICE_REGISTRY.getByName("registry").checkRelayAuthority(
+      input,
+    );
+  }
   checkCacheAuthority(input: unknown) {
     return this.env.DEVICE_REGISTRY.getByName("registry").checkCacheAuthority(
       input,

@@ -642,3 +642,27 @@ exclusive link is fenced against directory/binding/handle/tombstone and lifetime
 Local stored apply uses the existing runtime command actual-use guard and passive receive;
 network readiness cannot invalidate that offline capability. Ordinary open/recover and SDK
 scheduling retain their existing contract. No cache,transport retry or new execution queue exists.
+
+## Online-holder relay ownership
+
+Bots owns its own finite relay schemas/SyncRelay adapter and automatic ready-only
+composition. The independent Bots Sync Worker owns bounded in-memory encrypted
+forwarding plus holder/delivery/receipt metadata in the existing per-sharedBot DO.
+Its only Registry dependency is the named metadata-authority RPC, never source
+imports from Eagle. Swift/helper carries typed identity/auth/proof metadata only.
+No plaintext baseline/body or private key enters DO metadata, and relay never
+writes R2 or renews the72h event clock.
+
+Relay transport generation and one-use challenges are independent of direct Self
+readiness. Both share original closed/full-binding/tombstone/time/current-grant
+and actual publish/receive admission fences. The automatic cloud candidate tries
+relay only for a truthful cache gap or absent baseline; it remains one inbound
+candidate beside at most one complete direct probe, with independent upload.
+Source coverage is an authorized hint; pages retain original source events and
+resource pins. Existing local full-source drain handles cross-source dependencies.
+
+One pendingApply objectId and one associated pendingReceipt per preference suffice
+for cold local retry and lost ACK recovery. Local apply precedes network work;
+current-authorized explicit delivery-unavailable can release only ACK waiting.
+No generic queue, scheduler, crypto session, drain API or new reverse grant.
+This slice reports only relay-associated receipts; all-path status follows before P5.

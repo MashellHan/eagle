@@ -1495,3 +1495,142 @@ changed controller, and their loaded unchanged branches are reused explicitly,
 not described as all-source equality or new v2 execution. Original Swift scopes
 181/142/181/71 still match; no new Swift-wide gate is claimed. Browser remains
 normal pre-push. Final candidate binding and independent acceptance precede delivery.
+
+### Online-holder relay, original-source reread and delivery-associated ACK
+
+Stable source-v1-complete088cf33d retains697 selected inputs (all689 previous, including3
+unchanged README files, plus8 new source/test files),740 full paths and22 actual source deltas.
+Preliminary source-v1495c2bca selected694 because it omitted those3 unchanged README files; it
+is retained, and complete receipt documents that selection correction with no source edit.
+Original/base changed bytes and source.patch61a28517 are archived. Static-third3d4e7e80 runs
+root/Bots/Worker strict types and check-only lint, all exit0 and740 unchanged; informational
+legacy diagnostics remain visible. Earlier format/lint and nullable test closure errors retain
+raw receipts, not product red/green.
+
+The first cleanup runs and prior name-pattern attempts are fixture/local scope, never normal
+gate evidence. Corrected entry thirdcfdc7082 reaches missing local metadata method;5c7e1a3a
+covers the real session/helper/ready path. Registry404ba4f607d→bfdca557 and
+Worker4040f2b6fdc→72ba661f bind their actual separate interfaces. Automatic relay
+full-first11044c38 reaches missing baseline; full-second681fad1f succeeds in the new holder
+chain while the old CF-only gap premise no longer holds. The gap fixture subsequently removes
+its owned holder connection, preserving all count/byte/gap assertions; this is premise
+adaptation.
+
+Real owning-DO ACK SQL and same-socket renewal reds36d7eec5 become complete-file7/7d9c8f4a6.
+Role claims08508be7→5dc33f5d deny actual wrong namespace/reader independent of caller hash.
+Worker delivery expiry403→dedicated410 is in fbebf337→b265a575; the first large SDK head8MiB
+fixture violation and missing cross-source resource400 retain their scope, with unchanged
+production bounds. Full-pages4ec1e1c confirms source rotation and true multi-page restore.
+Component unavailable-receipt290cd05d→390ef2e5 separately binds exact persisted recovery.
+
+Holder-origin205987bc genuinely replaced the original failure and admitted a malformed holder
+error. eed304ee closes both new windows; its remaining startup lock-port collision is a fixture
+failure before assertions, with external processes and lock rule untouched.
+Recovery-firstf6e97113 is7/8 only because the binding-stage oracle expected403; the existing
+ready/core returns invalid_command503. Recovery-secondf6b66da8 is8/8 on two original complete
+files and740 unchanged inputs; only the test changes between these runs. This7/8→8/8 is
+oracle/window correction, no new product repair.
+
+The final real local chain uses Registry SQLite, three durable Swift helper vaults, independent
+Node/Bots daemons and Miniflare DO. A native fork carries a true B-source parent; B holds
+A's143-event history/resources. A goes offline; R2 cache is absent; C's automatic loop restores
+two A pages (first8,333,988 bytes) plus B's source. Exactly3 object exchanges, no per-event
+download, no repeated object on second tail/gap visit andR2get0; original
+source/body/head/sections/resources and fixed pins agree. Passive
+provider/submission/task/local_runs/peer/PR do not grow; final C native adds2 provider calls.
+Actual receive commit then facts-table SQL failure retains cause/trace/Bot and one origin; C
+cold restart retries persisted local pendingApply with no extra get. Actual ACK commits before
+an owned response-body failure; its one persisted pendingReceipt survives restart. Explicit
+current-authorized delivery-unavailable later clears ACK waiting, not real progress, and does
+not block new data. Old socket late response cannot pin; Self loss permits relay, while binding
+change/close refuse before pin.
+
+| Normal frozen command / label | Actual scope and log SHA prefix |
+| --- | --- |
+| Root/Bots/Worker types + check-only lint / relay-static-third | exit0;3d4e7e80. Earlier lint import/type/non-null diagnostics and test-only nullable closure static failure38d4f680 are retained separately; no product behavior claim. |
+| `npm --prefix apps/bots run check` / relay-bots-check-first | fixtures34;ordinary915/915 and same coverage915/915;92.42 lines/87.18 branches/90.05 functions, original90/85/90 thresholds;875a27b7. |
+| `npm --prefix apps/bots-sync run check` / relay-worker-check-first |26/26,strict types/check-only lint,dry-run build;d8153cc4. |
+| `npm run check` / relay-root-check-first |269/269,strict types/check-only lint/build;69a1d489. Whole normal command runs alone after other heavy gates; no altered test concurrency. |
+| `npm run test:devices` / relay-devices-first |complete29/29,no skip/cancel;9f7ef7b9. Repeats actual143-event/3-object/cold/lost-ACK/window chain against final frozen source. |
+| `npm --prefix apps/bots run test:crash` / relay-crash-first |normal complete17/17;1252d3d8. Changed loaded HTTP/private-port/sync startup inputs are rebound. |
+| `npm --prefix apps/bots run eval -- --case chat-basic` / relay-eval-chat-first |existing exact eval case/two rows;28761e3e. |
+| `npm --prefix apps/bots run eval -- --case root-resources` / relay-eval-resources-first |existing exact eval case/two rows;cc11463c. Not broader eval/live/perf evidence. |
+
+All eight records bind every697 frozen input and have identical740 full maps before/after.
+`.local/sync-p4-online-relay/gates-v1.json` SHA0d0c5354 binds exact raw/start/exit/log
+and command scopes. For paused candidate-v1, subsequent differences from these740 maps were docs only.
+The registration-ownership repair below adds five source/fixture differences; it
+has separate normal executions and does not relabel these old runs.
+Source088cf33d and its original selected/current/base byte archives remain frozen.
+
+Swift reuse e206754c checks every original181/142/181/71 input with no differences:
+independent package build/tests, official apps/macos strict scope, original filtered
+macOS default90 coverage93.2% and independent client default90 coverage90.9% retain
+only their exact old scopes. Devices actually builds/runs the real helper. No new
+Swift-wide check or physical Mac run is claimed. Browser and original Swift push
+checks remain normal pre-push. Normal root build's bundle-size advisory and legacy
+lint informational diagnostics remain visible; errors/warnings were not suppressed.
+
+This candidate still requires independent Review and Lead acceptance before normal
+commit/hooks/first own-fork push. It proves relay-associated receipts only:
+direct/cache sender confirmation and connection peerApplied remain unknown until
+the next authorized status-report/read slice. No deployment, public WSS, elapsed72h,
+physical Tailscale, native App replacement or completeP4/P5/P6 claim.
+
+
+### Relay Review P2#1: automatic holder registration ownership
+
+Old source088cf33d/candidate911653b9/tree1a2fba9f and all original evidence remain
+immutable. Reviewer closed every other path; the only confirmed P2 is automatic
+registration surviving DELETE/disable/rebind before its relay epoch exists.
+The separate same-binding handle question was excluded along the existing serve
+chain; it introduces no second finding or additional implementation.
+
+register-owner-red-first7b7836ca is a fixture TypeError (incorrect Miniflare handle
+sql.exec), not product red. Corrected red-secondc33ae878 runs the entire original
+`node --test tests/device-integration/encrypted-objects.test.ts`:7 pass/3 fail
+(two nested assertions plus parent),0 skip/cancel. Both real SDK status and ready
+check awaits are held before an actual DELETE, then released. Old production is
+byte-exact source088cf33d in all three changed Bots modules. The status window
+creates1 WSS/1 holder; the check window creates1 WSS/0 holders, violating socket0.
+Exact red test/fixture/production bytes are archived by their sourceBefore SHA.
+
+The minimal fix carries original configuration ownership and captured ReadyReplica
+through status/check/authority/socket awaits and first register send. The same
+configuration guard protects renewal and actual supply; it is independent of one
+upload attempt or an inbound winner. Manual relay entry, Self independence and
+existing final current-grant/binding guards remain. Full-file green71767812 is
+10/10 with0 skip/cancel; both DELETE windows produce socket0/holder0. New explicit
+preferences then receive a real independent cloud ACK and same-socket renewal
+succeeds. Passive DB/provider counts stay unchanged. All original multi-page,
+actual SQL origin, cold pendingApply/receipt, lost-ACK and late-socket chains pass.
+The green test adds descriptor publication/cloud-ACK positive assertions and
+formatting relative to the archived red; production repair is confined to the
+three named modules. No claim that all test bytes are red/green-identical.
+
+Source-v26ab23ace binds697 source/740 full paths,22 source deltas from01d90a70 and
+exactly5 changes from v1 (3 production plus2 owned tests/fixture). The fixture adds
+only a real connect counter; it does not simulate Registry/helper/SQL/SDK results.
+SYNC-RELAY also corrects the actual101-first, bounded first-register-authority
+order; Worker/socket implementation is unchanged.
+
+| Current normal command / label | Actual scope and log SHA prefix |
+| --- | --- |
+| root/Bots strict types/check-only lint + diff/cached checks / register-owner-static-first | exit0;f5acc180. |
+| `npm --prefix apps/bots run check` / register-owner-bots-check | fixtures34;ordinary915/915 and same coverage915/915;92.41lines/87.11branches/90.02functions at unchanged90/85/90;exit0;dfdca736. |
+| `npm run test:devices` / register-owner-devices | complete32/32,0skip/cancel,including both new real windows and original full chain;exit0;0989ca0f. |
+| `node --test tests/device-cache-registry.test.ts tests/device-relay-registry.test.ts` / register-owner-registry-files | both complete root test files loading changed owned fixture;exit0;00d49bc7. |
+
+Every new record above matches all697 source-v2 inputs and has stable740 maps.
+Gates-v2.json SHA941023b0 binds exact new logs/start/exit and old-scope reuse. Worker26
+package/config/source/test bytes are unchanged and its original normal check is
+reused. Root269/build remains the prior run: root production/build inputs are
+unchanged, both affected Registry files run above, and root types/lint are new.
+Original crash17 and exact chat-basic/root-resources evals retain their execution
+scopes: unchanged main initializes no sync classes without deviceSocket, which
+those fixtures do not configure. They are not new executions or all-source-equal
+claims. Swift181/142/181/71 reuse remains byte-exact. No broader unchanged baseline,
+live/perf/deployment check is added. Normal browser/Swift pre-push follows formal
+acceptance; source/doc/candidate evidence is not commit/hook/push success.
+Direct/cache sender confirmation and connection peerApplied remain unknown until
+the already authorized next all-path status slice.

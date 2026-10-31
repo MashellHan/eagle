@@ -1,5 +1,121 @@
 # 用户视角检查点
 
+## 2026-10-31 13:47 +0800 - Relay delivery paused for registration ownership
+
+- Lead confirmed Review P2#1 on source088cf33d/candidate911653b9. All old source,
+  candidate2314 references and delivery/preflight originals remain protected.
+  No commit/push; upstream182fc1f remains fixed. Prior7 normal gates retain only
+  their exact frozen input scope, not the new repair.
+- Static path: status and ready/check awaits can outlive a removed preference,
+  then create a fresh relay epoch/socket. The permitted repair passes captured
+  ready binding and original configuration ownership to actual register/use points,
+  preserving valid renewals independently of inbound/upload attempt cancellation.
+- Next: real owned whole-file red at both awaits, minimum fix/green and narrow
+  static checks, then source-v2 for the same read-only Reviewer. All-path status
+  remains next. No production D1/rendering/live auth/collection or external action.
+
+## 2026-10-31 13:27 +0800 - Relay recovery complete; preparing source freeze
+
+- Base01d90a70/upstream182fc1f and1935 protected originals remain unchanged.
+  relay-recovery-full-second f6b66da8 runs both original complete files:8/8,
+  no skip/cancel, exit0,740 full input hashes unchanged. The prior7/8 to8/8 is
+  an oracle/window correction, not another product repair.
+- Real cold pendingApply/receipt recovery, lost ACK and explicit expired-delivery
+  recovery, late old socket, Self allowed/binding and close refused are covered.
+  Three page objects restore143 A events and the independent source dependency;
+  no additional R2 get, no passive execution and final native still works.
+  Existing CF-only gap request counts remain exact. Earlier fixture startup port
+  collision and all failed attempts retain their original scope and bytes.
+- Next: necessary touched-file formatting and strict types/check-only lint, then
+  stable source to existing Review while normal Bots/Worker/root/devices gates
+  and final docs proceed. Direct/cache sender ACK and connection peerApplied
+  remain unknown until the next authorized all-path status slice.
+- No live collection/auth, production D1/rendering, upstream update, physical
+  device, deployment/npm/App/PR operation.
+
+## 2026-10-31 13:12 +0800 - Complete-file relay windows and bounded recovery
+
+- Base01d90a70/upstream182fc1f and1935 protected originals remain unchanged.
+  Complete encrypted-objects window run d9c8f4a6 passed7/7 with739 identical inputs:
+  owning-DO ACK/receipt SQL failures preserve503 and one origin, and a pure same
+  socket renewal no longer invalidates a held object. Root role file5dc33f5d is1/1.
+- ACK expiry scope first336d43d6 queried the local HTTP auth mapping; its intended
+  owning Worker oracle is corrected in fbebf337. That full file is5/7: actual
+  Worker delivery expiry403 versus required dedicated410 is red, while a large
+  SDK history export hit the unchanged8MiB handoff limit (fixture setup).
+  b265a575 is6/7 after the minimal Worker fix and fixture correction: actual
+  cross-source resource export still400/missing resource manifest in new C.
+- Minimal controller discovery now considers other advertised original sources
+  with separate cursors. Complete Bots auto/relay component files290cd05d have
+  28/29 red for a persisted unavailable delivery;390ef2e5 passes29/29 after
+  clearing only current-authorized explicit delivery-unavailable. Generic expiry,
+  binding/auth and SQL remain failures and retain ACK waiting. No final gate claim.
+- This slice only confirms relay-associated actual apply metadata. Direct/cache
+  sender confirmation and connection peerApplied status remain unknown; the next
+  authorized narrow status-report/read slice follows clean relay delivery, then P5.
+- No live collection/auth, production D1/rendering, upstream update, external device,
+  deployment/npm/App/PR operation. Next: complete real multi-source/pages and ACK
+  recovery/use-point evidence, freeze source, then normal checks and read-only Review.
+
+## 2026-10-31 12:56 +0800 - Real automatic holder chain and two owned boundary reds
+
+- Base01d90a70/tree9c0949f3 and1935 prior artifacts stay read-only. Subsequent
+  verification now runs each original complete test file; older name-pattern
+  attempts remain local scope. Full-first11044c38 was6/7: new C baseline timed out
+  before automatic relay was wired. No cleanup interruption in that full run.
+- Full-second681fad1f was6/7: the real original-A→B-held/A-offline/R2-absent/new-C
+  automatic restore passed, preserving15934 original page bytes, history/resources,
+  passive0 and native+2, and actual receiver-binding/source ACK14. The old CF gap
+  case lost its no-online-holder precondition; its assertions were kept and the
+  owned relay network was made unavailable for that cloud-only case.
+- Full-windows36d7eec5 was5/7 with exactly two new real reds: ACK metadata table
+  rename returned403/auth_failed instead of503, and same-socket renewal rejected
+  an in-flight original-source object. The CF gap case again proves6 list/3 get/
+  10 R2 reads, two visits and unchanged bytes. Its adjustment is a fixture premise
+  change, not a product red/green. Both new input sets and original logs remain.
+- Minimal async DO error handling and renewal identity preservation are implemented;
+  all three strict type scopes pass. Complete-file green is next. peerApplied is
+  currently confirmed only for relay delivery; direct/cache sender confirmation
+  and connection-status polling remain unknown/unwired, as reported to Lead.
+- No production D1/rendering/live collection/auth, upstream update, physical device,
+  deployment/npm/App/PR operation. Next: SQL/renewal green, bounded ACK recovery,
+  remaining relay use-point/page tests, then stable source and normal gates.
+
+## 2026-10-31 12:41 +0800 - Relay metadata passes; real transport assembly remains WIP
+
+- Base01d90a70/tree9c0949f3 and1935 prior artifacts remain protected. The first
+  two entry attempts failed in cleanup (worker.close/model.close) and required
+  narrowly authorized owned runner SIGINT; neither is product behavior red.
+- Correctly cleaned targeted third reaches unknown_local_method (cfdc7082), then
+  typed Node/Registry authority passes the same real Swift/session/ready setup
+  (5c7e1a3a). Registry404 red ba4f607d becomes current-role/grant/SQL green
+  bfdca557; intermediate evidence-helper/Miniflare bridge assertions stay separate.
+- Real outbound Worker registration/discovery404 (0f2b6fdc) becomes green72ba661f.
+  The real Bot relay route404 (0f71f315) is now assembled but registration still
+  returns a classified403; the owned fixture is exposing the original bounded
+  cause before the next fix. WIP Bots/Worker/root strict types pass86ad8ebf.
+- No relay page, three-device restore or actual peerApplied acceptance yet.
+  No live Herdr collection/auth, production D1/rendering, upstream update,
+  deployment/npm/App/external-device operation. Next: finish actual per-page
+  transport, then metadata receipts and automatic cache-gap integration.
+
+## 2026-10-31 12:26 +0800 - Automatic delivery closed; online-holder relay contract and first real entry test
+
+- Automatic01d90a70/tree9c0949f3 is accepted and normally delivered. Receipt
+  aecf6d49 binds1934 references; this new slice protects those plus final=1935.
+  Normal commit/push/two hooks and own remote/clean0/0 were independently accepted.
+- New owned baseline61534752 preserves731 full/689 selected files. SYNC-RELAY
+  records current-session typed metadata authority, independent outbound WSS,
+  explicit original-source paging and actual receiver-binding apply receipts.
+  Existing direct/CF timing, local pending apply, upload and72h inputs remain.
+- The first actual test prepares paired real Registry SQLite/Swift helper/Node/
+  ready Bots/current directional grant without a direct endpoint, then asks the
+  new sync.relay.authority registration entry. Its exact bytes are archived;
+  execution is next. No successful relay/discovery/ACK claim yet.
+- Only local isolated fixtures are authorized. No new upstream, physical devices,
+  live Herdr collection/auth, production D1/rendering, CF deployment/npm/App/PR
+  action. Next broken hop is the new metadata entry; P5 follows relay delivery.
+
 ## 2026-10-31 12:07 +0800 - Automatic source-v2 affected gates complete; final candidate binding
 
 - Base abec9dbb and all1553 prior delivery references remain protected. Source-v2

@@ -270,6 +270,17 @@ export class DeviceRegistry extends Registry {
   try {return super.one(...args);} catch(error) {this.lastSqlCause=error;throw error;}
  }
  cacheSqlCausePreserved(){return this.sqlCausePreserved===true&&this.safeCacheError===true;}
+ async relaySqlFailure(value) {
+  try {await super.checkRelayAuthority(value);return null;}
+  catch(error) {return JSON.stringify({message:error.message,originalSqlCause:error.cause instanceof Error&&/no such table/.test(error.cause.message)});}
+ }
+ async checkRelayAuthority(value) {
+  if(value.operation==='register'&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_relay_registry_gate'").toArray().length) {
+   const gate=()=>this.ctx.storage.sql.exec('SELECT * FROM test_relay_registry_gate').toArray()[0];
+   if(!gate().released){this.ctx.storage.sql.exec('UPDATE test_relay_registry_gate SET started=1');const end=Date.now()+5000;while(!gate().released){if(Date.now()>end)throw new Error('owned relay renewal gate timeout');await new Promise(r=>setTimeout(r,10));}}
+  }
+  return super.checkRelayAuthority(value);
+ }
  async checkCacheAuthority(value) {
   if(this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_cache_sql_gate'").toArray().length) {
    this.ctx.storage.sql.exec('UPDATE test_cache_sql_gate SET started=1');
@@ -325,7 +336,7 @@ export class DeviceExecution extends Execution {
  }
 }
 export default {fetch(request,env,ctx){
- if(${cache}&&new URL(request.url).pathname.startsWith('/v1/cache/'))return env.CACHE.fetch(request);
+ if(${cache}&&(new URL(request.url).pathname.startsWith('/v1/cache/')||new URL(request.url).pathname.startsWith('/v1/relay/')))return env.CACHE.fetch(request);
  return worker.fetch(request,env,ctx);
 }};
 `,
@@ -351,18 +362,31 @@ import worker,{SyncCache as Production} from '../../apps/bots-sync/src/index.ts'
 export class SyncCache extends Production {
  constructor(ctx,env){
   ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS test_cache_io(operation TEXT,after INTEGER)');
+  ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS test_relay_network(blocked INTEGER)');
+  ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS test_relay_ack_reply(remaining INTEGER,lost INTEGER)');
   const bucket=env.CIPHERS;
   super(ctx,{...env,CIPHERS:new Proxy(bucket,{get(target,key){
    if(key==='get')return(...args)=>{ctx.storage.sql.exec("INSERT INTO test_cache_io VALUES('r2',NULL)");return target.get(...args);};
    const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
   }})});
+  const relayRows=this.relay.rows.bind(this.relay);
+  this.relay.rows=(...args)=>{try{return relayRows(...args);}catch(error){this.relaySqlCause=error.cause instanceof Error&&/no such table/.test(error.cause.message);throw error;}};
  }
+ relaySqlCausePreserved(){return this.relaySqlCause===true;}
  async fetch(request){
+  if(new URL(request.url).pathname==='/v1/relay/connect'&&this.ctx.storage.sql.exec('SELECT blocked FROM test_relay_network').toArray()[0]?.blocked)return Response.json({error:'owned_relay_network_unavailable'},{status:503});
   const operation=new URL(request.url).pathname.split('/').pop();
+  if(operation==='connect')this.ctx.storage.sql.exec("INSERT INTO test_cache_io VALUES('relay-connect',NULL)");
+  if(operation==='exchange'){const value=await request.clone().json();this.ctx.storage.sql.exec('INSERT INTO test_cache_io VALUES(?,NULL)','relay-'+value.method);}
   if(operation==='list'||operation==='get'){
    const value=await request.clone().json();this.ctx.storage.sql.exec('INSERT INTO test_cache_io VALUES(?,?)',operation,value.after??null);
   }
-  return super.fetch(request);
+  const response=await super.fetch(request);
+  if(operation==='ack'&&response.ok&&this.ctx.storage.sql.exec('SELECT remaining FROM test_relay_ack_reply').toArray()[0]?.remaining>0){
+   this.ctx.storage.sql.exec('UPDATE test_relay_ack_reply SET remaining=remaining-1,lost=lost+1');
+   return new Response(new ReadableStream({start(controller){controller.error(new Error('owned relay ACK reply lost after commit'));}}),{status:200});
+  }
+  return response;
  }
 }
 export default worker;

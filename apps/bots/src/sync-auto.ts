@@ -24,6 +24,7 @@ import {
   syncSource,
   syncUploadPage,
 } from "./core/DeviceSyncConnections.ts";
+import { RelayDelivery, relayDirectory } from "./core/DeviceSyncRelay.ts";
 import { ClassifiedFailure } from "./core/domain.ts";
 import { newFailure } from "./core/failures.ts";
 import { declareEvent } from "./log/events.ts";
@@ -174,6 +175,7 @@ export class AutomaticSync implements SyncConnectionsApi {
   #cancel(pref: SyncPreference) {
     for (const controller of this.#attempts.get(pref) ?? []) controller.abort();
     this.#attempts.delete(pref);
+    this.#sync.relayStop?.(pref.botId);
   }
   async #ready(pref: SyncPreference, trace: string) {
     const replica = await this.#registry.readyReplica(pref.botId, trace);
@@ -253,6 +255,9 @@ export class AutomaticSync implements SyncConnectionsApi {
       botId,
       peerDeviceId,
       binding,
+      ...(sameBinding && previous.pendingReceipt
+        ? { pendingReceipt: previous.pendingReceipt }
+        : {}),
       ...(sameBinding && previous.pendingApply ? { pendingApply: previous.pendingApply } : {}),
       upload: sameBinding
         ? previous.upload
@@ -281,6 +286,10 @@ export class AutomaticSync implements SyncConnectionsApi {
     this.#connections = candidate;
     return { version: 1, disabled: true };
   }
+  #owner(pref: SyncPreference) {
+    if (this.#closed || this.#storageUncertain || !this.#connections.includes(pref))
+      throw new Error("sync_attempt_cancelled");
+  }
   #attempt(
     pref: SyncPreference,
     replica: ReadyReplica,
@@ -294,13 +303,8 @@ export class AutomaticSync implements SyncConnectionsApi {
         signal: controller.signal,
         replica,
         guard: () => {
-          if (
-            this.#closed ||
-            this.#storageUncertain ||
-            controller.signal.aborted ||
-            !this.#connections.includes(pref)
-          )
-            throw new Error("sync_attempt_cancelled");
+          this.#owner(pref);
+          if (controller.signal.aborted) throw new Error("sync_attempt_cancelled");
         },
       },
       cancel: () => controller.abort(),
@@ -361,8 +365,23 @@ export class AutomaticSync implements SyncConnectionsApi {
         }
         return;
       }
+      if (!upload && pref.pendingReceipt) {
+        const attempt = this.#attempt(pref, replica);
+        try {
+          await this.#ackReceipt(pref, trace, attempt.context);
+        } finally {
+          attempt.cancel();
+          attempt.release();
+        }
+        return;
+      }
       const status = replicaStatus.parse(await replica.command("status", {}));
+      this.#owner(pref);
       if (upload) {
+        if (this.#sync.canRelay?.())
+          void this.#sync
+            .relayRegister(pref.botId, trace, { replica, guard: () => this.#owner(pref) })
+            .catch(() => undefined);
         const local = status.streams.find(
           (stream) =>
             stream.source.replicaId === pref.binding.replicaId &&
@@ -376,6 +395,18 @@ export class AutomaticSync implements SyncConnectionsApi {
       state.status = error instanceof ClassifiedFailure ? error.failure.kind : "unavailable";
       // Actual sync/registry crossings own their origin and propagated failure logs.
     }
+  }
+  async #ackReceipt(pref: SyncPreference, trace: string, attempt: SyncAttempt) {
+    if (!pref.pendingReceipt) return;
+    try {
+      await this.#sync.relayAck(pref.botId, pref.pendingReceipt, trace, attempt);
+    } catch (error) {
+      const remote = syncRemoteFailure(error);
+      if (remote?.status !== 410 || remote.code !== "sync_relay_delivery_unavailable") throw error;
+    }
+    attempt.guard();
+    delete pref.pendingReceipt;
+    this.#save(trace, pref.botId);
   }
   async #upload(pref: SyncPreference, replica: ReadyReplica, trace: string) {
     const attempt = this.#attempt(pref, replica);
@@ -537,6 +568,99 @@ export class AutomaticSync implements SyncConnectionsApi {
     else if (!gaps.length) scan.gap = undefined;
     scan.revisit = !repair;
     state.status = scan.gap !== undefined ? "gap" : "cache_incomplete";
+    return { actual, cursor, needed: scan.gap !== undefined || result.objects.length === 0 };
+  }
+  async #cloud(
+    pref: SyncPreference,
+    source: Source | undefined,
+    status: z.infer<typeof replicaStatus>,
+    trace: string,
+    attempt: SyncAttempt,
+  ) {
+    const cached = source ? await this.#cache(pref, source, status, trace, attempt) : undefined;
+    if (cached && !cached.needed) return;
+    if (!this.#sync.canRelay?.()) {
+      if (!source) this.#state(pref).status = "needs_baseline";
+      return;
+    }
+    attempt.guard();
+    const directory = relayDirectory.parse(
+      await this.#sync.relayDiscover(pref.botId, trace, attempt),
+    );
+    const actual = cached?.actual ?? status;
+    const options = directory.holders.flatMap((holder) =>
+      holder.streams
+        .filter((s) => s.source.replicaId !== pref.binding.replicaId && s.available.length)
+        .map((stream) => ({ holder, stream })),
+    );
+    options.sort(
+      (a, b) =>
+        Number(source !== undefined && sourceKey(b.stream.source) === sourceKey(source)) -
+          Number(source !== undefined && sourceKey(a.stream.source) === sourceKey(source)) ||
+        Number(b.holder.identity.deviceId === pref.peerDeviceId) -
+          Number(a.holder.identity.deviceId === pref.peerDeviceId),
+    );
+    const cursorFor = (streamSource: Source) =>
+      source && sourceKey(source) === sourceKey(streamSource) && cached
+        ? cached.cursor
+        : (actual.streams.find((s) => sourceKey(s.source) === sourceKey(streamSource))?.received ??
+          0);
+    const selected = options.find(({ stream }) => {
+      const local = actual.streams.find((s) => sourceKey(s.source) === sourceKey(stream.source));
+      const cursor = cursorFor(stream.source);
+      return (
+        stream.available.some((r) => r.from <= cursor + 1 && r.to > cursor) &&
+        !local?.available.some(
+          (r) =>
+            r.from <= cursor + 1 &&
+            r.to >= Math.min(cursor + 128, stream.available.at(-1)?.to ?? cursor),
+        )
+      );
+    });
+    if (!selected) {
+      if (!source) this.#state(pref).status = "needs_baseline";
+      return;
+    }
+    const selectedSource = selected.stream.source;
+    const cursor = cursorFor(selectedSource);
+    const received = z
+      .object({ objectId: z.string(), delivery: RelayDelivery, page: syncUploadPage })
+      .parse(
+        await this.#sync.relayPull(
+          pref.botId,
+          {
+            peerDeviceId: selected.holder.identity.deviceId,
+            source: selectedSource,
+            after: cursor,
+            limit: 128,
+          },
+          trace,
+          attempt,
+        ),
+      );
+    attempt.guard();
+    if (
+      sourceKey(received.page.source) !== sourceKey(selectedSource) ||
+      received.page.nextAfter < cursor
+    )
+      throw new Error("sync_relay_delivery_invalid");
+    pref.pendingApply = received.objectId;
+    pref.pendingReceipt = {
+      peerDeviceId: selected.holder.identity.deviceId,
+      delivery: received.delivery,
+    };
+    this.#save(trace, pref.botId);
+    await this.#sync.applyObject(pref.botId, received.objectId, trace, attempt);
+    attempt.guard();
+    delete pref.pendingApply;
+    this.#save(trace, pref.botId);
+    await this.#ackReceipt(pref, trace, attempt);
+    const state = this.#state(pref),
+      key = sourceKey(selectedSource);
+    const scan = state.scan.get(key) ?? { after: cursor, gap: undefined, revisit: false };
+    scan.after = Math.max(scan.after, received.page.nextAfter);
+    state.scan.set(key, scan);
+    state.status = "relay_incomplete";
   }
   async #receive(
     pref: SyncPreference,
@@ -587,13 +711,9 @@ export class AutomaticSync implements SyncConnectionsApi {
             if (this.#probe === active) this.#probe = undefined;
           });
       }
-      if (!source) {
-        state.status = "needs_baseline";
-        return;
-      }
       const cache = this.#attempt(pref, replica);
       try {
-        await this.#cache(pref, source, status, trace, cache.context);
+        await this.#cloud(pref, source, status, trace, cache.context);
       } finally {
         cache.cancel();
         cache.release();
@@ -612,17 +732,13 @@ export class AutomaticSync implements SyncConnectionsApi {
     let cacheWork: Promise<void> | undefined;
     const startCache = () => {
       if (cacheWork || winner) return cacheWork;
-      if (!source) {
-        state.status = "needs_baseline";
-        return undefined;
-      }
       if (state.route !== "cache") {
         state.route = "cache";
         state.since = Date.now();
         state.probeAt = Date.now();
         state.streak = 0;
       }
-      cacheWork = this.#cache(pref, source, status, trace, {
+      cacheWork = this.#cloud(pref, source, status, trace, {
         ...cache.context,
         admit: () => admit("cache"),
       });

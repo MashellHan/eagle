@@ -1184,3 +1184,37 @@ the existing local stored-object path before online work and cleared on success.
 This is private persistence, not a new peer/wire cursor or applied acknowledgment.
 Detailed fallback, stable return and bounded expiry recovery are in
 [SYNC-AUTO.md](SYNC-AUTO.md).
+
+### Online-holder relay and delivery-associated receipts (additive v1)
+
+Private typed `sync.relay.authority` and Registry `/sync/relay/authority` introduce
+only `register|discover|exchange|ack|receipts`, purpose `replica.relay`. Each short
+metadata authority binds operation, actual request digest, sharedBot, current full
+identity/session and directed holder→reader grant; it is separate from cache
+publish/list/get. No session token, generic signer or remote management bearer.
+
+The independent Worker adds GET WebSocket `/v1/relay/connect?sharedBotId=...` and
+POST `/v1/relay/{discover,exchange,ack,receipts}`. The bounded first socket message
+registers complete holder binding, original-source actual coverage, connection
+generation and authority. Renewal of that same socket/identity/binding/generation
+preserves an in-flight page; replacement/close does not. After DO restart, stored
+advertisements cannot make a holder online. Every page uses the existing fresh
+one-use challenge/proof/AEAD object exchange, not a reusable crypto session.
+
+Local bearer/no-Origin POST `/v1/bots/:id/sync/relay/register` and `/discover` accept
+`{}`; `/pull` accepts the existing peer/source/after/limit page selector; `/ack`
+accepts `{peerDeviceId,delivery:{requestId,sessionId,objectId,source}}`; `/receipts`
+accepts `{peerDeviceId}`. No caller binding, applied cursor, authority or endpoint
+is accepted at the local ACK boundary. It reads complete persistent ready status.
+The original source is explicit for holder history; a holder creates its own
+publisher transfer object without changing original event bytes or writing R2.
+
+ACK binds current holder/receiver identities, complete receiverBinding and original
+source, the actual request/session/object reference, received/applied/available.
+Applied can lag received and does not imply execution. Same complete-key metadata
+is idempotent/monotonic; an old receiver epoch cannot represent a new one. Receipt
+read uses holder→reader permission, without reverse grant. Unknown remains unknown.
+Only current-authorized explicit410 `sync_relay_delivery_unavailable` can discard
+an obsolete pending ACK reference; generic expiry/auth/binding/SQL failures cannot.
+The connection status field peerApplied and direct/cache sender confirmation are
+still unknown in this slice. See SYNC-RELAY for limits and the following status slice.

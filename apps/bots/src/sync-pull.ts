@@ -25,6 +25,13 @@ import {
   type SyncStatus,
   syncPullInput,
 } from "./core/DeviceSyncPort.ts";
+import {
+  RelayAck,
+  RelayBinding,
+  RelayDelivery,
+  RelayReceipts,
+  RelayStream,
+} from "./core/DeviceSyncRelay.ts";
 import { ClassifiedFailure, type Failure } from "./core/domain.ts";
 import { newFailure } from "./core/failures.ts";
 import { declareEvent } from "./log/events.ts";
@@ -52,6 +59,7 @@ import {
   verifyCarrier,
   verifyDescriptor,
 } from "./sync-objects.ts";
+import { type RelayContext, SyncRelay } from "./sync-relay.ts";
 
 const Events = {
   start: declareEvent("runtime.sync.start"),
@@ -167,6 +175,10 @@ export class AuthenticatedSync implements SyncApi {
   readonly #instance: string;
   readonly #objects: SyncObjectStore | undefined;
   readonly #cacheOrigin: string | undefined;
+  readonly #relay: SyncRelay | undefined;
+  readonly #relayClientGeneration = nonce();
+  readonly #relayAbort = new AbortController();
+  readonly #relayPending = new Map<string, Pending>();
   #generation = nonce();
   #directAbort = new AbortController();
   #closed = false;
@@ -191,6 +203,37 @@ export class AuthenticatedSync implements SyncApi {
         ? null
         : createHash("sha256").update(options.deviceSocket).digest("hex");
     this.#instance = options.instance ?? `i_${nonce()}`;
+    if (options.cacheOrigin)
+      this.#relay = new SyncRelay(
+        options.cacheOrigin,
+        options.device,
+        (path, input, fields, authority, signal) =>
+          this.#exchange(
+            options.cacheOrigin as string,
+            path,
+            input,
+            fields,
+            MAX_OBJECT_FRAME + 8192,
+            authority,
+            signal,
+          ),
+        async (method, input, fields, transport) => {
+          try {
+            const result =
+              method === "challenge"
+                ? await this.#challenge(challengeInput.parse(input), fields, transport)
+                : await this.#object(pageInput.parse(input), fields, transport);
+            return { status: 200, body: result };
+          } catch (error) {
+            const failure = this.#failure(error, fields);
+            return {
+              status: failure.failure.kind === "auth_failed" ? 403 : 503,
+              body: { trace: fields.trace, error: { failure: failure.failure } },
+            };
+          }
+        },
+        (status, body) => this.#remoteError(status, body),
+      );
   }
   async publishDescriptor(botId: string, trace: string) {
     if (!this.#device.publishDescriptor) throw new Error("sync_unconfigured");
@@ -218,17 +261,26 @@ export class AuthenticatedSync implements SyncApi {
   }
   close(): void {
     this.#closed = true;
+    this.#relayAbort.abort();
+    this.#relay?.close();
+    this.#relayPending.clear();
     this.setReady(undefined);
   }
   #live(generation: string): void {
-    if (this.#closed || generation !== this.#generation) throw new Error("sync_generation_changed");
+    if (
+      this.#closed ||
+      (generation !== this.#generation &&
+        generation !== this.#relayClientGeneration &&
+        !this.#relay?.live(generation))
+    )
+      throw new Error("sync_generation_changed");
   }
   #use(proof: Proof, generation: string, attempt?: SyncAttempt): void {
     attempt?.guard();
     this.#live(generation);
     checkTime(proof);
   }
-  async #replica(botId: string, trace: string, attempt?: SyncAttempt) {
+  async #replica(botId: string, trace: string, attempt?: Pick<SyncAttempt, "replica" | "guard">) {
     attempt?.guard();
     const replica = attempt?.replica ?? (await this.#registry.readyReplica(botId, trace));
     if (replica.botId !== botId) throw new Error("sync_identity_changed");
@@ -331,11 +383,17 @@ export class AuthenticatedSync implements SyncApi {
       },
     );
   };
-  async #challenge(input: z.infer<typeof challengeInput>, fields: Context) {
-    const generation = this.#generation;
-    for (const [id, pending] of this.#pending)
-      if (pending.proof.expiresAt <= Date.now()) this.#pending.delete(id);
-    if (this.#pending.size >= 128) throw new Error("sync_challenge_capacity");
+  async #challenge(
+    input: z.infer<typeof challengeInput>,
+    fields: Context,
+    transport?: RelayContext,
+  ) {
+    const generation = transport?.generation ?? this.#generation;
+    const pendingMap = transport ? this.#relayPending : this.#pending;
+    transport?.guard();
+    for (const [id, pending] of pendingMap)
+      if (pending.proof.expiresAt <= Date.now()) pendingMap.delete(id);
+    if (pendingMap.size >= 128) throw new Error("sync_challenge_capacity");
     const access = await this.#device.authorize?.(
       {
         sharedBotId: input.sharedBotId,
@@ -347,6 +405,8 @@ export class AuthenticatedSync implements SyncApi {
     if (!access || !this.#device.proof) throw new Error("sync_unconfigured");
     const replica = await this.#registry.readySharedReplica(input.sharedBotId, fields.trace);
     fields.botId = replica.botId;
+    if (transport && !same(replica.binding, transport.replica.binding))
+      throw new Error("sync_identity_changed");
     const pair = ephemeral();
     const proof = deviceSyncProof.parse({
       version: 1,
@@ -368,9 +428,10 @@ export class AuthenticatedSync implements SyncApi {
     verifyProof(proof, signature);
     await this.#authorize(proof, fields);
     await replica.check();
+    transport?.guard();
     this.#use(proof, generation);
-    if (this.#pending.size >= 128) throw new Error("sync_challenge_capacity");
-    this.#pending.set(proof.sessionId, { proof, privateKey: pair.privateKey, replica });
+    if (pendingMap.size >= 128) throw new Error("sync_challenge_capacity");
+    pendingMap.set(proof.sessionId, { proof, privateKey: pair.privateKey, replica });
     return { proof, signature, trace: fields.trace };
   }
   async #page(input: z.infer<typeof pageInput>, fields: Context) {
@@ -574,13 +635,19 @@ export class AuthenticatedSync implements SyncApi {
     const carrier = verifyCarrier({ ...record.carrier, envelope });
     return carrier;
   }
-  async #object(input: z.infer<typeof pageInput>, fields: Context) {
-    const pending = this.#pending.get(input.sessionId);
-    this.#pending.delete(input.sessionId);
+  async #object(input: z.infer<typeof pageInput>, fields: Context, transport?: RelayContext) {
+    const pendingMap = transport ? this.#relayPending : this.#pending;
+    const pending = pendingMap.get(input.sessionId);
+    pendingMap.delete(input.sessionId);
     if (!pending || !this.#objects) throw new Error("sync_challenge_unknown");
     const { proof, privateKey, replica } = pending;
     fields.botId = replica.botId;
-    const use = () => this.#use(proof, proof.generation);
+    const use = () => {
+      transport?.guard();
+      if (transport && proof.generation !== transport.generation)
+        throw new Error("sync_generation_changed");
+      this.#use(proof, proof.generation);
+    };
     use();
     verifyProof({ ...proof, role: "reader" }, input.signature);
     const params = objectQuery.parse(
@@ -622,9 +689,10 @@ export class AuthenticatedSync implements SyncApi {
     input: z.infer<typeof syncObjectPullInput>,
     trace: string,
     attempt?: SyncAttempt,
+    relay = false,
   ): Promise<unknown> {
     const fields = { trace, botId },
-      generation = this.#generation;
+      generation = relay ? this.#relayClientGeneration : this.#generation;
     this.#log.emit("info", "runtime", Events.start, fields);
     try {
       this.#live(generation);
@@ -638,6 +706,7 @@ export class AuthenticatedSync implements SyncApi {
         fields,
         generation,
         attempt,
+        relay,
       );
       const descriptor = verifyDescriptor(
         await this.#device.descriptor(fields),
@@ -658,9 +727,18 @@ export class AuthenticatedSync implements SyncApi {
       await replica.check();
       this.#use(proof, generation, attempt);
       const response = z
-        .strictObject({ carrier: SyncObjectCarrier, receipt: z.unknown(), trace: z.literal(trace) })
+        .strictObject({
+          carrier: SyncObjectCarrier,
+          receipt: z.unknown(),
+          trace: z.literal(trace),
+          relayRequestId: z.uuid().optional(),
+        })
         .parse(
-          await this.#exchange(
+          await this.#transportExchange(
+            replica.binding,
+            replica.sharedBotId,
+            input.peerDeviceId,
+            relay,
             origin,
             "/v1/sync/object",
             {
@@ -671,7 +749,10 @@ export class AuthenticatedSync implements SyncApi {
             fields,
             MAX_OBJECT_FRAME,
             undefined,
-            AbortSignal.any([this.#directAbort.signal, ...(attempt ? [attempt.signal] : [])]),
+            AbortSignal.any([
+              relay ? this.#relayAbort.signal : this.#directAbort.signal,
+              ...(attempt ? [attempt.signal] : []),
+            ]),
           ),
         );
       const carrier = verifyCarrier(response.carrier),
@@ -748,6 +829,23 @@ export class AuthenticatedSync implements SyncApi {
         stored: true,
         applied: false,
         cipherDigest: record.carrier.manifest.cipherDigest,
+        ...(relay
+          ? {
+              page: {
+                objectId: manifest.objectId,
+                source: manifest.source,
+                included: manifest.included,
+                nextAfter: manifest.nextAfter,
+                hasMore: manifest.hasMore,
+              },
+              delivery: {
+                requestId: response.relayRequestId,
+                sessionId: proof.sessionId,
+                objectId: manifest.objectId,
+                source: manifest.source,
+              },
+            }
+          : {}),
       };
     } catch (cause) {
       throw this.#failure(cause, fields);
@@ -1234,25 +1332,161 @@ export class AuthenticatedSync implements SyncApi {
     }
     const decoded: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     if (!response.ok) {
-      const failure = remoteFailure.safeParse(
-        (decoded as { error?: { failure?: unknown } })?.error?.failure,
-      );
-      const codeValue = (decoded as { error?: { code?: unknown } })?.error?.code;
-      const code =
-        typeof codeValue === "string" && /^sync_[a-z_]{1,72}$/.test(codeValue)
-          ? codeValue
-          : undefined;
-      const cause = new SyncRemoteError(response.status, code);
-      if (failure.success)
-        throw new ClassifiedFailure(
-          failure.data as Failure,
-          "not_admitted",
-          "peer refused synchronization",
-          { cause },
-        );
-      throw cause;
+      throw this.#remoteError(response.status, decoded);
     }
     return decoded;
+  }
+  #remoteError(status: number, decoded: unknown): Error {
+    const failure = remoteFailure.safeParse(
+      (decoded as { error?: { failure?: unknown } })?.error?.failure,
+    );
+    const codeValue = (decoded as { error?: { code?: unknown } })?.error?.code;
+    const code =
+      typeof codeValue === "string" && /^sync_[a-z_]{1,72}$/.test(codeValue)
+        ? codeValue
+        : undefined;
+    const cause = new SyncRemoteError(status, code);
+    if (failure.success)
+      return new ClassifiedFailure(
+        failure.data as Failure,
+        "not_admitted",
+        "peer refused synchronization",
+        { cause },
+      );
+    return cause;
+  }
+  canRelay() {
+    return this.#relay !== undefined && this.#device.relayAuthority !== undefined;
+  }
+  relayStop(botId: string) {
+    this.#relay?.stop(botId);
+  }
+  async relayAck(botId: string, input: unknown, trace: string, attempt?: SyncAttempt) {
+    const fields = { trace, botId };
+    try {
+      if (!this.#relay) throw new Error("sync_unconfigured");
+      const selector = z
+        .strictObject({ peerDeviceId: z.uuid(), delivery: RelayDelivery })
+        .parse(input);
+      const replica = await this.#replica(botId, trace, attempt);
+      const status = z.object({
+        streams: z.array(z.object({ ...RelayStream.shape })),
+        localBotId: z.string(),
+        sharedBotId: z.uuid(),
+        replicaId: z.uuid(),
+        epoch: z.uuid(),
+      });
+      const actual = status.parse(await replica.command("status", {}, () => attempt?.guard()));
+      const stream = actual.streams.find((v) => same(v.source, selector.delivery.source));
+      if (!stream) throw new Error("sync_relay_source_missing");
+      const body = RelayAck.parse({
+        version: 1,
+        operation: "ack",
+        sharedBotId: replica.sharedBotId,
+        peerDeviceId: selector.peerDeviceId,
+        delivery: selector.delivery,
+        binding: RelayBinding.parse({
+          localBotId: actual.localBotId,
+          sharedBotId: actual.sharedBotId,
+          replicaId: actual.replicaId,
+          epoch: actual.epoch,
+        }),
+        ...stream,
+      });
+      await replica.check();
+      attempt?.guard();
+      const result = await this.#relay.metadata(body, fields, attempt?.signal);
+      await replica.check();
+      attempt?.guard();
+      return result;
+    } catch (error) {
+      throw this.#failure(error, fields);
+    }
+  }
+  async relayReceipts(botId: string, input: unknown, trace: string) {
+    const fields = { trace, botId };
+    try {
+      if (!this.#relay) throw new Error("sync_unconfigured");
+      const peer = z.strictObject({ peerDeviceId: z.uuid() }).parse(input);
+      const replica = await this.#replica(botId, trace);
+      const result = await this.#relay.metadata(
+        RelayReceipts.parse({
+          version: 1,
+          operation: "receipts",
+          sharedBotId: replica.sharedBotId,
+          ...peer,
+        }),
+        fields,
+      );
+      await replica.check();
+      return result;
+    } catch (error) {
+      throw this.#failure(error, fields);
+    }
+  }
+  async relayRegister(
+    botId: string,
+    trace: string,
+    ownership?: Pick<SyncAttempt, "replica" | "guard">,
+  ) {
+    const fields = { trace, botId };
+    try {
+      if (!this.#relay) throw new Error("sync_unconfigured");
+      const replica = await this.#replica(botId, trace, ownership);
+      return await this.#relay.register(replica, fields, () => ownership?.guard());
+    } catch (error) {
+      throw this.#failure(error, fields);
+    }
+  }
+  async relayDiscover(botId: string, trace: string, attempt?: SyncAttempt) {
+    const fields = { trace, botId };
+    try {
+      if (!this.#relay) throw new Error("sync_unconfigured");
+      const replica = await this.#replica(botId, trace, attempt);
+      const result = await this.#relay.directory(replica.sharedBotId, fields, attempt?.signal);
+      await replica.check();
+      attempt?.guard();
+      return result;
+    } catch (error) {
+      throw this.#failure(error, fields);
+    }
+  }
+  relayPull(
+    botId: string,
+    input: z.infer<typeof syncPullInput>,
+    trace: string,
+    attempt?: SyncAttempt,
+  ) {
+    return this.pullObject(botId, input, trace, attempt, true);
+  }
+  async #transportExchange(
+    receiverBinding: ReadyReplica["binding"],
+    sharedBotId: string,
+    peerDeviceId: string,
+    relay: boolean,
+    origin: string,
+    path: string,
+    value: unknown,
+    fields: Context,
+    maximum: number,
+    authority?: string,
+    signal?: AbortSignal,
+  ) {
+    if (!relay) return this.#exchange(origin, path, value, fields, maximum, authority, signal);
+    if (!this.#relay) throw new Error("sync_unconfigured");
+    const directory = await this.#relay.directory(sharedBotId, fields, signal);
+    const holder = directory.holders.find((h) => h.identity.deviceId === peerDeviceId);
+    if (!holder) throw new SyncRemoteError(503, "sync_relay_offline");
+    return this.#relay.exchange(
+      receiverBinding,
+      sharedBotId,
+      peerDeviceId,
+      holder.generation,
+      path.endsWith("challenge") ? "challenge" : "object",
+      value,
+      fields,
+      signal,
+    );
   }
   async #connect(
     replica: ReadyReplica,
@@ -1260,6 +1494,7 @@ export class AuthenticatedSync implements SyncApi {
     fields: Context,
     generation: string,
     attempt?: SyncAttempt,
+    relay = false,
   ) {
     const { trace } = fields;
     const selected = await this.#device.access(
@@ -1273,13 +1508,20 @@ export class AuthenticatedSync implements SyncApi {
     this.#live(generation);
     attempt?.guard();
     const endpoint = selected.endpoints?.candidates[0];
-    if (!endpoint) throw new SyncTransportError("sync_network_unreachable");
-    const origin = `http://${endpoint.address.includes(":") ? `[${endpoint.address}]` : endpoint.address}:${endpoint.port}`;
+    let origin = "";
+    if (!relay) {
+      if (!endpoint) throw new SyncTransportError("sync_network_unreachable");
+      origin = `http://${endpoint.address.includes(":") ? `[${endpoint.address}]` : endpoint.address}:${endpoint.port}`;
+    }
     attempt?.connecting?.();
     const pair = ephemeral();
     const readerNonce = nonce();
     const challenge = challengeReply.parse(
-      await this.#exchange(
+      await this.#transportExchange(
+        replica.binding,
+        replica.sharedBotId,
+        peerDeviceId,
+        relay,
         origin,
         "/v1/sync/challenge",
         {
@@ -1292,7 +1534,10 @@ export class AuthenticatedSync implements SyncApi {
         fields,
         MAX_SYNC_FRAME,
         undefined,
-        AbortSignal.any([this.#directAbort.signal, ...(attempt ? [attempt.signal] : [])]),
+        AbortSignal.any([
+          relay ? this.#relayAbort.signal : this.#directAbort.signal,
+          ...(attempt ? [attempt.signal] : []),
+        ]),
       ),
     );
     const server = challenge.proof;

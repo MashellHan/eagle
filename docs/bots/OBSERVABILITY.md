@@ -426,3 +426,25 @@ native cause and one error origin; outer crossings only warn with the same failu
 Complete malformed signature/digest/AEAD/protocol data remains auth_failed. Offline local apply
 success does not certify peer delivery,cloud caching or model/tool execution. Network body I/O
 and original direct-page failure propagation retain their previously delivered behavior.
+
+## Online-holder relay attribution
+
+Relay retains the existing runtime.sync start/ok/fail trace and actual local Bot.
+A holder's strictly validated classified no-body failure propagates through Worker
+and receiver with its original failure identity: the holder is the only error
+origin. It does not go through a second successful-body final authorization that
+could mint a different failure. Successful encrypted bodies always undergo final
+current Registry authorization, expiry and holder-generation checks before supply.
+Malformed holder failures are rejected at the owning Worker boundary.
+
+Registry and owning relay-DO SQL exec/result-materialization faults retain the
+original local cause and return503 (Registry RPC unavailable/internal; DO storage
+failure), never directory gap/auth403. ACK and receipt promises are awaited inside
+the owning DO catch. Logs/wire contain only bounded code/failure/trace/Bot, never
+SQL text, raw error message, authority, descriptor, cipher, page or key. Outer
+ClassifiedFailure crossings warn without creating another error origin. The local
+owned fault assertions inspect cause directly; production logs do not expose it.
+
+Relay delivery receipt means actual persistent apply progress for its complete
+receiver/source key. It is distinct from cloudCached, stored, native completion
+and all-path sender status. The latter remains unknown until its next slice.

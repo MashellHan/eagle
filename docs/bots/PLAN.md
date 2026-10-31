@@ -36,6 +36,19 @@ source/candidate/delivery receipts bind the actual verification and delivery sta
 This slice does not claim relay/discovery/expired holder reread/peer-applied ACK,
 full P4 or P5/P6. No cloud deployment or physical Mac/App evidence is claimed.
 
+That automatic slice is normally delivered as `01d90a70` / tree `9c0949f3`;
+its authoritative auto-delivery-final.json SHAaecf6d49 binds1934 references with
+normal commit/hooks/push and independently verified own remote/clean0/0.
+The current finite slice is [SYNC-RELAY.md](SYNC-RELAY.md): authorized online holders,
+outbound relay, original-source discovery/missing-or-expired-cache reread and relay
+delivery-associated actual apply receipts. Old source088cf33d/candidate911653b9
+remain preserved; Review closed their nonfinding scope and retained one registration
+ownership P2. Source-v26ab23ace repairs that finding and is in incremental Review;
+normal gates/reuse and the next candidate binding are recorded in TESTING. This
+relay slice is not yet accepted or delivered. Direct/cache sender confirmation and connection peerApplied
+remain unknown. The next authorized narrow status-report/status-read slice closes
+those paths after clean relay delivery; P5 native setup follows that slice.
+
 `182fc1f` is the last upstream update until the overall synchronization project
 completes: never fetch, pull or merge a newer upstream, or reopen a moving baseline.
 Preserve all published sync commits; #109 monitoring remains closed.
@@ -68,7 +81,8 @@ clean/ahead0/behind0 were verified. Source-v3,target-slot P2 closure,both22/23 f
 and the final normal gates retain their exact recorded scope; TESTING records the delivery.
 Future cache identity must preserve original source epoch/seq across repaging/forwarding;
 The explicit CF72h cache slice is delivered abec9dbb. Automatic transport on
-that baseline follows SYNC-AUTO; relay/discovery, physical paths and P5/P6 remain planned.
+that baseline is delivered01d90a70 as SYNC-AUTO. Relay/discovery and its delivery ACK
+are in the current SYNC-RELAY slice; all-path status and physical/P5/P6 remain next.
 Historical candidate and per-event evidence below retains its original scope.
 
 

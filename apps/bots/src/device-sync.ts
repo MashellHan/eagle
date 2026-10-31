@@ -21,6 +21,7 @@ import {
   deviceSyncProof,
   deviceSyncSelf,
 } from "./core/DeviceSyncPort.ts";
+import { relayAuthority, relayAuthorityRequest } from "./core/DeviceSyncRelay.ts";
 import { ClassifiedFailure } from "./core/domain.ts";
 import { newFailure } from "./core/failures.ts";
 import { declareEvent } from "./log/events.ts";
@@ -72,6 +73,8 @@ export class SocketDeviceSyncPort implements DeviceSyncPort {
           "sync_wrapping_key_conflict",
           "invalid_sync_key_descriptor",
           "invalid_sync_cache_authority",
+          "invalid_sync_relay_authority",
+          "sync_relay_authority_expired",
           "sync_cache_authority_expired",
           "sync_identity_changed",
         ].includes(reason)
@@ -111,6 +114,17 @@ export class SocketDeviceSyncPort implements DeviceSyncPort {
         throw new Error("invalid_device_sync_response");
       return result;
     });
+  }
+  relayAuthority(
+    input: z.infer<typeof relayAuthorityRequest>,
+    context: { trace: string; botId: string },
+  ) {
+    return this.#call(
+      "sync.relay.authority",
+      relayAuthorityRequest.parse(input),
+      context,
+      (value) => relayAuthority.parse(value),
+    );
   }
   cacheAuthority(
     input: z.infer<typeof cacheAuthorityRequest>,
