@@ -13,6 +13,8 @@
 # EAGLE_UPDATES_URL       where the App asks which macOS version is published; unset
 #                         means "this build never asks"
 # EAGLE_CODESIGN_IDENTITY  '-' for local candidate, real identity for release
+# EAGLE_ADHOC_RELEASE=1    publish a device-release bundle signed ad-hoc (un-notarized;
+#                          the downloader must remove the quarantine flag by hand)
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -38,8 +40,12 @@ if [ -z "$AGENT_CACHE" ] || [ -z "$BOTS_CACHE" ]; then
   exit 1
 fi
 if [ "$PROFILE" = device-release ]; then
-  if [ -z "${EAGLE_DEVICE_SERVICE_URL:-}" ] || [ "$IDENTITY" = - ]; then
-    echo "Release needs EAGLE_DEVICE_SERVICE_URL and an explicit signing identity" >&2
+  if [ -z "${EAGLE_DEVICE_SERVICE_URL:-}" ]; then
+    echo "Release needs EAGLE_DEVICE_SERVICE_URL" >&2
+    exit 1
+  fi
+  if [ "$IDENTITY" = - ] && [ "${EAGLE_ADHOC_RELEASE:-}" != 1 ]; then
+    echo "Release needs an explicit signing identity, or EAGLE_ADHOC_RELEASE=1 for an un-notarized package" >&2
     exit 1
   fi
 fi
@@ -71,12 +77,19 @@ fi
   --destination "$STAGED_APP/Contents/Resources/DeviceRuntime" \
   --node "$NODE_BINARY" --agent-cache "$AGENT_CACHE" --bots-cache "$BOTS_CACHE" >/dev/null
 if [ "$IDENTITY" = - ]; then
-  echo "Signing: ad-hoc candidate (local verification only)" >&2
+  if [ "$PROFILE" = device-release ]; then
+    echo "Signing: ad-hoc release (un-notarized; downloaders remove quarantine by hand)" >&2
+    ADHOC="--allow-adhoc"
+  else
+    echo "Signing: ad-hoc candidate (local verification only)" >&2
+    ADHOC=""
+  fi
 else
   echo "Signing: configured identity" >&2
+  ADHOC=""
 fi
 "$NODE_BINARY" Scripts/assemble-device-app.ts --mode sign --app "$STAGED_APP" \
-  --identity "$IDENTITY" >/dev/null
+  --identity "$IDENTITY" $ADHOC >/dev/null
 
 rm -rf "$APP"
 mv "$STAGED_APP" "$APP"

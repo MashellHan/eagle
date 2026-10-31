@@ -16,7 +16,11 @@ answers `macos.latest`; only a release-profile app build asks that endpoint, and
 newer answer is a link to the release page, never an automatic replacement. `packages/agent/package.json` owns the independent
 Agent version; CLI output and packed artifacts derive from it. Website onboarding
 uses root `config.publishedAgentVersion`, which must reference a verified published
-Agent version and can differ from an unpublished source candidate.
+Agent version and can differ from an unpublished source candidate. The App may ship or be
+skipped at will: root `config.publishedMacosVersion` is `/api/live`'s `macos.latest` and
+changes only in a release that attaches an app to a GitHub release, never because
+`apps/macos/Support/Version.json` moved. Published App builds are ad-hoc signed and not
+notarized; the download's quarantine removal is documented, not automated.
 Website-only releases may keep the currently published Agent version and skip npm
 publication when Agent behavior, dependencies and protocol requirements are
 unchanged. Changes to those require an Agent version bump and publication before

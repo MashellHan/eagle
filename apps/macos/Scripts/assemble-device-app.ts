@@ -285,12 +285,18 @@ export function signDeviceBundle(
   identity: string,
   execute: Execute = (program, args) =>
     execFileSync(program, args, { stdio: "pipe" }),
+  /** A published build may be ad-hoc signed on purpose: it is un-notarized and needs a manual
+   * quarantine removal, so it takes an explicit opt-in rather than a default. */
+  allowAdhoc = false,
 ): void {
   const resources = join(app, "Contents/Resources");
   const config = JSON.parse(
     readFileSync(join(resources, "DeviceHost.json"), "utf8"),
   ) as HostConfig;
-  if (!identity || (identity === "-" && config.profile !== "device-candidate"))
+  if (
+    !identity ||
+    (identity === "-" && config.profile !== "device-candidate" && !allowAdhoc)
+  )
     throw new Error("release requires an explicit signing identity");
   const runtime = join(resources, "DeviceRuntime");
   verifyRuntimeLinks(runtime);
@@ -329,7 +335,12 @@ export function signDeviceBundle(
   );
   save(join(resources, "DeviceSigning.json"), {
     version: 1,
-    mode: identity === "-" ? "ad-hoc-candidate" : "configured-identity",
+    mode:
+      identity === "-"
+        ? config.profile === "device-candidate"
+          ? "ad-hoc-candidate"
+          : "ad-hoc-release"
+        : "configured-identity",
     nodeSignature: "preserved",
   });
   sign(app);
@@ -355,6 +366,7 @@ if (
         "release-url": { type: "string" },
         "updates-url": { type: "string" },
         identity: { type: "string", default: "-" },
+        "allow-adhoc": { type: "boolean", default: false },
         "source-root": {
           type: "string",
           default: resolve(dirname(fileURLToPath(import.meta.url)), "../../.."),
@@ -363,7 +375,12 @@ if (
     });
     if (!values.app) throw new Error("--app is required");
     if (values.mode === "sign")
-      signDeviceBundle(resolve(values.app), values.identity);
+      signDeviceBundle(
+        resolve(values.app),
+        values.identity,
+        undefined,
+        values["allow-adhoc"],
+      );
     else {
       if (
         values.mode !== "prepare" ||

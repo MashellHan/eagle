@@ -10,6 +10,58 @@ MacMini-2 → MacMini 1 command with original-ID result retrieval have been veri
 Fresh-Mac installation and reverse-direction acceptance remain unverified.
 Other overview and inspector content still includes demos.
 
+## Download a published build
+
+A published build is **ad-hoc signed and not notarized**: there is no Developer ID
+certificate in this project's release path, so macOS cannot vouch for the download and
+blocks it on first launch. One command clears that, and nothing else should be disabled:
+
+```sh
+cd ~/Downloads
+ditto -x -k Eagle-<version>-macos.zip .
+xattr -dr com.apple.quarantine Eagle.app
+cp -R Eagle.app /Applications/
+open /Applications/Eagle.app
+```
+
+Extract with `ditto -x -k` (or double-click the zip in Finder); plain `unzip` turns the
+archive's AppleDouble metadata into real `._*` files and breaks the code signature. After the
+step above `codesign --verify --deep --strict Eagle.app` passes and the App runs; `spctl`
+still reports `rejected`, which is what "ad-hoc, un-notarized" means.
+
+`xattr -dr` removes the quarantine attribute that the browser/`gh` put on the unpacked
+bundle, which is exactly what Gatekeeper refuses. If macOS still asks after that, allow the
+app once in **System Settings → Privacy & Security**; never run `sudo spctl --master-disable`,
+which turns off Gatekeeper for every app on the Mac. The device service is a per-user
+background item, so approve **Eagle** under **System Settings → General → Login Items &
+Extensions** when it asks, or the App stays at "service not running".
+
+Every upgrade repeats the unblock step: a new download carries quarantine again, and an
+ad-hoc signature changes with each build, so replace the whole bundle instead of patching it.
+Nothing verifies the publisher, and the bundle carries no Apple notarization ticket —
+downloads are trusted because they come from this repository's releases, nothing more.
+
+## Build the ad-hoc release yourself
+
+`EAGLE_ADHOC_RELEASE=1` is the explicit opt-in that publishes a `device-release` bundle
+without a signing identity; without it a release build still refuses to sign ad-hoc:
+
+```sh
+export EAGLE_DEVICE_PROFILE=device-release
+export EAGLE_DEVICE_SERVICE_URL=https://devices.example.com
+export EAGLE_UPDATES_URL=https://app.example.com/api/live
+export EAGLE_CODESIGN_IDENTITY=-
+export EAGLE_ADHOC_RELEASE=1
+apps/macos/Scripts/build-app.sh release
+ditto -c -k --keepParent "apps/macos/.build/device-release/Eagle.app" \
+  "/tmp/Eagle-$(node -p "require('./apps/macos/Support/Version.json').version")-macos.zip"
+shasum -a 256 /tmp/Eagle-*-macos.zip
+```
+
+The zip is the release asset: `gh release create v<version> /tmp/Eagle-<version>-macos.zip`
+(or `gh release upload`). The bundle records `"mode": "ad-hoc-release"` in
+`Contents/Resources/DeviceSigning.json`, so an installed copy states what it is.
+
 ## Build the pairing candidate on another Mac
 
 Requires **macOS 15+**, Xcode or Command Line Tools, and an **official standalone
