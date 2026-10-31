@@ -21,7 +21,9 @@ public struct SidebarPanel: View {
   private let onGallery: () -> Void
   private let unreadCount: Int
   private let onUnread: () -> Void
+  /// The product's own name and version, lowercase as the brand writes them.
   private let userName: String
+  private let productVersion: String
   private let onPinItem: (String) -> Void
   private let moveTargets: (String) -> [SidebarItemGroup]
   private let onMoveItem: (String, String?) -> Void
@@ -56,7 +58,8 @@ public struct SidebarPanel: View {
     onGallery: @escaping () -> Void = {},
     unreadCount: Int = 0,
     onUnread: @escaping () -> Void = {},
-    userName: String = "Zheng Li",
+    userName: String = "eagle",
+    productVersion: String = "",
     onPinItem: @escaping (String) -> Void = { _ in },
     moveTargets: @escaping (String) -> [SidebarItemGroup] = { _ in [] },
 
@@ -86,6 +89,7 @@ public struct SidebarPanel: View {
     self.unreadCount = unreadCount
     self.onUnread = onUnread
     self.userName = userName
+    self.productVersion = productVersion
     self.onPinItem = onPinItem
     self.moveTargets = moveTargets
     self.onMoveItem = onMoveItem
@@ -399,28 +403,39 @@ public struct SidebarPanel: View {
 
   /// No card and no border: the avatar lines up with the list avatars at the
   /// shared 20 pt content inset.
+  @ViewBuilder private var productMark: some View {
+    if let icon = EagleIcon.image {
+      Image(nsImage: icon)
+        .resizable()
+        .interpolation(.high)
+        .frame(width: Theme.Metric.avatarRow, height: Theme.Metric.avatarRow)
+    } else {
+      Avatar(initial: "e", tint: Theme.Palette.avatarTint(2), size: Theme.Metric.avatarRow)
+    }
+  }
+
   private var footer: some View {
     HStack(spacing: Theme.Metric.rowAvatarGap) {
       Button(action: onAccount) {
         HStack(spacing: Theme.Metric.rowAvatarGap) {
-          Avatar(initial: "Z", tint: Theme.Palette.avatarTint(2), size: Theme.Metric.avatarRow)
+          productMark
           Text(userName)
-            .font(Theme.TypeScale.rowTitle)
+            .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(Theme.Palette.textPrimary)
             .lineLimit(1)
+          if !productVersion.isEmpty { Tag(productVersion) }
         }
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
-      .accessibilityLabel("账户与设置")
+      .accessibilityLabel("eagle \(productVersion)，账户与设置")
       Spacer(minLength: 0)
       HStack(spacing: Theme.Metric.headerControlGap) {
         IconButton(
-          systemName: "bell", label: "通知",
+          systemName: "gearshape", label: "设置",
           size: Theme.Metric.headerControlHeight,
-          tint: Theme.Palette.textSecondary,
           style: .circled,
-          action: onUnread
+          action: onAccount
         )
         IconButton(
           systemName: "square.grid.2x2", label: "Eagle 模板库",

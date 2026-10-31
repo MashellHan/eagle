@@ -185,6 +185,7 @@ public struct WorkspaceShellView: View {
           onCollapse: { layout.toggleSidebar() },
           onAccount: { showsAccountMenu = true },
           onGallery: { onShowGallery { showsSettings = true } },
+          productVersion: AppVersion.current().display,
           onPinItem: { id in chrome.togglePin(id) },
           moveTargets: { id in moveTargets(for: id) },
           onMoveItem: { id, groupId in
