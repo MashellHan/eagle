@@ -75,10 +75,14 @@ public enum Theme {
     public static let roundShadowRadius: CGFloat = 7
     public static let roundShadowY: CGFloat = 2.5
     public static let roundShadowOpacity: Double = 0.10
+    /// Room a header control's shadow needs below its frame; without it the next panel paints
+    /// over the shadow and it reads as cut off.
+    public static let roundShadowBleed: CGFloat =
+      roundShadowRadius + roundShadowY
     /// Gap between header circles, measured from the reference: 9 pt of air between rings.
     public static let headerControlGap: CGFloat = 9
-    public static let participantHeight: CGFloat = 38
-    public static let participantInset: CGFloat = 10
+    public static let participantHeight: CGFloat = 40
+    public static let participantInset: CGFloat = 15
     public static let participantGap: CGFloat = 10
     public static let participantAvatar: CGFloat = 25
     public static let participantShadowRadius: CGFloat = 9

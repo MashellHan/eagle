@@ -20,7 +20,7 @@ struct ThemeTests {
     #expect(Theme.Metric.headerHeight == 72)
     #expect(Theme.Metric.headerBandHeight == Theme.Metric.participantHeight)
     #expect(Theme.Metric.headerTopInset == 20)
-    #expect(Theme.Metric.participantHeight == 38)
+    #expect(Theme.Metric.participantHeight == 40)
     #expect(Theme.Metric.participantAvatar == 25)
     #expect(
       Theme.Metric.headerTopInset + Theme.Metric.headerBandHeight <= Theme.Metric.headerHeight)

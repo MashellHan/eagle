@@ -114,8 +114,10 @@ public struct SidebarPanel: View {
       Spacer(minLength: 0)
       toolbar
     }
-    .frame(height: Theme.Metric.headerControlHeight)
+    .frame(height: Theme.Metric.headerControlHeight, alignment: .top)
     .padding(.horizontal, Theme.Metric.contentInset)
+    // The list below would paint over the controls' shadows without this room.
+    .padding(.bottom, Theme.Metric.roundShadowBleed)
     .padding(.top, Theme.Metric.headerTopInset)
   }
 
