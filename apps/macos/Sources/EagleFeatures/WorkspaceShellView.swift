@@ -226,6 +226,7 @@ public struct WorkspaceShellView: View {
               onSend: { chat.send() },
               showsSidebar: layout.showsSidebar,
               showsInspector: showsInspector,
+              isWaiting: chat.waiting,
               onShowSidebar: { layout.toggleSidebar() },
               onToggleInspector: { layout.toggleInspector() },
               onOpenPeerExchange: { openPeerExchange($0) }

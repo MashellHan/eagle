@@ -16,13 +16,11 @@ public enum TranscriptEntry: Identifiable, Hashable, Sendable {
   case tool(id: String, row: ToolRow)
   /// Several calls from one turn, collapsed into a single line with a detail sheet.
   case toolRun(id: String, rows: [ToolRow])
-  case typing(id: String)
 
   public var id: String {
     switch self {
     case .assistant(let id, _, _), .streamingAssistant(let id, _), .user(let id, _, _),
-      .note(let id, _, _), .peerExchange(let id, _), .tool(let id, _), .toolRun(let id, _),
-      .typing(let id):
+      .note(let id, _, _), .peerExchange(let id, _), .tool(let id, _), .toolRun(let id, _):
       return id
     }
   }
@@ -67,6 +65,8 @@ public struct ConversationColumn: View {
   private let showsSidebar: Bool
   private let showsInspector: Bool
   private let participantStatus: ParticipantStatus?
+  /// Whether a bot is working with nothing to show yet: the wave line above the composer.
+  private let isWaiting: Bool
   private let onStop: () -> Void
   private let onInsert: (() -> Void)?
   private let onRecover: () -> Void
@@ -88,6 +88,7 @@ public struct ConversationColumn: View {
     showsSidebar: Bool = true,
     showsInspector: Bool = true,
     participantStatus: ParticipantStatus? = nil,
+    isWaiting: Bool = false,
     onStop: @escaping () -> Void = {},
     onInsert: (() -> Void)? = nil,
     onRecover: @escaping () -> Void = {},
@@ -109,6 +110,7 @@ public struct ConversationColumn: View {
     self.showsSidebar = showsSidebar
     self.showsInspector = showsInspector
     self.participantStatus = participantStatus
+    self.isWaiting = isWaiting
     self.onStop = onStop
     self.onInsert = onInsert
     self.onRecover = onRecover
@@ -126,16 +128,22 @@ public struct ConversationColumn: View {
       transcript
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-      if onInsert != nil {
-        Text("⌘↩ 插入当前回答")
-          .font(Theme.TypeScale.pill)
-          .foregroundStyle(Theme.Palette.textMuted)
-          .frame(maxWidth: .infinity, alignment: .trailing)
-          .padding(.horizontal, Theme.Metric.conversationInset)
-          .accessibilityHidden(true)
+      // The waiting line owns a band of its own: work starting or finishing repaints one row
+      // of dots and never moves the transcript or the composer.
+      HStack(spacing: 0) {
+        if isWaiting {
+          TypingWaves()
+            .transition(.opacity)
+        }
+        Spacer(minLength: 0)
       }
+      .frame(height: Theme.Metric.waitingBandHeight)
+      .padding(.horizontal, Theme.Metric.conversationInset)
+      .animation(.easeOut(duration: 0.18), value: isWaiting)
+
       Composer(
         placeholder: "给 \(title) 发消息",
+        hint: onInsert == nil ? nil : "⌘↩ 插入当前回答",
         text: $draft,
         onSend: onSend,
         onInsert: onInsert,
@@ -148,13 +156,6 @@ public struct ConversationColumn: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.Palette.surface)
-  }
-
-  /// The open bot's own colour: its bubbles, its label and its folded exchange rows share it, so a
-  /// chat looks like the bot it belongs to instead of the app's neutral card.
-  private var botAccent: Color {
-    if let face { return Theme.Palette.botTint(face.tint) }
-    return Theme.Palette.avatarTint(tintIndex)
   }
 
   private var header: some View {
@@ -252,8 +253,7 @@ public struct ConversationColumn: View {
     case .assistant(_, let blocks, let from):
       VStack(alignment: .leading, spacing: 6) {
         AssistantBubble(
-          text: blocks.markdown, preparedBlocks: preparedMarkdown[entry.id],
-          fill: botAccent.opacity(0.12), border: botAccent.opacity(0.34)
+          text: blocks.markdown, preparedBlocks: preparedMarkdown[entry.id]
         )
         .equatable()
         if let from {
@@ -268,8 +268,7 @@ public struct ConversationColumn: View {
       )
     case .streamingAssistant(_, let blocks):
       AssistantBubble(
-        text: blocks.markdown, streaming: true, preparedBlocks: preparedMarkdown[entry.id],
-        fill: botAccent.opacity(0.12), border: botAccent.opacity(0.34)
+        text: blocks.markdown, streaming: true, preparedBlocks: preparedMarkdown[entry.id]
       )
       .equatable()
       .transition(
@@ -297,8 +296,6 @@ public struct ConversationColumn: View {
     case .toolRun(_, let rows):
       ToolRunRow(rows)
         .transition(.opacity)
-    case .typing:
-      TypingIndicator()
     }
   }
 }

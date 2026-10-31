@@ -57,8 +57,8 @@ public struct SwitchToggle: View {
   }
 }
 
-/// Static green arc used by the typing row; deterministic so snapshots and the
-/// offscreen renderer agree with the app.
+/// The shared activity arc: tool rows, task rows and settings. Deterministic start state so
+/// snapshots and the offscreen renderer agree with the app.
 public struct SpinnerArc: View {
   private let size: CGFloat
   private let lineWidth: CGFloat

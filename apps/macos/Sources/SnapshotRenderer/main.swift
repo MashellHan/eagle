@@ -56,6 +56,20 @@ struct SnapshotRenderer {
         size: CGSize(width: 480, height: 520), named: "chat-experience-\(name)", in: directory,
         appearance: scheme == .dark ? .darkAqua : .aqua
       )
+      capture(
+        ConversationColumn(
+          title: "依赖修复专家", subtitle: "Bots", tintIndex: 4,
+          entries: [.user(id: "u1", text: "PR #490 已开好，我先过闸门再合并发版。", origin: nil)],
+          draft: .constant(""),
+          onSend: {},
+          participantStatus: ParticipantStatus(label: "回答中", phase: .working, canStop: true),
+          isWaiting: true,
+          onInsert: {}
+        )
+        .preferredColorScheme(scheme),
+        size: CGSize(width: 480, height: 420), named: "chat-waiting-\(name)", in: directory,
+        appearance: scheme == .dark ? .darkAqua : .aqua
+      )
     }
 
     for (name, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {

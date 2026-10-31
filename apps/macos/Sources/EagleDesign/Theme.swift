@@ -24,6 +24,9 @@ public enum Theme {
     public static let destructive = Color(light: 0xE5372F, dark: 0xFF5F57)
     public static let hover = Color(light: 0x000000, dark: 0xFFFFFF).opacity(0.06)
     public static let selection = Color(light: 0xFFFFFF, dark: 0x2A2A2E)
+    /// An assistant's turn: one neutral card, a shade apart from the column behind it. Answers
+    /// carry no tint, so the bot's colour stays on its face and its name.
+    public static let assistantFill = Color(light: 0xF3F3F6, dark: 0x1D1D20)
 
     /// iPhone 5C candy tints, in rotation order.
     public static let avatarTints: [Color] = [
@@ -157,6 +160,12 @@ public enum Theme {
     public static let composerHeight: CGFloat = 54
     public static let composerVerticalInset: CGFloat = (composerHeight - hitTarget) / 2
     public static let composerBottomInset: CGFloat = 7
+    /// The waiting line's band above the composer: always reserved, so work starting or
+    /// finishing never moves the transcript.
+    public static let waitingBandHeight: CGFloat = 20
+    public static let waitingDot: CGFloat = 4.5
+    public static let waitingDotGap: CGFloat = 4
+    public static let waitingDotLift: CGFloat = 3
     public static let windowInset: CGFloat = 8
 
     public static let avatarRow: CGFloat = 34
