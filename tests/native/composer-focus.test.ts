@@ -77,8 +77,9 @@ test("the native Chat composer focuses on entry and whitespace while preserving 
     assert.equal(position.status, 0, position.stdout + position.stderr);
     cursor = JSON.parse(position.stdout) as { x: number; y: number };
     assert(Number.isFinite(cursor.x) && Number.isFinite(cursor.y));
-    // Local runs keep a tight deadline; CI AppKit fixtures compile and exercise more UI.
-    const fixtureRunTimeout = process.env.CI ? 60_000 : 15_000;
+    // A deadline, not a target: the fixture walks real AppKit views on a shared runner, and a
+    // 60 s budget already expired on a busy one. A genuine hang still fails here.
+    const fixtureRunTimeout = process.env.CI ? 150_000 : 40_000;
     const run = spawnSync("/usr/bin/env", cleanArguments, {
       encoding: "utf8",
       timeout: fixtureRunTimeout,
