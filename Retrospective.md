@@ -889,3 +889,9 @@ collection, not a demonstrated timeout fix; the 60-second CI limit, all 42 check
 execution mode and gates remain unchanged. The local verification compiles the
 fixture and checks formatting without running the interactive probe while the
 user tests the installed App. The next normal CI run supplies runtime evidence.
+
+During the 0.15.2 release, the shell's inherited Herdr pane identifiers pointed
+to another workspace. A split using `--current` opened an empty pane there; it
+was closed immediately, without running a command in it. The active agent list
+identified Eagle's actual pane. Before controlling Herdr, compare inherited
+identifiers with the live agent list and target the verified pane explicitly.
