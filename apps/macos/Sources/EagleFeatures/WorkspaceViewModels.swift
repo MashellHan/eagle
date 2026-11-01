@@ -156,7 +156,6 @@ public enum MockWorkspace {
         )
       ]
     ),
-    .typing(id: "typing"),
   ]
 
   /// The counterpart of the sample exchange, and the exchange itself: one round trip with four
@@ -420,6 +419,9 @@ public final class BotChatViewModel: ObservableObject {
   @Published public var entries: [TranscriptEntry]
   @Published public var draft: String = ""
   @Published public private(set) var sentCount = 0
+  /// The sample has no daemon: it waits for an answer the way a real bot does, on the wave
+  /// line above the composer.
+  @Published public private(set) var waiting = true
 
   public init(entries: [TranscriptEntry] = MockWorkspace.botTranscript) {
     self.entries = entries
@@ -429,8 +431,8 @@ public final class BotChatViewModel: ObservableObject {
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty else { return }
     entries.append(.user(id: "local-\(sentCount)", text: text, origin: nil))
-    entries.append(.typing(id: "typing-\(sentCount)"))
     sentCount += 1
+    waiting = true
     draft = ""
   }
 }

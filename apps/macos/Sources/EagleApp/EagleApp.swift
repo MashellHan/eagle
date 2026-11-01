@@ -4,11 +4,11 @@ import EagleFeatures
 import SwiftUI
 
 struct EagleApp: App {
-  @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+  @NSApplicationDelegateAdaptor(EagleApplicationDelegate.self) private var delegate
   @AppStorage("eagle.appearance") private var appearance = "system"
 
   var body: some Scene {
-    WindowGroup("Eagle") {
+    WindowGroup("Eagle for Mac") {
       WorkspaceShellView(onShowGallery: { openSettings in
         GalleryWindowController.shared.show(onShowSettings: openSettings)
       })
@@ -48,35 +48,53 @@ struct EagleApp: App {
   }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
-  func applicationDidFinishLaunching(_ notification: Notification) {
-    NSApp.setActivationPolicy(.regular)
-    NSApp.activate(ignoringOtherApps: true)
-    DeviceApprovalWindowController.shared.observe(DeviceSettingsViewModel.shared)
-    Task { @MainActor in await DeviceSettingsViewModel.shared.startIfNeeded() }
-  }
-
-  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-    true
-  }
-
-  /// The daemon is a child of the app: quitting the app must not leave it running.
-  func applicationWillTerminate(_ notification: Notification) {
-    BotsDaemonSupervisor.terminateRecordedDaemon()
-  }
-}
-
 /// Lets the whole window be dragged by its background, which is what makes the
 /// hidden title bar feel natural.
 struct WindowConfigurator: NSViewRepresentable {
+  final class Coordinator {
+    private var base: CGPoint?
+    fileprivate var observers: [NSObjectProtocol] = []
+
+    /// The titlebar re-lays its buttons out on every resize, so the nudge is applied as an
+    /// absolute offset from the first position the system chose, never as a repeated delta.
+    func nudge(_ window: NSWindow?) {
+      guard let window,
+        let container = window.standardWindowButton(.closeButton)?.superview
+      else { return }
+      if base == nil { base = container.frame.origin }
+      guard let base else { return }
+      container.setFrameOrigin(
+        NSPoint(
+          x: base.x + Theme.Metric.trafficLightNudgeX,
+          y: base.y + Theme.Metric.trafficLightNudgeY
+        )
+      )
+    }
+  }
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
+
   func makeNSView(context: Context) -> NSView {
     let view = NSView()
+    let coordinator = context.coordinator
     DispatchQueue.main.async {
-      view.window?.isMovableByWindowBackground = true
-      view.window?.styleMask.insert(.fullSizeContentView)
-      view.window?.titlebarAppearsTransparent = true
-      view.window?.titleVisibility = .hidden
-      view.window?.toolbar = nil
+      guard let window = view.window else { return }
+      window.isMovableByWindowBackground = true
+      window.styleMask.insert(.fullSizeContentView)
+      window.titlebarAppearsTransparent = true
+      window.titleVisibility = .hidden
+      window.toolbar = nil
+      coordinator.nudge(window)
+      for name in [
+        NSWindow.didResizeNotification, NSWindow.didBecomeKeyNotification,
+        NSWindow.didExitFullScreenNotification,
+      ] {
+        coordinator.observers.append(
+          NotificationCenter.default.addObserver(
+            forName: name, object: window, queue: .main
+          ) { [weak window] _ in coordinator.nudge(window) }
+        )
+      }
     }
     return view
   }

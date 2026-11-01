@@ -83,6 +83,8 @@ export type StackOptions = {
   readonly closeDeadlineMs?: number;
   /** Gateway settings routes; a test supplies a fake service. */
   readonly settings?: GatewayApi;
+  /** The machine instructions a test pretends to have found, for the read-only preview. */
+  readonly machinePrompt?: () => { readonly path: string; readonly text: string } | undefined;
 };
 
 export const startStack = async (options: StackOptions = {}): Promise<Stack> => {
@@ -95,9 +97,11 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
   let faux: FauxProviderHandle | undefined;
   let model = options.model ?? { provider: "faux", modelId: "faux-1" };
   let openRuntime: RegistryOptions["openRuntime"];
+  let readReplicaBinding: RuntimePort["readReplicaBinding"];
   if (options.runtime !== undefined) {
     const runtime = options.runtime;
     openRuntime = (spec) => runtime.open(spec);
+    readReplicaBinding = runtime.readReplicaBinding?.bind(runtime);
   } else if (options.real === true) {
     faux = fauxProvider(
       options.tokensPerSecond === undefined ? {} : { tokensPerSecond: options.tokensPerSecond },
@@ -119,6 +123,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
       peers: async (spec) => peersHolder.current?.(spec.id),
     });
     openRuntime = (spec) => adapter.open(spec);
+    readReplicaBinding = (spec) => adapter.readReplicaBinding(spec);
   } else {
     const runtime = fake as FakeRuntime;
     openRuntime = (spec) => runtime.open(spec);
@@ -158,6 +163,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
       opens += 1;
       return openRuntime(spec);
     },
+    ...(readReplicaBinding === undefined ? {} : { readReplicaBinding }),
     model,
     log,
     ...(options.toolGroups === undefined
@@ -245,6 +251,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     registry: registryView,
     service,
     ...(options.settings === undefined ? {} : { settings: options.settings }),
+    ...(options.machinePrompt === undefined ? {} : { machinePrompt: options.machinePrompt }),
     version: "0.0.0-test",
     instance: "i_test",
     capabilities: {

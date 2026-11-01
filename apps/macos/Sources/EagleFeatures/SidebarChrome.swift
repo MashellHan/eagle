@@ -49,7 +49,8 @@ final class SidebarChromeViewModel: ObservableObject {
           tintIndex: item.tintIndex,
           face: item.face,
           pinned: pinned.contains(item.id),
-          unread: unread.contains(item.id)
+          unread: unread.contains(item.id),
+          busy: item.busy
         )
       }
     let ordered = visible.filter(\.pinned) + visible.filter { !$0.pinned }

@@ -1,5 +1,6 @@
 import AppKit
 import BotsCore
+import BotsTransport
 import EagleDesign
 import EagleDevices
 import EagleFeatures
@@ -54,6 +55,20 @@ struct SnapshotRenderer {
         )
         .preferredColorScheme(scheme),
         size: CGSize(width: 480, height: 520), named: "chat-experience-\(name)", in: directory,
+        appearance: scheme == .dark ? .darkAqua : .aqua
+      )
+      capture(
+        ConversationColumn(
+          title: "依赖修复专家", subtitle: "Bots", tintIndex: 4,
+          entries: [.user(id: "u1", text: "PR #490 已开好，我先过闸门再合并发版。", origin: nil)],
+          draft: .constant(""),
+          onSend: {},
+          participantStatus: ParticipantStatus(label: "回答中", phase: .working, canStop: true),
+          isWaiting: true,
+          onInsert: {}
+        )
+        .preferredColorScheme(scheme),
+        size: CGSize(width: 480, height: 420), named: "chat-waiting-\(name)", in: directory,
         appearance: scheme == .dark ? .darkAqua : .aqua
       )
     }
@@ -192,6 +207,24 @@ struct SnapshotRenderer {
       SettingsView(model: machines, devices: devices).preferredColorScheme(.light),
       size: CGSize(width: 920, height: 720),
       named: "settings-machines",
+      in: directory
+    )
+
+    let tools = SettingsViewModel()
+    tools.selection = .tools
+    tools.gatewayCorePrompt = "你是一个务实、友好的 agent：先说结论，再给依据；做不到就直说。"
+    tools.gatewayMachinePrompt = MachinePromptPreview(
+      path: "/Users/me/workspace/personal/workflow/agents/AGENTS.md",
+      text: """
+        # system0 machine setup
+
+        一个维护机器指令、可复用技能和命令的来源。项目指令放在各仓根的 AGENTS.md。
+        """
+    )
+    capture(
+      SettingsView(model: tools).preferredColorScheme(.light),
+      size: CGSize(width: 920, height: 720),
+      named: "settings-tools",
       in: directory
     )
 

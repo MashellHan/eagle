@@ -84,7 +84,7 @@ struct BotsPresenterTests {
       }())
   }
 
-  @Test("streaming text grows in place and an empty attempt shows typing")
+  @Test("streaming text grows in place and a silent attempt reports waiting")
   func streaming() {
     var state = ConversationState(botId: "b_1", running: true)
     state = Reducer.apply(
@@ -94,8 +94,7 @@ struct BotsPresenterTests {
       ),
       to: state
     )
-    #expect(
-      presenter.transcript(for: state).contains { if case .typing = $0 { true } else { false } })
+    #expect(presenter.isWaiting(for: state))
 
     state = Reducer.apply(
       .delta(messageId: "p_a1", changes: [.text(index: 0, append: "巴黎")]),
@@ -106,7 +105,7 @@ struct BotsPresenterTests {
       entries.contains {
         if case .streamingAssistant(_, [.paragraph("巴黎")]) = $0 { true } else { false }
       })
-    #expect(!entries.contains { if case .typing = $0 { true } else { false } })
+    #expect(!presenter.isWaiting(for: state))
   }
 
   @Test("an unavailable bot says so and a sidebar item carries its state")
@@ -129,7 +128,9 @@ struct BotsPresenterTests {
     )
     let item = presenter.sidebarItem(for: bot)
     #expect(item.title == "研究员")
-    #expect(item.tag == "回答中")
+    // A working bot animates its own face instead of wearing a tag.
+    #expect(item.busy)
+    #expect(item.tag != "回答中")
     #expect((0..<Theme.Palette.avatarTints.count).contains(item.tintIndex))
   }
 
@@ -307,8 +308,8 @@ struct BotsToolRowTests {
     #expect(rows.first?.isRunning == true)
     #expect(rows.first?.output == nil)
     #expect(rows.first?.input.contains("\"path\": \"notes.txt\"") == true)
-    // The tool row replaces the typing row: the model is not silent, it is running a tool.
-    #expect(!entries.contains { if case .typing = $0 { true } else { false } })
+    // A running tool is its own sign of work: the waiting line stays away.
+    #expect(!presenter.isWaiting(for: state))
   }
 
   @Test("the result pairs with its call by id, live and after a snapshot")
@@ -518,7 +519,7 @@ struct BotsToolPairingTests {
     )
     let entries = presenter.transcript(for: state)
     #expect(toolRows(entries).first?.isRunning == false, "the finished run's call stays settled")
-    #expect(entries.contains { if case .typing = $0 { true } else { false } })
+    #expect(presenter.isWaiting(for: state))
   }
 }
 

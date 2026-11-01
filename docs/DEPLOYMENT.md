@@ -53,6 +53,8 @@ The root manifest owns the website/Worker version and
 unpublished Agent source version is not an installation target. A website-only
 release may leave `packages/agent/package.json` unchanged and use the existing published
 Agent; do not publish npm, restart collectors, or change real machine configs.
+It also leaves `config.publishedMacosVersion` alone: an app version is claimed only by the
+release that uploads the app ([macOS app releases](#macos-app-releases)).
 
 The current GitHub workflow runs checks on main/PR only; it has no npm/tag/release
 publication trigger. `npm run deploy` builds the website and deploys only the
@@ -74,6 +76,48 @@ fixtures, send realtime input, or trigger daily jobs. Record actual existing
 collector versions, sample timestamps and empty history instead of treating
 synthetic validation as production evidence. Missing Access login blocks
 protected-page verification, not permission to disable authentication.
+
+## macOS app releases
+
+The App has its own version file (`apps/macos/Support/Version.json`) and its own cadence: a
+website release ships no app asset most of the time, and nothing here requires one.
+
+`/api/live` answers `macos` only when `config.publishedMacosVersion` exists in the root
+`package.json`. That field is a claim about what a person can actually download, so it
+changes **only in the release that attaches an app to a GitHub release**, never because
+the app's source version moved. Without it the field is absent, and an installed App —
+which only asks when its own bundle is a release build — shows no update hint at all.
+`tests/macos-release.test.ts` keeps the claim out of the deployment configuration and
+refuses a published version that runs ahead of the source.
+
+Publishing an app release:
+
+```sh
+# 1. Source version and build; this is the un-notarized artifact described in apps/macos/README.md.
+#    EAGLE_ADHOC_RELEASE=1 is the explicit opt-in, and the point release tag carries the same number.
+node -p "require('./apps/macos/Support/Version.json').version"
+
+# 2. Attach the zip to the release before claiming it.
+gh release create macos-v<app-version> /tmp/Eagle-<app-version>-macos.zip --title "Eagle for Mac <app-version>"
+
+# 3. Declare what is published, then deploy so /api/live answers it.
+#    "config": { "publishedMacosVersion": "<app-version>", "macosReleaseUrl": "..." }
+npm run deploy
+curl -fsS "$EAGLE_INGEST_ORIGIN/api/live" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).macos))'
+```
+
+Step 3 is the one that is easy to forget, and it fails silently: with no
+`publishedMacosVersion`, `/api/live` simply omits `macos`, so a released app never learns
+that a newer one exists. If the manifest claims a version that is not attached to the
+release, the App sends the person to a release page with nothing to download. Update the two
+together, in one commit, and keep the number in `macosReleaseUrl`'s release line truthful.
+
+Signature policy: releases are **ad-hoc signed and not notarized**. The install instructions
+(quarantine removal, the one-time Privacy & Security approval, the Login Items approval, and
+the warning that a global Gatekeeper disable is not the fix) live in
+[apps/macos/README.md](../apps/macos/README.md). Do not describe a published build as
+notarized, and do not add a Developer ID step to the release notes until a certificate and
+a `notarytool` submission actually exist.
 
 ## Deploy
 
@@ -151,15 +195,17 @@ node_modules/.bin/wrangler deploy --config apps/web/wrangler.devices.jsonc \
 ```
 
 No D1 apply, shared-secret upload, website build or npm publication is required.
-`scripts/deploy.ts` also publishes the app version: it reads
-`apps/macos/Support/Version.json` into `MACOS_VERSION` and the release link from the root
-`package.json` `config.macosReleaseUrl`, so `/api/live` answers `macos.latest` without the
-site and the app sharing a number.
+`scripts/deploy.ts` publishes the app version only when the manifest declares one:
+`config.publishedMacosVersion` in the root `package.json` becomes `MACOS_VERSION` and
+`config.macosReleaseUrl` becomes the link, so `/api/live` answers `macos.latest` without the
+site and the app sharing a number. See [macOS app releases](#macos-app-releases) for when
+that declaration changes.
 
 After deployment, verify the exact `/api/live` revision and anonymous device directory
-401 response, then build the isolated candidate with
-`EAGLE_DEVICE_SERVICE_URL=<your device origin>`. There is no address
-form in the App; both Macs must use the same origin for registration, pairing and WSS.
+401 response. A published App ships no relay address: each machine names its own origin in
+设置 → 设备 → 服务地址 (`eagle.deviceServiceAddress`), and paired Macs must use the same one.
+A build may still pin an origin with `EAGLE_DEVICE_SERVICE_URL=<your device origin>`; that is
+optional and never required for a release.
 Use the complete signed bundle and candidate installer described in
 `apps/macos/README.md`; the installer prepares the old service before replacing it.
 An uncertain operation is recovered by its original ID, never by resubmission with

@@ -24,6 +24,9 @@ public enum Theme {
     public static let destructive = Color(light: 0xE5372F, dark: 0xFF5F57)
     public static let hover = Color(light: 0x000000, dark: 0xFFFFFF).opacity(0.06)
     public static let selection = Color(light: 0xFFFFFF, dark: 0x2A2A2E)
+    /// An assistant's turn: one neutral card, a shade apart from the column behind it. Answers
+    /// carry no tint, so the bot's colour stays on its face and its name.
+    public static let assistantFill = Color(light: 0xF3F3F6, dark: 0x1D1D20)
 
     /// iPhone 5C candy tints, in rotation order.
     public static let avatarTints: [Color] = [
@@ -57,9 +60,15 @@ public enum Theme {
     public static let trafficLightLeading: CGFloat = 16
     public static let trafficLightSize: CGFloat = 13.5
     public static let trafficLightPitch: CGFloat = 23
+    /// A hidden-titlebar window lets the system park the buttons about 10 pt in; these nudge them
+    /// onto the leading/top grid above so they do not hug the corner.
+    public static let trafficLightNudgeX: CGFloat = 7
+    /// Downward in the titlebar's own coordinates, so the lights' top edge lands on the same
+    /// line as the header control row (both start at `headerTopInset`).
+    public static let trafficLightNudgeY: CGFloat = -11.5
     public static let trafficLightsEnd: CGFloat =
       trafficLightLeading + trafficLightPitch * 2 + trafficLightSize
-    public static let toolbarHeight: CGFloat = 32
+    public static let toolbarHeight: CGFloat = 35
     public static let toolbarTopInset: CGFloat = 0
     public static let headerHeight: CGFloat = 72
     /// The tallest control in the header band is the participant card, so the band is its height.
@@ -68,11 +77,26 @@ public enum Theme {
     public static let headerTopInset: CGFloat = contentInset
     /// Content that shares the window's top corner with the traffic lights starts past them.
     public static let trafficLightsClearance: CGFloat = trafficLightsEnd + 8
-    public static let headerControlHeight: CGFloat = 34
+    /// The reference header control: a 35 pt circle, a 16 pt glyph, a hairline ring and a soft
+    /// drop shadow. Sized once here so every header group stays identical.
+    public static let headerControlHeight: CGFloat = 35
+    public static let roundGlyphRatio: CGFloat = 0.46
+    public static let roundShadowRadius: CGFloat = 7
+    public static let roundShadowY: CGFloat = 2.5
+    public static let roundShadowOpacity: Double = 0.10
+    /// Room a header control's shadow needs below its frame; without it the next panel paints
+    /// over the shadow and it reads as cut off.
+    public static let roundShadowBleed: CGFloat =
+      roundShadowRadius + roundShadowY
+    /// Gap between header circles, measured from the reference: 9 pt of air between rings.
+    public static let headerControlGap: CGFloat = 9
     public static let participantHeight: CGFloat = 40
-    public static let participantInset: CGFloat = 12
-    public static let participantGap: CGFloat = 12
-    public static let participantAvatar: CGFloat = 26
+    public static let participantInset: CGFloat = 15
+    public static let participantGap: CGFloat = 10
+    public static let participantAvatar: CGFloat = 25
+    public static let participantShadowRadius: CGFloat = 9
+    public static let participantShadowY: CGFloat = 3
+    public static let participantShadowOpacity: Double = 0.12
 
     public static let contentInset: CGFloat = 20
     /// Rows sit on cards inset from the panel edges; avatars keep the 20 pt line.
@@ -135,10 +159,22 @@ public enum Theme {
     public static let inspectorRowHeight: CGFloat = 40
     public static let composerHeight: CGFloat = 54
     public static let composerVerticalInset: CGFloat = (composerHeight - hitTarget) / 2
+    /// The composer's own horizontal inset, shared by the waiting line so its avatar lines up
+    /// with the composer's first control and its text with the field's first character.
+    public static let composerInnerInset: CGFloat = 14
     public static let composerBottomInset: CGFloat = 7
+    /// The waiting line's band above the composer: always reserved, so work starting or
+    /// finishing never moves the transcript.
+    public static let waitingBandHeight: CGFloat = 32
+    public static let waitingAvatar: CGFloat = 26
+    public static let waitingDot: CGFloat = 6
+    public static let waitingDotGap: CGFloat = 5
+    public static let waitingDotLift: CGFloat = 3.5
     public static let windowInset: CGFloat = 8
 
     public static let avatarRow: CGFloat = 34
+    /// The footer's product mark is a scaled app icon: it takes the macOS icon corner, not none.
+    public static let productMarkRadius: CGFloat = 8
     public static let avatarProfile: CGFloat = 55
     public static let avatarInspector: CGFloat = 76
     public static let avatarNote: CGFloat = 18

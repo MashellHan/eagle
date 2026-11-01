@@ -111,6 +111,7 @@ test("independent Bots capture never sends incomplete known-secret fragments int
           join(directory, "journal.sqlite"),
           () => [secret],
         );
+        runtime.setPolicy("all-approve");
         const leases = new NativeDeviceLeases(runtime);
         try {
           const operation = {

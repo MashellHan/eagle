@@ -71,8 +71,6 @@
     "ACCESS_TEAM_URL": "https://team.cloudflareaccess.com",
     "ACCESS_AUD": "0000000000000000000000000000000000000000000000000000000000000000",
     "DEV_HOSTS": "dev.example.com",
-    "INGEST_HOST": "ingest.example.com",
-    "MACOS_VERSION": "0.0.0",
-    "MACOS_RELEASE_URL": "https://github.com/example/eagle/releases/latest"
+    "INGEST_HOST": "ingest.example.com"
   }
 }

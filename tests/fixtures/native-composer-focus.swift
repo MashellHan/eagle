@@ -347,12 +347,18 @@ private final class ComposerFocusDelegate: NSObject, NSApplicationDelegate {
     await fixture.drainRunLoop()
     fixture.focusOther()
     let beforeScroll = scroll.contentView.bounds.origin
-    let scrollDelta = fixture.scrollViewport(scroll, by: 80)
+    let historyViewport = fixture.host.convert(scroll.contentView.bounds, from: scroll.contentView)
+    let scrollPoint = NSPoint(x: historyViewport.midX, y: historyViewport.midY)
+    let scrollEvents = await fixture.scroll(at: scrollPoint, delta: 80)
+    let afterInput = scroll.contentView.bounds.origin
+    let scrollDelta = afterInput.y - beforeScroll.y
     await fixture.settle()
     await fixture.drainRunLoop()
     editingStates.append([
       "step": "historyScroll", "before": NSStringFromPoint(beforeScroll),
       "after": NSStringFromPoint(scroll.contentView.bounds.origin),
+      "afterInput": NSStringFromPoint(afterInput), "events": scrollEvents,
+      "inputPoint": NSStringFromPoint(scrollPoint), "hit": fixture.hitDescription(scrollPoint),
       "scrollDelta": scrollDelta,
       "viewport": NSStringFromRect(scroll.contentView.bounds),
       "document": NSStringFromRect(scroll.documentView?.frame ?? .zero),
@@ -568,8 +574,8 @@ private final class ComposerFocusWindow {
           x: start.x + (point.x - start.x) * t,
           y: start.y + (point.y - start.y) * t
         ))
-      await settle()
     }
+    // Intermediate points have no assertions; settle after the complete movement.
     move(point)
     await settle()
   }

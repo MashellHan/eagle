@@ -1,15 +1,132 @@
 // The composition root: one daemon over one root, wired from configuration, closed cleanly.
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { createServer as createSocketServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { readConfig } from "../src/config.ts";
 import { startDaemon } from "../src/main.ts";
-import { readGateway, writeGateway } from "../src/server/gateway.ts";
+import { DEFAULT_CORE_PROMPT, readGateway, writeGateway } from "../src/server/gateway.ts";
 import { waitFor } from "./support/pi.ts";
+
+test("close and SIGTERM start local cleanup while real private Self I/O is held", async (t) => {
+  for (const mode of ["close", "SIGTERM"] as const)
+    await t.test(mode, async () => {
+      const root = await mkdtemp("/tmp/bots-self-close-");
+      const socketPath = join(root, "device.sock");
+      const sockets: Socket[] = [];
+      const releases: (() => void)[] = [];
+      let held!: () => void;
+      const selfRequested = new Promise<void>((resolve) => {
+        held = resolve;
+      });
+      const socketServer = createSocketServer((socket) => {
+        sockets.push(socket);
+        let text = "";
+        socket.on("data", (bytes) => {
+          text += bytes.toString();
+          if (!text.includes("\n")) return;
+          const request = JSON.parse(text.slice(0, text.indexOf("\n"))) as {
+            requestId: string;
+            method: string;
+          };
+          assert.equal(request.method, "sync.endpoints.self");
+          releases.push(() =>
+            socket.end(
+              JSON.stringify({
+                requestId: request.requestId,
+                result: {
+                  version: 1,
+                  addresses: ["100.64.1.1"],
+                  digest: createHash("sha256")
+                    .update(JSON.stringify(["100.64.1.1"]))
+                    .digest("hex"),
+                },
+              }) + "\n",
+            ),
+          );
+          held();
+        });
+      });
+      await new Promise<void>((resolve) => socketServer.listen(socketPath, resolve));
+      await chmod(socketPath, 0o600);
+      const script = join(root, "owned.mjs");
+      await writeFile(
+        script,
+        `
+import {createInterface} from 'node:readline';
+import {readConfig} from ${JSON.stringify(new URL("../src/config.ts", import.meta.url).href)};
+import {startDaemon} from ${JSON.stringify(new URL("../src/main.ts", import.meta.url).href)};
+const daemon=await startDaemon(readConfig({argv:['--root',${JSON.stringify(root)},'--port','0','--sync-port','0'],env:{BOTS_DEVICE_SOCKET:${JSON.stringify(socketPath)}}}));
+console.log(JSON.stringify({port:daemon.port}));
+for await(const line of createInterface({input:process.stdin})){
+ if(line==='close'){await daemon.close();console.log(JSON.stringify({closed:true,ready:daemon.sync.status().ready}));break;}
+}
+`,
+      );
+      const child = spawn(
+        process.execPath,
+        mode === "SIGTERM"
+          ? [
+              new URL("../scripts/serve.ts", import.meta.url).pathname,
+              "--root",
+              root,
+              "--port",
+              "0",
+              "--sync-port",
+              "0",
+            ]
+          : [script],
+        {
+          env: { ...process.env, BOTS_DEVICE_SOCKET: socketPath },
+          stdio: ["pipe", "pipe", "pipe"],
+        },
+      );
+      const lines = createInterface({ input: child.stdout });
+      let stderr = "";
+      child.stderr.on("data", (bytes) => {
+        stderr += bytes.toString();
+      });
+      const exited = new Promise<number | null>((resolve) => child.once("exit", resolve));
+      let cleanupStarted = false;
+      try {
+        const first = await lines[Symbol.asyncIterator]().next();
+        const ready = JSON.parse(first.value as string) as { port: number };
+        assert.equal((await fetch(`http://127.0.0.1:${ready.port}/v1/health`)).status, 200);
+        await selfRequested;
+        if (mode === "SIGTERM") child.kill("SIGTERM");
+        else child.stdin.end("close\n");
+        for (let i = 0; i < 50; i++) {
+          try {
+            await fetch(`http://127.0.0.1:${ready.port}/v1/health`);
+          } catch {
+            cleanupStarted = true;
+            break;
+          }
+          await delay(10);
+        }
+      } finally {
+        for (const release of releases) release();
+        const code = await exited;
+        lines.close();
+        for (const socket of sockets) socket.destroy();
+        await new Promise<void>((resolve) => socketServer.close(() => resolve()));
+        await rm(root, { recursive: true, force: true });
+        assert.equal(code, 0, stderr);
+      }
+      assert.equal(
+        cleanupStarted,
+        true,
+        "local HTTP cleanup starts before releasing Self, within the original shutdown budget",
+      );
+    });
+});
 
 test("saved gateway credentials authorize model requests on every daemon boot", async () => {
   const root = await mkdtemp(join(tmpdir(), "bots-saved-gateway-"));
@@ -61,6 +178,7 @@ test("saved gateway credentials authorize model requests on every daemon boot", 
       apiKey: key,
       thinkingLevel: "medium",
       toolGroups: ["core", "herdr"],
+      corePrompt: "你是一个务实、友好的 agent。",
     });
     let botId: string | undefined;
     for (const boot of [1, 2]) {
@@ -405,5 +523,130 @@ test("provider keys are saved behind the bearer and never returned", async () =>
     else process.env.XDG_CONFIG_HOME = previous;
     await rm(root, { recursive: true, force: true });
     await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+// The two core prompts cross the composition root: the file is read from the machine, and the
+// standing instruction is stored and reported back (docs/bots/PRODUCT.md, "Core prompts").
+test("the daemon reads the machine prompt and saves the core prompt", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-core-prompt-"));
+  const machineFile = join(root, "machine-AGENTS.md");
+  await writeFile(machineFile, "# 机器规则\n\n始终先跑测试。");
+  const previous = process.env.BOTS_MACHINE_AGENTS;
+  process.env.BOTS_MACHINE_AGENTS = machineFile;
+  try {
+    const config = readConfig({ argv: ["--root", root, "--port", "0"], env: {} });
+    let daemon = await startDaemon(config);
+    const authorized = (path: string, init: RequestInit = {}) =>
+      fetch(`http://127.0.0.1:${daemon.port}${path}`, {
+        ...init,
+        headers: {
+          authorization: `Bearer ${daemon.token}`,
+          "content-type": "application/json",
+          ...(init.headers ?? {}),
+        },
+      });
+    try {
+      const initial = (await (await authorized("/v1/settings")).json()) as {
+        settings: { corePrompt: string; toolGroups: string[] };
+        machinePrompt: { path: string; text: string } | null;
+      };
+      assert.equal(initial.settings.corePrompt, DEFAULT_CORE_PROMPT);
+      assert.deepEqual(initial.settings.toolGroups.slice(0, 2), ["persona", "machine"]);
+      assert.equal(initial.machinePrompt?.text.includes("始终先跑测试。"), true);
+
+      const saved = (await (
+        await authorized("/v1/settings", {
+          method: "PUT",
+          body: JSON.stringify({ corePrompt: "  只说结论。 " }),
+        })
+      ).json()) as { settings: { corePrompt: string; toolGroups: string[] } };
+      assert.equal(saved.settings.corePrompt, "只说结论。");
+      assert.equal((await readGateway(root))?.corePrompt, "只说结论。");
+      assert.deepEqual(saved.settings.toolGroups, initial.settings.toolGroups);
+      assert.deepEqual((await readGateway(root))?.toolGroups, initial.settings.toolGroups);
+
+      await daemon.close();
+      daemon = await startDaemon(config);
+      const defaultsReopened = (await (await authorized("/v1/settings")).json()) as {
+        settings: { configured: boolean; toolGroups: string[] };
+      };
+      assert.equal(defaultsReopened.settings.configured, false);
+      assert.deepEqual(defaultsReopened.settings.toolGroups, initial.settings.toolGroups);
+
+      const maximum = "字".repeat(4_000);
+      const edited = await authorized("/v1/settings", {
+        method: "PUT",
+        body: JSON.stringify({ corePrompt: maximum, toolGroups: [] }),
+      });
+      assert.equal(edited.status, 200, "a second tools-only edit needs no configured gateway");
+      assert.equal((await readGateway(root))?.corePrompt, maximum);
+
+      const tooLong = await authorized("/v1/settings", {
+        method: "PUT",
+        body: JSON.stringify({ corePrompt: "字".repeat(4_001) }),
+      });
+      assert.equal(tooLong.status, 400, "an oversized instruction is refused");
+      assert.match(JSON.stringify(await tooLong.json()), /人格提示不能超过 4000/);
+      assert.equal((await readGateway(root))?.corePrompt, maximum, "a refusal preserves the draft");
+
+      await daemon.close();
+      daemon = await startDaemon(config);
+      const reopened = (await (await authorized("/v1/settings")).json()) as {
+        settings: { configured: boolean; corePrompt: string; toolGroups: string[] };
+      };
+      assert.equal(reopened.settings.configured, false);
+      assert.equal(reopened.settings.corePrompt, maximum);
+      assert.deepEqual(reopened.settings.toolGroups, ["core", "coding"]);
+      const afterReopen = await authorized("/v1/settings", {
+        method: "PUT",
+        body: JSON.stringify({ corePrompt: "重开后仍可编辑。" }),
+      });
+      assert.equal(afterReopen.status, 200, "tools-only edits remain valid after owned reopen");
+      assert.deepEqual((await readGateway(root))?.toolGroups, ["core", "coding"]);
+
+      const invalidGateway = await authorized("/v1/settings", {
+        method: "PUT",
+        body: JSON.stringify({ baseUrl: "" }),
+      });
+      assert.equal(invalidGateway.status, 400, "explicit gateway fields still require a gateway");
+      const unknownGroup = await authorized("/v1/settings", {
+        method: "PUT",
+        body: JSON.stringify({ toolGroups: ["unknown"] }),
+      });
+      assert.equal(unknownGroup.status, 400);
+      assert.match(JSON.stringify(await unknownGroup.json()), /未知的工具组/);
+
+      assert.equal(
+        (
+          await authorized("/v1/settings", {
+            method: "PUT",
+            body: JSON.stringify({
+              baseUrl: "http://127.0.0.1:9/v1",
+              model: "owned-model",
+              apiKey: "owned-key",
+            }),
+          })
+        ).status,
+        200,
+      );
+      assert.equal(
+        (
+          await authorized("/v1/settings", {
+            method: "PUT",
+            body: JSON.stringify({ corePrompt: "保留模型和密钥。" }),
+          })
+        ).status,
+        200,
+      );
+      assert.equal((await readGateway(root))?.model, "owned-model");
+      assert.equal((await readGateway(root))?.apiKey, "owned-key");
+    } finally {
+      await daemon.close();
+    }
+  } finally {
+    if (previous === undefined) delete process.env.BOTS_MACHINE_AGENTS;
+    else process.env.BOTS_MACHINE_AGENTS = previous;
+    await rm(root, { recursive: true, force: true });
   }
 });

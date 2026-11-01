@@ -47,6 +47,8 @@ function fixture() {
   const directory = mkdtempSync(join(tmpdir(), "device-runtime-"));
   const { device, keys } = local();
   const runtime = new DeviceRuntime(device, join(directory, "journal.sqlite"));
+  // A fresh device asks by default; these cases are about everything after that decision.
+  runtime.setPolicy("all-approve");
   return {
     directory,
     device,
@@ -134,10 +136,10 @@ test("a real SQLite request-record failure rolls policy and version back togethe
       f.device,
       join(f.directory, "journal.sqlite"),
     );
-    assert.deepEqual(recovered.policy, { mode: "all-approve", version: 1 });
+    assert.deepEqual(recovered.policy, { mode: "all-approve", version: 2 });
     assert.deepEqual(recovered.applyPolicy(input, source), {
       mode: "paused",
-      version: 2,
+      version: 3,
     });
   } finally {
     await recovered?.close();
@@ -187,6 +189,7 @@ test("an identity change preserves the journal without exposing the previous tar
     command: `printf x >> '${marker}'; cat '${marker}'`,
   });
   const before = new DeviceRuntime(previous, path);
+  before.setPolicy("all-approve");
   try {
     assert.equal((await before.handle(input, source)).output, "x");
   } finally {
@@ -535,6 +538,7 @@ test("native and file output use bounded UTF-8 bytes and the command credential 
     join(directory, "journal.sqlite"),
     () => [secret],
   );
+  runtime.setPolicy("all-approve");
   try {
     const native = await request(device.deviceId, {
       kind: "native",
@@ -807,6 +811,7 @@ for (const scenario of [
       () => [],
       scenario === "missing-admission" ? undefined : originalBoot,
     );
+    runtime.setPolicy("all-approve");
     try {
       const native = await request(device.deviceId, {
         kind: "native",

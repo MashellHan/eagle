@@ -5,7 +5,7 @@ let package = Package(
   name: "Eagle",
   platforms: [.macOS(.v15)],
   products: [
-    .executable(name: "EagleApp", targets: ["EagleApp"]),
+    .executable(name: "Eagle", targets: ["EagleApp"]),
     .executable(name: "EagleDeviceHelper", targets: ["EagleDeviceHelper"]),
     // Tokens and primitives, dependent on nothing (docs/bots/ARCHITECTURE.md).
     .library(name: "EagleDesign", targets: ["EagleDesign"]),
@@ -35,7 +35,11 @@ let package = Package(
     ),
     .executableTarget(
       name: "SnapshotRenderer",
-      dependencies: ["EagleDesign", "EagleFeatures"]
+      dependencies: [
+        "EagleDesign",
+        "EagleFeatures",
+        .product(name: "BotsTransport", package: "bots-macos"),
+      ]
     ),
     .testTarget(name: "EagleDesignTests", dependencies: ["EagleDesign"]),
     .testTarget(name: "EagleFeaturesTests", dependencies: ["EagleFeatures"]),

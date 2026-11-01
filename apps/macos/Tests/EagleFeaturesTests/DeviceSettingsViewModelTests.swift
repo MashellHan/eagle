@@ -1,3 +1,4 @@
+import CryptoKit
 import EagleDevices
 import Foundation
 import Testing
@@ -7,6 +8,159 @@ import Testing
 @Suite("Device settings", .serialized)
 @MainActor
 struct DeviceSettingsViewModelTests {
+  @Test(
+    "owned composition shares and discovers actual grants through signature-checked anonymous XPC")
+  func signedSyncManagement() async throws {
+    let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+      .appendingPathComponent("../../../../").standardizedFileURL
+    let fixture = Process()
+    let output = Pipe()
+    let input = Pipe()
+    fixture.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    fixture.arguments = ["node", "tests/device-integration/native-sync.fixture.ts"]
+    fixture.currentDirectoryURL = repository
+    fixture.standardOutput = output
+    fixture.standardInput = input
+    try fixture.run()
+    defer {
+      try? input.fileHandleForWriting.close()
+      if fixture.isRunning { fixture.waitUntilExit() }
+    }
+    func response() throws -> DeviceJSON {
+      var line = Data()
+      while line.last != 10 {
+        let chunk = output.fileHandleForReading.availableData
+        guard !chunk.isEmpty else { throw DeviceHostError.invalidResponse }
+        line.append(chunk)
+      }
+      return try JSONDecoder().decode(DeviceJSON.self, from: line)
+    }
+    let info = try response()
+    let root = URL(fileURLWithPath: try #require(info["root"]?.string))
+    let peer = try #require(info["peerDeviceId"]?.string)
+    let vault = DeviceFileVault(directory: root.appendingPathComponent("vault"))
+    let identity = try DeviceIdentity.loadOrCreate(profile: "native-sync", vault: vault)
+    let configuration = try DeviceJSON.object([
+      "version": .number(1), "profile": .string("native-sync"), "baseUrl": info["origin"] ?? .null,
+      "machServiceName": .string("ai.hexly.eagle.devices.native-sync"),
+      "launchAgentPlist": .string("ai.hexly.eagle.devices.native-sync.plist"),
+    ]).decoded(DeviceHostConfiguration.self)
+    let host = DeviceServiceHost(
+      identity: identity, configuration: configuration,
+      node: URL(fileURLWithPath: try #require(info["node"]?.string)),
+      entry: URL(fileURLWithPath: try #require(info["entry"]?.string)),
+      stateDirectory: root.appendingPathComponent("receiver"), vault: vault)
+    let current = try DeviceCodeIdentity.currentRequirement()
+    let listener = NSXPCListener.anonymous()
+    let server = DeviceXPCServer(host: host, requiredPeer: current)
+    listener.delegate = server
+    listener.resume()
+    let client = DeviceXPCClient(
+      connection: NSXPCConnection(listenerEndpoint: listener.endpoint), requiredPeer: current,
+      confirm: { _ in false })
+    defer {
+      client.invalidate()
+      withExtendedLifetime(server) { listener.invalidate() }
+    }
+    let domain = "native-sync-" + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: domain))
+    defer { defaults.removePersistentDomain(forName: domain) }
+    let composition = BotsComposition(
+      settings: BotsSettings(rootPath: root.appendingPathComponent("bots").path, port: "49989"),
+      defaults: defaults, control: NativeSyncXPCControl(host: host, client: client),
+      environment: [:])
+    let model = composition.devices
+    func bridge(_ method: String, code: String? = nil) throws -> DeviceJSON {
+      var request: [String: DeviceJSON] = [
+        "method": .string(method), "receiver": .string(identity.deviceId),
+      ]
+      if let code { request["code"] = .string(code) }
+      try input.fileHandleForWriting.write(
+        contentsOf: JSONEncoder().encode(DeviceJSON.object(request)) + Data([10]))
+      return try response()
+    }
+    do {
+      await model.startIfNeeded()
+      #expect(model.localReady)
+      await model.createPairing()
+      let invitation = try #require(model.invitation)
+      let paired = try bridge("pair", code: invitation.code)
+      let shared = try #require(paired["sharedBotId"]?.string)
+      await model.loadIncoming()
+      #expect(!model.incomingIsStale)
+      #expect(model.incoming.map(\.sharedBotId) == [shared])
+      #expect(model.incoming.first?.holder.deviceId == peer)
+      #expect(await model.shareSync(sharedBotId: shared, peerDeviceId: peer, enabled: true))
+      #expect(try bridge("read")["authorized"] == .bool(true))
+      await #expect(throws: DevicePortError.self) {
+        try await DeviceLocalPort(path: host.socketPath).call("sync.incoming", params: .object([:]))
+      }
+      let deniedListener = NSXPCListener.anonymous()
+      let deniedServer = DeviceXPCServer(
+        host: host, requiredPeer: "identifier \"ai.hexly.eagle.invalid-native-sync\"")
+      deniedListener.delegate = deniedServer
+      deniedListener.resume()
+      let denied = DeviceXPCClient(
+        connection: NSXPCConnection(listenerEndpoint: deniedListener.endpoint),
+        requiredPeer: current, confirm: { _ in false })
+      await #expect(throws: DevicePortError.self) {
+        try await denied.call(
+          "sync.share",
+          params: .object([
+            "sharedBotId": .string(shared), "peerDeviceId": .string(peer), "enabled": .bool(false),
+          ]))
+      }
+      denied.invalidate()
+      withExtendedLifetime(deniedServer) { deniedListener.invalidate() }
+      #expect(try bridge("read")["authorized"] == .bool(true))
+      _ = try bridge("revoke")
+      await model.loadIncoming()
+      #expect(!model.incomingIsStale && model.incoming.isEmpty)
+    } catch {
+      await host.stop()
+      throw error
+    }
+    await host.stop()
+  }
+
+  @Test("sync sharing and incoming selection use this instance's trusted management control")
+  func syncManagement() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    await model.startIfNeeded()
+    let shared = UUID().uuidString.lowercased()
+    let peer = UUID().uuidString.lowercased()
+    let identity: DeviceJSON = .object([
+      "deviceId": .string(deviceSettingsLocalID), "publicKey": .string("owned-key"),
+      "groupId": .null, "membershipEpoch": .number(0), "credentialVersion": .number(1),
+    ])
+    control.handler = { method, _ in
+      if method == "sync.incoming" {
+        return .object([
+          "version": .number(1), "local": identity, "items": .array([]), "nextAfter": .number(3),
+          "hasMore": .bool(false),
+        ])
+      }
+      if method == "sync.share" { return .object(["enabled": .bool(true)]) }
+      return nil
+    }
+    await model.loadIncoming()
+    #expect(model.incoming.isEmpty && !model.incomingIsStale)
+    #expect(control.calls.last?.0 == "sync.incoming")
+    #expect(await model.shareSync(sharedBotId: shared, peerDeviceId: peer, enabled: true))
+    #expect(control.calls.last?.0 == "sync.share")
+    #expect(control.calls.last?.1?["sharedBotId"] == .string(shared))
+    control.handler = { method, _ in
+      if method == "sync.incoming" || method == "sync.share" {
+        throw DevicePortError("sync_directory_storage_failed")
+      }
+      return nil
+    }
+    await model.loadIncoming()
+    #expect(model.incomingIsStale && model.errorCode == "sync_directory_storage_failed")
+    #expect(!(await model.shareSync(sharedBotId: shared, peerDeviceId: peer, enabled: false)))
+  }
+
   @Test("startup is shared and local readiness survives cloud offline")
   func startup() async throws {
     let (model, control, defaults) = deviceSettingsFixture()
@@ -263,12 +417,34 @@ struct DeviceSettingsViewModelTests {
   }
 }
 
+@MainActor private final class NativeSyncXPCControl: DeviceControl {
+  let host: DeviceServiceHost
+  let client: DeviceXPCClient
+  var socketPath: String? { host.socketPath }
+  init(host: DeviceServiceHost, client: DeviceXPCClient) {
+    self.host = host
+    self.client = client
+  }
+  func start(
+    confirm: @escaping @MainActor @Sendable (DeviceApprovalRequest) async -> Bool
+  ) async throws {
+    _ = try await client.call("service.ping")
+    try host.start()
+  }
+  func call(_ method: String, params: DeviceJSON?) async throws -> DeviceJSON {
+    try await client.call(method, params: params)
+  }
+  func stop() async throws { await host.stop() }
+  func openSystemSettings() {}
+}
+
 @MainActor final class DeviceSettingsClock {
   var date = Date(timeIntervalSince1970: 1_800_000_000)
 }
 
 @MainActor final class DeviceSettingsControlStub: DeviceControl {
   let domain = "EagleDeviceSettingsTests.\(UUID().uuidString)"
+  var serviceProfile: String?
   var socketPath: String? { "/test/access.sock" }
   var starts = 0
   var stops = 0
@@ -339,12 +515,16 @@ func deviceDirectory(observation: String = "first", online: Bool? = nil) -> Devi
 }
 
 @MainActor func deviceSettingsFixture(
+  requiresServiceAddress: Bool? = false,
   now: @escaping @MainActor () -> Date = { Date() }
 ) -> (DeviceSettingsViewModel, DeviceSettingsControlStub, UserDefaults) {
   let control = DeviceSettingsControlStub()
   let defaults = UserDefaults(suiteName: control.domain)!
   return (
-    DeviceSettingsViewModel(control: control, defaults: defaults, now: now), control, defaults
+    DeviceSettingsViewModel(
+      control: control, defaults: defaults, serviceAddressDefaults: defaults,
+      requiresServiceAddress: requiresServiceAddress, now: now),
+    control, defaults
   )
 }
 
@@ -358,4 +538,178 @@ func deviceApproval(expiresAt: Int64) throws -> DeviceApprovalRequest {
     "operation": operation, "digest": .string(try DeviceApprovalRequest.digest(operation)),
     "policyVersion": .number(1), "expiresAt": .number(Double(expiresAt)),
   ]).decoded(DeviceApprovalRequest.self)
+}
+
+@Suite("Device service address configuration", .serialized)
+@MainActor
+struct DeviceServiceAddressConfigurationTests {
+  @Test(
+    "an upgraded App reads the legacy choice through validated control and reopens from profile")
+  func upgradedAppAddress() throws {
+    let profile = "upgrade-vm-" + UUID().uuidString
+    let digest = SHA256.hash(data: Data(profile.utf8)).map { String(format: "%02x", $0) }.joined()
+    let profileDomain = "ai.hexly.eagle.devices.address." + digest
+    let legacyDomain = "upgrade-legacy-" + UUID().uuidString
+    let appDomains = ["upgrade-app-" + UUID().uuidString, "upgrade-app-" + UUID().uuidString]
+    let legacy = try #require(UserDefaults(suiteName: legacyDomain))
+    let bundle = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer {
+      for domain in [profileDomain, legacyDomain] + appDomains {
+        UserDefaults(suiteName: domain)?.removePersistentDomain(forName: domain)
+      }
+      try? FileManager.default.removeItem(at: bundle)
+    }
+    let resources = bundle.appendingPathComponent("Contents/Resources")
+    try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+    try JSONEncoder().encode(
+      DeviceJSON.object([
+        "version": .number(1), "profile": .string(profile), "baseUrl": .string(""),
+        "machServiceName": .string("ai.hexly.eagle.devices.test"),
+        "launchAgentPlist": .string("ai.hexly.eagle.devices.test.plist"),
+      ])
+    ).write(to: resources.appendingPathComponent("DeviceHost.json"))
+    let raw = " https://Legacy.Example.com:443/ "
+    legacy.set(raw, forKey: DeviceServiceAddress.defaultsKey)
+    for domain in appDomains {
+      let defaults = try #require(UserDefaults(suiteName: domain))
+      defaults.set("https://bot-root.example.com", forKey: DeviceServiceAddress.defaultsKey)
+      let control = DeviceSystemControl(bundle: bundle, defaults: defaults, legacyDefaults: legacy)
+      let model = DeviceSettingsViewModel(
+        control: control, defaults: defaults, requiresServiceAddress: true)
+      #expect(model.savedServiceAddress == "https://legacy.example.com")
+      #expect(
+        model.serviceAddressDraft == "https://legacy.example.com" && !model.needsServiceAddress)
+      #expect(DeviceServiceAddress.saved(profile: profile) == "https://legacy.example.com")
+      #expect(DeviceServiceAddress.saved(defaults) == "https://bot-root.example.com")
+    }
+    #expect(legacy.string(forKey: DeviceServiceAddress.defaultsKey) == raw)
+    let read = Process()
+    let output = Pipe()
+    read.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+    read.arguments = ["read", profileDomain, DeviceServiceAddress.defaultsKey]
+    read.standardOutput = output
+    read.standardError = Pipe()
+    try read.run()
+    read.waitUntilExit()
+    #expect(read.terminationStatus == 0)
+    #expect(
+      String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        .trimmingCharacters(in: .whitespacesAndNewlines) == "https://legacy.example.com")
+    DeviceServiceAddress.save("", profile: profile)
+    let reopenedDefaults = try #require(UserDefaults(suiteName: appDomains[1]))
+    let reopened = DeviceSettingsViewModel(
+      control: DeviceSystemControl(
+        bundle: bundle, defaults: reopenedDefaults, legacyDefaults: legacy),
+      defaults: reopenedDefaults, requiresServiceAddress: true)
+    #expect(reopened.needsServiceAddress && reopened.savedServiceAddress.isEmpty)
+  }
+
+  @Test(
+    "the signed profile address crosses App defaults and a cold helper reader without crossing profiles"
+  )
+  func profileAddressOwnership() async throws {
+    let profiles = ["address-a-" + UUID().uuidString, "address-b-" + UUID().uuidString]
+    var helperDomains: [String] = []
+    var appDomains: [String] = []
+    defer {
+      for domain in helperDomains + appDomains {
+        UserDefaults(suiteName: domain)?.removePersistentDomain(forName: domain)
+      }
+    }
+    for (index, profile) in profiles.enumerated() {
+      let digest = SHA256.hash(data: Data(profile.utf8)).map { String(format: "%02x", $0) }.joined()
+      let helperDomain = "ai.hexly.eagle.devices.address." + digest
+      helperDomains.append(helperDomain)
+      let control = DeviceSettingsControlStub()
+      control.serviceProfile = profile
+      appDomains.append(control.domain)
+      let appDefaults = try #require(UserDefaults(suiteName: control.domain))
+      let helperDefaults = try #require(UserDefaults(suiteName: helperDomain))
+      let origin = "https://profile-\(index).example.com"
+      let model = DeviceSettingsViewModel(
+        control: control, defaults: appDefaults, requiresServiceAddress: true)
+      model.serviceAddressDraft = origin
+      await model.saveServiceAddress()
+      #expect(model.errorCode == nil)
+      #expect(
+        DeviceServiceAddress.saved(appDefaults) == nil, "root-owned settings do not own this origin"
+      )
+      helperDefaults.synchronize()
+      let read = Process()
+      let output = Pipe()
+      let errors = Pipe()
+      read.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+      read.arguments = ["read", helperDomain, DeviceServiceAddress.defaultsKey]
+      read.standardOutput = output
+      read.standardError = errors
+      try read.run()
+      read.waitUntilExit()
+      #expect(
+        read.terminationStatus == 0, "an independent profile reader must see the selected origin")
+      #expect(
+        String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+          .trimmingCharacters(in: .whitespacesAndNewlines) == origin)
+      #expect(DeviceServiceAddress.saved(profile: profile) == origin)
+      let reopenedControl = DeviceSettingsControlStub()
+      reopenedControl.serviceProfile = profile
+      appDomains.append(reopenedControl.domain)
+      let reopened = DeviceSettingsViewModel(
+        control: reopenedControl,
+        defaults: try #require(UserDefaults(suiteName: reopenedControl.domain)),
+        requiresServiceAddress: true)
+      #expect(reopened.savedServiceAddress == origin)
+      if index == 1 {
+        #expect(
+          DeviceServiceAddress.saved(try #require(UserDefaults(suiteName: helperDomains[0])))
+            == "https://profile-0.example.com")
+      }
+    }
+  }
+
+  @Test(
+    "missing or invalid profiles cannot read root preferences or save an address",
+    arguments: [nil, "", String(repeating: "x", count: 81)] as [String?])
+  func invalidProfile(profile: String?) async throws {
+    let control = DeviceSettingsControlStub()
+    control.serviceProfile = profile
+    let defaults = try #require(UserDefaults(suiteName: control.domain))
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    DeviceServiceAddress.save("https://root-only.example.com", defaults: defaults)
+    let model = DeviceSettingsViewModel(
+      control: control, defaults: defaults, requiresServiceAddress: true)
+    #expect(model.savedServiceAddress.isEmpty)
+    model.serviceAddressDraft = "https://refused.example.com"
+    await model.saveServiceAddress()
+    #expect(model.errorCode == "invalid_configuration")
+    #expect(model.needsServiceAddress && control.starts == 0)
+    #expect(DeviceServiceAddress.saved(defaults) == "https://root-only.example.com")
+  }
+
+  @Test("a bundle without a relay never starts the service before a person names one")
+  func unconfiguredStaysIdle() async throws {
+    let (model, control, defaults) = deviceSettingsFixture(requiresServiceAddress: true)
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    #expect(model.needsServiceAddress)
+    await model.startIfNeeded()
+    #expect(control.starts == 0)
+    #expect(!model.localReady)
+  }
+
+  @Test("saving an origin is stored and starts the service; a bad value is refused")
+  func savingOrigin() async throws {
+    let (model, control, defaults) = deviceSettingsFixture(requiresServiceAddress: true)
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    model.serviceAddressDraft = "http://devices.example.com"
+    await model.saveServiceAddress()
+    #expect(model.errorCode == "invalid_service_address")
+    #expect(control.starts == 0)
+    #expect(DeviceServiceAddress.saved(defaults) == nil)
+
+    model.serviceAddressDraft = "https://Devices.Example.com/"
+    await model.saveServiceAddress()
+    #expect(model.errorCode == nil)
+    #expect(DeviceServiceAddress.saved(defaults) == "https://devices.example.com")
+    #expect(!model.needsServiceAddress)
+    #expect(control.starts == 1)
+  }
 }

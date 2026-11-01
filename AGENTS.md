@@ -11,12 +11,17 @@ the website/Worker release version; keep its lockfile synchronized. Releases are
 independent per surface: the website/Worker take the root version, the Agent takes
 `packages/agent/package.json`, and the macOS app takes
 `apps/macos/Support/Version.json` (a release bumps only the surface it ships).
-`scripts/deploy.ts` publishes that app version as `MACOS_VERSION`, so `/api/live`
-answers `macos.latest`; only a release-profile app build asks that endpoint, and a
-newer answer is a link to the release page, never an automatic replacement. `packages/agent/package.json` owns the independent
-Agent version; CLI output and packed artifacts derive from it. Website onboarding
-uses root `config.publishedAgentVersion`, which must reference a verified published
-Agent version and can differ from an unpublished source candidate.
+`packages/agent/package.json` owns the independent Agent version; CLI output and
+packed artifacts derive from it. Website onboarding uses root
+`config.publishedAgentVersion`, which must reference a verified published Agent
+version and can differ from an unpublished source candidate. The App may ship or be
+skipped at will: root `config.publishedMacosVersion` is `/api/live`'s `macos.latest`
+and changes only in a release that attaches an app to a GitHub release, never because
+`apps/macos/Support/Version.json` moved; only a release-profile app build asks that
+endpoint, and a newer answer is a link to the release page, never an automatic
+replacement. Published App builds are ad-hoc signed and not notarized, so the download
+instructions carry the quarantine removal and approvals by hand; `spctl
+--master-disable` is never the fix.
 Website-only releases may keep the currently published Agent version and skip npm
 publication when Agent behavior, dependencies and protocol requirements are
 unchanged. Changes to those require an Agent version bump and publication before
@@ -33,6 +38,7 @@ apps/bots-macos   Bots client logic (SPM package: BotsCore/BotsTransport/BotsFea
 packages/contracts  shared zod contracts and pure helpers (private, not published)
 packages/agent    @nocoo/eagle-agent, published to npm
 apps/bots         Bots daemon: independent product, not a workspace member
+apps/bots-sync    Independent encrypted-cache Worker/DO/R2, own package and lock
 docs/bots         Bots contracts; fixtures/bots-protocol holds the wire samples
 tests             one Node/Playwright suite at the root, spanning all packages
 scripts           live verification and deployment entry points
@@ -79,6 +85,9 @@ published tarball stays self-contained and its `bin` path is unchanged.
 
 ## Setup and commands
 
+For a blocked locked npm install, follow [locked npm recovery](docs/NPM-RECOVERY.md)
+and the installed npm-locked-recovery skill; preserve locks and normal lifecycle/checks.
+
 Run from the root with Node.js 24+ and npm; CI uses Node 26. Actual collection
 requires Herdr, but documentation checks do not run the installed live Agent.
 Use the machine-approved registry. Ignored `apps/web/.dev.vars` holds `AGENT_SIGNING_KEY`
@@ -103,6 +112,14 @@ Run API and Vite development servers in separate terminals. CI installs Chromium
 with `npx playwright install --with-deps chromium` before browser tests. `format`
 is an editing command, not a check; checks must not run autofix.
 
+Every change under `apps/macos` ends with a dev App the owner can inspect by
+hand: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift run Eagle`
+from `apps/macos`, in a pane split to the right of the main pane, never a new tab
+and never a background process. The Command Line Tools alone cannot build the
+SwiftUI macros, so the toolchain is explicit. The App starts the Bots daemon
+itself against `~/.local/share/eagle-bots` on 43117; a `swift run` shell reuses
+whatever daemon that root already answers on.
+
 ## Bots (isolated product)
 
 `apps/bots`, the `Bots*` Swift targets and `docs/bots/` implement a local
@@ -119,6 +136,9 @@ product that lives in this repository:
   which depends on nothing from Eagle; the Eagle app depends on it and hosts the
   Bots group in the main window (`apps/macos/Sources/EagleFeatures/BotsWorkspace.swift`).
   The dependency direction is one way: Eagle → Bots logic, never back.
+- `apps/bots-sync` also stays outside root workspaces and root Biome. Its own
+  `npm run check` covers strict types, check-only lint, Miniflare tests and dry-run
+  build; its Registry connection is a named service-binding RPC, not source imports.
 - Documentation is the contract and precedes code: `docs/bots/PRODUCT.md`,
   `ARCHITECTURE.md`, `PROTOCOL.md`, `RUNTIME.md`, `OBSERVABILITY.md`,
   `TESTING.md`, with [PLAN.md](docs/bots/PLAN.md) owning what is built and what is
@@ -134,9 +154,11 @@ product that lives in this repository:
 - Layer attribution is part of correctness: every crossing logs its layer with
   the shared `trace`, the innermost failure is the only error logged, and the
   diagnosis recipes in `docs/bots/OBSERVABILITY.md` are asserted by tests.
-- Phase 1 is chat only. Tools, tasks, usage, raw entries, agent settings and
-  bot-to-bot conversation stay behind protocol capability flags and are not
-  rendered; they are not deleted or stubbed out.
+- Phase 1 began with chat only. Current documented capabilities include tools,
+  tasks, usage, peer exchanges and reported pull requests; preserve their runtime,
+  journals and client presentation. Historical phase-1 exclusions do not hide or
+  remove those delivered features. Raw entries and agent settings retain their
+  respective protocol capability boundaries.
 
 ## Quality contract and current evidence
 

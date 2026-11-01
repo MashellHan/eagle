@@ -7,19 +7,22 @@ public struct InspectorSectionView: View {
   private let onRetryTask: (String) -> Void
   private let onStopTask: (String) -> Void
   private let onChoose: (String, String) -> Void
+  private let onToggleTrigger: (String, Bool) -> Void
 
   public init(
     section: InspectorSectionModel,
     onExpand: @escaping () -> Void = {},
     onRetryTask: @escaping (String) -> Void = { _ in },
     onStopTask: @escaping (String) -> Void = { _ in },
-    onChoose: @escaping (String, String) -> Void = { _, _ in }
+    onChoose: @escaping (String, String) -> Void = { _, _ in },
+    onToggleTrigger: @escaping (String, Bool) -> Void = { _, _ in }
   ) {
     self.section = section
     self.onExpand = onExpand
     self.onRetryTask = onRetryTask
     self.onStopTask = onStopTask
     self.onChoose = onChoose
+    self.onToggleTrigger = onToggleTrigger
   }
 
   public var body: some View {
@@ -41,6 +44,34 @@ public struct InspectorSectionView: View {
       VStack(alignment: .leading, spacing: 2) {
         ForEach(pulls) { pull in
           InspectorPullRowView(row: pull)
+        }
+      }
+    case .triggers(let rows):
+      VStack(alignment: .leading, spacing: Theme.Metric.panelTaskRowGap) {
+        ForEach(rows) { row in
+          HStack(spacing: Theme.Metric.panelSectionRowGap) {
+            VStack(alignment: .leading, spacing: 1) {
+              Text(row.name)
+                .font(Theme.TypeScale.pill)
+                .foregroundStyle(Theme.Palette.textPrimary)
+                .lineLimit(1)
+              Text(row.detail)
+                .font(Theme.TypeScale.note)
+                .foregroundStyle(Theme.Palette.textMuted)
+                .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Toggle(
+              "",
+              isOn: Binding(
+                get: { row.isOn }, set: { onToggleTrigger(row.id, $0) })
+            )
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .accessibilityIdentifier("inspector.trigger.\(row.id)")
+          }
+          .frame(minHeight: Theme.Metric.panelTaskRowHeight)
         }
       }
     case .choices(let rows):

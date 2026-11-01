@@ -70,6 +70,64 @@ public struct PillMenu: View {
   }
 }
 
+/// A capsule that opens a menu of choices: it looks like the pill above, but a click shows the
+/// options instead of silently cycling the value.
+public struct PillSelect<Value: Hashable>: View {
+  public struct Option: Identifiable, Hashable {
+    public let id: Value
+    public let title: String
+
+    public init(_ id: Value, _ title: String) {
+      self.id = id
+      self.title = title
+    }
+  }
+
+  private let options: [Option]
+  @Binding private var selection: Value
+  @State private var hovering = false
+
+  public init(options: [Option], selection: Binding<Value>) {
+    self.options = options
+    self._selection = selection
+  }
+
+  public var body: some View {
+    Menu {
+      ForEach(options) { option in
+        Button {
+          selection = option.id
+        } label: {
+          if option.id == selection {
+            Label(option.title, systemImage: "checkmark")
+          } else {
+            Text(option.title)
+          }
+        }
+      }
+    } label: {
+      HStack(spacing: 6) {
+        Text(options.first { $0.id == selection }?.title ?? "")
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(Theme.Palette.textPrimary)
+        Image(systemName: "chevron.down")
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundStyle(Theme.Palette.textSecondary)
+      }
+      .padding(.horizontal, 14)
+      .frame(height: 32)
+      .background(Capsule().fill(hovering ? Theme.Palette.canvas : Theme.Palette.card))
+      .overlay(Capsule().strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline))
+    }
+    .menuStyle(.button)
+    .buttonStyle(.plain)
+    .menuIndicator(.hidden)
+    .fixedSize()
+    .onHover { hovering = $0 }
+    .accessibilityLabel("外观")
+  }
+}
+
 /// Light blue confirmation strip with a check icon.
 public struct InfoBanner: View {
   private let text: String
@@ -226,6 +284,50 @@ public struct DeviceRow: View {
 
 /// A settings input with the app's own surface: rounded, fixed height, no native chrome.
 /// The focus ring is a hairline in the accent, matching the shell's controls.
+/// A multi-line setting: same paper as the text field, tall enough for a paragraph and
+/// scrollable inside, because a standing instruction is prose and not a one-line value.
+public struct SettingsTextArea: View {
+  private let placeholder: String
+  @Binding private var text: String
+  private let minHeight: CGFloat
+
+  public init(_ placeholder: String, text: Binding<String>, minHeight: CGFloat = 88) {
+    self.placeholder = placeholder
+    self._text = text
+    self.minHeight = minHeight
+  }
+
+  public var body: some View {
+    ZStack(alignment: .topLeading) {
+      if text.isEmpty {
+        Text(placeholder)
+          .font(.system(size: 13.5))
+          .foregroundStyle(Theme.Palette.textSecondary)
+          .padding(.horizontal, 6)
+          .padding(.vertical, 6)
+          .allowsHitTesting(false)
+      }
+      TextEditor(text: $text)
+        .font(.system(size: 13.5))
+        .foregroundStyle(Theme.Palette.textPrimary)
+        .scrollContentBackground(.hidden)
+        .padding(.horizontal, 3)
+        .padding(.vertical, 2)
+        .frame(minHeight: minHeight)
+        .accessibilityLabel(placeholder)
+    }
+    .padding(.horizontal, 4)
+    .background(
+      RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
+        .fill(Theme.Palette.canvas)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
+        .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+    )
+  }
+}
+
 public struct SettingsTextField: View {
   private let placeholder: String
   @Binding private var text: String

@@ -47,25 +47,24 @@ struct LiveDaemonTests {
   func live() async throws {
     let bots = BotsWorkspaceViewModel(settings: settings)
     await bots.start()
-    try await waitUntil { bots.sections.contains { $0.title == "触发器" } }
+    try await waitUntil { bots.triggerItems.count == 2 }
+    #expect(
+      !bots.sections.contains { $0.title == "触发器" },
+      "triggers belong to the bot's own panel, not the sidebar")
 
-    let section = try #require(bots.sections.first { $0.title == "触发器" })
-    #expect(section.items.count == 2, "the daemon's two triggers are both listed")
-    let schedule = try #require(section.items.first { $0.title == "每分钟巡查" })
-    let webhook = try #require(section.items.first { $0.title == "deploy notify" })
-    #expect(schedule.toggle?.isOn == true)
-    #expect(webhook.toggle?.isOn == true)
+    let schedule = try #require(bots.triggerItems.first { $0.name == "每分钟巡查" })
+    let webhook = try #require(bots.triggerItems.first { $0.name == "deploy notify" })
+    #expect(schedule.isOn)
+    #expect(webhook.isOn)
 
-    // One click, and the daemon's own event moves the row.
-    bots.toggleTrigger(webhook.id)
+    // One switch, and the daemon's own event moves the row.
+    bots.setTriggerEnabled(webhook.id, false)
     try await waitUntil(timeout: 15) {
-      bots.sections.first { $0.title == "触发器" }?
-        .items.first { $0.title == "deploy notify" }?.toggle?.isOn == false
+      bots.triggerItems.first { $0.name == "deploy notify" }?.isOn == false
     }
-    bots.toggleTrigger(webhook.id)
+    bots.setTriggerEnabled(webhook.id, true)
     try await waitUntil(timeout: 15) {
-      bots.sections.first { $0.title == "触发器" }?
-        .items.first { $0.title == "deploy notify" }?.toggle?.isOn == true
+      bots.triggerItems.first { $0.name == "deploy notify" }?.isOn == true
     }
 
     // Deliver through the trigger's own endpoint, exactly as a service would.
