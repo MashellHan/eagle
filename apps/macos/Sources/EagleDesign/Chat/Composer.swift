@@ -90,7 +90,7 @@ public struct Composer: View {
           .accessibilityHidden(true)
       }
     }
-    .padding(.horizontal, 14)
+    .padding(.horizontal, Theme.Metric.composerInnerInset)
     .padding(.vertical, Theme.Metric.composerVerticalInset)
     .frame(minHeight: Theme.Metric.composerHeight)
     .background(

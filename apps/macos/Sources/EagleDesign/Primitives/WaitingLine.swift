@@ -2,8 +2,10 @@ import SwiftUI
 
 /// The line above the composer while a bot works with nothing to show yet: the bot's own face,
 /// breathing exactly like its busy sidebar row, and a label that swaps between `正在输入` and
-/// three travelling dots. It sits on a band whose height is always reserved, so work starting
-/// and settling never moves a message or the composer.
+/// three travelling dots. Its avatar shares the composer's first control slot and its text
+/// starts where the field's first character does, so the line reads as the top row of the
+/// composer rather than a stray strip. The band keeps its height, so work starting and settling
+/// never moves a message or the composer.
 public struct WaitingLine: View {
   private let face: BotFace.Style?
   private let tintIndex: Int
@@ -16,12 +18,16 @@ public struct WaitingLine: View {
   }
 
   public var body: some View {
-    HStack(spacing: 9) {
+    HStack(spacing: 8) {
+      // The same slot the composer's `+` occupies: the avatar centres on that control.
       BusyFace { avatar }
+        .frame(width: Theme.Metric.hitTarget, height: Theme.Metric.hitTarget)
       label
-        .font(Theme.TypeScale.note)
-        .foregroundStyle(Theme.Palette.textSecondary)
+        .font(Theme.TypeScale.body)
+        .foregroundStyle(Theme.Palette.textMuted)
+      Spacer(minLength: 0)
     }
+    .padding(.horizontal, Theme.Metric.composerInnerInset)
     .frame(height: Theme.Metric.waitingBandHeight)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("正在输入")
@@ -46,7 +52,7 @@ public struct WaitingLine: View {
   @ViewBuilder
   private var label: some View {
     if reduceMotion {
-      HStack(spacing: 6) {
+      HStack(spacing: 7) {
         Text("正在输入")
         dots(at: 0)
       }
@@ -55,8 +61,14 @@ public struct WaitingLine: View {
         let instant = context.date.timeIntervalSinceReferenceDate
         let word = wordWeight(instant)
         ZStack(alignment: .leading) {
-          Text("正在输入").opacity(word)
-          dots(at: instant).opacity(1 - word)
+          // The two cross with a small vertical drift, so no frame shows the word and the
+          // dots stacked on top of each other.
+          Text("正在输入")
+            .opacity(word)
+            .offset(y: (1 - word) * -8)
+          dots(at: instant)
+            .opacity(1 - word)
+            .offset(y: word * 8)
         }
       }
     }
