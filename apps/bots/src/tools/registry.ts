@@ -24,7 +24,9 @@ import {
   herdrSection,
 } from "./herdr/tools.ts";
 import { createListTool } from "./list.ts";
+import { MACHINE_EXTENSION, type MachinePrompt, machineExtension } from "./machine/tools.ts";
 import { PEERS_TOOLS_EXTENSION, peersExtension } from "./peers/tools.ts";
+import { PERSONA_EXTENSION, personaExtension } from "./persona/tools.ts";
 import { PULLS_TOOLS_EXTENSION, pullsExtension } from "./pulls/tools.ts";
 import { SEARCH_TOOLS_EXTENSION, searchExtension } from "./search/tools.ts";
 import {
@@ -37,6 +39,8 @@ import type { BotWorkspace } from "./types.ts";
 export const BOTS_TOOLS_EXTENSION = "bots-tools";
 const toolSearch = createToolSearchExtension();
 const GROUP_EXTENSIONS: Record<ToolGroup, readonly string[]> = {
+  persona: [PERSONA_EXTENSION],
+  machine: [MACHINE_EXTENSION],
   core: [BOTS_TOOLS_EXTENSION],
   coding: [CodingTools.name, PULLS_TOOLS_EXTENSION],
   herdr: [HERDR_TOOLS_EXTENSION, toolSearch.name],
@@ -83,6 +87,10 @@ const bash = createBashTool({
 });
 
 export type ToolRegistryOptions = {
+  /** The person's standing instruction, read on every request so an edit lands immediately. */
+  readonly persona?: () => string | undefined;
+  /** The machine's own instructions file, read on every request for the same reason. */
+  readonly machine?: () => MachinePrompt | undefined;
   readonly devices?: { readonly socketPath: string; readonly botId: string; readonly log?: Log };
   /** Herdr tools need the CLI client and this bot's state directory. */
   readonly herdr?: Omit<HerdrToolOptions, "workspace">;
@@ -110,6 +118,10 @@ export const createToolRegistry = (workspace: BotWorkspace, options: ToolRegistr
           ...(options.devices.log === undefined ? {} : { log: options.devices.log }),
         };
   const list = createListTool();
+  // The two core prompts are installed first so their sections lead the system prompt:
+  // who this bot is comes before what it can do (docs/bots/PRODUCT.md, "Core prompts").
+  if (options.persona !== undefined) registry.install(personaExtension(options.persona));
+  if (options.machine !== undefined) registry.install(machineExtension(options.machine));
   registry.install(
     defineExtension({
       name: BOTS_TOOLS_EXTENSION,

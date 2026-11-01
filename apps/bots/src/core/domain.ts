@@ -339,6 +339,8 @@ export const isThinkingLevel = (value: unknown): value is ThinkingLevel =>
   typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
 
 export const TOOL_GROUP_NAMES = [
+  "persona",
+  "machine",
   "core",
   "coding",
   "herdr",
@@ -352,8 +354,10 @@ export type ToolGroup = (typeof TOOL_GROUP_NAMES)[number];
 
 export const MANDATORY_TOOL_GROUPS: readonly ToolGroup[] = ["core", "coding"];
 
-/** New optional groups start unselected: a person turns them on in settings. */
+/** What a daemon with no stored choice runs: the two core prompts come before the tools. */
 export const DEFAULT_TOOL_GROUPS: readonly ToolGroup[] = [
+  "persona",
+  "machine",
   "core",
   "coding",
   "herdr",

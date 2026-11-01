@@ -42,6 +42,8 @@ Runtime details live in [RUNTIME.md](RUNTIME.md), layers in
 | `group.title` (HTTP) | 1–40 characters after trimming | HTTP `400` |
 | Groups | 50 per catalog | `POST /v1/groups` answers `limit_exceeded` |
 | `bot.appearance` (HTTP) | one shape and one tint from the closed sets | HTTP `400` |
+| Any HTTP body | 256 KiB, measured as received (the shared frame cap) | HTTP `500` before the body is parsed |
+| `settings.corePrompt` (HTTP) | 4 000 characters after trimming | HTTP `400` |
 | Any single frame | 256 KiB, measured on the **encoded** frame | Close `1008`; a daemon-produced frame that cannot fit is dropped and the socket closes `1008`, because the client cannot decode it either |
 | Single message payload | ≤ 96 KiB encoded | Withheld and replaced by a notice, see below |
 | `notice` text | ≤ 500 bytes, and for the withheld case a fixed constant | — |
@@ -107,15 +109,19 @@ version, the instance id, the pid and a bot count, never bot content.
 | `POST` | `/v1/providers/:id/test` | — | `{ "result": { "ok", "message", "latencyMs", "results"? } }` |
 | `GET` | `/v1/usage?days=` | — | `{ "usage": UsageReport }` — statistics over the daemon's retained days |
 | `GET` | `/v1/models` | — | `{ "models": [string] }` — the gateway's ids, empty when it cannot be asked |
-| `GET` | `/v1/settings` | — | `{ "settings": GatewaySettings }` |
-| `PUT` | `/v1/settings` | `{ "baseUrl", "model", "apiKey"?, "provider"?, "thinkingLevel"?, "toolGroups"? }` | `{ "settings": GatewaySettings }` |
+| `GET` | `/v1/settings` | — | `{ "settings": GatewaySettings, "machinePrompt": MachinePrompt \| null }` |
+| `PUT` | `/v1/settings` | `{ "baseUrl", "model", "apiKey"?, "provider"?, "thinkingLevel"?, "toolGroups"?, "corePrompt"? }` | `{ "settings": GatewaySettings, "machinePrompt": MachinePrompt \| null }` |
 | `POST` | `/v1/settings/test` | `{ "baseUrl"?, "model"?, "apiKey"?, "provider"? }` | `{ "result": GatewayProbe }` |
 
 ```json
 // GatewaySettings: the key is never returned, only whether one is stored.
 { "configured": true, "provider": "magpie", "baseUrl": "http://127.0.0.1:3425/v1",
   "model": "auto/gpt-6-luna", "hasApiKey": true, "thinkingLevel": "medium",
-  "toolGroups": ["core", "coding", "herdr", "agents", "trigger"] }
+  "toolGroups": ["persona", "machine", "core", "coding", "herdr", "agents", "trigger"],
+  "corePrompt": "你是一个务实、友好的 agent：先说结论，再给依据。" }
+
+// MachinePrompt: the machine's own instructions, read-only, with the file a person edits.
+{ "path": "/Users/me/workspace/workflow/agents/AGENTS.md", "text": "# system0 machine setup…" }
 
 // GatewayProbe: the test asks the gateway for its model list.
 { "ok": true, "status": 200, "message": "连接成功，网关报告 17 个模型",
@@ -139,11 +145,19 @@ Gateway rules:
   live conversation to the new level in place; an unknown value is a `400` and nothing is
   written.
 - **Tool groups are chosen per daemon.** `toolGroups` lists the groups every bot is given:
-  `core` (the `list` tool), `coding` (pi-durable's `read`, `write`, `edit`, `bash`),
-  `herdr` (the terminal collaborator), and `agents` (child conversations). Both `core`
-  and `coding` are mandatory: an empty array selects those two groups. An unknown name
-  is a `400` and nothing is written. Saving records the selection on every bot and changes
-  what a live conversation offers in place. There are no aliases for the old tool names.
+  `persona` and `machine` (the two core prompts, see below), `core` (the `list` tool),
+  `coding` (pi-durable's `read`, `write`, `edit`, `bash`), `herdr` (the terminal
+  collaborator), and `agents` (child conversations). Only `core` and `coding` are mandatory:
+  an empty array selects exactly those two. An unknown name is a `400` and nothing is
+  written. Saving records the selection on every bot and changes what a live conversation
+  offers in place. There are no aliases for the old tool names.
+- **The two core prompts lead the system prompt.** `corePrompt` is one standing instruction
+  for every bot, trimmed and bounded to 4 000 characters (a longer one is a `400`); an empty
+  string stores no section. The machine prompt is never written by the daemon: it is the
+  first file that exists with content among `~/.agents/AGENTS.md`, `~/.pi/agent/AGENTS.md`,
+  `~/.codex/AGENTS.md` and `~/.claude/CLAUDE.md`, resolved through its symlink and cut at
+  40 000 characters. `machinePrompt` reports that file and its text, or `null` when none
+  exists; neither field is a per-bot setting.
 - **Testing is separate.** `POST /v1/settings/test` probes `GET {baseUrl}/models` with the
   key; a `401` is reported as a refused key, a timeout as an unreachable gateway. It does
   not save and does not spend a generation.

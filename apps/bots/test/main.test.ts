@@ -1,14 +1,14 @@
 // The composition root: one daemon over one root, wired from configuration, closed cleanly.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { readConfig } from "../src/config.ts";
 import { startDaemon } from "../src/main.ts";
-import { readGateway, writeGateway } from "../src/server/gateway.ts";
+import { DEFAULT_CORE_PROMPT, readGateway, writeGateway } from "../src/server/gateway.ts";
 import { waitFor } from "./support/pi.ts";
 
 test("saved gateway credentials authorize model requests on every daemon boot", async () => {
@@ -61,6 +61,7 @@ test("saved gateway credentials authorize model requests on every daemon boot", 
       apiKey: key,
       thinkingLevel: "medium",
       toolGroups: ["core", "herdr"],
+      corePrompt: "你是一个务实、友好的 agent。",
     });
     let botId: string | undefined;
     for (const boot of [1, 2]) {
@@ -405,5 +406,58 @@ test("provider keys are saved behind the bearer and never returned", async () =>
     else process.env.XDG_CONFIG_HOME = previous;
     await rm(root, { recursive: true, force: true });
     await rm(configHome, { recursive: true, force: true });
+  }
+});
+
+// The two core prompts cross the composition root: the file is read from the machine, and the
+// standing instruction is stored and reported back (docs/bots/PRODUCT.md, "Core prompts").
+test("the daemon reads the machine prompt and saves the core prompt", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bots-core-prompt-"));
+  const machineFile = join(root, "machine-AGENTS.md");
+  await writeFile(machineFile, "# 机器规则\n\n始终先跑测试。");
+  const previous = process.env.BOTS_MACHINE_AGENTS;
+  process.env.BOTS_MACHINE_AGENTS = machineFile;
+  try {
+    const config = readConfig({ argv: ["--root", root, "--port", "0"], env: {} });
+    const daemon = await startDaemon(config);
+    const authorized = (path: string, init: RequestInit = {}) =>
+      fetch(`http://127.0.0.1:${daemon.port}${path}`, {
+        ...init,
+        headers: {
+          authorization: `Bearer ${daemon.token}`,
+          "content-type": "application/json",
+          ...(init.headers ?? {}),
+        },
+      });
+    try {
+      const initial = (await (await authorized("/v1/settings")).json()) as {
+        settings: { corePrompt: string; toolGroups: string[] };
+        machinePrompt: { path: string; text: string } | null;
+      };
+      assert.equal(initial.settings.corePrompt, DEFAULT_CORE_PROMPT);
+      assert.deepEqual(initial.settings.toolGroups.slice(0, 2), ["persona", "machine"]);
+      assert.equal(initial.machinePrompt?.text.includes("始终先跑测试。"), true);
+
+      const saved = (await (
+        await authorized("/v1/settings", {
+          method: "PUT",
+          body: JSON.stringify({ corePrompt: "  只说结论。 " }),
+        })
+      ).json()) as { settings: { corePrompt: string } };
+      assert.equal(saved.settings.corePrompt, "只说结论。");
+      assert.equal((await readGateway(root))?.corePrompt, "只说结论。");
+
+      const tooLong = await authorized("/v1/settings", {
+        method: "PUT",
+        body: JSON.stringify({ corePrompt: "字".repeat(4_001) }),
+      });
+      assert.equal(tooLong.status, 400, "an oversized instruction is refused");
+    } finally {
+      await daemon.close();
+    }
+  } finally {
+    if (previous === undefined) delete process.env.BOTS_MACHINE_AGENTS;
+    else process.env.BOTS_MACHINE_AGENTS = previous;
+    await rm(root, { recursive: true, force: true });
   }
 });

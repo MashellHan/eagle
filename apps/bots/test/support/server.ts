@@ -83,6 +83,8 @@ export type StackOptions = {
   readonly closeDeadlineMs?: number;
   /** Gateway settings routes; a test supplies a fake service. */
   readonly settings?: GatewayApi;
+  /** The machine instructions a test pretends to have found, for the read-only preview. */
+  readonly machinePrompt?: () => { readonly path: string; readonly text: string } | undefined;
 };
 
 export const startStack = async (options: StackOptions = {}): Promise<Stack> => {
@@ -245,6 +247,7 @@ export const startStack = async (options: StackOptions = {}): Promise<Stack> => 
     registry: registryView,
     service,
     ...(options.settings === undefined ? {} : { settings: options.settings }),
+    ...(options.machinePrompt === undefined ? {} : { machinePrompt: options.machinePrompt }),
     version: "0.0.0-test",
     instance: "i_test",
     capabilities: {

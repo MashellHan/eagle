@@ -188,6 +188,11 @@ message, and the presenter re-emits the assistant paragraph as it grows. While a
 has no text yet the column shows the wave line on its reserved band above the composer,
 never a transcript row, so work starting or settling moves nothing.
 
+The system prompt is assembled by pi-durable from the selected extensions' sections, in
+installation order: `bots-persona` and `bots-machine` come first (they are installed before
+any tool extension), then the tool sections. Both core prompts read their text on every
+request, so an edit in Settings lands on the next turn without reopening the bot.
+
 `BotsCore` names mirror `core/domain.ts` one-to-one so a log line, a fixture and a
 Swift type use the same word. Wire decoding is confined to `BotsTransport`.
 

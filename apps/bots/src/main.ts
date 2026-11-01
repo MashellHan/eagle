@@ -3,6 +3,7 @@
 // behaviour lives in the modules it wires.
 import { readFileSync } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DaemonConfig } from "./config.ts";
 import { BotDirectory, nodeDirectoryFs } from "./core/BotDirectory.ts";
@@ -32,11 +33,14 @@ import { createDaemonModels } from "./runtime/pi/models.ts";
 import { PiDurableRuntime, type PiSettings } from "./runtime/pi/PiDurableRuntime.ts";
 import { loadToken } from "./server/auth.ts";
 import {
+  DEFAULT_CORE_PROMPT,
   type GatewayApi,
   type GatewayConfig,
   gatewayFromEnv,
   listGatewayModels,
+  MAX_CORE_PROMPT,
   normalizeBaseUrl,
+  normalizeCorePrompt,
   publicGateway,
   readGateway,
   testGateway,
@@ -58,6 +62,11 @@ import {
 import { acquireLock, LockError } from "./server/singleton.ts";
 import { toServerEvent } from "./server/socket.ts";
 import { UsageStore } from "./server/usage.ts";
+import {
+  MACHINE_PROMPT_CANDIDATES,
+  type MachinePrompt,
+  readMachinePrompt,
+} from "./tools/machine/tools.ts";
 import type { SearchClient } from "./tools/search/client.ts";
 import { createDeepSeekSearch } from "./tools/search/deepseek.ts";
 import { createTavilySearch } from "./tools/search/tavily.ts";
@@ -313,12 +322,22 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     }
     return entries;
   };
+  // The machine's instructions, read on every ask so an edit shows up on the next turn. An
+  // explicit path wins, which is how a test or a second machine points at its own file.
+  const machinePrompt = (): MachinePrompt | undefined =>
+    readMachinePrompt(homedir(), machinePromptCandidates());
+  const machinePromptCandidates = (): readonly string[] => {
+    const explicit = process.env.BOTS_MACHINE_AGENTS?.trim();
+    return explicit === undefined || explicit.length === 0 ? MACHINE_PROMPT_CANDIDATES : [explicit];
+  };
   const runtime = new PiDurableRuntime({
     ...(canonical.deviceSocket === undefined ? {} : { deviceSocket: canonical.deviceSocket }),
     models: () => models,
     log,
     compaction,
     usage: usageStore,
+    corePrompt: () => gateway?.corePrompt,
+    machinePrompt: () => machinePrompt(),
     search: () => providers.client,
     trigger: async (spec) =>
       triggerHost(spec.id, await triggerStoreFor(spec.id), async (triggerId) => {
@@ -356,6 +375,11 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     closeDeadlineMs: canonical.closeDeadlineMs,
   });
   await registry.start();
+  // The daemon's stored selection governs every bot, including one created before a group
+  // existed: a restart applies it once, exactly like saving the settings does.
+  if (gateway !== undefined) {
+    await registry.applyToolGroups(gateway.toolGroups, "tr_boot_groups");
+  }
   // The daemon exists after the service that has to broadcast through it.
   let broadcast: (() => void) | undefined;
   const service = new ConversationService({
@@ -511,13 +535,23 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
           error: "思考等级必须是 off、minimal、low、medium、high、xhigh 或 max",
         };
       }
-      if (baseUrl.length === 0) {
+      // A save that names no gateway field is the 工具 page: it may run before a gateway is
+      // configured, so the three required fields are only checked when this request decides
+      // them or when a gateway is already stored.
+      const touchesGateway =
+        input.baseUrl !== undefined ||
+        input.model !== undefined ||
+        input.apiKey !== undefined ||
+        input.provider !== undefined ||
+        input.thinkingLevel !== undefined;
+      const needsGateway = touchesGateway || gateway !== undefined;
+      if (needsGateway && baseUrl.length === 0) {
         return { settings: publicGateway(gateway), error: "网关地址必须是 http(s) URL" };
       }
-      if (model.length === 0) {
+      if (needsGateway && model.length === 0) {
         return { settings: publicGateway(gateway), error: "模型不能为空" };
       }
-      if (apiKey.length === 0) {
+      if (needsGateway && apiKey.length === 0) {
         return { settings: publicGateway(gateway), error: "API Key 不能为空" };
       }
       const requestedGroups = input.toolGroups;
@@ -530,17 +564,39 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
           };
         }
       }
+      const corePrompt =
+        input.corePrompt === undefined
+          ? (gateway?.corePrompt ?? DEFAULT_CORE_PROMPT)
+          : normalizeCorePrompt(input.corePrompt);
+      if (corePrompt === undefined) {
+        return {
+          settings: publicGateway(gateway),
+          error: `人格提示不能超过 ${MAX_CORE_PROMPT} 个字符`,
+        };
+      }
       const toolGroups = resolveToolGroups(requestedGroups ?? gateway?.toolGroups);
-      const next: GatewayConfig = { provider, baseUrl, model, apiKey, thinkingLevel, toolGroups };
+      const next: GatewayConfig = {
+        provider,
+        baseUrl,
+        model,
+        apiKey,
+        thinkingLevel,
+        toolGroups,
+        corePrompt,
+      };
       await writeGateway(root, next);
       gateway = next;
-      models = createDaemonModels({
-        baseUrl,
-        apiKey,
-        provider,
-        modelId: model,
-      });
-      await registry.applyModel({ provider, modelId: model }, "tr_http_settings");
+      // Without a complete gateway there is nothing to apply: the tools page is allowed to
+      // store a persona before anyone configures a model.
+      if (next.baseUrl.length > 0 && next.model.length > 0 && next.apiKey.length > 0) {
+        models = createDaemonModels({
+          baseUrl,
+          apiKey,
+          provider,
+          modelId: model,
+        });
+        await registry.applyModel({ provider, modelId: model }, "tr_http_settings");
+      }
       await registry.applyThinkingLevel(thinkingLevel, "tr_http_settings");
       await registry.applyToolGroups(toolGroups, "tr_http_settings");
       return { settings: publicGateway(next) };
@@ -572,6 +628,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     registry,
     service,
     settings,
+    machinePrompt,
     triggers: triggerApi,
     peers: peerApi({
       store: peerStore,
