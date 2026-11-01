@@ -1351,8 +1351,54 @@ test("paired reader and server authorize one directional replica page without re
     assert.match(String(reverse.value.trace), /^tr_http_/);
     assert.match(String((reverse.value.error as JSONRecord).failure), /^f_/);
     const reverseFailure = (reverse.value.error as JSONRecord).failure;
-    const failures = records().filter(
+    const firstFailures = records().filter(
       (row) => (row.err as JSONRecord | undefined)?.failure === reverseFailure,
+    );
+    const failures = await until(async () => {
+      const rows = records().filter(
+        (row) =>
+          (row.err as JSONRecord | undefined)?.failure === reverseFailure,
+      );
+      return rows.some((row) => (row.err as JSONRecord).origin === true)
+        ? rows
+        : undefined;
+    }, "reverse failure origin is written to the asynchronous log sink");
+    const observation = resolve(
+      `.local/device-reverse-origin-${randomUUID()}.json`,
+    );
+    const diagnosticRows = (rows: JSONRecord[]) =>
+      rows.map(({ trace, botId, layer, level, evt, err }) => ({
+        trace,
+        botId,
+        layer,
+        level,
+        evt,
+        err,
+      }));
+    writeFileSync(
+      observation,
+      JSON.stringify(
+        {
+          failure: reverseFailure,
+          firstObservation: diagnosticRows(firstFailures),
+          finalRows: diagnosticRows(failures),
+        },
+        null,
+        2,
+      ),
+      { mode: 0o600 },
+    );
+    console.log(
+      JSON.stringify({
+        kind: "reverse-origin-observation",
+        observation,
+        firstOrigins: firstFailures.filter(
+          (row) => (row.err as JSONRecord).origin === true,
+        ).length,
+        finalOrigins: failures.filter(
+          (row) => (row.err as JSONRecord).origin === true,
+        ).length,
+      }),
     );
     assert.equal(
       failures.filter((row) => (row.err as JSONRecord).origin === true).length,

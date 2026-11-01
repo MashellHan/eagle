@@ -1,5 +1,6 @@
 import EagleDevices
 import Foundation
+import OSLog
 import Security
 
 @main struct EagleDeviceHelper {
@@ -35,10 +36,12 @@ import Security
       listener.resume()
       withExtendedLifetime((host, listener, delegate)) { RunLoop.main.run() }
     } catch {
-      // No payload, credential or arbitrary child output reaches a process log; a build can ask
-      // for the failure's domain and code only, which names no path and carries no secret.
+      // No payload, credential or arbitrary child output reaches a process log: the failure's
+      // domain and code are enough to tell a configuration problem from a storage one.
+      let failure = error as NSError
+      Logger(subsystem: "ai.hexly.eagle.devices", category: "helper")
+        .error("helper_failed \(failure.domain, privacy: .public) \(failure.code)")
       if ProcessInfo.processInfo.environment["EAGLE_DEVICE_HELPER_DIAGNOSTICS"] == "1" {
-        let failure = error as NSError
         FileHandle.standardError.write(
           Data("helper_failed \(failure.domain) \(failure.code)\n".utf8))
       }

@@ -16,7 +16,8 @@ binding. B's pre-send interruption remains cause-not-assigned. See
 [current architecture](SYNC-ARCHITECTURE.md),
 [PLAN](PLAN.md) and [SYNC-NATIVE](SYNC-NATIVE.md) for present scope, and
 [TESTING](TESTING.md) for original runs and failures. Historical common baseline182fc1f
-is distinct from the upstream8674 and subsequent fixed19f4 integration for PR112.
+is distinct from the accepted upstream8674/fixed19f4 integrations and current
+fixed57cfd integration for PR112.
 
 The smallest connection uses two additional typed metadata operations,
 `status-report` and `status-read`, through existing Node manage, Registry authority

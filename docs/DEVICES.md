@@ -196,6 +196,18 @@ pairing and Outbox retain their own storage; injected test controls explicitly o
 storage. Until an address exists the App does not register the background service at all
 and nothing is contacted; the helper parks without starting its agent.
 
+After validating its bundle configuration, `DeviceSystemControl` initialization locally
+imports an older App-domain address once: only `device-release` with `ai.hexly.eagle.macos`,
+or `device-candidate` with `ai.hexly.eagle.macos.device-candidate`. A valid legacy origin is
+normalized into the same profile domain; the legacy key and bytes remain untouched.
+An existing raw profile value or `eagle.deviceServiceAddress.legacyHandled` decision wins.
+Missing or invalid legacy values are marked handled without importing an origin; later
+profile saves and clears also mark the decision, so reopening cannot revive a cleared choice.
+Custom profiles do not import those App domains. Owned tests may explicitly inject isolated
+legacy defaults into the real control; registration, pairing and Outbox defaults are not
+migrated. The helper and normal Settings reads remain profile-only, with no App-domain or
+`standard` runtime fallback.
+
 `EAGLE_DEVICE_SERVICE_URL` remains an optional build input for a bundle that must name an
 origin up front (a candidate pointing at a local service, or a deployment that deliberately
 pins one). Omitted or empty keeps whatever the profile file says: `http://127.0.0.1:17053`

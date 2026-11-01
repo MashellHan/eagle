@@ -5,6 +5,7 @@ import Foundation
 /// they run. Apps and helpers with the same signed profile share that choice.
 public enum DeviceServiceAddress {
   public static let defaultsKey = "eagle.deviceServiceAddress"
+  private static let legacyHandledKey = defaultsKey + ".legacyHandled"
 
   /// An origin only: no credentials, path, query or fragment. Plain HTTP is loopback-only.
   public static func normalize(_ value: String) -> String? {
@@ -37,7 +38,21 @@ public enum DeviceServiceAddress {
 
   @discardableResult
   public static func save(_ value: String, profile: String) -> String? {
-    profileDefaults(profile).flatMap { save(value, defaults: $0) }
+    guard let defaults = profileDefaults(profile) else { return nil }
+    // Record the decision before clearing, so the old App choice cannot revive it.
+    defaults.set(true, forKey: legacyHandledKey)
+    return save(value, defaults: defaults)
+  }
+
+  static func migrateLegacy(profile: String, from legacy: UserDefaults) {
+    guard let defaults = profileDefaults(profile), !defaults.bool(forKey: legacyHandledKey) else {
+      return
+    }
+    if defaults.object(forKey: defaultsKey) == nil, let origin = saved(legacy) {
+      defaults.set(origin, forKey: defaultsKey)
+    }
+    defaults.set(true, forKey: legacyHandledKey)
+    defaults.synchronize()
   }
 
   private static func profileDefaults(_ profile: String) -> UserDefaults? {

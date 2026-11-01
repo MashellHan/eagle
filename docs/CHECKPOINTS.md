@@ -4602,3 +4602,22 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   always-ask and explicit policy.set assertions. Complete devices green is next.
 - No new live collection/authentication, D1, GUI/physical, settings or release.
   PR112 readiness still needs the actual next head/CI and narrow Review binding.
+
+### 2026-11-01T01:28:05.875408+00:00 — eagle-sync fixed57 compatibility candidate
+
+- PR112 maintenance integrates only fixed57cfd onto delivered2a9. The approved local
+  control-init migration preserves an older valid published App choice in the signed
+  profile domain, with handled/clear semantics and no helper fallback. Full original
+  Swift red→green216/62/60+icon1, build/strict/92.7% coverage and complete devices
+  red32/33→green33/33 are archived under `.local/sync-upstream-merge-57cfd/`.
+  The devices fix only waits for the exact asynchronous origin to become observable;
+  its exact-count/trace/security assertions remain. The green first sample was already1.
+- Herdr coordination used the existing verified innovation-lead; installed PR112
+  launchd monitoring remains independent and pending actual merge. No new B checkout,
+  build, physical controls, daily App or system setting was touched. B Node26/npm
+  entry is located; a full B Xcode has not yet been located within the recorded scope.
+  Device checks used owned processes/real local Registry SQL; no installed collector,
+  production D1/Cloudflare or public dashboard verification is claimed.
+- Next hop: original Review of the stable narrow merge/source/docs binding, then
+  normal dual-parent commit/hooks/push and actual new-head CI. Both-Mac fresh build
+  and physical work remains behind actual merge and the pinned-main ancestry proof.

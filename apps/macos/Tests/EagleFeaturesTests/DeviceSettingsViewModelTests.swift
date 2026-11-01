@@ -544,6 +544,67 @@ func deviceApproval(expiresAt: Int64) throws -> DeviceApprovalRequest {
 @MainActor
 struct DeviceServiceAddressConfigurationTests {
   @Test(
+    "an upgraded App reads the legacy choice through validated control and reopens from profile")
+  func upgradedAppAddress() throws {
+    let profile = "upgrade-vm-" + UUID().uuidString
+    let digest = SHA256.hash(data: Data(profile.utf8)).map { String(format: "%02x", $0) }.joined()
+    let profileDomain = "ai.hexly.eagle.devices.address." + digest
+    let legacyDomain = "upgrade-legacy-" + UUID().uuidString
+    let appDomains = ["upgrade-app-" + UUID().uuidString, "upgrade-app-" + UUID().uuidString]
+    let legacy = try #require(UserDefaults(suiteName: legacyDomain))
+    let bundle = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer {
+      for domain in [profileDomain, legacyDomain] + appDomains {
+        UserDefaults(suiteName: domain)?.removePersistentDomain(forName: domain)
+      }
+      try? FileManager.default.removeItem(at: bundle)
+    }
+    let resources = bundle.appendingPathComponent("Contents/Resources")
+    try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+    try JSONEncoder().encode(
+      DeviceJSON.object([
+        "version": .number(1), "profile": .string(profile), "baseUrl": .string(""),
+        "machServiceName": .string("ai.hexly.eagle.devices.test"),
+        "launchAgentPlist": .string("ai.hexly.eagle.devices.test.plist"),
+      ])
+    ).write(to: resources.appendingPathComponent("DeviceHost.json"))
+    let raw = " https://Legacy.Example.com:443/ "
+    legacy.set(raw, forKey: DeviceServiceAddress.defaultsKey)
+    for domain in appDomains {
+      let defaults = try #require(UserDefaults(suiteName: domain))
+      defaults.set("https://bot-root.example.com", forKey: DeviceServiceAddress.defaultsKey)
+      let control = DeviceSystemControl(bundle: bundle, defaults: defaults, legacyDefaults: legacy)
+      let model = DeviceSettingsViewModel(
+        control: control, defaults: defaults, requiresServiceAddress: true)
+      #expect(model.savedServiceAddress == "https://legacy.example.com")
+      #expect(
+        model.serviceAddressDraft == "https://legacy.example.com" && !model.needsServiceAddress)
+      #expect(DeviceServiceAddress.saved(profile: profile) == "https://legacy.example.com")
+      #expect(DeviceServiceAddress.saved(defaults) == "https://bot-root.example.com")
+    }
+    #expect(legacy.string(forKey: DeviceServiceAddress.defaultsKey) == raw)
+    let read = Process()
+    let output = Pipe()
+    read.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+    read.arguments = ["read", profileDomain, DeviceServiceAddress.defaultsKey]
+    read.standardOutput = output
+    read.standardError = Pipe()
+    try read.run()
+    read.waitUntilExit()
+    #expect(read.terminationStatus == 0)
+    #expect(
+      String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        .trimmingCharacters(in: .whitespacesAndNewlines) == "https://legacy.example.com")
+    DeviceServiceAddress.save("", profile: profile)
+    let reopenedDefaults = try #require(UserDefaults(suiteName: appDomains[1]))
+    let reopened = DeviceSettingsViewModel(
+      control: DeviceSystemControl(
+        bundle: bundle, defaults: reopenedDefaults, legacyDefaults: legacy),
+      defaults: reopenedDefaults, requiresServiceAddress: true)
+    #expect(reopened.needsServiceAddress && reopened.savedServiceAddress.isEmpty)
+  }
+
+  @Test(
     "the signed profile address crosses App defaults and a cold helper reader without crossing profiles"
   )
   func profileAddressOwnership() async throws {

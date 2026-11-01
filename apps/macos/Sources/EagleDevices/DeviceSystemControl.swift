@@ -33,10 +33,33 @@ extension DeviceControl {
   private let log = Logger(subsystem: "ai.hexly.eagle.devices", category: "background")
   public var socketPath: String? { configuration?.socketPath }
   public var serviceProfile: String? { configuration?.profile }
-  public init(bundle: URL = Bundle.main.bundleURL, defaults: UserDefaults = .standard) {
+  public init(
+    bundle: URL = Bundle.main.bundleURL, defaults: UserDefaults = .standard,
+    /// Owned tests may supply isolated legacy storage; production derives it from the App bundle.
+    legacyDefaults: UserDefaults? = nil
+  ) {
     self.bundle = bundle
     self.defaults = defaults
     configuration = try? DeviceHostConfiguration.load(bundle: bundle)
+    guard let configuration else { return }
+    let legacy =
+      legacyDefaults
+      ?? Self.legacyAppDomain(
+        profile: configuration.profile, identifier: Bundle(url: bundle)?.bundleIdentifier
+      )
+      .flatMap { UserDefaults(suiteName: $0) }
+    if let legacy {
+      DeviceServiceAddress.migrateLegacy(profile: configuration.profile, from: legacy)
+    }
+  }
+
+  static func legacyAppDomain(profile: String, identifier: String?) -> String? {
+    switch (profile, identifier) {
+    case ("device-release", "ai.hexly.eagle.macos"),
+      ("device-candidate", "ai.hexly.eagle.macos.device-candidate"):
+      return identifier
+    default: return nil
+    }
   }
   public func start(
     confirm: @escaping @MainActor @Sendable (DeviceApprovalRequest) async -> Bool

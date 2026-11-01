@@ -2139,3 +2139,43 @@ Worker succeed, devices33 succeed, then Xcode16.4/Swift6.1.2 crashes with signal
 in EagleFeatures emit-module/ASTLowering.19f4's CI environment selects Xcode26.3;
 this changes the observed toolchain input, with success pending a new head's actual
 natural CI. No failed workflow is manually rerun or old green relabeled.
+
+### 2026-11-01 — fixed57 upstream compatibility and fixture observation
+
+- Integrate only `57cfd97e856699e98191744ac24110790f0b90fc` onto delivered
+  `2a9bad8065232c9be3fa3518f6f7647d1ad87e78`. Retain signed-profile address reads,
+  explicit owned vault/composition and upstream domain/code-only helper logging,
+  published macOS 0.15.3 metadata and macos-26/default-Xcode CI selection. Preserve
+  the existing event-consumption waits/drains in the sidebar test.
+- The owned legacy-upgrade preparation first failed compilation because a Features
+  test used an inaccessible configuration memberwise initializer (`13e75574`, exit1).
+  After switching to the existing JSON encoding seam, full unfiltered Swift tests
+  demonstrated the actual upgrade red (`7aa18266`, exit1): Features216 had only the
+  new upgrade VM failure with6 issues; Devices61 had only the address upgrade failure
+  with4 issues; Design60 and the icon XCTest1 passed. The minimum init migration
+  passed full Features216/Devices62/Design60 plus icon XCTest1 (`aeb75ba7`, exit0),
+  including independent cold profile reading, legacy-byte preservation, existing
+  raw-value priority, clear/reopen, missing/invalid handling and profile isolation.
+  Only owned defaults/UUID profiles were used; no daily preferences or live helper
+  was started by the migration tests. The one-time init side effect is in DEVICES.md.
+- Complete `npm run test:devices` first returned33 tests/32pass/1fail/0skip
+  (`fce982af`, exit1): the reverse-authority test read asynchronous daemon JSONL
+  immediately after HTTP403 and observed zero matching origins at its exact-count
+  assertion. The narrow fixture fix uses the existing unchanged12s `until` only
+  for presence of that exact failure's origin; the original count1, trace/Bot,
+  refusal and secret checks remain. The full command then passed33/33/0skip
+  (`98bda350`, exit0). Its owned diagnostic first/final samples both contained
+  one origin (`94710e8d`); this green run does not prove an observed0→1 span, nor
+  attribute other historical intermittent failures to this cause. No production
+  logging/flush protocol, sleep or timeout changed.
+- Chronology is recorded in `.local/sync-upstream-merge-57cfd/`: devices first ran
+  01:19:41–01:21:58UTC; Swift build completed01:20:19–01:20:21 while devices was
+  active. Do not call the entire group strictly serial. Build and formal strict
+  lint passed (`3107d4ff`/empty raw); original coverage passed1599/1725=92.7% with
+  the unchanged90% gate (`c7bde470`). Later devices fixture edits do not change
+  those Swift inputs. Normal commit/push hooks and new-head CI are still pending
+  at this pre-commit freeze; older2a9 CI remains its own historical scope.
+- The task-specific PR112 merge monitor is formally installed in LaunchAgents and
+  awaits actual `merged===true`; B source/build/physical checks have not started.
+  Prior P5 finite physical acceptance and B's cause-not-assigned pre-send interruption
+  retain their original scope. No new upstream point, PR merge or deployment.
