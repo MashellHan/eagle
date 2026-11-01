@@ -2271,3 +2271,65 @@ no waiver, formatter-wide rewrite, physical replay or premerge B build occurred.
 The bounded candidate under `.local/sync-upstream-merge-3a4b/p2-final-v1/`
 retains parents0d+fixed3a4b. Original Review must close these two P2s before normal
 commit/hooks/push; only the subsequent new-head natural CI can establish CI readiness.
+
+
+## 2026-11-01 — PR112 head5a59 CI fixture/input diagnostics
+
+Original Review closes both fixed3a4b P2s on tree884aee5d. Normal unique merge
+commit5a59d949 retains parents0d+fixed3a4b; normal precommit/postcommit/full prepush
+and push finish0. Hooks run root274/274/0skip, browser202 enumerated with191passed
+and11 original conditional skips, and Swift221/62/60 plus icon1 with the original
+trigger skip. The accepted production scopes and all previous raw remain intact.
+
+Exact-head natural attempt1 runs41265273688 (upstream) and41265274792 (fork) both
+fail; all six original job logs are captured once (591606B) under
+`.local/sync-upstream-merge-3a4b/delivery-p2/ci/`. These failures are separate:
+
+- Upstream devices is33/32pass/1fail/0skip. The cold-history test reaches the
+  wrong-object-winner store child, whose status isnull versus0. The old assertion
+  has empty stderr and lacks error/code/signal/stage observations; it does not
+  establish timeout, buffer, crash or a Swift toolchain cause. Later Swift steps
+  are skipped. No store production behavior or30000ms bound is changed. The
+  wrapper now preserves structured process observations, output sizes/elapsed,
+  and exact owned input bytes/hash plus fixture hash in private ignored folders
+  (directory0700/files0600), without printing payloads. The original status and
+  wrong-winner/signature/binding oracles remain.
+- Fork devices/build pass; native focus returns status1/signalnull/errornull,
+  complete=true with41/42. Only final history motion fails: before=after1298
+  despite an immediate direct-clip delta56, while focus/draft remain intact.
+  Review confirms a fixture/input mismatch: direct clip mutation bypasses user
+  scroll phases and its positive y direction goes toward the end. This is not a
+  confirmed product P2 or proof of the follow-bottom causal mechanism. The narrow
+  input repair reuses the existing pixel wheel began/changed/ended route toward
+  earlier history at the current real viewport. Full42, final settled motion,
+  focus/draft checks, phase/geometry traces, settle/drain and all bounds remain.
+
+On A, the original complete encrypted file with diagnostics ends9/11 (0af2f470):
+the full target store case passes, but a child and parent fail on a fresh random
+root's44105 collision with the old scene5 owned A daemon. Read-only listener/PID
+and the production hash agree; old daemon/data is untouched. Five store calls
+finish0 with preserved private input bindings, first73250B/236ms. This does not
+explain or fix the upstream null-status failure. A newly added diagnostic line's
+format refusal is preserved; only its formatter-required wrapping changes, then
+ordinary root check274/274/types/lint/build0 passes (e872cfa7, original52 infos).
+
+Original complete A native baseline (4646be64) and wheel-route observation
+(bb44069d) both finish1, complete42/24pass18inactive failures. A single public
+frontmost read reports loginwindow/PID604; it is not the active CI41/42 scope.
+Wheel phases1/4/8 and input geometry are recorded, but no settled motion occurs:
+phase delivery alone is not proof SwiftUI received it. No further local GUI run
+occurs before an actual desktop-state change; Root owns the single pending unlock
+handoff. An active full42 result remains pending, locally after actual readiness
+or in the reviewed append head's natural CI, never as a local/physical green.
+
+The final ordinary complete devices gate passes33/33/0skip (2ae4ecdf), with
+the original timeout/status/security oracles and diagnostic input binding intact.
+Its code inputs are unchanged during execution. This observed gate success is
+not a retrospective cause assignment for the upstream null-status red.
+
+No production sync/settings/address input changes in this diagnostics slice;
+previous complete Bots/eval and Swift build/test/strict/coverage scopes are reused
+only for unchanged inputs. A normal reviewed append to5a59, normal required hooks
+and new-head natural CI remain necessary; no workflow rerun or final PR green is
+claimed here. Installed postmerge monitoring is unchanged, and new merged-SHA
+both-Mac build/regression remains pending, including the B Xcode prerequisite.

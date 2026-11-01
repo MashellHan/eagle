@@ -91,11 +91,45 @@ function changeBinding(
   }
 }
 function storeCommand<T>(input: unknown): T {
+  const diagnosticRoot = mkdtempSync(
+    resolve(".local/encrypted-store-command-"),
+  );
+  const payload = JSON.stringify(input);
+  writeFileSync(join(diagnosticRoot, "input.json"), payload, { mode: 0o600 });
+  const started = performance.now();
   const result = spawnSync(process.execPath, [storeFixture], {
-    input: JSON.stringify(input),
+    input: payload,
     encoding: "utf8",
     timeout: 30000,
   });
+  const diagnostic = {
+    kind: "encrypted-store-command",
+    inputPath: join(diagnosticRoot, "input.json"),
+    inputBytes: Buffer.byteLength(payload),
+    inputSha256: createHash("sha256").update(payload).digest("hex"),
+    fixtureSha256: createHash("sha256")
+      .update(readFileSync(storeFixture))
+      .digest("hex"),
+    elapsedMs: performance.now() - started,
+    status: result.status,
+    signal: result.signal,
+    error: result.error?.message ?? null,
+    code: (result.error as NodeJS.ErrnoException | undefined)?.code ?? null,
+    stdoutBytes: Buffer.byteLength(result.stdout ?? ""),
+    stderrBytes: Buffer.byteLength(result.stderr ?? ""),
+  };
+  writeFileSync(
+    join(diagnosticRoot, "result.json"),
+    JSON.stringify(diagnostic),
+    { mode: 0o600 },
+  );
+  writeFileSync(join(diagnosticRoot, "stdout"), result.stdout ?? "", {
+    mode: 0o600,
+  });
+  writeFileSync(join(diagnosticRoot, "stderr"), result.stderr ?? "", {
+    mode: 0o600,
+  });
+  console.log(JSON.stringify(diagnostic));
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout) as T;
 }
