@@ -1,5 +1,6 @@
 import AppKit
 import BotsCore
+import BotsTransport
 import EagleDesign
 import EagleDevices
 import EagleFeatures
@@ -206,6 +207,24 @@ struct SnapshotRenderer {
       SettingsView(model: machines, devices: devices).preferredColorScheme(.light),
       size: CGSize(width: 920, height: 720),
       named: "settings-machines",
+      in: directory
+    )
+
+    let tools = SettingsViewModel()
+    tools.selection = .tools
+    tools.gatewayCorePrompt = "你是一个务实、友好的 agent：先说结论，再给依据；做不到就直说。"
+    tools.gatewayMachinePrompt = MachinePromptPreview(
+      path: "/Users/me/workspace/personal/workflow/agents/AGENTS.md",
+      text: """
+        # system0 machine setup
+
+        一个维护机器指令、可复用技能和命令的来源。项目指令放在各仓根的 AGENTS.md。
+        """
+    )
+    capture(
+      SettingsView(model: tools).preferredColorScheme(.light),
+      size: CGSize(width: 920, height: 720),
+      named: "settings-tools",
       in: directory
     )
 

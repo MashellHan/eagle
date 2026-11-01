@@ -2500,6 +2500,24 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   Next: observe the new CI run; diagnose a repeated focus failure rather than
   cycling retries or adding unrelated implementation changes.
 
+## 2026-11-01 09:40 the two core prompts, from Settings to the model
+
+- Daemon: `persona` and `machine` are tool groups installed first, so their sections lead the
+  system prompt. `corePrompt` lives in the gateway file (v2, migrated once from v1);
+  the machine prompt is read from `~/.agents`, `~/.pi/agent`, `~/.codex`, `~/.claude` on
+  every request. A restart now applies the daemon's stored groups to every bot.
+- App: Settings gains a `工具` section under `模型`, with the editable persona, the read-only
+  machine file, and the group switches below them.
+- Evidence: `apps/bots` `npm run coverage` exits 0 (lines 95.14, branches 88.13, functions
+  90.05) with 707 tests; `swift test` 210 + 48 + 60 and strict `swift format lint` pass.
+  Against the running daemon, `GET /v1/settings` reported the default persona and
+  `/Users/nocoo/workspace/personal/workflow/agents/AGENTS.md` (2 909 characters), a
+  `PUT` naming only `corePrompt` was accepted and stored, and the bot's session document
+  lists `["bots-persona","bots-machine","bots-tools",…]`. The adapter test reads the
+  request the model actually receives.
+- Not verified: the browser suite and the website/Worker surfaces, which this change does
+  not touch; no live Herdr collection or deployment.
+
 ## 2026-10-31 17:10 device Worker redeployed for revision parity
 
 - `wrangler deploy --config apps/web/wrangler.devices.jsonc --var BUILD_REVISION:debb662…`

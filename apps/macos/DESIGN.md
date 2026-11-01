@@ -85,6 +85,11 @@ alternating, above the composer, its band always reserved), composer
 (attach button, placeholder that names the recipient and swaps to `⌘↩ 插入当前回答`
 while an answer can be steered, mic and waveform buttons).
 
+Settings: a left rail of sections. `工具` sits under `模型` and holds the two core prompts
+first (Core Prompt's editable paragraph, Core Machine Prompt's read-only file and text),
+then the tool-group switches, because the prompts are the first sections of the system
+prompt.
+
 Inspector: close and share icon buttons, 64 avatar, name, subtitle, segmented
 tabs (详情 / 资料库 / 电脑), section label, list card of rows with a code icon,
 title and chevron, `展开` action, second section with task rows and green

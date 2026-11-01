@@ -36,6 +36,8 @@ public struct SettingsView: View {
         general
       case .bots:
         bots
+      case .tools:
+        tools
       case .providers:
         providersPage
       case .machines:
@@ -172,6 +174,49 @@ public struct SettingsView: View {
         }
         .padding(.vertical, 16)
       }
+    }
+    .task { @MainActor in
+      await model.loadGatewayIfNeeded()
+      await model.probeGatewayIfNeeded()
+    }
+  }
+
+  /// The 工具 page: the two core prompts first, because they are the first sections of every
+  /// bot's system prompt, then the groups a person opts into.
+  private var tools: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      SettingsCaption("Core")
+      SettingsCard {
+        VStack(alignment: .leading, spacing: 0) {
+          SettingsRow("Core Prompt", detail: "每个 Bot 都先读这段话：它是谁、怎么做事") {
+            Toggle("", isOn: toolGroupBinding(SettingsViewModel.personaToolGroup))
+              .labelsHidden()
+              .toggleStyle(.switch)
+              .tint(Theme.Palette.accentStrong)
+          }
+          SettingsTextArea(
+            "例如：你是一个务实、友好的 agent。先说结论，再给依据。",
+            text: $model.gatewayCorePrompt
+          )
+          .padding(.horizontal, 16)
+          .padding(.top, 10)
+          .padding(.bottom, 14)
+
+          Divider().overlay(Theme.Palette.line)
+
+          SettingsRow(
+            "Core Machine Prompt",
+            detail: "这台机器的 AGENTS.md，只读；先找共享入口，再找 pi、Codex、Claude Code"
+          ) {
+            Toggle("", isOn: toolGroupBinding(SettingsViewModel.machineToolGroup))
+              .labelsHidden()
+              .toggleStyle(.switch)
+              .tint(Theme.Palette.accentStrong)
+          }
+          machinePromptPreview
+        }
+      }
+
       SettingsCaption("工具")
       SettingsCard {
         VStack(spacing: 0) {
@@ -235,11 +280,50 @@ public struct SettingsView: View {
           }
         }
       }
+
+      HStack(spacing: 10) {
+        SettingsActionButton("保存", prominent: true) {
+          Task { @MainActor in await model.saveTools() }
+        }
+        .disabled(model.gatewayBusy)
+        if model.gatewayBusy { SpinnerArc(size: 12) }
+        if let message = model.gatewayMessage {
+          Text(message)
+            .font(Theme.TypeScale.note)
+            .foregroundStyle(Theme.Palette.textSecondary)
+        }
+        Spacer(minLength: 0)
+      }
     }
-    .task { @MainActor in
-      await model.loadGatewayIfNeeded()
-      await model.probeGatewayIfNeeded()
+    .task { @MainActor in await model.loadGatewayIfNeeded() }
+  }
+
+  /// What the machine contributes, read-only: the file a person would open and what it says.
+  @ViewBuilder private var machinePromptPreview: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      if let machine = model.gatewayMachinePrompt {
+        Text(machine.path)
+          .font(.system(size: 11.5, design: .monospaced))
+          .foregroundStyle(Theme.Palette.textMuted)
+          .lineLimit(1)
+          .truncationMode(.middle)
+        ScrollView {
+          Text(machine.text)
+            .font(.system(size: 12.5))
+            .foregroundStyle(Theme.Palette.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
+        }
+        .frame(maxHeight: 150)
+      } else {
+        Text("没有找到机器指令文件：~/.agents、~/.pi/agent、~/.codex、~/.claude 下的 AGENTS.md")
+          .font(Theme.TypeScale.note)
+          .foregroundStyle(Theme.Palette.textMuted)
+      }
     }
+    .padding(.horizontal, 16)
+    .padding(.top, 10)
+    .padding(.bottom, 16)
   }
 
   private func toolGroupBinding(_ name: String) -> Binding<Bool> {

@@ -13,9 +13,11 @@ public struct GatewaySettings: Decodable, Sendable, Equatable {
   public var thinkingLevel: String
   /// The built-in tool groups; `core` and `coding` are mandatory.
   public var toolGroups: [String]
+  /// The person's standing instruction, the first section of every bot's system prompt.
+  public var corePrompt: String
 
   private enum CodingKeys: String, CodingKey {
-    case configured, provider, baseUrl, model, hasApiKey, thinkingLevel, toolGroups
+    case configured, provider, baseUrl, model, hasApiKey, thinkingLevel, toolGroups, corePrompt
   }
 
   public init(from decoder: any Decoder) throws {
@@ -28,8 +30,28 @@ public struct GatewaySettings: Decodable, Sendable, Equatable {
     thinkingLevel = try container.decodeIfPresent(String.self, forKey: .thinkingLevel) ?? "medium"
     toolGroups =
       try container.decodeIfPresent([String].self, forKey: .toolGroups)
-      ?? ["core", "coding", "herdr", "agents", "trigger"]
+      ?? ["persona", "machine", "core", "coding", "herdr", "agents", "trigger"]
+    corePrompt = try container.decodeIfPresent(String.self, forKey: .corePrompt) ?? ""
   }
+}
+
+/// The machine's own instructions, as the daemon found them: read-only, with the file a person
+/// would open. Nil means no candidate file exists, so nothing is rendered into the prompt.
+public struct MachinePromptPreview: Decodable, Sendable, Equatable {
+  public var path: String
+  public var text: String
+
+  public init(path: String, text: String) {
+    self.path = path
+    self.text = text
+  }
+}
+
+/// One read of the daemon's settings: the values that can be edited, plus what the machine
+/// contributes to every prompt and never accepts edits for.
+public struct BotSettingsSnapshot: Sendable, Equatable {
+  public var settings: GatewaySettings
+  public var machinePrompt: MachinePromptPreview?
 }
 
 /// The daemon's probe of a gateway: reachability, auth and how long it took.
@@ -233,10 +255,14 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
     _ = try await raw(path: "/v1/bots/\(botId)/tasks/\(taskId)/abort", method: "POST", body: nil)
   }
 
-  public func loadGateway() async throws -> GatewaySettings {
-    struct Payload: Decodable { let settings: GatewaySettings }
-    return try await request(path: "/v1/settings", method: "GET", body: nil, as: Payload.self)
-      .settings
+  public func loadGateway() async throws -> BotSettingsSnapshot {
+    struct Payload: Decodable {
+      let settings: GatewaySettings
+      let machinePrompt: MachinePromptPreview?
+    }
+    let payload = try await request(
+      path: "/v1/settings", method: "GET", body: nil, as: Payload.self)
+    return BotSettingsSnapshot(settings: payload.settings, machinePrompt: payload.machinePrompt)
   }
 
   /// Saving applies the gateway to new bots and moves live conversations to the model and level.
@@ -246,15 +272,31 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
     thinkingLevel: String,
     toolGroups: [String],
     apiKey: String?
-  ) async throws -> GatewaySettings {
-    struct Payload: Decodable { let settings: GatewaySettings }
+  ) async throws -> BotSettingsSnapshot {
     var body: [String: Any] = [
       "baseUrl": baseURL, "model": model, "thinkingLevel": thinkingLevel,
       "toolGroups": toolGroups,
     ]
     if let apiKey, !apiKey.isEmpty { body["apiKey"] = apiKey }
-    return try await request(path: "/v1/settings", method: "PUT", body: body, as: Payload.self)
-      .settings
+    return try await saveSettings(body: body)
+  }
+
+  /// The tools page: the standing instruction and the group switches, leaving the gateway
+  /// fields the model page owns untouched (an absent field keeps its stored value).
+  public func saveToolSettings(corePrompt: String, toolGroups: [String])
+    async throws -> BotSettingsSnapshot
+  {
+    try await saveSettings(body: ["corePrompt": corePrompt, "toolGroups": toolGroups])
+  }
+
+  private func saveSettings(body: [String: Any]) async throws -> BotSettingsSnapshot {
+    struct Payload: Decodable {
+      let settings: GatewaySettings
+      let machinePrompt: MachinePromptPreview?
+    }
+    let payload = try await request(
+      path: "/v1/settings", method: "PUT", body: body, as: Payload.self)
+    return BotSettingsSnapshot(settings: payload.settings, machinePrompt: payload.machinePrompt)
   }
 
   /// Probes the values typed in the form; an omitted key tests the stored one.

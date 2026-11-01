@@ -175,7 +175,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
         do {
           let token = try TokenStore(root: settings.rootURL).read()
           let client = CatalogHTTPClient(baseURL: settings.baseURL, token: token)
-          return try await client.loadGateway().configured
+          return try await client.loadGateway().settings.configured
         } catch {
           return nil
         }

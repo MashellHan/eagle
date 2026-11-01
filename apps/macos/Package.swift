@@ -35,7 +35,11 @@ let package = Package(
     ),
     .executableTarget(
       name: "SnapshotRenderer",
-      dependencies: ["EagleDesign", "EagleFeatures"]
+      dependencies: [
+        "EagleDesign",
+        "EagleFeatures",
+        .product(name: "BotsTransport", package: "bots-macos"),
+      ]
     ),
     .testTarget(name: "EagleDesignTests", dependencies: ["EagleDesign"]),
     .testTarget(name: "EagleFeaturesTests", dependencies: ["EagleFeatures"]),
