@@ -4703,3 +4703,25 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   Next hop: freeze this diagnostic/input/docs binding for original Review, then
   normal append/hooks/push and active new-head natural CI. No new B build/physical,
   daily App/global settings, PR merge, monitor change or upstream fetch occurred.
+
+
+### 2026-11-01T03:15:25.079705+00:00 — eagle-sync headbda nested crash observations
+
+- Exact bda natural upstream CI succeeds, including active native42/42 and settled
+  history1298→1218 with focus/draft intact. Fork fails devices on nestedSIGTERM
+  versus deliberateSIGKILL; mode/error/code/stage were absent, outer134448B is not
+  nested input size, and no timeout/import/fsync cause is assigned. Six original
+  logs are captured once. Existing wheel/product bytes and all prior acceptance
+  scopes are preserved.
+- The sole source delta adds bounded synchronous nested process/boundary evidence
+  before unchanged crash/security assertions. Complete original encrypted file
+  passes11/11; ordinary root274/types/lint/build and complete devices33/33 finish0.
+  First formatter refusal and all older CI reds remain; local successful crash
+  observations do not retrospectively explain or cure either unknown failure.
+- Original Herdr Service identity/session, Lead/Review and personal GitHub routing
+  remain. Owned helper/Registry checks do not claim installed collection, public
+  D1 or actual A GUI rendering. Root's single A unlock handoff remains pending;
+  there is no GUI/B source/build/physical, daily App/global settings, further
+  upstream fetch or watcher change. Next hop: finite three-path original Review,
+  then normal append/hooks/push and actual new-head CI; merged-SHA both-Mac work
+  still waits for actual merge/pinned-main ancestry and B's complete Xcode.

@@ -1,22 +1,44 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const input = JSON.parse(fs.readFileSync(0, "utf8"));
+const started = performance.now();
+function observe(step, mode = null) {
+  fs.writeSync(
+    2,
+    JSON.stringify({
+      kind: "encrypted-store-crash-progress",
+      pid: process.pid,
+      mode,
+      step,
+      elapsedMs: performance.now() - started,
+    }) + "\n",
+  );
+}
+observe("boot");
+const payload = fs.readFileSync(0, "utf8");
+const input = JSON.parse(payload);
+observe("input", input.mode);
 if (input.mode === "link-crash") {
   const original = fs.linkSync;
   fs.linkSync = (...args) => {
+    observe("link.before", input.mode);
     original(...args);
+    observe("link.after", input.mode);
+    observe("selfkill", input.mode);
     process.kill(process.pid, "SIGKILL");
   };
   syncBuiltinESMExports();
 }
+observe("import.before", input.mode);
 const { SyncObjectStore, acceptedPin, preparePage } = await import(
   pathToFileURL(resolve("apps/bots/src/sync-objects.ts")).href
 );
+observe("import.after", input.mode);
 if (input.mode === "prepare") {
   const prepared = preparePage(
     input.page,
@@ -104,8 +126,13 @@ if (input.mode === "prepare") {
     }),
   );
 } else if (input.mode === "link-crash" || input.mode === "reply-crash") {
+  observe("stage.before", input.mode);
   const staged = await new SyncObjectStore(input.root).stage(input.record);
+  observe("stage.after", input.mode);
+  observe("publish.before", input.mode);
   staged.publish();
+  observe("publish.after", input.mode);
+  observe("selfkill", input.mode);
   process.kill(process.pid, "SIGKILL");
 } else {
   const { root, record, other } = input;
@@ -133,11 +160,35 @@ if (input.mode === "prepare") {
   for (const mode of ["link-crash", "reply-crash"]) {
     const crashRoot = join(root, mode);
     fs.mkdirSync(crashRoot, { mode: 0o700 });
+    const payload = JSON.stringify({ mode, root: crashRoot, record });
+    const started = performance.now();
     const result = spawnSync(process.execPath, [fixture], {
-      input: JSON.stringify({ mode, root: crashRoot, record }),
+      input: payload,
       encoding: "utf8",
       timeout: 10000,
     });
+    fs.writeSync(
+      2,
+      JSON.stringify({
+        kind: "encrypted-store-nested-crash",
+        mode,
+        pid: result.pid,
+        inputBytes: Buffer.byteLength(payload),
+        inputSha256: createHash("sha256").update(payload).digest("hex"),
+        fixtureSha256: createHash("sha256")
+          .update(fs.readFileSync(fixture))
+          .digest("hex"),
+        elapsedMs: performance.now() - started,
+        status: result.status,
+        signal: result.signal,
+        error: result.error?.message ?? null,
+        code: result.error?.code ?? null,
+        stdoutBytes: Buffer.byteLength(result.stdout ?? ""),
+        stderrBytes: Buffer.byteLength(result.stderr ?? ""),
+      }) +
+        "\n" +
+        (result.stderr ?? ""),
+    );
     assert.equal(result.signal, "SIGKILL", result.stderr);
     const destination = join(crashRoot, "sync-objects/v1", objectId + ".json");
     assert.equal(fs.statSync(destination).nlink, mode === "link-crash" ? 2 : 1);

@@ -2333,3 +2333,60 @@ only for unchanged inputs. A normal reviewed append to5a59, normal required hook
 and new-head natural CI remain necessary; no workflow rerun or final PR green is
 claimed here. Installed postmerge monitoring is unchanged, and new merged-SHA
 both-Mac build/regression remains pending, including the B Xcode prerequisite.
+
+
+## 2026-11-01 — PR112 headbda nested crash observability
+
+The reviewed single-parent append bdaffbdf keeps treeaab12dd9 and the fixed3a4b
+integration. Normal commit/postcommit/full prepush/push finish0. Exact-head natural
+attempt1 CI is split: upstream41267317188 succeeds in all three jobs; fork41267315994
+fails devices33/32/1/0skip, so later Swift steps there are skipped. All six original
+job logs (778568B) are uniquely captured under `.local/sync-ci-5a59/delivery/ci/`.
+
+Upstream native focus is actually status0/signalnull/errornull, complete=true42/42.
+The wheel input moves the real history viewport1298→1218 afterInput and after
+settle, with delta-80, keyWindow/otherFocus true and draftx unchanged. This proves
+the active CI fixture scope, not local A GUI readiness or new physical validation;
+the local inactive42 records and Root's pending unlock handoff remain separate.
+No native/wheel source is changed in this slice.
+
+Fork's new bad hop is distinct from the earlier unknown-null-status failure.
+The outer invariants command has134448B input (record+other), status1, signal/error/code
+null, elapsed10476.5ms and465B stderr. Its nested crash assertion expects the deliberate
+SIGKILL but receives SIGTERM. Parent winner/retry assertions passed; the failed
+mode and nested error/code/input sizes were not recorded, and that mode's nlink/reopen
+assertions were not reached. The outer payload size is not the nested payload size.
+Neither10s-like elapsed time nor SIGTERM alone establishes a timeout/import/fsync cause.
+
+The sole fixture delta records each nested mode/PID/status/signal/error/code/elapsed,
+actual nested input size+SHA, fixture SHA and output sizes before the unchanged
+signal assertion. A few synchronous stderr markers locate boot, input, import,
+stage, publish, actual link and selfkill boundaries without printing payloads.
+Outer30000ms/nested10000ms, default timeout signal, deliberate SIGKILL and all real
+link/fsync/nlink/reopen/corrupt-winner/security oracles remain; killSignal is not
+changed to make timeout look like the intended crash. ETIMEDOUT would establish
+only that deadline; the last marker alone would not prove an fsync cause.
+
+Original complete encrypted file passes11/11/0skip (9fd5a69d), with five store calls
+and actual link-crash67276B/184ms and reply-crash67278B/195ms reaching deliberate
+SIGKILL. Those exact input/fixture/result/marker bytes are preserved privately under
+`.local/sync-ci-bda/observed-store-inputs/`. This does not reproduce, assign or cure
+the fork SIGTERM or older null-status failure. Its input predates only the final
+nested result.pid field and formatter-required wrapping. The first ordinary root
+check preserves274/274/types0 followed by a single formatting refusal (230955fb);
+only the required wrapping changes, then complete root check/types/lint/build0
+(4ed3e07b,53 infos) passes. Final complete devices result is recorded below.
+
+On the final fixture (including result.pid/wrapping), complete ordinary devices
+passes33/33/0skip (67d41f46). Both nested modes preserve PID-linked synchronous
+markers, actual nested payloads and input hashes, intentional SIGKILL, and the
+original post-crash nlink/reopen assertions. All code inputs remain unchanged
+during each run. CI uses Node26.13.0; these local checks use official Node26.9.0;
+the version difference is an input fact, not a cause assignment.
+
+Production, native and all prior P2/P5/E1 scopes retain their unchanged bytes. This
+is a bounded observability delivery, not a causal fix claim; normal reviewed append,
+full required hooks and exact new-head natural CI remain necessary. No workflow
+rerun, GUI/B source/build, daily App/global setting, watcher mutation or further
+upstream integration occurs. New merged-SHA both-Mac work still waits for actual
+merge and pinned-main ancestry, including B's full-Xcode prerequisite.
