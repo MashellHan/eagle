@@ -196,7 +196,14 @@ public struct SettingsView: View {
           }
           SettingsTextArea(
             "例如：你是一个务实、友好的 agent。先说结论，再给依据。",
-            text: $model.gatewayCorePrompt
+            text: Binding(
+              get: { model.gatewayCorePrompt },
+              set: { next in
+                // A person typing owns the field: a later reload must not overwrite it.
+                model.gatewayCorePromptChosen = true
+                model.gatewayCorePrompt = next
+              }
+            )
           )
           .padding(.horizontal, 16)
           .padding(.top, 10)
