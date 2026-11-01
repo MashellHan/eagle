@@ -635,7 +635,11 @@ final class BotsWorkspaceViewModel: ObservableObject {
     let nextRows = app.bots.map { bot in
       SidebarBotRow(
         groupId: bot.groupId,
-        item: presenter.sidebarItem(for: bot, preview: previews[bot.id]?.text ?? "")
+        item: presenter.sidebarItem(
+          for: bot,
+          preview: previews[bot.id]?.text ?? "",
+          running: bot.id == app.selection ? conversation.state.running : nil
+        )
       )
     }
     if rows != nextRows { rows = nextRows }
@@ -1190,7 +1194,9 @@ struct BotsPresenter {
     abs(bot.id.hashValue) % Theme.Palette.avatarTints.count
   }
 
-  func sidebarItem(for bot: BotSummary, preview: String = "") -> SidebarItem {
+  /// `running` overrides the catalog for the open bot: its own socket knows the run before the
+  /// daemon's catalog round trip does, so every surface showing that bot moves together.
+  func sidebarItem(for bot: BotSummary, preview: String = "", running: Bool? = nil) -> SidebarItem {
     SidebarItem(
       id: bot.id,
       title: bot.title,
@@ -1198,7 +1204,7 @@ struct BotsPresenter {
       tag: bot.label,
       tintIndex: tintIndex(for: bot),
       face: faceStyle(for: bot),
-      busy: bot.state == .running
+      busy: running ?? (bot.state == .running)
     )
   }
 

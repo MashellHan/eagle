@@ -5,9 +5,13 @@ import SwiftUI
 /// the composer, so "this bot is busy" looks identical wherever it is shown. Reduce Motion
 /// holds the face still.
 public struct BusyFace<Content: View>: View {
+  private let rise: CGFloat
   private let content: Content
 
-  public init(@ViewBuilder content: () -> Content) {
+  /// `rise` is how far the face lifts on its own scale; a large portrait needs more than a
+  /// sidebar chip to read as the same motion.
+  public init(rise: CGFloat = 1.5, @ViewBuilder content: () -> Content) {
+    self.rise = rise
     self.content = content()
   }
 
@@ -20,7 +24,7 @@ public struct BusyFace<Content: View>: View {
         content
           .scaleEffect(1 + 0.055 * (wave + 1) / 2)
           .rotationEffect(.degrees(wave * 5))
-          .offset(y: -wave * 1.5)
+          .offset(y: -wave * rise)
       }
     }
   }
@@ -30,5 +34,20 @@ public struct BusyFace<Content: View>: View {
   /// A 2.2 s breath, so the eye catches it without it ever becoming a distraction.
   private func wave(at date: Date) -> Double {
     sin(date.timeIntervalSinceReferenceDate * 2 * .pi / 2.2)
+  }
+}
+
+/// Applies the shared busy breath only while `active`, so a face that is not working sits
+/// still and every working face on screen moves in step.
+struct BusyWhenWorking: ViewModifier {
+  let active: Bool
+  var rise: CGFloat = 1.5
+
+  func body(content: Content) -> some View {
+    if active {
+      BusyFace(rise: rise) { content }
+    } else {
+      content
+    }
   }
 }

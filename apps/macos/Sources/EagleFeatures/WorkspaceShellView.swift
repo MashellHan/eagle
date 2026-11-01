@@ -271,6 +271,7 @@ public struct WorkspaceShellView: View {
           },
           onCollapse: { layout.toggleInspector() },
           face: selectedIsBot ? bots.selectedFace : nil,
+          isBusy: selectedIsBot && bots.running,
           label: selectedIsBot ? bots.selectedLabel : nil,
           onEditFace: selectedIsBot ? { showsBotFaceEditor = true } : nil,
           onCommitName: selectedIsBot
