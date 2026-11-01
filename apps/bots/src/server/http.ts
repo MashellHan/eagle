@@ -24,7 +24,7 @@ import { MAX_REPLICA_BODY_BYTES } from "../core/RuntimePort.ts";
 import { declareEvent } from "../log/events.ts";
 import type { Log } from "../log/log.ts";
 import type { ServerEvent } from "../protocol/frames.ts";
-import { MAX_LABEL_CHARS, MAX_TITLE_CHARS } from "../protocol/limits.ts";
+import { MAX_HTTP_BODY_BYTES, MAX_LABEL_CHARS, MAX_TITLE_CHARS } from "../protocol/limits.ts";
 import { PROTOCOL_VERSION } from "../protocol/version.ts";
 import { parseBearer, tokenMatches } from "./auth.ts";
 import { serverFailure } from "./failures.ts";
@@ -59,6 +59,8 @@ export type ServerOptions = {
   readonly providers?: ProviderApi;
   /** Model gateway settings, when the daemon was configured with a store. */
   readonly settings?: GatewayApi;
+  /** The machine's own instructions, read from disk for the App's read-only preview. */
+  readonly machinePrompt?: () => { readonly path: string; readonly text: string } | undefined;
   /** A bot's triggers: read-only detail for the app, and the person's one switch. */
   readonly triggers?: TriggerApi;
   /** The read side of bot-to-bot exchanges; absent in a build without a peer store. */
@@ -103,7 +105,10 @@ const json = (response: ServerResponse, status: number, body: unknown): void => 
   response.end(text);
 };
 
-const readBody = async (request: IncomingMessage, maxBytes = 8 * 1024): Promise<unknown> => {
+const readBody = async (
+  request: IncomingMessage,
+  maxBytes = MAX_HTTP_BODY_BYTES,
+): Promise<unknown> => {
   const chunks: Buffer[] = [];
   let bytes = 0;
   for await (const chunk of request) {
@@ -141,8 +146,16 @@ const gatewayInput = (body: unknown): GatewayInput | undefined => {
     provider?: string;
     thinkingLevel?: string;
     toolGroups?: readonly string[];
+    corePrompt?: string;
   } = {};
-  for (const key of ["baseUrl", "apiKey", "model", "provider", "thinkingLevel"] as const) {
+  for (const key of [
+    "baseUrl",
+    "apiKey",
+    "model",
+    "provider",
+    "thinkingLevel",
+    "corePrompt",
+  ] as const) {
     const value = raw[key];
     if (value === undefined) continue;
     if (typeof value !== "string") return undefined;
@@ -914,6 +927,7 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
             model: "",
             hasApiKey: false,
           },
+          machinePrompt: options.machinePrompt?.() ?? null,
         });
         return;
       }
@@ -937,7 +951,10 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
           return;
         }
         broadcastCatalog();
-        json(response, 200, { settings: saved.settings });
+        json(response, 200, {
+          settings: saved.settings,
+          machinePrompt: options.machinePrompt?.() ?? null,
+        });
         return;
       }
       if (path === "/v1/settings/test" && request.method === "POST") {

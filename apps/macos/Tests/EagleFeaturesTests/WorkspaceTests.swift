@@ -23,13 +23,12 @@ struct MockWorkspaceTests {
     }
   }
 
-  @Test("the transcript covers assistant, note, user and typing rows")
+  @Test("the transcript covers assistant, note and user rows")
   func transcript() {
     let entries = MockWorkspace.botTranscript
     #expect(entries.contains { if case .assistant = $0 { true } else { false } })
     #expect(entries.contains { if case .user = $0 { true } else { false } })
     #expect(entries.contains { if case .note = $0 { true } else { false } })
-    #expect(entries.contains { if case .typing = $0 { true } else { false } })
     #expect(Set(entries.map(\.id)).count == entries.count)
   }
 
@@ -171,20 +170,21 @@ struct WorkspaceListTests {
 
 @Suite("Chat")
 struct ChatTests {
-  @Test("send appends a user turn and a typing row, then clears the draft")
+  @Test("send appends a user turn, waits for an answer and clears the draft")
   func send() {
     let model = BotChatViewModel(entries: [])
+    #expect(model.waiting)
     model.draft = "  今天 eagle 会修吗  "
     model.send()
 
-    #expect(model.entries.count == 2)
+    #expect(model.entries.count == 1)
     #expect(model.entries[0].id == "local-0")
     if case .user(_, let text, _) = model.entries[0] {
       #expect(text == "今天 eagle 会修吗")
     } else {
       Issue.record("expected a user turn")
     }
-    #expect(model.entries[1].id == "typing-0")
+    #expect(model.waiting)
     #expect(model.draft.isEmpty)
     #expect(model.sentCount == 1)
   }

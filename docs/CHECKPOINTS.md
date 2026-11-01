@@ -4518,6 +4518,23 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Next: read-only Review of this fixture delta and records, then normal hooks/push
   and actual CI. No Herdr collection/authentication, D1, dashboard rendering, old
   physical scenario, daily App, system setting or fixed182 upstream change occurs.
+## 2026-11-01 09:40 the two core prompts, from Settings to the model
+
+- Daemon: `persona` and `machine` are tool groups installed first, so their sections lead the
+  system prompt. `corePrompt` lives in the gateway file (v2, migrated once from v1);
+  the machine prompt is read from `~/.agents`, `~/.pi/agent`, `~/.codex`, `~/.claude` on
+  every request. A restart now applies the daemon's stored groups to every bot.
+- App: Settings gains a `工具` section under `模型`, with the editable persona, the read-only
+  machine file, and the group switches below them.
+- Evidence: `apps/bots` `npm run coverage` exits 0 (lines 95.14, branches 88.13, functions
+  90.05) with 707 tests; `swift test` 210 + 48 + 60 and strict `swift format lint` pass.
+  Against the running daemon, `GET /v1/settings` reported the default persona and
+  `/Users/nocoo/workspace/personal/workflow/agents/AGENTS.md` (2 909 characters), a
+  `PUT` naming only `corePrompt` was accepted and stored, and the bot's session document
+  lists `["bots-persona","bots-machine","bots-tools",…]`. The adapter test reads the
+  request the model actually receives.
+- Not verified: the browser suite and the website/Worker surfaces, which this change does
+  not touch; no live Herdr collection or deployment.
 
 ## 2026-10-31 17:10 device Worker redeployed for revision parity
 
@@ -4621,3 +4638,46 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Next hop: original Review of the stable narrow merge/source/docs binding, then
   normal dual-parent commit/hooks/push and actual new-head CI. Both-Mac fresh build
   and physical work remains behind actual merge and the pinned-main ancestry proof.
+
+
+### 2026-11-01T02:03:08.316552+00:00 — eagle-sync fixed3a4b integration
+
+- Normal fixed57 delivery is HEAD0d0150f; its natural fork CI41262224420 is success,
+  with three complete raw logs archived once. No upstream0d run was observed.
+  Only fixed3a4b is now merged without commit; four conflict stages are preserved.
+  The mechanical union keeps authenticated sync composition, profile migration,
+  replica-specific body caps and upstream persona/machine/settings/waiting intent.
+- Original main/settings files prove ordinary-body red13/14→green14/14, then the
+  newly exposed fixed3a4b second tools-only save red13/14→green14/14. The fix reuses
+  configured fields; owned reopen, prompt bounds and model/key preservation pass.
+  Independent Bots check939+coverage939 and full14-case real-daemon eval pass.
+  macOS test220/62/60+icon1 and build pass. Client old-caller compile red is kept;
+  snapshot caller adaptation passes its full tests/91.2% coverage. Additional whole
+  client format diagnostics include seven byte-unchanged files; only the new caller
+  line was formatted, and both changed client files pass strict lint.
+- Devices first complete run31/33 fails when a fresh owned test root collides on
+  lock44780 with old owned A daemon PID55513. Its fail-closed refusal is retained;
+  the old daemon/data is untouched, and a normal complete run with fresh random
+  roots is underway. macOS strict/coverage are also underway. Checks overlap; their
+  start/exit records define scope. Herdr uses the existing Lead; owned Registry SQL
+  runs in device tests, with no live collection/public D1 or rendering/GUI claimed.
+  Next hop is stable source Review and remaining actual gate results. Installed
+  merge monitoring and premerge B source/build/physical restrictions remain.
+
+
+### 2026-11-01T02:18:31.943960+00:00 — eagle-sync two fixed3a4b P2s
+
+- Original Review completed the earlier58-source/one-doc scope with only two P2s.
+  Original complete tests now prove and close omitted-default-groups and asynchronous
+  prompt-draft ownership behavior: main/settings red→green14/14; held-response Swift
+  red4issues→complete green221/62/60+icon1. Full Bots939+coverage939/types/lint,
+ 14eval, devices33/33, build/strict and92.8% original Swift coverage all finish0.
+  Exact start/exit/input maps retain overlapping execution and prior warnings/reds.
+- Existing Herdr Lead/Reviewer own the bounded closure. Device checks use owned
+  processes and real local Registry SQL; no live collector/public D1, actual new
+  GUI/rendering, daily App or global settings were touched. Old owned A daemon and
+  collision red are intact; installed merge monitor is unchanged. Both-Mac source,
+  build and physical work still waits for actual merge/pinned-main ancestry, with B
+  complete Xcode prerequisite unresolved within the recorded search scope.
+- Next hop: freeze the two-P2-only source/test/docs delta for original Review closure,
+  then normal dual-parent commit/hooks/push and actual new-head natural CI for PR112.

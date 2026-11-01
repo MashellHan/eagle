@@ -284,6 +284,50 @@ public struct DeviceRow: View {
 
 /// A settings input with the app's own surface: rounded, fixed height, no native chrome.
 /// The focus ring is a hairline in the accent, matching the shell's controls.
+/// A multi-line setting: same paper as the text field, tall enough for a paragraph and
+/// scrollable inside, because a standing instruction is prose and not a one-line value.
+public struct SettingsTextArea: View {
+  private let placeholder: String
+  @Binding private var text: String
+  private let minHeight: CGFloat
+
+  public init(_ placeholder: String, text: Binding<String>, minHeight: CGFloat = 88) {
+    self.placeholder = placeholder
+    self._text = text
+    self.minHeight = minHeight
+  }
+
+  public var body: some View {
+    ZStack(alignment: .topLeading) {
+      if text.isEmpty {
+        Text(placeholder)
+          .font(.system(size: 13.5))
+          .foregroundStyle(Theme.Palette.textSecondary)
+          .padding(.horizontal, 6)
+          .padding(.vertical, 6)
+          .allowsHitTesting(false)
+      }
+      TextEditor(text: $text)
+        .font(.system(size: 13.5))
+        .foregroundStyle(Theme.Palette.textPrimary)
+        .scrollContentBackground(.hidden)
+        .padding(.horizontal, 3)
+        .padding(.vertical, 2)
+        .frame(minHeight: minHeight)
+        .accessibilityLabel(placeholder)
+    }
+    .padding(.horizontal, 4)
+    .background(
+      RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
+        .fill(Theme.Palette.canvas)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
+        .strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline)
+    )
+  }
+}
+
 public struct SettingsTextField: View {
   private let placeholder: String
   @Binding private var text: String

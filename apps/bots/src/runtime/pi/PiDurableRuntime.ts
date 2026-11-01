@@ -38,6 +38,7 @@ import type {
 import { type DeclaredEvent, declareEvent } from "../../log/events.ts";
 import type { Log } from "../../log/log.ts";
 import { createHerdrClient } from "../../tools/herdr/client.ts";
+import type { MachinePrompt } from "../../tools/machine/tools.ts";
 import { createToolRegistry, selectToolExtensions } from "../../tools/registry.ts";
 import type { SearchClient } from "../../tools/search/client.ts";
 import type { PeerToolHost, PullToolHost, TriggerToolHost } from "../../tools/types.ts";
@@ -161,6 +162,10 @@ export type PiRuntimeOptions = {
   readonly pulls?: (spec: RuntimeBotSpec) => Promise<PullToolHost | undefined>;
   /** Where a tool that costs something books it (docs/bots/PROTOCOL.md, "Usage statistics"). */
   readonly usage?: UsageMeter;
+  /** The person's standing instruction, shared by every bot (docs/bots/PRODUCT.md). */
+  readonly corePrompt?: () => string | undefined;
+  /** The machine's own instructions file; read per request so an edit lands on the next turn. */
+  readonly machinePrompt?: () => MachinePrompt | undefined;
 };
 
 export class PiDurableRuntime implements RuntimePort {
@@ -197,6 +202,10 @@ export class PiDurableRuntime implements RuntimePort {
       const peers = await this.#options.peers?.(spec);
       const pulls = await this.#options.pulls?.(spec);
       const registry = createToolRegistry(workspace, {
+        ...(this.#options.corePrompt === undefined ? {} : { persona: this.#options.corePrompt }),
+        ...(this.#options.machinePrompt === undefined
+          ? {}
+          : { machine: this.#options.machinePrompt }),
         ...(this.#options.deviceSocket === undefined
           ? {}
           : {

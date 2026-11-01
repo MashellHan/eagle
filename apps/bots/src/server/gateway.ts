@@ -21,6 +21,8 @@ export type GatewayConfig = {
   readonly thinkingLevel: ThinkingLevel;
   /** The tool groups every bot is given; `core` is always included. */
   readonly toolGroups: readonly ToolGroup[];
+  /** The person's standing instruction, the first section of every bot's system prompt. */
+  readonly corePrompt: string;
 };
 
 export type PublicGateway = {
@@ -31,6 +33,7 @@ export type PublicGateway = {
   readonly hasApiKey: boolean;
   readonly thinkingLevel: ThinkingLevel;
   readonly toolGroups: readonly ToolGroup[];
+  readonly corePrompt: string;
 };
 
 /** What the gateway's own health endpoint says, when that origin has one. */
@@ -105,10 +108,19 @@ export type GatewayInput = {
   readonly provider?: string;
   readonly thinkingLevel?: string;
   readonly toolGroups?: readonly string[];
+  readonly corePrompt?: string;
 };
 
 const FILE = "gateway.json";
 const DEFAULT_PROVIDER = "magpie";
+
+/** What a person who has never opened Settings gets: one sentence, editable, not a persona suite. */
+export const DEFAULT_CORE_PROMPT =
+  "你是一个务实、友好的 agent：先说结论，再给依据；做不到就直说，不要编。";
+/** The protocol's own bound for a standing instruction. */
+export const MAX_CORE_PROMPT = 4_000;
+/** Written by versions that already knew the two core prompt groups. */
+const FILE_VERSION = 2;
 const TEST_TIMEOUT_MS = 8_000;
 
 export const gatewayPath = (root: string): string => join(root, FILE);
@@ -140,26 +152,46 @@ export const readGateway = async (root: string): Promise<GatewayConfig | undefin
       thinkingLevel: isThinkingLevel(raw.thinkingLevel)
         ? raw.thinkingLevel
         : DEFAULT_THINKING_LEVEL,
-      toolGroups:
-        raw.toolGroups === undefined
-          ? DEFAULT_TOOL_GROUPS
-          : resolveToolGroups(
-              Array.isArray(raw.toolGroups)
-                ? raw.toolGroups.filter((name): name is string => typeof name === "string")
-                : [],
-            ),
+      toolGroups: readGroups(raw),
+      corePrompt: typeof raw.corePrompt === "string" ? raw.corePrompt : DEFAULT_CORE_PROMPT,
     };
   } catch {
     return undefined;
   }
 };
 
+/**
+ * A file written before the core prompt groups existed could not name them, so a version-1
+ * file gains them once: the person's other choices stay as they were, and the next write
+ * records the version, which makes a deliberate "off" survive a restart.
+ */
+const readGroups = (raw: Record<string, unknown>): readonly ToolGroup[] => {
+  if (raw.toolGroups === undefined) return DEFAULT_TOOL_GROUPS;
+  const stored = Array.isArray(raw.toolGroups)
+    ? raw.toolGroups.filter((name): name is string => typeof name === "string")
+    : [];
+  if (typeof raw.version === "number" && raw.version >= FILE_VERSION) {
+    return resolveToolGroups(stored);
+  }
+  return resolveToolGroups([...stored, "persona", "machine"]);
+};
+
 /** Writes the settings atomically with 0600: the key is a secret like the token. */
 export const writeGateway = async (root: string, config: GatewayConfig): Promise<void> => {
   await mkdir(root, { recursive: true, mode: 0o700 });
   const temporary = `${gatewayPath(root)}.${process.pid}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+  const body = { ...config, version: FILE_VERSION };
+  await writeFile(temporary, `${JSON.stringify(body, null, 2)}\n`, { mode: 0o600 });
   await rename(temporary, gatewayPath(root));
+};
+
+/**
+ * The standing instruction as it is stored: trimmed, and bounded by the protocol's own limit.
+ * Undefined means the text is too long, which the caller reports as a refusal.
+ */
+export const normalizeCorePrompt = (value: string): string | undefined => {
+  const text = value.trim();
+  return text.length > MAX_CORE_PROMPT ? undefined : text;
 };
 
 /** The dotenv values a fresh checkout still uses; the file wins when both exist. */
@@ -182,6 +214,7 @@ export const gatewayFromEnv = (
       env.BOTS_TOOL_GROUPS === undefined
         ? DEFAULT_TOOL_GROUPS
         : resolveToolGroups(env.BOTS_TOOL_GROUPS.split(",").map((name) => name.trim())),
+    corePrompt: DEFAULT_CORE_PROMPT,
   };
 };
 
@@ -197,6 +230,7 @@ export const publicGateway = (config: GatewayConfig | undefined): PublicGateway 
   hasApiKey: (config?.apiKey.length ?? 0) > 0,
   thinkingLevel: config?.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
   toolGroups: config?.toolGroups ?? DEFAULT_TOOL_GROUPS,
+  corePrompt: config?.corePrompt ?? DEFAULT_CORE_PROMPT,
 });
 
 /** A gateway URL is http(s) and has no trailing slash, so `/models` appends cleanly. */

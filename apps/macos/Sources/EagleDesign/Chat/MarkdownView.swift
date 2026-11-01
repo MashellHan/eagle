@@ -16,6 +16,8 @@ public struct AssistantBubble: View, Equatable {
   @StateObject private var model = MarkdownViewModel()
   @State private var hovering = false
 
+  /// The assistant's card carries no accent: one neutral fill a shade apart from the column,
+  /// no border, no second colour behind the markdown. A peer bubble passes its sender's tint.
   public init(
     text: String,
     streaming: Bool = false,
@@ -49,16 +51,19 @@ public struct AssistantBubble: View, Equatable {
         .padding(.vertical, 13)
         .background(
           RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(Theme.Palette.card)
-            .overlay(
-              RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(fill ?? .clear)
-            )
+            .fill(Theme.Palette.assistantFill)
+            .overlay {
+              if let fill {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).fill(fill)
+              }
+            }
         )
-        .overlay(
-          RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .strokeBorder(border ?? Theme.Palette.line, lineWidth: Theme.Metric.hairline)
-        )
+        .overlay {
+          if let border {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+              .strokeBorder(border, lineWidth: Theme.Metric.hairline)
+          }
+        }
         .messageCopyAlignment()
         copyAction
       }

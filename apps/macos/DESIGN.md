@@ -48,7 +48,7 @@ window 1840 × 1196
 | `textSecondary` | `#757575` | subtitles, section labels |
 | `accent` | `#3B7DCD` | inline links |
 | `accentFill` | `#55A471` | user bubble fill |
-| `accentStrong` | `#5DB57B` | toggles, typing indicator |
+| `accentStrong` | `#5DB57B` | toggles, tool and task spinners |
 
 Notes: the palette is effectively monochrome plus one green. There is no
 gradient, no shadow heavier than a 1 px line, and no colored chrome. Avatars are
@@ -78,10 +78,17 @@ count, conversation row (30 avatar, title, subtitle, optional `Personal` tag),
 unread banner (inline link), current-user footer row.
 
 Conversation: sender attachment card (avatar + name, 10 radius), assistant turn
-(plain text, no bubble, bulleted lists), delivery note with mini avatars
-("已发送给 … 8 个智能体"), user turn (green pill, right aligned), typing row
-(spinner + `正在输入...`), composer (attach button, placeholder that names the
-recipient, mic and waveform buttons).
+(one neutral card, no accent and no border, markdown inside), delivery note with mini
+avatars ("已发送给 … 8 个智能体"), user turn (green pill, right aligned), waiting line
+(the bot's own face breathing like its busy sidebar row, then `正在输入` and three dots
+alternating, above the composer, its band always reserved), composer
+(attach button, placeholder that names the recipient and swaps to `⌘↩ 插入当前回答`
+while an answer can be steered, mic and waveform buttons).
+
+Settings: a left rail of sections. `工具` sits under `模型` and holds the two core prompts
+first (Core Prompt's editable paragraph, Core Machine Prompt's read-only file and text),
+then the tool-group switches, because the prompts are the first sections of the system
+prompt.
 
 Inspector: close and share icon buttons, 64 avatar, name, subtitle, segmented
 tabs (详情 / 资料库 / 电脑), section label, list card of rows with a code icon,

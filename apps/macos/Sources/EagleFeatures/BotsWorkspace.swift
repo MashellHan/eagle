@@ -71,6 +71,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var error: String?
   @Published private(set) var canRecover = false
   @Published private(set) var running = false
+  /// A run with nothing to show yet: the wave line above the composer, not a transcript row.
+  @Published private(set) var waiting = false
   /// The selected bot's live tasks, already named and nested for the inspector's 任务 section.
   @Published private(set) var tasks: [InspectorTaskRow] = []
   /// The selected bot's spend, already formatted for the inspector's 用量 section.
@@ -174,7 +176,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
         do {
           let token = try TokenStore(root: settings.rootURL).read()
           let client = CatalogHTTPClient(baseURL: settings.baseURL, token: token)
-          return try await client.loadGateway().configured
+          return try await client.loadGateway().settings.configured
         } catch {
           return nil
         }
@@ -587,6 +589,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
     selectedId = nil
     connection = .stopped
     running = false
+    waiting = false
     canRecover = false
     gatewayConfigured = nil
     needsModelSetup = false
@@ -617,6 +620,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       if !usage.isEmpty { usage = [] }
       if !choices.isEmpty { choices = [] }
       if !triggerItems.isEmpty { triggerItems = [] }
+      if waiting { waiting = false }
       return
     }
     let conversation = app.conversation
@@ -633,7 +637,11 @@ final class BotsWorkspaceViewModel: ObservableObject {
     let nextRows = app.bots.map { bot in
       SidebarBotRow(
         groupId: bot.groupId,
-        item: presenter.sidebarItem(for: bot, preview: previews[bot.id]?.text ?? "")
+        item: presenter.sidebarItem(
+          for: bot,
+          preview: previews[bot.id]?.text ?? "",
+          running: bot.id == app.selection ? conversation.state.running : nil
+        )
       )
     }
     if rows != nextRows { rows = nextRows }
@@ -651,6 +659,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
       transcript.clear()
       canRecover = false
       running = false
+      waiting = false
       error = nil
       // Keep the socket state visible while the catalog still lists bots to choose from.
       connection = app.bots.isEmpty ? .stopped : conversation.connection
@@ -685,6 +694,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
     }
     if triggerItems != nextTriggers { triggerItems = nextTriggers }
     if running != conversation.state.running { running = conversation.state.running }
+    let nextWaiting = presenter.isWaiting(for: conversation.state)
+    if waiting != nextWaiting { waiting = nextWaiting }
     noteRunSettled(conversation.state.running)
     if connection != conversation.connection { connection = conversation.connection }
     let nextRecover = conversation.state.unavailable != nil || conversation.parked
@@ -863,17 +874,6 @@ struct BotsPresenter {
     }
     flushTools()
     flushExchanges(upTo: nil)
-    // A running tool already shows its own row; the typing row is for a silent model.
-    let toolRunning = rows.contains { entry in
-      switch entry {
-      case .tool(_, let row): return row.isRunning
-      case .toolRun(_, let rows): return rows.contains { $0.isRunning }
-      default: return false
-      }
-    }
-    if !toolRunning, let typing = typingEntry(for: state) {
-      rows.append(typing)
-    }
     if let unavailable = state.unavailable {
       rows.append(
         .assistant(id: "unavailable", blocks: [.note("这个 Bot 暂时不可用：\(unavailable.message)")])
@@ -1150,12 +1150,31 @@ struct BotsPresenter {
     }
   }
 
-  /// While a run works and there is no growing text yet, the transcript shows the typing
-  /// row: the first token has not arrived, or the run moved on to another round.
-  func typingEntry(for state: ConversationState) -> TranscriptEntry? {
-    guard state.unavailable == nil, state.running else { return nil }
-    if let streaming = state.streamingMessage, !streaming.text.isEmpty { return nil }
-    return .typing(id: "typing-run")
+  /// Whether the bot is working with nothing to show yet: no growing text and no tool of its
+  /// own still executing. The window draws this as the wave line above the composer, never as
+  /// a transcript row, so starting and settling cannot move a message.
+  func isWaiting(for state: ConversationState) -> Bool {
+    guard state.unavailable == nil, state.running else { return false }
+    if let streaming = state.streamingMessage, !streaming.text.isEmpty { return false }
+    return !hasRunningTool(state)
+  }
+
+  /// A call inside the newest run that has no result yet: the tool row is already the sign of
+  /// work, so the wave line stays away.
+  private func hasRunningTool(_ state: ConversationState) -> Bool {
+    let (paired, _) = pairTools(state.messages)
+    let lastUserIndex = state.messages.lastIndex { $0.role == .user }
+    for (messageIndex, message) in state.messages.enumerated() where message.role == .assistant {
+      for (blockIndex, block) in message.blocks.enumerated() {
+        guard case .toolCall(_, let name, _) = block,
+          !Self.peerTools.contains(name),
+          paired[ToolCallKey(messageId: message.id, block: blockIndex)] == nil,
+          messageIndex > (lastUserIndex ?? -1)
+        else { continue }
+        return true
+      }
+    }
+    return false
   }
 
   func subtitle(for state: ConversationState, connection: ConnectionState) -> String {
@@ -1177,7 +1196,9 @@ struct BotsPresenter {
     abs(bot.id.hashValue) % Theme.Palette.avatarTints.count
   }
 
-  func sidebarItem(for bot: BotSummary, preview: String = "") -> SidebarItem {
+  /// `running` overrides the catalog for the open bot: its own socket knows the run before the
+  /// daemon's catalog round trip does, so every surface showing that bot moves together.
+  func sidebarItem(for bot: BotSummary, preview: String = "", running: Bool? = nil) -> SidebarItem {
     SidebarItem(
       id: bot.id,
       title: bot.title,
@@ -1185,7 +1206,7 @@ struct BotsPresenter {
       tag: bot.label,
       tintIndex: tintIndex(for: bot),
       face: faceStyle(for: bot),
-      busy: bot.state == .running
+      busy: running ?? (bot.state == .running)
     )
   }
 

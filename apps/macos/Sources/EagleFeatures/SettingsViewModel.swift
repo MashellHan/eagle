@@ -42,6 +42,11 @@ public final class SettingsViewModel: ObservableObject {
   @Published public var gatewayAPIKey = ""
   @Published public var gatewayThinkingLevel = SettingsViewModel.defaultThinkingLevel
   @Published public var gatewayToolGroups = SettingsViewModel.defaultToolGroups
+  /// The person's standing instruction, edited on the 工具 page and shared by every bot.
+  @Published public var gatewayCorePrompt = ""
+  @Published public var gatewayCorePromptChosen = false
+  /// What the machine contributes and nobody edits here: the file the daemon read.
+  @Published public var gatewayMachinePrompt: MachinePromptPreview?
   @Published public var gatewayProbe: GatewayProbe?
   @Published public var gatewayBusy = false
   @Published public var gatewayMessage: String?
@@ -52,12 +57,18 @@ public final class SettingsViewModel: ObservableObject {
   ]
   public static let defaultThinkingLevel = "medium"
   /// Every group the daemon knows, in display order; the daemon owns which are installed.
+  /// The two core prompts lead, because they are the first sections of the system prompt.
   public static let toolGroups = [
-    "core", "coding", "herdr", "agents", "search", "trigger", "peers",
+    "persona", "machine", "core", "coding", "herdr", "agents", "search", "trigger", "peers",
   ]
-  /// What a daemon that predates a new group is assumed to run: new groups stay off.
-  public static let defaultToolGroups = ["core", "coding", "herdr", "agents", "trigger"]
+  /// What a daemon that predates a new group is assumed to run: both core prompts are on,
+  /// the tools a person opts into are not.
+  public static let defaultToolGroups = [
+    "persona", "machine", "core", "coding", "herdr", "agents", "trigger",
+  ]
   public static let mandatoryToolGroups: Set<String> = ["core", "coding"]
+  public static let personaToolGroup = "persona"
+  public static let machineToolGroup = "machine"
   public static let herdrToolGroup = "herdr"
   public static let agentsToolGroup = "agents"
   public static let searchToolGroup = "search"
@@ -128,8 +139,10 @@ public final class SettingsViewModel: ObservableObject {
     gatewayBusy = true
     defer { gatewayBusy = false }
     do {
-      let settings = try await client().loadGateway()
+      let snapshot = try await client().loadGateway()
+      let settings = snapshot.settings
       gateway = settings
+      gatewayMachinePrompt = snapshot.machinePrompt
       gatewayLoaded = true
       if gatewayBaseURL.isEmpty { gatewayBaseURL = settings.baseUrl }
       if gatewayModel.isEmpty { gatewayModel = settings.model }
@@ -137,6 +150,7 @@ public final class SettingsViewModel: ObservableObject {
       if !gatewayToolGroupsChosen {
         gatewayToolGroups = Self.normalizeToolGroups(settings.toolGroups)
       }
+      if !gatewayCorePromptChosen { gatewayCorePrompt = settings.corePrompt }
       gatewayMessage = settings.configured ? "已配置" : "尚未配置"
     } catch {
       gatewayMessage = "无法读取 Bots 设置：\(error.localizedDescription)"
@@ -201,18 +215,42 @@ public final class SettingsViewModel: ObservableObject {
     gatewayBusy = true
     defer { gatewayBusy = false }
     do {
-      let settings = try await client().saveGateway(
+      let snapshot = try await client().saveGateway(
         baseURL: gatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
         model: gatewayModel.trimmingCharacters(in: .whitespacesAndNewlines),
         thinkingLevel: gatewayThinkingLevel.trimmingCharacters(in: .whitespacesAndNewlines),
         toolGroups: resolvedToolGroups,
         apiKey: gatewayAPIKey
       )
-      gateway = settings
+      gateway = snapshot.settings
+      gatewayMachinePrompt = snapshot.machinePrompt
       gatewayLoaded = true
       gatewayAPIKey = ""
       gatewayProbe = nil
       gatewayMessage = "已保存，Bot 会使用这个网关"
+      NotificationCenter.default.post(name: .botsGatewayChanged, object: nil)
+    } catch {
+      gatewayMessage = (error as? ClientError)?.message ?? error.localizedDescription
+    }
+  }
+
+  /// The 工具 page's own save: the standing instruction and the group switches, without
+  /// touching the gateway fields the 模型 page owns.
+  public func saveTools() async {
+    let submittedPrompt = gatewayCorePrompt
+    gatewayBusy = true
+    defer { gatewayBusy = false }
+    do {
+      let snapshot = try await client().saveToolSettings(
+        corePrompt: submittedPrompt, toolGroups: resolvedToolGroups)
+      gateway = snapshot.settings
+      gatewayMachinePrompt = snapshot.machinePrompt
+      if gatewayCorePrompt == submittedPrompt {
+        gatewayCorePrompt = snapshot.settings.corePrompt
+        gatewayCorePromptChosen = false
+      }
+      gatewayLoaded = true
+      gatewayMessage = "已保存，工具与人格从下一轮开始生效"
       NotificationCenter.default.post(name: .botsGatewayChanged, object: nil)
     } catch {
       gatewayMessage = (error as? ClientError)?.message ?? error.localizedDescription

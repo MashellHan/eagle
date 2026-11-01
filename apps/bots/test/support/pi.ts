@@ -45,6 +45,11 @@ export type BenchOptions = {
   readonly maxMessageBytes?: number;
   readonly search?: (spec: RuntimeBotSpec) => SearchClient | undefined;
   readonly usage?: UsageMeter;
+  /** The two core prompts, when a test asserts what the model actually receives. */
+  readonly corePrompt?: () => string | undefined;
+  readonly machinePrompt?: () => { readonly path: string; readonly text: string } | undefined;
+  /** The tool groups the bench bot runs with; absent means the daemon's defaults. */
+  readonly toolGroups?: readonly string[];
 };
 
 export const createBench = async (options: BenchOptions = {}): Promise<Bench> => {
@@ -62,6 +67,8 @@ export const createBench = async (options: BenchOptions = {}): Promise<Bench> =>
     ...(options.maxMessageBytes === undefined ? {} : { maxMessageBytes: options.maxMessageBytes }),
     ...(options.search === undefined ? {} : { search: options.search }),
     ...(options.usage === undefined ? {} : { usage: options.usage }),
+    ...(options.corePrompt === undefined ? {} : { corePrompt: options.corePrompt }),
+    ...(options.machinePrompt === undefined ? {} : { machinePrompt: options.machinePrompt }),
   };
   return {
     runtime: new PiDurableRuntime(runtimeOptions),
@@ -73,6 +80,7 @@ export const createBench = async (options: BenchOptions = {}): Promise<Bench> =>
       dir: join(dir, "b_runtime"),
       model: { provider: faux.getModel().provider, modelId: faux.getModel().id },
       trace: specTrace,
+      ...(options.toolGroups === undefined ? {} : { toolGroups: options.toolGroups }),
     }),
     cleanup: () => rm(dir, { recursive: true, force: true }),
   };

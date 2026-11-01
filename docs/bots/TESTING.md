@@ -2179,3 +2179,95 @@ natural CI. No failed workflow is manually rerun or old green relabeled.
   awaits actual `merged===true`; B source/build/physical checks have not started.
   Prior P5 finite physical acceptance and B's cause-not-assigned pre-send interruption
   retain their original scope. No new upstream point, PR merge or deployment.
+
+
+## 2026-11-01 — PR112 fixed3a4b prompt/settings integration
+
+The delivered fixed57 head0d0150f retains its own natural fork CI41262224420:
+all three jobs succeed, original logs captured once (571927B, receipt0ea212ae).
+No upstream0d run was observed. This round integrates only fixed3a4b onto0d,
+retaining sync composition, profile migration, both checkpoint histories and the
+upstream persona/machine prompt order, group choices and native waiting/sidebar.
+
+- Original complete main/settings files first expose the old8KiB default refusing
+  a CJK prompt before field validation (14/13pass/1fail, raw1be5ce2e), then pass
+  14/14 with ordinary256KiB default and all explicit replica8MiB overrides intact
+  (0294f795). The ordinary catalog over-cap oracle remains; complete history/resource
+  tests run normally, and raw delivery keeps its own cap. PROTOCOL scopes the default
+  to ordinary JSON rather than claiming every HTTP body has the same limit.
+- A second valid tools-only edit exposes a newly reached fixed3a4b settings failure,
+  not a fixed57/P5 regression (14/13pass/1fail,08f9378d). Reusing publicGateway's
+  configured predicate gives14/14 (329b0d91), including4000 CJK characters,4001 with
+  the exact prompt-bound refusal, owned close/reopen and another tools-only save,
+  explicit gateway and unknown-group validation, and configured model/key retention.
+  No new settings/parser abstraction, limits, timeout or test filters.
+- Independent full Bots check passes939 ordinary and939 coverage tests, strict
+  types and check-only lint (66b49d25); its28 informational diagnostics remain
+  distinct from errors/warnings. Full real-daemon/scripted-model/tool eval14/14
+  passes (c83d16b5), including the natural two-minute cron wait.
+- The full Bots client test command first fails compilation on old snapshot
+  field accesses (six diagnostics, d6551936), not a behavior red. Its original caller now reads
+  snapshot.settings and asserts legacy defaults and tools-only request fields.
+  Full client coverage passes Features41/Transport51/Core52 and2325/2548=91.2%
+  against unchanged90% (55e21fa4). A later line-only formatting edit does not alter
+  behavior. Additional whole-client strict lint remains red (9bd740a8): seven
+  diagnostic files are byte-equal to0d; only the new caller line was repaired.
+  Strict lint on both changed transport/client-test files passes; it is not a
+  whole-package green or a suppression of the original diagnostics.
+- Full macOS Swift test passes Features220/Devices62/Design60 plus icon XCTest1
+  (3f671888), build passes (1f8bfb66), and original complete strict lint passes.
+  Original coverage passes1622/1750=92.7%, unchanged90% (1851dc5e). Coverage's
+  tracked before/after differences are CHECKPOINTS and SYNC-STATUS docs only;
+  Swift inputs did not drift. Start/exit records show overlapping checks.
+- Complete devices first finishes33/31pass/2fail/0skip (7aa7950e): one failed
+  child and its parent, with lock44780 colliding between a fresh random test root
+  and old owned A daemon PID55513. Read-only listener/process and the exact FNV
+  roots agree; old daemon/data is untouched, no source/limits change. A normal
+  full rerun with fresh random roots passes33/33/0skip (2eb835f2), including the
+  same DELETE-held-check case. This identifies this collision only, not other
+  historical fixture/physical failures.
+
+Source is frozen in `.local/sync-upstream-merge-3a4b/source-v1/manifest.json`;
+finite final evidence binds the remaining gate and this event. Original Review,
+normal commit/hooks/push and exact new-head natural CI remain the delivery steps
+at this record's time. Old physical raw, finite P5 acceptance and B's cause-not-assigned
+pre-send interruption remain unchanged; no new B checkout/build/GUI/physical,
+daily App, global settings, PR merge, deployment or moving-upstream chase occurred.
+
+
+### Fixed3a4b Review P2 closure inputs
+
+Original Review finished the preceding source2817472f/finala841 scope with only
+these two confirmed static P2s outstanding. Their old trees and raw remain immutable.
+
+1. First partial tools save omitted toolGroups and wrongly persisted mandatory-only
+   groups instead of the defaults GET had advertised. Original complete main/settings
+   files fail14/13pass/1fail (6bc9bfdf) and pass14/14 (00486ac4) after only using
+   publicGateway(gateway).toolGroups as the omitted-field fallback. The same case
+   asserts first-save response/disk/defaults and owned reopen, explicit[] as exactly
+   core/coding, and subsequent omitted groups preserving that choice. Group resolver,
+   gateway validation, secret/prompt bounds and replica/ordinary body limits stay intact.
+2. saveTools submitted A and overwrote B edited before its response. A held response
+   in the existing owned URLSession/URLProtocol harness uses a standard request signal
+   and semaphore, with no sleep/time extension or new framework. Complete Swift package
+   behavior red (c580f918, exit1) has four expectation issues in that one new test;
+   its tracked during-run delta is the independent main.ts P2#1 fix, no Swift drift.
+   Capturing the submitted text and only reconciling/clearing chosen if current text
+   matches gives complete green (da302ae5, exit0): Features221/Devices62/Design60
+   plus icon XCTest1. Unchanged text accepts normalization and clears chosen; newer B
+   stays dirty after the A response, later load and explicit save refusal. The editor
+   and existing network/error paths are unchanged.
+
+Final inputs pass full Bots check939 ordinary+939 coverage/types/check-onlylint
+(bc95f272, original28 infos retained), all14 eval cases (new execution receipt,
+rawc83d16b5 is byte-equal to the earlier eval output), complete devices33/33/0skip
+(e6dd3cfb), macOS build(c556688b), original complete strict0 and original
+coverage1626/1753=92.8% with unchanged90% (694b31eb). Runtime/compiler warnings and
+all previous failures remain in their originals. Check executions overlap; before,
+after and final maps attribute during-run differences to necessary docs only in the
+final green scopes. The additional client full-format diagnostic remains its own red;
+no waiver, formatter-wide rewrite, physical replay or premerge B build occurred.
+
+The bounded candidate under `.local/sync-upstream-merge-3a4b/p2-final-v1/`
+retains parents0d+fixed3a4b. Original Review must close these two P2s before normal
+commit/hooks/push; only the subsequent new-head natural CI can establish CI readiness.

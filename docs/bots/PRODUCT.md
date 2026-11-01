@@ -232,6 +232,24 @@ client that receives it while the flag is off must ignore it. It does **not**
 mean a hidden implementation exists. Each enable path is a change set of its own,
 listed in [RUNTIME.md](RUNTIME.md#reserved-capability-enable-paths).
 
+## Core prompts
+
+Every bot's system prompt opens with two sections, before any tool describes itself:
+
+- **Core Prompt** — one paragraph the person writes in Settings → `工具`, shared by every bot
+  on this machine ("who you are, how you work"). It defaults to one sentence and is bounded
+  to 4 000 characters; an empty box renders nothing. Typing during a save keeps the newer
+  unsaved draft; an unchanged submitted draft accepts the saved, trimmed text.
+- **Core Machine Prompt** — this machine's own instructions file, read-only. Eagle never
+  writes it: the first file with content among `~/.agents/AGENTS.md`,
+  `~/.pi/agent/AGENTS.md`, `~/.codex/AGENTS.md` and `~/.claude/CLAUDE.md` wins, resolved
+  through its symlink and cut at 40 000 characters. Settings shows the file it found and
+  what it says, so a person can see exactly what their bots read.
+
+Both are ordinary tool groups (`persona`, `machine`): on by default, switchable off, and
+installed in that order so their sections lead the prompt. Both are global — a bot does not
+carry its own persona.
+
 ## Built-in tools (phase 2)
 
 Tools are trusted, built-in pi-durable extensions, not third-party plugins. The mandatory

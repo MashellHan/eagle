@@ -231,6 +231,7 @@ public struct WorkspaceShellView: View {
               onSend: { chat.send() },
               showsSidebar: layout.showsSidebar,
               showsInspector: showsInspector,
+              isWaiting: chat.waiting,
               onShowSidebar: { layout.toggleSidebar() },
               onToggleInspector: { layout.toggleInspector() },
               onOpenPeerExchange: { openPeerExchange($0) }
@@ -275,6 +276,7 @@ public struct WorkspaceShellView: View {
           },
           onCollapse: { layout.toggleInspector() },
           face: selectedIsBot ? bots.selectedFace : nil,
+          isBusy: selectedIsBot && bots.running,
           label: selectedIsBot ? bots.selectedLabel : nil,
           onEditFace: selectedIsBot ? { showsBotFaceEditor = true } : nil,
           onCommitName: selectedIsBot

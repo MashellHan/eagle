@@ -181,6 +181,7 @@ public struct ParticipantBubble: View {
         )
       }
     }
+    .modifier(BusyWhenWorking(active: status?.phase == .working))
   }
 
   private var tint: Color {

@@ -4,6 +4,7 @@ import SwiftUI
 public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
   case general = "通用"
   case bots = "模型"
+  case tools = "工具"
   case providers = "服务"
   case machines = "设备"
   case realtime = "实时"
@@ -17,6 +18,7 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
     switch self {
     case .general: return "gearshape"
     case .bots: return "sparkles"
+    case .tools: return "wrench.and.screwdriver"
     case .providers: return "antenna.radiowaves.left.and.right"
     case .machines: return "desktopcomputer"
     case .realtime: return "dot.radiowaves.left.and.right"

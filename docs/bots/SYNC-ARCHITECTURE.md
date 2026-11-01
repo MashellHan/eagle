@@ -18,8 +18,8 @@
   不将这些证据扩称 UDP P2P、真实墙钟72h或已部署 Cloudflare。
 
 `182fc1f704774eb37bdbc11cde017f8ff61f1c1a` 是本次开发的历史共同基线。
-本轮已整合固定 upstream `8674a3ee`、`19f4a00a`，当前整合固定
-`57cfd97e856699e98191744ac24110790f0b90fc`，
+已整合固定 upstream `8674a3ee`、`19f4a00a`、`57cfd97e`，当前整合固定
+`3a4b144e89724073a7326b1705feac874eb553f1`，
 [PR #112](https://github.com/nocoo/eagle/pull/112) 的目标为 `nocoo/eagle:main`。
 各 head 的正常检查、PR 准入与有限证据分别记录，见
 [PLAN](PLAN.md)、[SYNC-NATIVE](SYNC-NATIVE.md) 与 [TESTING](TESTING.md)。

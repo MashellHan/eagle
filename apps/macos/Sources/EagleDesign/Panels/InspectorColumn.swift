@@ -32,6 +32,8 @@ public struct InspectorColumn: View {
   private let onCollapse: () -> Void
   private let onShare: () -> Void
   private let face: BotFace.Style?
+  /// The bot is working: its portrait breathes like the sidebar row and the waiting line.
+  private let isBusy: Bool
   private let label: String?
   private let onEditFace: (() -> Void)?
   private let onCommitName: ((String) -> Void)?
@@ -58,6 +60,7 @@ public struct InspectorColumn: View {
     onCollapse: @escaping () -> Void = {},
     onShare: @escaping () -> Void = {},
     face: BotFace.Style? = nil,
+    isBusy: Bool = false,
     label: String? = nil,
     onEditFace: (() -> Void)? = nil,
     onCommitName: ((String) -> Void)? = nil,
@@ -83,6 +86,7 @@ public struct InspectorColumn: View {
     self.onCollapse = onCollapse
     self.onShare = onShare
     self.face = face
+    self.isBusy = isBusy
     self.label = label
     self.onEditFace = onEditFace
     self.onCommitName = onCommitName
@@ -115,6 +119,7 @@ public struct InspectorColumn: View {
         subtitle: subtitle,
         tintIndex: tintIndex,
         face: face,
+        isBusy: isBusy,
         label: label,
         onEditFace: onEditFace,
         onCommitName: onCommitName,
@@ -183,6 +188,7 @@ private struct Identity: View {
   let subtitle: String
   let tintIndex: Int
   let face: BotFace.Style?
+  let isBusy: Bool
   let label: String?
   let onEditFace: (() -> Void)?
   let onCommitName: ((String) -> Void)?
@@ -223,6 +229,7 @@ private struct Identity: View {
   private var avatar: some View {
     if let face {
       BotFace(style: face, size: Theme.Metric.avatarInspector)
+        .modifier(BusyWhenWorking(active: isBusy, rise: 3))
         .overlay {
           if hoveringAvatar, onEditFace != nil {
             ZStack {
@@ -246,6 +253,7 @@ private struct Identity: View {
         size: Theme.Metric.avatarInspector,
         shape: .blob
       )
+      .modifier(BusyWhenWorking(active: isBusy, rise: 3))
     }
   }
 

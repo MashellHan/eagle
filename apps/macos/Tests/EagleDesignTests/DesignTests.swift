@@ -117,9 +117,8 @@ struct TranscriptTests {
       .assistant(id: "a1", blocks: [.paragraph("x")]),
       .user(id: "u1", text: "y"),
       .note(id: "n1", text: "z", tintIndices: [0]),
-      .typing(id: "t1"),
     ]
-    #expect(rows.map(\.id) == ["a1", "u1", "n1", "t1"])
+    #expect(rows.map(\.id) == ["a1", "u1", "n1"])
     #expect(Set(rows.map(\.id)).count == rows.count)
   }
 
