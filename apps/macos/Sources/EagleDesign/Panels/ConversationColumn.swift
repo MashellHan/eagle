@@ -128,12 +128,14 @@ public struct ConversationColumn: View {
       transcript
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-      // The waiting line owns a band of its own: work starting or finishing repaints one row
-      // of dots and never moves the transcript or the composer.
+      // The waiting line owns a band of its own: work starting or finishing repaints one
+      // line and never moves the transcript or the composer.
       HStack(spacing: 0) {
         if isWaiting {
-          TypingWaves()
-            .transition(.opacity)
+          WaitingLine(
+            face: face, tintIndex: tintIndex, initial: String(title.prefix(1))
+          )
+          .transition(.opacity)
         }
         Spacer(minLength: 0)
       }

@@ -162,7 +162,8 @@ public enum Theme {
     public static let composerBottomInset: CGFloat = 7
     /// The waiting line's band above the composer: always reserved, so work starting or
     /// finishing never moves the transcript.
-    public static let waitingBandHeight: CGFloat = 20
+    public static let waitingBandHeight: CGFloat = 26
+    public static let waitingAvatar: CGFloat = 22
     public static let waitingDot: CGFloat = 4.5
     public static let waitingDotGap: CGFloat = 4
     public static let waitingDotLift: CGFloat = 3

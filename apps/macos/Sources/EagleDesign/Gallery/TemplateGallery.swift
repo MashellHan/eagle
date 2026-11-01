@@ -272,7 +272,7 @@ public struct TemplateGallery: View {
         AssistantBubble(text: "**可以正常轮询。**截至本机时间，最近一次检查已完成。\n\n- 历史消息保持不变\n- 悬停气泡可复制原始 Markdown")
         DeliveryNote("2 条消息往来：", avatars: Array(Theme.Palette.avatarTints.prefix(2)))
         UserBubble("今天 eagle 会修吗")
-        TypingWaves()
+        WaitingLine(face: BotFace.Style(shape: .blob, tint: .violet), tintIndex: 4)
         Composer(placeholder: "给 依赖修复专家 发消息", text: $draft) {}
         Composer(
           placeholder: "给 依赖修复专家 发消息", hint: "⌘↩ 插入当前回答", text: $draftSteerable

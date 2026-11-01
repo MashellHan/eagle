@@ -79,8 +79,9 @@ unread banner (inline link), current-user footer row.
 
 Conversation: sender attachment card (avatar + name, 10 radius), assistant turn
 (one neutral card, no accent and no border, markdown inside), delivery note with mini
-avatars ("已发送给 … 8 个智能体"), user turn (green pill, right aligned), waiting band
-(three dots in a wave, above the composer, its height always reserved), composer
+avatars ("已发送给 … 8 个智能体"), user turn (green pill, right aligned), waiting line
+(the bot's own face breathing like its busy sidebar row, then `正在输入` and three dots
+alternating, above the composer, its band always reserved), composer
 (attach button, placeholder that names the recipient and swaps to `⌘↩ 插入当前回答`
 while an answer can be steered, mic and waveform buttons).
 
