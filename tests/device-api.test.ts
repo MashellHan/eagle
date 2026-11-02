@@ -45,6 +45,12 @@ before(async () => {
     entry,
     `import worker,{DeviceRegistry as Registry,DeviceExecution as Execution} from "../../apps/web/src/worker/device-service.ts";
 export class DeviceExecution extends Execution {
+ async receiveHistory(token,source,input){
+  if(input===null&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_history_busy'").toArray().length){
+   this.ctx.storage.sql.exec("DROP TABLE test_history_busy");return 'history_busy';
+  }
+  return super.receiveHistory(token,source,input);
+ }
  fetch(request){const url=new URL(request.url);if(url.pathname==='/test-close'){this.agent?.socket.close(Number(url.searchParams.get('code')),url.searchParams.get('reason'));return new Response('closed');}return super.fetch(request);}
  observation(){const observation=super.observation();
   if(this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_observation_delay'").toArray().length){this.ctx.storage.sql.exec("UPDATE test_observation_delay SET started=1");return new Promise(resolve=>setTimeout(()=>resolve(observation),500));}
@@ -1529,6 +1535,22 @@ test("authenticated outbound history frames bypass paused/always-ask execution a
       method: "catalog.export",
       text: "not DO plaintext",
     });
+    const execution = await mf.unsafeGetDurableObjectStorage(
+      "eagle",
+      "DeviceExecution",
+      { name: b.deviceId },
+    );
+    await execution.exec("CREATE TABLE test_history_busy(attempt INTEGER)");
+    const failedNotice = await exchange(source, {
+      type: "history.changed",
+      requestId: randomUUID(),
+    });
+    assert.equal(
+      failedNotice.type,
+      "history.error",
+      "a dropped final notice cannot be acknowledged as sent",
+    );
+    assert.equal(failedNotice.error, "history_busy");
     const changed = frame<{ type: string; source: HistoryPeer }>(target);
     assert.equal(
       (

@@ -87,3 +87,86 @@ test("history ciphertext binds authenticated devices, group, membership, key and
 test("unresolved initial membership cannot mint a history identity proof", async () => {
   await assert.rejects(peer(null, 0), /membership/);
 });
+
+test("online history retries a transient renewal without waiting for another cloud event", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { DeviceHistoryTransport } = await import(
+    "../packages/agent/device-history-transport.ts"
+  );
+  const keys = generateKeyPairSync("ed25519");
+  const self = await peer();
+  self.device.publicKey = keys.publicKey
+    .export({ type: "spki", format: "der" })
+    .toString("base64url");
+  const directory = mkdtempSync(join(tmpdir(), "history-renewal-"));
+  let configurations = 0;
+  let notices = 0;
+  let failNotice = false;
+  const cloud = {
+    status: "online",
+    origin,
+    device: self.device,
+    observeHistory: () => () => {},
+    directory: async () => ({ devices: [self.device] }),
+    historyRequest: async (frame: { type: string }) => {
+      if (frame.type === "history.changed") {
+        notices++;
+        if (failNotice) {
+          failNotice = false;
+          throw new Error("history_busy");
+        }
+      }
+      if (frame.type === "history.configure" && ++configurations === 2)
+        throw new Error("history_busy");
+      return frame.type === "history.peers"
+        ? { type: "history.peers", peers: [] }
+        : { type: "history.sent" };
+    },
+  };
+  const transport = new DeviceHistoryTransport(
+    cloud as unknown as import("../packages/agent/device-cloud.ts").DeviceCloud,
+    directory,
+    async (proof) =>
+      sign(
+        null,
+        Buffer.from(historyKeyPayload(proof)),
+        keys.privateKey,
+      ).toString("base64url"),
+  );
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    await transport.setEnabled(true);
+    assert.equal(transport.status().ready, true);
+    t.mock.timers.tick(60_000);
+    for (let turn = 0; turn < 30; turn++)
+      await new Promise<void>((done) => setImmediate(done));
+    assert.equal(configurations, 2);
+    assert.equal(transport.status().ready, false);
+    t.mock.timers.tick(2000);
+    for (let turn = 0; turn < 30; turn++)
+      await new Promise<void>((done) => setImmediate(done));
+    assert.equal(
+      configurations,
+      3,
+      "transient renewal must schedule its own bounded retry",
+    );
+    assert.equal(transport.status().ready, true);
+    const before = notices;
+    failNotice = true;
+    await assert.rejects(transport.notify(), /history_busy/);
+    t.mock.timers.tick(1000);
+    for (let turn = 0; turn < 30; turn++)
+      await new Promise<void>((done) => setImmediate(done));
+    assert.equal(
+      notices,
+      before + 2,
+      "the last dropped notice retries without another durable commit",
+    );
+  } finally {
+    transport.close();
+    t.mock.timers.reset();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

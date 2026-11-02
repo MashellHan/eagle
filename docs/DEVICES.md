@@ -106,6 +106,13 @@ History uses a separate two-frame/384 KiB queue and a 192 KiB envelope limit,
 including base64, metadata and authentication tags; plaintext is at most 128 KiB.
 The DO retains neither ciphertext nor history content. It does not consult or
 change execution policy, ask for approval, or create operation journal entries.
+Transient busy/rate/timeout delivery errors retry the coalesced latest notice;
+DOs report a rejected notification delivery as an error, never `history.sent`.
+Online ephemeral-key renewal also schedules a bounded retry after a transient
+failure without waiting for another cloud event. Authorization/identity failures
+stay closed and do not enter that retry path. Disable, offline and close cancel
+these timers. Neither retry polls history or executes a device operation.
+
 The private helper alone manages the persisted `history.set {enabled}` switch;
 the existing local socket can attach an optional consumer, list peers, announce
 changes and send/receive encrypted payloads. Local chat never awaits this channel.

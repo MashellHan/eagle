@@ -21,6 +21,8 @@ export class DeviceHistoryTransport {
   private configuring?: Promise<void>;
   private generation = 0;
   private renewal?: ReturnType<typeof setTimeout>;
+  private recovery?: ReturnType<typeof setTimeout>;
+  private noticeRetry?: ReturnType<typeof setTimeout>;
   private listeners = new Set<(event: HistoryLocalEvent) => void>();
   private detach: () => void;
   private incoming = 0;
@@ -52,11 +54,13 @@ export class DeviceHistoryTransport {
     }
     this.detach = cloud.observeHistory((event) => {
       if (event.type === "history.online")
-        void this.refresh().catch(() => this.publishReady());
+        void this.refresh().catch((error) => this.failedRefresh(error));
       else if (event.type === "history.offline") {
         this.generation++;
         this.cipher = undefined;
         clearTimeout(this.renewal);
+        clearTimeout(this.recovery);
+        clearTimeout(this.noticeRetry);
         this.publishReady();
       } else
         void this.receive(event).catch(() => {
@@ -99,9 +103,17 @@ export class DeviceHistoryTransport {
     this.generation++;
     this.cipher = undefined;
     clearTimeout(this.renewal);
+    clearTimeout(this.recovery);
+    clearTimeout(this.noticeRetry);
     this.publishReady();
-    if (enabled) await this.refresh();
-    else if (this.cloud.status === "online")
+    if (enabled) {
+      try {
+        await this.refresh();
+      } catch (error) {
+        this.failedRefresh(error);
+        throw error;
+      }
+    } else if (this.cloud.status === "online")
       await this.cloud.historyRequest({
         type: "history.configure",
         requestId: randomUUID(),
@@ -148,10 +160,7 @@ export class DeviceHistoryTransport {
         });
       clearTimeout(this.renewal);
       this.renewal = setTimeout(() => {
-        void this.refresh().catch(() => {
-          this.cipher = undefined;
-          this.publishReady();
-        });
+        void this.refresh().catch((error) => this.failedRefresh(error));
       }, 60_000);
       this.renewal.unref();
     })();
@@ -159,6 +168,35 @@ export class DeviceHistoryTransport {
       await this.configuring;
     } finally {
       this.configuring = undefined;
+    }
+  }
+  private transient(error: unknown) {
+    return (
+      error instanceof Error &&
+      [
+        "history_busy",
+        "history_response_timeout",
+        "history_delivery_failed",
+        "history_rate_limit",
+        "history_offline",
+      ].includes(error.message)
+    );
+  }
+  private failedRefresh(error: unknown) {
+    this.cipher = undefined;
+    this.publishReady();
+    if (
+      !this.closed &&
+      this.enabled &&
+      this.cloud.status === "online" &&
+      this.transient(error) &&
+      !this.recovery
+    ) {
+      this.recovery = setTimeout(() => {
+        this.recovery = undefined;
+        void this.refresh().catch((error) => this.failedRefresh(error));
+      }, 1000);
+      this.recovery.unref();
     }
   }
   private async peerKeys() {
@@ -197,11 +235,25 @@ export class DeviceHistoryTransport {
     return { sent: true };
   }
   async notify() {
-    if (this.enabled && this.cipher)
-      await this.cloud.historyRequest({
-        type: "history.changed",
-        requestId: randomUUID(),
-      });
+    if (this.enabled && this.cipher) {
+      try {
+        await this.cloud.historyRequest({
+          type: "history.changed",
+          requestId: randomUUID(),
+        });
+        clearTimeout(this.noticeRetry);
+        this.noticeRetry = undefined;
+      } catch (error) {
+        if (!this.closed && this.transient(error) && !this.noticeRetry) {
+          this.noticeRetry = setTimeout(() => {
+            this.noticeRetry = undefined;
+            void this.notify().catch(() => {});
+          }, 1000);
+          this.noticeRetry.unref();
+        }
+        throw error;
+      }
+    }
     return this.status();
   }
   private async receive(event: HistoryServerFrame) {
@@ -233,6 +285,8 @@ export class DeviceHistoryTransport {
     this.generation++;
     this.cipher = undefined;
     clearTimeout(this.renewal);
+    clearTimeout(this.recovery);
+    clearTimeout(this.noticeRetry);
     this.detach();
     this.listeners.clear();
   }

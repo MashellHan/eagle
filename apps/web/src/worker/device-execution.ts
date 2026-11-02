@@ -335,8 +335,17 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
       const result = await target.historyPeer(agent.token, agent.origin);
       if ("peer" in result) {
         peers.push(result.peer);
-        if (message.type === "history.changed")
-          await target.receiveHistory(agent.token, self.peer, null);
+        if (message.type === "history.changed") {
+          const error = await target.receiveHistory(
+            agent.token,
+            self.peer,
+            null,
+          );
+          if (error) {
+            reply({ type: "history.error", error });
+            return;
+          }
+        }
       }
       if (this.agent !== agent) return;
     }
