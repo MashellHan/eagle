@@ -205,6 +205,13 @@ history. Invalid archives, ID/content conflicts and conflicting continuation ret
 answer `400 invalid_command`; no tasks or queue are imported. Native receipts survive
 reopen. A timeout/lost response is retried with the identical request ID and input.
 The composer cannot send an old displayed head while another branch is loading.
+Automatic received-history observation keeps local Send available while bounded
+views load, skips empty/unreadable candidates and can display a later nonempty
+branch. A delayed automatic view cannot replace explicit selection or a locally
+started chat. Nonempty partial messages display before assessment; without an
+explicit picker choice, an unusable view does not block an ordinary local send.
+An explicit picker choice still requires a usable head to continue, while usable
+received history retains the continuation path.
 An uncertain continuation keeps its admission guard and original outbox request
 until a response or submission confirms admission/rejection. A definite refusal
 restores the draft and is never automatically replayed.

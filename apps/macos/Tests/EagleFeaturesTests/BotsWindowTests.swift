@@ -127,6 +127,25 @@ struct BotsWindowTests {
     #expect(remote.didContinue)
   }
 
+  @Test("an automatically observed empty foreign branch leaves the real composer on local chat")
+  func emptyReceivedFirstSend() async throws {
+    let remote = WindowNativeHistory()
+    remote.empty = true
+    let (bots, app, port, outbox) = try await window(history: remote)
+    defer { bots.disconnect() }
+    try await waitUntil { remote.views > 0 }
+    await app.conversation.refreshHistory()
+    bots.setDraft("first local question after a peer only opens this Bot")
+    bots.send()
+    try await waitUntil { port.sent.count == 1 }
+    #expect(port.sent.first?.text == "first local question after a peer only opens this Bot")
+    #expect(bots.composer.text.isEmpty)
+    #expect(bots.displayedHistory == nil)
+    #expect(!remote.didContinue)
+    let entries = try outbox.entries(for: "b_1")
+    #expect(entries.count == 1 && entries.first?.historyHead == nil)
+  }
+
   @Test("sidebar previews use the last received chat text rather than lifecycle state")
   func sidebarPreview() async throws {
     let (bots, _, port, _) = try await window()
@@ -458,6 +477,8 @@ struct BotsWindowTests {
 /// The two ports this window needs, with just enough behaviour for the bindings.
 @MainActor private final class WindowNativeHistory: NativeHistoryPort {
   var didContinue = false
+  var empty = false
+  var views = 0
   func branches(botId: String) async throws -> [NativeHistoryBranch] {
     [
       NativeHistoryBranch(
@@ -466,15 +487,18 @@ struct BotsWindowTests {
     ]
   }
   func view(botId: String, head: String) async throws -> NativeHistoryView {
-    NativeHistoryView(
-      head: head, branchId: "received", usable: true,
-      messages: [
-        Message(
-          id: "foreign-user", role: .user, state: .complete, createdAt: "x",
-          blocks: [.text("received user before model completion")])
-      ])
+    views += 1
+    return NativeHistoryView(
+      head: head, branchId: "received", usable: !empty,
+      messages: empty
+        ? []
+        : [
+          Message(
+            id: "foreign-user", role: .user, state: .complete, createdAt: "x",
+            blocks: [.text("received user before model completion")])
+        ])
   }
-  func assess(botId: String, head: String) async throws -> Bool { true }
+  func assess(botId: String, head: String) async throws -> Bool { !empty }
   func continueHistory(
     botId: String, head: String, text: String, requestId: String
   ) async throws -> NativeHistoryContinuation {

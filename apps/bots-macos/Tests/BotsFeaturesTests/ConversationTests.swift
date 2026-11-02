@@ -29,6 +29,102 @@ final class ConversationTests: XCTestCase {
     model.select(botId: "b_1")
   }
 
+  func testEmptyAutomaticReceivedHistoryDoesNotBlockTheFirstNativeSend() async throws {
+    let remote = FakeNativeHistory()
+    remote.emptyFirstBranch = true
+    remote.assessedUsable = false
+    let socket = FakeConversation()
+    let model = ConversationViewModel(
+      conversation: socket, outbox: OutboxStore(directory: outboxDirectory), history: remote)
+    model.select(botId: "b_1")
+    socket.emit(.connection(.ready))
+    socket.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await waitUntil { !remote.viewed.isEmpty }
+    await model.refreshHistory()
+    model.draft = "first native local question"
+    model.send()
+    try await waitUntil { socket.sent.count == 1 }
+    XCTAssertEqual(socket.sent.first?.text, "first native local question")
+    XCTAssertTrue(remote.continued.isEmpty)
+    XCTAssertNil(model.historyView)
+    XCTAssertEqual(remote.assessments, 0, "empty automatic candidates need no full assessment")
+    await model.selectHistory("remote-branch")
+    model.draft = "an explicit empty branch still cannot continue"
+    model.send()
+    await Task.yield()
+    XCTAssertEqual(socket.sent.count, 1)
+    XCTAssertTrue(remote.continued.isEmpty)
+    XCTAssertEqual(model.draft, "an explicit empty branch still cannot continue")
+    model.disconnect()
+  }
+
+  func testAnAutomaticViewReadKeepsNativeSendAvailableAndCannotReplaceItsLocalIntent() async throws
+  {
+    let remote = FakeNativeHistory()
+    remote.blockView = true
+    let socket = FakeConversation()
+    let model = ConversationViewModel(
+      conversation: socket, outbox: OutboxStore(directory: outboxDirectory), history: remote)
+    model.select(botId: "b_1")
+    socket.emit(.connection(.ready))
+    socket.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await waitUntil { remote.viewContinuation != nil }
+    model.draft = "local send while the automatic read is held"
+    model.send()
+    try await waitUntil { socket.sent.count == 1 }
+    remote.blockView = false
+    remote.viewContinuation?.resume()
+    remote.viewContinuation = nil
+    await model.refreshHistory()
+    XCTAssertEqual(socket.sent.first?.text, "local send while the automatic read is held")
+    XCTAssertNil(model.historyView, "the late nonempty view cannot take over local chat")
+    XCTAssertTrue(remote.continued.isEmpty)
+    model.disconnect()
+  }
+
+  func testAnAutomaticViewCannotOverrideAnExplicitLocalPickerChoice() async throws {
+    let remote = FakeNativeHistory()
+    remote.blockView = true
+    let socket = FakeConversation()
+    let model = ConversationViewModel(
+      conversation: socket, outbox: OutboxStore(directory: outboxDirectory), history: remote)
+    model.select(botId: "b_1")
+    socket.emit(.connection(.ready))
+    socket.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await waitUntil { remote.viewContinuation != nil }
+    await model.selectHistory(nil)
+    remote.blockView = false
+    remote.viewContinuation?.resume()
+    remote.viewContinuation = nil
+    await model.refreshHistory()
+    model.draft = "local picker stays selected"
+    model.send()
+    try await waitUntil { socket.sent.count == 1 }
+    XCTAssertEqual(socket.sent.first?.text, "local picker stays selected")
+    XCTAssertNil(model.historyView)
+    XCTAssertTrue(remote.continued.isEmpty)
+    model.disconnect()
+  }
+
+  func testAnEmptyFirstBranchDoesNotHideLaterPartialMessages() async throws {
+    let remote = FakeNativeHistory()
+    remote.emptyFirstBranch = true
+    remote.secondBranch = true
+    remote.blockAssessment = true
+    let socket = FakeConversation()
+    let model = ConversationViewModel(
+      conversation: socket, outbox: OutboxStore(directory: outboxDirectory), history: remote)
+    model.select(botId: "b_1")
+    socket.emit(.connection(.ready))
+    socket.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await waitUntil { model.historyView?.branchId == "second-branch" }
+    XCTAssertEqual(model.displayState.messages.map(\.text), ["received committed user"])
+    XCTAssertTrue(model.state.messages.isEmpty)
+    XCTAssertFalse(model.historyView?.usable ?? true)
+    remote.finishAssessment(false)
+    model.disconnect()
+  }
+
   func testPassiveUserDisplaysBeforeAssessmentWithoutChangingLocalState() async throws {
     let remote = FakeNativeHistory()
     let socket = FakeConversation()
@@ -44,9 +140,11 @@ final class ConversationTests: XCTestCase {
     XCTAssertTrue(model.state.messages.isEmpty)
     XCTAssertFalse(model.historyView?.usable ?? true)
     XCTAssertTrue(remote.continued.isEmpty)
-    model.draft = "cannot continue incomplete input"
+    model.draft = "ordinary local input while the passive head is incomplete"
     model.send()
-    XCTAssertTrue(socket.sent.isEmpty)
+    try await waitUntil { socket.sent.count == 1 }
+    XCTAssertEqual(
+      socket.sent.first?.text, "ordinary local input while the passive head is incomplete")
     XCTAssertTrue(remote.continued.isEmpty)
     remote.finishAssessment(false)
     model.disconnect()
@@ -441,6 +539,10 @@ final class ConversationTests: XCTestCase {
 
 @MainActor private final class FakeNativeHistory: NativeHistoryPort {
   var secondBranch = false
+  var emptyFirstBranch = false
+  var viewed: [String] = []
+  var assessments = 0
+  var assessedUsable = true
   var blockView = false
   var viewContinuation: CheckedContinuation<Void, Never>?
   var continuationError: Error?
@@ -469,20 +571,24 @@ final class ConversationTests: XCTestCase {
     return result
   }
   func view(botId: String, head: String) async throws -> NativeHistoryView {
+    viewed.append(head)
     if blockView { await withCheckedContinuation { viewContinuation = $0 } }
     return NativeHistoryView(
       head: head,
       branchId: head == String(repeating: "b", count: 64) ? "second-branch" : "remote-branch",
       usable: false,
-      messages: [
-        Message(
-          id: "remote", role: .user, state: .complete, createdAt: "x",
-          blocks: [.text("received committed user")])
-      ])
+      messages: emptyFirstBranch && head == String(repeating: "a", count: 64)
+        ? []
+        : [
+          Message(
+            id: "remote", role: .user, state: .complete, createdAt: "x",
+            blocks: [.text("received committed user")])
+        ])
   }
   func assess(botId: String, head: String) async throws -> Bool {
+    assessments += 1
     if blockAssessment { return await withCheckedContinuation { assessment = $0 } }
-    return true
+    return assessedUsable
   }
   func finishAssessment(_ usable: Bool) {
     assessment?.resume(returning: usable)

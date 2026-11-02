@@ -83,7 +83,7 @@ public final class ConversationViewModel: ObservableObject {
     !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       && connection == .ready
       && state.unavailable == nil
-      && displayedHeadIsCurrent
+      && (displayedHeadIsCurrent || followsReceivedWhenEmpty)
       && !continuationRequests.values.contains(selectedBotId ?? "")
   }
 
@@ -126,11 +126,15 @@ public final class ConversationViewModel: ObservableObject {
       historyBranches = branches.filter {
         $0.selection.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil
       }
-      if displayedBranch == nil, followsReceivedWhenEmpty, state.messages.isEmpty, !state.running {
-        displayedBranch = historyBranches.first?.branchId
-      }
       if let selected = historyBranches.first(where: { $0.branchId == displayedBranch }) {
         await showHistory(selected, botId: botId)
+      } else if displayedBranch == nil, canFollowReceived {
+        for branch in historyBranches {
+          guard selectedBotId == botId, !Task.isCancelled,
+            displayedBranch == nil, canFollowReceived
+          else { return }
+          if await showHistory(branch, botId: botId, automatically: true) { break }
+        }
       }
     } catch {
       // Optional history reads leave the live conversation and composer available.
@@ -151,15 +155,29 @@ public final class ConversationViewModel: ObservableObject {
     await showHistory(branch, botId: botId)
   }
 
-  private func showHistory(_ branch: NativeHistoryBranch, botId: String) async {
-    guard let history else { return }
+  private var canFollowReceived: Bool {
+    followsReceivedWhenEmpty && state.messages.isEmpty && !state.running
+  }
+
+  @discardableResult
+  private func showHistory(
+    _ branch: NativeHistoryBranch, botId: String, automatically: Bool = false
+  ) async -> Bool {
+    guard let history else { return false }
     let generation = UUID()
     viewGeneration = generation
     do {
       let view = try await history.view(botId: botId, head: branch.selection)
-      guard selectedBotId == botId, displayedBranch == branch.branchId,
-        viewGeneration == generation, !Task.isCancelled
-      else { return }
+      guard selectedBotId == botId, viewGeneration == generation, !Task.isCancelled
+      else { return false }
+      if automatically {
+        guard displayedBranch == nil, canFollowReceived, !view.messages.isEmpty else {
+          return false
+        }
+        displayedBranch = branch.branchId
+      } else if displayedBranch != branch.branchId {
+        return false
+      }
       historyView = view
       assessmentTask?.cancel()
       assessmentTask = Task { [weak self] in
@@ -170,7 +188,11 @@ public final class ConversationViewModel: ObservableObject {
         else { return }
         self?.historyView?.usable = usable
       }
-    } catch { errorBanner = Self.describe(error) }
+      return true
+    } catch {
+      if !automatically { errorBanner = Self.describe(error) }
+      return false
+    }
   }
 
   /// Connects to a bot and replaces the transcript with its snapshot. Selecting the same bot
@@ -239,11 +261,15 @@ public final class ConversationViewModel: ObservableObject {
   public func send(inserting: Bool) {
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty, connection == .ready, let botId = selectedBotId else { return }
-    guard displayedHeadIsCurrent else { return }
     guard !continuationRequests.values.contains(botId) else {
       errorBanner = "正在建立本机续聊，请稍候再发送。"
       return
     }
+    if followsReceivedWhenEmpty, historyView?.usable != true || !displayedHeadIsCurrent {
+      displayedBranch = nil
+      historyView = nil
+    }
+    guard displayedHeadIsCurrent else { return }
     if let view = historyView {
       guard view.usable, !state.running, !isSending else {
         errorBanner = "此会话尚不可继续，请等待同步完成或本机回答结束。"
@@ -402,6 +428,11 @@ public final class ConversationViewModel: ObservableObject {
       draft = text
       errorBanner = "无法保存待发送的消息，消息没有发出。"
       return
+    }
+    if followsReceivedWhenEmpty {
+      followsReceivedWhenEmpty = false
+      viewGeneration = UUID()
+      assessmentTask?.cancel()
     }
     isSending = true
     if optimistic {
