@@ -20,6 +20,7 @@ export class DeviceHistoryTransport {
   private cipher?: DeviceHistoryCipher;
   private configuring?: Promise<void>;
   private generation = 0;
+  private noticeGeneration = 0;
   private renewal?: ReturnType<typeof setTimeout>;
   private recovery?: ReturnType<typeof setTimeout>;
   private noticeRetry?: ReturnType<typeof setTimeout>;
@@ -58,9 +59,7 @@ export class DeviceHistoryTransport {
       else if (event.type === "history.offline") {
         this.generation++;
         this.cipher = undefined;
-        clearTimeout(this.renewal);
-        clearTimeout(this.recovery);
-        clearTimeout(this.noticeRetry);
+        this.cancelTimers();
         this.publishReady();
       } else
         void this.receive(event).catch(() => {
@@ -92,6 +91,14 @@ export class DeviceHistoryTransport {
   private publishReady() {
     this.publish({ type: "history.ready", ...this.status() });
   }
+  private cancelTimers() {
+    clearTimeout(this.renewal);
+    clearTimeout(this.recovery);
+    clearTimeout(this.noticeRetry);
+    this.renewal = undefined;
+    this.recovery = undefined;
+    this.noticeRetry = undefined;
+  }
   async setEnabled(enabled: boolean) {
     const temporary = `${this.path}.${randomUUID()}.tmp`;
     writeFileSync(temporary, JSON.stringify({ enabled }), {
@@ -102,9 +109,7 @@ export class DeviceHistoryTransport {
     this.enabled = enabled;
     this.generation++;
     this.cipher = undefined;
-    clearTimeout(this.renewal);
-    clearTimeout(this.recovery);
-    clearTimeout(this.noticeRetry);
+    this.cancelTimers();
     this.publishReady();
     if (enabled) {
       try {
@@ -173,13 +178,15 @@ export class DeviceHistoryTransport {
   private transient(error: unknown) {
     return (
       error instanceof Error &&
-      [
-        "history_busy",
-        "history_response_timeout",
-        "history_delivery_failed",
-        "history_rate_limit",
-        "history_offline",
-      ].includes(error.message)
+      (error.name === "TimeoutError" ||
+        [
+          "internal_error",
+          "history_busy",
+          "history_response_timeout",
+          "history_delivery_failed",
+          "history_rate_limit",
+          "history_offline",
+        ].includes(error.message))
     );
   }
   private failedRefresh(error: unknown) {
@@ -236,15 +243,26 @@ export class DeviceHistoryTransport {
   }
   async notify() {
     if (this.enabled && this.cipher) {
+      const notice = ++this.noticeGeneration;
+      const generation = this.generation;
+      const cipher = this.cipher;
+      const current = () =>
+        !this.closed &&
+        this.enabled &&
+        this.generation === generation &&
+        this.cipher === cipher &&
+        this.noticeGeneration === notice;
       try {
         await this.cloud.historyRequest({
           type: "history.changed",
           requestId: randomUUID(),
         });
-        clearTimeout(this.noticeRetry);
-        this.noticeRetry = undefined;
+        if (current()) {
+          clearTimeout(this.noticeRetry);
+          this.noticeRetry = undefined;
+        }
       } catch (error) {
-        if (!this.closed && this.transient(error) && !this.noticeRetry) {
+        if (current() && this.transient(error) && !this.noticeRetry) {
           this.noticeRetry = setTimeout(() => {
             this.noticeRetry = undefined;
             void this.notify().catch(() => {});
@@ -284,9 +302,7 @@ export class DeviceHistoryTransport {
     this.closed = true;
     this.generation++;
     this.cipher = undefined;
-    clearTimeout(this.renewal);
-    clearTimeout(this.recovery);
-    clearTimeout(this.noticeRetry);
+    this.cancelTimers();
     this.detach();
     this.listeners.clear();
   }

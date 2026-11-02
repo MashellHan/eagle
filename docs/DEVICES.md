@@ -111,7 +111,11 @@ DOs report a rejected notification delivery as an error, never `history.sent`.
 Online ephemeral-key renewal also schedules a bounded retry after a transient
 failure without waiting for another cloud event. Authorization/identity failures
 stay closed and do not enter that retry path. Disable, offline and close cancel
-these timers. Neither retry polls history or executes a device operation.
+these timers and clear their canceled handles. Directory timeout/internal server
+errors use the same bounded renewal recovery; authentication failures stay closed.
+Only the latest notice attempt in the current cipher generation may settle its
+retry, so an older delayed success cannot discard a newer failed change. Neither
+retry polls history or executes a device operation.
 
 The private helper alone manages the persisted `history.set {enabled}` switch;
 the existing local socket can attach an optional consumer, list peers, announce
