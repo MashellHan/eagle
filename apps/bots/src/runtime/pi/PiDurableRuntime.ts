@@ -58,7 +58,7 @@ import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
 import { entryMessageId } from "./convert.ts";
 import { HistoryInputError } from "./historyArchive.ts";
-import { LocalChatRequest, LocalChatSelection } from "./LocalChat.ts";
+import { LocalChatRequest, LocalChatSelection, withLocalChatAdmission } from "./LocalChat.ts";
 import { convertSubmission, EventMapper } from "./mapEvents.ts";
 import { NativeHistory } from "./NativeHistory.ts";
 
@@ -606,6 +606,10 @@ class PiRuntimeHandle implements RuntimeHandle {
   }
 
   async submit(input: SubmitInput): Promise<Submission> {
+    return withLocalChatAdmission(this.#harness, input.requestId, () => this.#submit(input));
+  }
+
+  async #submit(input: SubmitInput): Promise<Submission> {
     const log = this.#options.log;
     const started = performance.now();
     // The admission commit can be published before `submit` returns, so the request id

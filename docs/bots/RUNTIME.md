@@ -683,6 +683,10 @@ That check also applies after asynchronous record reads inside a live batch,
 before changing the shared mapper or publishing a replacement snapshot. A new
 continuation refuses a request ID already bound by ordinary chat, before forking;
 repairing an older receipt may fill a missing route but never replace a binding.
+Ordinary sends and continuations serialize the same request's local admission
+within the shared Harness, including asynchronous conversation acquisition.
+They release that admission turn before waiting for a provider's completion.
+Ordinary root chat still creates no per-request routing document.
 
 Optional history scheduling keeps remote failures per peer/Bot, separate from a
 local native drain failure. An unavailable holder cannot suppress another holder

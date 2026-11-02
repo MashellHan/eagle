@@ -36,7 +36,7 @@ import {
   pageHead,
   validateHistoryPage,
 } from "./historyIncremental.ts";
-import { LocalChatRequest, LocalChatSelection } from "./LocalChat.ts";
+import { LocalChatRequest, LocalChatSelection, withLocalChatAdmission } from "./LocalChat.ts";
 import { convertSubmission } from "./mapEvents.ts";
 
 type Provenance = { id: string; originId: string; conversationId: string };
@@ -1136,58 +1136,65 @@ export class NativeHistory {
       const view = await this.assessHead(input.head);
       if (!view.usable) historyReject("history is not a complete turn");
     }
-    const selected = await this.#harness.commit(async (tx) => {
-      const state = await tx.doc(HistoryState);
-      const previous = state.continuations[input.requestId];
-      const route = await tx.doc(LocalChatRequest, input.requestId, null);
-      const original = await tx.submissionByRequest(this.#rootId, input.requestId);
-      if (previous !== undefined) {
-        if (previous.head !== input.head || previous.text !== input.text)
+    const submission = await withLocalChatAdmission(this.#harness, input.requestId, async () => {
+      const selected = await this.#harness.commit(async (tx) => {
+        const state = await tx.doc(HistoryState);
+        const previous = state.continuations[input.requestId];
+        const route = await tx.doc(LocalChatRequest, input.requestId, null);
+        const original = await tx.submissionByRequest(this.#rootId, input.requestId);
+        if (previous !== undefined) {
+          if (previous.head !== input.head || previous.text !== input.text)
+            historyReject("history continuation request conflict");
+          // Older local receipts also pin the native ID in their locally minted branch ID.
+          const nativeId = previous.nativeId ?? Number(previous.branchId.split("/c")[1]);
+          if (
+            (route.conversationId && route.conversationId !== nativeId) ||
+            (original && original.conversationId !== nativeId)
+          )
+            historyReject("history continuation request conflict");
+          route.conversationId = nativeId;
+          return { nativeId };
+        }
+        if (route.conversationId || original)
           historyReject("history continuation request conflict");
-        // Older local receipts also pin the native ID in their locally minted branch ID.
-        const nativeId = previous.nativeId ?? Number(previous.branchId.split("/c")[1]);
-        if (
-          (route.conversationId && route.conversationId !== nativeId) ||
-          (original && original.conversationId !== nativeId)
-        )
-          historyReject("history continuation request conflict");
-        route.conversationId = nativeId;
-        return { nativeId };
-      }
-      if (route.conversationId || original) historyReject("history continuation request conflict");
-      const incremental = await tx.doc(IncrementalHead, input.head, null);
-      const head =
-        state.heads[input.head] ??
-        (incremental.usable ? incremental : historyReject("unknown imported history head"));
-      const tail = ("entries" in head ? head.entries.at(-1) : head.tail) as EntryId;
-      const fork = await tx.forkConversation(head.nativeId as ConversationId, tail, {
-        ownership: { kind: "ownerless" },
-      });
-      // Receive local configuration, never the source machine's model, tools or cwd.
-      const local = await tx.doc(AgentDoc, this.#rootId);
-      const agent = await tx.doc(AgentDoc, fork.id);
-      Object.assign(agent, JSON.parse(JSON.stringify(local)));
-      const branchId = `${state.originId}/c${fork.id}`;
-      const branch = { nativeId: fork.id, conversationId: head.conversationId, botId: this.#botId };
-      state.branches[branchId] = branch;
-      (await tx.doc(LocalChatSelection)).conversationId = fork.id;
-      route.conversationId = fork.id;
-      state.continuations[input.requestId] = {
-        head: input.head,
-        text: input.text,
-        branchId,
-        nativeId: fork.id,
-      };
-      return branch;
-    }, ctx);
-    const conversation =
-      (await this.#harness.conversation(selected.nativeId as ConversationId, ctx)) ??
-      historyReject("history conversation missing");
-    await onAdmission();
-    const submission = await conversation.submit(
-      { type: "input", content: input.text, requestId: input.requestId, whenBusy: "reject" },
-      ctx,
-    );
+        const incremental = await tx.doc(IncrementalHead, input.head, null);
+        const head =
+          state.heads[input.head] ??
+          (incremental.usable ? incremental : historyReject("unknown imported history head"));
+        const tail = ("entries" in head ? head.entries.at(-1) : head.tail) as EntryId;
+        const fork = await tx.forkConversation(head.nativeId as ConversationId, tail, {
+          ownership: { kind: "ownerless" },
+        });
+        // Receive local configuration, never the source machine's model, tools or cwd.
+        const local = await tx.doc(AgentDoc, this.#rootId);
+        const agent = await tx.doc(AgentDoc, fork.id);
+        Object.assign(agent, JSON.parse(JSON.stringify(local)));
+        const branchId = `${state.originId}/c${fork.id}`;
+        const branch = {
+          nativeId: fork.id,
+          conversationId: head.conversationId,
+          botId: this.#botId,
+        };
+        state.branches[branchId] = branch;
+        (await tx.doc(LocalChatSelection)).conversationId = fork.id;
+        route.conversationId = fork.id;
+        state.continuations[input.requestId] = {
+          head: input.head,
+          text: input.text,
+          branchId,
+          nativeId: fork.id,
+        };
+        return branch;
+      }, ctx);
+      const conversation =
+        (await this.#harness.conversation(selected.nativeId as ConversationId, ctx)) ??
+        historyReject("history conversation missing");
+      await onAdmission();
+      return conversation.submit(
+        { type: "input", content: input.text, requestId: input.requestId, whenBusy: "reject" },
+        ctx,
+      );
+    });
     await submission.wait(ctx);
     const record = await submission.status(ctx);
     const converted = convertSubmission(record) ?? historyReject("history submission missing");

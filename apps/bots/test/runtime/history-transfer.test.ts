@@ -787,6 +787,87 @@ test("continuation cannot replace an ordinary request's first native admission",
   }
 });
 
+test("an ordinary root admission racing the same continuation request executes in only one native container", async (t) => {
+  const a = await createBench({ settings: { compaction: { enabled: false } } });
+  const b = await createBench({ settings: { compaction: { enabled: false } } });
+  const left = await a.runtime.open(a.spec());
+  let kernel!: Harness;
+  const open = Harness.open;
+  t.mock.method(Harness, "open", async (...args: Parameters<typeof open>) => {
+    kernel = await open(...args);
+    return kernel;
+  });
+  const right = await b.runtime.open(b.spec());
+  const root = await kernel.root(ctx);
+  const held = Promise.withResolvers<void>();
+  let captured = false;
+  let armed = false;
+  let calls = 0;
+  const conversation = kernel.conversation.bind(kernel);
+  t.mock.method(kernel, "conversation", async (...args: Parameters<typeof conversation>) => {
+    const value = await conversation(...args);
+    if (armed && args[0] === root.id) {
+      armed = false;
+      captured = true;
+      await held.promise;
+    }
+    return value;
+  });
+  try {
+    a.faux.setResponses([text("common root race ancestor")]);
+    await settled(left, "r_race_ancestor", "common ancestor");
+    const imported = await right.importHistory(await left.exportHistory());
+    b.faux.setResponses(
+      [0, 1].map(() => () => {
+        calls++;
+        return text("one native admission");
+      }),
+    );
+    armed = true;
+    const ordinary = right.submit({
+      requestId: "r_racing",
+      text: "ordinary first intent",
+      whenBusy: "followUp",
+      trace,
+    });
+    await waitFor(() => captured, "ordinary root captured before native admission");
+    const continued = right
+      .continueHistory({
+        head: imported.head,
+        requestId: "r_racing",
+        text: "conflicting continuation",
+      })
+      .then(
+        (result) => ({ result }),
+        (error: unknown) => ({ error }),
+      );
+    // Public Session-line barriers let the contender's native reads/commits drain,
+    // while the first ordinary conversation read remains explicitly held.
+    for (let turn = 0; turn < 10; turn++) await kernel.inspect(ctx);
+    held.resolve();
+    const original = await ordinary;
+    const second = await continued;
+    await waitFor(
+      async () => (await right.submission({ submissionId: original.id }))?.status === "done",
+      "original root completion",
+    );
+    assert.ok(
+      "error" in second &&
+        second.error instanceof ClassifiedFailure &&
+        second.error.disposition === "not_admitted",
+      "the first ordinary admission owns the request across asynchronous conversation reads",
+    );
+    assert.equal(calls, 1, "SDK per-conversation dedup must not allow two containers to execute");
+    assert.equal((await right.submission({ requestId: "r_racing" }))?.id, original.id);
+  } finally {
+    held.resolve();
+    await left.close(trace, 5000);
+    await right.close(trace, 5000);
+    await a.cleanup();
+    await b.cleanup();
+  }
+});
+
 test("an old SDK overflow snapshot paused in record reads cannot mutate or publish over a new branch", async (t) => {
   const a = await createBench({ settings: { compaction: { enabled: false } } });
   const b = await createBench({ settings: { compaction: { enabled: false } } });
