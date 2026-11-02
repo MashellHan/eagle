@@ -449,12 +449,11 @@ export class NativeHistory {
       )
         return historyReject("history cursor is not in this branch");
       if (
-        record.entry.id === selected.tip ||
-        (parsed.head === selected.tip &&
-          (await tx.doc(ReceivedCursor, value, null)).tip === selected.tip)
+        record.entry.id === bound ||
+        (parsed.head === bound && (await tx.doc(ReceivedCursor, value, null)).tip === bound)
       )
         return record;
-      const tip = await tx.doc(ReceivedRecord, selected.tip, null);
+      const tip = await tx.doc(ReceivedRecord, bound, null);
       const candidate = await tx.doc(ReceivedRecord, record.entry.id, null);
       if (tip.nativeId && candidate.nativeId) {
         const visible = await tx.scanEntries(
@@ -468,7 +467,7 @@ export class NativeHistory {
         if (visible.items.length === 1) return record;
       } else {
         // Missing-ancestor heads only prove a bounded neighborhood; issued cursors retain their native witness.
-        let ancestor = selected.tip;
+        let ancestor = bound;
         for (let count = 0; ancestor && count < 64; count++) {
           if (ancestor === record.entry.id) return record;
           ancestor = (await read(ancestor))?.previous ?? "";
@@ -477,11 +476,11 @@ export class NativeHistory {
       historyReject("history cursor is outside selected head or its ancestry is not yet available");
       return record;
     };
+    const until = await position(input.until);
+    const tip = until?.entry.id ?? (bound || null);
+    bound = tip ?? "";
     const after = await position(input.after);
     const before = await position(input.before);
-    const until = await position(input.until);
-    const tip = until?.entry.id ?? (selected.tip || null);
-    bound = tip ?? "";
     const result: HistoryPage = {
       version: 1,
       engine: "pi-durable@1.4.0",

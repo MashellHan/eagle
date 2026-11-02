@@ -434,6 +434,28 @@ test("an immutable raw head bounds inherited records from two other origins by a
     );
     const oldCursor = await receiver.exportPage({ selection: old.head, limit: 1 });
     assert.ok(oldCursor.snapshot);
+    let escaped: Awaited<ReturnType<typeof receiver.exportPage>> | undefined;
+    try {
+      escaped = await receiver.exportPage({
+        selection: newer.head,
+        before: forward.cursor ?? "",
+        until: oldCursor.snapshot,
+        limit: 1,
+      });
+    } catch (error) {
+      assert.match(String(error), /selected head/);
+    }
+    if (escaped?.cursor)
+      await assert.rejects(
+        receiver.exportPage({ selection: old.head, until: escaped.cursor }),
+        /selected head/,
+        "a narrowed export must never issue a false old-head witness",
+      );
+    assert.equal(
+      escaped,
+      undefined,
+      "incompatible before/until cannot export beyond the narrowed cap",
+    );
     assert.equal(
       (await receiver.exportPage({ selection: newer.head, until: oldCursor.snapshot })).tip,
       oldTip,
