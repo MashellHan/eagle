@@ -122,6 +122,21 @@ the existing local socket can attach an optional consumer, list peers, announce
 changes and send/receive encrypted payloads. Local chat never awaits this channel.
 Starting/reconnecting an enabled channel immediately discovers and notifies peers.
 
+Device Service may prefer installed, logged-in Tailscale, detected with bounded
+`status --json` through PATH or `/Applications/Tailscale.app/Contents/MacOS/Tailscale`.
+Only numeric tailnet addresses and ephemeral ports are exchanged as authenticated,
+encrypted service control packets; ordinary Bots payloads cannot set endpoints.
+Each direct delivery checks current enabled group peers and uses the same cipher,
+frame/concurrency budgets and an encrypted correlated acknowledgement. Connectivity
+failure quickly falls back to DO with the same packet ID and a short route cooldown;
+identity/group failures never fall back. Disable/offline/close releases the listener.
+The send receipt reports `tailscale` or `do`; neither route is App-visibility evidence.
+The optional packet-header `purpose` (`endpoint`/`ack`) is authenticated with the
+ciphertext, independently of Bots data; key proof/helper signing is unchanged.
+Worker and Device Service need this additive codec before using the direct path.
+Device Service emits a metadata-only `history.route` stderr record when its route
+changes, with target device UUID and `tailscale`/`do`, never payloads or keys.
+
 ## Execution
 
 Agent opens one outbound WSS `/execution/<targetDeviceId>/agent` and sends

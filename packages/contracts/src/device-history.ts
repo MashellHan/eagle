@@ -67,6 +67,7 @@ export const verifyHistoryPeer = async (
 };
 export const HistoryPacket = z.strictObject({
   version: z.literal(1),
+  purpose: z.enum(["endpoint", "ack"]).optional(),
   requestId: DeviceId,
   groupId: DeviceId,
   sourceDeviceId: DeviceId,

@@ -2873,3 +2873,22 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   non-green. Root owns installs/physical controls; no additional App or SwiftPM
   consumer was started. Next hop: Node-only authenticated Tailscale path, then
   foreign App/two-way latency and final gates. Collection/D1/dashboard: N/A.
+
+## 2026-11-02 18:08 optional history: Node-only Tailscale
+
+- Discovery and transport have real reds in `.local/history-tailscale-*-red.log`.
+  The existing history file now passes 11/11: real loopback listeners and encrypted
+  packets cover direct delivery, an 80 KiB record, endpoint busy recovery, current
+  receiver/source authorization, damaged ACK rejection, unreachable/lost-ACK DO
+  fallback with the same packet ID and dedup, cooldown, disable/re-enable/close,
+  and the macOS App CLI fallback. Tailnet addresses in that test are mapped to
+  loopback; this is not physical Tailscale/App timing evidence.
+- Real existing DO/process file passes 25/25, including encrypted endpoint-purpose
+  forwarding; `.local/history-tailscale-channel-regression.log`. Root types/lint
+  and Agent build pass. No Swift/UI changes or source App/SwiftPM launch. Root
+  reports its fixed `df62149` root gate 276/276 and official App build 17.59s;
+  its remaining candidate gates are independent, while source's historical full
+  Bots/Swift failures remain retained. Two newer native request/admission review
+  findings are registered for the next small fix. Next: Root's updated codec/
+  helper rollout and actual two-Mac route/visibility samples, plus those fixes.
+  Herdr collection, D1 and dashboard rendering: N/A; no deployment/installation.

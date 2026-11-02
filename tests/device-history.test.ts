@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
+import { type ListenOptions, Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import { DeviceHistoryCipher } from "../packages/agent/device-history.ts";
 import { DeviceHistoryTransport } from "../packages/agent/device-history-transport.ts";
+import { readTailscaleAddress } from "../packages/agent/device-tailscale.ts";
 import {
   HISTORY_FRAME_BYTES,
   HISTORY_PLAINTEXT_BYTES,
@@ -55,6 +57,7 @@ test("history ciphertext binds authenticated devices, group, membership, key and
   const damaged = structuredClone(packet);
   damaged.body = `${damaged.body[0] === "A" ? "B" : "A"}${damaged.body.slice(1)}`;
   await assert.rejects(b.cipher.open(a, damaged));
+  await assert.rejects(b.cipher.open(a, { ...packet, purpose: "endpoint" }));
   await assert.rejects(
     b.cipher.open(a, { ...packet, requestId: randomUUID() }),
   );
@@ -99,6 +102,289 @@ test("history ciphertext binds authenticated devices, group, membership, key and
 test("unresolved initial membership cannot mint a history identity proof", async () => {
   await assert.rejects(peer(null, 0), /membership/);
 });
+
+test("installed Tailscale uses the macOS App CLI when PATH is absent and accepts only Running numeric tailnet addresses", async () => {
+  const calls: string[] = [];
+  const address = await readTailscaleAddress(async (file, args) => {
+    calls.push(file);
+    assert.deepEqual(args, ["status", "--json"]);
+    if (file === "tailscale")
+      throw Object.assign(new Error("missing"), { code: "ENOENT" });
+    return JSON.stringify({
+      BackendState: "Running",
+      Self: { TailscaleIPs: ["100.66.87.127"] },
+    });
+  });
+  assert.equal(address, "100.66.87.127");
+  assert.deepEqual(calls, [
+    "tailscale",
+    "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+  ]);
+  for (const [BackendState, ip] of [
+    ["NeedsLogin", "100.66.87.127"],
+    ["Running", "127.0.0.1"],
+    ["Running", "paired-host.example"],
+  ]) {
+    assert.equal(
+      await readTailscaleAddress(async () =>
+        JSON.stringify({ BackendState, Self: { TailscaleIPs: [ip] } }),
+      ),
+      undefined,
+    );
+  }
+});
+
+test("Tailscale history uses real encrypted listeners, retains packet identity on fallback and refuses stale authorization", async (t) => {
+  const a = await peer();
+  const b = await peer();
+  const roots = [
+    mkdtempSync(join(tmpdir(), "history-direct-a-")),
+    mkdtempSync(join(tmpdir(), "history-direct-b-")),
+  ] as const;
+  const servers: Server[] = [];
+  const listen = Server.prototype.listen;
+  // Only test routing maps advertised tailnet IPs to isolated real loopback listeners.
+  t.mock.method(
+    Server.prototype,
+    "listen",
+    function (this: Server, ...args: unknown[]) {
+      const options = args[0] as ListenOptions;
+      if (typeof options === "object" && options.host?.startsWith("100.64.")) {
+        args[0] = { ...options, host: "127.0.0.1" };
+        servers.push(this);
+      }
+      return Reflect.apply(listen, this, args);
+    },
+  );
+  const request = globalThis.fetch;
+  let mode = "normal";
+  let attempts = 0;
+  let directId: string | undefined;
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (!url.hostname.startsWith("100.64.")) return request(input, init);
+      attempts++;
+      directId = (
+        JSON.parse(String(init?.body)) as { packet: { requestId: string } }
+      ).packet.requestId;
+      if (mode === "unreachable") throw new TypeError("connection refused");
+      url.hostname = "127.0.0.1";
+      const response = await request(url, init);
+      if (mode === "bad_ack") {
+        const ack = (await response.json()) as { packet: { body: string } };
+        ack.packet.body = `${ack.packet.body[0] === "A" ? "B" : "A"}${ack.packet.body.slice(1)}`;
+        return new Response(JSON.stringify(ack));
+      }
+      if (mode === "lost_ack")
+        throw new TypeError("connection lost after receiver accepted");
+      return response;
+    },
+  );
+  let current = true;
+  let denyAtA = false;
+  let controls = 0;
+  let busyEndpoint = true;
+  const relays: string[] = [];
+  const proofs = new Map<
+    string,
+    { device: typeof a.device; proof: typeof a.proof }
+  >();
+  const listeners = new Map<string, (event: unknown) => void>();
+  const cloudFor = (self: typeof a) => ({
+    status: "online",
+    origin,
+    device: self.device,
+    observeHistory(listener: (event: unknown) => void) {
+      listeners.set(self.device.deviceId, listener);
+      return () => listeners.delete(self.device.deviceId);
+    },
+    async directory() {
+      return { devices: [a.device, b.device] };
+    },
+    async historyRequest(frame: {
+      type: string;
+      proof?: typeof a.proof;
+      targetDeviceId?: string;
+      packet?: { purpose?: string; requestId: string };
+    }) {
+      if (frame.type === "history.configure" && frame.proof)
+        proofs.set(self.device.deviceId, {
+          device: self.device,
+          proof: frame.proof,
+        });
+      if (frame.type === "history.peers")
+        return {
+          type: "history.peers",
+          peers: [...proofs.values()].filter(
+            (p) =>
+              p.device.deviceId !== self.device.deviceId &&
+              (self !== b || current) &&
+              (self !== a || !denyAtA),
+          ),
+        };
+      if (frame.type === "history.send") {
+        if (frame.packet?.purpose === "endpoint") {
+          if (busyEndpoint) {
+            busyEndpoint = false;
+            throw new Error("history_busy");
+          }
+          controls++;
+        } else relays.push(frame.packet?.requestId ?? "");
+        listeners.get(frame.targetDeviceId ?? "")?.({
+          type: "history.packet",
+          source: proofs.get(self.device.deviceId),
+          packet: frame.packet,
+        });
+      }
+      return { type: "history.sent" };
+    },
+  });
+  const left = new DeviceHistoryTransport(
+    cloudFor(
+      a,
+    ) as unknown as import("../packages/agent/device-cloud.ts").DeviceCloud,
+    roots[0],
+    a.signer,
+    async () => "100.64.0.1",
+  );
+  const right = new DeviceHistoryTransport(
+    cloudFor(
+      b,
+    ) as unknown as import("../packages/agent/device-cloud.ts").DeviceCloud,
+    roots[1],
+    b.signer,
+    async () => "100.64.0.2",
+  );
+  const received: unknown[] = [];
+  right.observe((event) => {
+    if (event.type === "history.packet") received.push(event.payload);
+  });
+  try {
+    await left.setEnabled(true);
+    await untilHistory(
+      () => servers.length === 1 && servers[0]?.listening === true,
+    );
+    await right.setEnabled(true);
+    await untilHistory(() => controls >= 3 && servers.length === 2);
+    assert.deepEqual(
+      await left.send(b.device.deviceId, {
+        address: "100.64.0.99",
+        port: 1,
+        text: "x".repeat(80 * 1024),
+      }),
+      { sent: true, route: "tailscale" },
+    );
+    assert.equal(
+      received.length,
+      1,
+      "ordinary Bots data cannot become endpoint control",
+    );
+    assert.deepEqual(
+      await right.send(a.device.deviceId, { marker: "unchanged endpoint" }),
+      { sent: true, route: "tailscale" },
+    );
+    assert.equal(relays.length, 0);
+    mode = "bad_ack";
+    await assert.rejects(
+      right.send(a.device.deviceId, { marker: "tampered ack" }),
+    );
+    assert.equal(
+      relays.length,
+      0,
+      "ciphertext authentication failure never falls back",
+    );
+    mode = "normal";
+    denyAtA = true;
+    await assert.rejects(
+      right.send(a.device.deviceId, {
+        marker: "receiver rechecks current peers",
+      }),
+      /history_direct_unauthorized/,
+    );
+    assert.equal(
+      relays.length,
+      0,
+      "receiver authorization failure never falls back",
+    );
+    denyAtA = false;
+    mode = "unreachable";
+    assert.deepEqual(
+      await right.send(a.device.deviceId, { marker: "unreachable route" }),
+      { sent: true, route: "do" },
+    );
+    assert.equal(
+      relays.length,
+      1,
+      "unreachable direct route quickly uses authorized DO",
+    );
+    mode = "lost_ack";
+    assert.deepEqual(
+      await left.send(b.device.deviceId, {
+        marker: "idempotent passive packet",
+      }),
+      { sent: true, route: "do" },
+    );
+    await untilHistory(() => received.length >= 2);
+    assert.equal(
+      relays.at(-1),
+      directId,
+      "uncertain direct delivery falls back with the original packet ID",
+    );
+    assert.equal(
+      received.length,
+      2,
+      "fallback cannot publish the already accepted packet twice",
+    );
+    const before = attempts;
+    await left.send(b.device.deviceId, { marker: "next page during cooldown" });
+    assert.equal(
+      attempts,
+      before,
+      "backfill pages do not repeat the same failed direct probe",
+    );
+    mode = "normal";
+    current = false;
+    const relayed = relays.length;
+    await assert.rejects(
+      right.send(a.device.deviceId, { marker: "revoked" }),
+      /history_peer_unavailable/,
+    );
+    assert.equal(
+      relays.length,
+      relayed,
+      "current peer rejection must never fall back",
+    );
+    await right.setEnabled(false);
+    assert.equal(servers[1]?.listening, false);
+    current = true;
+    const announced = controls;
+    await right.setEnabled(true);
+    await untilHistory(() => servers.length === 3 && controls >= announced + 3);
+    assert.deepEqual(
+      await right.send(a.device.deviceId, { marker: "enabled again" }),
+      { sent: true, route: "tailscale" },
+    );
+  } finally {
+    left.close();
+    right.close();
+    assert.equal(
+      servers.every((server) => !server.listening),
+      true,
+    );
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+  }
+});
+
+async function untilHistory(ready: () => boolean) {
+  const deadline = Date.now() + 5000;
+  while (!ready()) {
+    assert.ok(Date.now() < deadline, "history route progress");
+    await new Promise<void>((done) => setImmediate(done));
+  }
+}
 
 test("online history retries a transient renewal without waiting for another cloud event", async (t) => {
   const { mkdtempSync, rmSync } = await import("node:fs");
@@ -146,6 +432,7 @@ test("online history retries a transient renewal without waiting for another clo
         Buffer.from(historyKeyPayload(proof)),
         keys.privateKey,
       ).toString("base64url"),
+    async () => undefined,
   );
   t.mock.timers.enable({ apis: ["setTimeout"] });
   try {
@@ -237,6 +524,7 @@ async function recoveryFixture(t: TestContext) {
     cloud as unknown as import("../packages/agent/device-cloud.ts").DeviceCloud,
     directory,
     self.signer,
+    async () => undefined,
   );
   t.mock.timers.enable({ apis: ["setTimeout"] });
   return {

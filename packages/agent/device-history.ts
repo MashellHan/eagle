@@ -105,6 +105,7 @@ export class DeviceHistoryCipher {
     target: HistoryPeer,
     requestId: string,
     input: unknown,
+    purpose?: "endpoint" | "ack",
   ): Promise<HistoryPacket> {
     await this.authorize(target);
     const plaintext = Buffer.from(JSON.stringify(input));
@@ -112,6 +113,7 @@ export class DeviceHistoryCipher {
       throw new Error("history_payload_limit");
     const header = {
       version: 1 as const,
+      ...(purpose === undefined ? {} : { purpose }),
       requestId,
       groupId: this.device.groupId,
       sourceDeviceId: this.device.deviceId,

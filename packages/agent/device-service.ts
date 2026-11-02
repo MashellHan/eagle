@@ -172,6 +172,7 @@ export async function runDeviceService(): Promise<void> {
   let nativeLeases: NativeDeviceLeases | undefined;
   let cloud: DeviceCloud | undefined;
   let history: DeviceHistoryTransport | undefined;
+  let lastHistoryRoute: string | undefined;
   let historyConsumer: Socket | undefined;
   let historyDetach: (() => void) | undefined;
   let server: ReturnType<typeof createServer> | undefined;
@@ -344,7 +345,15 @@ export async function runDeviceService(): Promise<void> {
         const input = z
           .strictObject({ targetDeviceId: DeviceId, payload: z.unknown() })
           .parse(params);
-        return history.send(input.targetDeviceId, input.payload);
+        const result = await history.send(input.targetDeviceId, input.payload);
+        const route = `${input.targetDeviceId}/${result.route}`;
+        if (route !== lastHistoryRoute) {
+          lastHistoryRoute = route;
+          process.stderr.write(
+            `${JSON.stringify({ event: "history.route", targetDeviceId: input.targetDeviceId, route: result.route })}\n`,
+          );
+        }
+        return result;
       }
       case "history.changed":
         if (!history) throw new Error("history_unavailable");

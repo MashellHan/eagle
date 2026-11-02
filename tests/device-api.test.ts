@@ -1509,10 +1509,15 @@ test("authenticated outbound history frames bypass paused/always-ask execution a
     );
     assert.ok(peerB);
     const requestId = randomUUID();
-    const packet = await cipherA.seal(peerB, requestId, {
-      method: "catalog.export",
-      text: "not DO plaintext",
-    });
+    const packet = await cipherA.seal(
+      peerB,
+      requestId,
+      {
+        method: "catalog.export",
+        text: "not DO plaintext",
+      },
+      "endpoint",
+    );
     const delivery = frame<{
       type: string;
       source: HistoryPeer;
