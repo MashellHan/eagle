@@ -56,7 +56,7 @@ async function accessToken(aud = audience, iss = issuer, expires = "1h") {
 // independent of how fast the suite runs.
 let clock = Date.now();
 const tick = () => {
-  clock += 1;
+  clock = Math.max(clock + 1, Date.now());
   return new Date(clock).toISOString();
 };
 const currentReport = (id: string) => report(id, tick());
