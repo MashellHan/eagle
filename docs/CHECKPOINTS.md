@@ -2935,3 +2935,19 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   source ran only the affected history file and types/lint/Agent build. No Swift
   or App consumer started. Herdr collection, D1 and dashboard rendering: N/A;
   actual DO/TS App visibility and latency remain unverified here.
+
+## 2026-11-02 19:52 optional history: physical empty Bot and first-send fix
+
+- At `888578a`, A's native App created empty Bot Sync-A-1935; B's actual AX
+  sidebar showed it automatically. The controller's conservative upper bound is
+  2.7306s for one sample, route still unknown. After B only opened it, an empty
+  foreign branch took over A's composer; A pressed Send but the provider log
+  stayed empty. Evidence: `.local/e2e-readiness/physical-888578a/A/`.
+- `6daeab1` fixes that automatic selection after real client/host Send reds;
+  client 18/18 and host 19/19 pass, strict format and normal commit hook pass.
+  Root is building the replacement bare App in `eagle-hc` to retest with the
+  original `888578a` daemon and preserved physical state. First chat and two-way
+  App visibility within 5s have not passed; this sample is not route acceptance.
+- B Accessibility is authorized through the Herdr chain; Device bridge AX is
+  still false. Root owns all physical operations. This UI fix changes neither
+  D1 nor the deployed `888578a` Worker; no new gates or App were started here.
