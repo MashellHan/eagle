@@ -58,6 +58,7 @@ import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
 import { entryMessageId } from "./convert.ts";
 import { HistoryInputError } from "./historyArchive.ts";
+import { LocalChatRequest, LocalChatSelection } from "./LocalChat.ts";
 import { convertSubmission, EventMapper } from "./mapEvents.ts";
 import { NativeHistory } from "./NativeHistory.ts";
 
@@ -282,7 +283,24 @@ export class PiDurableRuntime implements RuntimePort {
         },
       });
       await root.configure({ extensions: installed }, BACKGROUND_CONTEXT);
+      const selected = await harness.snapshot(LocalChatSelection, BACKGROUND_CONTEXT);
+      const activeId = (selected?.conversationId || root.id) as ConversationId;
+      if (activeId !== root.id) {
+        const active = await harness.conversation(activeId, BACKGROUND_CONTEXT);
+        if (!active) throw new Error("local_chat_conversation_missing");
+        await active.configure(
+          {
+            extensions: installed,
+            model: spec.model,
+            ...(spec.thinkingLevel === undefined
+              ? {}
+              : { thinkingLevel: spec.thinkingLevel as ModelThinkingLevel }),
+          },
+          BACKGROUND_CONTEXT,
+        );
+      }
       handle = new PiRuntimeHandle({
+        activeId,
         spec,
         harness,
         rootId: root.id,
@@ -337,6 +355,7 @@ type HandleOptions = {
   readonly spec: RuntimeBotSpec;
   readonly harness: Harness;
   readonly rootId: ConversationId;
+  readonly activeId: ConversationId;
   readonly classifier: FailureClassifier;
   readonly options: PiRuntimeOptions;
   readonly registry: Registry;
@@ -392,9 +411,42 @@ class PiRuntimeHandle implements RuntimeHandle {
   }
 
   continueHistory(input: { head: string; requestId: string; text: string; trace?: string }) {
-    return this.#historyOperation(input.trace ?? this.#spec.trace, (onAdmission) =>
-      new NativeHistory(this.#harness, this.#rootId, this.#spec.id).continue(input, onAdmission),
-    );
+    return this.#historyOperation(input.trace ?? this.#spec.trace, async (onAdmission) => {
+      const result = await new NativeHistory(this.#harness, this.#rootId, this.#spec.id).continue(
+        input,
+        async () => {
+          onAdmission();
+          const selected = await this.#harness.snapshot(LocalChatSelection, BACKGROUND_CONTEXT);
+          const nativeId = (selected?.conversationId || this.#rootId) as ConversationId;
+          if (this.#activeId !== nativeId) {
+            this.#activeId = nativeId;
+            for (const state of this.#subscriptions.values()) {
+              await this.#acquire(state, input.trace ?? this.#spec.trace, {
+                deliverBaseline: (snapshot) =>
+                  this.#deliver(state, {
+                    type: "snapshot",
+                    trace: input.trace ?? this.#spec.trace,
+                    value: snapshot,
+                  }),
+              });
+            }
+          }
+        },
+      );
+      return result;
+    });
+  }
+
+  async #localConversation(id = this.#activeId) {
+    const conversation = await this.#harness.conversation(id, BACKGROUND_CONTEXT);
+    if (!conversation) throw new Error("local_chat_conversation_missing");
+    return conversation;
+  }
+
+  async #configureLocal(config: Parameters<Awaited<ReturnType<Harness["root"]>>["configure"]>[0]) {
+    await (await this.#harness.root(BACKGROUND_CONTEXT)).configure(config, BACKGROUND_CONTEXT);
+    if (this.#activeId !== this.#rootId)
+      await (await this.#localConversation()).configure(config, BACKGROUND_CONTEXT);
   }
 
   async #historyOperation<T>(
@@ -439,6 +491,7 @@ class PiRuntimeHandle implements RuntimeHandle {
   readonly #spec: RuntimeBotSpec;
   readonly #harness: Harness;
   readonly #rootId: ConversationId;
+  #activeId: ConversationId;
   readonly #classifier: FailureClassifier;
   readonly #options: PiRuntimeOptions;
   readonly #note: NoteToolHost | undefined;
@@ -480,6 +533,7 @@ class PiRuntimeHandle implements RuntimeHandle {
     this.#spec = options.spec;
     this.#harness = options.harness;
     this.#rootId = options.rootId;
+    this.#activeId = options.activeId;
     this.#classifier = options.classifier;
     this.#options = options.options;
     this.#registry = options.registry;
@@ -563,7 +617,19 @@ class PiRuntimeHandle implements RuntimeHandle {
       reqId: input.requestId,
     });
     try {
-      const root = await this.#harness.root(BACKGROUND_CONTEXT);
+      const activeId = this.#activeId;
+      const conversationId =
+        activeId === this.#rootId
+          ? this.#rootId
+          : await this.#harness.commit(async (tx) => {
+              const route = await tx.doc(LocalChatRequest, input.requestId, null);
+              if (!route.conversationId) {
+                const original = await tx.submissionByRequest(this.#rootId, input.requestId);
+                route.conversationId = original?.conversationId ?? activeId;
+              }
+              return route.conversationId as ConversationId;
+            }, BACKGROUND_CONTEXT);
+      const root = await this.#localConversation(conversationId);
       const admitted = await root.submit(
         {
           type: "input",
@@ -658,11 +724,21 @@ class PiRuntimeHandle implements RuntimeHandle {
   /** The durable index of a settled admission, for a key this process never admitted. */
   async #durableSubmission(requestId: string) {
     try {
-      const root = await this.#harness.root(BACKGROUND_CONTEXT);
-      return await root.commit(
-        (tx) => tx.submissionByRequest(this.#rootId, requestId),
-        BACKGROUND_CONTEXT,
-      );
+      const root = await this.#localConversation();
+      if (this.#activeId === this.#rootId)
+        return root.commit(
+          (tx) => tx.submissionByRequest(this.#rootId, requestId),
+          BACKGROUND_CONTEXT,
+        );
+      const route = await this.#harness.snapshot(LocalChatRequest, requestId, BACKGROUND_CONTEXT);
+      return root.commit(async (tx) => {
+        if (route?.conversationId)
+          return tx.submissionByRequest(route.conversationId as ConversationId, requestId);
+        return (
+          (await tx.submissionByRequest(this.#rootId, requestId)) ??
+          tx.submissionByRequest(this.#activeId, requestId)
+        );
+      }, BACKGROUND_CONTEXT);
     } catch (cause) {
       if (cause instanceof ClassifiedFailure) throw cause;
       const minted = this.#classifier.classify("submission", "internal", "runtime");
@@ -702,7 +778,7 @@ class PiRuntimeHandle implements RuntimeHandle {
   /** One entry, read by its own id: no paging, no window, so an old answer stays reachable. */
   async entryById(entryId: string): Promise<Message | undefined> {
     try {
-      const root = await this.#harness.root(BACKGROUND_CONTEXT);
+      const root = await this.#localConversation();
       const page = await root.entries(
         {
           order: "ascending",
@@ -732,7 +808,7 @@ class PiRuntimeHandle implements RuntimeHandle {
   }
 
   async #history(input: { beforeEntryId?: string; limit: number }): Promise<RuntimeHistory> {
-    const root = await this.#harness.root(BACKGROUND_CONTEXT);
+    const root = await this.#localConversation();
     const before = input.beforeEntryId;
     const collected: Message[] = [];
     let cursor: Cursor | undefined;
@@ -767,7 +843,7 @@ class PiRuntimeHandle implements RuntimeHandle {
     const log = this.#options.log;
     log.emit("info", "runtime", Events.abortStart, { trace, botId: this.#spec.id });
     try {
-      const root = await this.#harness.root(BACKGROUND_CONTEXT);
+      const root = await this.#localConversation();
       await root.abort(BACKGROUND_CONTEXT);
       log.emit("info", "runtime", Events.abortOk, {
         trace,
@@ -828,8 +904,7 @@ class PiRuntimeHandle implements RuntimeHandle {
     model: { provider: string; modelId: string },
     _trace: string,
   ): Promise<void> {
-    const root = await this.#harness.root(BACKGROUND_CONTEXT);
-    await root.configure({ model }, BACKGROUND_CONTEXT);
+    await this.#configureLocal({ model });
   }
 
   /** Runs one parked task again; the graph then reports it as live work. */
@@ -881,8 +956,7 @@ class PiRuntimeHandle implements RuntimeHandle {
   async refreshTools(trace: string): Promise<void> {
     try {
       const extensions = selectToolExtensions(this.#registry, this.#toolGroups);
-      const root = await this.#harness.root(BACKGROUND_CONTEXT);
-      await root.configure({ extensions }, BACKGROUND_CONTEXT);
+      await this.#configureLocal({ extensions });
       this.#options.log.emit("info", "runtime", Events.toolsRefreshOk, {
         trace,
         botId: this.#spec.id,
@@ -902,11 +976,7 @@ class PiRuntimeHandle implements RuntimeHandle {
 
   /** Settings changed the reasoning level: the conversation follows without a reopen. */
   async configureThinkingLevel(thinkingLevel: string, _trace: string): Promise<void> {
-    const root = await this.#harness.root(BACKGROUND_CONTEXT);
-    await root.configure(
-      { thinkingLevel: thinkingLevel as ModelThinkingLevel },
-      BACKGROUND_CONTEXT,
-    );
+    await this.#configureLocal({ thinkingLevel: thinkingLevel as ModelThinkingLevel });
   }
 
   async busy(): Promise<{ run: boolean; tasks: boolean }> {
@@ -1005,7 +1075,7 @@ class PiRuntimeHandle implements RuntimeHandle {
     // Read before the acquisition: a record set that is slightly older can only describe
     // work the snapshot still names, while one read afterwards can already have lost it.
     const active = await this.#activeRecords();
-    const stream = await watchEvents(this.#harness, this.#rootId, BACKGROUND_CONTEXT);
+    const stream = await watchEvents(this.#harness, this.#activeId, BACKGROUND_CONTEXT);
     let ready = false;
     const buffered: (readonly AgentEvent[])[] = [];
     stream.start(async (batch) => {

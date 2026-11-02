@@ -515,8 +515,11 @@ test("plain local open/submit/reopen create no optional-history origin or receip
     const db = new DatabaseSync(join(bench.spec().dir, "session.sqlite"), { readOnly: true });
     try {
       assert.equal(
-        db.prepare("SELECT count(*) AS count FROM documents WHERE kind LIKE 'bots.history%'").get()
-          ?.count,
+        db
+          .prepare(
+            "SELECT count(*) AS count FROM documents WHERE json_extract(kind, '$') LIKE 'bots.history%' OR json_extract(kind, '$') LIKE 'bots.chat%'",
+          )
+          .get()?.count,
         0,
       );
     } finally {
@@ -577,6 +580,130 @@ test("concurrent A/B continuations retain both branches and physically deduplica
   } finally {
     await left.close(trace, 5_000);
     await right.close(trace, 5_000);
+    await a.cleanup();
+    await b.cleanup();
+  }
+});
+
+test("explicit local continuation keeps ordinary sends and reopen on its chosen native conversation", async () => {
+  const a = await createBench({ settings: { compaction: { enabled: false } } });
+  const b = await createBench({ settings: { compaction: { enabled: false } } });
+  const left = await a.runtime.open(a.spec());
+  let right = await b.runtime.open(b.spec());
+  let originalCalls = 0;
+  try {
+    a.faux.setResponses([text("A original context")]);
+    await settled(left, "r_active_source", "A original question");
+    b.faux.setResponses([
+      () => {
+        originalCalls++;
+        return text("B old root answer");
+      },
+    ]);
+    await settled(right, "r_active_old_root", "B old root question");
+    const imported = await right.importHistory(await left.exportHistory());
+    b.faux.setResponses([
+      text("B selected branch answer"),
+      (context) => {
+        assert.match(JSON.stringify(context.messages), /A original context/);
+        assert.match(JSON.stringify(context.messages), /B selected branch answer/);
+        assert.doesNotMatch(JSON.stringify(context.messages), /B old root answer/);
+        return text("B second branch answer");
+      },
+    ]);
+    const branch = await right.continueHistory({
+      head: imported.head,
+      requestId: "r_active_fork",
+      text: "B selects this history",
+    });
+    assert.equal(branch.submission.status, "done");
+    await settled(right, "r_active_next", "B stays here");
+    await right.close(trace, 5000);
+    right = await b.runtime.open(b.spec());
+    b.faux.setResponses([
+      (context) => {
+        assert.match(JSON.stringify(context.messages), /B second branch answer/);
+        return text("B reopened branch answer");
+      },
+    ]);
+    await settled(right, "r_active_reopen", "B remains here after reopen");
+    assert.equal(
+      (await right.submission({ requestId: "r_active_old_root" }))?.status,
+      "done",
+      "lookup still finds a pre-selection root admission after reopen",
+    );
+    await right.submit({
+      requestId: "r_active_old_root",
+      text: "B old root question",
+      whenBusy: "followUp",
+      trace,
+    });
+    assert.equal(
+      originalCalls,
+      1,
+      "an old root request cannot execute on the newly selected conversation",
+    );
+    const history = await right.history({ limit: 50 });
+    assert.match(JSON.stringify(history.messages), /B reopened branch answer/);
+    assert.doesNotMatch(JSON.stringify(history.messages), /B old root answer/);
+  } finally {
+    await left.close(trace, 5000);
+    await right.close(trace, 5000);
+    await a.cleanup();
+    await b.cleanup();
+  }
+});
+
+test("continuation selection follows new intent instead of slow completion or an older retry", async () => {
+  const a = await createBench({ settings: { compaction: { enabled: false } } });
+  const b = await createBench({ settings: { compaction: { enabled: false } } });
+  const left = await a.runtime.open(a.spec());
+  const right = await b.runtime.open(b.spec());
+  let release!: () => void;
+  const held = new Promise<void>((done) => {
+    release = done;
+  });
+  let started!: () => void;
+  const entered = new Promise<void>((done) => {
+    started = done;
+  });
+  let actualInput = "";
+  try {
+    a.faux.setResponses([text("common intent ancestor")]);
+    await settled(left, "r_intent_source", "common question");
+    const imported = await right.importHistory(await left.exportHistory());
+    b.faux.setResponses([
+      async () => {
+        started();
+        await held;
+        return text("older slow continuation");
+      },
+      text("newer selected continuation"),
+      (context) => {
+        actualInput = JSON.stringify(
+          context.messages.filter((message) => message.role !== "system"),
+        );
+        return text("ordinary selected answer");
+      },
+    ]);
+    const older = { head: imported.head, requestId: "r_intent_old", text: "older branch prompt" };
+    const slow = right.continueHistory(older);
+    await entered;
+    await right.continueHistory({
+      head: imported.head,
+      requestId: "r_intent_new",
+      text: "newer branch prompt",
+    });
+    release();
+    await slow;
+    await right.continueHistory(older);
+    await settled(right, "r_intent_next", "ordinary input after both finish");
+    assert.match(actualInput, /newer selected continuation/);
+    assert.doesNotMatch(actualInput, /older slow continuation/);
+  } finally {
+    release();
+    await left.close(trace, 5000);
+    await right.close(trace, 5000);
     await a.cleanup();
     await b.cleanup();
   }

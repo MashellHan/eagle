@@ -36,6 +36,7 @@ import {
   pageHead,
   validateHistoryPage,
 } from "./historyIncremental.ts";
+import { LocalChatSelection } from "./LocalChat.ts";
 import { convertSubmission } from "./mapEvents.ts";
 
 type Provenance = { id: string; originId: string; conversationId: string };
@@ -1119,7 +1120,7 @@ export class NativeHistory {
       requestId: string;
       text: string;
     },
-    onAdmission: () => void,
+    onAdmission: () => void | Promise<void>,
   ): Promise<HistoryContinuation> {
     if (
       !/^[A-Za-z0-9_-]{1,128}$/.test(input.requestId) ||
@@ -1159,6 +1160,7 @@ export class NativeHistory {
       const branchId = `${state.originId}/c${fork.id}`;
       const branch = { nativeId: fork.id, conversationId: head.conversationId, botId: this.#botId };
       state.branches[branchId] = branch;
+      (await tx.doc(LocalChatSelection)).conversationId = fork.id;
       state.continuations[input.requestId] = {
         head: input.head,
         text: input.text,
@@ -1170,7 +1172,7 @@ export class NativeHistory {
     const conversation =
       (await this.#harness.conversation(selected.nativeId as ConversationId, ctx)) ??
       historyReject("history conversation missing");
-    onAdmission();
+    await onAdmission();
     const submission = await conversation.submit(
       { type: "input", content: input.text, requestId: input.requestId, whenBusy: "reject" },
       ctx,

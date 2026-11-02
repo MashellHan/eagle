@@ -663,3 +663,9 @@ excluded from every number here.
    (`pi.live`), §9.3–9.4 (views, agent events) and `CHANGELOG.md`.
 4. Update the fact table if any of F1–F21 changed; the pin bump commit names the
    facts that changed.
+
+An explicit new continuation selects its newly forked local native chat
+conversation. Ordinary sends, watches and reopen then use that local selection;
+request IDs remain bound to the conversation that first admitted them. Selection
+and routing are native chat state, independent of optional sync. Selection is recorded at local fork admission; older retries and slower completions do not reselect. Passive receive
+never changes selection, including while a local provider is in flight.

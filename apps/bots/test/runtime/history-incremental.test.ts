@@ -837,7 +837,10 @@ test("the bounded branch directory exports received and concurrent local continu
       }),
       branchB,
     );
-    assert.deepEqual((await right.history({ limit: 50 })).messages, []);
+    assert.match(
+      JSON.stringify((await right.history({ limit: 50 })).messages),
+      /B concurrent answer/,
+    );
   } finally {
     await left.close(trace, 5_000);
     await right.close(trace, 5_000);
