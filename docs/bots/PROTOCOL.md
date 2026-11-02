@@ -136,6 +136,8 @@ An idle native viewer with no draft or explicit picker choice may display that
 successor automatically, including a committed user before a slow model finishes;
 `usable` separately controls continuing. Display never mutates the local model
 context. Picker intent and local sends invalidate late automatic view reads.
+Unsettled sends protect only their owning Bot; switching Bots retains each
+original request/outbox for recovery without blocking an idle selected Bot.
 
 ```json
 // GatewaySettings: the key is never returned, only whether one is stored.

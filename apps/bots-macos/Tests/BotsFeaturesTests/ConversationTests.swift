@@ -94,6 +94,71 @@ final class ConversationTests: XCTestCase {
     }
   }
 
+  func testAnUnsettledSendProtectsItsBotWithoutBlockingHandoffAfterSwitchingBots() async throws {
+    let remote = FakeNativeHistory()
+    remote.assessedUsable = false
+    let socket = FakeConversation()
+    let outbox = OutboxStore(directory: outboxDirectory)
+    let model = ConversationViewModel(conversation: socket, outbox: outbox, history: remote)
+    defer { model.disconnect() }
+    let local = Message(
+      id: "local-tail", role: .assistant, state: .complete,
+      createdAt: "x", blocks: [.text("completed local answer")])
+    model.select(botId: "X")
+    socket.emit(.connection(.ready))
+    socket.emit(.snapshot(ConversationSnapshot(botId: "X", messages: [local])))
+    try await waitUntil { model.hasSnapshot }
+    model.draft = "unsettled X request"
+    model.send()
+    try await waitUntil { socket.sent.count == 1 && !model.isSending }
+    let original = try XCTUnwrap(socket.sent.first)
+    let oldEvents = try XCTUnwrap(socket.continuation)
+    XCTAssertEqual(original.botId, "X")
+    XCTAssertEqual(try outbox.entries(for: "X").map(\.requestId), [original.requestId])
+
+    model.select(botId: "Y")
+    socket.emit(.connection(.ready))
+    socket.emit(.snapshot(ConversationSnapshot(botId: "Y", messages: [local])))
+    try await waitUntil { model.hasSnapshot }
+    // X's old subscription cannot settle the request after its consumer was canceled.
+    oldEvents.yield(
+      .submission(Submission(id: "s_X", requestId: original.requestId, status: .done)))
+    remote.extendsCurrent = true
+    await model.refreshHistory()
+    XCTAssertEqual(
+      model.displayState.messages.map(\.text), ["received committed user"],
+      "an unresolved request on X cannot hide Y's proven successor")
+    XCTAssertEqual(model.state.messages, [local])
+    XCTAssertEqual(try outbox.entries(for: "X").map(\.requestId), [original.requestId])
+
+    model.draft = "unsettled Y request"
+    model.send()
+    try await waitUntil { socket.sent.count == 2 && !model.isSending }
+    let yRequest = try XCTUnwrap(socket.sent.last)
+    XCTAssertEqual(yRequest.botId, "Y")
+    await model.refreshHistory()
+    XCTAssertNil(model.historyView, "Y's own unsettled send still protects its local context")
+    XCTAssertTrue(remote.continued.isEmpty)
+
+    model.select(botId: "X")
+    socket.emit(.connection(.ready))
+    socket.emit(.snapshot(ConversationSnapshot(botId: "X", messages: [local])))
+    try await waitUntil { socket.sent.count == 3 && !model.isSending }
+    XCTAssertEqual(socket.sent.last?.botId, "X")
+    XCTAssertEqual(socket.sent.last?.requestId, original.requestId)
+    XCTAssertEqual(socket.sent.last?.text, "unsettled X request")
+    await model.refreshHistory()
+    XCTAssertNil(model.historyView, "returning to X restores its unresolved request protection")
+    XCTAssertEqual(try outbox.entries(for: "X").map(\.requestId), [original.requestId])
+    socket.emit(.submission(Submission(id: "s_X", requestId: original.requestId, status: .done)))
+    try await waitUntil { (try? outbox.entries(for: "X").isEmpty) == true }
+    await model.refreshHistory()
+    XCTAssertEqual(
+      model.displayState.messages.map(\.text), ["received committed user"],
+      "Y's unresolved send must not block X after X settles")
+    XCTAssertEqual(try outbox.entries(for: "Y").map(\.requestId), [yRequest.requestId])
+  }
+
   func testALateSequentialViewCannotOverrideANewDraftOrLocalSend() async throws {
     for intent in ["draft", "send", "picker"] {
       let remote = FakeNativeHistory()
@@ -737,6 +802,7 @@ final class FakeConversation: ConversationPort {
   struct Sent {
     let text: String
     let requestId: String
+    let botId: String
   }
 
   var sent: [Sent] = []
@@ -745,7 +811,7 @@ final class FakeConversation: ConversationPort {
   var failRecover = false
   var aborted = 0
   var historyRequests: [String] = []
-  private var continuation: AsyncStream<ConversationEvent>.Continuation?
+  private(set) var continuation: AsyncStream<ConversationEvent>.Continuation?
 
   var busyModes: [BusyMode] = []
 
@@ -765,7 +831,7 @@ final class FakeConversation: ConversationPort {
     context: CommandContext,
     botId: String
   ) async throws {
-    sent.append(Sent(text: text, requestId: context.requestId ?? ""))
+    sent.append(Sent(text: text, requestId: context.requestId ?? "", botId: botId))
     busyModes.append(whenBusy)
     lastBotId = botId
   }

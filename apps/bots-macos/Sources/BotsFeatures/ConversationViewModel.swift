@@ -53,7 +53,7 @@ public final class ConversationViewModel: ObservableObject {
   /// their outbox entry could not be removed (the user decides whether to retry).
   private var refused: Set<String> = []
   /// Sends the user asked for that have not been confirmed yet.
-  private var inFlight: [String: String] = [:]
+  private var inFlight: [String: (botId: String, text: String)] = [:]
   /// The absolute catalog a `bots` frame carries, for the window's sidebar.
   public var onCatalog: ((BotCatalog) -> Void)?
 
@@ -163,7 +163,8 @@ public final class ConversationViewModel: ObservableObject {
 
   private var canFollowReceived: Bool {
     !historyPickerWasUsed && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      && !state.running && !isSending && inFlight.isEmpty
+      && !state.running && !isSending
+      && !inFlight.values.contains { $0.botId == selectedBotId }
       && !continuationRequests.values.contains(selectedBotId ?? "")
   }
 
@@ -455,7 +456,7 @@ public final class ConversationViewModel: ObservableObject {
         to: state
       )
     }
-    inFlight[requestId] = text
+    inFlight[requestId] = (botId: botId, text: text)
     let context = CommandContext.send(requestId)
     Task { [weak self] in
       guard let self else { return }
@@ -626,7 +627,7 @@ public final class ConversationViewModel: ObservableObject {
         // The daemon refused before admission: drop the bubble and the entry, and put the
         // text back so the user can fix or retry it (PROTOCOL.md, client duties 3).
         if let requestId {
-          let text = inFlight.removeValue(forKey: requestId)
+          let text = inFlight.removeValue(forKey: requestId)?.text
           refused.insert(requestId)
           do {
             try outbox.refuse(requestId: requestId)
