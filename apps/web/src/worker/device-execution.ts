@@ -77,10 +77,68 @@ function historyFailure(
   phase: string,
   requestId: unknown,
   error: unknown,
-): string | undefined {
+): string {
   let category = "unknown";
-  if (error instanceof z.ZodError || error instanceof SyntaxError)
-    category = "validation";
+  let detail = "";
+  if (error instanceof z.ZodError) {
+    category = "zod";
+    const issue = error.issues[0];
+    const code = [
+      "invalid_type",
+      "too_big",
+      "too_small",
+      "invalid_format",
+      "not_multiple_of",
+      "unrecognized_keys",
+      "invalid_union",
+      "invalid_key",
+      "invalid_element",
+      "invalid_value",
+      "custom",
+    ].includes(issue?.code)
+      ? issue.code
+      : "unknown";
+    const path = issue?.path ?? [];
+    const [root, field] = path;
+    const knownPath =
+      (path.length === 1 &&
+        typeof root === "string" &&
+        ["type", "requestId", "targetDeviceId", "packet", "proof"].includes(
+          root,
+        )) ||
+      (path.length === 2 &&
+        typeof field === "string" &&
+        ((root === "packet" &&
+          [
+            "version",
+            "purpose",
+            "requestId",
+            "groupId",
+            "sourceDeviceId",
+            "targetDeviceId",
+            "sourceEpoch",
+            "targetEpoch",
+            "sourceKey",
+            "targetKey",
+            "nonce",
+            "body",
+          ].includes(field)) ||
+          (root === "proof" &&
+            [
+              "purpose",
+              "serviceOrigin",
+              "deviceId",
+              "groupId",
+              "membershipEpoch",
+              "ephemeralKey",
+              "expiresAt",
+              "signature",
+            ].includes(field))));
+    const fieldPath = knownPath
+      ? path.join("_").replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
+      : "unknown";
+    detail = `_${code}_${fieldPath}`;
+  } else if (error instanceof SyntaxError) category = "syntax";
   else if (error instanceof Error) {
     const message = error.message.slice(0, 512);
     if (
@@ -89,6 +147,18 @@ function historyFailure(
       )
     )
       category = "platform_request_limit";
+    else if (
+      /on behalf of a different request|I\/O objects?[\s\S]{0,160}different request|perform I\/O outside|disallowed operation[\s\S]{0,80}global scope/i.test(
+        message,
+      )
+    )
+      category = "io_context";
+    else if (
+      /maximum call stack size exceeded|(?:RPC|stack).{0,60}depth.{0,60}(?:limit|exceed)|too many recursive RPC calls|CPU(?: time)? limit|exceeded.{0,30}CPU/i.test(
+        message,
+      )
+    )
+      category = "runtime_limit";
     else if (/overloaded|too many requests queued/i.test(message))
       category = "overloaded";
     else if (
@@ -114,9 +184,10 @@ function historyFailure(
       ...(correlation.success ? { requestId: correlation.data } : {}),
     }),
   );
-  return category === "validation"
-    ? undefined
-    : `history_transport_${phase.replaceAll(".", "_")}_${category}`;
+  const stage = phase.replaceAll(".", "_");
+  if (category === "zod") return `history_zod_${stage}${detail}`;
+  if (category === "syntax") return `history_syntax_${stage}`;
+  return `history_transport_${stage}_${category}`;
 }
 
 class DeviceAuthenticationError extends Error {}
@@ -598,7 +669,7 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
               this.send(socket, {
                 type: "history.error",
                 requestId: requestId.data.requestId,
-                error: code ?? "history_invalid_frame",
+                error: code,
               });
             })
             .finally(() => {

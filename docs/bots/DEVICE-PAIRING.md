@@ -28,15 +28,19 @@ Worker history exceptions emit `history_failed` with the Device Execution layer,
 fixed processing phase, allowlisted exception category and validated frame request
 ID for short-tail correlation, including peer/delivery RPCs. Diagnostics never emit
 raw exception messages, tokens, proofs, packet bodies or history content. Existing
-explicit authorization/validation/queue errors, `history_delivery_failed`, current
-authorization and queue/frame limits remain unchanged. Only non-validation
-exceptions caught by the outer history frame handler return
-`history_transport_<phase>_<category>` in the existing `history.error.error`;
-phase dots become underscores, categories use the same fixed allowlist (including
-`unknown`), and codes contain only lowercase letters/underscores within 80
-characters. True frame validation still returns `history_invalid_frame`. No
-Agent retry/fallback semantics change; a reported limit category identifies an
-exception class, not a proven quota cause.
+explicit authorization/queue errors, `history_delivery_failed`, current
+authorization and queue/frame limits remain unchanged. Exceptions caught by the
+outer history frame handler return safe codes in the existing `history.error.error`:
+`history_transport_<phase>_<category>`, `history_syntax_<phase>`, or
+`history_zod_<phase>_<first_issue_code>_<field_path>`. Phase dots and field camel case
+become underscores; codes contain only lowercase letters/underscores within 80
+characters. Zod code/path are allowlisted from the first issue only (frame fields
+and packet/proof fields); unsupported codes/paths become `unknown`. Issue messages,
+inputs and unrecognized-key lists never leave the catch. Fixed transport categories
+include `io_context` (cross-request/global-scope I/O) and `runtime_limit` (RPC/stack
+depth or CPU limits), alongside the existing allowlist and `unknown`. These codes
+remain nontransient; no Agent retry/503/fallback semantics change. A reported
+category identifies an exception class, not a proven online cause.
 
 - 设备属于 Eagle 的共享设备群。一个 App 配置一次，当前及以后创建的 Bot 都可使用；
   不再为每个 Bot 复制设备名单、凭据或五项权限，也不要求另开远程工具组。

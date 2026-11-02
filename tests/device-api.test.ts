@@ -46,7 +46,17 @@ before(async () => {
   writeFileSync(
     entry,
     `import worker,{DeviceRegistry as Registry,DeviceExecution as Execution} from "../../apps/web/src/worker/device-service.ts";
+import { z } from "zod";
 export class DeviceExecution extends Execution {
+ async history(socket,input,stage){
+  if(input.type==='history.test_zod'){
+   stage('frame.configure_verify');throw new z.ZodError([
+    {code:'private_code',path:['private_path'],message:'private_message',input:'private_input',keys:['private_key']},
+    {code:'invalid_type',path:['packet','nonce'],message:'second issue must not be used'}
+   ]);
+  }
+  return super.history(socket,input,stage);
+ }
  async receiveHistory(token,source,input){
   if(input===null&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_history_busy'").toArray().length){
    this.ctx.storage.sql.exec("DROP TABLE test_history_busy");return 'history_busy';
@@ -63,7 +73,7 @@ export class DeviceRegistry extends Registry {
  async check(token,targetId){const result=await super.check(token,targetId);
   if(result.ok&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_history_exception'").toArray().length){
    const fault=this.ctx.storage.sql.exec("SELECT deviceId,message FROM test_history_exception WHERE deviceId=?",result.source.deviceId).toArray()[0];
-   if(fault){this.ctx.storage.sql.exec("DELETE FROM test_history_exception WHERE deviceId=?",result.source.deviceId);throw new Error(fault.message+' '+token);}
+   if(fault){this.ctx.storage.sql.exec("DELETE FROM test_history_exception WHERE deviceId=?",result.source.deviceId);throw new (fault.message.startsWith('SyntaxError:')?SyntaxError:Error)(fault.message+' '+token);}
   }
   if(result.ok&&targetId&&result.source.deviceId!==targetId&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_revoke_after_check'").toArray().length){
    const row=this.ctx.storage.sql.exec("SELECT deviceId FROM test_revoke_after_check WHERE deviceId=?",result.source.deviceId).toArray()[0];
@@ -1470,6 +1480,15 @@ test("history transport exceptions return safe phase/category codes without chan
         "Too many subrequests. diagnostic-private-marker",
       ],
       ["unknown", "diagnostic-private-marker unrecognized runtime failure"],
+      ["syntax", "SyntaxError: diagnostic-private-marker runtime failure"],
+      [
+        "io_context",
+        "Cannot perform I/O on behalf of a different request. diagnostic-private-marker",
+      ],
+      [
+        "runtime_limit",
+        "Maximum call stack size exceeded. diagnostic-private-marker",
+      ],
     ])
       await t.test(category, async () => {
         await registry.exec(
@@ -1486,7 +1505,10 @@ test("history transport exceptions return safe phase/category codes without chan
         assert.deepEqual(response, {
           type: "history.error",
           requestId,
-          error: `history_transport_frame_source_check_${category}`,
+          error:
+            category === "syntax"
+              ? "history_syntax_frame_source_check"
+              : `history_transport_frame_source_check_${category}`,
         });
         HistoryServerFrame.parse(response);
         assert.match(String(response.error), /^[a-z_]{1,80}$/);
@@ -1519,32 +1541,86 @@ test("history transport exceptions return safe phase/category codes without chan
           "failure releases the bounded history queue for the next frame",
         );
       });
-    const invalidId = randomUUID();
-    assert.deepEqual(
-      await exchange({
-        type: "history.configure",
-        requestId: invalidId,
-        proof: null,
-        unexpected: "diagnostic-private-marker",
-      }),
-      {
-        type: "history.error",
-        requestId: invalidId,
-        error: "history_invalid_frame",
-      },
-      "real frame validation retains its established error",
-    );
-    assert.equal(
-      (
-        await exchange({
+    const packet = {
+      version: 1,
+      groupId: randomUUID(),
+      sourceDeviceId: owner.deviceId,
+      targetDeviceId: owner.deviceId,
+      sourceEpoch: 1,
+      targetEpoch: 1,
+      sourceKey: "0".repeat(64),
+      targetKey: "0".repeat(64),
+      nonce: "A".repeat(16),
+      body: "A",
+    };
+    for (const [name, value, code] of [
+      [
+        "type",
+        { type: "history.unsupported-private-type" },
+        "history_zod_frame_parse_invalid_union_type",
+      ],
+      [
+        "nonce",
+        {
+          type: "history.send",
+          targetDeviceId: owner.deviceId,
+          packet: { ...packet, nonce: "short" },
+        },
+        "history_zod_frame_parse_too_small_packet_nonce",
+      ],
+      [
+        "body",
+        {
+          type: "history.send",
+          targetDeviceId: owner.deviceId,
+          packet: { ...packet, body: "!private-body" },
+        },
+        "history_zod_frame_parse_invalid_format_packet_body",
+      ],
+      [
+        "proof",
+        { type: "history.configure", proof: "private-proof" },
+        "history_zod_frame_parse_invalid_type_proof",
+      ],
+      [
+        "unrecognized keys",
+        {
           type: "history.configure",
-          requestId: randomUUID(),
           proof: null,
-        })
-      ).type,
-      "history.configured",
-      "validation failure also releases the bounded queue",
-    );
+          "private-unrecognized-key": "private-value",
+        },
+        "history_zod_frame_parse_unrecognized_keys_unknown",
+      ],
+      [
+        "unknown first issue code/path",
+        { type: "history.test_zod" },
+        "history_zod_frame_configure_verify_unknown_unknown",
+      ],
+    ] as const)
+      await t.test(name, async () => {
+        const requestId = randomUUID();
+        const input = { ...value, requestId };
+        if ("packet" in input) Object.assign(input.packet, { requestId });
+        const response = await exchange(input);
+        assert.deepEqual(response, {
+          type: "history.error",
+          requestId,
+          error: code,
+        });
+        HistoryServerFrame.parse(response);
+        assert.match(String(response.error), /^[a-z_]{1,80}$/);
+        assert.equal(
+          (
+            await exchange({
+              type: "history.configure",
+              requestId: randomUUID(),
+              proof: null,
+            })
+          ).type,
+          "history.configured",
+          "validation failures also release the bounded queue",
+        );
+      });
   } finally {
     source.terminate();
   }

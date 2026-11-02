@@ -3152,3 +3152,32 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   Root owns switches, devices, deployment and WSS/tail. This doc-only commit starts
   no gate/test/service/Swift/App; source and SwiftPM remain released and frozen
   pending a concrete classification. D1, collection and dashboard: unchanged/N/A.
+
+### 22:15 observed follow-up: validation/runtime classification
+
+- The 22:05 pending status above remains the record at that time. Root subsequently
+  reported `ae063b6a` root 282/282, browser 191 pass + 11 existing platform skips,
+  review and dry-run passing, and deployed existing personal Worker `bc7bbfa2` with
+  exact public live verification. A's native reconnect established fresh 44506;
+  its first 33 receipts still contained 6 `invalid_frame` and no new transport code.
+- A later window after 22:07:58 contains 250 receipts: 10
+  `history_transport_frame_source_check_unknown`, 10
+  `history_transport_frame_peer_rpc_unknown` and 56 `invalid_frame`. Receipts:
+  `physical-888578a/A/ae063b6-cloud-reconnect.json` and
+  `physical-888578a/ae063b6-after-both-reconnect.json` under `.local/e2e-readiness/`.
+  B's fresh 26454 connection is ready. Actual causes remain unknown; these phase
+  observations do not establish malformed App frames or a platform quota cause.
+- This authorized follow-up subdivides the prior nontransient validation error:
+  fixed Zod phase/first-issue code/allowlisted path, separate runtime SyntaxError,
+  and fixed I/O-context/runtime-limit classes. Unknown issue codes/paths stay
+  `unknown`; raw messages, inputs and keys are excluded. Explicit auth/limits,
+  inner `history_delivery_failed`, retry/503/fallback and RPC work stay unchanged.
+- Real API red 27/37 → green 37/37 covers malformed type/nonce/body/proof, unknown
+  first issue, non-parse SyntaxError, I/O-context and stack injections, plus next
+  frame and existing delivery/denial controls. Types, affected lint and local
+  Worker dry-run pass; `.local/history-worker-validation-*.log` retains evidence.
+  These injected classes are not physical root-cause findings. No source full
+  gate, live deployment, device/service/Swift/App operation was performed here.
+  Root owns the next deployment and observation; data is preserved, prior latency
+  failures remain, and DO/TS two-way App visibility within 5s is still pending.
+  D1, collection and dashboard: unchanged/N/A; source SwiftPM remains released.
