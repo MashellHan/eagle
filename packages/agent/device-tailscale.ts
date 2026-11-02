@@ -15,6 +15,7 @@ export async function readTailscaleAddress(
   run = async (file: string, args: string[]) =>
     (
       await promisify(execFile)(file, args, {
+        env: { ...process.env, TAILSCALE_BE_CLI: "1" },
         timeout: 1000,
         maxBuffer: 256 * 1024,
       })

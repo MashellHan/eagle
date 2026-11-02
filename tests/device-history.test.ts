@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { ServerResponse } from "node:http";
 import { type ListenOptions, Server } from "node:net";
 import { tmpdir } from "node:os";
@@ -132,6 +133,61 @@ test("installed Tailscale uses the macOS App CLI when PATH is absent and accepts
       ),
       undefined,
     );
+  }
+});
+
+test("Tailscale discovery forces CLI mode in a real helper child without TERM", () => {
+  const root = mkdtempSync(join(tmpdir(), "history-tailscale-env-"));
+  try {
+    const observed = join(root, "observed.json");
+    writeFileSync(
+      join(root, "tailscale"),
+      `#!${process.execPath}
+const { writeFileSync } = require("node:fs");
+writeFileSync(${JSON.stringify(observed)}, JSON.stringify({
+  args: process.argv.slice(2),
+  termPresent: Object.hasOwn(process.env, "TERM"),
+  cli: process.env.TAILSCALE_BE_CLI,
+}));
+if (process.env.TAILSCALE_BE_CLI === "1") {
+  process.stdout.write(JSON.stringify({ BackendState: "Running", Self: { TailscaleIPs: ["100.75.1.2"] } }));
+} else {
+  setInterval(() => {}, 1000);
+}
+`,
+      { mode: 0o700 },
+    );
+    const probe = join(root, "probe.mjs");
+    writeFileSync(
+      probe,
+      `import { readTailscaleAddress } from ${JSON.stringify(new URL("../packages/agent/device-tailscale.ts", import.meta.url).href)};
+console.log(JSON.stringify({ address: await readTailscaleAddress() }));
+`,
+    );
+    const environment = {
+      ...process.env,
+      PATH: root,
+      HOME: root,
+      TMPDIR: root,
+    };
+    for (const key of Object.keys(environment)) {
+      if (!["PATH", "HOME", "TMPDIR"].includes(key))
+        Reflect.deleteProperty(environment, key);
+    }
+    const output = execFileSync(process.execPath, [probe], {
+      env: environment,
+      timeout: 5000,
+      maxBuffer: 256 * 1024,
+      encoding: "utf8",
+    });
+    assert.equal(JSON.parse(output).address, "100.75.1.2");
+    assert.deepEqual(JSON.parse(readFileSync(observed, "utf8")), {
+      args: ["status", "--json"],
+      termPresent: false,
+      cli: "1",
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

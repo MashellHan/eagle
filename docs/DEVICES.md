@@ -124,6 +124,9 @@ Starting/reconnecting an enabled channel immediately discovers and notifies peer
 
 Device Service may prefer installed, logged-in Tailscale, detected with bounded
 `status --json` through PATH or `/Applications/Tailscale.app/Contents/MacOS/Tailscale`.
+Only that child process forces `TAILSCALE_BE_CLI=1`, so the macOS binary stays in
+CLI mode without TERM in the signed helper environment; its existing 1s/256KiB
+bounds and the helper environment itself remain unchanged.
 Only numeric tailnet addresses and ephemeral ports are exchanged as authenticated,
 encrypted service control packets; ordinary Bots payloads cannot set endpoints.
 Each direct delivery checks current enabled group peers and uses the same cipher,
