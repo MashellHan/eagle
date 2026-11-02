@@ -319,6 +319,7 @@ test("desktop machine and workspace use the same generous panel width", async ({
     const resourceWidth = (await resources.boundingBox())?.width ?? 0;
     await page.screenshot({
       path: test.info().outputPath(`machine-${width}.png`),
+      scale: "css",
     });
     expect(resourceWidth).toBeCloseTo(expected, 0);
     await page
@@ -334,6 +335,7 @@ test("desktop machine and workspace use the same generous panel width", async ({
     });
     await page.screenshot({
       path: test.info().outputPath(`workspace-${width}.png`),
+      scale: "css",
     });
   }
 });
