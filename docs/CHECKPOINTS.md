@@ -3318,3 +3318,34 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   device operation occurs here, and no complete root/Bots gate is repeated.
   DO/TS two-way App visibility within 5s remains pending. Root/D1/collection/
   dashboard: unchanged/N/A; source SwiftPM remains released.
+
+
+## 2026-11-03 00:03 optional history: two directed recovery fixes
+
+- Root reports fixed `f472f5c` complete Bots ordinary/coverage each 811/811 green.
+  Physical samples now pass 5s individually: A→B 4.071618125s, B→A 3.952585125s;
+  slow-provider A→B 3.969998875s is visible before a new model T/input appears,
+  followed by normal recovery. Its 32-record reply uses Tailscale, followed by a
+  1-record DO reply. B continuation across the 32-record page boundary is
+  4.310537709s. Samples include `f472f5c-slow-A-to-B-2354` and
+  `f472f5c-B-to-A-after-slow-2355` under `physical-888578a`.
+- These are Root's f472 observations, not this candidate's gate or complete
+  two-route acceptance. Prior aa1 A→B 11.89584s/B→A 11.463256917s failures remain.
+  New-Bot acceptance, complete App installation and final push are still pending;
+  the overall task is not complete. Root owns all physical operations/data.
+- Only the two directed f472 P2s change here. A new hint for the same in-flight
+  selection renews priority while retaining its generator, imported cursor and
+  old work. Successful delivery to an old strict-codec peer gets its needed
+  coarse broadcast despite another peer's failure; failed IDs/catalog keep the
+  original retry. Worker/Agent/Swift, auth, concurrency and deadlines are unchanged.
+- Existing IPC fixture red 16/18 → green 18/18 (7.13s) proves old snapshot →
+  cursor 1/new entry before c2, preserves both records/old pages, and actually
+  rejects additive hints with the old strict codec while another peer stays
+  unavailable. Coarse delivery and identical retained-ID/catalog retry both pass.
+  Evidence: `.local/history-f472-recovery-red-complete.log` and `-green.log`;
+  preliminary `-red.log` isolates the first failure and is retained. Bots types
+  and affected lint pass. No full root/Bots/process/native/Swift gate was repeated;
+  independent closure of these two fixes is pending Lead/Reviewer.
+- No device, service, cloud, deployment or installation operation occurred here.
+  All histories/backlog remain; root/D1/collection/dashboard are unchanged/N/A.
+  Source SwiftPM remains released and tracked source freezes after this commit.

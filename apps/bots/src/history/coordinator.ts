@@ -241,8 +241,10 @@ export class HistoryCoordinator {
   #queueHot(peer: string, botId?: string, selection?: string) {
     const key = `${peer}/${botId ?? "catalog"}${selection ? `/${selection}` : ""}`;
     const work = this.#hot.get(key);
-    if (work) work.again = true;
-    else
+    if (work) {
+      work.again = true;
+      if (selection) work.started = false;
+    } else
       this.#hot.set(key, {
         peer,
         botId,
@@ -315,7 +317,8 @@ export class HistoryCoordinator {
       this.#catalogDirty ||= catalog;
     }
     this.#notifying = false;
-    if (!failed && coarse) void this.#channel?.call("history.changed").catch(() => {});
+    if (coarse && this.#ready && !this.#closed)
+      void this.#channel?.call("history.changed").catch(() => {});
     this.#scheduleNotice(failed ? 1000 : 40);
   }
 
@@ -546,6 +549,9 @@ export class HistoryCoordinator {
       ) {
         const peer = this.#fresh.values().next().value;
         const hot =
+          [...this.#hot.entries()].find(
+            ([, work]) => work.selection !== undefined && !work.started,
+          ) ??
           [...this.#hot.entries()].find(([, work]) => !work.started) ??
           this.#hot.entries().next().value;
         const drainWork = [...this.#drains.entries()].find(

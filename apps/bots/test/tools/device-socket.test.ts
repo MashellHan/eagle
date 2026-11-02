@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import WebSocket from "ws";
+import { z } from "zod";
 import { readConfig } from "../../src/config.ts";
 import type { BotDirectory } from "../../src/core/BotDirectory.ts";
 import type { BotRegistry } from "../../src/core/BotRegistry.ts";
@@ -926,6 +927,243 @@ test("a current-branch hint preempts an already running hot scan of the same Bot
     );
   } finally {
     for (const release of releases) release();
+    await coordinator.close();
+    await bench.close();
+  }
+});
+
+test("a renewed hint for the same in-flight selection keeps its imported cursor ahead of old hot pages", async () => {
+  const peer = randomUUID();
+  const origin = randomUUID();
+  const botId = "b_renewed_selection";
+  const old = [`${origin}/c1`, `${origin}/c2`];
+  const current = `${origin}/c156`;
+  const reads: { selection: string | undefined; after: string | undefined }[] = [];
+  const imported = new Set<string>();
+  const releases: (() => void)[] = [];
+  let releaseCurrent: (() => void) | undefined;
+  let attached: Socket | undefined;
+  let newer = false;
+  const registry = {
+    summaries: () => [{ id: botId }],
+    handleOf: () => undefined,
+    observeHandles: () => () => {},
+    importHistoryCatalog: async () => {},
+    touch: () => true,
+    open: async () => ({
+      importHistoryPage: async (input: unknown) => {
+        for (const record of validateHistoryPage(input).records) imported.add(record.entry.id);
+        return { pending: false };
+      },
+    }),
+    release: () => {},
+  } as unknown as BotRegistry;
+  const directory = { observeChanges: () => () => {} } as unknown as BotDirectory;
+  const bench = await fixture((socket, frame) => {
+    if (frame.method === "history.attach") attached = socket;
+    socket.write(
+      `${JSON.stringify({ requestId: frame.requestId, result: frame.method === "history.peers" ? [{ deviceId: peer }] : { enabled: true, ready: true } })}\n`,
+    );
+    if (frame.method !== "history.send") return;
+    const { payload } = frame.params as {
+      payload: {
+        type: string;
+        id: string;
+        request: { method: string; input?: { selection?: string; after?: string } };
+      };
+    };
+    if (payload.type !== "pull") return;
+    const query = payload.request;
+    const selection = query.input?.selection;
+    if (query.method === "page") reads.push({ selection, after: query.input?.after });
+    const bound = selection === current ? (newer ? 2 : 1) : 0;
+    const records = Array.from({ length: bound }, (_, i) => ({
+      previous: i ? `${origin}/e${i}` : null,
+      entry: {
+        id: `${origin}/e${i + 1}`,
+        originId: origin,
+        conversationId: current,
+        kind: "model",
+        model: [{ role: "user", content: `committed ${i + 1}`, timestamp: i }],
+      },
+    })).slice(Number(query.input?.after ?? 0));
+    const result =
+      query.method === "catalog"
+        ? { bots: [], hasMore: false }
+        : query.method === "branches"
+          ? {
+              branches: old.map((branchId) => ({
+                branchId,
+                conversationId: branchId,
+                selection: branchId,
+              })),
+              cursor: null,
+              hasMore: false,
+            }
+          : {
+              version: 1,
+              engine: "pi-durable@1.4.0",
+              botId,
+              branchId: selection,
+              conversationId: selection,
+              tip: bound ? `${origin}/e${bound}` : null,
+              head: pageHead(selection as string, bound ? `${origin}/e${bound}` : null),
+              cursor: bound ? String(bound) : null,
+              snapshot: bound ? String(bound) : null,
+              hasMore: false,
+              records,
+            };
+    const reply = () => {
+      socket.write(
+        `${JSON.stringify({ type: "history.packet", sourceDeviceId: peer, payload: { type: "reply", id: payload.id, result, failed: false } })}\n`,
+      );
+    };
+    if (selection === old[0] && releases.length < 2) releases.push(reply);
+    else if (selection === current && !releaseCurrent) releaseCurrent = reply;
+    else reply();
+  });
+  const coordinator = new HistoryCoordinator(bench.path, registry, directory, () => {});
+  const hint = (selection?: string) =>
+    attached?.write(
+      `${JSON.stringify({ type: "history.packet", sourceDeviceId: peer, payload: { type: "changed", botIds: [botId], catalog: false, ...(selection ? { branches: [{ botId, selection }] } : {}) } })}\n`,
+    );
+  try {
+    await waitFor(() => releases.length === 1, "coarse root page held");
+    hint();
+    releases[0]?.();
+    await waitFor(() => releases.length === 2, "old hot root page held");
+    hint(current);
+    releases[1]?.();
+    await waitFor(
+      () => releaseCurrent !== undefined,
+      "current selection's old immutable snapshot is in flight",
+    );
+    newer = true;
+    const before = reads.length;
+    hint(current);
+    releaseCurrent?.();
+    await waitFor(() => imported.has(`${origin}/e2`), "new commit from the same selection imports");
+    assert.deepEqual(
+      reads[before],
+      { selection: current, after: "1" },
+      "the renewed current selection must resume from the imported old snapshot before old hot pages",
+    );
+    assert.deepEqual([...imported].sort(), [`${origin}/e1`, `${origin}/e2`]);
+    await waitFor(
+      () => old.every((selection) => reads.some((read) => read.selection === selection)),
+      "preempted old pages remain queued",
+    );
+  } finally {
+    for (const release of releases) release();
+    releaseCurrent?.();
+    await coordinator.close();
+    await bench.close();
+  }
+});
+
+test("an offline peer cannot suppress a successful old peer's coarse notice or erase retained hints", async () => {
+  const oldPeer = randomUUID();
+  const offlinePeer = randomUUID();
+  const botId = "b_retained_compatibility";
+  let announce: (() => void) | undefined;
+  let changed: (() => void) | undefined;
+  let armed = false;
+  let coarse = 0;
+  let startupFailed = false;
+  let legacyRejected = 0;
+  const legacyChanged = z.strictObject({
+    type: z.literal("changed"),
+    botIds: z.array(z.string()).max(32),
+    catalog: z.boolean(),
+  });
+  const sent: { peer: string; payload: { botIds: string[]; catalog: boolean } }[] = [];
+  const registry = {
+    summaries: () => [{ id: botId }],
+    handleOf: () => ({
+      observeHistoryChanges: (listener: () => void) => {
+        changed = listener;
+        return () => {};
+      },
+    }),
+    observeHandles: (listener: () => void) => {
+      announce = listener;
+      return () => {};
+    },
+    importHistoryCatalog: async () => {},
+    touch: () => true,
+    open: async () => ({ currentHistoryBranch: async () => `${oldPeer}/c1` }),
+    release: () => {},
+  } as unknown as BotRegistry;
+  let catalogChanged: (() => void) | undefined;
+  const directory = {
+    observeChanges: (listener: () => void) => {
+      catalogChanged = listener;
+      return () => {};
+    },
+  } as unknown as BotDirectory;
+  const bench = await fixture((socket, frame) => {
+    if (frame.method === "history.changed" && armed) coarse++;
+    let error: string | undefined;
+    if (frame.method === "history.send") {
+      const params = frame.params as {
+        targetDeviceId: string;
+        payload: {
+          type: string;
+          id: string;
+          botIds: string[];
+          catalog: boolean;
+          branches?: unknown;
+          request?: { method: string };
+        };
+      };
+      if (params.payload.type === "changed") {
+        if (armed) sent.push({ peer: params.targetDeviceId, payload: params.payload });
+        if (params.targetDeviceId === oldPeer && !legacyChanged.safeParse(params.payload).success)
+          legacyRejected++;
+        if (params.targetDeviceId === offlinePeer) {
+          startupFailed = true;
+          error = "history_peer_unavailable";
+        }
+      } else if (params.payload.type === "pull")
+        socket.write(
+          `${JSON.stringify({ type: "history.packet", sourceDeviceId: params.targetDeviceId, payload: { type: "reply", id: params.payload.id, failed: false, result: params.payload.request?.method === "catalog" ? { bots: [], hasMore: false } : { branches: [], hasMore: false, cursor: null } } })}\n`,
+        );
+    }
+    socket.write(
+      `${JSON.stringify({ requestId: frame.requestId, ...(error ? { error } : { result: frame.method === "history.peers" ? [{ deviceId: oldPeer }, { deviceId: offlinePeer }] : { enabled: true, ready: true } }) })}\n`,
+    );
+  });
+  const coordinator = new HistoryCoordinator(bench.path, registry, directory, () => {});
+  try {
+    await waitFor(() => announce !== undefined, "handle observer installed");
+    announce?.();
+    await waitFor(() => changed !== undefined, "native observer attached");
+    await waitFor(() => startupFailed, "startup catalog hint and initial coarse finish");
+    await new Promise<void>((done) => setImmediate(done));
+    armed = true;
+    catalogChanged?.();
+    changed?.();
+    await waitFor(
+      () =>
+        sent.filter((item) => item.peer === offlinePeer && item.payload.botIds.includes(botId))
+          .length >= 2,
+      "failed peer retries the retained final Bot/catalog hint",
+    );
+    assert.ok(legacyRejected > 0, "the actual old strict payload codec rejects the additive hint");
+    assert.ok(
+      coarse > 0,
+      "successful delivery to an old strict consumer must get coarse even when another peer fails",
+    );
+    const attempts = sent.filter(
+      (item) => item.peer === offlinePeer && item.payload.botIds.includes(botId),
+    );
+    assert.equal(attempts[0]?.payload.catalog, true);
+    assert.deepEqual(
+      attempts[1]?.payload,
+      attempts[0]?.payload,
+      "failure retains Bot IDs and catalog without another commit",
+    );
+  } finally {
     await coordinator.close();
     await bench.close();
   }
