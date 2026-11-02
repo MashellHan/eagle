@@ -68,6 +68,8 @@ export class HistoryCoordinator {
   readonly #tails = new Map<string, string>();
   readonly #drains = new Map<string, Drain>();
   readonly #unavailableBots = new Set<string>();
+  readonly #unavailableReads = new Set<string>();
+  readonly #operations = new Set<Promise<unknown>>();
   readonly #retryPeers = new Set<string>();
   #channel: DeviceChannel | undefined;
   #closed = false;
@@ -98,6 +100,7 @@ export class HistoryCoordinator {
   }
 
   #observeHandles() {
+    if (this.#closed) return;
     for (const summary of this.#registry.summaries()) {
       const handle = this.#registry.handleOf(summary.id);
       if (this.#handles.get(summary.id)?.handle === handle) continue;
@@ -187,17 +190,30 @@ export class HistoryCoordinator {
     if (!this.#ready || this.#notice || this.#closed) return;
     this.#notice = setTimeout(() => {
       this.#notice = undefined;
-      void this.#channel?.call("history.changed").catch(() => this.#channel?.close());
+      void this.#channel?.call("history.changed").catch(() => {
+        // Device Service owns bounded transient notice retries; retain the single attachment.
+      });
     }, 40);
     this.#notice.unref();
   }
 
   async #withBot<T>(botId: string, run: (handle: RuntimeHandle) => Promise<T>): Promise<T> {
-    if (!this.#registry.touch(botId)) throw new Error("history_bot_unavailable");
+    if (this.#closed) throw new Error("history_closed");
+    const operation = (async () => {
+      if (!this.#registry.touch(botId)) throw new Error("history_bot_unavailable");
+      try {
+        const handle = await this.#registry.open(botId, "tr_history_pull");
+        if (this.#closed) throw new Error("history_closed");
+        return await run(handle);
+      } finally {
+        this.#registry.release(botId);
+      }
+    })();
+    this.#operations.add(operation);
     try {
-      return await run(await this.#registry.open(botId, "tr_history_pull"));
+      return await operation;
     } finally {
-      this.#registry.release(botId);
+      this.#operations.delete(operation);
     }
   }
 
@@ -279,12 +295,15 @@ export class HistoryCoordinator {
 
   #retryBot(botId: string, peer?: string) {
     if (this.#closed) return;
-    this.#unavailableBots.add(botId);
-    if (peer) this.#retryPeers.add(peer);
+    if (peer) {
+      this.#unavailableReads.add(`${peer}/${botId}`);
+      this.#retryPeers.add(peer);
+    } else this.#unavailableBots.add(botId);
     if (this.#botRetry) return;
     this.#botRetry = setTimeout(() => {
       this.#botRetry = undefined;
       this.#unavailableBots.clear();
+      this.#unavailableReads.clear();
       for (const peer of this.#retryPeers) this.#fresh.add(peer);
       this.#retryPeers.clear();
       void this.#work();
@@ -304,7 +323,8 @@ export class HistoryCoordinator {
     }
     for (const bot of this.#registry.summaries()) {
       if (this.#closed || !this.#ready) return;
-      if (this.#unavailableBots.has(bot.id)) continue;
+      if (this.#unavailableBots.has(bot.id) || this.#unavailableReads.has(`${peer}/${bot.id}`))
+        continue;
       try {
         let after: string | undefined;
         do {
@@ -371,7 +391,9 @@ export class HistoryCoordinator {
           ([, drain]) => !this.#unavailableBots.has(drain.botId),
         );
         const backfillWork = [...this.#backfill.entries()].find(
-          ([, backfill]) => !this.#unavailableBots.has(backfill.botId),
+          ([, backfill]) =>
+            !this.#unavailableBots.has(backfill.botId) &&
+            !this.#unavailableReads.has(`${backfill.peer}/${backfill.botId}`),
         );
         activePeer = undefined;
         if (peer && (freshTurn || (!backfillWork && !drainWork))) {
@@ -445,7 +467,7 @@ export class HistoryCoordinator {
     }
   }
 
-  close() {
+  async close() {
     this.#closed = true;
     this.#ready = false;
     clearTimeout(this.#reconnect);
@@ -456,5 +478,7 @@ export class HistoryCoordinator {
     for (const observer of this.#handles.values()) observer.detach();
     this.#handles.clear();
     this.#channel?.close();
+    // Let late opens release their leases before the daemon shuts native handles down.
+    await Promise.allSettled([...this.#operations]);
   }
 }

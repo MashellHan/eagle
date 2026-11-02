@@ -2855,3 +2855,21 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   passed 34/34 (20.3s), preserving the original failure. Candidate types/lint/build
   passed; no new complete source gate was run. Root owns A/B installation and the
   isolated consumer; foreign App visibility/latency remains unverified.
+
+## 2026-11-02 17:54 optional history: notice and coordinator lifecycle
+
+- Three actual IPC reds are green, 9/9: transient notice retains single attach,
+  peer/Bot read failure permits local pending drain and another holder, and a
+  delayed real native open cannot run history after close or escape shutdown.
+  Close joins its leases before registry shutdown; local chat has no new sync wait.
+  Main/registry regression is 41/41; Bots types/lint pass. Existing independent
+  Device Service/Miniflare/Bots file passes 4/4 (66.66s), including same-head raw
+  ancestor recovery and healthy-Bot progress. Logs: `.local/history-coordinator-*`.
+  Earlier arrival 2/4 remains evidence; this is no App latency/stress guarantee.
+- Root candidate gates at `eagle-hc` remain separate: root 275/276, browser
+  190 pass/1 fail/11 existing skips, with sole browser file recheck 34/34. Its
+  recovery fixture now has source fix `3b070ae` (9/9); no complete candidate rerun
+  is claimed here. Historical source full Bots 776/781 and Swift 344/345 remain
+  non-green. Root owns installs/physical controls; no additional App or SwiftPM
+  consumer was started. Next hop: Node-only authenticated Tailscale path, then
+  foreign App/two-way latency and final gates. Collection/D1/dashboard: N/A.

@@ -683,3 +683,9 @@ That check also applies after asynchronous record reads inside a live batch,
 before changing the shared mapper or publishing a replacement snapshot. A new
 continuation refuses a request ID already bound by ordinary chat, before forking;
 repairing an older receipt may fill a missing route but never replace a binding.
+
+Optional history scheduling keeps remote failures per peer/Bot, separate from a
+local native drain failure. An unavailable holder cannot suppress another holder
+or native pending work. A transient notice reply keeps the single IPC attachment:
+Device Service owns its bounded retry. Close detaches IPC immediately, prevents
+late opens from invoking history, and joins their leases before registry shutdown.

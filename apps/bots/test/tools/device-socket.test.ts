@@ -5,12 +5,19 @@ import { createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import type { BotDirectory } from "../../src/core/BotDirectory.ts";
+import type { BotRegistry } from "../../src/core/BotRegistry.ts";
+import type { RuntimeHandle } from "../../src/core/RuntimePort.ts";
+import { HistoryCoordinator } from "../../src/history/coordinator.ts";
+import { pageHead } from "../../src/runtime/pi/historyIncremental.ts";
 import {
   type DeviceRequest,
   operationDigest,
   SocketDevicePort,
 } from "../../src/tools/devices/port.ts";
 import { DeviceChannel } from "../../src/tools/devices/socket.ts";
+import { waitFor } from "../support/pi.ts";
+import { startStack } from "../support/server.ts";
 
 const fixture = async (handle: (socket: Socket, request: Record<string, unknown>) => void) => {
   const root = await mkdtemp(join(tmpdir(), "device-port-"));
@@ -220,6 +227,201 @@ test("optional history IPC events stay separate and single-consumer attach relea
   } finally {
     first.close();
     second.close();
+    await bench.close();
+  }
+});
+
+test("a transient history notice does not disconnect the optional single consumer", async () => {
+  let attached: Socket | undefined;
+  let notices = 0;
+  const bench = await fixture((socket, request) => {
+    if (request.method === "history.attach") attached = socket;
+    if (request.method === "history.changed") notices++;
+    socket.write(
+      `${JSON.stringify({
+        requestId: request.requestId,
+        ...(request.method === "history.changed"
+          ? { error: "history_busy" }
+          : {
+              result: request.method === "history.peers" ? [] : { enabled: true, ready: true },
+            }),
+      })}\n`,
+    );
+  });
+  const stack = await startStack();
+  const coordinator = new HistoryCoordinator(bench.path, stack.registry, stack.directory, () => {});
+  try {
+    await waitFor(() => notices === 1, "the existing attachment's transient notice response");
+    await new Promise<void>((done) => setTimeout(done, 20));
+    assert.equal(
+      attached?.destroyed,
+      false,
+      "Device Service owns bounded notice retry; Bots must retain attach",
+    );
+  } finally {
+    await coordinator.close();
+    await stack.close();
+    await bench.close();
+  }
+});
+
+test("a remote peer Bot failure cannot suppress local pending drain or the same Bot from a healthy peer", async () => {
+  const peerA = randomUUID();
+  const peerB = randomUUID();
+  const botId = "b_pending_bot";
+  const branchId = `${randomUUID()}/c1`;
+  const page = {
+    version: 1,
+    engine: "pi-durable@1.4.0",
+    botId,
+    branchId,
+    conversationId: branchId,
+    head: pageHead(branchId, null),
+    tip: null,
+    cursor: null,
+    snapshot: null,
+    hasMore: false,
+    records: [],
+  };
+  let imports = 0;
+  let healthyPages = 0;
+  const handle = {
+    async importHistoryPage() {
+      imports++;
+      return { pending: imports === 1 };
+    },
+  } as unknown as RuntimeHandle;
+  const registry = {
+    summaries: () => [{ id: botId }],
+    handleOf: () => undefined,
+    observeHandles: () => () => {},
+    importHistoryCatalog: async () => {},
+    touch: () => true,
+    open: async () => handle,
+    release: () => {},
+  } as unknown as BotRegistry;
+  const directory = { observeChanges: () => () => {} } as unknown as BotDirectory;
+  const bench = await fixture((socket, frame) => {
+    let result: unknown = { enabled: true, ready: true };
+    if (frame.method === "history.peers") result = [{ deviceId: peerA }, { deviceId: peerB }];
+    socket.write(`${JSON.stringify({ requestId: frame.requestId, result })}\n`);
+    if (frame.method !== "history.send") return;
+    const params = frame.params as {
+      targetDeviceId: string;
+      payload: {
+        type: string;
+        id: string;
+        request: { method: string; input?: { selection: string } };
+      };
+    };
+    const query = params.payload.request;
+    let failed = false;
+    if (query.method === "catalog") result = { bots: [], hasMore: false };
+    else if (query.method === "branches")
+      result = {
+        branches: [
+          { branchId, conversationId: branchId, selection: page.head },
+          ...(params.targetDeviceId === peerA
+            ? [
+                {
+                  branchId: `${branchId}-other`,
+                  conversationId: branchId,
+                  selection: "b".repeat(64),
+                },
+              ]
+            : []),
+        ],
+        cursor: null,
+        hasMore: false,
+      };
+    else {
+      failed = params.targetDeviceId === peerA && query.input?.selection !== page.head;
+      if (params.targetDeviceId === peerB) healthyPages++;
+      result = page;
+    }
+    socket.write(
+      `${JSON.stringify({
+        type: "history.packet",
+        sourceDeviceId: params.targetDeviceId,
+        payload: { type: "reply", id: params.payload.id, result, failed },
+      })}\n`,
+    );
+  });
+  const coordinator = new HistoryCoordinator(bench.path, registry, directory, () => {});
+  try {
+    await waitFor(
+      () => imports >= 3 && healthyPages > 0,
+      "local drain and healthy peer for the same Bot",
+    );
+  } finally {
+    await coordinator.close();
+    await bench.close();
+  }
+});
+
+test("coordinator close joins a late real Bot open and never runs history after close", async (t) => {
+  const stack = await startStack({ real: true });
+  const botId = "b_late_open";
+  await stack.registry.importHistoryCatalog(
+    {
+      bots: [{ id: botId, title: "late open", createdAt: new Date().toISOString() }],
+      hasMore: false,
+    },
+    "tr_close",
+  );
+  const opening = Promise.withResolvers<void>();
+  const opened = Promise.withResolvers<void>();
+  let began = false;
+  let operations = 0;
+  const open = stack.registry.open.bind(stack.registry);
+  t.mock.method(stack.registry, "open", async (...args: Parameters<typeof open>) => {
+    began = true;
+    await opening.promise;
+    const handle = await open(...args);
+    handle.listHistoryBranches = async () => {
+      operations++;
+      return { branches: [], cursor: null, hasMore: false };
+    };
+    opened.resolve();
+    return handle;
+  });
+  let attached: Socket | undefined;
+  const bench = await fixture((socket, request) => {
+    if (request.method === "history.attach") attached = socket;
+    socket.write(
+      `${JSON.stringify({
+        requestId: request.requestId,
+        result: request.method === "history.peers" ? [] : { enabled: true, ready: true },
+      })}\n`,
+    );
+  });
+  const coordinator = new HistoryCoordinator(bench.path, stack.registry, stack.directory, () => {});
+  try {
+    await waitFor(() => attached !== undefined, "attachment");
+    attached?.write(
+      `${JSON.stringify({
+        type: "history.packet",
+        sourceDeviceId: randomUUID(),
+        payload: { type: "pull", id: randomUUID(), request: { method: "branches", botId } },
+      })}\n`,
+    );
+    await waitFor(() => began, "actual coordinator Bot open");
+    const closing = coordinator.close();
+    const shutdown = Promise.resolve(closing).then(() => stack.registry.shutdown());
+    opening.resolve();
+    await shutdown;
+    await opened.promise;
+    await new Promise<void>((done) => setImmediate(done));
+    assert.equal(operations, 0, "an open that completes after close cannot export/import");
+    assert.equal(
+      stack.registry.handleOf(botId),
+      undefined,
+      "shutdown owns and closes the late native handle",
+    );
+  } finally {
+    opening.resolve();
+    await coordinator.close();
+    await stack.close();
     await bench.close();
   }
 });

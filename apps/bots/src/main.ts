@@ -727,7 +727,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     const stopped = (async () => {
       // Producers stop first, then admissions already in flight settle, and only then may
       // the registry close handles under them (TRIGGERS.md §3.6).
-      history?.close();
+      await history?.close();
       producers.stop();
       await daemon.close();
       await service.drain();
