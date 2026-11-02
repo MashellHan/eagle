@@ -61,7 +61,7 @@ const tick = () => {
 };
 const currentReport = (id: string) => report(id, tick());
 const skewedReport = (id: string, offsetMs: number) =>
-  report(id, new Date(Date.now() + offsetMs).toISOString());
+  report(id, new Date(clock + offsetMs).toISOString());
 
 before(async () => {
   const keys = await generateKeyPair("RS256", { extractable: true });
@@ -644,7 +644,12 @@ test("fail-closed auth, machine scoping, versions, body limits and no token pers
     400,
   );
   assert.equal(
-    (await request("/api/v1/reports", skewedReport("future", 600_000))).status,
+    (
+      await request(
+        "/api/v1/reports",
+        report("future", new Date(Date.now() + 600_000).toISOString()),
+      )
+    ).status,
     400,
   );
   assert.equal(

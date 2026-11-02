@@ -4725,3 +4725,24 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   upstream fetch or watcher change. Next hop: finite three-path original Review,
   then normal append/hooks/push and actual new-head CI; merged-SHA both-Mac work
   still waits for actual merge/pinned-main ancestry and B's complete Xcode.
+
+### 2026-11-02 — local Chat candidate and background Tailscale discovery
+
+- A's signed candidate build1793587516319 contains the child-only Tailscale CLI
+  fix on head760fd210. Normal installation retains the previous bundle and existing
+  candidate profile/data. Root observed30.059s across about six original5s periods:
+  no Tailscale GUI launch/activation, network extension1074 unchanged, and the
+  candidate Chat window connected with send controls visible; no message was sent.
+  Local daemon/Sync listener are ready, but the existing cloud sync.identity returns
+  not_found; this is not cross-Mac synchronization or merged-SHA physical acceptance.
+- Original discovery-file red2/3 becomes3/3; listener2/2 passes. First full root
+  check retains270/274 with three API fixture-clock failures and one performance
+  failure. Ordering fixtures now share their existing collection clock; future
+  rejection still uses wall time. Full API38/38 and normal root274/274/types/lint/build
+  pass, with53 infos and the existing bundle warning. Performance source/thresholds
+  are unchanged; its earlier failure is not assigned or retrospectively cured.
+- The restored original Service session was verified before updating only its
+  monitor terminal binding. Other state remained unchanged; original16 cases pass
+  and the authorized real tick advances52→53, still unmerged with no pins/dispatch.
+  The installed1800s schedule and old109 watcher are preserved. Original Review
+  accepts the CLI and API fixture deltas; normal hooks/new-head CI remain next.
