@@ -391,7 +391,11 @@ type Actor =
  * global and the credential routes. Every other mutation is a write.
  */
 const requiredScope = (path: string, method: string): ClientScope => {
-  if (method === "POST" && /^\/v1\/bots\/[A-Za-z0-9_-]+\/history\/export$/.test(path))
+  if (
+    method === "POST" &&
+    (path === "/v1/history/catalog/export" ||
+      /^\/v1\/bots\/[A-Za-z0-9_-]+\/history\/(export|page|view|assess|branches)$/.test(path))
+  )
     return "read";
   if (method === "GET" || method === "HEAD") {
     // The credential list names every client, so it is one of the admin routes.
@@ -896,23 +900,50 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
           return;
         }
       }
-      const historyMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/history\/(export|import|continue)$/.exec(
-        path,
-      );
+      if (
+        request.method === "POST" &&
+        ["/v1/history/catalog/export", "/v1/history/catalog/import"].includes(path)
+      ) {
+        const body = await readBody(request);
+        if (path.endsWith("/export")) {
+          if (
+            !isObject(body) ||
+            Object.keys(body).some((key) => key !== "knownIds") ||
+            (body.knownIds !== undefined && !Array.isArray(body.knownIds))
+          ) {
+            json(response, 400, {
+              error: { kind: "invalid_command", message: "invalid history catalog request" },
+            });
+            return;
+          }
+          json(response, 200, registry.exportHistoryCatalog(body.knownIds as string[] | undefined));
+        } else {
+          const result = await registry.importHistoryCatalog(body, `tr_http_${++sequence}`);
+          broadcastCatalog();
+          json(response, 200, result);
+        }
+        return;
+      }
+      const historyMatch =
+        /^\/v1\/bots\/([A-Za-z0-9_-]+)\/history\/(export|import|continue|page|receive|view|assess|branches)$/.exec(
+          path,
+        );
       if (historyMatch !== null && request.method === "POST") {
         const id = historyMatch[1] as string;
         const operation = historyMatch[2] as string;
         const body = await readBody(request);
         if (
-          operation !== "import" &&
+          !["import", "receive", "page", "branches"].includes(operation) &&
           (!isObject(body) ||
             (operation === "export"
               ? Object.keys(body).some((key) => key !== "selection") ||
                 (body.selection !== undefined && typeof body.selection !== "string")
-              : Object.keys(body).some((key) => !["head", "requestId", "text"].includes(key)) ||
-                typeof body.head !== "string" ||
-                typeof body.requestId !== "string" ||
-                typeof body.text !== "string"))
+              : operation === "view" || operation === "assess"
+                ? Object.keys(body).some((key) => key !== "head") || typeof body.head !== "string"
+                : Object.keys(body).some((key) => !["head", "requestId", "text"].includes(key)) ||
+                  typeof body.head !== "string" ||
+                  typeof body.requestId !== "string" ||
+                  typeof body.text !== "string"))
         ) {
           json(response, 400, {
             error: { kind: "invalid_command", message: "invalid history request" },
@@ -935,6 +966,22 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
             result = await handle.exportHistory((body as { selection?: string }).selection, trace);
           else if (operation === "import" && handle.importHistory !== undefined)
             result = await handle.importHistory(body, trace);
+          else if (operation === "page" && handle.exportHistoryPage !== undefined)
+            result = await handle.exportHistoryPage(
+              body as Parameters<NonNullable<typeof handle.exportHistoryPage>>[0],
+              trace,
+            );
+          else if (operation === "receive" && handle.importHistoryPage !== undefined)
+            result = await handle.importHistoryPage(body, trace);
+          else if (operation === "view" && handle.readHistoryHead !== undefined)
+            result = await handle.readHistoryHead((body as { head: string }).head, trace);
+          else if (operation === "assess" && handle.assessHistoryHead !== undefined)
+            result = await handle.assessHistoryHead((body as { head: string }).head, trace);
+          else if (operation === "branches" && handle.listHistoryBranches !== undefined)
+            result = await handle.listHistoryBranches(
+              body as { after?: string; limit?: number },
+              trace,
+            );
           else if (operation === "continue" && handle.continueHistory !== undefined)
             result = await handle.continueHistory({
               ...(body as { head: string; requestId: string; text: string }),

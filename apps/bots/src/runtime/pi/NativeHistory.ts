@@ -5,6 +5,7 @@ import {
   type ConversationId,
   type Cursor,
   defineDoc,
+  defineDocFamily,
   type EntryDraft,
   type EntryId,
   type EntryRecord,
@@ -15,13 +16,26 @@ import {
 import type { HistoryContinuation, HistoryReceipt } from "../../core/RuntimePort.ts";
 import { convertMessage } from "./convert.ts";
 import {
+  advanceTurn,
   archiveHash,
+  completeTurn,
   type HistoryArchive,
   type HistoryEntry,
+  HistoryInputError,
   historyReject,
+  initialTurn,
   MAX_ARCHIVE_BYTES,
   validateArchive,
+  validateTurn,
 } from "./historyArchive.ts";
+import {
+  type HistoryPage,
+  type HistoryPageRequest,
+  historyPageRequest,
+  MAX_HISTORY_PAGE_BYTES,
+  pageHead,
+  validateHistoryPage,
+} from "./historyIncremental.ts";
 import { convertSubmission } from "./mapEvents.ts";
 
 type Provenance = { id: string; originId: string; conversationId: string };
@@ -43,6 +57,70 @@ const HistoryState = defineDoc({
   }),
   checkpointWhen: () => true,
 });
+
+const ReceivedRecord = defineDocFamily({
+  kind: "bots.history.record",
+  version: 1,
+  scope: "session",
+  family: true,
+  initial: (_seed: null) => ({ body: "", nativeId: 0, conversationId: 0 }),
+  checkpointWhen: () => true,
+});
+const IncrementalHead = defineDocFamily({
+  kind: "bots.history.head",
+  version: 1,
+  scope: "session",
+  family: true,
+  initial: (_seed: null) => ({
+    branchId: "",
+    conversationId: "",
+    botId: "",
+    tip: "",
+    nativeId: 0,
+    tail: 0,
+    usable: false,
+  }),
+  checkpointWhen: () => true,
+});
+const RecordLink = defineDocFamily({
+  kind: "bots.history.link",
+  version: 1,
+  scope: "session",
+  family: true,
+  initial: (_seed: null) => ({ next: "" }),
+  checkpointWhen: () => true,
+});
+const BranchProgress = defineDocFamily({
+  kind: "bots.history.progress",
+  version: 1,
+  scope: "session",
+  family: true,
+  initial: (_seed: null) => ({ next: "" }),
+  checkpointWhen: () => true,
+});
+const NativeProvenance = defineDocFamily({
+  kind: "bots.history.provenance",
+  version: 1,
+  scope: "session",
+  family: true,
+  initial: (_seed: null) => ({ id: "", originId: "", conversationId: "" }),
+  checkpointWhen: () => true,
+});
+const BranchDirectory = defineDoc({
+  kind: "bots.history.branches",
+  version: 1,
+  scope: "session",
+  initial: () => ({
+    branches: {} as Record<
+      string,
+      { head: string; tip: string; conversationId: string; botId: string }
+    >,
+  }),
+  checkpointWhen: () => true,
+});
+// Only compare the owning origin's native entry sequence within one branch, never device clocks.
+const tipOrder = (branchId: string, tip: string) =>
+  tip.startsWith(`${branchId.split("/c")[0]}/e`) ? Number(tip.split("/e")[1]) : 0;
 
 const entries = async (tx: Tx, conversationId: ConversationId, at?: EntryId) => {
   const all: EntryRecord[] = [];
@@ -86,6 +164,528 @@ export class NativeHistory {
     this.#botId = botId;
   }
 
+  observe(listener: () => void): () => void {
+    let active = true;
+    let queued = false;
+    const detach = this.#harness.subscribeCommits((publication) => {
+      if (queued || !publication.changes.some((change) => change.type === "entry")) return;
+      queued = true;
+      setImmediate(() => {
+        queued = false;
+        if (active) {
+          try {
+            listener();
+          } catch {
+            /* Optional observers cannot affect local chat. */
+          }
+        }
+      });
+    });
+    return () => {
+      active = false;
+      detach();
+    };
+  }
+
+  async exportPage(input: HistoryPageRequest = {}): Promise<HistoryPage> {
+    const request = historyPageRequest.safeParse(input);
+    if (!request.success) historyReject("invalid history page request");
+    return this.#harness.commit(async (tx) => {
+      const state = await tx.doc(HistoryState);
+      const saved = input.selection === undefined ? undefined : state.heads[input.selection];
+      const incremental =
+        input.selection === undefined
+          ? undefined
+          : await tx.doc(IncrementalHead, input.selection, null);
+      const selected =
+        saved ??
+        (incremental?.nativeId ? incremental : undefined) ??
+        (input.selection === `${state.originId}/c${this.#rootId}`
+          ? { nativeId: this.#rootId, conversationId: input.selection, botId: this.#botId }
+          : input.selection === undefined
+            ? undefined
+            : state.branches[input.selection]);
+      if (input.selection !== undefined && selected === undefined)
+        historyReject("unknown history branch");
+      const nativeId = (selected?.nativeId ?? this.#rootId) as ConversationId;
+      const branchId =
+        saved?.branchId ??
+        (incremental?.nativeId ? incremental.branchId : undefined) ??
+        input.selection ??
+        `${state.originId}/c${nativeId}`;
+      const conversationId = selected?.conversationId ?? branchId;
+      const identity = async (entry: EntryRecord): Promise<Provenance> => {
+        const mapped = await tx.doc(NativeProvenance, String(entry.id), null);
+        return (
+          state.records[String(entry.id)] ??
+          (mapped.id
+            ? { id: mapped.id, originId: mapped.originId, conversationId: mapped.conversationId }
+            : {
+                id: `${state.originId}/e${entry.id}`,
+                originId: state.originId,
+                conversationId: `${state.originId}/c${entry.conversationId}`,
+              })
+        );
+      };
+      const cursor = (entry: number) =>
+        Buffer.from(JSON.stringify({ origin: state.originId, branchId, entry })).toString(
+          "base64url",
+        );
+      const position = async (value: string | undefined): Promise<number | undefined> => {
+        if (value === undefined) return undefined;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(Buffer.from(value, "base64url").toString());
+        } catch {
+          historyReject("invalid history cursor");
+        }
+        const found = parsed as { origin?: string; branchId?: string; entry?: number };
+        if (
+          found?.origin !== state.originId ||
+          found.branchId !== branchId ||
+          !Number.isSafeInteger(found.entry) ||
+          (found.entry ?? 0) <= 0
+        )
+          historyReject("foreign history cursor");
+        const entry = found.entry as EntryId;
+        if (
+          (
+            await tx.scanEntries(
+              { conversationId: nativeId, minEntryId: entry, maxEntryId: entry },
+              1,
+            )
+          ).items.length !== 1
+        )
+          historyReject("history cursor is not in this branch");
+        return entry;
+      };
+      const after = await position(input.after);
+      const before = await position(input.before);
+      const until = await position(input.until);
+      const bound = Math.min(
+        until ?? Infinity,
+        saved?.entries.at(-1) ?? (incremental?.nativeId ? incremental.tail : Infinity),
+      );
+      const newest = (
+        await tx.scanEntries(
+          {
+            conversationId: nativeId,
+            ...(Number.isFinite(bound) ? { maxEntryId: bound as EntryId } : {}),
+          },
+          1,
+        )
+      ).items[0];
+      const tip = newest === undefined ? null : (await identity(newest)).id;
+      const head = pageHead(branchId, tip);
+      const result: HistoryPage = {
+        version: 1,
+        engine: "pi-durable@1.4.0",
+        branchId,
+        conversationId,
+        botId: selected?.botId ?? this.#botId,
+        head,
+        tip,
+        cursor: input.after ?? input.before ?? null,
+        snapshot: newest === undefined ? null : cursor(newest.id),
+        hasMore: false,
+        records: [],
+      };
+      const order = after === undefined ? "descending" : "ascending";
+      const page = await tx.scanEntries(
+        {
+          conversationId: nativeId,
+          order,
+          ...(after === undefined ? {} : { minEntryId: (after + 1) as EntryId }),
+          maxEntryId: Math.min(
+            before === undefined ? Infinity : before - 1,
+            newest?.id ?? 0,
+          ) as EntryId,
+        },
+        input.limit ?? 32,
+      );
+      const ref = async (id: EntryId) =>
+        (await identity((await tx.entry(id)) ?? historyReject("missing native history reference")))
+          .id;
+      for (const entry of page.items) {
+        const previous = (
+          await tx.scanEntries(
+            { conversationId: nativeId, maxEntryId: (entry.id - 1) as EntryId },
+            1,
+          )
+        ).items[0];
+        const provenance = await identity(entry);
+        const item: HistoryEntry = {
+          ...provenance,
+          kind: entry.kind,
+          ...(entry.model === undefined ? {} : { model: [...entry.model] }),
+          ...(entry.data === undefined ? {} : { data: entry.data }),
+          ...(entry.head === undefined
+            ? {}
+            : { head: entry.head === entry.id ? provenance.id : await ref(entry.head) }),
+          ...(entry.edits === undefined
+            ? {}
+            : {
+                edits: await Promise.all(
+                  entry.edits.map(async (edit) =>
+                    edit.action === "omit"
+                      ? { target: await ref(edit.target), action: edit.action }
+                      : {
+                          target: await ref(edit.target),
+                          action: edit.action,
+                          messages: [...edit.messages],
+                        },
+                  ),
+                ),
+              }),
+        };
+        const record = {
+          previous: previous === undefined ? null : (await identity(previous)).id,
+          entry: item,
+        };
+        result.records.push(record);
+        result.hasMore = page.next !== undefined;
+        const nextCursor = cursor(entry.id);
+        if (
+          Buffer.byteLength(JSON.stringify({ ...result, cursor: nextCursor })) >
+          (input.maxBytes ?? MAX_HISTORY_PAGE_BYTES)
+        ) {
+          result.records.pop();
+          if (result.records.length === 0) historyReject("history record exceeds page budget");
+          result.hasMore = true;
+          break;
+        }
+        result.cursor = nextCursor;
+        const stored = await tx.doc(ReceivedRecord, item.id, null);
+        if (stored.body && stored.body !== JSON.stringify(record))
+          historyReject("history record content conflict");
+        Object.assign(stored, {
+          body: JSON.stringify(record),
+          nativeId: entry.id,
+          conversationId: nativeId,
+        });
+      }
+      if (order === "descending") result.records.reverse();
+      const receipt = await tx.doc(IncrementalHead, head, null);
+      Object.assign(receipt, {
+        branchId,
+        conversationId,
+        botId: result.botId,
+        tip: result.tip ?? "",
+        nativeId,
+        tail: newest?.id ?? 0,
+      });
+      return validateHistoryPage(result);
+    }, ctx);
+  }
+
+  async importPage(input: unknown) {
+    const page = validateHistoryPage(input);
+    await this.#harness.commit(async (tx) => {
+      const state = await tx.doc(HistoryState);
+      const legacy = new Map(
+        Object.entries(state.records).map(([local, value]) => [value.id, Number(local) as EntryId]),
+      );
+      const head = await tx.doc(IncrementalHead, page.head, null);
+      if (
+        head.branchId &&
+        (head.branchId !== page.branchId ||
+          head.conversationId !== page.conversationId ||
+          head.botId !== page.botId ||
+          head.tip !== (page.tip ?? ""))
+      )
+        historyReject("history head identity conflict");
+      Object.assign(head, {
+        branchId: page.branchId,
+        conversationId: page.conversationId,
+        botId: page.botId,
+        tip: page.tip ?? "",
+      });
+      for (const record of page.records) {
+        const stored = await tx.doc(ReceivedRecord, record.entry.id, null);
+        const body = JSON.stringify(record);
+        if (stored.body && stored.body !== body) historyReject("history record content conflict");
+        stored.body = body;
+        const existing = legacy.get(record.entry.id);
+        if (!stored.nativeId && existing !== undefined) {
+          const native = await tx.entry(existing);
+          if (native === undefined || !sameEntry(native, record.entry, state.records))
+            return historyReject("history record content conflict");
+          const previous = (
+            await tx.scanEntries(
+              { conversationId: native.conversationId, maxEntryId: (native.id - 1) as EntryId },
+              1,
+            )
+          ).items[0];
+          const previousId = previous === undefined ? null : state.records[String(previous.id)]?.id;
+          if (previousId !== record.previous) historyReject("history record ancestry conflict");
+          Object.assign(stored, { nativeId: native.id, conversationId: native.conversationId });
+        }
+        const link = await tx.doc(
+          RecordLink,
+          `${page.branchId}/${record.previous ?? "root"}`,
+          null,
+        );
+        if (link.next && link.next !== record.entry.id)
+          historyReject("history branch ancestry conflict");
+        link.next = record.entry.id;
+      }
+      const directory = await tx.doc(BranchDirectory);
+      const previous = directory.branches[page.branchId];
+      if (
+        previous !== undefined &&
+        (previous.conversationId !== page.conversationId || previous.botId !== page.botId)
+      )
+        historyReject("history branch identity conflict");
+      if (
+        previous === undefined ||
+        tipOrder(page.branchId, page.tip ?? "") >= tipOrder(page.branchId, previous.tip)
+      )
+        directory.branches[page.branchId] = {
+          head: page.head,
+          tip: page.tip ?? "",
+          conversationId: page.conversationId,
+          botId: page.botId,
+        };
+    }, ctx);
+    // Each native append is a separate short transaction; backfill yields to local chat.
+    const progress = await this.#harness.snapshot(BranchProgress, page.branchId, ctx);
+    const queue = [
+      ...new Set([
+        ...(progress?.next ? [progress.next] : []),
+        ...page.records.map((record) => record.entry.id),
+      ]),
+    ];
+    let remaining = 32;
+    const visited = new Set<string>();
+    while (queue.length && remaining > 0) {
+      const id = queue.shift() as string;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const next = await this.#materialize(id, page.branchId);
+      remaining -= 1;
+      if (next !== undefined && !visited.has(next) && !queue.includes(next)) queue.push(next);
+    }
+    await this.#harness.commit(async (tx) => {
+      const pending = await tx.doc(BranchProgress, page.branchId, null);
+      pending.next = queue[0] ?? "";
+      const head = await tx.doc(IncrementalHead, page.head, null);
+      if (head.tip) {
+        const tip = await tx.doc(ReceivedRecord, head.tip, null);
+        if (tip.nativeId) Object.assign(head, { nativeId: tip.conversationId, tail: tip.nativeId });
+      }
+    }, ctx);
+    return {
+      head: page.head,
+      branchId: page.branchId,
+      conversationId: page.conversationId,
+      pending: queue.length > 0,
+    };
+  }
+
+  async listBranches(input: { after?: string; limit?: number } = {}) {
+    if (
+      typeof input !== "object" ||
+      input === null ||
+      Array.isArray(input) ||
+      Object.keys(input).some((key) => key !== "after" && key !== "limit") ||
+      (input.after !== undefined && typeof input.after !== "string") ||
+      (input.limit !== undefined &&
+        (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 32))
+    )
+      historyReject("invalid history branch request");
+    return this.#harness.commit(async (tx) => {
+      const state = await tx.doc(HistoryState);
+      const received = await tx.doc(BranchDirectory);
+      const root = `${state.originId}/c${this.#rootId}`;
+      const selections = new Map([
+        [root, { branchId: root, conversationId: root, selection: root }],
+      ]);
+      for (const [head, value] of Object.entries(state.heads))
+        selections.set(value.branchId, {
+          branchId: value.branchId,
+          conversationId: value.conversationId,
+          selection: head,
+        });
+      for (const [branchId, value] of Object.entries(received.branches))
+        selections.set(branchId, {
+          branchId,
+          conversationId: value.conversationId,
+          selection: value.head,
+        });
+      for (const [branchId, value] of Object.entries(state.branches))
+        selections.set(branchId, {
+          branchId,
+          conversationId: value.conversationId,
+          selection: branchId,
+        });
+      const branches = [...selections.values()]
+        .sort((a, b) => a.branchId.localeCompare(b.branchId))
+        .filter(
+          (branch) => input.after === undefined || branch.branchId.localeCompare(input.after) > 0,
+        );
+      const page = branches.slice(0, input.limit ?? 32);
+      return {
+        branches: page,
+        cursor: page.at(-1)?.branchId ?? null,
+        hasMore: branches.length > page.length,
+      };
+    }, ctx);
+  }
+
+  async #materialize(id: string, branchId: string): Promise<string | undefined> {
+    return this.#harness.commit(async (tx) => {
+      const stored = await tx.doc(ReceivedRecord, id, null);
+      if (!stored.body) return;
+      const record = JSON.parse(stored.body) as HistoryPage["records"][number];
+      const link = await tx.doc(RecordLink, `${branchId}/${id}`, null);
+      if (stored.nativeId) return link.next || undefined;
+      const parent =
+        record.previous === null ? undefined : await tx.doc(ReceivedRecord, record.previous, null);
+      if (parent !== undefined && !parent.nativeId) return;
+      const entry = record.entry;
+      const refs = new Map<string, EntryId>();
+      for (const ref of [
+        entry.head === entry.id ? undefined : entry.head,
+        ...(entry.edits ?? []).map((edit) => edit.target),
+      ]) {
+        if (ref === undefined || refs.has(ref)) continue;
+        const target = await tx.doc(ReceivedRecord, ref, null);
+        if (!target.nativeId || parent === undefined)
+          return historyReject("history reference missing");
+        const visible = await tx.scanEntries(
+          {
+            conversationId: parent.conversationId as ConversationId,
+            minEntryId: target.nativeId as EntryId,
+            maxEntryId: Math.min(target.nativeId, parent.nativeId) as EntryId,
+          },
+          1,
+        );
+        if (visible.items.length !== 1) historyReject("history reference outside ancestry");
+        refs.set(ref, target.nativeId as EntryId);
+      }
+      const tail =
+        parent === undefined
+          ? undefined
+          : (await tx.scanEntries({ conversationId: parent.conversationId as ConversationId }, 1))
+              .items[0];
+      const conversationId =
+        parent === undefined
+          ? (await tx.createConversation({ ownership: { kind: "ownerless" } })).id
+          : tail?.id === parent.nativeId
+            ? (parent.conversationId as ConversationId)
+            : (
+                await tx.forkConversation(
+                  parent.conversationId as ConversationId,
+                  parent.nativeId as EntryId,
+                  { ownership: { kind: "ownerless" } },
+                )
+              ).id;
+      const draft: EntryDraft = {
+        kind: entry.kind,
+        ...(entry.model === undefined ? {} : { model: entry.model }),
+        ...(entry.data === undefined ? {} : { data: entry.data }),
+        ...(entry.head === undefined
+          ? {}
+          : { head: entry.head === entry.id ? "self" : (refs.get(entry.head) as EntryId) }),
+        ...(entry.edits === undefined
+          ? {}
+          : {
+              edits: entry.edits.map((edit) => ({
+                ...edit,
+                target: refs.get(edit.target) as EntryId,
+              })),
+            }),
+      };
+      const native = await tx.appendEntry(conversationId, draft);
+      Object.assign(stored, { nativeId: native.id, conversationId });
+      Object.assign(await tx.doc(NativeProvenance, String(native.id), null), {
+        id: entry.id,
+        originId: entry.originId,
+        conversationId: entry.conversationId,
+      });
+      return link.next || undefined;
+    }, ctx);
+  }
+
+  async readHead(headId: string) {
+    if (!/^[a-f0-9]{64}$/.test(headId)) historyReject("invalid history head");
+    const head = await this.#harness.snapshot(IncrementalHead, headId, ctx);
+    if (!head?.branchId) return historyReject("unknown history head");
+    const messages = [];
+    let id = head.tip;
+    let bytes = 0;
+    for (let count = 0; id && count < 32; count += 1) {
+      const raw = await this.#harness.snapshot(ReceivedRecord, id, ctx);
+      if (!raw?.body) break;
+      bytes += Buffer.byteLength(raw.body);
+      if (bytes > MAX_HISTORY_PAGE_BYTES) break;
+      const record = JSON.parse(raw.body) as HistoryPage["records"][number];
+      const converted = (record.entry.model ?? []).flatMap((item) => {
+        const message = convertMessage(item, { id: record.entry.id, now: () => new Date() });
+        return message === undefined ? [] : [message];
+      });
+      messages.unshift(...converted);
+      id = record.previous ?? "";
+    }
+    return {
+      head: headId,
+      branchId: head.branchId,
+      conversationId: head.conversationId,
+      usable: head.usable,
+      messages,
+      hasMore: id !== "",
+    };
+  }
+
+  async assessHead(headId: string) {
+    if (!/^[a-f0-9]{64}$/.test(headId)) historyReject("invalid history head");
+    const head = await this.#harness.snapshot(IncrementalHead, headId, ctx);
+    if (!head?.branchId) return historyReject("unknown history head");
+    if (head.usable) return { head: headId, usable: true };
+    const stored = head.tip
+      ? await this.#harness.snapshot(ReceivedRecord, head.tip, ctx)
+      : undefined;
+    const nativeId = stored?.conversationId || head.nativeId;
+    const tail = stored?.nativeId || head.tail;
+    let usable = false;
+    if (nativeId && tail) {
+      const conversation =
+        (await this.#harness.conversation(nativeId as ConversationId, ctx)) ??
+        historyReject("history conversation missing");
+      const raw = initialTurn();
+      let cursor: Cursor | undefined;
+      try {
+        do {
+          const page = await conversation.entries(
+            { order: "ascending", maxEntryId: tail as EntryId },
+            32,
+            cursor,
+            ctx,
+          );
+          advanceTurn(raw, page.items);
+          cursor = page.next;
+        } while (cursor !== undefined);
+        if (completeTurn(raw)) {
+          const context = await conversation.context(ctx, { at: tail as EntryId });
+          validateTurn(
+            context.entries.map((entry, index) => ({
+              kind: entry.kind,
+              head: entry.head,
+              model: context.contributions[index],
+            })),
+          );
+          usable = true;
+        }
+      } catch (error) {
+        if (!(error instanceof HistoryInputError)) throw error;
+      }
+    }
+    await this.#harness.commit(async (tx) => {
+      Object.assign(await tx.doc(IncrementalHead, headId, null), { usable, nativeId, tail });
+    }, ctx);
+    return { head: headId, usable };
+  }
+
   async export(branchId?: string): Promise<HistoryArchive> {
     return this.#harness.commit(async (tx) => {
       const state = await tx.doc(HistoryState);
@@ -95,6 +695,15 @@ export class NativeHistory {
       const nativeId = (selected?.nativeId ?? this.#rootId) as ConversationId;
       if (saved === undefined) await assertIdle(tx, nativeId);
       const all = await entries(tx, nativeId, saved?.entries.at(-1) as EntryId | undefined);
+      for (const entry of all) {
+        const mapped = await tx.doc(NativeProvenance, String(entry.id), null);
+        if (mapped.id)
+          state.records[String(entry.id)] = {
+            id: mapped.id,
+            originId: mapped.originId,
+            conversationId: mapped.conversationId,
+          };
+      }
       const provenance = (entry: EntryRecord): Provenance =>
         state.records[String(entry.id)] ?? {
           id: `${state.originId}/e${entry.id}`,
@@ -176,6 +785,35 @@ export class NativeHistory {
         if (length > count) {
           prefix = candidate;
           count = length;
+        }
+      }
+      // The archive primitive and incremental pages share the same native records.
+      const receivedPrefix: number[] = [];
+      for (const [index, entry] of archive.entries.entries()) {
+        const received = await tx.doc(ReceivedRecord, entry.id, null);
+        if (!received.nativeId || !received.body) break;
+        const raw = JSON.parse(received.body) as HistoryPage["records"][number];
+        if (
+          archiveHash(raw.entry) !== archiveHash(entry) ||
+          raw.previous !== (archive.entries[index - 1]?.id ?? null)
+        )
+          historyReject("history record content conflict");
+        state.records[String(received.nativeId)] = {
+          id: entry.id,
+          originId: entry.originId,
+          conversationId: entry.conversationId,
+        };
+        receivedPrefix.push(received.nativeId);
+        if (receivedPrefix.length > count) {
+          count = receivedPrefix.length;
+          prefix = {
+            nativeId: received.conversationId,
+            conversationId: archive.conversationId,
+            botId: archive.botId,
+            branchId: archive.branchId,
+            records: archive.entries.slice(0, count).map((value) => value.id),
+            entries: [...receivedPrefix],
+          };
         }
       }
       // SDK table reads precede create/fork/append writes on the transaction line.
@@ -264,6 +902,14 @@ export class NativeHistory {
       input.text.length > 8000
     )
       historyReject("invalid history continuation");
+    const legacy = await this.#harness.snapshot(HistoryState, ctx);
+    if (
+      legacy?.heads[input.head] === undefined &&
+      legacy?.continuations[input.requestId] === undefined
+    ) {
+      const view = await this.assessHead(input.head);
+      if (!view.usable) historyReject("history is not a complete turn");
+    }
     const selected = await this.#harness.commit(async (tx) => {
       const state = await tx.doc(HistoryState);
       const previous = state.continuations[input.requestId];
@@ -273,8 +919,11 @@ export class NativeHistory {
         // Older local receipts also pin the native ID in their locally minted branch ID.
         return { nativeId: previous.nativeId ?? Number(previous.branchId.split("/c")[1]) };
       }
-      const head = state.heads[input.head] ?? historyReject("unknown imported history head");
-      const tail = head.entries.at(-1) as EntryId;
+      const incremental = await tx.doc(IncrementalHead, input.head, null);
+      const head =
+        state.heads[input.head] ??
+        (incremental.usable ? incremental : historyReject("unknown imported history head"));
+      const tail = ("entries" in head ? head.entries.at(-1) : head.tail) as EntryId;
       const fork = await tx.forkConversation(head.nativeId as ConversationId, tail, {
         ownership: { kind: "ownerless" },
       });

@@ -515,7 +515,7 @@ test("plain local open/submit/reopen create no optional-history origin or receip
     const db = new DatabaseSync(join(bench.spec().dir, "session.sqlite"), { readOnly: true });
     try {
       assert.equal(
-        db.prepare("SELECT count(*) AS count FROM documents WHERE kind = 'bots.history'").get()
+        db.prepare("SELECT count(*) AS count FROM documents WHERE kind LIKE 'bots.history%'").get()
           ?.count,
         0,
       );

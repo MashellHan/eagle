@@ -20,6 +20,9 @@ Sync transport, Worker changes, Tailscale, UI and resource replication remain la
 open/submit must never wait for them. Runtime semantics are in RUNTIME.md.
 The final delivery still requires automatic empty-Bot discovery and committed-entry
 propagation, followed by two-Mac App visibility acceptance over Tailscale and DO.
+Stage 2A is the native/catalog incremental boundary only: bounded new-tail/backfill
+pages, committed-user visibility while a provider is blocked, passive durable import
+and complete-head admission. Device transport and App rendering follow this slice.
 
 The current tool taxonomy, native extension integration and test-evidence map are
 in [Extensions and tools](EXTENSIONS-AND-TOOLS.md). That guide also

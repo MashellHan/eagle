@@ -147,6 +147,68 @@ const bench = async (
   };
 };
 
+test("an empty shared Bot is discovered and created once without a foreign model or runtime open", async () => {
+  const a = await bench();
+  const b = await bench();
+  let detach: (() => void) | undefined;
+  let notices = 0;
+  try {
+    await a.registry.start();
+    await b.registry.start();
+    assert.equal(typeof a.directory.observeChanges, "function");
+    detach = a.directory.observeChanges(() => {
+      notices += 1;
+    });
+    const source = await a.registry.create("empty shared bot", "tr_empty_feed");
+    await settle();
+    assert.ok(notices > 0, "catalog durability has its own notice before a completed turn");
+    const page = a.registry.exportHistoryCatalog([]);
+    assert.equal(page.bots[0]?.id, source.id);
+    const opens = b.opens();
+    await b.registry.importHistoryCatalog(page, "tr_receive_empty");
+    await b.registry.importHistoryCatalog(page, "tr_retry_empty");
+    assert.equal(b.opens(), opens, "passive discovery does not open a foreign runtime");
+    assert.equal(b.registry.summaries().filter((bot) => bot.id === source.id).length, 1);
+    assert.deepEqual(a.registry.exportHistoryCatalog([source.id]).bots, []);
+    assert.deepEqual((await b.directory.load())[0]?.model, { provider: "faux", modelId: "faux-1" });
+  } finally {
+    detach?.();
+    await a.registry.shutdown();
+    await b.registry.shutdown();
+    await a.cleanup();
+    await b.cleanup();
+  }
+});
+
+test("history catalog rejects foreign configuration and malformed metadata before writing", async () => {
+  const setup = await bench();
+  try {
+    await setup.registry.start();
+    const bot = { id: "b_catalog_shared", title: "shared", createdAt: "2026-11-02T00:00:00.000Z" };
+    for (const invalid of [
+      { bots: [{ ...bot, model: { provider: "foreign", modelId: "foreign" } }], hasMore: false },
+      { bots: [{ ...bot, appearance: { shape: "invalid", tint: "invalid" } }], hasMore: false },
+      { bots: [{ ...bot, createdAt: "yesterday" }], hasMore: false },
+      { bots: [bot, bot], hasMore: false },
+      { bots: Array.from({ length: 33 }, () => bot), hasMore: false },
+      { bots: [bot], hasMore: false, extra: true },
+    ])
+      await assert.rejects(setup.registry.importHistoryCatalog(invalid, "tr_bad_metadata"));
+    assert.equal(setup.registry.summaries().length, 0);
+    await Promise.all([
+      setup.registry.importHistoryCatalog({ bots: [bot], hasMore: false }, "tr_concurrent_one"),
+      setup.registry.importHistoryCatalog({ bots: [bot], hasMore: false }, "tr_concurrent_two"),
+    ]);
+    assert.equal(setup.registry.summaries().length, 1);
+    assert.equal(setup.opens(), 0);
+    assert.throws(() =>
+      setup.registry.exportHistoryCatalog(Array.from({ length: 201 }, () => bot.id)),
+    );
+  } finally {
+    await setup.cleanup();
+  }
+});
+
 test("a bot's stored thinking level reaches the runtime spec", async () => {
   const setup = await bench();
   try {

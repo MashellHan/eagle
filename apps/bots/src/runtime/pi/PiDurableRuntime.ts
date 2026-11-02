@@ -347,6 +347,38 @@ type HandleOptions = {
 };
 
 class PiRuntimeHandle implements RuntimeHandle {
+  observeHistoryChanges(listener: () => void) {
+    return new NativeHistory(this.#harness, this.#rootId, this.#spec.id).observe(listener);
+  }
+
+  exportHistoryPage(
+    input: import("./historyIncremental.ts").HistoryPageRequest = {},
+    trace = this.#spec.trace,
+  ) {
+    return this.#historyOperation(trace, () =>
+      new NativeHistory(this.#harness, this.#rootId, this.#spec.id).exportPage(input),
+    );
+  }
+  importHistoryPage(input: unknown, trace = this.#spec.trace) {
+    return this.#historyOperation(trace, () =>
+      new NativeHistory(this.#harness, this.#rootId, this.#spec.id).importPage(input),
+    );
+  }
+  readHistoryHead(head: string, trace = this.#spec.trace) {
+    return this.#historyOperation(trace, () =>
+      new NativeHistory(this.#harness, this.#rootId, this.#spec.id).readHead(head),
+    );
+  }
+  assessHistoryHead(head: string, trace = this.#spec.trace) {
+    return this.#historyOperation(trace, () =>
+      new NativeHistory(this.#harness, this.#rootId, this.#spec.id).assessHead(head),
+    );
+  }
+  listHistoryBranches(input: { after?: string; limit?: number } = {}, trace = this.#spec.trace) {
+    return this.#historyOperation(trace, () =>
+      new NativeHistory(this.#harness, this.#rootId, this.#spec.id).listBranches(input),
+    );
+  }
   exportHistory(branchId?: string, trace = this.#spec.trace) {
     return this.#historyOperation(trace, () =>
       new NativeHistory(this.#harness, this.#rootId, this.#spec.id).export(branchId),

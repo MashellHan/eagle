@@ -2607,3 +2607,44 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Herdr collection/authentication, D1 and dashboard rendering: N/A. Next: independent
   fix review and the native bounded incremental boundary; physical App evidence,
   including B's automation readiness, stays with Root.
+
+## 2026-11-02 15:19 optional history: native incremental boundary
+
+- Empty-Bot catalog discovery passes its native create/retry test without opening
+  a target runtime or importing source configuration. The slow-provider test now
+  passes: its committed user record is readable before the answer, passive reopen
+  stays unusable, and a later delta enables real local-provider continuation.
+- A throwing observer first reproduced an uncaught exception; isolation now keeps
+  three ordinary submissions working and detach stops later callbacks. HTTP
+  catalog/page red was a real 404; route/scoping wiring and broader bounded-page,
+  ancestry and forwarding checks are in progress. No 2A commit or full gate claimed.
+- Root owns the bounded browser recheck; no competing browser/Swift consumer is
+  running here. Previous complete gate failures remain recorded above. Herdr
+  collection/authentication, D1 and dashboard rendering: N/A. Next: bounded native
+  backfill/tail and HTTP evidence, then a reviewable 2A head; transport/App follows.
+- Root's low-load browser recheck now passes both full current-tasks/resources
+  files, 18/18 with four workers and original limits (11.3s), in
+  `.local/root-browser-two-files.log`. Original 12 failures remain evidence; the
+  complete browser gate is still unverified. Swift copy-button recheck is pending.
+
+## 2026-11-02 15:33 optional history: bounded view and branch feed
+
+- Latest view is now separate from full raw/effective assessment: the >240 KiB
+  missing-ancestor fixture displays its newest record with zero entry scans;
+  new-tail export scans at most four rows before old backfill finishes. Only
+  assessed complete heads continue. Root/local continuation/received branches,
+  forwarding, archive/page dedup and reopen retain shared IDs. Affected native and
+  HTTP files pass 19/19 after the final dedup change; typecheck passes.
+- The earlier Bots check passed 781/781 on its earlier version. The current full
+  run is **776/781, five failures**, in `.local/history-2a-check-final.log` (198s).
+  Its four complete failing files then passed the sole serial recheck, 25/25 in
+  17.8s, with original limits/runner, `.local/history-2a-timeouts-isolated.log`.
+  Their cause is unproven; the complete gate remains non-green. No further full
+  rerun is claimed. CLI review red/fix is a separate commit in progress.
+- Root confirms the isolated w5:p4 App/daemon PIDs 88081/90614 have exited; the
+  earlier startup observation remains historical. Browser's complete gate remains
+  179/12/11 despite Root's two-file 18/18 recheck. Swift's one copy-button failure
+  remains open; full eval's last complete result was 15/15 before 2A.
+- Herdr collection/authentication, D1 and dashboard rendering: N/A. Next: fixed 2A
+  review head, CLI corrections, then the separate authenticated Device/WSS pull
+  loop; automatic App and two-Mac/Tailscale latency acceptance remain unverified.

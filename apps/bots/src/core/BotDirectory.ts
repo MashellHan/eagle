@@ -155,6 +155,12 @@ export class BotDirectory {
   readonly #root: string;
   readonly #fs: DirectoryFs;
   #queue: Promise<unknown> = Promise.resolve();
+  readonly #observers = new Set<() => void>();
+
+  observeChanges(listener: () => void): () => void {
+    this.#observers.add(listener);
+    return () => this.#observers.delete(listener);
+  }
 
   constructor(root: string, fs: DirectoryFs) {
     this.#root = root;
@@ -257,6 +263,16 @@ export class BotDirectory {
       await this.#fs.unlink(temp).catch(() => {});
       throw new DirectoryError("storage_failed", "cannot write catalog", { cause: error });
     }
+    if (this.#observers.size > 0)
+      setImmediate(() => {
+        for (const listener of this.#observers) {
+          try {
+            listener();
+          } catch {
+            /* An optional observer cannot fail durable catalog writes. */
+          }
+        }
+      });
   }
 
   /** Persists the bot config, then publishes the catalog entry. */

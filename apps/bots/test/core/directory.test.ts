@@ -25,6 +25,43 @@ const workspace = async () => {
   return { root, dir: new BotDirectory(root, await nodeDirectoryFs()) };
 };
 
+test("optional catalog observers run only after durable writes, isolate throws and detach", async () => {
+  const { root, dir } = await workspace();
+  let notices = 0;
+  const detach = dir.observeChanges(() => {
+    notices += 1;
+    throw new Error("optional catalog watcher failed");
+  });
+  try {
+    await dir.create(record("b_observed"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(notices, 1);
+    assert.equal((await dir.load())[0]?.id, "b_observed");
+    detach();
+    await dir.rename("b_observed", "still works", "2026-11-02T00:00:00.000Z");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(notices, 1);
+    const fs = await nodeDirectoryFs();
+    const broken = new BotDirectory(root, {
+      ...fs,
+      rename: async () => {
+        throw new Error("disk full");
+      },
+    });
+    let failedNotices = 0;
+    const stop = broken.observeChanges(() => {
+      failedNotices += 1;
+    });
+    await assert.rejects(broken.create(record("b_not_durable")));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(failedNotices, 0);
+    stop();
+  } finally {
+    detach();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a fresh root has an empty catalog", async () => {
   const { root, dir } = await workspace();
   try {

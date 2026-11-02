@@ -37,6 +37,24 @@ Local open/submit have no sync initialization, origin/receipt/export bookkeeping
 or network dependency. This slice adds no sync transport, staging store, resource
 replication, UI, live task migration or semantic branch merge.
 
+Stage 2A adds an explicit native incremental boundary. An attached observer queues
+one coalesced change notice from `Session.subscribeCommits`; its commit callback
+does no Session read, filesystem/network work or awaiting. Catalog persistence has
+the same optional observation boundary. Empty Bot metadata transfers independently
+of opening a model, creates the same shared ID idempotently and keeps local config.
+Record pages contain at most 32 entries and 128 KiB, with scoped durable cursors;
+`after` new-tail and `before` backfill reads have independent bounded scans.
+Passive raw records/receipts persist in SDK documents and ownerless conversations.
+Missing ancestry/tool results may be read, but only a validated complete raw and
+effective context becomes a usable immutable head. Receiving records never changes
+the current model input; explicit continuation uses local configuration.
+Latest-message view reads at most 32 native record documents / 128 KiB, without
+context assembly or full-branch validation. A separate explicit assessment validates
+raw groups and effective contributions; continuation requires that assessment.
+The initial page is the newest window, `snapshot` starts an independent new-tail
+pull, and `cursor` pages older records. `until` pins a backfill snapshot.
+The branch directory includes root, local continuations and received branches.
+
 ## Verified facts
 
 Established with `@earendil-works/pi-durable@1.4.0` on Node 26.12.0 unless the

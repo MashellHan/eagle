@@ -4,6 +4,98 @@ import type { HistoryReceipt } from "../../src/core/RuntimePort.ts";
 import { text, waitFor } from "../support/pi.ts";
 import { startStack } from "../support/server.ts";
 
+test("scoped HTTP discovers an empty Bot and passively receives incremental history despite a broken observer", async () => {
+  const a = await startStack({ real: true });
+  const b = await startStack({ real: true });
+  const call = (stack: typeof a, path: string, body: unknown, token = stack.token) =>
+    fetch(`http://127.0.0.1:${stack.port}${path}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  let detach: (() => void) | undefined;
+  let notices = 0;
+  try {
+    assert.ok(a.faux && b.faux);
+    const source = await a.registry.create("empty discovery", "tr_incremental_http");
+    const credential = await call(a, "/v1/clients", { name: "history-reader", scopes: ["read"] });
+    assert.equal(credential.status, 201);
+    const reader = (await credential.json()) as { token: string };
+    const catalog = await call(a, "/v1/history/catalog/export", {}, reader.token);
+    assert.equal(catalog.status, 200);
+    const metadata: unknown = await catalog.json();
+    assert.equal((await call(a, "/v1/history/catalog/import", metadata, reader.token)).status, 403);
+    assert.equal((await call(b, "/v1/history/catalog/import", metadata)).status, 200);
+    assert.equal(b.registry.summaries()[0]?.id, source.id);
+    assert.equal(b.opens(), 0, "empty discovery never opens a model runtime");
+    const handle = await a.registry.open(source.id, "tr_incremental_http");
+    detach = handle.observeHistoryChanges?.(() => {
+      notices += 1;
+      throw new Error("sync observer fault");
+    });
+    assert.ok(detach);
+    a.faux.setResponses([text("source native history")]);
+    await handle.submit({
+      requestId: "r_incremental_http",
+      text: "incremental source",
+      whenBusy: "followUp",
+      trace: "tr_incremental_http",
+    });
+    await waitFor(
+      async () => (await handle.submission({ requestId: "r_incremental_http" }))?.status === "done",
+      "source commit",
+    );
+    await waitFor(() => notices > 0, "broken observer delivery");
+    const exported = await call(a, `/v1/bots/${source.id}/history/page`, {}, reader.token);
+    assert.equal(exported.status, 200, "daemon remains available after observer throws");
+    const page = (await exported.json()) as { head: string };
+    const listing = await call(a, `/v1/bots/${source.id}/history/branches`, {}, reader.token);
+    assert.equal(listing.status, 200);
+    assert.ok(Array.isArray(((await listing.json()) as { branches: unknown }).branches));
+    assert.equal(
+      (await call(a, `/v1/bots/${source.id}/history/receive`, page, reader.token)).status,
+      403,
+    );
+    assert.equal((await call(b, `/v1/bots/${source.id}/history/receive`, page)).status, 200);
+    const view = await call(b, `/v1/bots/${source.id}/history/view`, { head: page.head });
+    assert.equal(view.status, 200);
+    assert.match(JSON.stringify(await view.json()), /source native history/);
+    assert.equal(
+      (await call(a, `/v1/bots/${source.id}/history/assess`, { head: page.head }, reader.token))
+        .status,
+      200,
+    );
+    for (const invalid of [
+      null,
+      [],
+      { limit: 0 },
+      { limit: 33 },
+      { maxBytes: 128 * 1024 + 1 },
+      { after: "x", before: "x" },
+    ])
+      assert.equal(
+        (await call(a, `/v1/bots/${source.id}/history/page`, invalid, reader.token)).status,
+        400,
+      );
+    for (const operation of ["view", "assess", "branches"])
+      assert.equal(
+        (await call(a, `/v1/bots/${source.id}/history/${operation}`, { extra: true }, reader.token))
+          .status,
+        400,
+      );
+    assert.equal(
+      (await call(a, `/v1/bots/${source.id}/history/page`, { after: "foreign" }, reader.token))
+        .status,
+      400,
+    );
+    assert.equal((await call(a, "/v1/history/catalog/export", { knownIds: [null] })).status, 400);
+  } finally {
+    detach?.();
+    await a.close();
+    await b.close();
+  }
+});
+
 test("authenticated HTTP handoff exports/imports/continues with read/write scopes", async () => {
   const a = await startStack({ real: true });
   const b = await startStack({ real: true });

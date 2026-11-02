@@ -115,10 +115,17 @@ export const historyReject = (message: string): never => {
   throw new HistoryInputError(message);
 };
 
-const validateTurn = (entries: readonly HistoryEntry[]) => {
-  const calls = new Map<string, string>();
-  let final: Message | undefined;
-  let user = false;
+export const initialTurn = () => ({ calls: new Map<string, string>(), final: "", user: false });
+type TurnEntry = {
+  readonly kind: string;
+  readonly head?: unknown;
+  readonly model?: readonly Message[] | undefined;
+};
+export const advanceTurn = (
+  state: ReturnType<typeof initialTurn>,
+  entries: readonly TurnEntry[],
+) => {
+  const { calls } = state;
   for (const entry of entries) {
     for (const item of entry.model ?? []) {
       if (item.role === "assistant") {
@@ -129,26 +136,26 @@ const validateTurn = (entries: readonly HistoryEntry[]) => {
             if (calls.has(block.id)) historyReject("history tool call duplicated");
             calls.set(block.id, block.name);
           }
-        final = item;
+        state.final = item.stopReason;
       } else if (item.role === "toolResult") {
         if (calls.get(item.toolCallId) !== item.toolName)
           historyReject("history tool result orphaned");
         calls.delete(item.toolCallId);
       } else if (item.role === "user") {
         if (calls.size !== 0) historyReject("history tool group incomplete");
-        user = true;
+        state.user = true;
         // A compaction summary supplies context without opening a new unanswered turn.
-        if (!(entry.kind === "pi.compaction" && entry.head !== undefined)) final = item;
+        if (!(entry.kind === "pi.compaction" && entry.head !== undefined)) state.final = "user";
       }
     }
   }
-  if (
-    calls.size !== 0 ||
-    !user ||
-    final?.role !== "assistant" ||
-    !["stop", "length"].includes(final.stopReason)
-  )
-    historyReject("history is not a complete turn");
+};
+export const completeTurn = (state: ReturnType<typeof initialTurn>) =>
+  state.calls.size === 0 && state.user && ["stop", "length"].includes(state.final);
+export const validateTurn = (entries: readonly TurnEntry[]) => {
+  const state = initialTurn();
+  advanceTurn(state, entries);
+  if (!completeTurn(state)) historyReject("history is not a complete turn");
 };
 
 /** Validate raw records: SDK context assembly repairs missing results and cannot prove completeness. */

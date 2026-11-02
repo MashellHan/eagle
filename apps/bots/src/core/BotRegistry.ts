@@ -2,10 +2,14 @@
 // open per bot, idle close, quarantine with its retry, the startup recovery scan and
 // delete. The registry owns state; the service owns routing; the adapter owns the Harness.
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import { declareEvent } from "../log/events.ts";
 import type { Log } from "../log/log.ts";
 import type { BotConfig, BotDirectory } from "./BotDirectory.ts";
 import {
+  BOT_ID_PATTERN,
+  BOT_SHAPES,
+  BOT_TINTS,
   type BotAppearance,
   type BotGroup,
   type BotState,
@@ -263,6 +267,86 @@ export class BotRegistry {
     return [...this.#entries.values()].map((entry) => this.#summary(entry));
   }
 
+  exportHistoryCatalog(knownIds: readonly string[] = []) {
+    if (
+      !z.array(z.string().regex(BOT_ID_PATTERN)).max(MAX_CATALOG_BOTS).safeParse(knownIds).success
+    )
+      throw new ClassifiedFailure(
+        newFailure("invalid_command"),
+        "not_admitted",
+        "invalid known Bot IDs",
+      );
+    const known = new Set(knownIds);
+    const missing = [...this.#entries.values()].filter((entry) => !known.has(entry.config.id));
+    return {
+      bots: missing.slice(0, 32).map(({ config }) => ({
+        id: config.id,
+        title: config.title,
+        createdAt: config.createdAt,
+        ...(config.label === undefined ? {} : { label: config.label }),
+        ...(config.appearance === undefined ? {} : { appearance: config.appearance }),
+      })),
+      hasMore: missing.length > 32,
+    };
+  }
+
+  async importHistoryCatalog(input: unknown, trace: string) {
+    const invalid = () =>
+      new ClassifiedFailure(
+        newFailure("invalid_command"),
+        "not_admitted",
+        "invalid history catalog",
+      );
+    const parsed = z
+      .strictObject({
+        bots: z
+          .array(
+            z.strictObject({
+              id: z.string().regex(BOT_ID_PATTERN),
+              title: z.string().trim().min(1).max(80),
+              createdAt: z.iso.datetime(),
+              label: z.string().max(24).optional(),
+              appearance: z
+                .strictObject({ shape: z.enum(BOT_SHAPES), tint: z.enum(BOT_TINTS) })
+                .optional(),
+            }),
+          )
+          .max(32),
+        hasMore: z.boolean(),
+      })
+      .safeParse(input);
+    if (!parsed.success) throw invalid();
+    const bots = parsed.data.bots;
+    if (new Set(bots.map((bot) => bot.id)).size !== bots.length) throw invalid();
+    for (const bot of bots) {
+      if (this.#entries.has(bot.id)) continue;
+      if (this.#entries.size + this.#creating >= MAX_CATALOG_BOTS)
+        throw new ClassifiedFailure(
+          newFailure("limit_exceeded"),
+          "not_admitted",
+          "catalog is full",
+        );
+      this.#creating += 1;
+      // The serialized directory rejects a concurrent duplicate; adopt the already-created local identity.
+      try {
+        await this.#create(
+          bot.title,
+          trace,
+          {
+            ...(bot.label === undefined ? {} : { label: bot.label }),
+            ...(bot.appearance === undefined ? {} : { appearance: bot.appearance }),
+          },
+          bot,
+        );
+      } catch (cause) {
+        if (!this.#entries.has(bot.id)) throw cause;
+      } finally {
+        this.#creating -= 1;
+      }
+    }
+    return { bots: bots.map((bot) => this.#summary(this.#entry(bot.id, trace))) };
+  }
+
   state(botId: string): BotState | undefined {
     return this.#entries.get(botId)?.state;
   }
@@ -494,18 +578,19 @@ export class BotRegistry {
       readonly appearance?: BotAppearance;
       readonly groupId?: string;
     },
+    shared?: { readonly id: string; readonly createdAt: string },
   ): Promise<BotSummary> {
     if (this.#entries.size >= MAX_CATALOG_BOTS) {
       throw new ClassifiedFailure(newFailure("limit_exceeded"), "not_admitted", "catalog is full");
     }
     const at = (this.#options.now?.() ?? new Date()).toISOString();
     const config: BotConfig = {
-      id: (this.#options.newBotId ?? (() => newBotId()))(),
+      id: shared?.id ?? (this.#options.newBotId ?? (() => newBotId()))(),
       title,
       ...(extras.label === undefined ? {} : { label: extras.label }),
       ...(extras.groupId === undefined ? {} : { groupId: extras.groupId }),
       appearance: extras.appearance ?? DEFAULT_APPEARANCE,
-      createdAt: at,
+      createdAt: shared?.createdAt ?? at,
       updatedAt: at,
       model: this.#defaultModel,
       thinkingLevel: this.#defaultThinkingLevel,
@@ -531,7 +616,7 @@ export class BotRegistry {
     };
     this.#entries.set(config.id, entry);
     // Creation never waits for a Harness: reply first, warm afterwards.
-    void this.open(config.id, trace).catch(() => undefined);
+    if (shared === undefined) void this.open(config.id, trace).catch(() => undefined);
     return this.#summary(entry);
   }
 

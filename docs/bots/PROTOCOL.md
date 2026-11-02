@@ -99,6 +99,13 @@ version, the instance id, the pid and a bot count, never bot content.
 | --- | --- | --- | --- |
 | `GET` | `/v1/health` | — | `{ "version", "protocolVersion", "instance", "pid", "bots", "deviceAccess" }` |
 | `GET` | `/v1/bots` | — | `{ "bots": [BotSummary] }` |
+| `POST` | `/v1/history/catalog/export` | `{ "knownIds"?: [id] }`, read scope | At most 32 unknown `{id,title,createdAt,label?,appearance?}` records; `hasMore` |
+| `POST` | `/v1/history/catalog/import` | Catalog export, write scope | Same shared IDs created once; existing local config is retained |
+| `POST` | `/v1/bots/:id/history/page` | `{ "selection"?, "after"?, "before"?, "until"?, "limit"?, "maxBytes"? }`, read scope | Runtime-owned native record page, at most 32 records / 128 KiB; no idle requirement |
+| `POST` | `/v1/bots/:id/history/receive` | Native record page, write scope | Passive durable receipt with progress and optional usable head |
+| `POST` | `/v1/bots/:id/history/view` | `{ "head" }`, read scope | At most 32 records / 128 KiB of latest messages and cached `usable`, without full assessment |
+| `POST` | `/v1/bots/:id/history/assess` | `{ "head" }`, read scope | Explicit raw/effective completeness assessment; continuation also requires it |
+| `POST` | `/v1/bots/:id/history/branches` | `{ "after"?, "limit"? }`, read scope | Up to 32 root, local continuation and received branch selections; stable branch cursor |
 | `POST` | `/v1/bots` | `{ "title", "label"?, "appearance"? }` — `appearance` is `{ "shape", "tint" }` | `201 { "bot": BotSummary }` |
 | `PATCH` | `/v1/bots/:id` | `{ "title"?, "label"?, "note"?, "appearance"?, "groupId"?, "model"?, "thinkingLevel"? }` — a label of `""`, a note of `null` and a `groupId` of `null` clear their field | `{ "bot": BotSummary }` |
 | `DELETE` | `/v1/bots/:id` | — | `204` |

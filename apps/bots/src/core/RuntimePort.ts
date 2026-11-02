@@ -87,6 +87,33 @@ export type HistoryContinuation = {
 };
 
 export interface RuntimeHandle {
+  /** Explicit optional observation; listeners never run on the native commit callback. */
+  observeHistoryChanges?(listener: () => void): () => void;
+  exportHistoryPage?(
+    input?: {
+      selection?: string;
+      after?: string;
+      before?: string;
+      until?: string;
+      limit?: number;
+      maxBytes?: number;
+    },
+    trace?: string,
+  ): Promise<unknown>;
+  importHistoryPage?(page: unknown, trace?: string): Promise<HistoryReceipt & { pending: boolean }>;
+  readHistoryHead?(
+    head: string,
+    trace?: string,
+  ): Promise<HistoryReceipt & { usable: boolean; messages: readonly Message[] }>;
+  assessHistoryHead?(head: string, trace?: string): Promise<{ head: string; usable: boolean }>;
+  listHistoryBranches?(
+    input?: { after?: string; limit?: number },
+    trace?: string,
+  ): Promise<{
+    branches: { branchId: string; conversationId: string; selection: string }[];
+    cursor: string | null;
+    hasMore: boolean;
+  }>;
   /** Explicit local handoff; the archive is runtime-owned JSON, never a database file. */
   exportHistory?(branchId?: string, trace?: string): Promise<unknown>;
   importHistory?(archive: unknown, trace?: string): Promise<HistoryReceipt>;
