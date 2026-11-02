@@ -5,8 +5,9 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import { createModels, fauxProvider } from "@earendil-works/pi-ai";
-import { createRegistry, type EntryId, Harness } from "@earendil-works/pi-durable";
+import { createRegistry, type EntryId, Harness, type Storage } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { ClassifiedFailure } from "../../src/core/domain.ts";
 import type { RuntimeHandle } from "../../src/core/RuntimePort.ts";
 import { archiveHash, type HistoryArchive } from "../../src/runtime/pi/historyArchive.ts";
 import { NativeHistory } from "../../src/runtime/pi/NativeHistory.ts";
@@ -135,6 +136,167 @@ const rehash = (archive: HistoryArchive): HistoryArchive => {
   const { head: _head, ...payload } = archive;
   return { ...payload, head: archiveHash(payload) };
 };
+
+test("head export cannot rebind a continued branch or execute its request twice", async () => {
+  const a = await createBench({ settings: { compaction: { enabled: false } } });
+  const b = await createBench({ settings: { compaction: { enabled: false } } });
+  const left = await a.runtime.open(a.spec());
+  let right = await b.runtime.open(b.spec());
+  let calls = 0;
+  try {
+    a.faux.setResponses([text("ancestor")]);
+    await settled(left, "r_ancestor_rebind", "ancestor");
+    const receipt = await right.importHistory(await left.exportHistory());
+    b.faux.setResponses(
+      Array.from({ length: 4 }, (_, index) => () => {
+        calls += 1;
+        return index % 2 === 0
+          ? assistant([toolCall("bash", { command: "printf x >> executions.txt" })], {
+              stopReason: "toolUse",
+            })
+          : text("continued once");
+      }),
+    );
+    const input = { head: receipt.head, requestId: "r_pinned_branch", text: "continue" };
+    const continued = await right.continueHistory(input);
+    const branch = (await right.exportHistory(continued.branchId)) as HistoryArchive;
+    const forwarded = rehash({ ...branch, botId: "forwarded-metadata" });
+    const other = await right.importHistory(forwarded);
+    assert.deepEqual(await right.exportHistory(other.head), forwarded);
+    await right.close(trace, 5_000);
+    right = await b.runtime.open(b.spec());
+    const retried = await right.continueHistory(input);
+    assert.equal(calls, 2, "one provider tool round and one answer, including retry/reopen");
+    assert.equal(await readFile(join(b.spec().dir, "workspace/executions.txt"), "utf8"), "x");
+    assert.deepEqual(retried, continued);
+    assert.deepEqual(await right.exportHistory(continued.branchId), branch);
+  } finally {
+    await left.close(trace, 5_000);
+    await right.close(trace, 5_000);
+    await a.cleanup();
+    await b.cleanup();
+  }
+});
+
+test("a post-admission history read failure is unknown and reopen retries the same native submission", async () => {
+  let armed = false;
+  let faults = 0;
+  let calls = 0;
+  const a = await createBench({ settings: { compaction: { enabled: false } } });
+  const b = await createBench({
+    settings: { compaction: { enabled: false } },
+    storage: async (path) => {
+      const storage = await openNodeSqliteStorage(path);
+      return new Proxy(storage, {
+        get(target, key, receiver) {
+          if (key === "submission")
+            return async (...args: Parameters<Storage["submission"]>) => {
+              const value = await target.submission(...args);
+              if (armed && value?.status === "done") {
+                armed = false;
+                faults += 1;
+                throw new Error("lost the admitted submission read");
+              }
+              return value;
+            };
+          return Reflect.get(target, key, receiver);
+        },
+      });
+    },
+  });
+  const left = await a.runtime.open(a.spec());
+  let right = await b.runtime.open(b.spec());
+  try {
+    a.faux.setResponses([text("ancestor")]);
+    await settled(left, "r_admission_ancestor", "ancestor");
+    const receipt = await right.importHistory(await left.exportHistory());
+    b.faux.setResponses([
+      () => {
+        calls += 1;
+        return text("durably answered");
+      },
+    ]);
+    const input = { head: receipt.head, requestId: "r_uncertain_history", text: "continue" };
+    armed = true;
+    await assert.rejects(right.continueHistory(input), (cause) => {
+      assert.ok(cause instanceof ClassifiedFailure);
+      assert.equal(cause.disposition, "unknown", "never tell a caller to discard an admitted ID");
+      return true;
+    });
+    assert.equal(faults, 1);
+    await right.close(trace, 5_000);
+    right = await b.runtime.open(b.spec());
+    const retried = await right.continueHistory(input);
+    assert.equal(retried.submission.status, "done");
+    assert.equal(calls, 1, "the durable admission answers without another provider invocation");
+    await assert.rejects(
+      right.continueHistory({ ...input, requestId: "r_invalid_head", head: "0".repeat(64) }),
+      (cause) => {
+        assert.ok(cause instanceof ClassifiedFailure);
+        assert.equal(cause.disposition, "not_admitted");
+        return true;
+      },
+    );
+  } finally {
+    await left.close(trace, 5_000);
+    await right.close(trace, 5_000);
+    await a.cleanup();
+    await b.cleanup();
+  }
+});
+
+for (const damage of ["duplicate calls", "omit answer", "replace answer with user"] as const) {
+  test(`effective edited context rejects ${damage}`, async () => {
+    const bench = await createBench({ settings: { compaction: { enabled: false } } });
+    const handle = await bench.runtime.open(bench.spec());
+    try {
+      bench.faux.setResponses([
+        assistant([toolCall("list", {})], { stopReason: "toolUse" }),
+        text("finished"),
+      ]);
+      await settled(handle, "r_edit_boundary", "list");
+      const archive = (await handle.exportHistory()) as HistoryArchive;
+      const caller = present(
+        archive.entries.find((entry) =>
+          entry.model?.some((item) => item.role === "assistant" && item.stopReason === "toolUse"),
+        ),
+      );
+      const target =
+        damage === "duplicate calls"
+          ? caller
+          : present(archive.entries.findLast((entry) => entry.kind === "pi.assistant"));
+      const replacement = structuredClone(present(caller.model));
+      const assistantMessage = present(replacement.find((item) => item.role === "assistant"));
+      assert.ok(assistantMessage.role === "assistant");
+      assistantMessage.content.push(present(assistantMessage.content[0]));
+      archive.entries.push({
+        id: `${caller.originId}/e999999`,
+        originId: caller.originId,
+        conversationId: caller.conversationId,
+        kind: "review.edit",
+        edits: [
+          damage === "omit answer"
+            ? { target: target.id, action: "omit" }
+            : {
+                target: target.id,
+                action: "replace",
+                messages:
+                  damage === "duplicate calls"
+                    ? replacement
+                    : [{ role: "user", content: "unanswered", timestamp: 1 }],
+              },
+        ],
+      });
+      await assert.rejects(
+        handle.importHistory(rehash(archive)),
+        damage === "duplicate calls" ? /duplicated/ : /complete turn/,
+      );
+    } finally {
+      await handle.close(trace, 5_000);
+      await bench.cleanup();
+    }
+  });
+}
 
 test("trust boundary refuses missing/orphaned raw tool results, broken references and partial turns", async () => {
   const a = await createBench({ settings: { compaction: { enabled: false } } });

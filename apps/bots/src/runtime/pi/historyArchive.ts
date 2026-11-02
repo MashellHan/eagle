@@ -115,6 +115,42 @@ export const historyReject = (message: string): never => {
   throw new HistoryInputError(message);
 };
 
+const validateTurn = (entries: readonly HistoryEntry[]) => {
+  const calls = new Map<string, string>();
+  let final: Message | undefined;
+  let user = false;
+  for (const entry of entries) {
+    for (const item of entry.model ?? []) {
+      if (item.role === "assistant") {
+        if (calls.size !== 0) historyReject("history tool group incomplete");
+        if (item.stopReason === "error" || item.stopReason === "aborted") continue;
+        for (const block of item.content)
+          if (block.type === "toolCall") {
+            if (calls.has(block.id)) historyReject("history tool call duplicated");
+            calls.set(block.id, block.name);
+          }
+        final = item;
+      } else if (item.role === "toolResult") {
+        if (calls.get(item.toolCallId) !== item.toolName)
+          historyReject("history tool result orphaned");
+        calls.delete(item.toolCallId);
+      } else if (item.role === "user") {
+        if (calls.size !== 0) historyReject("history tool group incomplete");
+        user = true;
+        // A compaction summary supplies context without opening a new unanswered turn.
+        if (!(entry.kind === "pi.compaction" && entry.head !== undefined)) final = item;
+      }
+    }
+  }
+  if (
+    calls.size !== 0 ||
+    !user ||
+    final?.role !== "assistant" ||
+    !["stop", "length"].includes(final.stopReason)
+  )
+    historyReject("history is not a complete turn");
+};
+
 /** Validate raw records: SDK context assembly repairs missing results and cannot prove completeness. */
 export const validateArchive = (input: unknown): HistoryArchive => {
   if (Buffer.byteLength(JSON.stringify(input) ?? "") > MAX_ARCHIVE_BYTES)
@@ -126,9 +162,6 @@ export const validateArchive = (input: unknown): HistoryArchive => {
   const { head, ...payload } = archive;
   if (head !== archiveHash(payload)) historyReject("history digest mismatch");
   const seen = new Set<string>();
-  const calls = new Map<string, string>();
-  let final: Message | undefined;
-  let user = false;
   for (const entry of archive.entries) {
     if (
       seen.has(entry.id) ||
@@ -141,40 +174,8 @@ export const validateArchive = (input: unknown): HistoryArchive => {
     for (const edit of entry.edits ?? [])
       if (!seen.has(edit.target)) historyReject("history edit reference missing");
     seen.add(entry.id);
-    for (const item of entry.model ?? []) {
-      if (item.role === "assistant") {
-        if (calls.size !== 0) historyReject("history tool group incomplete");
-        if (item.stopReason === "error" || item.stopReason === "aborted") continue;
-        for (const block of item.content)
-          if (block.type === "toolCall") {
-            if (calls.has(block.id)) historyReject("history tool call duplicated");
-            calls.set(block.id, block.name);
-          }
-      } else if (item.role === "toolResult") {
-        if (calls.get(item.toolCallId) !== item.toolName)
-          historyReject("history tool result orphaned");
-        calls.delete(item.toolCallId);
-      }
-      // Compaction summaries are context, not a new uncompleted user turn.
-      if (
-        item.role === "assistant" ||
-        (item.role === "user" && !(entry.kind === "pi.compaction" && entry.head !== undefined))
-      ) {
-        if (item.role === "user") {
-          if (calls.size !== 0) historyReject("history tool group incomplete");
-          user = true;
-        }
-        final = item;
-      }
-    }
   }
-  if (
-    calls.size !== 0 ||
-    !user ||
-    final?.role !== "assistant" ||
-    !["stop", "length"].includes(final.stopReason)
-  )
-    historyReject("history is not a complete turn");
+  validateTurn(archive.entries);
   const marker = archive.entries.findLast((entry) => entry.head !== undefined);
   const range =
     marker === undefined
@@ -185,22 +186,13 @@ export const validateArchive = (input: unknown): HistoryArchive => {
   );
   const active =
     marker === undefined ? range : [marker, ...range.filter((entry) => entry.head === undefined)];
-  for (const entry of active) {
-    const edit = edits.get(entry.id);
-    const messages =
-      edit === undefined ? (entry.model ?? []) : edit.action === "omit" ? [] : edit.messages;
-    for (const item of messages) {
-      if (item.role === "assistant" && !["error", "aborted"].includes(item.stopReason)) {
-        if (calls.size !== 0) historyReject("history edited tool group incomplete");
-        for (const block of item.content)
-          if (block.type === "toolCall") calls.set(block.id, block.name);
-      } else if (item.role === "toolResult") {
-        if (calls.get(item.toolCallId) !== item.toolName)
-          historyReject("history edited tool result orphaned");
-        calls.delete(item.toolCallId);
-      }
-    }
-  }
-  if (calls.size !== 0) historyReject("history edited tool group incomplete");
+  validateTurn(
+    active.map((entry) => {
+      const edit = edits.get(entry.id);
+      const messages =
+        edit === undefined ? (entry.model ?? []) : edit.action === "omit" ? [] : edit.messages;
+      return { ...entry, model: messages };
+    }),
+  );
   return archive;
 };

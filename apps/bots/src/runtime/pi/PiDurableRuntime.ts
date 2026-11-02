@@ -360,32 +360,41 @@ class PiRuntimeHandle implements RuntimeHandle {
   }
 
   continueHistory(input: { head: string; requestId: string; text: string; trace?: string }) {
-    return this.#historyOperation(input.trace ?? this.#spec.trace, () =>
-      new NativeHistory(this.#harness, this.#rootId, this.#spec.id).continue(input),
+    return this.#historyOperation(input.trace ?? this.#spec.trace, (onAdmission) =>
+      new NativeHistory(this.#harness, this.#rootId, this.#spec.id).continue(input, onAdmission),
     );
   }
 
-  async #historyOperation<T>(trace: string, operation: () => Promise<T>): Promise<T> {
+  async #historyOperation<T>(
+    trace: string,
+    operation: (onAdmission: () => void) => Promise<T>,
+  ): Promise<T> {
     const started = performance.now();
     const fields = { trace, botId: this.#spec.id };
     this.#options.log.emit("info", "runtime", Events.historyStart, fields);
+    let mayBeAdmitted = false;
     try {
-      const result = await operation();
+      const result = await operation(() => {
+        mayBeAdmitted = true;
+      });
       this.#options.log.emit("info", "runtime", Events.historyOk, {
         ...fields,
         durMs: Math.round(performance.now() - started),
       });
       return result;
     } catch (cause) {
-      const minted = this.#classifier.classify(
-        `history:${randomUUID()}`,
-        cause instanceof HistoryInputError ? "invalid_command" : "storage_failed",
-        "runtime",
-      );
+      const busy = cause instanceof Error && cause.name === "ConversationBusy";
+      const minted = busy
+        ? this.#classifier.refusedBusy()
+        : this.#classifier.classify(
+            `history:${randomUUID()}`,
+            cause instanceof HistoryInputError ? "invalid_command" : "storage_failed",
+            "runtime",
+          );
       this.#logFailure(minted, trace, Events.historyFail, "runtime");
       throw new ClassifiedFailure(
         minted.classification.failure,
-        "not_admitted",
+        mayBeAdmitted && !busy ? "unknown" : "not_admitted",
         cause instanceof HistoryInputError ? cause.message : minted.classification.message,
         { cause },
       );

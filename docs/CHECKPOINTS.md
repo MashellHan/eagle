@@ -2587,3 +2587,23 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Herdr collection/authentication, D1 and dashboard rendering: N/A. Physical
   bridge/Tailscale readiness is not history acceptance. Next: fixed CLI review head,
   then committed-entry propagation and automatic empty-Bot discovery.
+
+## 2026-11-02 15:04 optional history: review corrections
+
+- Four review findings reproduced as five failing behaviors, then pass: head export
+  cannot redirect a retry or repeat its real tool, post-admission read failure is
+  unknown and reopens idempotently, and edited duplicate calls/incomplete tails are
+  refused. Runtime 108/108 and full Bots check 772/772 pass; coverage is
+  95.51% lines / 88.47% branches / 90.67% functions. Full CLI/model/tool eval is 15/15.
+- Owner observed the foreground dev App in w5:p4: Eagle PID 88081, isolated
+  `.local/history-dev-app-stage1`, port 43129; health reports daemon PID 90614,
+  zero Bots and `deviceAccess:null`. Candidate/daily instances are untouched.
+  This is startup observation, not imported-history App visibility acceptance.
+- Root check originally failed 5/265; API clock helper is independently fixed and
+  its file passes 38/38; unchanged redaction file passes 6/6 at original limits.
+  Browser remains 179 passed / 12 failed / 11 existing platform skips. Full Swift
+  has one copy-button assertion failure; the other 344 tests pass. Their one
+  low-load file rechecks remain pending; complete gates are not declared green.
+- Herdr collection/authentication, D1 and dashboard rendering: N/A. Next: independent
+  fix review and the native bounded incremental boundary; physical App evidence,
+  including B's automation readiness, stays with Root.

@@ -36,7 +36,10 @@ const HistoryState = defineDoc({
     records: {} as Record<string, Provenance>,
     branches: {} as Record<string, Branch>,
     heads: {} as Record<string, Head>,
-    continuations: {} as Record<string, { head: string; text: string; branchId: string }>,
+    continuations: {} as Record<
+      string,
+      { head: string; text: string; branchId: string; nativeId?: number }
+    >,
   }),
   checkpointWhen: () => true,
 });
@@ -140,11 +143,12 @@ export class NativeHistory {
         records: archive.entries.map((entry) => entry.id),
         entries: all.map((entry) => entry.id),
       };
-      state.branches[archive.branchId] = {
-        nativeId,
-        conversationId: archive.conversationId,
-        botId: archive.botId,
-      };
+      if (saved === undefined)
+        state.branches[archive.branchId] = {
+          nativeId,
+          conversationId: archive.conversationId,
+          botId: archive.botId,
+        };
       return archive;
     }, ctx);
   }
@@ -246,11 +250,14 @@ export class NativeHistory {
     }, ctx);
   }
 
-  async continue(input: {
-    head: string;
-    requestId: string;
-    text: string;
-  }): Promise<HistoryContinuation> {
+  async continue(
+    input: {
+      head: string;
+      requestId: string;
+      text: string;
+    },
+    onAdmission: () => void,
+  ): Promise<HistoryContinuation> {
     if (
       !/^[A-Za-z0-9_-]{1,128}$/.test(input.requestId) ||
       input.text.length === 0 ||
@@ -263,12 +270,8 @@ export class NativeHistory {
       if (previous !== undefined) {
         if (previous.head !== input.head || previous.text !== input.text)
           historyReject("history continuation request conflict");
-        const branch = state.branches[previous.branchId] ?? historyReject("history branch missing");
-        return {
-          nativeId: branch.nativeId,
-          conversationId: branch.conversationId,
-          botId: branch.botId,
-        };
+        // Older local receipts also pin the native ID in their locally minted branch ID.
+        return { nativeId: previous.nativeId ?? Number(previous.branchId.split("/c")[1]) };
       }
       const head = state.heads[input.head] ?? historyReject("unknown imported history head");
       const tail = head.entries.at(-1) as EntryId;
@@ -282,12 +285,18 @@ export class NativeHistory {
       const branchId = `${state.originId}/c${fork.id}`;
       const branch = { nativeId: fork.id, conversationId: head.conversationId, botId: this.#botId };
       state.branches[branchId] = branch;
-      state.continuations[input.requestId] = { head: input.head, text: input.text, branchId };
+      state.continuations[input.requestId] = {
+        head: input.head,
+        text: input.text,
+        branchId,
+        nativeId: fork.id,
+      };
       return branch;
     }, ctx);
     const conversation =
       (await this.#harness.conversation(selected.nativeId as ConversationId, ctx)) ??
       historyReject("history conversation missing");
+    onAdmission();
     const submission = await conversation.submit(
       { type: "input", content: input.text, requestId: input.requestId, whenBusy: "reject" },
       ctx,

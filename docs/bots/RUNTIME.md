@@ -27,6 +27,11 @@ executes tools, calls a model, or copies source model/tool/environment settings.
 Only explicit continuation forks an imported complete head and submits local work,
 using the receiving Bot's current configuration. Independent continuations retain
 separate branch IDs; timestamps never merge or select contexts.
+Head export cannot rebind a local branch. Continuation receipts pin the native
+conversation, so metadata forwarding cannot change a retry's admission scope.
+After submit may have admitted work, failures are `unknown` and callers retain
+the original request ID. Raw and effective edited contexts must each have complete
+tool groups and a completed tail; SDK repair placeholders never prove validity.
 
 Local open/submit have no sync initialization, origin/receipt/export bookkeeping
 or network dependency. This slice adds no sync transport, staging store, resource
