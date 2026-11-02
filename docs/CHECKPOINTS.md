@@ -2765,3 +2765,19 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   historical non-green: Bots 776/781, browser 179/12/11, Swift 344/1; complete eval
   15/15 predates 2A. Herdr collection/auth, D1 and dashboard rendering: N/A. No
   deployment, installation or daily-data changes.
+
+## 2026-11-02 17:08 optional history: bounded backfill recovery
+
+- App slice `f4dafa9` is fixed separately. The current process failure remains in
+  `.local/history-native-app-process-green.log` (1/2), distinct from e44's earlier
+  5/5 expanded evidence and earlier 2/2 basic evidence. Controlled one-backfill
+  `history_busy` reproduced deletion of queued work and IPC teardown timeouts in
+  `.local/history-native-app-backfill-red.log`. The scheduler now retains failed
+  positions, retries reads on the existing attachment, gives fresh work the first
+  turn while allowing one background page/drain, and broadcasts pending completion.
+- Same full affected process file now passes 2/2 (45.1s, original timeouts),
+  `.local/history-native-app-backfill-green.log`; Bots/root types and lint pass.
+  Host 71/71 and Conversation recheck 11/11 remain separate native evidence. Root's
+  running App, physical latency, final gates and all six new review P2s remain open.
+  SwiftPM is released; Root owns snapshot/build/physical operations. Herdr collection/
+  auth, D1 and dashboard rendering: N/A. No deployment, installation or daily writes.

@@ -98,6 +98,9 @@ function processPort(file: string, root: string) {
   });
   return {
     child,
+    diagnostics() {
+      return stderr;
+    },
     send(value: unknown) {
       child.stdin.write(`${JSON.stringify(value)}\n`);
     },
@@ -442,6 +445,7 @@ async function daemonProcess(
   socketPath: string,
   baseUrl: string,
   key: string,
+  failOneBackfill = false,
 ) {
   mkdirSync(root, { mode: 0o700, recursive: true });
   const script = join(root, "daemon.mjs");
@@ -456,6 +460,20 @@ const config=JSON.parse((await lines.next()).value);
 Object.assign(process.env,{BOTS_BASE_URL:config.baseUrl,BOTS_API_KEY:config.key,BOTS_PROVIDER:'device-local',BOTS_MODEL:'scripted-local',BOTS_THINKING_LEVEL:'off',BOTS_TOOL_GROUPS:'core',BOTS_COMPACTION:'off'});
 const {readConfig}=await import(pathToFileURL(config.source+'/src/config.ts').href);
 const {startDaemon}=await import(pathToFileURL(config.source+'/src/main.ts').href);
+if(config.failOneBackfill){
+  const {PiDurableRuntime}=await import(pathToFileURL(config.source+'/src/runtime/pi/PiDurableRuntime.ts').href);
+  const open=PiDurableRuntime.prototype.open;
+  let fail=true;
+  PiDurableRuntime.prototype.open=async function(...args){
+    const handle=await open.apply(this,args);
+    const read=handle.exportHistoryPage.bind(handle);
+    handle.exportHistoryPage=async function(input){
+      if(fail&&input?.before){fail=false;process.stdout.write(JSON.stringify({type:'backfill-rejected'})+'\\n');throw new Error('history_busy');}
+      return read(input);
+    };
+    return handle;
+  };
+}
 const daemon=await startDaemon(readConfig({argv:['--root',config.root,'--port','0'],env:{BOTS_DEVICE_SOCKET:config.socketPath}}));
 process.stdout.write(JSON.stringify({type:'ready',port:daemon.port})+'\\n');
 await lines.next();
@@ -466,7 +484,14 @@ input.close();
   const daemon = processPort(script, root);
   // Private test configuration arrives on stdin, never argv or the inherited environment.
   try {
-    daemon.send({ source: botsSource, root, socketPath, baseUrl, key });
+    daemon.send({
+      source: botsSource,
+      root,
+      socketPath,
+      baseUrl,
+      key,
+      failOneBackfill,
+    });
     const ready = await daemon.message((message) => message.type === "ready");
     const token = readFileSync(join(root, "token"), "utf8").trim();
     const origin = `http://127.0.0.1:${ready.port}`;
@@ -899,6 +924,7 @@ test("optional DO history automatically discovers an empty Bot and shows committ
       a.socketPath,
       modelA.baseUrl,
       key,
+      true,
     );
     daemons.push(left);
     handoffOwner = connect(b.socketPath);
@@ -1114,6 +1140,7 @@ test("optional DO history automatically discovers an empty Bot and shows committ
       return undefined;
     }, "fresh committed tail while old backfill is queued");
     release();
+    await left.message((message) => message.type === "backfill-rejected");
     const largeHead = await until(async () => {
       const catalog = await cli(right, "bots", "list", "--json");
       if (!(catalog.bots as { id: string }[]).some((bot) => bot.id === largeId))
@@ -1173,6 +1200,9 @@ test("optional DO history automatically discovers an empty Bot and shows committ
         journal.close();
       }
     }
+  } catch (error) {
+    for (const daemon of daemons) console.error(daemon.diagnostics());
+    throw error;
   } finally {
     release();
     handoffOwner?.destroy();

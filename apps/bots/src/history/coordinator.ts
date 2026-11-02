@@ -72,6 +72,7 @@ export class HistoryCoordinator {
   #working = false;
   #serving = 0;
   #reconnect?: NodeJS.Timeout;
+  #retry: NodeJS.Timeout | undefined;
   #notice: NodeJS.Timeout | undefined;
 
   constructor(
@@ -129,6 +130,8 @@ export class HistoryCoordinator {
     if (this.#channel !== channel) return;
     this.#channel = undefined;
     this.#ready = false;
+    clearTimeout(this.#retry);
+    this.#retry = undefined;
     for (const pending of this.#pending.values()) pending.reject();
     this.#pending.clear();
     if (!this.#closed) {
@@ -322,8 +325,10 @@ export class HistoryCoordinator {
   }
 
   async #work() {
-    if (this.#working || !this.#ready || this.#closed) return;
+    if (this.#working || this.#retry || !this.#ready || this.#closed) return;
     this.#working = true;
+    let activePeer: string | undefined;
+    let freshTurn = true;
     try {
       while (
         this.#ready &&
@@ -331,26 +336,32 @@ export class HistoryCoordinator {
         (this.#fresh.size || this.#backfill.size || this.#drains.size)
       ) {
         const peer = this.#fresh.values().next().value;
-        if (peer) {
+        activePeer = undefined;
+        if (peer && (freshTurn || (!this.#backfill.size && !this.#drains.size))) {
+          activePeer = peer;
+          freshTurn = false;
           this.#fresh.delete(peer);
           await this.#catchUp(peer);
         } else if (this.#drains.size) {
+          freshTurn = true;
           const first = this.#drains.entries().next().value;
           if (!first) break;
           const [key, drain] = first;
-          this.#drains.delete(key);
           const receipt = await this.#withBot(
             drain.botId,
             (handle) =>
               handle.importHistoryPage?.({ ...drain.page, records: [] }) ??
               Promise.resolve(undefined),
           );
-          if (receipt?.pending) this.#drains.set(key, drain);
+          if (!receipt?.pending) {
+            this.#drains.delete(key);
+            this.#changed(drain.botId);
+          }
         } else {
+          freshTurn = true;
           const first = this.#backfill.entries().next().value;
           if (!first) break;
           const [key, backfill] = first;
-          this.#backfill.delete(key);
           const page = await this.#receive(
             backfill.botId,
             await this.#pull(backfill.peer, {
@@ -365,12 +376,23 @@ export class HistoryCoordinator {
           );
           if (page.hasMore && page.cursor)
             this.#backfill.set(key, { ...backfill, before: page.cursor });
+          else this.#backfill.delete(key);
         }
         await new Promise<void>((resolve) => setImmediate(resolve));
       }
-    } catch {
-      // Retry the optional IPC attachment, never block or retry a local submission.
-      this.#channel?.close();
+    } catch (error) {
+      if (activePeer) this.#fresh.add(activePeer);
+      if (
+        error instanceof Error &&
+        ["history_pull_timeout", "history_pull_unavailable"].includes(error.message)
+      ) {
+        // A failed read must not tear down the attachment serving the other peer's pulls.
+        this.#retry = setTimeout(() => {
+          this.#retry = undefined;
+          void this.#work();
+        }, 1000);
+        this.#retry.unref();
+      } else this.#channel?.close();
     } finally {
       this.#working = false;
     }
@@ -379,6 +401,7 @@ export class HistoryCoordinator {
   close() {
     this.#closed = true;
     clearTimeout(this.#reconnect);
+    clearTimeout(this.#retry);
     clearTimeout(this.#notice);
     for (const detach of this.#detachers) detach();
     for (const observer of this.#handles.values()) observer.detach();

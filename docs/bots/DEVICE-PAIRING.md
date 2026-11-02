@@ -431,7 +431,10 @@ pull missing catalog metadata and bounded branch pages. Imports broadcast the
 existing catalog, including an empty Bot. Fresh committed-user pages are imported
 and announced before completion assessment; old backfill yields between pages
 and has a separate queue. Native pending work drains independently after the final
-backfill page, without waiting for another notice. Page replies reserve their
+backfill page, without waiting for another notice. Failed reads retain their queued
+position and retry with bounded backoff on the existing attachment; fresh work gets
+the first turn, then one background page/drain may advance before another fresh
+round. Completion broadcasts to the native App. Page replies reserve their
 actual JSON wrapper inside the Device Service's 128 KiB plaintext budget; sealing
 retains the existing ciphertext frame cap. No model or tools run during receive/
 reopen. The native App observes welcome/bots independently of selection, preserves
