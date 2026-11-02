@@ -3054,3 +3054,25 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   Any residual cloud error awaits bounded evidence, with no auth/limit change.
   Herdr collection/authentication, D1 and dashboard rendering: N/A. Source consumers
   and SwiftPM remain released; this update changes only the checkpoint.
+
+
+## 2026-11-02 21:18 optional history: two scheduler interleavings
+
+- Root’s fixed `d8a5abd` full Bots ordinary and coverage gates each passed 807/807.
+  Both Macs have healthy d8 daemons + 01 UI, with history deliberately false; the
+  incomplete candidate has not synchronized. All old Bots and 413736 bytes of
+  native-record backlog remain preserved. Root owns devices and candidate gates.
+- Precise coarse-scan IPC red puts a newly created Bot behind eight old imports
+  instead of one; H1/H2 red loses e130–e161 (130/162 imported). The earlier
+  `history-scheduler-new-catalog-red.log` is actually 5/5 green and did not pin the
+  coarse phase: it remains counter-evidence, not a red. Both precise failures are
+  retained in `.local/history-scheduler-two-boundaries-red.log`.
+- The narrow fix prioritizes catalog work in the existing hot queue and saves
+  actual imported cursors before yielding. Final affected IPC is 14/14 (162/162
+  retained), process 5/5, Bots types/lint and root types/affected lint pass; logs are
+  `history-scheduler-two-boundaries-green.log`, `history-scheduler-new-catalog-green.log`
+  and `history-scheduler-boundaries-*.log` under `.local/`. These are affected checks
+  only; Root will run the new head’s full gate. No Swift/App was started here.
+- Physical A→B 11.8129s/B→A 18.103s failures remain; DO/TS two-way App visibility
+  within 5s is still pending. No UI/SDK/Agent/Worker/auth/physical-data changes.
+  Collection, D1 and dashboard: N/A; source SwiftPM remains released.

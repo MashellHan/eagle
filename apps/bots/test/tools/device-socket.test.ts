@@ -505,6 +505,296 @@ test("an encrypted changed Bot preempts a multi-branch catch-up and empty echoes
   }
 });
 
+test("a Bot created during an existing coarse scan imports its catalog before old branches", async () => {
+  const peer = randomUUID();
+  const origin = randomUUID();
+  const oldBot = "b_known_old_catalog";
+  const freshBot = "b_created_mid_scan";
+  const known = [oldBot];
+  const oldBranches = Array.from({ length: 8 }, () => `${randomUUID()}/c1`);
+  const freshBranch = `${origin}/c1`;
+  const imports: string[] = [];
+  const reads: string[] = [];
+  let created = false;
+  let attached: Socket | undefined;
+  let release: (() => void) | undefined;
+  const page = (botId: string, branchId: string) => {
+    const tip = botId === freshBot ? `${origin}/e1` : null;
+    return {
+      version: 1,
+      engine: "pi-durable@1.4.0",
+      botId,
+      branchId,
+      conversationId: branchId,
+      tip,
+      head: pageHead(branchId, tip),
+      cursor: tip ? "1" : null,
+      snapshot: tip ? "1" : null,
+      hasMore: false,
+      records: tip
+        ? [
+            {
+              previous: null,
+              entry: {
+                id: tip,
+                originId: origin,
+                conversationId: branchId,
+                kind: "model",
+                model: [{ role: "user", content: "new Bot committed user", timestamp: 1 }],
+              },
+            },
+          ]
+        : [],
+    };
+  };
+  const registry = {
+    summaries: () => known.map((id) => ({ id })),
+    handleOf: () => undefined,
+    observeHandles: () => () => {},
+    importHistoryCatalog: async (value: { bots: { id: string }[] }) => {
+      for (const bot of value.bots) if (!known.includes(bot.id)) known.push(bot.id);
+    },
+    touch: (botId: string) => known.includes(botId),
+    open: async (botId: string) => ({
+      importHistoryPage: async (input: unknown) => {
+        const received = validateHistoryPage(input);
+        if (botId === freshBot)
+          assert.match(JSON.stringify(received.records), /new Bot committed user/);
+        imports.push(botId);
+        return { pending: false };
+      },
+    }),
+    release: () => {},
+  } as unknown as BotRegistry;
+  const directory = { observeChanges: () => () => {} } as unknown as BotDirectory;
+  const bench = await fixture((socket, frame) => {
+    if (frame.method === "history.attach") attached = socket;
+    socket.write(
+      `${JSON.stringify({
+        requestId: frame.requestId,
+        result:
+          frame.method === "history.peers" ? [{ deviceId: peer }] : { enabled: true, ready: true },
+      })}\n`,
+    );
+    if (frame.method !== "history.send") return;
+    const { payload } = frame.params as {
+      payload: {
+        type: string;
+        id: string;
+        request: {
+          method: string;
+          botId: string;
+          input?: { selection: string };
+        };
+      };
+    };
+    if (payload.type !== "pull") return;
+    const query = payload.request;
+    reads.push(`${query.method}/${query.botId ?? ""}`);
+    const ids = query.botId === oldBot ? oldBranches : [freshBranch];
+    const result =
+      query.method === "catalog"
+        ? { bots: created ? [{ id: freshBot }] : [], hasMore: false }
+        : query.method === "branches"
+          ? {
+              branches: ids.map((branchId) => ({
+                branchId,
+                conversationId: branchId,
+                selection: page(query.botId, branchId).head,
+              })),
+              cursor: null,
+              hasMore: false,
+            }
+          : page(
+              query.botId,
+              ids.find(
+                (branchId) => page(query.botId, branchId).head === query.input?.selection,
+              ) as string,
+            );
+    const reply = () =>
+      socket.write(
+        `${JSON.stringify({
+          type: "history.packet",
+          sourceDeviceId: peer,
+          payload: { type: "reply", id: payload.id, result, failed: false },
+        })}\n`,
+      );
+    if (query.method === "page" && query.botId === oldBot && !release)
+      release = () => {
+        reply();
+      };
+    else reply();
+  });
+  const coordinator = new HistoryCoordinator(bench.path, registry, directory, () => {});
+  try {
+    await waitFor(() => release !== undefined, "existing coarse scan's first old page is held");
+    assert.deepEqual(known, [oldBot]);
+    const before = reads.length;
+    created = true;
+    attached?.write(
+      `${JSON.stringify({
+        type: "history.packet",
+        sourceDeviceId: peer,
+        payload: { type: "changed", botIds: [freshBot], catalog: true },
+      })}\n`,
+    );
+    release?.();
+    await waitFor(
+      () => imports.includes(freshBot),
+      "new catalog and committed user import automatically",
+    );
+    assert.equal(
+      imports.indexOf(freshBot),
+      1,
+      "only the already running old page may precede the new Bot",
+    );
+    assert.equal(reads[before], "catalog/", "new metadata cannot queue behind old branch pages");
+    await waitFor(
+      () => imports.filter((id) => id === oldBot).length === oldBranches.length,
+      "preempted coarse branches remain queued",
+    );
+  } finally {
+    release?.();
+    await coordinator.close();
+    await bench.close();
+  }
+});
+
+test("hot and coarse scans import all five delta pages before caching the newer head", async (t) => {
+  const peer = randomUUID();
+  const origin = randomUUID();
+  const botId = "b_interleaved_delta";
+  const branchId = `${origin}/c1`;
+  const records = Array.from({ length: 162 }, (_, index) => ({
+    previous: index ? `${origin}/e${index}` : null,
+    entry: {
+      id: `${origin}/e${index + 1}`,
+      originId: origin,
+      conversationId: branchId,
+      kind: "model",
+      model: [{ role: "user", content: `committed record ${index + 1}`, timestamp: index }],
+    },
+  }));
+  const imported = new Set<string>();
+  let tip = 1;
+  let injected = false;
+  let attached: Socket | undefined;
+  const registry = {
+    summaries: () => [{ id: botId }],
+    handleOf: () => undefined,
+    observeHandles: () => () => {},
+    importHistoryCatalog: async () => {},
+    touch: () => true,
+    open: async () => ({
+      importHistoryPage: async (input: unknown) => {
+        const page = validateHistoryPage(input);
+        for (const record of page.records) imported.add(record.entry.id);
+        if (tip === 161 && page.records[0]?.entry.id === `${origin}/e2` && !injected) {
+          injected = true;
+          tip = 162;
+          attached?.write(
+            `${JSON.stringify({
+              type: "history.packet",
+              sourceDeviceId: peer,
+              payload: { type: "changed", botIds: [botId], catalog: false },
+            })}\n`,
+          );
+        }
+        return { pending: false };
+      },
+    }),
+    release: () => {},
+  } as unknown as BotRegistry;
+  const directory = { observeChanges: () => () => {} } as unknown as BotDirectory;
+  const bench = await fixture((socket, frame) => {
+    if (frame.method === "history.attach") attached = socket;
+    socket.write(
+      `${JSON.stringify({
+        requestId: frame.requestId,
+        result:
+          frame.method === "history.peers" ? [{ deviceId: peer }] : { enabled: true, ready: true },
+      })}\n`,
+    );
+    if (frame.method !== "history.send") return;
+    const { payload } = frame.params as {
+      payload: {
+        type: string;
+        id: string;
+        request: {
+          method: string;
+          input?: { selection: string; after?: string };
+        };
+      };
+    };
+    if (payload.type !== "pull") return;
+    const query = payload.request;
+    let result: unknown;
+    if (query.method === "catalog") result = { bots: [], hasMore: false };
+    else if (query.method === "branches")
+      result = {
+        branches: [
+          {
+            branchId,
+            conversationId: branchId,
+            selection: pageHead(branchId, `${origin}/e${tip}`),
+          },
+        ],
+        cursor: null,
+        hasMore: false,
+      };
+    else {
+      const bound = [1, 161, 162].find(
+        (end) => pageHead(branchId, `${origin}/e${end}`) === query.input?.selection,
+      );
+      assert.ok(bound);
+      const after = query.input?.after;
+      const start = after === undefined ? Math.max(0, bound - 32) : Number(after);
+      const end = Math.min(bound, start + 32);
+      result = {
+        version: 1,
+        engine: "pi-durable@1.4.0",
+        botId,
+        branchId,
+        conversationId: branchId,
+        tip: `${origin}/e${bound}`,
+        head: pageHead(branchId, `${origin}/e${bound}`),
+        snapshot: String(bound),
+        cursor: String(end),
+        hasMore: end < bound,
+        records: records.slice(start, end),
+      };
+    }
+    socket.write(
+      `${JSON.stringify({
+        type: "history.packet",
+        sourceDeviceId: peer,
+        payload: { type: "reply", id: payload.id, result, failed: false },
+      })}\n`,
+    );
+  });
+  const coordinator = new HistoryCoordinator(bench.path, registry, directory, () => {});
+  try {
+    await waitFor(() => imported.size === 1, "initial native ancestor imports");
+    tip = 161;
+    attached?.write(`${JSON.stringify({ type: "history.changed", sourceDeviceId: peer })}\n`);
+    await waitFor(() => injected, "H2 hint arrives during the first H1 delta receive");
+    await waitFor(
+      () => imported.size === records.length,
+      "every old delta record and the new H2 record",
+    );
+    assert.equal(imported.size, 162);
+  } finally {
+    t.diagnostic(
+      `imported ${imported.size}/${records.length}; missing entries: ${records
+        .filter((record) => !imported.has(record.entry.id))
+        .map((record) => record.entry.id.split("/e")[1])
+        .join(",")}`,
+    );
+    await coordinator.close();
+    await bench.close();
+  }
+});
+
 test("a native commit retains its last Bot hint after busy, while empty imports and opens stay quiet", async () => {
   const stack = await startStack({ real: true });
   const botId = await stack.createBot("native notice");

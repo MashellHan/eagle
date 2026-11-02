@@ -430,7 +430,10 @@ native-entry observers only queue coalesced notices. The existing encrypted
 history payload carries an additive `changed` message with at most 32 Bot IDs and
 a catalog bit; no Device frame or cloud history storage is added. Startup/reconnect
 and coarse notices retain full catch-up compatibility. Every catalog/branch/page
-read yields; a changed Bot preempts unrelated scans, while retained backfill/drain work advances
+read yields; a changed Bot preempts unrelated scans, including catalog discovery
+for a Bot created after the old scan began. Branch progress records only imported
+pages, before yielding; an immutable head is cached only after its forward pages
+finish, with missing-ancestor backfill retained. Backfill/drain work advances
 between fresh reads. Unchanged immutable selections need no repeat page pull;
 missing-ancestor recovery remains queued even at the same head. Failed hint sends
 retain their Bot IDs/catalog bit and retry with bounded backoff without another

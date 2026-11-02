@@ -1503,9 +1503,6 @@ test("a fresh native commit preempts an unrelated multi-branch scan across indep
       oldCount >= 9,
       "actual native sibling branches supply the old workload",
     );
-    const freshBot = await left.createBot(
-      "Fresh committed user during old scan",
-    );
     left.send({ type: "hold-page", botId: oldBot });
     await left.message((message) => message.type === "page-gate-ready");
     const right = await daemonProcess(
@@ -1518,6 +1515,9 @@ test("a fresh native commit preempts an unrelated multi-branch scan across indep
     for (const device of devices)
       await device.manage("history.set", { enabled: true });
     await left.message((message) => message.type === "page-held");
+    const freshBot = await left.createBot(
+      "Created after the peer catalog scan",
+    );
     release = model.hold("fresh provider remains held until passive display");
     await cli(
       left,
@@ -1533,6 +1533,11 @@ test("a fresh native commit preempts an unrelated multi-branch scan across indep
     );
     left.send({ type: "release-page" });
     await until(async () => {
+      const catalog = await cli(right, "bots", "list", "--json");
+      if (
+        !(catalog.bots as { id: string }[]).some((bot) => bot.id === freshBot)
+      )
+        return undefined;
       const list = (await history(right, freshBot, "branches", {}))
         .branches as { selection: string }[];
       for (const branch of list) {

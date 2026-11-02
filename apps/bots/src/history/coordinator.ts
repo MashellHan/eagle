@@ -72,7 +72,13 @@ export class HistoryCoordinator {
   readonly #scanAgain = new Set<string>();
   readonly #hot = new Map<
     string,
-    { peer: string; botId: string; scan: AsyncGenerator<void>; again: boolean; started: boolean }
+    {
+      peer: string;
+      botId: string | undefined;
+      scan: AsyncGenerator<void>;
+      again: boolean;
+      started: boolean;
+    }
   >();
   readonly #heads = new Map<string, string>();
   readonly #peers = new Set<string>();
@@ -194,7 +200,7 @@ export class HistoryCoordinator {
       if (!parsed.success) return;
       if (parsed.data.type === "changed") {
         this.#peers.add(value.sourceDeviceId);
-        if (parsed.data.catalog) this.#queueFresh(value.sourceDeviceId);
+        if (parsed.data.catalog) this.#queueHot(value.sourceDeviceId);
         for (const botId of parsed.data.botIds) this.#queueHot(value.sourceDeviceId, botId);
         void this.#work();
       } else if (parsed.data.type === "reply") {
@@ -217,15 +223,15 @@ export class HistoryCoordinator {
     this.#fresh.add(peer);
   }
 
-  #queueHot(peer: string, botId: string) {
-    const key = `${peer}/${botId}`;
+  #queueHot(peer: string, botId?: string) {
+    const key = `${peer}/${botId ?? "catalog"}`;
     const work = this.#hot.get(key);
     if (work) work.again = true;
     else
       this.#hot.set(key, {
         peer,
         botId,
-        scan: this.#catchUpBot(peer, botId),
+        scan: botId === undefined ? this.#catchUpCatalog(peer) : this.#catchUpBot(peer, botId),
         again: false,
         started: false,
       });
@@ -398,7 +404,7 @@ export class HistoryCoordinator {
     this.#botRetry.unref();
   }
 
-  async *#catchUp(peer: string) {
+  async *#catchUpCatalog(peer: string) {
     for (;;) {
       const catalog = await this.#pull(peer, {
         method: "catalog",
@@ -413,6 +419,10 @@ export class HistoryCoordinator {
       yield;
       if (!(catalog as { hasMore: boolean }).hasMore) break;
     }
+  }
+
+  async *#catchUp(peer: string) {
+    yield* this.#catchUpCatalog(peer);
     for (const bot of this.#registry.summaries()) yield* this.#catchUpBot(peer, bot.id);
   }
 
@@ -420,6 +430,8 @@ export class HistoryCoordinator {
     if (this.#closed || !this.#ready) return;
     if (this.#unavailableBots.has(botId) || this.#unavailableReads.has(`${peer}/${botId}`)) return;
     try {
+      if (!this.#registry.summaries().some((bot) => bot.id === botId))
+        yield* this.#catchUpCatalog(peer);
       let after: string | undefined;
       do {
         const list = branches.parse(
@@ -436,8 +448,8 @@ export class HistoryCoordinator {
           if (gap && !this.#backfill.has(key)) this.#backfill.set(key, gap);
           if (/^[a-f0-9]{64}$/.test(branch.selection) && this.#heads.get(key) === branch.selection)
             continue;
-          let tail = this.#tails.get(key);
           for (let budget = 0; budget < 4; budget++) {
+            const tail = this.#tails.get(key);
             const page = await this.#receive(
               botId,
               await this.#pull(peer, {
@@ -446,7 +458,8 @@ export class HistoryCoordinator {
                 input: { selection: branch.selection, ...(tail ? { after: tail } : {}) },
               }),
             );
-            if (page.snapshot) this.#tails.set(key, page.snapshot);
+            const progress = tail ? page.cursor : page.snapshot;
+            if (progress) this.#tails.set(key, progress);
             if (!tail && page.records[0]?.previous && page.cursor && page.snapshot) {
               const backfill = {
                 peer,
@@ -458,14 +471,11 @@ export class HistoryCoordinator {
               this.#gaps.set(key, backfill);
               if (page.hasMore) this.#backfill.set(key, backfill);
             }
+            const complete = !tail || !page.hasMore || !page.cursor;
+            if (complete) this.#heads.set(key, branch.selection);
+            else if (budget === 3) this.#queueHot(peer, botId);
             yield;
-            if (!tail || !page.hasMore || !page.cursor) {
-              this.#heads.set(key, branch.selection);
-              break;
-            }
-            tail = page.cursor;
-            this.#tails.set(key, tail);
-            if (budget === 3) this.#queueHot(peer, botId);
+            if (complete) break;
           }
         }
         after = list.hasMore ? (list.cursor ?? undefined) : undefined;
@@ -501,6 +511,7 @@ export class HistoryCoordinator {
         activePeer = undefined;
         if (hot && (!hot[1].started || freshTurn || (!backfillWork && !drainWork))) {
           const [key, work] = hot;
+          activePeer = work.peer;
           work.started = true;
           freshTurn = false;
           const done = (await work.scan.next()).done;
