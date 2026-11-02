@@ -77,7 +77,7 @@ function historyFailure(
   phase: string,
   requestId: unknown,
   error: unknown,
-): void {
+): string | undefined {
   let category = "unknown";
   if (error instanceof z.ZodError || error instanceof SyntaxError)
     category = "validation";
@@ -114,6 +114,9 @@ function historyFailure(
       ...(correlation.success ? { requestId: correlation.data } : {}),
     }),
   );
+  return category === "validation"
+    ? undefined
+    : `history_transport_${phase.replaceAll(".", "_")}_${category}`;
 }
 
 class DeviceAuthenticationError extends Error {}
@@ -587,11 +590,15 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
                 });
             })
             .catch((error) => {
-              historyFailure(phase, requestId.data.requestId, error);
+              const code = historyFailure(
+                phase,
+                requestId.data.requestId,
+                error,
+              );
               this.send(socket, {
                 type: "history.error",
                 requestId: requestId.data.requestId,
-                error: "history_invalid_frame",
+                error: code ?? "history_invalid_frame",
               });
             })
             .finally(() => {

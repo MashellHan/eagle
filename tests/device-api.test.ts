@@ -18,6 +18,7 @@ import NativeWebSocket from "ws";
 import { DeviceHistoryCipher } from "../packages/agent/device-history.ts";
 import {
   type HistoryPeer,
+  HistoryServerFrame,
   historyKeyPayload,
 } from "../packages/contracts/src/device-history.ts";
 import type {
@@ -61,8 +62,8 @@ export class DeviceExecution extends Execution {
 export class DeviceRegistry extends Registry {
  async check(token,targetId){const result=await super.check(token,targetId);
   if(result.ok&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_history_exception'").toArray().length){
-   const fault=this.ctx.storage.sql.exec("SELECT deviceId FROM test_history_exception WHERE deviceId=?",result.source.deviceId).toArray()[0];
-   if(fault){this.ctx.storage.sql.exec("DELETE FROM test_history_exception WHERE deviceId=?",result.source.deviceId);throw new Error('Too many subrequests. diagnostic-private-marker '+token);}
+   const fault=this.ctx.storage.sql.exec("SELECT deviceId,message FROM test_history_exception WHERE deviceId=?",result.source.deviceId).toArray()[0];
+   if(fault){this.ctx.storage.sql.exec("DELETE FROM test_history_exception WHERE deviceId=?",result.source.deviceId);throw new Error(fault.message+' '+token);}
   }
   if(result.ok&&targetId&&result.source.deviceId!==targetId&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_revoke_after_check'").toArray().length){
    const row=this.ctx.storage.sql.exec("SELECT deviceId FROM test_revoke_after_check WHERE deviceId=?",result.source.deviceId).toArray()[0];
@@ -1445,7 +1446,7 @@ const authentication = (token: string) => ({
   policy: { mode: "all-approve", version: 1 },
 });
 
-test("history RPC exceptions log safe phase and request correlation without changing denial or queue recovery", async () => {
+test("history transport exceptions return safe phase/category codes without changing validation or queue recovery", async (t) => {
   const owner = await identity("history-diagnostics");
   const source = await rawSocket(owner.deviceId, "agent");
   const exchange = async (value: unknown) => {
@@ -1460,32 +1461,78 @@ test("history RPC exceptions log safe phase and request correlation without chan
       "DeviceRegistry",
       { name: "registry" },
     );
-    await registry.exec("CREATE TABLE test_history_exception(deviceId TEXT)");
     await registry.exec(
-      "INSERT INTO test_history_exception VALUES(?)",
-      owner.deviceId,
+      "CREATE TABLE test_history_exception(deviceId TEXT,message TEXT)",
     );
-    const requestId = randomUUID();
+    for (const [category, message] of [
+      [
+        "platform_request_limit",
+        "Too many subrequests. diagnostic-private-marker",
+      ],
+      ["unknown", "diagnostic-private-marker unrecognized runtime failure"],
+    ])
+      await t.test(category, async () => {
+        await registry.exec(
+          "INSERT INTO test_history_exception VALUES(?,?)",
+          owner.deviceId,
+          message,
+        );
+        const requestId = randomUUID();
+        const response = await exchange({
+          type: "history.configure",
+          requestId,
+          proof: null,
+        });
+        assert.deepEqual(response, {
+          type: "history.error",
+          requestId,
+          error: `history_transport_frame_source_check_${category}`,
+        });
+        HistoryServerFrame.parse(response);
+        assert.match(String(response.error), /^[a-z_]{1,80}$/);
+        const deadline = Date.now() + 2000;
+        while (
+          !historyDiagnostics.some((log) => log.requestId === requestId) &&
+          Date.now() < deadline
+        )
+          await new Promise((done) => setTimeout(done, 10));
+        assert.deepEqual(
+          historyDiagnostics.find((log) => log.requestId === requestId),
+          {
+            event: "history_failed",
+            layer: "device-execution",
+            phase: "frame.source_check",
+            category,
+            requestId,
+          },
+          "only fixed metadata may leave the catch, never the exception or token",
+        );
+        assert.equal(
+          (
+            await exchange({
+              type: "history.configure",
+              requestId: randomUUID(),
+              proof: null,
+            })
+          ).type,
+          "history.configured",
+          "failure releases the bounded history queue for the next frame",
+        );
+      });
+    const invalidId = randomUUID();
     assert.deepEqual(
-      await exchange({ type: "history.configure", requestId, proof: null }),
-      { type: "history.error", requestId, error: "history_invalid_frame" },
-    );
-    const deadline = Date.now() + 2000;
-    while (
-      !historyDiagnostics.some((log) => log.requestId === requestId) &&
-      Date.now() < deadline
-    )
-      await new Promise((done) => setTimeout(done, 10));
-    assert.deepEqual(
-      historyDiagnostics.find((log) => log.requestId === requestId),
+      await exchange({
+        type: "history.configure",
+        requestId: invalidId,
+        proof: null,
+        unexpected: "diagnostic-private-marker",
+      }),
       {
-        event: "history_failed",
-        layer: "device-execution",
-        phase: "frame.source_check",
-        category: "platform_request_limit",
-        requestId,
+        type: "history.error",
+        requestId: invalidId,
+        error: "history_invalid_frame",
       },
-      "RPC failures must identify the phase without leaking the exception, token, proof or packet",
+      "real frame validation retains its established error",
     );
     assert.equal(
       (
@@ -1496,7 +1543,7 @@ test("history RPC exceptions log safe phase and request correlation without chan
         })
       ).type,
       "history.configured",
-      "failure releases the bounded history queue for the next frame",
+      "validation failure also releases the bounded queue",
     );
   } finally {
     source.terminate();
@@ -1572,6 +1619,28 @@ test("authenticated outbound history frames bypass paused/always-ask execution a
       ).type,
       "history.configured",
     );
+    const faultRegistry = await mf.unsafeGetDurableObjectStorage(
+      "eagle",
+      "DeviceRegistry",
+      { name: "registry" },
+    );
+    await faultRegistry.exec(
+      "INSERT INTO test_history_exception VALUES(?,?)",
+      b.deviceId,
+      "Network connection lost. diagnostic-private-marker",
+    );
+    const failedPeerId = randomUUID();
+    const failedPeer = await exchange(source, {
+      type: "history.peers",
+      requestId: failedPeerId,
+    });
+    assert.deepEqual(failedPeer, {
+      type: "history.error",
+      requestId: failedPeerId,
+      error: "history_transport_frame_peer_rpc_connection_lost",
+    });
+    HistoryServerFrame.parse(failedPeer);
+    assert.match(String(failedPeer.error), /^[a-z_]{1,80}$/);
     const found = await exchange(source, {
       type: "history.peers",
       requestId: randomUUID(),
@@ -1590,6 +1659,21 @@ test("authenticated outbound history frames bypass paused/always-ask execution a
         text: "not DO plaintext",
       },
       "endpoint",
+    );
+    await faultRegistry.exec(
+      "INSERT INTO test_history_exception VALUES(?,?)",
+      b.deviceId,
+      "Network connection lost. diagnostic-private-marker",
+    );
+    assert.deepEqual(
+      await exchange(source, {
+        type: "history.send",
+        requestId,
+        targetDeviceId: b.deviceId,
+        packet,
+      }),
+      { type: "history.error", requestId, error: "history_delivery_failed" },
+      "receiveHistory retains the exact retryable error before the same packet succeeds",
     );
     const delivery = frame<{
       type: string;
