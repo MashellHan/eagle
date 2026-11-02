@@ -103,7 +103,7 @@ version, the instance id, the pid and a bot count, never bot content.
 | `POST` | `/v1/history/catalog/import` | Catalog export, write scope | Same shared IDs created once; existing local config is retained |
 | `POST` | `/v1/bots/:id/history/page` | `{ "selection"?, "after"?, "before"?, "until"?, "limit"?, "maxBytes"? }`, read scope | Runtime-owned native record page, at most 32 records / 128 KiB; no idle requirement |
 | `POST` | `/v1/bots/:id/history/receive` | Native record page, write scope | Passive durable receipt with progress and optional usable head |
-| `POST` | `/v1/bots/:id/history/view` | `{ "head" }`, read scope | At most 32 records / 128 KiB of latest messages and cached `usable`, without full assessment |
+| `POST` | `/v1/bots/:id/history/view` | `{ "head", "after"? }`, read scope | At most 32 records / 128 KiB of latest messages, cached `usable` and `extendsCurrent` ancestry evidence, without full assessment |
 | `POST` | `/v1/bots/:id/history/assess` | `{ "head" }`, read scope | Explicit raw/effective completeness assessment; continuation also requires it |
 | `POST` | `/v1/bots/:id/history/branches` | `{ "after"?, "limit"? }`, read scope | Up to 32 root, local continuation and received branch selections; stable branch cursor |
 | `POST` | `/v1/bots` | `{ "title", "label"?, "appearance"? }` — `appearance` is `{ "shape", "tint" }` | `201 { "bot": BotSummary }` |
@@ -127,6 +127,15 @@ version, the instance id, the pid and a bot count, never bot content.
 | `DELETE` | `/v1/clients/:id` | — | `204`, or `409 client_active` while the client is not revoked |
 | `PUT` | `/v1/settings` | `{ "baseUrl", "model", "apiKey"?, "provider"?, "thinkingLevel"?, "toolGroups"?, "corePrompt"? }` | `{ "settings": GatewaySettings, "machinePrompt": MachinePrompt \| null }` |
 | `POST` | `/v1/settings/test` | `{ "baseUrl"?, "model"?, "apiKey"?, "provider"? }` | `{ "result": GatewayProbe }` |
+
+History view's additive `extendsCurrent` is true only when the received immutable
+head strictly descends from the current local chat tail, or from the immutable
+`after` head supplied by a viewer. It uses native entry visibility, never clocks,
+message text or shared conversation ID. Missing ancestry/old daemons give no proof.
+An idle native viewer with no draft or explicit picker choice may display that
+successor automatically, including a committed user before a slow model finishes;
+`usable` separately controls continuing. Display never mutates the local model
+context. Picker intent and local sends invalidate late automatic view reads.
 
 ```json
 // GatewaySettings: the key is never returned, only whether one is stored.

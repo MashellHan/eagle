@@ -49,7 +49,9 @@ Missing ancestry/tool results may be read, but only a validated complete raw and
 effective context becomes a usable immutable head. Receiving records never changes
 the current model input; explicit continuation uses local configuration.
 Latest-message view reads at most 32 native record documents / 128 KiB, without
-context assembly or full-branch validation. A separate explicit assessment validates
+context assembly or full-branch validation. Up to two one-entry native lookups prove
+a strict successor of the current local tail or a supplied immutable head; this
+ancestry evidence is independent of completion/usable status. A separate assessment validates
 raw groups and effective contributions; continuation requires that assessment.
 The initial page is the newest window, `snapshot` starts an independent new-tail
 pull, and `cursor` pages older records. `until` pins a backfill snapshot.

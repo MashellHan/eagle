@@ -2967,3 +2967,24 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Hint fix `979729b` has host 20/20 evidence and is under fixed review. No physical
   App/daemon/Worker/data changed here; source SwiftPM remains free. Root owns
   physical retests. Herdr collection/auth, D1 and dashboard rendering: N/A.
+
+## 2026-11-02 20:16 optional history: sequential display handoff
+
+- Root confirms B's native continuation reached A's storage, but A stayed on its
+  local transcript for 18s without a picker. Manual continuation proves actual
+  model input contains A/B/A-return; automatic App display is still unverified.
+  The prior root-echo fix `309ca8f` has closed fixed review.
+- Existing history/view now proves strict native ancestry with at most two
+  one-entry lookups. A committed descendant user can display before assessment
+  or model completion; usable alone controls continuation. Client guards preserve
+  draft, picker and in-flight intent, and reject siblings of the displayed head.
+- Real SDK red, controlled client red (22 tests/9 assertions) and host red
+  (21 tests/6 assertions) are retained in `.local/history-relay-*`. Affected
+  SDK+HTTP 19/19, client Conversation 22/22 + Catalog 6/6, transport HTTP 10/10
+  and real host bindings 21/21 pass; Bots types/lint and affected strict format
+  pass. Broad client format inspection reports 81 existing errors in six files,
+  all blob-identical to base `309ca8f` (`history-relay-format-existing.log`);
+  no unrelated formatting edits. Full gates/eval/physical timing were not rerun.
+- Root separately proved the Tailscale App CLI needs TAILSCALE_BE_CLI in the
+  helper's minimal environment. That Node-only child-environment fix is next;
+  no helper/physical changes here. Herdr collection/auth, D1 and dashboard: N/A.

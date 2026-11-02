@@ -104,7 +104,10 @@ export interface RuntimeHandle {
   readHistoryHead?(
     head: string,
     trace?: string,
-  ): Promise<HistoryReceipt & { usable: boolean; messages: readonly Message[] }>;
+    after?: string,
+  ): Promise<
+    HistoryReceipt & { usable: boolean; messages: readonly Message[]; extendsCurrent?: boolean }
+  >;
   assessHistoryHead?(head: string, trace?: string): Promise<{ head: string; usable: boolean }>;
   listHistoryBranches?(
     input?: { after?: string; limit?: number },

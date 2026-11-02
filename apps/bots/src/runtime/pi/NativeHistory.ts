@@ -810,8 +810,10 @@ export class NativeHistory {
     return link.next || undefined;
   }
 
-  async readHead(headId: string) {
+  async readHead(headId: string, after?: string) {
     if (!/^[a-f0-9]{64}$/.test(headId)) historyReject("invalid history head");
+    if (after !== undefined && !/^[a-f0-9]{64}$/.test(after))
+      historyReject("invalid previous history head");
     const head = await this.#harness.snapshot(IncrementalHead, headId, ctx);
     if (!head?.branchId) return historyReject("unknown history head");
     const messages = [];
@@ -830,11 +832,46 @@ export class NativeHistory {
       messages.unshift(...converted);
       id = record.previous ?? "";
     }
+    const extendsCurrent = await this.#harness.commit(async (tx) => {
+      const tip = await tx.doc(ReceivedRecord, head.tip, null);
+      const targetId = tip.conversationId || head.nativeId;
+      const targetTail = tip.nativeId || head.tail;
+      if (!targetId || !targetTail) return false;
+      let baseTail: number;
+      if (after !== undefined) {
+        const base = await tx.doc(IncrementalHead, after, null);
+        const stored = await tx.doc(ReceivedRecord, base.tip, null);
+        baseTail = stored.nativeId || base.tail;
+      } else {
+        const active = await tx.doc(LocalChatSelection);
+        baseTail =
+          (
+            await tx.scanEntries(
+              { conversationId: (active.conversationId || this.#rootId) as ConversationId },
+              1,
+            )
+          ).items[0]?.id ?? 0;
+      }
+      if (!baseTail || baseTail >= targetTail) return false;
+      return (
+        (
+          await tx.scanEntries(
+            {
+              conversationId: targetId as ConversationId,
+              minEntryId: baseTail as EntryId,
+              maxEntryId: baseTail as EntryId,
+            },
+            1,
+          )
+        ).items.length === 1
+      );
+    }, ctx);
     return {
       head: headId,
       branchId: head.branchId,
       conversationId: head.conversationId,
       usable: head.usable,
+      extendsCurrent,
       messages,
       hasMore: id !== "",
     };

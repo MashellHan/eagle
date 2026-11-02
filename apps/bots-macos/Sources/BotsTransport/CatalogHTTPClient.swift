@@ -352,9 +352,11 @@ public final class CatalogHTTPClient: CatalogPort, NativeHistoryPort, Sendable {
     } while true
   }
 
-  public func view(botId: String, head: String) async throws -> NativeHistoryView {
-    try await request(
-      path: "/v1/bots/\(botId)/history/view", method: "POST", body: ["head": head],
+  public func view(botId: String, head: String, after: String?) async throws -> NativeHistoryView {
+    var body = ["head": head]
+    if let after { body["after"] = after }
+    return try await request(
+      path: "/v1/bots/\(botId)/history/view", method: "POST", body: body,
       as: NativeHistoryView.self)
   }
 

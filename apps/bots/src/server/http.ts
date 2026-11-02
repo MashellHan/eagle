@@ -939,7 +939,13 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
               ? Object.keys(body).some((key) => key !== "selection") ||
                 (body.selection !== undefined && typeof body.selection !== "string")
               : operation === "view" || operation === "assess"
-                ? Object.keys(body).some((key) => key !== "head") || typeof body.head !== "string"
+                ? Object.keys(body).some(
+                    (key) => key !== "head" && !(operation === "view" && key === "after"),
+                  ) ||
+                  typeof body.head !== "string" ||
+                  (operation === "view" &&
+                    body.after !== undefined &&
+                    typeof body.after !== "string")
                 : Object.keys(body).some((key) => !["head", "requestId", "text"].includes(key)) ||
                   typeof body.head !== "string" ||
                   typeof body.requestId !== "string" ||
@@ -974,7 +980,11 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
           else if (operation === "receive" && handle.importHistoryPage !== undefined)
             result = await handle.importHistoryPage(body, trace);
           else if (operation === "view" && handle.readHistoryHead !== undefined)
-            result = await handle.readHistoryHead((body as { head: string }).head, trace);
+            result = await handle.readHistoryHead(
+              (body as { head: string }).head,
+              trace,
+              (body as { after?: string }).after,
+            );
           else if (operation === "assess" && handle.assessHistoryHead !== undefined)
             result = await handle.assessHistoryHead((body as { head: string }).head, trace);
           else if (operation === "branches" && handle.listHistoryBranches !== undefined)

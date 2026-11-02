@@ -29,6 +29,128 @@ final class ConversationTests: XCTestCase {
     model.select(botId: "b_1")
   }
 
+  func testASequentialCommittedUserReplacesIdleLocalDisplayBeforeAssessment() async throws {
+    let remote = FakeNativeHistory()
+    remote.extendsCurrent = true
+    remote.blockAssessment = true
+    let socket = FakeConversation()
+    let model = ConversationViewModel(
+      conversation: socket,
+      outbox: OutboxStore(directory: outboxDirectory.appendingPathComponent(UUID().uuidString)),
+      history: remote)
+    model.select(botId: "b_1")
+    socket.emit(.connection(.ready))
+    let local = Message(
+      id: "local-tail", role: .assistant, state: .complete,
+      createdAt: "x", blocks: [.text("A's completed local answer")])
+    socket.emit(.snapshot(ConversationSnapshot(botId: "b_1", messages: [local])))
+    try await waitUntil { model.hasSnapshot }
+    try await waitUntil { model.historyView != nil }
+    XCTAssertEqual(model.displayState.messages.map(\.text), ["received committed user"])
+    XCTAssertEqual(model.state.messages, [local], "passive display leaves native chat state intact")
+    XCTAssertFalse(
+      model.historyView?.usable ?? true, "display does not wait for assessment or a model answer")
+    model.draft = "ordinary local input while the successor is incomplete"
+    model.send()
+    try await waitUntil { socket.sent.count == 1 }
+    XCTAssertTrue(remote.continued.isEmpty)
+    XCTAssertEqual(
+      socket.sent.first?.text, "ordinary local input while the successor is incomplete")
+    remote.finishAssessment(false)
+    model.disconnect()
+  }
+
+  func testSequentialHandoffRespectsDraftPickerAndRunningLocalWork() async throws {
+    for protection in ["draft", "picker", "running", "sending", "sibling"] {
+      let remote = FakeNativeHistory()
+      let socket = FakeConversation()
+      let model = ConversationViewModel(
+        conversation: socket,
+        outbox: OutboxStore(directory: outboxDirectory.appendingPathComponent(UUID().uuidString)),
+        history: remote)
+      model.select(botId: "b_1")
+      socket.emit(.connection(.ready))
+      let local = Message(
+        id: "local-tail", role: .assistant, state: .complete,
+        createdAt: "x", blocks: [.text("local answer")])
+      socket.emit(
+        .snapshot(
+          ConversationSnapshot(botId: "b_1", messages: [local], running: protection == "running")))
+      try await waitUntil { model.hasSnapshot }
+      if protection == "draft" { model.draft = "keep my draft" }
+      if protection == "picker" { await model.selectHistory(nil) }
+      if protection == "sending" {
+        model.draft = "local work awaiting admission"
+        model.send()
+        try await waitUntil { socket.sent.count == 1 }
+      }
+      remote.extendsCurrent = protection != "sibling"
+      await model.refreshHistory()
+      XCTAssertNil(model.historyView, protection)
+      XCTAssertEqual(
+        model.displayState.messages.last?.text,
+        protection == "sending" ? "local work awaiting admission" : "local answer")
+      model.disconnect()
+    }
+  }
+
+  func testALateSequentialViewCannotOverrideANewDraftOrLocalSend() async throws {
+    for intent in ["draft", "send", "picker"] {
+      let remote = FakeNativeHistory()
+      remote.extendsCurrent = true
+      remote.blockView = true
+      let socket = FakeConversation()
+      let model = ConversationViewModel(
+        conversation: socket,
+        outbox: OutboxStore(directory: outboxDirectory.appendingPathComponent(UUID().uuidString)),
+        history: remote)
+      model.select(botId: "b_1")
+      socket.emit(.connection(.ready))
+      let local = Message(
+        id: "local-tail", role: .assistant, state: .complete,
+        createdAt: "x", blocks: [.text("local answer")])
+      socket.emit(.snapshot(ConversationSnapshot(botId: "b_1", messages: [local])))
+      try await waitUntil { model.hasSnapshot }
+      try await waitUntil { remote.viewContinuation != nil }
+      if intent == "picker" {
+        await model.selectHistory(nil)
+      } else {
+        model.draft = "new local intent"
+        if intent == "send" { model.send() }
+      }
+      remote.blockView = false
+      remote.viewContinuation?.resume()
+      remote.viewContinuation = nil
+      for _ in 0..<20 { await Task.yield() }
+      XCTAssertNil(model.historyView, intent)
+      if intent == "send" { try await waitUntil { socket.sent.count == 1 } }
+      model.disconnect()
+    }
+  }
+
+  func testAutomaticSuccessorsUseTheDisplayedImmutableHeadAndDoNotJumpToItsSibling() async throws {
+    let remote = FakeNativeHistory()
+    let socket = FakeConversation()
+    let model = ConversationViewModel(
+      conversation: socket, outbox: OutboxStore(directory: outboxDirectory), history: remote)
+    model.select(botId: "b_1")
+    socket.emit(.connection(.ready))
+    socket.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await waitUntil { model.historyView?.usable == true }
+    let firstHead = model.historyView?.head
+    remote.secondBranch = true
+    remote.extendsCurrent = true
+    await model.refreshHistory()
+    XCTAssertEqual(model.historyView?.branchId, "second-branch")
+    XCTAssertEqual(remote.afterHeads.last ?? nil, firstHead)
+    remote.extendsCurrent = false
+    await model.refreshHistory()
+    XCTAssertEqual(
+      model.historyView?.branchId, "second-branch",
+      "same conversation siblings need actual ancestry")
+    model.disconnect()
+  }
+
   func testEmptyAutomaticReceivedHistoryDoesNotBlockTheFirstNativeSend() async throws {
     let remote = FakeNativeHistory()
     remote.emptyFirstBranch = true
@@ -539,6 +661,8 @@ final class ConversationTests: XCTestCase {
 
 @MainActor private final class FakeNativeHistory: NativeHistoryPort {
   var secondBranch = false
+  var extendsCurrent = false
+  var afterHeads: [String?] = []
   var emptyFirstBranch = false
   var viewed: [String] = []
   var assessments = 0
@@ -570,8 +694,9 @@ final class ConversationTests: XCTestCase {
     }
     return result
   }
-  func view(botId: String, head: String) async throws -> NativeHistoryView {
+  func view(botId: String, head: String, after: String?) async throws -> NativeHistoryView {
     viewed.append(head)
+    afterHeads.append(after)
     if blockView { await withCheckedContinuation { viewContinuation = $0 } }
     return NativeHistoryView(
       head: head,
@@ -583,7 +708,8 @@ final class ConversationTests: XCTestCase {
           Message(
             id: "remote", role: .user, state: .complete, createdAt: "x",
             blocks: [.text("received committed user")])
-        ])
+        ],
+      extendsCurrent: extendsCurrent)
   }
   func assess(botId: String, head: String) async throws -> Bool {
     assessments += 1

@@ -384,9 +384,9 @@ class PiRuntimeHandle implements RuntimeHandle {
       new NativeHistory(this.#harness, this.#rootId, this.#spec.id).importPage(input),
     );
   }
-  readHistoryHead(head: string, trace = this.#spec.trace) {
+  readHistoryHead(head: string, trace = this.#spec.trace, after?: string) {
     return this.#historyOperation(trace, () =>
-      new NativeHistory(this.#harness, this.#rootId, this.#spec.id).readHead(head),
+      new NativeHistory(this.#harness, this.#rootId, this.#spec.id).readHead(head, after),
     );
   }
   assessHistoryHead(head: string, trace = this.#spec.trace) {

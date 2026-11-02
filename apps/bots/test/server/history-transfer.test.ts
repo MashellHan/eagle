@@ -60,6 +60,18 @@ test("scoped HTTP discovers an empty Bot and passively receives incremental hist
     const view = await call(b, `/v1/bots/${source.id}/history/view`, { head: page.head });
     assert.equal(view.status, 200);
     assert.match(JSON.stringify(await view.json()), /source native history/);
+    const boundedView = await call(b, `/v1/bots/${source.id}/history/view`, {
+      head: page.head,
+      after: page.head,
+    });
+    assert.equal(boundedView.status, 200);
+    assert.equal(((await boundedView.json()) as { extendsCurrent: boolean }).extendsCurrent, false);
+    for (const after of [2, "not-an-immutable-head"]) {
+      assert.equal(
+        (await call(b, `/v1/bots/${source.id}/history/view`, { head: page.head, after })).status,
+        400,
+      );
+    }
     assert.equal(
       (await call(a, `/v1/bots/${source.id}/history/assess`, { head: page.head }, reader.token))
         .status,

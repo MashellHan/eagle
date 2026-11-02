@@ -116,6 +116,23 @@ final class CatalogHTTPClientTests: XCTestCase {
     XCTAssertFalse(view.usable)
     XCTAssertEqual(
       operations, ["branches", "view"], "display does not wait for assessment or submit")
+    XCTAssertNotEqual(view.extendsCurrent, true, "old daemon responses provide no ancestry proof")
+    let previousHandler = StubProtocol.handler
+    StubProtocol.handler = { request in
+      let body =
+        try JSONSerialization.jsonObject(with: XCTUnwrap(bodyData(request))) as? [String: String]
+      XCTAssertEqual(body, ["head": head, "after": head])
+      return (
+        200,
+        Data(
+          "{\"head\":\"\(head)\",\"branchId\":\"remote\",\"usable\":false,\"messages\":[],\"extendsCurrent\":true}"
+            .utf8)
+      )
+    }
+    let descendant = try await client.view(botId: "b_1", head: head, after: head)
+    XCTAssertEqual(descendant.extendsCurrent, true)
+    StubProtocol.handler = previousHandler
+
     let usable = try await client.assess(botId: "b_1", head: head)
     XCTAssertTrue(usable)
     let result = try await client.continueHistory(

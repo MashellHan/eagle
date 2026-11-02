@@ -43,7 +43,8 @@ public final class ConversationViewModel: ObservableObject {
   private var viewGeneration = UUID()
   private var continuationRequests: [String: String] = [:]
   private var displayedBranch: String?
-  private var followsReceivedWhenEmpty = true
+  private var followsReceivedAutomatically = true
+  private var historyPickerWasUsed = false
   private var selectedBotId: String?
   /// The outbox is reconciled after the first snapshot of the selected bot, never after
   /// the handshake: a send before the subscription exists is refused as `not_admitted`.
@@ -81,13 +82,13 @@ public final class ConversationViewModel: ObservableObject {
   public var usage: Usage? { state.usage }
   public var usesHistoryContext: Bool {
     guard let historyView else { return false }
-    return !followsReceivedWhenEmpty || (historyView.usable && displayedHeadIsCurrent)
+    return !followsReceivedAutomatically || (historyView.usable && displayedHeadIsCurrent)
   }
   public var canSend: Bool {
     !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       && connection == .ready
       && state.unavailable == nil
-      && (displayedHeadIsCurrent || followsReceivedWhenEmpty)
+      && (displayedHeadIsCurrent || followsReceivedAutomatically)
       && !continuationRequests.values.contains(selectedBotId ?? "")
   }
 
@@ -132,10 +133,10 @@ public final class ConversationViewModel: ObservableObject {
       }
       if let selected = historyBranches.first(where: { $0.branchId == displayedBranch }) {
         await showHistory(selected, botId: botId)
-      } else if displayedBranch == nil, canFollowReceived {
-        for branch in historyBranches {
-          guard selectedBotId == botId, !Task.isCancelled,
-            displayedBranch == nil, canFollowReceived
+      }
+      if canFollowReceived {
+        for branch in historyBranches where branch.branchId != displayedBranch {
+          guard selectedBotId == botId, !Task.isCancelled, canFollowReceived
           else { return }
           if await showHistory(branch, botId: botId, automatically: true) { break }
         }
@@ -147,7 +148,8 @@ public final class ConversationViewModel: ObservableObject {
 
   public func selectHistory(_ branchId: String?) async {
     viewGeneration = UUID()
-    followsReceivedWhenEmpty = false
+    followsReceivedAutomatically = false
+    historyPickerWasUsed = true
     displayedBranch = branchId
     assessmentTask?.cancel()
     guard let branchId, let branch = historyBranches.first(where: { $0.branchId == branchId }),
@@ -160,7 +162,9 @@ public final class ConversationViewModel: ObservableObject {
   }
 
   private var canFollowReceived: Bool {
-    followsReceivedWhenEmpty && state.messages.isEmpty && !state.running
+    !historyPickerWasUsed && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      && !state.running && !isSending && inFlight.isEmpty
+      && !continuationRequests.values.contains(selectedBotId ?? "")
   }
 
   @discardableResult
@@ -168,17 +172,23 @@ public final class ConversationViewModel: ObservableObject {
     _ branch: NativeHistoryBranch, botId: String, automatically: Bool = false
   ) async -> Bool {
     guard let history else { return false }
-    let generation = UUID()
-    viewGeneration = generation
+    let previousHead = historyView?.head
+    let previousBranch = displayedBranch
+    let localTail = state.messages.last?.id
+    let generation = automatically ? viewGeneration : UUID()
+    if !automatically { viewGeneration = generation }
     do {
-      let view = try await history.view(botId: botId, head: branch.selection)
+      let view = try await history.view(
+        botId: botId, head: branch.selection, after: automatically ? previousHead : nil)
       guard selectedBotId == botId, viewGeneration == generation, !Task.isCancelled
       else { return false }
       if automatically {
-        guard displayedBranch == nil, canFollowReceived, !view.messages.isEmpty else {
-          return false
-        }
+        guard displayedBranch == previousBranch, historyView?.head == previousHead,
+          state.messages.last?.id == localTail, canFollowReceived, !view.messages.isEmpty,
+          (previousHead == nil && state.messages.isEmpty) || view.extendsCurrent == true
+        else { return false }
         displayedBranch = branch.branchId
+        followsReceivedAutomatically = true
       } else if displayedBranch != branch.branchId {
         return false
       }
@@ -213,7 +223,8 @@ public final class ConversationViewModel: ObservableObject {
     historyView = nil
     historyBranches = []
     localBranchId = nil
-    followsReceivedWhenEmpty = true
+    followsReceivedAutomatically = true
+    historyPickerWasUsed = false
     selectedBotId = botId
     reconciled = false
     hasSnapshot = false
@@ -269,7 +280,7 @@ public final class ConversationViewModel: ObservableObject {
       errorBanner = "正在建立本机续聊，请稍候再发送。"
       return
     }
-    if followsReceivedWhenEmpty, !usesHistoryContext {
+    if followsReceivedAutomatically, !usesHistoryContext {
       displayedBranch = nil
       historyView = nil
     }
@@ -361,10 +372,11 @@ public final class ConversationViewModel: ObservableObject {
     }
     let previousView = historyView
     let previousBranch = displayedBranch
+    if explicit { viewGeneration = UUID() }
     let generation = viewGeneration
     if explicit {
       draft = ""
-      followsReceivedWhenEmpty = false
+      followsReceivedAutomatically = false
       displayedBranch = nil
       historyView = nil
       assessmentTask?.cancel()
@@ -433,11 +445,9 @@ public final class ConversationViewModel: ObservableObject {
       errorBanner = "无法保存待发送的消息，消息没有发出。"
       return
     }
-    if followsReceivedWhenEmpty {
-      followsReceivedWhenEmpty = false
-      viewGeneration = UUID()
-      assessmentTask?.cancel()
-    }
+    followsReceivedAutomatically = false
+    viewGeneration = UUID()
+    assessmentTask?.cancel()
     isSending = true
     if optimistic {
       state = Reducer.apply(

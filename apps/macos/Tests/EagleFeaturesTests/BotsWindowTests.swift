@@ -160,6 +160,43 @@ struct BotsWindowTests {
     #expect(app.conversation.draft == "explicit incomplete history must still wait")
   }
 
+  @Test("an idle local transcript follows a proven sequential user before model completion")
+  func automaticSequentialHandoff() async throws {
+    let remote = WindowNativeHistory()
+    remote.empty = true
+    let (bots, app, port, _) = try await window(history: remote)
+    defer { bots.disconnect() }
+    let local = Message(
+      id: "local-tail", role: .assistant, state: .complete,
+      createdAt: "x", blocks: [.text("the completed local answer")])
+    port.emit(.snapshot(ConversationSnapshot(botId: "b_1", messages: [local])))
+    try await waitUntil { app.conversation.state.messages == [local] }
+    remote.empty = false
+    remote.usable = false
+    remote.extendsCurrent = true
+    await app.conversation.refreshHistory()
+    await settlePublish(bots)
+    #expect(
+      bots.transcript.entries.contains { entry in
+        if case .user(_, let text, _) = entry {
+          return text == "received user before model completion"
+        }
+        return false
+      })
+    #expect(app.conversation.state.messages == [local])
+    #expect(bots.displayedHistory?.usable == false)
+    let content = BotsConversationContent(bots: bots, layout: ShellLayoutViewModel())
+    #expect(content.composerPlaceholder == nil, "partial display still uses ordinary local chat")
+    remote.usable = true
+    await app.conversation.refreshHistory()
+    try await waitUntil { bots.displayedHistory?.usable == true }
+    #expect(content.composerPlaceholder == "从此会话继续，使用本机模型")
+    bots.setDraft("continue this sequential remote answer")
+    bots.send()
+    try await waitUntil { bots.localBranchId == "local-continued" }
+    #expect(remote.didContinue && port.sent.isEmpty)
+  }
+
   @Test("an automatically observed empty foreign branch leaves the real composer on local chat")
   func emptyReceivedFirstSend() async throws {
     let remote = WindowNativeHistory()
@@ -513,6 +550,7 @@ struct BotsWindowTests {
   var empty = false
   var usable = true
   var views = 0
+  var extendsCurrent = false
   func branches(botId: String) async throws -> [NativeHistoryBranch] {
     [
       NativeHistoryBranch(
@@ -520,7 +558,7 @@ struct BotsWindowTests {
         selection: String(repeating: "a", count: 64))
     ]
   }
-  func view(botId: String, head: String) async throws -> NativeHistoryView {
+  func view(botId: String, head: String, after: String?) async throws -> NativeHistoryView {
     views += 1
     return NativeHistoryView(
       head: head, branchId: "received", usable: !empty && usable,
@@ -530,7 +568,8 @@ struct BotsWindowTests {
           Message(
             id: "foreign-user", role: .user, state: .complete, createdAt: "x",
             blocks: [.text("received user before model completion")])
-        ])
+        ],
+      extendsCurrent: extendsCurrent)
   }
   func assess(botId: String, head: String) async throws -> Bool { !empty && usable }
   func continueHistory(

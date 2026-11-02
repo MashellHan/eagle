@@ -106,6 +106,125 @@ test("an empty A to B to A echo cannot shadow the live root's first committed ch
   }
 });
 
+test("sequential handoff proves the current native tail and rejects same-conversation siblings", async () => {
+  const a = await createBench({ settings: { compaction: { enabled: false } } });
+  const b = await createBench({ settings: { compaction: { enabled: false } } });
+  const left = await a.runtime.open(a.spec());
+  const right = await b.runtime.open(b.spec());
+  const held = Promise.withResolvers<void>();
+  let bCalls = 0;
+  let continuing: ReturnType<typeof right.continueHistory> | undefined;
+  try {
+    a.faux.setResponses([
+      text("common answer"),
+      text("A concurrent local answer"),
+      text("A relay answer"),
+    ]);
+    await left.submit({
+      requestId: "r_common_handoff",
+      text: "common question",
+      whenBusy: "followUp",
+      trace,
+    });
+    await waitFor(
+      async () => (await left.submission({ requestId: "r_common_handoff" }))?.status === "done",
+      "common turn",
+    );
+    const common = await left.exportHistoryPage();
+    await right.importHistoryPage(common);
+    b.faux.setResponses([
+      async () => {
+        bCalls++;
+        await held.promise;
+        return text("B sequential answer");
+      },
+    ]);
+    const beforeContinuing = new Set(
+      (await right.listHistoryBranches()).branches.map((branch) => branch.branchId),
+    );
+    continuing = right.continueHistory({
+      head: common.head,
+      requestId: "r_b_handoff",
+      text: "B next",
+    });
+    await waitFor(() => bCalls === 1, "B's committed user while the model is held");
+    const branches = await right.listHistoryBranches();
+    const bBranch = branches.branches.find((branch) => !beforeContinuing.has(branch.branchId));
+    assert.ok(bBranch);
+    const partial = await right.exportHistoryPage({ selection: bBranch.selection });
+    await left.importHistoryPage(partial);
+    const partialView = await left.readHistoryHead(partial.head);
+    assert.match(JSON.stringify(partialView.messages), /B next/);
+    assert.equal(partialView.usable, false);
+    assert.equal(
+      partialView.extendsCurrent,
+      true,
+      "committed user is a successor before assessment/model completion",
+    );
+    held.resolve();
+    const continued = await continuing;
+    const bPage = await right.exportHistoryPage({ selection: continued.branchId });
+    await left.importHistoryPage(bPage);
+    assert.equal(bPage.conversationId, common.conversationId);
+    assert.equal(
+      (await left.readHistoryHead(bPage.head)).extendsCurrent,
+      true,
+      "B's new branch must strictly extend A's current native tail",
+    );
+    assert.equal(
+      (await left.readHistoryHead(common.head)).extendsCurrent,
+      false,
+      "an echo is not a successor",
+    );
+    await left.submit({
+      requestId: "r_a_sibling",
+      text: "A independently continued",
+      whenBusy: "followUp",
+      trace,
+    });
+    await waitFor(
+      async () => (await left.submission({ requestId: "r_a_sibling" }))?.status === "done",
+      "A sibling turn",
+    );
+    assert.equal(
+      (await left.readHistoryHead(bPage.head)).extendsCurrent,
+      false,
+      "a shared conversation ID does not make B a successor of A's new local work",
+    );
+    const aPage = await left.exportHistoryPage();
+    await right.importHistoryPage(aPage);
+    assert.equal(
+      (await right.readHistoryHead(aPage.head)).extendsCurrent,
+      false,
+      "compare the native active continuation, not the old local root",
+    );
+    const next = await left.continueHistory({
+      head: bPage.head,
+      requestId: "r_a_relay",
+      text: "A explicitly follows B",
+    });
+    const aRelay = await left.exportHistoryPage({ selection: next.branchId });
+    await right.importHistoryPage(aRelay);
+    assert.equal((await right.readHistoryHead(aRelay.head)).extendsCurrent, true);
+    assert.equal(
+      (await left.readHistoryHead(aPage.head, trace, bPage.head)).extendsCurrent,
+      false,
+      "a displayed immutable branch also excludes its siblings",
+    );
+    assert.equal(
+      (await right.readHistoryHead(aRelay.head, trace, bPage.head)).extendsCurrent,
+      true,
+    );
+  } finally {
+    held.resolve();
+    await continuing?.catch(() => undefined);
+    await left.close(trace, 5_000);
+    await right.close(trace, 5_000);
+    await a.cleanup();
+    await b.cleanup();
+  }
+});
+
 test("an archive-only receiver accepts a pure later delta and reopens into a usable native head", async () => {
   const a = await createBench({ settings: { compaction: { enabled: false } } });
   const b = await createBench({ settings: { compaction: { enabled: false } } });
@@ -1101,6 +1220,7 @@ test("incremental native import preserves real tool results passively and refuse
 
 test("large missing-ancestry tails are visible with bounded reads while backfill and usability remain separate", async () => {
   let reads = 0;
+  const scanLimits: number[] = [];
   const b = await createBench({
     storage: async (path) => {
       const storage = await openNodeSqliteStorage(path);
@@ -1109,6 +1229,7 @@ test("large missing-ancestry tails are visible with bounded reads while backfill
           if (property === "scanEntries")
             return (...args: Parameters<typeof storage.scanEntries>) => {
               reads += 1;
+              scanLimits.push(args[1]);
               return target.scanEntries(...args);
             };
           const value = Reflect.get(target, property);
@@ -1217,8 +1338,10 @@ test("large missing-ancestry tails are visible with bounded reads while backfill
       "backfill completes the immutable old head",
     );
     reads = 0;
+    scanLimits.length = 0;
     assert.equal((await right.readHistoryHead(initial.head)).usable, true);
-    assert.equal(reads, 0, "even a fully materialized branch has a bounded, scan-free latest view");
+    assert.equal(reads, 1, "a materialized view only checks the local native tail for ancestry");
+    assert.deepEqual(scanLimits, [1], "ancestry evidence never scans the full branch");
     assert.equal(
       (await right.assessHistoryHead(fresh.head)).usable,
       false,
