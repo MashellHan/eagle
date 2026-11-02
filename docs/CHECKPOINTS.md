@@ -3097,3 +3097,33 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   No full gate, device, App, helper or live Worker was operated by service. Earlier
   physical failures and DO/TS two-way App visibility within 5s remain pending.
   D1, collection and dashboard: N/A; source SwiftPM remains released.
+
+
+## 2026-11-02 21:50 optional history: deployed diagnostics awaiting classification
+
+- Root deployed fixed `e030d374` to the existing personal Worker, version
+  `35e0aded-6bc1-42e8-ba8d-bbcc9d38b57f`; live exact-revision verification returned
+  HTTP 200 and anonymous access HTTP 401, with `no-store`. Root's independent
+  checks passed root 280/280, types/lint/build, browser 191 with 11 existing
+  platform skips, and dry-run. Logger review found no blocker; injected categories
+  remain fixture evidence, not an online quota conclusion.
+- After Root re-enabled sync on both 2a4 clients, many `history_invalid_frame`
+  responses remained: A's 171 receipts include 43 occurrences. Prior tail 444
+  contained only `ok`/`canceled`; Root is rebuilding a sanitized tail bound to the
+  deployed version. The real category/phase is still unknown. Lead's read-only
+  check of [Cloudflare real-time logs](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/)
+  says ordinary WebSocket logs flush after client close; source has per-message
+  `topUpActor`. Neither establishes an online quota cause. Root owns switches,
+  actual WSS closure, deployment and tail.
+- A eventually displayed B-fresh after the failed 18.101708875s window; that
+  latency failure remains. B's fourth real provider input includes A-first,
+  B-reply, B-offline and B-fresh. Automatic persistence on B contains 50 records
+  with 50 unique IDs; v1 wire digests match raw 50/50 and native 50/50. The old
+  whole-SQLite comparison's 26 differences are local, non-wire `byTaskId` only;
+  its failed comparison is retained, and the corrected comparison excludes only
+  that field. These prove context/persistence, not a latency pass.
+- Product remains fixed at `e030d374`; this doc-only update changes no code/test
+  and starts no gate, service, Swift or App. Physical data remains preserved;
+  DO/TS two-way App visibility within 5s is still pending. D1, collection and
+  dashboard are unchanged/N/A. Source and SwiftPM remain released, awaiting
+  Root's real classification.
