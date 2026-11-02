@@ -2846,3 +2846,12 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   failure isolation and late-open shutdown findings remain open, as does arrival
   stability. Root reports the short-path candidate root check at 275/276; the one
   offline-recovery fixture failure is retained, pending precise event ordering.
+- Recovery fixture diagnosis now has deterministic red→green, 9/9 in
+  `.local/history-recovery-fixture-{red,green}.log`: hold real WebCrypto creation
+  beyond 30 event-loop turns, then wait for the public readiness failure before
+  advancing the unchanged 1s retry. Recovery also waits for its readiness event.
+  No production retry timing changed. Root reports candidate browser 190 pass/
+  1 fail/11 existing platform skips; its sole full-file `app.spec.ts` recheck
+  passed 34/34 (20.3s), preserving the original failure. Candidate types/lint/build
+  passed; no new complete source gate was run. Root owns A/B installation and the
+  isolated consumer; foreign App visibility/latency remains unverified.

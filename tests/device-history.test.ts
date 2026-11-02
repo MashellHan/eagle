@@ -151,14 +151,14 @@ test("online history retries a transient renewal without waiting for another clo
   try {
     await transport.setEnabled(true);
     assert.equal(transport.status().ready, true);
+    const failed = nextReady(transport, false);
     t.mock.timers.tick(60_000);
-    for (let turn = 0; turn < 30; turn++)
-      await new Promise<void>((done) => setImmediate(done));
+    await failed;
     assert.equal(configurations, 2);
     assert.equal(transport.status().ready, false);
+    const recovered = nextReady(transport, true);
     t.mock.timers.tick(2000);
-    for (let turn = 0; turn < 30; turn++)
-      await new Promise<void>((done) => setImmediate(done));
+    await recovered;
     assert.equal(
       configurations,
       3,
@@ -187,6 +187,15 @@ const flush = async () => {
   for (let turn = 0; turn < 30; turn++)
     await new Promise<void>((done) => setImmediate(done));
 };
+
+const nextReady = (transport: DeviceHistoryTransport, ready: boolean) =>
+  new Promise<void>((resolve) => {
+    const detach = transport.observe((event) => {
+      if (event.type !== "history.ready" || event.ready !== ready) return;
+      detach();
+      resolve();
+    });
+  });
 
 async function recoveryFixture(t: TestContext) {
   const self = await peer();
@@ -263,12 +272,18 @@ for (const error of [
     try {
       await f.transport.setEnabled(true);
       f.errors.directory.push(error);
+      const failed = nextReady(f.transport, false);
       t.mock.timers.tick(60_000);
-      await flush();
+      await failed;
       assert.equal(f.transport.status().ready, false);
       const failedAt = f.directories;
+      const recovered =
+        error.message === "revoked_session"
+          ? undefined
+          : nextReady(f.transport, true);
       t.mock.timers.tick(1000);
-      await flush();
+      if (recovered) await recovered;
+      else await flush();
       assert.equal(
         f.directories,
         failedAt + (error.message === "revoked_session" ? 0 : 1),
@@ -286,11 +301,34 @@ for (const error of [
 for (const boundary of ["disable", "offline"]) {
   test(`a canceled recovery handle cannot prevent retry after ${boundary}`, async (t) => {
     const f = await recoveryFixture(t);
+    let enter = () => {};
+    let resume = () => {};
+    const entered = new Promise<void>((done) => {
+      enter = done;
+    });
+    const held = new Promise<void>((done) => {
+      resume = done;
+    });
+    const create = DeviceHistoryCipher.create;
+    let holdCrypto = false;
+    t.mock.method(
+      DeviceHistoryCipher,
+      "create",
+      async (...args: Parameters<typeof create>) => {
+        if (holdCrypto) {
+          holdCrypto = false;
+          enter();
+          await held;
+        }
+        return create(...args);
+      },
+    );
     try {
       await f.transport.setEnabled(true);
       f.errors.configure.push(new Error("history_busy"));
+      const failed = nextReady(f.transport, false);
       t.mock.timers.tick(60_000);
-      await flush();
+      await failed;
       if (boundary === "disable") await f.transport.setEnabled(false);
       else f.event(false);
       t.mock.timers.tick(2000);
@@ -299,18 +337,27 @@ for (const boundary of ["disable", "offline"]) {
       if (boundary === "disable")
         await assert.rejects(f.transport.setEnabled(true), /history_busy/);
       else {
+        const failedOnline = nextReady(f.transport, false);
+        holdCrypto = true;
         f.event(true);
+        await entered;
+        // Even many event-loop turns do not complete a held real WebCrypto operation.
         await flush();
+        assert.equal(f.transport.status().ready, false);
+        resume();
+        await failedOnline;
       }
       assert.equal(f.transport.status().ready, false);
+      const recovered = nextReady(f.transport, true);
       t.mock.timers.tick(1000);
-      await flush();
+      await recovered;
       assert.equal(
         f.transport.status().ready,
         true,
         "new online recovery must replace the canceled timer",
       );
     } finally {
+      resume();
       f.close();
     }
   });
