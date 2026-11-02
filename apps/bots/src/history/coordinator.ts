@@ -22,6 +22,10 @@ const packet = z.discriminatedUnion("type", [
     type: z.literal("changed"),
     botIds: z.array(bot).max(32),
     catalog: z.boolean(),
+    branches: z
+      .array(z.strictObject({ botId: bot, selection: z.string().min(1).max(128) }))
+      .max(32)
+      .optional(),
   }),
   z.strictObject({ type: z.literal("pull"), id: z.uuid(), request }),
   z.strictObject({
@@ -75,6 +79,7 @@ export class HistoryCoordinator {
     {
       peer: string;
       botId: string | undefined;
+      selection: string | undefined;
       scan: AsyncGenerator<void>;
       again: boolean;
       started: boolean;
@@ -82,6 +87,7 @@ export class HistoryCoordinator {
   >();
   readonly #heads = new Map<string, string>();
   readonly #peers = new Set<string>();
+  readonly #precisePeers = new Set<string>();
   readonly #dirtyBots = new Set<string>();
   #catalogDirty = false;
   #notifying = false;
@@ -158,6 +164,7 @@ export class HistoryCoordinator {
     if (this.#channel !== channel) return;
     this.#channel = undefined;
     this.#ready = false;
+    this.#precisePeers.clear();
     clearTimeout(this.#retry);
     this.#retry = undefined;
     for (const pending of this.#pending.values()) pending.reject();
@@ -200,8 +207,16 @@ export class HistoryCoordinator {
       if (!parsed.success) return;
       if (parsed.data.type === "changed") {
         this.#peers.add(value.sourceDeviceId);
+        const hint = parsed.data;
+        if (hint.branches) this.#precisePeers.add(value.sourceDeviceId);
+        else this.#precisePeers.delete(value.sourceDeviceId);
+        for (const botId of hint.botIds)
+          this.#queueHot(
+            value.sourceDeviceId,
+            botId,
+            hint.branches?.find((branch) => branch.botId === botId)?.selection,
+          );
         if (parsed.data.catalog) this.#queueHot(value.sourceDeviceId);
-        for (const botId of parsed.data.botIds) this.#queueHot(value.sourceDeviceId, botId);
         void this.#work();
       } else if (parsed.data.type === "reply") {
         const pending = this.#pending.get(parsed.data.id);
@@ -223,15 +238,19 @@ export class HistoryCoordinator {
     this.#fresh.add(peer);
   }
 
-  #queueHot(peer: string, botId?: string) {
-    const key = `${peer}/${botId ?? "catalog"}`;
+  #queueHot(peer: string, botId?: string, selection?: string) {
+    const key = `${peer}/${botId ?? "catalog"}${selection ? `/${selection}` : ""}`;
     const work = this.#hot.get(key);
     if (work) work.again = true;
     else
       this.#hot.set(key, {
         peer,
         botId,
-        scan: botId === undefined ? this.#catchUpCatalog(peer) : this.#catchUpBot(peer, botId),
+        selection,
+        scan:
+          botId === undefined
+            ? this.#catchUpCatalog(peer)
+            : this.#catchUpBot(peer, botId, selection),
         again: false,
         started: false,
       });
@@ -266,17 +285,27 @@ export class HistoryCoordinator {
     for (const id of botIds) this.#dirtyBots.delete(id);
     const catalog = this.#catalogDirty;
     this.#catalogDirty = false;
+    const branches: { botId: string; selection: string }[] = [];
+    for (const botId of botIds) {
+      try {
+        const selection = await this.#withBot(botId, async (handle) =>
+          handle.currentHistoryBranch?.(),
+        );
+        if (selection) branches.push({ botId, selection });
+      } catch {
+        /* The Bot hint still schedules its ordinary branch directory. */
+      }
+    }
     let failed = false;
+    let coarse = false;
     for (const peer of this.#peers) {
       if (this.#closed || !this.#ready) {
         failed = true;
         break;
       }
       try {
-        await this.#channel?.call("history.send", {
-          targetDeviceId: peer,
-          payload: { type: "changed", botIds, catalog },
-        });
+        await this.#send(peer, { type: "changed", botIds, catalog, branches });
+        coarse ||= !this.#precisePeers.has(peer);
       } catch {
         failed = true;
       }
@@ -286,7 +315,7 @@ export class HistoryCoordinator {
       this.#catalogDirty ||= catalog;
     }
     this.#notifying = false;
-    if (!failed) void this.#channel?.call("history.changed").catch(() => {});
+    if (!failed && coarse) void this.#channel?.call("history.changed").catch(() => {});
     this.#scheduleNotice(failed ? 1000 : 40);
   }
 
@@ -336,20 +365,30 @@ export class HistoryCoordinator {
     } catch {
       failed = true;
     }
-    const channel = this.#channel;
     const payload = { type: "reply", id: pull.id, failed, result: result ?? null };
-    // Retain the read reply through brief backpressure, inside the peer's 5s pull budget.
+    try {
+      await this.#send(peer, payload);
+    } catch {
+      /* Other errors or sustained backpressure keep the original pull timeout. */
+    }
+  }
+
+  async #send(peer: string, payload: unknown) {
+    const channel = this.#channel;
+    // Keep brief capacity pressure inside the existing peer pull budget.
     const deadline = Date.now() + 1000;
-    while (!this.#closed && this.#ready && channel && channel === this.#channel) {
+    while (Date.now() < deadline) {
+      if (this.#closed || !this.#ready || !channel || channel !== this.#channel)
+        throw new Error("history_pull_unavailable");
       try {
-        await channel.call("history.send", { targetDeviceId: peer, payload });
-        return;
+        return await channel.call("history.send", { targetDeviceId: peer, payload });
       } catch (error) {
         if (!(error instanceof Error) || error.message !== "history_busy" || Date.now() >= deadline)
-          return;
+          throw error;
         await new Promise<void>((resolve) => setTimeout(resolve, 100));
       }
     }
+    throw new Error("history_busy");
   }
 
   async #pull(peer: string, query: z.infer<typeof request>): Promise<unknown> {
@@ -432,7 +471,7 @@ export class HistoryCoordinator {
     for (const bot of this.#registry.summaries()) yield* this.#catchUpBot(peer, bot.id);
   }
 
-  async *#catchUpBot(peer: string, botId: string) {
+  async *#catchUpBot(peer: string, botId: string, selection?: string) {
     if (this.#closed || !this.#ready) return;
     if (this.#unavailableBots.has(botId) || this.#unavailableReads.has(`${peer}/${botId}`)) return;
     try {
@@ -440,14 +479,16 @@ export class HistoryCoordinator {
         yield* this.#catchUpCatalog(peer);
       let after: string | undefined;
       do {
-        const list = branches.parse(
-          await this.#pull(peer, {
-            method: "branches",
-            botId: botId,
-            ...(after ? { after } : {}),
-          }),
-        );
-        yield;
+        const list = selection
+          ? { branches: [{ branchId: selection, selection }], cursor: null, hasMore: false }
+          : branches.parse(
+              await this.#pull(peer, {
+                method: "branches",
+                botId: botId,
+                ...(after ? { after } : {}),
+              }),
+            );
+        if (!selection) yield;
         for (const branch of list.branches) {
           const key = `${peer}/${botId}/${branch.branchId}`;
           const gap = this.#gaps.get(key);
@@ -479,7 +520,8 @@ export class HistoryCoordinator {
             }
             const complete = !tail || !page.hasMore || !page.cursor;
             if (complete) this.#heads.set(key, branch.selection);
-            else if (budget === 3) this.#queueHot(peer, botId);
+            else if (budget === 3) this.#queueHot(peer, botId, selection);
+            if (selection && budget === 0) this.#queueHot(peer, botId);
             yield;
             if (complete) break;
           }
@@ -523,7 +565,7 @@ export class HistoryCoordinator {
           const done = (await work.scan.next()).done;
           this.#hot.delete(key);
           if (done) {
-            if (work.again) this.#queueHot(work.peer, work.botId);
+            if (work.again) this.#queueHot(work.peer, work.botId, work.selection);
           } else this.#hot.set(key, work);
         } else if (peer && (freshTurn || (!backfillWork && !drainWork))) {
           activePeer = peer;

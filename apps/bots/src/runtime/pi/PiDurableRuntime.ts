@@ -371,6 +371,10 @@ class PiRuntimeHandle implements RuntimeHandle {
     return new NativeHistory(this.#harness, this.#rootId, this.#spec.id).observe(listener);
   }
 
+  currentHistoryBranch() {
+    return new NativeHistory(this.#harness, this.#rootId, this.#spec.id).currentBranch();
+  }
+
   exportHistoryPage(
     input: import("./historyIncremental.ts").HistoryPageRequest = {},
     trace = this.#spec.trace,

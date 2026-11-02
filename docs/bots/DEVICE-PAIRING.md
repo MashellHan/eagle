@@ -477,7 +477,12 @@ stolen: close releases the socket promptly and retry can acquire it after a host
 handoff. Disabled/unavailable history leaves local chat independent. Catalog and
 native-entry observers only queue coalesced notices. The existing encrypted
 history payload carries an additive `changed` message with at most 32 Bot IDs and
-a catalog bit; no Device frame or cloud history storage is added. Startup/reconnect
+a catalog bit. Its optional `branches` array carries at most 32 Bot/current-local
+branch selections, read from native local selection without awaiting the provider.
+A known Bot's hinted branch page preempts even an existing hot scan of that same
+Bot; unknown Bots first import their catalog metadata. Old branch scans, shared
+forward cursors and gap/backfill work remain queued. No Device frame or cloud
+history storage is added. Startup/reconnect
 and coarse notices retain full catch-up compatibility. Every catalog/branch/page
 read yields; a changed Bot preempts unrelated scans, including catalog discovery
 for a Bot created after the old scan began. Branch progress records only imported
@@ -488,6 +493,12 @@ missing-ancestor recovery remains queued even at the same head. Failed hint send
 retain their Bot IDs/catalog bit and retry with bounded backoff without another
 commit. Opening a handle or importing an empty/duplicate page does not announce a
 native change. Imports broadcast the existing catalog, including an empty Bot.
+Receiving `branches` (including an empty array) identifies a peer that understands
+precise hints; a successful notice to those peers needs no extra coarse broadcast.
+Unknown/older peers retain the coarse fallback. This observation resets on IPC
+disconnect and an older hint, so reconnect/downgrade still catches up. Hint sends
+share the bounded busy-only wait used for replies, before retaining failed work
+for the existing backoff; identity errors never enter that short busy retry.
 Fresh committed-user pages are imported and announced before completion assessment; old backfill yields between pages
 and has a separate queue. Native pending work drains independently after the final
 backfill page, without waiting for another notice. Failed reads retain their queued

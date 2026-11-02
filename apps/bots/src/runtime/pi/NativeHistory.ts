@@ -209,6 +209,14 @@ export class NativeHistory {
     };
   }
 
+  async currentBranch(): Promise<string> {
+    return this.#harness.commit(async (tx) => {
+      const state = await tx.doc(HistoryState);
+      const selected = await tx.doc(LocalChatSelection);
+      return `${state.originId}/c${selected.conversationId || this.#rootId}`;
+    }, ctx);
+  }
+
   async exportPage(input: HistoryPageRequest = {}): Promise<HistoryPage> {
     const request = historyPageRequest.safeParse(input);
     if (!request.success) historyReject("invalid history page request");

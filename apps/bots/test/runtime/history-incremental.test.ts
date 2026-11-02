@@ -131,6 +131,7 @@ test("sequential handoff proves the current native tail and rejects same-convers
       "common turn",
     );
     const common = await left.exportHistoryPage();
+    assert.equal(await left.currentHistoryBranch(), common.branchId);
     await right.importHistoryPage(common);
     b.faux.setResponses([
       async () => {
@@ -151,6 +152,11 @@ test("sequential handoff proves the current native tail and rejects same-convers
     const branches = await right.listHistoryBranches();
     const bBranch = branches.branches.find((branch) => !beforeContinuing.has(branch.branchId));
     assert.ok(bBranch);
+    assert.equal(
+      await right.currentHistoryBranch(),
+      bBranch.branchId,
+      "the committed active continuation is available before its provider completes",
+    );
     const partial = await right.exportHistoryPage({ selection: bBranch.selection });
     await left.importHistoryPage(partial);
     const partialView = await left.readHistoryHead(partial.head);

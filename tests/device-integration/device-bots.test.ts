@@ -469,13 +469,12 @@ const config=JSON.parse((await lines.next()).value);
 Object.assign(process.env,{BOTS_BASE_URL:config.baseUrl,BOTS_API_KEY:config.key,BOTS_PROVIDER:'device-local',BOTS_MODEL:'scripted-local',BOTS_THINKING_LEVEL:'off',BOTS_TOOL_GROUPS:'core',BOTS_COMPACTION:'off'});
 const {readConfig}=await import(pathToFileURL(config.source+'/src/config.ts').href);
 const {startDaemon}=await import(pathToFileURL(config.source+'/src/main.ts').href);
-let holdBot,releasePage,heldPage,changedBot;
+let holdBot,releasePage,heldPage;
 const {DeviceChannel}=await import(pathToFileURL(config.source+'/src/tools/devices/socket.ts').href);
 const call=DeviceChannel.prototype.call;
 DeviceChannel.prototype.call=async function(method,...args){
-  const changed=changedBot;
   const result=await call.call(this,method,...args);
-  if(method==='history.changed')process.stdout.write(JSON.stringify({type:'notice-sent',botId:changed})+'\\n');
+  if(method==='history.send'&&args[0]?.payload?.type==='changed')for(const botId of args[0].payload.botIds)process.stdout.write(JSON.stringify({type:'notice-sent',botId})+'\\n');
   return result;
 };
 {
@@ -490,8 +489,6 @@ DeviceChannel.prototype.call=async function(method,...args){
   let fail=config.failOneBackfill;
   PiDurableRuntime.prototype.open=async function(...args){
     const handle=await open.apply(this,args);
-    const observe=handle.observeHistoryChanges.bind(handle);
-    handle.observeHistoryChanges=(listener)=>observe(()=>{changedBot=args[0].id;listener();});
     const read=handle.exportHistoryPage.bind(handle);
     handle.exportHistoryPage=async function(input){
       if(holdBot===args[0].id){holdBot=undefined;process.stdout.write(JSON.stringify({type:'page-held',botId:args[0].id})+'\\n');await heldPage;}

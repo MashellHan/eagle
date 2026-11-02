@@ -89,6 +89,8 @@ export type HistoryContinuation = {
 export interface RuntimeHandle {
   /** Explicit optional observation; listeners never run on the native commit callback. */
   observeHistoryChanges?(listener: () => void): () => void;
+  /** Current local branch for optional scheduling, independent of provider completion. */
+  currentHistoryBranch?(): Promise<string>;
   exportHistoryPage?(
     input?: {
       selection?: string;

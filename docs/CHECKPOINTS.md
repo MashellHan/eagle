@@ -3275,3 +3275,46 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   within 5s is still pending. No source full root/Bots gate, service, Swift/App,
   deployment or device operation is run here. Root/D1/collection/dashboard:
   unchanged/N/A; source SwiftPM remains released.
+
+
+## 2026-11-02 23:46 optional history: current-branch priority candidate
+
+- Root's daemon `aa1fca2` retains the busy reply correctly: logical reply
+  `438b65d0-8a09-4857-992c-c4b732f9d4ee` succeeds after busy retries, and the
+  earlier lost-reply 5s gap is absent. Physical latency still FAILS: A→B
+  11.89584s (`aa1fca2-A-to-B-2336.json`) and warm B→A 11.463256917s
+  (`aa1fca2-B-to-A-2339.json`). Timelines are retained under
+  `physical-888578a/B-aa1fca2-timeline.json` and
+  `A/B-aa1fca2-reverse-timeline.json`. B's model includes both new messages.
+- Root observed changed send only at +3088ms, then catalog/branches/old root
+  before the new current branch. In the reverse sample the new c210 pull starts
+  only at +10.415s after c1/c130. Worker `2c27fb4` remains unchanged; its reported
+  430s/343-receipt zero-depth/transport window is stability evidence only.
+- The narrow Bots candidate reads the already-admitted native local selection,
+  without provider/assessment waits, and adds at most 32 optional current-branch
+  selections to the existing encrypted hint. A known Bot pulls that page before
+  the same Bot's running old scan; its remaining branch discovery stays queued,
+  including passive branches that appeared after the old directory read.
+  Reply/hint sends share the short busy-only wait. Observed new peers omit the
+  redundant coarse broadcast; unknown/older peers retain compatibility fallback.
+  Original frame/auth checks, concurrency, 5s pull, shared cursors/gaps/backfill,
+  ordinary sends and UI/native ancestry rules remain unchanged.
+- Real IPC red 14/16 → green 16/16 covers same-Bot c2-before-c156 ordering, busy
+  hint delay and duplicate coarse broadcast. A follow-up 15/16 red catches the
+  later passive branch; one background requeue restores 16/16. Native getter
+  control 16/17 → 17/17 covers root and committed continuation while the provider
+  is held. Evidence: `.local/history-current-{branch,coarse,background}-red.log`,
+  `history-current-branch-green.log` and `history-current-native-{red,green}.log`.
+- Bots types/affected lint passed. Initial process 4/5 is preserved in
+  `history-current-process-green.log`: the fixture waited for the now-suppressed
+  coarse notice. Its existing observation now awaits successful precise hint
+  send for the actual Bot ID; no timeout or acceptance threshold changed. That
+  same process file then passed 5/5 (56.67s), preserving fresh committed-user
+  visibility after 3/9 old branches while its provider remains held. Final log:
+  `.local/history-current-process-fixed-green.log`. Bots/root types and affected
+  lint also pass. These are code/affected results, not physical E2E proof.
+- Root owns daemon-only replacement, switches/devices and physical review;
+  all histories/backlog remain. No Worker/Agent/Swift/App/service/deployment or
+  device operation occurs here, and no complete root/Bots gate is repeated.
+  DO/TS two-way App visibility within 5s remains pending. Root/D1/collection/
+  dashboard: unchanged/N/A; source SwiftPM remains released.

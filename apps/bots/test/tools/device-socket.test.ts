@@ -795,6 +795,142 @@ test("hot and coarse scans import all five delta pages before caching the newer 
   }
 });
 
+test("a current-branch hint preempts an already running hot scan of the same Bot", async () => {
+  const peer = randomUUID();
+  const origin = randomUUID();
+  const botId = "b_same_hot_bot";
+  const old = Array.from({ length: 8 }, (_, i) => `${origin}/c${i + 1}`);
+  const current = `${origin}/c156`;
+  const receivedLater = `${origin}/c157`;
+  const reads: string[] = [];
+  const imports: string[] = [];
+  const releases: (() => void)[] = [];
+  let attached: Socket | undefined;
+  let committed = false;
+  const registry = {
+    summaries: () => [{ id: botId }],
+    handleOf: () => undefined,
+    observeHandles: () => () => {},
+    importHistoryCatalog: async () => {},
+    touch: () => true,
+    open: async () => ({
+      importHistoryPage: async (value: unknown) => {
+        const page = validateHistoryPage(value);
+        if (page.records.length) imports.push(page.branchId);
+        return { pending: false };
+      },
+    }),
+    release: () => {},
+  } as unknown as BotRegistry;
+  const directory = { observeChanges: () => () => {} } as unknown as BotDirectory;
+  const bench = await fixture((socket, frame) => {
+    if (frame.method === "history.attach") attached = socket;
+    socket.write(
+      `${JSON.stringify({ requestId: frame.requestId, result: frame.method === "history.peers" ? [{ deviceId: peer }] : { enabled: true, ready: true } })}\n`,
+    );
+    if (frame.method !== "history.send") return;
+    const { payload } = frame.params as {
+      payload: {
+        type: string;
+        id: string;
+        request: { method: string; input?: { selection: string } };
+      };
+    };
+    if (payload.type !== "pull") return;
+    const query = payload.request;
+    const selection = query.input?.selection;
+    reads.push(selection ? `page/${selection}` : query.method);
+    const branchId = selection ?? (old[0] as string);
+    const tip =
+      committed && (branchId === current || branchId === receivedLater)
+        ? `${origin}/e${branchId === current ? 1 : 2}`
+        : null;
+    const result =
+      query.method === "catalog"
+        ? { bots: [], hasMore: false }
+        : query.method === "branches"
+          ? {
+              branches: [...old, current, ...(committed ? [receivedLater] : [])].map(
+                (branchId) => ({
+                  branchId,
+                  conversationId: branchId,
+                  selection: branchId,
+                }),
+              ),
+              cursor: null,
+              hasMore: false,
+            }
+          : {
+              version: 1,
+              engine: "pi-durable@1.4.0",
+              botId,
+              branchId,
+              conversationId: branchId,
+              tip,
+              head: pageHead(branchId, tip),
+              snapshot: tip ? "1" : null,
+              cursor: tip ? "1" : null,
+              hasMore: false,
+              records: tip
+                ? [
+                    {
+                      previous: null,
+                      entry: {
+                        id: tip,
+                        originId: origin,
+                        conversationId: branchId,
+                        kind: "model",
+                        model: [{ role: "user", content: "latest committed user", timestamp: 1 }],
+                      },
+                    },
+                  ]
+                : [],
+            };
+    const reply = () =>
+      socket.write(
+        `${JSON.stringify({ type: "history.packet", sourceDeviceId: peer, payload: { type: "reply", id: payload.id, result, failed: false } })}\n`,
+      );
+    if (selection === old[0] && releases.length < 2)
+      releases.push(() => {
+        reply();
+      });
+    else reply();
+  });
+  const coordinator = new HistoryCoordinator(bench.path, registry, directory, () => {});
+  try {
+    await waitFor(() => releases.length === 1, "coarse old root page held");
+    attached?.write(
+      `${JSON.stringify({ type: "history.packet", sourceDeviceId: peer, payload: { type: "changed", botIds: [botId], catalog: false } })}\n`,
+    );
+    releases[0]?.();
+    await waitFor(() => releases.length === 2, "same Bot hot scan is already reading the old root");
+    committed = true;
+    const before = reads.length;
+    attached?.write(
+      `${JSON.stringify({ type: "history.packet", sourceDeviceId: peer, payload: { type: "changed", botIds: [botId], catalog: true, branches: [{ botId, selection: current }] } })}\n`,
+    );
+    releases[1]?.();
+    await waitFor(() => imports.includes(current), "current committed user imports");
+    assert.equal(
+      reads[before],
+      `page/${current}`,
+      "no catalog, directory or old page can precede the hinted current page after the in-flight read",
+    );
+    await waitFor(
+      () => old.every((branch) => reads.includes(`page/${branch}`)),
+      "preempted old branches are retained",
+    );
+    await waitFor(
+      () => imports.includes(receivedLater),
+      "a passive branch appearing after the old directory read is retained in background catch-up",
+    );
+  } finally {
+    for (const release of releases) release();
+    await coordinator.close();
+    await bench.close();
+  }
+});
+
 test("a reply survives outbound-slot busy without waiting for the peer's pull timeout", async () => {
   const stack = await startStack({ real: true });
   const botId = await stack.createBot("current committed chat");
@@ -912,10 +1048,19 @@ test("a native commit retains its last Bot hint after busy, while empty imports 
   const stack = await startStack({ real: true });
   const botId = await stack.createBot("native notice");
   const peer = randomUUID();
-  const hints: { botIds: string[]; catalog: boolean }[] = [];
+  const hints: {
+    botIds: string[];
+    catalog: boolean;
+    branches?: { botId: string; selection: string }[];
+  }[] = [];
   let published = 0;
+  let coarse = 0;
+  let attached: Socket | undefined;
+  const attemptsAt: number[] = [];
   const bench = await fixture((socket, frame) => {
     let error: string | undefined;
+    if (frame.method === "history.attach") attached = socket;
+    if (frame.method === "history.changed") coarse++;
     if (frame.method === "history.send") {
       const { payload } = frame.params as {
         payload: {
@@ -923,12 +1068,14 @@ test("a native commit retains its last Bot hint after busy, while empty imports 
           id: string;
           botIds: string[];
           catalog: boolean;
+          branches?: { botId: string; selection: string }[];
           request?: { method: string };
         };
       };
       if (payload.type === "changed") {
         hints.push(payload);
         if (payload.botIds.includes(botId)) {
+          attemptsAt.push(performance.now());
           if (hints.filter((hint) => hint.botIds.includes(botId)).length === 1)
             error = "history_busy";
           else published++;
@@ -985,6 +1132,10 @@ test("a native commit retains its last Bot hint after busy, while empty imports 
     await handle.importHistoryPage?.(empty);
     await new Promise<void>((done) => setTimeout(done, 100));
     assert.equal(hints.length, baseline, "open and duplicate empty native receives do not notify");
+    attached?.write(
+      `${JSON.stringify({ type: "history.packet", sourceDeviceId: peer, payload: { type: "changed", botIds: [], catalog: false, branches: [] } })}\n`,
+    );
+    const coarseBefore = coarse;
     let calls = 0;
     stack.faux?.setResponses([
       async () => {
@@ -1006,6 +1157,20 @@ test("a native commit retains its last Bot hint after busy, while empty imports 
     assert.equal(calls, 1);
     const attempts = hints.filter((hint) => hint.botIds.includes(botId));
     assert.equal(attempts.length, 2);
+    await new Promise<void>((done) => setImmediate(done));
+    assert.equal(
+      coarse,
+      coarseBefore,
+      "a peer advertising precise branch hints needs no extra full-catalog notice after each native commit",
+    );
+    assert.ok(
+      (attemptsAt[1] as number) - (attemptsAt[0] as number) < 750,
+      "brief busy must not impose the full 1s notice backoff after capacity returns",
+    );
+    assert.equal(
+      attempts[1]?.branches?.find((branch: { botId: string }) => branch.botId === botId)?.selection,
+      empty.branchId,
+    );
     assert.deepEqual(attempts[1], attempts[0], "the failed Bot IDs survive the retry");
   } finally {
     held.resolve();
