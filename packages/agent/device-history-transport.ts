@@ -308,7 +308,9 @@ export class DeviceHistoryTransport {
         let bytes = 0;
         const chunks: Uint8Array[] = [];
         for (;;) {
-          const part = await reader.read();
+          const part = await reader.read().catch(() => {
+            throw new Error("history_direct_unavailable");
+          });
           if (part.done) break;
           bytes += part.value.length;
           if (bytes > HISTORY_FRAME_BYTES) {

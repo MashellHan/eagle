@@ -130,6 +130,9 @@ Each direct delivery checks current enabled group peers and uses the same cipher
 frame/concurrency budgets and an encrypted correlated acknowledgement. Connectivity
 failure quickly falls back to DO with the same packet ID and a short route cooldown;
 identity/group failures never fall back. Disable/offline/close releases the listener.
+The 750ms direct deadline includes reading the ACK body. An interrupted or timed-out
+body is a connectivity failure; a complete but invalid or unauthenticated ACK still
+fails closed without DO fallback.
 The send receipt reports `tailscale` or `do`; neither route is App-visibility evidence.
 The optional packet-header `purpose` (`endpoint`/`ack`) is authenticated with the
 ciphertext, independently of Bots data; key proof/helper signing is unchanged.

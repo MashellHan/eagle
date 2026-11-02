@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
+import { ServerResponse } from "node:http";
 import { type ListenOptions, Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -158,6 +159,29 @@ test("Tailscale history uses real encrypted listeners, retains packet identity o
   );
   const request = globalThis.fetch;
   let mode = "normal";
+  let interruptedHeaders = 0;
+  let interruptedSignal: AbortSignal | undefined;
+  const timeout = AbortSignal.timeout;
+  const budgets: number[] = [];
+  t.mock.method(AbortSignal, "timeout", (ms: number) => {
+    budgets.push(ms);
+    return timeout(ms);
+  });
+  const end = ServerResponse.prototype.end;
+  t.mock.method(
+    ServerResponse.prototype,
+    "end",
+    function (this: ServerResponse, ...args: unknown[]) {
+      if (mode === "body_timeout" && typeof args[0] === "string") {
+        // The real receiver accepts the packet, flushes 200 headers and a partial ACK,
+        // then leaves the body open until the caller's original deadline aborts it.
+        this.write(args[0].slice(0, 20));
+        this.flushHeaders();
+        return this;
+      }
+      return Reflect.apply(end, this, args);
+    },
+  );
   let attempts = 0;
   let directId: string | undefined;
   t.mock.method(
@@ -178,8 +202,11 @@ test("Tailscale history uses real encrypted listeners, retains packet identity o
         ack.packet.body = `${ack.packet.body[0] === "A" ? "B" : "A"}${ack.packet.body.slice(1)}`;
         return new Response(JSON.stringify(ack));
       }
-      if (mode === "lost_ack")
-        throw new TypeError("connection lost after receiver accepted");
+      if (mode === "body_timeout") {
+        assert.equal(response.status, 200);
+        interruptedHeaders++;
+        interruptedSignal = init?.signal ?? undefined;
+      }
       return response;
     },
   );
@@ -320,13 +347,21 @@ test("Tailscale history uses real encrypted listeners, retains packet identity o
       1,
       "unreachable direct route quickly uses authorized DO",
     );
-    mode = "lost_ack";
+    mode = "body_timeout";
     assert.deepEqual(
       await left.send(b.device.deviceId, {
         marker: "idempotent passive packet",
       }),
       { sent: true, route: "do" },
     );
+    assert.equal(
+      interruptedHeaders,
+      1,
+      "200 headers precede the interrupted body",
+    );
+    assert.equal(interruptedSignal?.aborted, true);
+    assert.equal(interruptedSignal?.reason.name, "TimeoutError");
+    assert.ok(budgets.length > 0 && budgets.every((ms) => ms === 750));
     await untilHistory(() => received.length >= 2);
     assert.equal(
       relays.at(-1),
