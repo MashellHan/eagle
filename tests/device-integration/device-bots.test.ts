@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import {
   generateKeyPairSync,
   randomBytes,
@@ -21,6 +21,7 @@ import { createInterface } from "node:readline";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 import WebSocket from "ws";
 
@@ -151,6 +152,29 @@ function deviceProcess(root: string, baseUrl: string) {
     root,
   );
   process.handle((message) => {
+    if (message.type === "history-sign") {
+      const proof = message.proof as JSONRecord;
+      assert.equal(proof.serviceOrigin, baseUrl);
+      assert.equal(proof.deviceId, deviceId);
+      assert.equal(proof.purpose, "eagle-history-key-v1");
+      const payload = [
+        proof.purpose,
+        proof.serviceOrigin,
+        proof.deviceId,
+        proof.groupId,
+        proof.membershipEpoch,
+        proof.ephemeralKey,
+        proof.expiresAt,
+      ].join("\n");
+      process.send({
+        type: "history-signature",
+        requestId: message.requestId,
+        signature: sign(null, Buffer.from(payload), keys.privateKey).toString(
+          "base64url",
+        ),
+      });
+      return;
+    }
     if (message.type !== "sign") return;
     const payload = String(message.payload);
     const fields = payload.split("\n");
@@ -284,11 +308,14 @@ export default worker;
   }
 }
 
-type ModelStep = { name: string; args: JSONRecord } | { text: string };
+type ModelStep =
+  | { name: string; args: JSONRecord }
+  | { text: string; wait?: Promise<void> };
 async function modelFixture(key: string) {
   const steps: ModelStep[] = [];
   const failures: string[] = [];
   let requests = 0;
+  const inputs: unknown[] = [];
   const server = createServer(async (request, response) => {
     try {
       assert.equal(
@@ -303,6 +330,8 @@ async function modelFixture(key: string) {
       const step = steps.shift();
       assert(step, "unexpected model request");
       requests++;
+      inputs.push(input);
+      if ("wait" in step) await step.wait;
       const id = `resp_${requests}`;
       const event = (type: string, fields: object) =>
         `event: ${type}\ndata: ${JSON.stringify({ type, ...fields })}\n\n`;
@@ -385,6 +414,18 @@ async function modelFixture(key: string) {
     server,
     baseUrl: `http://127.0.0.1:${address.port}/v1`,
     failures,
+    inputs,
+    hold(text: string) {
+      let release!: () => void;
+      const wait = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      steps.push({ text, wait });
+      return release;
+    },
+    answer(text: string) {
+      steps.push({ text });
+    },
     script(name: string, args: JSONRecord) {
       steps.push({ name, args }, { text: "done" });
     },
@@ -402,7 +443,7 @@ async function daemonProcess(
   baseUrl: string,
   key: string,
 ) {
-  mkdirSync(root, { mode: 0o700 });
+  mkdirSync(root, { mode: 0o700, recursive: true });
   const script = join(root, "daemon.mjs");
   writeFileSync(
     script,
@@ -816,6 +857,329 @@ test("existing and new Bots share real paired devices, native tools and original
       await Promise.allSettled([daemon?.stop(), a?.stop(), b?.stop()]);
     await worker?.mf.dispose();
     await closeServer(model.server);
+    rmSync(workerRoot, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("optional DO history automatically discovers an empty Bot and shows committed user before a slow provider", {
+  timeout: 90000,
+}, async () => {
+  mkdirSync(".local", { recursive: true });
+  const workerRoot = mkdtempSync(resolve(".local/history-bots-worker-"));
+  const root = mkdtempSync("/tmp/eagle-history-bots-");
+  const key = randomBytes(32).toString("base64url");
+  const models = await Promise.all([modelFixture(key), modelFixture(key)]);
+  const [modelA, modelB] = models;
+  assert.ok(modelA && modelB);
+  let worker: Awaited<ReturnType<typeof workerFixture>> | undefined;
+  const devices: ReturnType<typeof deviceProcess>[] = [];
+  const daemons: Awaited<ReturnType<typeof daemonProcess>>[] = [];
+  let release = () => {};
+  let handoffOwner: ReturnType<typeof connect> | undefined;
+  try {
+    worker = await workerFixture(workerRoot);
+    const a = deviceProcess(join(root, "a"), worker.origin);
+    const b = deviceProcess(join(root, "b"), worker.origin);
+    devices.push(a, b);
+    await Promise.all(devices.map((device) => device.ready()));
+    const invitation = await a.manage("pairing.create", {});
+    await b.manage("pairing.redeem", {
+      requestId: randomUUID(),
+      code: invitation.code,
+    });
+    await a.manage("policy.set", { mode: "paused" });
+    const policies = await Promise.all(
+      devices.map((device) => device.manage("policy.get")),
+    );
+    for (const device of devices)
+      await device.manage("history.set", { enabled: true });
+    const left = await daemonProcess(
+      join(root, "bots-a"),
+      a.socketPath,
+      modelA.baseUrl,
+      key,
+    );
+    daemons.push(left);
+    handoffOwner = connect(b.socketPath);
+    const ownerLines = createInterface({ input: handoffOwner });
+    const ownership = new Promise<JSONRecord>((done) =>
+      ownerLines.once("line", (line) => done(JSON.parse(line))),
+    );
+    handoffOwner.write(
+      `${JSON.stringify({ requestId: randomUUID(), method: "history.attach" })}\n`,
+    );
+    assert.equal((await ownership).error, undefined);
+    let right = await daemonProcess(
+      join(root, "bots-b"),
+      b.socketPath,
+      modelB.baseUrl,
+      key,
+    );
+    daemons.push(right);
+    const cli = async (daemon: typeof left, ...args: string[]) => {
+      const { stdout } = await promisify(execFile)(
+        resolve("apps/macos/.build/debug/eagle-cli"),
+        args,
+        {
+          env: {
+            ...childEnv(root),
+            EAGLE_PORT: new URL(daemon.origin).port,
+            EAGLE_TOKEN: daemon.token,
+            EAGLE_ROOT: root,
+          },
+          timeout: 15000,
+        },
+      );
+      return JSON.parse(
+        stdout.trim().split("\n").at(-1) ?? "null",
+      ) as JSONRecord;
+    };
+    const created = await cli(
+      left,
+      "bots",
+      "create",
+      "--title",
+      "Automatic empty history Bot",
+      "--json",
+    );
+    const botId = (created.bot as { id: string }).id;
+    assert.deepEqual(
+      (await cli(right, "bots", "list", "--json")).bots,
+      [],
+      "optional coordinator cannot steal the incumbent consumer",
+    );
+    assert.equal(handoffOwner.destroyed, false);
+    ownerLines.close();
+    handoffOwner.destroy();
+    handoffOwner = undefined;
+    await until(async () => {
+      const catalog = await cli(right, "bots", "list", "--json");
+      return (catalog.bots as { id: string }[]).some((bot) => bot.id === botId)
+        ? true
+        : undefined;
+    }, "automatic empty Bot discovery through real DO");
+    const history = async (
+      operation: string,
+      body: unknown,
+      selectedBot = botId,
+    ) => {
+      const response = await fetch(
+        `${right.origin}/v1/bots/${selectedBot}/history/${operation}`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${right.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(body),
+        },
+      );
+      assert.equal(response.status, 200);
+      return (await response.json()) as JSONRecord;
+    };
+    release = modelA.hold("source complete answer");
+    await cli(
+      left,
+      "chat",
+      "send",
+      botId,
+      "--text",
+      "source user while provider is blocked",
+      "--json",
+    );
+    await until(
+      async () => (modelA.inputs.length === 1 ? true : undefined),
+      "source provider started",
+    );
+    const partial = await until(async () => {
+      const branches = (await history("branches", {})).branches as {
+        selection: string;
+      }[];
+      for (const branch of branches) {
+        if (!/^[a-f0-9]{64}$/.test(branch.selection)) continue;
+        const view = await history("view", { head: branch.selection });
+        if (
+          JSON.stringify(view.messages).includes(
+            "source user while provider is blocked",
+          )
+        )
+          return { head: branch.selection, view };
+      }
+      return undefined;
+    }, "automatic durable user visibility while provider remains blocked");
+    assert.equal(
+      (await history("assess", { head: partial.head })).usable,
+      false,
+    );
+    assert.equal(
+      modelB.inputs.length,
+      0,
+      "passive receive never invokes B's provider",
+    );
+    release();
+    const complete = await until(async () => {
+      const branches = (await history("branches", {})).branches as {
+        selection: string;
+      }[];
+      for (const branch of branches) {
+        if (!/^[a-f0-9]{64}$/.test(branch.selection)) continue;
+        const view = await history("view", { head: branch.selection });
+        if (
+          JSON.stringify(view.messages).includes("source complete answer") &&
+          (await history("assess", { head: branch.selection })).usable
+        )
+          return branch.selection;
+      }
+      return undefined;
+    }, "automatic complete source head");
+    modelB.answer("local B continuation");
+    const continuation = await cli(
+      right,
+      "history",
+      "continue",
+      botId,
+      "--head",
+      complete,
+      "--request-id",
+      "r_auto_local_continue",
+      "--text",
+      "B continues locally",
+      "--json",
+    );
+    assert.equal((continuation.submission as JSONRecord).status, "done");
+    assert.match(
+      JSON.stringify(modelB.inputs[0]),
+      /source user while provider is blocked/,
+    );
+    assert.match(JSON.stringify(modelB.inputs[0]), /source complete answer/);
+    await right.stop();
+    daemons.splice(daemons.indexOf(right), 1);
+    const largeCreated = await cli(
+      left,
+      "bots",
+      "create",
+      "--title",
+      "Bounded historical backfill",
+      "--json",
+    );
+    const largeId = (largeCreated.bot as { id: string }).id;
+    for (let turn = 0; turn < 80; turn++) {
+      modelA.answer(
+        turn === 79
+          ? `large-record-marker-${"x".repeat(80 * 1024)}`
+          : `old history answer ${turn}`,
+      );
+      await cli(
+        left,
+        "chat",
+        "send",
+        largeId,
+        "--text",
+        `old history user ${turn}`,
+        "--wait",
+        "--json",
+      );
+    }
+    right = await daemonProcess(
+      join(root, "bots-b"),
+      b.socketPath,
+      modelB.baseUrl,
+      key,
+    );
+    daemons.push(right);
+    release = modelA.hold("fresh answer after backfill");
+    await cli(
+      left,
+      "chat",
+      "send",
+      botId,
+      "--text",
+      "fresh user during historical backfill",
+      "--json",
+    );
+    await until(async () => {
+      const list = (await history("branches", {})).branches as {
+        selection: string;
+      }[];
+      for (const branch of list) {
+        if (
+          /^[a-f0-9]{64}$/.test(branch.selection) &&
+          JSON.stringify(
+            (await history("view", { head: branch.selection })).messages,
+          ).includes("fresh user during historical backfill")
+        )
+          return true;
+      }
+      return undefined;
+    }, "fresh committed tail while old backfill is queued");
+    release();
+    const largeHead = await until(async () => {
+      const catalog = await cli(right, "bots", "list", "--json");
+      if (!(catalog.bots as { id: string }[]).some((bot) => bot.id === largeId))
+        return undefined;
+      const list = (await history("branches", {}, largeId)).branches as {
+        selection: string;
+      }[];
+      for (const branch of list) {
+        if (
+          /^[a-f0-9]{64}$/.test(branch.selection) &&
+          (await history("assess", { head: branch.selection }, largeId)).usable
+        )
+          return branch.selection;
+      }
+      return undefined;
+    }, "last backfill page drains native pending to completion without another notice");
+    const largePage = await history("page", { selection: largeHead }, largeId);
+    assert.ok(
+      (largePage.records as unknown[]).some(
+        (record) => Buffer.byteLength(JSON.stringify(record)) > 60 * 1024,
+      ),
+      "a normal >60 KiB native record crosses the bounded channel",
+    );
+    modelB.answer("B continues complete large history");
+    await cli(
+      right,
+      "history",
+      "continue",
+      largeId,
+      "--head",
+      largeHead,
+      "--request-id",
+      "r_auto_large_continue",
+      "--text",
+      "continue the backfill",
+      "--json",
+    );
+    assert.match(JSON.stringify(modelB.inputs.at(-1)), /old history user 0/);
+    assert.match(JSON.stringify(modelB.inputs.at(-1)), /large-record-marker/);
+    assert.deepEqual(
+      await Promise.all(devices.map((device) => device.manage("policy.get"))),
+      policies,
+    );
+    for (const model of models) assert.ok(model.verify() >= 1);
+    for (const daemon of daemons.splice(0)) await daemon.stop();
+    for (const device of devices) await device.stop();
+    for (const device of devices.splice(0)) {
+      const journal = new DatabaseSync(join(device.root, "operations.sqlite"), {
+        readOnly: true,
+      });
+      try {
+        assert.equal(
+          journal.prepare("SELECT count(*) n FROM operations").get()?.n,
+          0,
+        );
+      } finally {
+        journal.close();
+      }
+    }
+  } finally {
+    release();
+    handoffOwner?.destroy();
+    for (const daemon of daemons) await daemon.stop();
+    for (const device of devices) await device.stop();
+    await worker?.mf.dispose();
+    for (const model of models) await closeServer(model.server);
     rmSync(workerRoot, { recursive: true, force: true });
     rmSync(root, { recursive: true, force: true });
   }

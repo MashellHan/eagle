@@ -177,3 +177,49 @@ test("device errors are stable codes without copying arbitrary server content", 
     await bench.close();
   }
 });
+
+test("optional history IPC events stay separate and single-consumer attach releases on close", async () => {
+  let owner: Socket | undefined;
+  const bench = await fixture((socket, request) => {
+    if (request.method === "history.attach") {
+      if (owner && owner !== socket) {
+        socket.write(
+          `${JSON.stringify({ requestId: request.requestId, error: "history_consumer_busy" })}\n`,
+        );
+        return;
+      }
+      owner = socket;
+      socket.once("close", () => {
+        if (owner === socket) owner = undefined;
+      });
+      socket.write(`${JSON.stringify({ type: "history.ready", enabled: true, ready: true })}\n`);
+    }
+    socket.write(
+      `${JSON.stringify({ requestId: request.requestId, result: { enabled: true, ready: true } })}\n`,
+    );
+  });
+  const events: unknown[] = [];
+  let disconnected = false;
+  const first = new DeviceChannel(bench.path, 1000, {
+    event: (event) => events.push(event),
+    closed: () => {
+      disconnected = true;
+    },
+  });
+  const second = new DeviceChannel(bench.path, 1000, { event: () => {} });
+  try {
+    assert.deepEqual(await first.call("history.attach"), { enabled: true, ready: true });
+    await assert.rejects(second.call("history.attach"), /history_consumer_busy/);
+    assert.equal(events.length, 1);
+    first.close();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    assert.equal(disconnected, true);
+    assert.deepEqual(await second.call("history.attach"), { enabled: true, ready: true });
+    await assert.rejects(second.call("history.set", { enabled: true }), /device_method_forbidden/);
+  } finally {
+    first.close();
+    second.close();
+    await bench.close();
+  }
+});

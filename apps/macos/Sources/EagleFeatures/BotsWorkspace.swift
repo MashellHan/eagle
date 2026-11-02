@@ -323,12 +323,12 @@ final class BotsWorkspaceViewModel: ObservableObject {
     do {
       let model = try await makeApp(settings)
       guard generation == connectionGeneration, !Task.isCancelled else {
-        model.conversation.disconnect()
+        model.stop()
         return
       }
-      await model.refresh()
+      await model.start(selectFirst: false)
       guard generation == connectionGeneration, !Task.isCancelled else {
-        model.conversation.disconnect()
+        model.stop()
         return
       }
       app = model
@@ -564,7 +564,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
     cancellables.removeAll()
     // `disconnect` cancels the event task and closes the transport; the daemon then
     // releases the subscriber slot.
-    app?.conversation.disconnect()
+    app?.stop()
     app = nil
     selectedId = nil
     connection = .stopped

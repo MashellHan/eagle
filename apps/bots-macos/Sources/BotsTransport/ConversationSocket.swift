@@ -235,7 +235,9 @@ public final class ConversationSocket: NSObject {
         continuation.yield(.catalog(catalog))
       }
       continuation.yield(.connection(.ready))
-      enqueue(try? Wire.subscribe(botId: botId, trace: Identifiers.trace("sub")))
+      if !botId.isEmpty {
+        enqueue(try? Wire.subscribe(botId: botId, trace: Identifiers.trace("sub")))
+      }
       return
     }
     if let rev = decoded.rev {

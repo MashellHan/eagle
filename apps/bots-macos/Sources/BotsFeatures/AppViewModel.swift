@@ -24,6 +24,8 @@ public final class AppViewModel: ObservableObject {
   private let peers: PeerPort?
   /// The trigger detail and switch; nil in a test that never opens the surface.
   private let triggers: TriggerPort?
+  private var catalogTask: Task<Void, Never>?
+  private var selectsFirst = true
   private var outbox: OutboxStore
 
   public init(
@@ -50,11 +52,29 @@ public final class AppViewModel: ObservableObject {
 
   public var draftCount: Int { conversation.draft.count }
 
-  public func start() async {
+  deinit { catalogTask?.cancel() }
+
+  public func start(selectFirst: Bool = true) async {
+    selectsFirst = selectFirst
+    if catalogTask == nil {
+      let events = catalog.catalogEvents()
+      catalogTask = Task { [weak self] in
+        for await pushed in events {
+          guard !Task.isCancelled else { return }
+          self?.apply(pushed)
+        }
+      }
+    }
     await refresh()
-    if selection == nil, let first = bots.first {
+    if selectsFirst, selection == nil, let first = bots.first {
       select(first.id)
     }
+  }
+
+  public func stop() {
+    catalogTask?.cancel()
+    catalogTask = nil
+    conversation.disconnect()
   }
 
   /// The exchanges this bot takes part in. A failure leaves the last list rather than
@@ -277,11 +297,12 @@ public final class AppViewModel: ObservableObject {
   }
 
   private func keepSelectionValid() {
+    let hadSelection = selection != nil
     if let selection, !bots.contains(where: { $0.id == selection }) {
       self.selection = nil
       conversation.disconnect()
     }
-    if selection == nil, let first = bots.first {
+    if selectsFirst || hadSelection, selection == nil, let first = bots.first {
       select(first.id)
     }
   }

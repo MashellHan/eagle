@@ -4,6 +4,11 @@ import { connect, type Socket } from "node:net";
 import { dirname, isAbsolute } from "node:path";
 
 const METHODS = new Set([
+  "history.status",
+  "history.attach",
+  "history.peers",
+  "history.send",
+  "history.changed",
   "status",
   "directory",
   "execute",
@@ -31,8 +36,14 @@ export class DeviceChannel {
   #opening?: Promise<Socket>;
   #closed = false;
   #buffer = "";
+  readonly #observer: { event(value: unknown): void; closed?(): void } | undefined;
 
-  constructor(path: string, timeoutMs = 65000) {
+  constructor(
+    path: string,
+    timeoutMs = 65000,
+    observer?: { event(value: unknown): void; closed?(): void },
+  ) {
+    this.#observer = observer;
     this.#path = path;
     this.#timeoutMs = timeoutMs;
   }
@@ -132,6 +143,23 @@ export class DeviceChannel {
         return;
       }
       if (
+        this.#observer &&
+        value !== null &&
+        typeof value === "object" &&
+        !("requestId" in value) &&
+        "type" in value &&
+        typeof value.type === "string" &&
+        ["history.ready", "history.changed", "history.packet"].includes(value.type)
+      ) {
+        try {
+          this.#observer.event(value);
+        } catch {
+          this.#fail("invalid_device_response");
+          return;
+        }
+        continue;
+      }
+      if (
         value === null ||
         typeof value !== "object" ||
         typeof value.requestId !== "string" ||
@@ -157,6 +185,7 @@ export class DeviceChannel {
   }
 
   #fail(code: string): void {
+    const wasClosed = this.#closed;
     this.#closed = true;
     this.#socket?.destroy();
     for (const entry of this.#pending.values()) {
@@ -164,6 +193,7 @@ export class DeviceChannel {
       entry.reject(new Error(code));
     }
     this.#pending.clear();
+    if (!wasClosed) this.#observer?.closed?.();
   }
 
   close(): void {

@@ -431,6 +431,7 @@ struct BotsWindowTests {
 
 /// The two ports this window needs, with just enough behaviour for the bindings.
 final class StubCatalog: CatalogPort {
+  var catalogContinuation: AsyncStream<BotCatalog>.Continuation?
   var bots: [BotSummary] = []
   var groups: [BotGroup] = []
   var createdGroupTitles: [String] = []
@@ -559,7 +560,11 @@ final class StubCatalog: CatalogPort {
   }
   func rename(id: String, title: String) async throws -> BotSummary { bots[0] }
   func delete(id: String) async throws { bots.removeAll { $0.id == id } }
-  func catalogEvents() -> AsyncStream<BotCatalog> { AsyncStream { $0.finish() } }
+  func catalogEvents() -> AsyncStream<BotCatalog> {
+    AsyncStream { continuation in
+      catalogContinuation = continuation
+    }
+  }
 }
 
 final class StubConversation: ConversationPort {

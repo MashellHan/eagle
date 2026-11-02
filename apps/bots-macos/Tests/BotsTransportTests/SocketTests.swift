@@ -16,6 +16,24 @@ final class SocketTests: XCTestCase {
     fixture = nil
   }
 
+  func testCatalogPushNeedsNoSelectedConversation() async throws {
+    let catalog = CatalogHTTPClient(baseURL: fixture.baseURL, token: fixture.token)
+    let collector = EventCollector()
+    let consumer = Task {
+      for await pushed in catalog.catalogEvents() { await collector.append(.catalog(pushed)) }
+    }
+    defer { consumer.cancel() }
+    _ = try await collector.waitFor {
+      if case .catalog(let value) = $0 { return value.bots.isEmpty }
+      return false
+    }
+    let created = try await catalog.create(title: "空目录自动发现", label: nil, appearance: .standard)
+    _ = try await collector.waitFor {
+      if case .catalog(let value) = $0 { return value.bots.contains { $0.id == created.id } }
+      return false
+    }
+  }
+
   func testCreateBotAndChat() async throws {
     let catalog = CatalogHTTPClient(baseURL: fixture.baseURL, token: fixture.token)
     let before = try await catalog.load()

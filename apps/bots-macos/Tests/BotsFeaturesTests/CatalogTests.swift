@@ -30,6 +30,24 @@ final class CatalogTests: XCTestCase {
     return (model, catalog, conversation)
   }
 
+  func testEmptySelectionStillObservesTheDaemonCatalog() async throws {
+    let (model, catalog, _) = makeModel()
+    await model.start()
+    XCTAssertNil(model.selection)
+    await Task.yield()
+    catalog.pushed?.yield(
+      BotCatalog(bots: [
+        BotSummary(
+          id: "b_remote", title: "自动发现", createdAt: "x", updatedAt: "x",
+          model: ModelRef(provider: "local", modelId: "local-model"), state: .idle
+        )
+      ]))
+    try await Task.sleep(nanoseconds: 40_000_000)
+    XCTAssertEqual(model.bots.map(\.id), ["b_remote"])
+    XCTAssertEqual(model.selection, "b_remote")
+    XCTAssertTrue(catalog.created.isEmpty)
+  }
+
   func testCreateSelectsTheNewBot() async throws {
     let (model, catalog, _) = makeModel()
     await model.refresh()
@@ -210,6 +228,7 @@ final class CatalogActionTests: XCTestCase {
 }
 
 final class FakeCatalog: CatalogPort {
+  var pushed: AsyncStream<BotCatalog>.Continuation?
   var actionError: Error?
   var modelNames: [String] = []
   var modelLoads = 0
@@ -386,7 +405,7 @@ final class FakeCatalog: CatalogPort {
   }
 
   func catalogEvents() -> AsyncStream<BotCatalog> {
-    AsyncStream { $0.finish() }
+    AsyncStream { pushed = $0 }
   }
 }
 

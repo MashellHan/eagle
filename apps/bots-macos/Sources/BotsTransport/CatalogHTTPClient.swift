@@ -313,10 +313,21 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
     ).result
   }
 
-  /// The daemon pushes catalog changes on the conversation socket; HTTP has no push.
+  /// Welcome/bots is daemon-wide and stays connected even when no bot is selected.
   public func catalogEvents() -> AsyncStream<BotCatalog> {
     AsyncStream { continuation in
-      continuation.finish()
+      let socket = ConversationSocket(baseURL: baseURL, token: token, botId: "")
+      let consumer = Task {
+        for await event in socket.events {
+          if case .catalog(let catalog) = event { continuation.yield(catalog) }
+        }
+        continuation.finish()
+      }
+      continuation.onTermination = { _ in
+        consumer.cancel()
+        socket.close()
+      }
+      socket.start()
     }
   }
 

@@ -145,6 +145,28 @@ export class BotRegistry {
   #sequence = 0;
   /** Creations in flight, so two concurrent creates cannot both take the last slot. */
   #creating = 0;
+  readonly #handleObservers = new Set<() => void>();
+
+  /** Optional lifecycle listeners run after open, never in the caller's admission path. */
+  observeHandles(listener: () => void): () => void {
+    this.#handleObservers.add(listener);
+    this.#queueHandleObservers();
+    return () => {
+      this.#handleObservers.delete(listener);
+    };
+  }
+
+  #queueHandleObservers() {
+    setImmediate(() => {
+      for (const listener of this.#handleObservers) {
+        try {
+          listener();
+        } catch {
+          /* Optional observers cannot affect local chat. */
+        }
+      }
+    });
+  }
 
   constructor(options: RegistryOptions) {
     this.#defaultModel = options.model;
@@ -914,6 +936,7 @@ export class BotRegistry {
         trace,
       });
       entry.handle = handle;
+      this.#queueHandleObservers();
       entry.state = "idle";
       entry.unavailable = undefined;
       this.#options.log.emit("info", "core", Events.openOk, {

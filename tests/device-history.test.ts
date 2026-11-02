@@ -3,6 +3,7 @@ import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import test from "node:test";
 import { DeviceHistoryCipher } from "../packages/agent/device-history.ts";
 import {
+  HISTORY_FRAME_BYTES,
   HISTORY_PLAINTEXT_BYTES,
   historyKeyPayload,
 } from "../packages/contracts/src/device-history.ts";
@@ -82,6 +83,17 @@ test("history ciphertext binds authenticated devices, group, membership, key and
   await assert.rejects(
     a.cipher.seal(b, id, { text: "x".repeat(HISTORY_PLAINTEXT_BYTES) }),
   );
+  const reply = { type: "reply", id, failed: false, result: "" };
+  reply.result = "x".repeat(
+    HISTORY_PLAINTEXT_BYTES - Buffer.byteLength(JSON.stringify(reply)),
+  );
+  const full = await a.cipher.seal(b, id, reply);
+  assert.ok(
+    Buffer.byteLength(
+      JSON.stringify({ type: "history.packet", packet: full }),
+    ) < HISTORY_FRAME_BYTES,
+  );
+  assert.deepEqual(await b.cipher.open(a, full), reply);
 });
 
 test("unresolved initial membership cannot mint a history identity proof", async () => {

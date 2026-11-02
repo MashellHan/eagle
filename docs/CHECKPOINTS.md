@@ -2701,3 +2701,44 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   visibility. `history.attach` remains single-consumer; Root owns the physical
   handoff from daily Bots to the isolated App and restoration. No App/helper was
   installed or changed. Herdr collection/auth, D1 and dashboard rendering: N/A.
+
+## 2026-11-02 16:32 optional history: automatic DO pull and native catalog
+
+- Automatic Device Service/Bots/DO process path passes 2/2 (16.35s), including CLI
+  empty-Bot discovery, committed-user visibility while A's provider is blocked,
+  passive zero B calls, real B continuation input and unchanged paused/always-ask
+  policy with zero journal operations. IPC fixtures pass 6/6 with single-consumer
+  refusal and release. Expanded large-record/backfill acceptance is not yet run.
+- Native daemon-wide welcome/bots observation passes Catalog 5/5 and Socket 6/6.
+  Real host lifecycle red showed its refresh-only call never subscribed; the host
+  now starts observation without selecting the first Bot, preserves landing/current
+  selection and releases it on close. Related host files pass 22/22. Actual running
+  App/AX visibility and latency remain unverified; no App/helper was installed.
+- Mixed-origin immutable cursor fix `f627e94` passes 29/29 native/archive/HTTP tests
+  and types/hooks. Channel recovery reds reproduce stalled renewal and false
+  history.sent after a dropped notice; their fixes are under affected checks.
+  Native local active-branch routing has a red for the next ordinary send and is
+  the next broken hop before branch UI can offer explicit continuation safely.
+- Full gates remain historical non-green: Bots 776/781, browser 179 pass/12 fail/
+  11 platform skips, Swift 344 pass/1 fail; last complete eval 15/15 predates 2A.
+  Root controls paired-socket handoff and physical A/B acceptance. Herdr collection/
+  auth, D1 and dashboard rendering: N/A. No deployment or daily-data changes.
+
+## 2026-11-02 16:47 optional history: automatic pull and local branch intent
+
+- Channel recovery is isolated in `e38386a`: renewal and dropped final-notice reds
+  now pass affected 28/28, types/lint/Agent build/hooks. Cursor combination fix
+  `cd364f7` and native local selection `755e784` pass native/archive/HTTP 31/31.
+  Ordinary root sends create no routing documents; explicit continuation selects
+  at admission, old retries/slow completions cannot reverse a newer local intent.
+- Expanded real Device Service/Bots/Miniflare DO acceptance passes 2/2; with cipher
+  checks the run is 5/5 (36.3s), `.local/history-auto-large-green.log`. It includes
+  consumer handoff, empty Bot, blocked-provider user visibility, 160-record old
+  backfill, fresh tail priority, an 80 KiB record, final native pending drain and
+  real B continuation input. This is process evidence, not physical App latency.
+- Native catalog tests remain Catalog 5/5, Socket 6/6 and real host lifecycle 22/22:
+  pushed Bots preserve landing/selection and closing releases observation. Last
+  broken App hop is passive branch display/explicit composer continuation. Full
+  gates remain historical non-green: Bots 776/781, browser 179/12/11, Swift 344/1;
+  last complete eval 15/15 predates 2A. Root owns physical controls. Herdr collection/
+  auth, D1 and dashboard rendering: N/A. No deployment, installation or daily writes.

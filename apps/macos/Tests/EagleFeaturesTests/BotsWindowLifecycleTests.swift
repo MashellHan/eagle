@@ -25,6 +25,63 @@ struct BotsWindowLifecycleTests {
       outbox: outbox)
   }
 
+  @Test("an empty real host starts catalog observation and releases it on close")
+  func emptyHostCatalog() async throws {
+    let catalog = StubCatalog()
+    let outbox = OutboxStore(
+      directory: FileManager.default.temporaryDirectory.appendingPathComponent(
+        "empty-host-\(UUID().uuidString)"))
+    let app = AppViewModel(
+      catalog: catalog,
+      conversation: ConversationViewModel(conversation: StubConversation(), outbox: outbox),
+      outbox: outbox)
+    let bots = BotsWorkspaceViewModel(
+      settings: BotsSettings(environment: [:]), makeApp: { _ in app }, gatewayProbe: { true })
+    var selected: [String] = []
+    bots.onSelect = { selected.append($0) }
+    await bots.start()
+    #expect(bots.items.isEmpty)
+    catalog.catalogContinuation?.yield(
+      BotCatalog(bots: [
+        BotSummary(
+          id: "b_remote", title: "自动发现", createdAt: "x", updatedAt: "x",
+          model: ModelRef(provider: "p", modelId: "m"), state: .idle)
+      ]))
+    for _ in 0..<12 {
+      await Task.yield()
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    #expect(bots.items.map(\.id) == ["b_remote"])
+    #expect(app.selection == nil)
+    #expect(selected.isEmpty, "a pushed catalog must preserve the landing selection")
+    bots.select("b_remote")
+    let explicitSelections = selected
+    catalog.catalogContinuation?.yield(
+      BotCatalog(bots: [
+        BotSummary(
+          id: "b_remote", title: "自动发现", createdAt: "x", updatedAt: "x",
+          model: ModelRef(provider: "p", modelId: "m"), state: .idle),
+        BotSummary(
+          id: "b_other", title: "另一支", createdAt: "x", updatedAt: "x",
+          model: ModelRef(provider: "p", modelId: "m"), state: .idle),
+      ]))
+    for _ in 0..<12 {
+      await Task.yield()
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    #expect(app.selection == "b_remote")
+    #expect(selected == explicitSelections)
+    bots.disconnect()
+    for _ in 0..<12 {
+      await Task.yield()
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    if case .terminated? = catalog.catalogContinuation?.yield(BotCatalog(bots: [])) {
+    } else {
+      Issue.record("catalog observation remained attached after window close")
+    }
+  }
+
   @Test("concurrent readiness notifications share one connection attempt")
   func concurrentStarts() async throws {
     let factory = PendingApps()

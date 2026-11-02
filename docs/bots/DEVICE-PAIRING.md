@@ -419,3 +419,22 @@ agent 路由验收包括用户明确指定 B、未指定时依能力选择、同
 
 现有生产尚未部署旧候选的 owner/execution 路由，更没有本方案的配对服务。
 默认地址写进安装包之前，要完成对应服务的兼容验证和已授权部署；实施先完成可审查的本地候选；公网部署、npm 发布与日常 App 替换另按具体操作授权执行。
+
+### Automatic native history pull
+
+After the local daemon is ready, an optional coordinator attaches as the single
+history consumer on the existing paired private socket. A busy consumer is never
+stolen: close releases the socket promptly and retry can acquire it after a host
+handoff. Disabled/unavailable history leaves local chat independent. Catalog and
+native-entry observers only queue coalesced notices; start/reconnect immediately
+pull missing catalog metadata and bounded branch pages. Imports broadcast the
+existing catalog, including an empty Bot. Fresh committed-user pages are imported
+and announced before completion assessment; old backfill yields between pages
+and has a separate queue. Native pending work drains independently after the final
+backfill page, without waiting for another notice. Page replies reserve their
+actual JSON wrapper inside the Device Service's 128 KiB plaintext budget; sealing
+retains the existing ciphertext frame cap. No model or tools run during receive/
+reopen. The native App observes welcome/bots independently of selection, preserves
+the landing/current conversation on catalog pushes, and releases observation when
+the host closes. Passive branch display and explicit continuation are the next
+App connection; catalog observation alone does not select a model context.

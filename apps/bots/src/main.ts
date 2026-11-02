@@ -22,6 +22,7 @@ import { PeerExchangeStore } from "./core/PeerExchangeStore.ts";
 import type { RuntimeEvent } from "./core/RuntimePort.ts";
 import { TriggerSecretStore, triggerSecretsPath } from "./core/TriggerSecrets.ts";
 import { TriggerStore, triggerJournalPath } from "./core/TriggerStore.ts";
+import { HistoryCoordinator } from "./history/coordinator.ts";
 import { declareEvent } from "./log/events.ts";
 import { Log } from "./log/log.ts";
 import { FileLogSink } from "./log/sink.ts";
@@ -708,6 +709,12 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     },
   });
   broadcast = daemon.broadcastCatalog;
+  const history =
+    canonical.deviceSocket === undefined
+      ? undefined
+      : new HistoryCoordinator(canonical.deviceSocket, registry, directory, () =>
+          daemon.broadcastCatalog(),
+        );
   const close = async (): Promise<void> => {
     // One absolute deadline for the whole shutdown: a stalled socket grace, handle close
     // or log flush must not add up past the configured budget.
@@ -720,6 +727,7 @@ export const startDaemon = async (config: DaemonConfig): Promise<DaemonHandle> =
     const stopped = (async () => {
       // Producers stop first, then admissions already in flight settle, and only then may
       // the registry close handles under them (TRIGGERS.md §3.6).
+      history?.close();
       producers.stop();
       await daemon.close();
       await service.drain();
