@@ -10,6 +10,20 @@
 
 ## 产品行为
 
+Optional group history sync is an independent, explicitly enabled capability on
+the existing Device Service outbound WSS and two DOs. Typed `history.*` frames
+are dispatched before command/policy parsing, use a separate two-frame/384 KiB
+queue, and never enter operation admission, approvals or the execution journal.
+Every delivery rechecks current group/device credentials and both enabled peers;
+initial `groupId:null` / epoch 0 is not authorization. A new narrow identity proof
+binds purpose, service, device, group, membership epoch, ephemeral key and expiry;
+registration signing stays restricted. Records travel as bounded authenticated
+ciphertext, never DO storage. Change notices trigger receiver pulls immediately,
+including start/reconnect; newest pages and old backfill have separate budgets.
+Bots attaches through the existing private device socket after local startup;
+no chat open/submit awaits this optional channel. This slice proves local process
+and DO transport; native App/Tailscale and physical visibility timing follow.
+
 - 设备属于 Eagle 的共享设备群。一个 App 配置一次，当前及以后创建的 Bot 都可使用；
   不再为每个 Bot 复制设备名单、凭据或五项权限，也不要求另开远程工具组。
 - 群有稳定的 `groupId` 和多个成员，支持 A/B/C/D 等三台以上设备；各成员相互发现，

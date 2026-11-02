@@ -66,11 +66,66 @@ public struct DeviceIdentity: Sendable {
     return try key.signature(for: Data(payload.utf8)).base64URL
   }
 
+  public func signHistoryKey(
+    _ request: DeviceHistoryKeyRequest, serviceOrigin: String, now: Int64
+  ) throws -> String {
+    try request.validate(deviceId: deviceId, serviceOrigin: serviceOrigin, now: now)
+    return try key.signature(for: Data(request.signingPayload.utf8)).base64URL
+  }
+
   /// Called only after the trusted App confirms this exact immutable request.
   public func approve(_ request: DeviceApprovalRequest, now: Int64) throws -> DeviceApproval {
     try request.validate(sourceDeviceId: deviceId, now: now)
     let signature = try key.signature(for: Data(request.signingPayload.utf8)).base64URL
     return DeviceApproval(request: request, signature: signature)
+  }
+}
+
+public struct DeviceHistoryKeyRequest: Decodable, Sendable {
+  let purpose: String
+  let serviceOrigin: String
+  let deviceId: String
+  let groupId: String
+  let membershipEpoch: Int64
+  let ephemeralKey: String
+  let expiresAt: Int64
+  public init(from decoder: any Decoder) throws {
+    let value = try DeviceJSON(from: decoder)
+    guard case .object(let fields) = value,
+      Set(fields.keys) == [
+        "purpose", "serviceOrigin", "deviceId", "groupId", "membershipEpoch", "ephemeralKey",
+        "expiresAt",
+      ],
+      let purpose = fields["purpose"]?.string, let service = fields["serviceOrigin"]?.string,
+      let device = fields["deviceId"]?.string, let group = fields["groupId"]?.string,
+      let key = fields["ephemeralKey"]?.string,
+      let epoch = fields["membershipEpoch"]?.number, epoch > 0, epoch <= 9_007_199_254_740_991,
+      epoch.rounded() == epoch,
+      let expiry = fields["expiresAt"]?.number, expiry > 0, expiry <= 9_007_199_254_740_991,
+      expiry.rounded() == expiry
+    else { throw DeviceIdentityError.invalidPayload }
+    self.purpose = purpose
+    serviceOrigin = service
+    deviceId = device
+    groupId = group
+    ephemeralKey = key
+    membershipEpoch = Int64(epoch)
+    expiresAt = Int64(expiry)
+  }
+  var signingPayload: String {
+    [
+      purpose, serviceOrigin, deviceId, groupId, String(membershipEpoch), ephemeralKey,
+      String(expiresAt),
+    ].joined(separator: "\n")
+  }
+  func validate(deviceId: String, serviceOrigin: String, now: Int64) throws {
+    let prefix = Data([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x03, 0x21, 0x00])
+    guard purpose == "eagle-history-key-v1", self.serviceOrigin == serviceOrigin,
+      self.deviceId == deviceId,
+      UUID(uuidString: groupId)?.uuidString.lowercased() == groupId,
+      let key = Data(base64URL: ephemeralKey), key.count == 44, key.starts(with: prefix),
+      key.base64URL == ephemeralKey, expiresAt > now, expiresAt <= now + 300000
+    else { throw DeviceIdentityError.invalidPayload }
   }
 }
 

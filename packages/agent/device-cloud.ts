@@ -1,6 +1,13 @@
 import WebSocket from "ws";
 import { z } from "zod";
 import {
+  HISTORY_FRAME_BYTES,
+  HISTORY_QUEUE_FRAMES,
+  HistoryAgentFrame,
+  HistoryServerFrame,
+  isHistoryFrame,
+} from "../contracts/src/device-history.ts";
+import {
   DEVICE_PREFIX,
   type Device,
   type DeviceDirectory,
@@ -33,6 +40,10 @@ const capabilities = [
   "file.list",
   "policy.manage",
 ];
+type HistoryCloudEvent =
+  | HistoryServerFrame
+  | { type: "history.online" }
+  | { type: "history.offline" };
 export class DeviceCloud {
   readonly device: Device;
   private baseUrl: string;
@@ -47,6 +58,15 @@ export class DeviceCloud {
   private shutdown = new AbortController();
   private stopped = false;
   private callers = new Set<WebSocket>();
+  private historyListeners = new Set<(event: HistoryCloudEvent) => void>();
+  private historyPending = new Map<
+    string,
+    {
+      resolve: (value: HistoryServerFrame) => void;
+      reject: (error: Error) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
   status: "online" | "offline" = "offline";
   constructor(
     baseUrl: string,
@@ -73,12 +93,75 @@ export class DeviceCloud {
   private runtime: DeviceRuntime;
   private signer: (payload: string) => Promise<string>;
   private onStatus?: (status: "online" | "offline") => void;
+  get origin(): string {
+    return this.baseUrl;
+  }
   secrets(): string[] {
     return this.token ? [this.token] : [];
   }
   private state(status: "online" | "offline"): void {
     this.status = status;
     this.onStatus?.(status);
+    if (status === "offline") {
+      for (const pending of this.historyPending.values()) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error("history_offline"));
+      }
+      this.historyPending.clear();
+    }
+    this.publishHistory({
+      type: status === "online" ? "history.online" : "history.offline",
+    });
+  }
+  observeHistory(listener: (event: HistoryCloudEvent) => void): () => void {
+    this.historyListeners.add(listener);
+    return () => {
+      this.historyListeners.delete(listener);
+    };
+  }
+  private publishHistory(event: HistoryCloudEvent): void {
+    for (const listener of this.historyListeners) {
+      try {
+        listener(event);
+      } catch {
+        /* Optional history consumers cannot affect commands. */
+      }
+    }
+  }
+  async historyRequest(input: HistoryAgentFrame): Promise<HistoryServerFrame> {
+    const frame = HistoryAgentFrame.parse(input);
+    const socket = this.agent;
+    if (
+      !socket ||
+      socket.readyState !== WebSocket.OPEN ||
+      this.status !== "online"
+    )
+      throw new Error("history_offline");
+    const body = JSON.stringify(frame);
+    if (Buffer.byteLength(body) > HISTORY_FRAME_BYTES)
+      throw new Error("history_frame_limit");
+    if (
+      this.historyPending.size >= HISTORY_QUEUE_FRAMES ||
+      this.historyPending.has(frame.requestId) ||
+      socket.bufferedAmount > HISTORY_FRAME_BYTES * HISTORY_QUEUE_FRAMES
+    )
+      throw new Error("history_busy");
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.historyPending.delete(frame.requestId);
+        reject(new Error("history_response_timeout"));
+      }, 5000);
+      this.historyPending.set(frame.requestId, { resolve, reject, timer });
+      socket.send(body, (error) => {
+        if (!error) return;
+        const pending = this.historyPending.get(frame.requestId);
+        if (pending) {
+          clearTimeout(pending.timer);
+          this.historyPending.delete(frame.requestId);
+          pending.reject(new Error("history_offline"));
+        }
+      });
+    });
   }
   private closedSession(
     token: string,
@@ -272,6 +355,25 @@ export class DeviceCloud {
                 );
             }, 10000);
             resolve();
+            return;
+          }
+          if (isHistoryFrame(frame)) {
+            if (this.agent !== socket || this.stopped) return;
+            if (Buffer.byteLength(data.toString()) > HISTORY_FRAME_BYTES)
+              return;
+            const parsed = HistoryServerFrame.safeParse(frame);
+            if (!parsed.success) return;
+            const message = parsed.data;
+            if ("requestId" in message) {
+              const pending = this.historyPending.get(message.requestId);
+              if (pending) {
+                clearTimeout(pending.timer);
+                this.historyPending.delete(message.requestId);
+                if (message.type === "history.error")
+                  pending.reject(new Error(message.error));
+                else pending.resolve(message);
+              }
+            } else this.publishHistory(message);
             return;
           }
           const policy = PolicySetFrame.safeParse(frame);

@@ -1,6 +1,17 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 import {
+  HISTORY_FRAME_BYTES,
+  HISTORY_QUEUE_FRAMES,
+  HistoryAgentFrame,
+  type HistoryKeyProof,
+  HistoryPacket,
+  HistoryPeer,
+  historyKeyPayload,
+  isHistoryFrame,
+  verifyHistoryPeer,
+} from "../../../../packages/contracts/src/device-history.ts";
+import {
   canonicalDeviceJSON,
   DeviceId,
   type DeviceObservation,
@@ -45,6 +56,8 @@ type Agent = {
   deviceId: string;
   expires: number;
   credentialVersion: number;
+  origin: string;
+  history?: HistoryKeyProof;
 };
 type Pending = {
   socket: WebSocket;
@@ -66,6 +79,8 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
   private pending = new Map<string, Pending>();
   private policies = new Map<string, PendingPolicy>();
   private lease?: ReturnType<typeof setTimeout>;
+  private historyDeliveries = 0;
+  private historyRate = { until: 0, frames: 0, bytes: 0 };
   constructor(ctx: DurableObjectState, env: DeviceServiceEnv) {
     super(ctx, env);
   }
@@ -136,6 +151,201 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
     }
     this.policies.clear();
   }
+  /** Current authorization and the live socket's capability, independent of execution policy. */
+  async historyPeer(
+    token: string,
+    origin: string,
+  ): Promise<{ peer: HistoryPeer } | { error: string }> {
+    const agent = this.agent;
+    if (!agent || agent.expires <= Date.now())
+      return { error: "history_offline" };
+    const proof = agent.history;
+    if (!proof) return { error: "history_disabled" };
+    if (origin !== agent.origin) return { error: "history_service_mismatch" };
+    const registry = this.env.DEVICE_REGISTRY.getByName("registry");
+    const checked = await registry.check(token, agent.deviceId);
+    if (!checked.ok) return { error: "history_unauthorized" };
+    const peer = HistoryPeer.safeParse({ device: checked.target, proof });
+    if (!peer.success || !(await verifyHistoryPeer(peer.data, origin)))
+      return { error: "history_identity_expired_or_changed" };
+    const own = await registry.check(agent.token, agent.deviceId);
+    const final = await registry.check(token, agent.deviceId);
+    if (
+      !own.ok ||
+      !final.ok ||
+      this.agent !== agent ||
+      agent.history !== proof ||
+      agent.expires <= Date.now() ||
+      proof.expiresAt <= Date.now() ||
+      final.target.credentialVersion !== agent.credentialVersion ||
+      final.target.publicKey !== peer.data.device.publicKey ||
+      final.target.groupId !== proof.groupId ||
+      final.target.membershipEpoch !== proof.membershipEpoch
+    )
+      return { error: "history_unauthorized" };
+    return { peer: HistoryPeer.parse({ device: final.target, proof }) };
+  }
+  /** Ciphertext and notifications are transient; neither enters storage or the operation journal. */
+  async receiveHistory(
+    token: string,
+    source: HistoryPeer,
+    input: HistoryPacket | null,
+  ): Promise<string | null> {
+    const bytes = new TextEncoder().encode(
+      JSON.stringify({ source, packet: input }),
+    ).length;
+    if (bytes > HISTORY_FRAME_BYTES) return "history_frame_limit";
+    if (this.historyDeliveries >= HISTORY_QUEUE_FRAMES) return "history_busy";
+    const now = Date.now();
+    if (this.historyRate.until <= now)
+      this.historyRate = { until: now + 1000, frames: 0, bytes: 0 };
+    if (
+      this.historyRate.frames >= 32 ||
+      this.historyRate.bytes + bytes > 4 * HISTORY_FRAME_BYTES
+    )
+      return "history_rate_limit";
+    this.historyRate.frames++;
+    this.historyRate.bytes += bytes;
+    this.historyDeliveries++;
+    try {
+      const agent = this.agent;
+      const target = await this.historyPeer(token, source.proof.serviceOrigin);
+      if ("error" in target) return target.error;
+      if (!agent || this.agent !== agent) return "history_offline";
+      const current = await this.env.DEVICE_EXECUTION.getByName(
+        source.device.deviceId,
+      ).historyPeer(agent.token, agent.origin);
+      if (
+        "error" in current ||
+        canonicalDeviceJSON(current.peer) !== canonicalDeviceJSON(source)
+      )
+        return "history_source_changed";
+      if (input !== null) {
+        const packet = HistoryPacket.parse(input);
+        if (
+          packet.groupId !== source.device.groupId ||
+          packet.sourceDeviceId !== source.device.deviceId ||
+          packet.targetDeviceId !== agent.deviceId ||
+          packet.sourceEpoch !== source.device.membershipEpoch ||
+          packet.targetEpoch !== target.peer.device.membershipEpoch ||
+          packet.sourceKey !==
+            (await deviceDigest(
+              `${historyKeyPayload(source.proof)}\n${source.proof.signature}`,
+            )) ||
+          packet.targetKey !==
+            (await deviceDigest(
+              `${historyKeyPayload(target.peer.proof)}\n${target.peer.proof.signature}`,
+            ))
+        )
+          return "history_packet_identity_mismatch";
+      }
+      const fresh = await this.historyPeer(token, agent.origin);
+      if ("error" in fresh) return fresh.error;
+      if (
+        this.agent !== agent ||
+        canonicalDeviceJSON(fresh.peer) !== canonicalDeviceJSON(target.peer)
+      )
+        return "history_target_changed";
+      agent.socket.send(
+        JSON.stringify(
+          input === null
+            ? { type: "history.changed", source: current.peer }
+            : { type: "history.packet", source: current.peer, packet: input },
+        ),
+      );
+      return null;
+    } catch {
+      return "history_delivery_failed";
+    } finally {
+      this.historyDeliveries--;
+    }
+  }
+  private async history(socket: WebSocket, input: unknown): Promise<void> {
+    const message = HistoryAgentFrame.parse(input);
+    const reply = (value: object) =>
+      this.send(socket, { requestId: message.requestId, ...value });
+    const agent = this.agent;
+    if (!agent || agent.socket !== socket) return;
+    const registry = this.env.DEVICE_REGISTRY.getByName("registry");
+    const checked = await registry.check(agent.token, agent.deviceId);
+    if (this.agent !== agent) return;
+    if (
+      !checked.ok ||
+      checked.source.credentialVersion !== agent.credentialVersion
+    ) {
+      reply({ type: "history.error", error: "history_unauthorized" });
+      socket.close(1008, "revoked_agent");
+      return;
+    }
+    if (message.type === "history.configure") {
+      if (
+        message.proof !== null &&
+        !(await verifyHistoryPeer(
+          { device: checked.source, proof: message.proof },
+          agent.origin,
+        ))
+      ) {
+        reply({ type: "history.error", error: "history_identity_invalid" });
+        return;
+      }
+      const fresh = await registry.check(agent.token, agent.deviceId);
+      if (this.agent !== agent) return;
+      if (
+        !fresh.ok ||
+        canonicalDeviceJSON(fresh.source) !==
+          canonicalDeviceJSON(checked.source)
+      ) {
+        reply({ type: "history.error", error: "history_unauthorized" });
+        return;
+      }
+      agent.history = message.proof ?? undefined;
+      reply({ type: "history.configured" });
+      return;
+    }
+    const self = await this.historyPeer(agent.token, agent.origin);
+    if ("error" in self) {
+      reply({ type: "history.error", error: self.error });
+      return;
+    }
+    if (message.type === "history.send") {
+      if (
+        message.packet.requestId !== message.requestId ||
+        message.packet.targetDeviceId !== message.targetDeviceId
+      ) {
+        reply({
+          type: "history.error",
+          error: "history_packet_identity_mismatch",
+        });
+        return;
+      }
+      const error = await this.env.DEVICE_EXECUTION.getByName(
+        message.targetDeviceId,
+      ).receiveHistory(agent.token, self.peer, message.packet);
+      if (this.agent === agent)
+        reply(
+          error ? { type: "history.error", error } : { type: "history.sent" },
+        );
+      return;
+    }
+    const directory = await registry.directory(agent.deviceId);
+    const peers: HistoryPeer[] = [];
+    for (const device of directory.devices.slice(0, 32)) {
+      if (device.deviceId === agent.deviceId) continue;
+      const target = this.env.DEVICE_EXECUTION.getByName(device.deviceId);
+      const result = await target.historyPeer(agent.token, agent.origin);
+      if ("peer" in result) {
+        peers.push(result.peer);
+        if (message.type === "history.changed")
+          await target.receiveHistory(agent.token, self.peer, null);
+      }
+      if (this.agent !== agent) return;
+    }
+    reply(
+      message.type === "history.peers"
+        ? { type: "history.peers", peers }
+        : { type: "history.sent" },
+    );
+  }
   async setPolicy(
     token: string,
     input: PolicySetRequest,
@@ -201,6 +411,9 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
     let receivedFrames = 0;
     let queuedFrames = 0;
     let queuedBytes = 0;
+    let historyChain = Promise.resolve();
+    let historyFrames = 0;
+    let historyBytes = 0;
     const live = () => !closedFlag && socket.readyState === 1;
     const timeout = setTimeout(() => {
       closed();
@@ -226,6 +439,60 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
         typeof event.data === "string"
           ? new TextEncoder().encode(event.data).length
           : 524289;
+      if (
+        role === "agent" &&
+        authenticated &&
+        typeof event.data === "string" &&
+        bytes <= 524288
+      ) {
+        let data: unknown;
+        try {
+          data = JSON.parse(event.data);
+        } catch {
+          /* The command codec rejects malformed JSON. */
+        }
+        if (isHistoryFrame(data)) {
+          const requestId = z.object({ requestId: DeviceId }).safeParse(data);
+          if (!requestId.success) {
+            socket.close(1008, "invalid_history_frame");
+            return;
+          }
+          if (
+            bytes > HISTORY_FRAME_BYTES ||
+            historyFrames >= HISTORY_QUEUE_FRAMES ||
+            historyBytes + bytes > HISTORY_QUEUE_FRAMES * HISTORY_FRAME_BYTES
+          ) {
+            this.send(socket, {
+              type: "history.error",
+              requestId: requestId.data.requestId,
+              error:
+                bytes > HISTORY_FRAME_BYTES
+                  ? "history_frame_limit"
+                  : "history_busy",
+            });
+            return;
+          }
+          historyFrames++;
+          historyBytes += bytes;
+          historyChain = historyChain
+            .then(async () => {
+              if (live()) await this.history(socket, data);
+            })
+            .catch(() => {
+              this.send(socket, {
+                type: "history.error",
+                requestId: requestId.data.requestId,
+                error: "history_invalid_frame",
+              });
+            })
+            .finally(() => {
+              historyFrames--;
+              historyBytes -= bytes;
+            });
+          this.ctx.waitUntil(historyChain);
+          return;
+        }
+      }
       if (
         bytes > 524288 ||
         queuedFrames >= 16 ||
@@ -263,6 +530,7 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
                 deviceId: targetId,
                 expires: Date.now() + 30000,
                 credentialVersion: checked.source.credentialVersion,
+                origin: new URL(request.url).origin,
               };
               authenticated = true;
               clearTimeout(timeout);

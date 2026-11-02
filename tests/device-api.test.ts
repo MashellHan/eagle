@@ -15,7 +15,15 @@ import { createInterface } from "node:readline";
 import { after, before, test } from "node:test";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 import NativeWebSocket from "ws";
-import type { OperationRequest } from "../packages/contracts/src/devices.ts";
+import { DeviceHistoryCipher } from "../packages/agent/device-history.ts";
+import {
+  type HistoryPeer,
+  historyKeyPayload,
+} from "../packages/contracts/src/device-history.ts";
+import type {
+  Device,
+  OperationRequest,
+} from "../packages/contracts/src/devices.ts";
 
 type ApiBody = {
   challengeId: string;
@@ -126,14 +134,20 @@ async function policyService(
   });
   reader.on("line", (line) => {
     const message = JSON.parse(line) as Record<string, unknown>;
-    if (message.type === "sign") {
+    if (message.type === "sign" || message.type === "history-sign") {
       child.stdin.write(
         `${JSON.stringify({
-          type: "signature",
+          type: message.type === "sign" ? "signature" : "history-signature",
           requestId: message.requestId,
           signature: sign(
             null,
-            Buffer.from(String(message.payload)),
+            Buffer.from(
+              message.type === "sign"
+                ? String(message.payload)
+                : historyKeyPayload(
+                    message.proof as Parameters<typeof historyKeyPayload>[0],
+                  ),
+            ),
             owner.keys.privateKey,
           ).toString("base64url"),
         })}\n`,
@@ -1408,6 +1422,372 @@ const authentication = (token: string) => ({
   sessionToken: token,
   capabilities: ["command"],
   policy: { mode: "all-approve", version: 1 },
+});
+
+test("authenticated outbound history frames bypass paused/always-ask execution and relay only ciphertext", async () => {
+  const [a, b] = await Promise.all([
+    identity("history-a"),
+    identity("history-b"),
+  ]);
+  assert.equal((await pair(a.token, await code(b.token))).status, 200);
+  const directory = await call("/directory", a.token);
+  const devices = directory.body.devices as unknown as Device[];
+  const origin = (await mf.ready).origin;
+  const keyOf = async (owner: typeof a) =>
+    DeviceHistoryCipher.create(
+      origin,
+      devices.find((device) => device.deviceId === owner.deviceId) as Device,
+      async (proof) =>
+        sign(
+          null,
+          Buffer.from(historyKeyPayload(proof)),
+          owner.keys.privateKey,
+        ).toString("base64url"),
+    );
+  const cipherA = await keyOf(a);
+  const cipherB = await keyOf(b);
+  const source = await rawSocket(a.deviceId, "agent");
+  const target = await rawSocket(b.deviceId, "agent");
+  let replacement: NativeWebSocket | undefined;
+  const exchange = async (socket: NativeWebSocket, value: unknown) => {
+    const response = frame<Record<string, unknown>>(socket);
+    socket.send(JSON.stringify(value));
+    return response;
+  };
+  try {
+    assert.equal(
+      (
+        await exchange(source, {
+          ...authentication(a.token),
+          policy: { mode: "paused", version: 1 },
+        })
+      ).type,
+      "ready",
+    );
+    assert.equal(
+      (
+        await exchange(target, {
+          ...authentication(b.token),
+          policy: { mode: "always-ask", version: 1 },
+        })
+      ).type,
+      "ready",
+    );
+    assert.equal(
+      (
+        await exchange(source, {
+          type: "history.configure",
+          requestId: randomUUID(),
+          proof: cipherA.proof,
+        })
+      ).type,
+      "history.configured",
+    );
+    assert.equal(
+      (
+        await exchange(target, {
+          type: "history.configure",
+          requestId: randomUUID(),
+          proof: cipherB.proof,
+        })
+      ).type,
+      "history.configured",
+    );
+    const found = await exchange(source, {
+      type: "history.peers",
+      requestId: randomUUID(),
+    });
+    assert.equal(found.type, "history.peers");
+    const peerB = (found.peers as HistoryPeer[]).find(
+      (peer) => peer.device.deviceId === b.deviceId,
+    );
+    assert.ok(peerB);
+    const requestId = randomUUID();
+    const packet = await cipherA.seal(peerB, requestId, {
+      method: "catalog.export",
+      text: "not DO plaintext",
+    });
+    const delivery = frame<{
+      type: string;
+      source: HistoryPeer;
+      packet: unknown;
+    }>(target);
+    assert.equal(
+      (
+        await exchange(source, {
+          type: "history.send",
+          requestId,
+          targetDeviceId: b.deviceId,
+          packet,
+        })
+      ).type,
+      "history.sent",
+    );
+    const received = await delivery;
+    assert.equal(received.type, "history.packet");
+    assert.deepEqual(await cipherB.open(received.source, received.packet), {
+      method: "catalog.export",
+      text: "not DO plaintext",
+    });
+    const changed = frame<{ type: string; source: HistoryPeer }>(target);
+    assert.equal(
+      (
+        await exchange(source, {
+          type: "history.changed",
+          requestId: randomUUID(),
+        })
+      ).type,
+      "history.sent",
+    );
+    assert.equal((await changed).source.device.deviceId, a.deviceId);
+    assert.equal(
+      (
+        await exchange(target, {
+          type: "history.configure",
+          requestId: randomUUID(),
+          proof: { ...cipherB.proof, expiresAt: Date.now() - 1 },
+        })
+      ).type,
+      "history.error",
+    );
+    const observed = (await call("/directory", a.token)).body.devices;
+    assert.deepEqual(
+      observed.find((device) => device.deviceId === a.deviceId)?.policy,
+      { mode: "paused", version: 1 },
+    );
+    assert.deepEqual(
+      observed.find((device) => device.deviceId === b.deviceId)?.policy,
+      { mode: "always-ask", version: 1 },
+    );
+    assert.equal(
+      (
+        await exchange(target, {
+          type: "history.configure",
+          requestId: randomUUID(),
+          proof: null,
+        })
+      ).type,
+      "history.configured",
+    );
+    const deniedId = randomUUID();
+    const denied = await exchange(source, {
+      type: "history.send",
+      requestId: deniedId,
+      targetDeviceId: b.deviceId,
+      packet: await cipherA.seal(peerB, deniedId, {}),
+    });
+    assert.equal(denied.type, "history.error");
+    assert.equal(denied.error, "history_disabled");
+    const replaced = new Promise<number>((resolve) =>
+      source.once("close", resolve),
+    );
+    replacement = await rawSocket(a.deviceId, "agent");
+    assert.equal(
+      (await exchange(replacement, authentication(a.token))).type,
+      "ready",
+    );
+    assert.equal(
+      await replaced,
+      1008,
+      "the former socket cannot keep its history capability",
+    );
+    assert.equal(
+      (
+        await exchange(replacement, {
+          type: "history.peers",
+          requestId: randomUUID(),
+        })
+      ).error,
+      "history_disabled",
+    );
+    assert.equal(
+      (
+        await exchange(replacement, {
+          type: "history.configure",
+          requestId: randomUUID(),
+          proof: cipherA.proof,
+        })
+      ).type,
+      "history.configured",
+    );
+    assert.equal(
+      (
+        await exchange(target, {
+          type: "history.configure",
+          requestId: randomUUID(),
+          proof: cipherB.proof,
+        })
+      ).type,
+      "history.configured",
+    );
+    assert.equal(
+      (await call("/members/remove", b.token, { deviceId: a.deviceId })).status,
+      200,
+    );
+    const removedId = randomUUID();
+    const removed = await exchange(target, {
+      type: "history.send",
+      requestId: removedId,
+      targetDeviceId: a.deviceId,
+      packet: await cipherB.seal(
+        { device: cipherA.device, proof: cipherA.proof },
+        removedId,
+        {},
+      ),
+    });
+    assert.equal(removed.type, "history.error");
+    assert.equal(
+      (
+        await exchange(replacement, {
+          type: "history.peers",
+          requestId: randomUUID(),
+        })
+      ).error,
+      "history_unauthorized",
+    );
+    const registry = await mf.unsafeGetDurableObjectStorage(
+      "eagle",
+      "DeviceRegistry",
+      { name: "registry" },
+    );
+    await registry.exec(
+      "UPDATE sessions SET expires=0 WHERE deviceId=?",
+      b.deviceId,
+    );
+    assert.equal(
+      (
+        await exchange(target, {
+          type: "history.peers",
+          requestId: randomUUID(),
+        })
+      ).error,
+      "history_unauthorized",
+    );
+  } finally {
+    source.terminate();
+    target.terminate();
+    replacement?.terminate();
+  }
+});
+
+test("independent Device Service processes enable encrypted history without execution policy or journal admission", async () => {
+  const [a, b] = await Promise.all([
+    identity("history-process-a"),
+    identity("history-process-b"),
+  ]);
+  await pair(a.token, await code(b.token));
+  const stateA = join(root, "history-process-a");
+  const stateB = join(root, "history-process-b");
+  const left = await policyService(a, stateA);
+  const right = await policyService(b, stateB);
+  let backend: ReturnType<typeof connect> | undefined;
+  try {
+    await left.call("policy.set", { mode: "paused" });
+    await right.call("policy.set", { mode: "always-ask" });
+    const policies = [
+      await left.call("policy.get"),
+      await right.call("policy.get"),
+    ];
+    assert.equal(
+      (await left.port("history.set", { enabled: true })).error,
+      "management_requires_private_helper",
+    );
+    for (const service of [left, right]) {
+      const enabled = await service.call("history.set", { enabled: true });
+      assert.equal(enabled.error, undefined);
+      assert.equal((enabled.result as { enabled: boolean }).enabled, true);
+    }
+    backend = connect(join(stateB, "port.sock"));
+    const lines = createInterface({ input: backend });
+    const attached = new Promise<Record<string, unknown>>((resolve) =>
+      lines.once("line", (line) => resolve(JSON.parse(line))),
+    );
+    backend.write(
+      `${JSON.stringify({ requestId: randomUUID(), method: "history.attach" })}\n`,
+    );
+    assert.equal((await attached).error, undefined);
+    const peers = await left.port("history.peers");
+    assert.ok(
+      (peers.result as { deviceId: string }[]).some(
+        (peer) => peer.deviceId === b.deviceId,
+      ),
+    );
+    const delivered = new Promise<Record<string, unknown>>(
+      (resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error("history process delivery timeout")),
+          3000,
+        );
+        const receive = (line: string) => {
+          const event = JSON.parse(line) as Record<string, unknown>;
+          if (event.type !== "history.packet") return;
+          clearTimeout(timeout);
+          lines.off("line", receive);
+          resolve(event);
+        };
+        lines.on("line", receive);
+      },
+    );
+    const payload = {
+      type: "request",
+      method: "catalog",
+      title: "empty native Bot",
+    };
+    assert.equal(
+      (await left.port("history.send", { targetDeviceId: b.deviceId, payload }))
+        .error,
+      undefined,
+    );
+    const received = await delivered;
+    assert.equal(received.sourceDeviceId, a.deviceId);
+    assert.deepEqual(received.payload, payload);
+    assert.deepEqual(
+      [await left.call("policy.get"), await right.call("policy.get")].map(
+        (value) => value.result,
+      ),
+      policies.map((value) => value.result),
+    );
+    assert.equal(
+      (await right.call("history.set", { enabled: false })).error,
+      undefined,
+    );
+    assert.ok(
+      (await left.port("history.send", { targetDeviceId: b.deviceId, payload }))
+        .error,
+    );
+    backend.destroy();
+    lines.close();
+    await right.stop();
+    await left.stop();
+    const { DatabaseSync } = await import("node:sqlite");
+    for (const state of [stateA, stateB]) {
+      const db = new DatabaseSync(join(state, "operations.sqlite"), {
+        readOnly: true,
+      });
+      try {
+        assert.equal(
+          db.prepare("SELECT count(*) n FROM operations").get()?.n,
+          0,
+        );
+      } finally {
+        db.close();
+      }
+    }
+    const reopened = await policyService(b, stateB);
+    try {
+      assert.equal(
+        ((await reopened.call("history.get")).result as { enabled: boolean })
+          .enabled,
+        false,
+      );
+    } finally {
+      await reopened.stop();
+    }
+  } finally {
+    backend?.destroy();
+    await left.stop();
+    await right.stop();
+  }
 });
 
 test("relay correlation is generated per forwarding and cannot leak an old result to reused caller IDs", async () => {

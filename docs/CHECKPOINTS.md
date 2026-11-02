@@ -2648,3 +2648,38 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Herdr collection/authentication, D1 and dashboard rendering: N/A. Next: fixed 2A
   review head, CLI corrections, then the separate authenticated Device/WSS pull
   loop; automatic App and two-Mac/Tailscale latency acceptance remain unverified.
+
+## 2026-11-02 15:49 optional history: live-container isolation
+
+- Native ownership probe confirms both a local root and an ownerless fork have no
+  owner. Two red import tests reproduced foreign suffixes entering local root and
+  continuation containers. Fix `8567f79` reuses only explicitly passive imported
+  containers; 22/22 native/HTTP tests preserve local provider inputs and one physical
+  shared ancestor. Bots typecheck and lint pass; 2B drafts are outside that commit.
+- CLI fix `54d1949` passes 16/16 CommandsTests and the real daemon/provider/tool
+  history CLI eval. Lead's sole CLISettingsLayoutTests file recheck passes 1/1
+  with original limits in `.local/lead-cli-layout-recheck.log`; the previous full
+  Swift failure remains recorded. Complete Bots gate remains 776/781, browser
+  179/12/11; no repeated full gate or four-file recheck was run.
+- 2B crypto tests pass 2/2. Real Miniflare authenticated WSS first rejected the new
+  history configure frame through the existing result parser; typed dispatch and
+  separate bounded relay are now under test. Automatic process/App discovery and
+  two-Mac/DO/Tailscale latency remain unverified. Herdr collection/authentication,
+  D1 and dashboard rendering: N/A. Next: authenticated channel, then automatic pull.
+
+## 2026-11-02 16:04 optional history: process channel and record fixes
+
+- Record fix `3fcfe3d` passes 25/25 native/HTTP tests after three real reds:
+  archive-only pure delta now reopens/continues, missing-ancestor records forward
+  boundedly without becoming usable, and an interleaved empty receive preserves
+  another instance's pending drain. Bots typecheck/lint pass. No full gate rerun.
+- Independent Device Service processes plus real Miniflare authenticated WSS now
+  pass 34/34 related tests: encrypted payload delivery, disabled refusal, persisted
+  capability and unchanged paused/always-ask policy. Both closed operation journals
+  contain zero operations. Root typecheck and Agent build pass; native narrow-key
+  signing/helper management is under test. Automatic Bots pull/App refresh is next.
+- Root's current physical observation is A all-approve v3, B all-approve v2, both
+  online; earlier always-ask v1 is historical. No physical history latency is
+  claimed. Full Bots 776/781 and browser 179/12/11 remain non-green; complete Swift
+  gate remains pending despite its single-file recheck. Herdr collection/auth, D1
+  and dashboard rendering: N/A. No existing App/helper was modified or installed.

@@ -138,6 +138,31 @@ struct DeviceServiceHostTests {
     try await clean(host)
   }
 
+  @Test("optional group history is trusted management and preserves offline execution policy")
+  func historySetting() async throws {
+    let host = try host()
+    try await ready(host)
+    do {
+      let before = try await host.call("policy.get")
+      let enabled = try await host.call("history.set", params: .object(["enabled": .bool(true)]))
+      #expect(enabled["enabled"] == .bool(true))
+      #expect(enabled["ready"] == .bool(false))
+      #expect(try await host.call("policy.get") == before)
+      await #expect(throws: DevicePortError.self) {
+        try await DeviceLocalPort(path: host.socketPath).call(
+          "history.set", params: .object(["enabled": .bool(false)]))
+      }
+      await host.stop()
+      try await ready(host)
+      #expect(try await host.call("history.get")["enabled"] == .bool(true))
+      #expect(try await host.call("policy.get") == before)
+    } catch {
+      try await clean(host)
+      throw error
+    }
+    try await clean(host)
+  }
+
   @Test("only an attached App confirmation signs a complete typed service approval")
   func confirmation() async throws {
     let host = try host()

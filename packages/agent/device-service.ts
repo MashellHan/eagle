@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { HistoryKeyIdentity } from "../contracts/src/device-history.ts";
 import {
   canonicalDeviceJSON,
   DeviceApproval,
@@ -22,6 +23,7 @@ import {
   verifyApproval,
 } from "../contracts/src/devices.ts";
 import { DeviceCloud } from "./device-cloud.ts";
+import { DeviceHistoryTransport } from "./device-history-transport.ts";
 import { OperationAdmissionError } from "./device-journal.ts";
 import { NativeDeviceLeases } from "./device-native-leases.ts";
 import { DeviceRuntime } from "./device-runtime.ts";
@@ -57,6 +59,9 @@ const approval = z.strictObject({
   approval: DeviceApproval.optional(),
   error: z.string().max(200).optional(),
 });
+const historySignature = signature.extend({
+  type: z.literal("history-signature"),
+});
 const managementMethods = new Set([
   "policy.get",
   "policy.set",
@@ -65,6 +70,8 @@ const managementMethods = new Set([
   "pairing.redeem",
   "pairing.result",
   "member.remove",
+  "history.get",
+  "history.set",
 ]);
 const capabilities = [
   "command",
@@ -152,7 +159,7 @@ async function clearStaleSocket(path: string): Promise<void> {
 }
 
 type HelperPending = {
-  kind: "signature" | "approval";
+  kind: "signature" | "history-signature" | "approval";
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -164,6 +171,9 @@ export async function runDeviceService(): Promise<void> {
   let runtime: DeviceRuntime | undefined;
   let nativeLeases: NativeDeviceLeases | undefined;
   let cloud: DeviceCloud | undefined;
+  let history: DeviceHistoryTransport | undefined;
+  let historyConsumer: Socket | undefined;
+  let historyDetach: (() => void) | undefined;
   let server: ReturnType<typeof createServer> | undefined;
   let socketOwner: { dev: number; ino: number } | undefined;
   let configuration: z.infer<typeof configure> | undefined;
@@ -171,7 +181,7 @@ export async function runDeviceService(): Promise<void> {
   let stopping = false;
   const sockets = new Set<Socket>();
   const helper = (
-    kind: "signature" | "approval",
+    kind: "signature" | "history-signature" | "approval",
     value: Record<string, unknown>,
   ): Promise<unknown> =>
     new Promise((resolveHelper, reject) => {
@@ -197,6 +207,7 @@ export async function runDeviceService(): Promise<void> {
     pending.clear();
     for (const socket of sockets) socket.destroy();
     nativeLeases?.close();
+    history?.close();
     await cloud?.close();
     await runtime?.close();
     if (server?.listening)
@@ -245,6 +256,14 @@ export async function runDeviceService(): Promise<void> {
   const manage = async (method: string, params: unknown): Promise<unknown> => {
     if (!runtime || !cloud) throw new Error("not_ready");
     switch (method) {
+      case "history.get":
+        if (!history) throw new Error("history_unavailable");
+        return history.status();
+      case "history.set":
+        if (!history) throw new Error("history_unavailable");
+        return history.setEnabled(
+          z.strictObject({ enabled: z.boolean() }).parse(params).enabled,
+        );
       case "policy.get":
         return runtime.policy;
       case "policy.set": {
@@ -292,11 +311,44 @@ export async function runDeviceService(): Promise<void> {
     method: string,
     params: unknown,
     session: { id: string; closed: boolean },
+    socket: Socket,
   ): Promise<unknown> => {
     if (!runtime || !cloud) throw new Error("not_ready");
     if (managementMethods.has(method))
       throw new Error("management_requires_private_helper");
     switch (method) {
+      case "history.status":
+        return history?.status() ?? { enabled: false, ready: false };
+      case "history.attach": {
+        if (!history) throw new Error("history_unavailable");
+        if (historyConsumer && historyConsumer !== socket)
+          throw new Error("history_consumer_busy");
+        if (!historyConsumer) {
+          historyConsumer = socket;
+          historyDetach = history.observe((event) => {
+            if (socket.destroyed) return;
+            if (socket.writableLength > 384 * 1024) {
+              socket.destroy();
+              return;
+            }
+            socket.write(`${JSON.stringify(event)}\n`);
+          });
+        }
+        return history.status();
+      }
+      case "history.peers":
+        if (!history) throw new Error("history_unavailable");
+        return history.peers();
+      case "history.send": {
+        if (!history) throw new Error("history_unavailable");
+        const input = z
+          .strictObject({ targetDeviceId: DeviceId, payload: z.unknown() })
+          .parse(params);
+        return history.send(input.targetDeviceId, input.payload);
+      }
+      case "history.changed":
+        if (!history) throw new Error("history_unavailable");
+        return history.notify();
       case "status":
         return {
           deviceId: runtime.device.deviceId,
@@ -522,6 +574,31 @@ export async function runDeviceService(): Promise<void> {
       },
       (status) => send({ type: "cloud", status }),
     );
+    try {
+      history = new DeviceHistoryTransport(
+        cloud,
+        config.stateDirectory,
+        async (input) => {
+          const proof = HistoryKeyIdentity.parse(input);
+          if (
+            proof.serviceOrigin !== new URL(config.baseUrl).origin ||
+            proof.deviceId !== device.deviceId
+          )
+            throw new Error("history_identity_invalid");
+          return z
+            .string()
+            .max(2048)
+            .parse(
+              await helper("history-signature", {
+                type: "history-sign",
+                proof,
+              }),
+            );
+        },
+      );
+    } catch (error) {
+      send({ type: "history", status: "unavailable", error: code(error) });
+    }
     await clearStaleSocket(config.socketPath);
     server = createServer((socket) => {
       sockets.add(socket);
@@ -531,6 +608,11 @@ export async function runDeviceService(): Promise<void> {
       socket.once("close", () => {
         session.closed = true;
         sockets.delete(socket);
+        if (historyConsumer === socket) {
+          historyDetach?.();
+          historyDetach = undefined;
+          historyConsumer = undefined;
+        }
         try {
           nativeLeases?.disconnect(session.id);
         } catch {
@@ -552,7 +634,7 @@ export async function runDeviceService(): Promise<void> {
             return;
           }
           inFlight++;
-          void local(request.data.method, request.data.params, session)
+          void local(request.data.method, request.data.params, session, socket)
             .then(
               (result) => {
                 if (!socket.destroyed)
@@ -604,18 +686,25 @@ export async function runDeviceService(): Promise<void> {
         return;
       }
       const proof = signature.safeParse(value);
+      const historyProof = historySignature.safeParse(value);
       const approved = approval.safeParse(value);
-      if (proof.success || approved.success) {
+      if (proof.success || historyProof.success || approved.success) {
         const response = proof.success
           ? proof.data
-          : approved.success
-            ? approved.data
-            : undefined;
+          : historyProof.success
+            ? historyProof.data
+            : approved.success
+              ? approved.data
+              : undefined;
         if (!response) return;
         const request = pending.get(response.requestId);
         if (
           !request ||
-          (proof.success ? "signature" : "approval") !== request.kind
+          (proof.success
+            ? "signature"
+            : historyProof.success
+              ? "history-signature"
+              : "approval") !== request.kind
         )
           return;
         pending.delete(response.requestId);
@@ -623,6 +712,8 @@ export async function runDeviceService(): Promise<void> {
         if (response.error) request.reject(new Error("helper_request_denied"));
         else if (proof.success && proof.data.signature)
           request.resolve(proof.data.signature);
+        else if (historyProof.success && historyProof.data.signature)
+          request.resolve(historyProof.data.signature);
         else if (approved.success && approved.data.approval)
           request.resolve(approved.data.approval);
         else request.reject(new Error("invalid_helper_response"));

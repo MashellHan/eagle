@@ -73,6 +73,59 @@ struct DeviceIdentityTests {
     }
   }
 
+  @Test(
+    "history signs only the narrow current identity/key proof and preserves registration restrictions"
+  )
+  func historyKey() throws {
+    let identity = try DeviceIdentity.loadOrCreate(profile: "history", vault: MemoryVault())
+    let now: Int64 = 1_800_000_000_000
+    let ephemeral =
+      Data([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x03, 0x21, 0x00])
+      + Data(repeating: 3, count: 32)
+    let fields: [String: DeviceJSON] = [
+      "purpose": .string("eagle-history-key-v1"),
+      "serviceOrigin": .string("https://device.example"),
+      "deviceId": .string(identity.deviceId), "groupId": .string(UUID().uuidString.lowercased()),
+      "membershipEpoch": .number(2), "ephemeralKey": .string(ephemeral.base64URL),
+      "expiresAt": .number(Double(now + 120000)),
+    ]
+    let request = try DeviceJSON.object(fields).decoded(DeviceHistoryKeyRequest.self)
+    let signed = try identity.signHistoryKey(
+      request, serviceOrigin: "https://device.example", now: now)
+    let expected = [
+      "eagle-history-key-v1", "https://device.example", identity.deviceId,
+      try #require(fields["groupId"]?.string), "2", ephemeral.base64URL, String(now + 120000),
+    ].joined(separator: "\n")
+    let publicKey = try Curve25519.Signing.PublicKey(
+      rawRepresentation: (try #require(Data(base64URL: identity.publicKey))).dropFirst(12))
+    #expect(
+      publicKey.isValidSignature(try #require(Data(base64URL: signed)), for: Data(expected.utf8)))
+    #expect(throws: DeviceIdentityError.self) {
+      try identity.signRegistration(expected, serviceOrigin: "https://device.example", now: now)
+    }
+    for key in fields.keys {
+      var wrong = fields
+      wrong[key] = .string("invalid")
+      #expect(throws: (any Error).self) {
+        try identity.signHistoryKey(
+          DeviceJSON.object(wrong).decoded(DeviceHistoryKeyRequest.self),
+          serviceOrigin: "https://device.example", now: now)
+      }
+    }
+    var extra = fields
+    extra["operationId"] = .string(UUID().uuidString.lowercased())
+    #expect(throws: (any Error).self) {
+      try DeviceJSON.object(extra).decoded(DeviceHistoryKeyRequest.self)
+    }
+    #expect(throws: DeviceIdentityError.self) {
+      try identity.signHistoryKey(request, serviceOrigin: "https://elsewhere.example", now: now)
+    }
+    #expect(throws: DeviceIdentityError.self) {
+      try identity.signHistoryKey(
+        request, serviceOrigin: "https://device.example", now: now + 120000)
+    }
+  }
+
   @Test("approval verifies full operation, identity, policy and time before signing")
   func approval() throws {
     let identity = try DeviceIdentity.loadOrCreate(profile: "test", vault: MemoryVault())

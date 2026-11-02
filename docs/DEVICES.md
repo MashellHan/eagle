@@ -91,6 +91,26 @@ create a group; exactly one grouped device retains its group regardless of code
 input direction; same group is idempotent; different groups conflict without
 consumption. Invitation issuance epoch must still match. Results retain 7 days.
 
+## Optional history channel
+
+An explicitly enabled group capability uses typed `history.*` frames on the same
+authenticated Agent WSS, before execution parsing. `history.configure` supplies a
+signed ephemeral key (or null to disable); `history.peers`, `history.changed` and
+`history.send` discover, notify and relay bounded ciphertext. Both live enabled
+sockets and current Registry membership/credentials are checked on each delivery.
+The seven signed fields are `eagle-history-key-v1`, service origin, device UUID,
+group UUID, positive membership epoch, X25519 public key and expiry (<=5 minutes).
+Registration signing remains a separate restricted helper operation.
+
+History uses a separate two-frame/384 KiB queue and a 192 KiB envelope limit,
+including base64, metadata and authentication tags; plaintext is at most 128 KiB.
+The DO retains neither ciphertext nor history content. It does not consult or
+change execution policy, ask for approval, or create operation journal entries.
+The private helper alone manages the persisted `history.set {enabled}` switch;
+the existing local socket can attach an optional consumer, list peers, announce
+changes and send/receive encrypted payloads. Local chat never awaits this channel.
+Starting/reconnecting an enabled channel immediately discovers and notifies peers.
+
 ## Execution
 
 Agent opens one outbound WSS `/execution/<targetDeviceId>/agent` and sends

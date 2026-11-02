@@ -197,7 +197,7 @@ public final class DeviceServiceHost {
     guard
       [
         "pairing.create", "pairing.revoke", "pairing.redeem", "pairing.result", "member.remove",
-        "policy.get", "policy.set",
+        "policy.get", "policy.set", "history.get", "history.set",
       ].contains(method)
     else { throw DeviceHostError.forbidden }
     guard pending.count < 32 else { throw DeviceHostError.unavailable }
@@ -306,6 +306,34 @@ public final class DeviceServiceHost {
             "type": .string("signature"), "requestId": .string(id),
             "error": .string("invalid_registration_payload"),
           ]))
+      }
+    case "history-sign":
+      guard let id = value["requestId"]?.string, UUID(uuidString: id) != nil,
+        let proof = try? value["proof"]?.decoded(DeviceHistoryKeyRequest.self)
+      else {
+        rejectProtocol()
+        return
+      }
+      do {
+        let signature = try identity.signHistoryKey(
+          proof, serviceOrigin: configuration.serviceOrigin, now: Self.now)
+        try send(
+          .object([
+            "type": .string("history-signature"), "requestId": .string(id),
+            "signature": .string(signature),
+          ]))
+      } catch {
+        try? send(
+          .object([
+            "type": .string("history-signature"), "requestId": .string(id),
+            "error": .string("invalid_history_identity"),
+          ]))
+      }
+    case "history":
+      guard value["status"]?.string == "unavailable", value["error"]?.string != nil
+      else {
+        rejectProtocol()
+        return
       }
     case "approve":
       guard let request = try? value.decoded(DeviceApprovalRequest.self) else {
