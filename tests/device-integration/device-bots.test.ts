@@ -101,6 +101,14 @@ function processPort(file: string, root: string) {
     diagnostics() {
       return stderr;
     },
+    historyTrace(botId: string) {
+      return messages
+        .filter(
+          (message) =>
+            message.type === "history-page" && message.botId === botId,
+        )
+        .slice(-80);
+    },
     send(value: unknown) {
       child.stdin.write(`${JSON.stringify(value)}\n`);
     },
@@ -460,16 +468,30 @@ const config=JSON.parse((await lines.next()).value);
 Object.assign(process.env,{BOTS_BASE_URL:config.baseUrl,BOTS_API_KEY:config.key,BOTS_PROVIDER:'device-local',BOTS_MODEL:'scripted-local',BOTS_THINKING_LEVEL:'off',BOTS_TOOL_GROUPS:'core',BOTS_COMPACTION:'off'});
 const {readConfig}=await import(pathToFileURL(config.source+'/src/config.ts').href);
 const {startDaemon}=await import(pathToFileURL(config.source+'/src/main.ts').href);
-if(config.failOneBackfill){
+{
+  const {BotRegistry}=await import(pathToFileURL(config.source+'/src/core/BotRegistry.ts').href);
+  const touch=BotRegistry.prototype.touch;
+  BotRegistry.prototype.touch=function(id){
+    if(this.summaries().some(bot=>bot.id===id&&bot.title==='Blocked history Bot'))return false;
+    return touch.call(this,id);
+  };
   const {PiDurableRuntime}=await import(pathToFileURL(config.source+'/src/runtime/pi/PiDurableRuntime.ts').href);
   const open=PiDurableRuntime.prototype.open;
-  let fail=true;
+  let fail=config.failOneBackfill;
   PiDurableRuntime.prototype.open=async function(...args){
     const handle=await open.apply(this,args);
     const read=handle.exportHistoryPage.bind(handle);
     handle.exportHistoryPage=async function(input){
       if(fail&&input?.before){fail=false;process.stdout.write(JSON.stringify({type:'backfill-rejected'})+'\\n');throw new Error('history_busy');}
-      return read(input);
+      const page=await read(input);
+      process.stdout.write(JSON.stringify({type:'history-page',botId:args[0].id,direction:input?.before?'backfill':input?.after?'tail':'latest',count:page.records.length,first:page.records[0]?.entry.id,previous:page.records[0]?.previous,last:page.records.at(-1)?.entry.id,head:page.head,hasMore:page.hasMore})+'\\n');
+      return page;
+    };
+    const receive=handle.importHistoryPage.bind(handle);
+    handle.importHistoryPage=async function(page){
+      const receipt=await receive(page);
+      process.stdout.write(JSON.stringify({type:'history-page',botId:args[0].id,direction:'receive',count:page.records.length,first:page.records[0]?.entry.id,last:page.records.at(-1)?.entry.id,head:page.head,pending:receipt.pending})+'\\n');
+      return receipt;
     };
     return handle;
   };
@@ -889,7 +911,7 @@ test("existing and new Bots share real paired devices, native tools and original
 
 test("optional DO history automatically discovers an empty Bot and shows committed user before a slow provider", {
   timeout: 90000,
-}, async () => {
+}, async (t) => {
   mkdirSync(".local", { recursive: true });
   const workerRoot = mkdtempSync(resolve(".local/history-bots-worker-"));
   const root = mkdtempSync("/tmp/eagle-history-bots-");
@@ -989,13 +1011,14 @@ test("optional DO history automatically discovers an empty Bot and shows committ
       operation: string,
       body: unknown,
       selectedBot = botId,
+      daemon = right,
     ) => {
       const response = await fetch(
-        `${right.origin}/v1/bots/${selectedBot}/history/${operation}`,
+        `${daemon.origin}/v1/bots/${selectedBot}/history/${operation}`,
         {
           method: "POST",
           headers: {
-            authorization: `Bearer ${right.token}`,
+            authorization: `Bearer ${daemon.token}`,
             "content-type": "application/json",
           },
           body: JSON.stringify(body),
@@ -1180,6 +1203,146 @@ test("optional DO history automatically discovers an empty Bot and shows committ
     );
     assert.match(JSON.stringify(modelB.inputs.at(-1)), /old history user 0/);
     assert.match(JSON.stringify(modelB.inputs.at(-1)), /large-record-marker/);
+    await t.test(
+      "an unchanged raw head recovers ancestors supplied by a later notice",
+      async () => {
+        const created = await cli(
+          left,
+          "bots",
+          "create",
+          "--title",
+          "Raw gap Bot",
+          "--json",
+        );
+        const rawId = (created.bot as { id: string }).id;
+        const suffix: JSONRecord = {
+          ...largePage,
+          botId: rawId,
+          records: (largePage.records as unknown[]).slice(-6),
+          hasMore: false,
+          cursor: null,
+          snapshot: null,
+        };
+        await history("receive", suffix, rawId, left);
+        await until(
+          async () =>
+            (
+              (await cli(right, "bots", "list", "--json")).bots as {
+                id: string;
+              }[]
+            ).some((bot) => bot.id === rawId)
+              ? true
+              : undefined,
+          "raw-gap Bot catalog discovery",
+        );
+        await until(async () => {
+          const list = (await history("branches", {}, rawId)).branches as {
+            selection: string;
+          }[];
+          if (!list.some((branch) => branch.selection === suffix.head))
+            return undefined;
+          const view = await history("view", { head: suffix.head }, rawId);
+          return JSON.stringify(view.messages).includes("large-record-marker")
+            ? true
+            : undefined;
+        }, "raw suffix automatically forwarded before its ancestors exist");
+        assert.equal(
+          (await history("assess", { head: suffix.head }, rawId)).usable,
+          false,
+        );
+        let donor = largePage;
+        for (;;) {
+          await history("receive", { ...donor, botId: rawId }, rawId, left);
+          if (!donor.hasMore) break;
+          donor = await history(
+            "page",
+            {
+              selection: largeHead,
+              before: donor.cursor,
+              until: largePage.snapshot,
+            },
+            largeId,
+          );
+        }
+        await until(
+          async () =>
+            (await history("assess", { head: suffix.head }, rawId)).usable
+              ? true
+              : undefined,
+          "same head becomes usable after ancestors arrive without advancing its tail",
+        ).catch((error) => {
+          console.error(
+            JSON.stringify({
+              rawGap: {
+                source: left.historyTrace(rawId),
+                target: right.historyTrace(rawId),
+              },
+            }),
+          );
+          throw error;
+        });
+      },
+    );
+    await t.test(
+      "an unavailable Bot cannot starve the next healthy Bot",
+      async () => {
+        await cli(
+          left,
+          "bots",
+          "create",
+          "--title",
+          "Blocked history Bot",
+          "--json",
+        );
+        const created = await cli(
+          left,
+          "bots",
+          "create",
+          "--title",
+          "Healthy later Bot",
+          "--json",
+        );
+        const healthyId = (created.bot as { id: string }).id;
+        modelA.answer("healthy later answer");
+        await cli(
+          left,
+          "chat",
+          "send",
+          healthyId,
+          "--text",
+          "healthy later user",
+          "--wait",
+          "--json",
+        );
+        await until(
+          async () =>
+            (
+              (await cli(right, "bots", "list", "--json")).bots as {
+                id: string;
+              }[]
+            ).some((bot) => bot.id === healthyId)
+              ? true
+              : undefined,
+          "healthy Bot catalog discovery",
+        );
+        await until(async () => {
+          const list = (await history("branches", {}, healthyId)).branches as {
+            selection: string;
+          }[];
+          for (const branch of list) {
+            if (
+              /^[a-f0-9]{64}$/.test(branch.selection) &&
+              JSON.stringify(
+                (await history("view", { head: branch.selection }, healthyId))
+                  .messages,
+              ).includes("healthy later answer")
+            )
+              return true;
+          }
+          return undefined;
+        }, "healthy committed history after a permanently unavailable Bot");
+      },
+    );
     assert.deepEqual(
       await Promise.all(devices.map((device) => device.manage("policy.get"))),
       policies,

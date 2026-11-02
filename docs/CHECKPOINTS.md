@@ -2781,3 +2781,34 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   running App, physical latency, final gates and all six new review P2s remain open.
   SwiftPM is released; Root owns snapshot/build/physical operations. Herdr collection/
   auth, D1 and dashboard rendering: N/A. No deployment, installation or daily writes.
+
+## 2026-11-02 17:23 optional history: routing and automatic recovery
+
+- Transport follow-up `9428939` fixes the three review recovery races: five red
+  assertions, then current channel/API 34/34, root types/lint and Agent build pass.
+  Local routing `43316c9` fixes old answer lookup, continuation request indexing
+  and a controlled real-watch acquisition race; affected native files pass 42/42,
+  Bots types/lint/hooks pass. Reviewer has closed the transport recovery scope
+  and earlier `9d17caf` queue/fresh fixes; local routing is awaiting closure.
+- New automatic-pull reds prove same-head missing ancestry and an unavailable Bot
+  starving a later healthy Bot. The bounded fixes are under process verification;
+  no new green claim yet. Catalog push versus delayed initial HTTP is red→green
+  6/6, retaining landing and explicit selection. Related host regression remains
+  to run. SwiftPM has no active consumer; no additional App was launched.
+- Follow-up: diagnostic process run passes 4/4 (53.17s), original limits, including
+  normal shutdown after close now refuses further pulls/retries. Earlier arrival
+  2/4 and shutdown 3/4 logs are preserved separately; a single passing diagnostic
+  run does not explain the earlier ancestry timing failure. Related real host
+  lifecycle/window tests pass 23/23, and root/Bots types/lint pass. No physical
+  sync or latency claim follows from these process/native checks.
+- Root's copied `f4dafa9` App on A (15302/15355, 43129) showed real local UI send
+  and answer, then same-origin CLI continuation and native composer follow-up:
+  three actual provider calls contain `A-UI-001`, `A-UI-CONTINUE-001` and
+  `A-UI-NEXT-002`. CLI empty Bot sidebar push was also observed. Evidence is under
+  `.local/e2e-readiness/ui-f4dafa9/local-chat-evidence.json`. This proves A UI/local
+  chat only: old helper is unchanged, and foreign App/DO/B/latency remain unverified.
+- Full gates remain historical non-green: Bots 776/781, browser 179 pass/12 fail/
+  11 platform skips, Swift 344 pass/1 fail; old complete eval 15/15 predates 2A.
+  Herdr collection/auth, D1 and dashboard rendering: N/A. Next broken hop is the
+  fixed DO App candidate for Root's paired-helper/foreign-App trial, then Tailscale
+  and final gates. No deployment, installation, identity or daily-data changes.

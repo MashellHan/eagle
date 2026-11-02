@@ -48,6 +48,36 @@ final class CatalogTests: XCTestCase {
     XCTAssertTrue(catalog.created.isEmpty)
   }
 
+  func testCatalogPushDuringInitialLoadPreservesNewBotsAndLanding() async throws {
+    let (model, catalog, _) = makeModel()
+    var pending: CheckedContinuation<BotCatalog, Never>?
+    catalog.loadResult = {
+      await withCheckedContinuation { pending = $0 }
+    }
+    let starting = Task { await model.start(selectFirst: false) }
+    for _ in 0..<100 where pending == nil { await Task.yield() }
+    let release = try XCTUnwrap(pending)
+    catalog.pushed?.yield(
+      BotCatalog(bots: [
+        BotSummary(
+          id: "b_remote", title: "自动发现", createdAt: "x", updatedAt: "x",
+          model: ModelRef(provider: "local", modelId: "local-model"), state: .idle
+        )
+      ]))
+    for _ in 0..<100 where model.bots.isEmpty { await Task.yield() }
+    XCTAssertEqual(model.bots.map(\.id), ["b_remote"])
+    XCTAssertNil(model.selection)
+    release.resume(returning: BotCatalog(bots: []))
+    await starting.value
+    XCTAssertEqual(
+      model.bots.map(\.id), ["b_remote"], "the older HTTP response cannot erase a push")
+    XCTAssertNil(model.selection, "daemon observation preserves the host landing")
+    catalog.loadResult = nil
+    await model.createBot(title: "explicit local choice")
+    XCTAssertEqual(model.selectedBot?.title, "explicit local choice")
+    model.stop()
+  }
+
   func testCreateSelectsTheNewBot() async throws {
     let (model, catalog, _) = makeModel()
     await model.refresh()
@@ -228,6 +258,7 @@ final class CatalogActionTests: XCTestCase {
 }
 
 final class FakeCatalog: CatalogPort {
+  var loadResult: (() async throws -> BotCatalog)?
   var pushed: AsyncStream<BotCatalog>.Continuation?
   var actionError: Error?
   var modelNames: [String] = []
@@ -297,6 +328,7 @@ final class FakeCatalog: CatalogPort {
   var failNext = false
 
   func load() async throws -> BotCatalog {
+    if let loadResult { return try await loadResult() }
     if failNext {
       failNext = false
       throw ClientError("the daemon is not reachable")

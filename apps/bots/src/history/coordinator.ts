@@ -64,8 +64,11 @@ export class HistoryCoordinator {
   >();
   readonly #fresh = new Set<string>();
   readonly #backfill = new Map<string, Backfill>();
+  readonly #gaps = new Map<string, Backfill>();
   readonly #tails = new Map<string, string>();
   readonly #drains = new Map<string, Drain>();
+  readonly #unavailableBots = new Set<string>();
+  readonly #retryPeers = new Set<string>();
   #channel: DeviceChannel | undefined;
   #closed = false;
   #ready = false;
@@ -73,6 +76,7 @@ export class HistoryCoordinator {
   #serving = 0;
   #reconnect?: NodeJS.Timeout;
   #retry: NodeJS.Timeout | undefined;
+  #botRetry: NodeJS.Timeout | undefined;
   #notice: NodeJS.Timeout | undefined;
 
   constructor(
@@ -234,6 +238,7 @@ export class HistoryCoordinator {
   }
 
   async #pull(peer: string, query: z.infer<typeof request>): Promise<unknown> {
+    if (this.#closed || !this.#ready || !this.#channel) throw new Error("history_pull_unavailable");
     const id = randomUUID();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -272,6 +277,21 @@ export class HistoryCoordinator {
     return page;
   }
 
+  #retryBot(botId: string, peer?: string) {
+    if (this.#closed) return;
+    this.#unavailableBots.add(botId);
+    if (peer) this.#retryPeers.add(peer);
+    if (this.#botRetry) return;
+    this.#botRetry = setTimeout(() => {
+      this.#botRetry = undefined;
+      this.#unavailableBots.clear();
+      for (const peer of this.#retryPeers) this.#fresh.add(peer);
+      this.#retryPeers.clear();
+      void this.#work();
+    }, 1000);
+    this.#botRetry.unref();
+  }
+
   async #catchUp(peer: string) {
     for (;;) {
       const catalog = await this.#pull(peer, {
@@ -283,44 +303,55 @@ export class HistoryCoordinator {
       if (!(catalog as { hasMore: boolean }).hasMore) break;
     }
     for (const bot of this.#registry.summaries()) {
-      let after: string | undefined;
-      do {
-        const list = branches.parse(
-          await this.#pull(peer, {
-            method: "branches",
-            botId: bot.id,
-            ...(after ? { after } : {}),
-          }),
-        );
-        for (const branch of list.branches) {
-          const key = `${peer}/${bot.id}/${branch.branchId}`;
-          let tail = this.#tails.get(key);
-          for (let budget = 0; budget < 4; budget++) {
-            const page = await this.#receive(
-              bot.id,
-              await this.#pull(peer, {
-                method: "page",
-                botId: bot.id,
-                input: { selection: branch.selection, ...(tail ? { after: tail } : {}) },
-              }),
-            );
-            if (page.snapshot) this.#tails.set(key, page.snapshot);
-            if (!tail && page.hasMore && page.cursor && page.snapshot)
-              this.#backfill.set(key, {
-                peer,
-                botId: bot.id,
-                selection: branch.selection,
-                before: page.cursor,
-                until: page.snapshot,
-              });
-            if (!tail || !page.hasMore || !page.cursor) break;
-            tail = page.cursor;
-            this.#tails.set(key, tail);
-            if (budget === 3) this.#fresh.add(peer);
+      if (this.#closed || !this.#ready) return;
+      if (this.#unavailableBots.has(bot.id)) continue;
+      try {
+        let after: string | undefined;
+        do {
+          const list = branches.parse(
+            await this.#pull(peer, {
+              method: "branches",
+              botId: bot.id,
+              ...(after ? { after } : {}),
+            }),
+          );
+          for (const branch of list.branches) {
+            const key = `${peer}/${bot.id}/${branch.branchId}`;
+            const gap = this.#gaps.get(key);
+            if (gap && !this.#backfill.has(key)) this.#backfill.set(key, gap);
+            let tail = this.#tails.get(key);
+            for (let budget = 0; budget < 4; budget++) {
+              const page = await this.#receive(
+                bot.id,
+                await this.#pull(peer, {
+                  method: "page",
+                  botId: bot.id,
+                  input: { selection: branch.selection, ...(tail ? { after: tail } : {}) },
+                }),
+              );
+              if (page.snapshot) this.#tails.set(key, page.snapshot);
+              if (!tail && page.records[0]?.previous && page.cursor && page.snapshot) {
+                const backfill = {
+                  peer,
+                  botId: bot.id,
+                  selection: branch.selection,
+                  before: page.cursor,
+                  until: page.snapshot,
+                };
+                this.#gaps.set(key, backfill);
+                if (page.hasMore) this.#backfill.set(key, backfill);
+              }
+              if (!tail || !page.hasMore || !page.cursor) break;
+              tail = page.cursor;
+              this.#tails.set(key, tail);
+              if (budget === 3) this.#fresh.add(peer);
+            }
           }
-        }
-        after = list.hasMore ? (list.cursor ?? undefined) : undefined;
-      } while (after);
+          after = list.hasMore ? (list.cursor ?? undefined) : undefined;
+        } while (after);
+      } catch {
+        this.#retryBot(bot.id, peer);
+      }
     }
   }
 
@@ -336,48 +367,64 @@ export class HistoryCoordinator {
         (this.#fresh.size || this.#backfill.size || this.#drains.size)
       ) {
         const peer = this.#fresh.values().next().value;
+        const drainWork = [...this.#drains.entries()].find(
+          ([, drain]) => !this.#unavailableBots.has(drain.botId),
+        );
+        const backfillWork = [...this.#backfill.entries()].find(
+          ([, backfill]) => !this.#unavailableBots.has(backfill.botId),
+        );
         activePeer = undefined;
-        if (peer && (freshTurn || (!this.#backfill.size && !this.#drains.size))) {
+        if (peer && (freshTurn || (!backfillWork && !drainWork))) {
           activePeer = peer;
           freshTurn = false;
           this.#fresh.delete(peer);
           await this.#catchUp(peer);
-        } else if (this.#drains.size) {
+        } else if (drainWork) {
           freshTurn = true;
-          const first = this.#drains.entries().next().value;
-          if (!first) break;
-          const [key, drain] = first;
-          const receipt = await this.#withBot(
-            drain.botId,
-            (handle) =>
-              handle.importHistoryPage?.({ ...drain.page, records: [] }) ??
-              Promise.resolve(undefined),
-          );
-          if (!receipt?.pending) {
-            this.#drains.delete(key);
-            this.#changed(drain.botId);
+          const [key, drain] = drainWork;
+          try {
+            const receipt = await this.#withBot(
+              drain.botId,
+              (handle) =>
+                handle.importHistoryPage?.({ ...drain.page, records: [] }) ??
+                Promise.resolve(undefined),
+            );
+            if (!receipt?.pending) {
+              this.#drains.delete(key);
+              this.#changed(drain.botId);
+            }
+          } catch {
+            this.#retryBot(drain.botId);
           }
-        } else {
+        } else if (backfillWork) {
           freshTurn = true;
-          const first = this.#backfill.entries().next().value;
-          if (!first) break;
-          const [key, backfill] = first;
-          const page = await this.#receive(
-            backfill.botId,
-            await this.#pull(backfill.peer, {
-              method: "page",
-              botId: backfill.botId,
-              input: {
-                selection: backfill.selection,
-                before: backfill.before,
-                until: backfill.until,
-              },
-            }),
-          );
-          if (page.hasMore && page.cursor)
-            this.#backfill.set(key, { ...backfill, before: page.cursor });
-          else this.#backfill.delete(key);
-        }
+          const [key, backfill] = backfillWork;
+          try {
+            const page = await this.#receive(
+              backfill.botId,
+              await this.#pull(backfill.peer, {
+                method: "page",
+                botId: backfill.botId,
+                input: {
+                  selection: backfill.selection,
+                  before: backfill.before,
+                  until: backfill.until,
+                },
+              }),
+            );
+            if (page.records.length && page.records[0]?.previous && page.cursor) {
+              const next = { ...backfill, before: page.cursor };
+              this.#gaps.set(key, next);
+              if (page.hasMore) this.#backfill.set(key, next);
+              else this.#backfill.delete(key);
+            } else {
+              this.#backfill.delete(key);
+              if (page.records.length) this.#gaps.delete(key);
+            }
+          } catch {
+            this.#retryBot(backfill.botId, backfill.peer);
+          }
+        } else break;
         await new Promise<void>((resolve) => setImmediate(resolve));
       }
     } catch (error) {
@@ -400,8 +447,10 @@ export class HistoryCoordinator {
 
   close() {
     this.#closed = true;
+    this.#ready = false;
     clearTimeout(this.#reconnect);
     clearTimeout(this.#retry);
+    clearTimeout(this.#botRetry);
     clearTimeout(this.#notice);
     for (const detach of this.#detachers) detach();
     for (const observer of this.#handles.values()) observer.detach();

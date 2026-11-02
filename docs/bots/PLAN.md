@@ -23,9 +23,10 @@ Stage 2A is the native/catalog incremental boundary only: bounded new-tail/backf
 pages, committed-user visibility while a provider is blocked, passive durable import
 and complete-head admission. Stage 2B now connects authenticated encrypted DO/WSS,
 automatic catalog/native pull, the native passive transcript and explicit composer,
-plus the group-history switch. Related native tests pass; the latest large-backfill
-process run is non-green. Scheduler/review fixes, Root's running-App/two-Mac
-acceptance, final gates and Tailscale remain outstanding.
+plus the group-history switch. The expanded process run passes 4/4 after bounded
+gap/retry and shutdown fixes; earlier arrival failures remain stability evidence.
+Review closure, Root's foreign-App/two-Mac acceptance, final gates and Tailscale
+remain outstanding.
 Resource/skill replication is outside this scope.
 
 The current tool taxonomy, native extension integration and test-evidence map are

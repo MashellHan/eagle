@@ -686,6 +686,10 @@ is never a gap.
 { "type": "pong" }
 ```
 
+A daemon-wide catalog observer runs even with no selected Bot. A catalog push
+received while an HTTP catalog load is pending takes precedence over that load's
+older response; observation preserves the host's landing/selection policy.
+
 Every change names its block `index`; a `block` change carries the whole block, so
 a client never has to infer content from a stream of appends. `message` replaces
 the entire message, including when a provider revises earlier content.

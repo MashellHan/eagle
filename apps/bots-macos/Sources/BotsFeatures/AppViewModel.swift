@@ -25,6 +25,7 @@ public final class AppViewModel: ObservableObject {
   /// The trigger detail and switch; nil in a test that never opens the surface.
   private let triggers: TriggerPort?
   private var catalogTask: Task<Void, Never>?
+  private var catalogRevision = 0
   private var selectsFirst = true
   private var outbox: OutboxStore
 
@@ -97,12 +98,7 @@ public final class AppViewModel: ObservableObject {
   public func refresh() async {
     isLoading = true
     defer { isLoading = false }
-    do {
-      apply(try await catalog.load())
-      error = nil
-    } catch {
-      self.error = describe(error)
-    }
+    await reload()
   }
 
   public func createBot() async {
@@ -313,6 +309,7 @@ public final class AppViewModel: ObservableObject {
   }
 
   private func apply(_ catalog: BotCatalog) {
+    catalogRevision += 1
     bots = catalog.bots
     groups = catalog.groups
     keepSelectionValid()
@@ -321,10 +318,14 @@ public final class AppViewModel: ObservableObject {
 
   /// A write is followed by a read: the daemon owns the ids, the order and the memberships.
   private func reload() async {
+    let revision = catalogRevision
     do {
-      apply(try await catalog.load())
+      let loaded = try await catalog.load()
+      guard revision == catalogRevision else { return }
+      apply(loaded)
+      error = nil
     } catch {
-      self.error = describe(error)
+      if revision == catalogRevision { self.error = describe(error) }
     }
   }
 }
