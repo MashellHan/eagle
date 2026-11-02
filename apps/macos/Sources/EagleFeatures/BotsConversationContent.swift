@@ -15,6 +15,10 @@ struct BotsConversationContent: View {
     self.composer = bots.composer
   }
 
+  var composerPlaceholder: String? {
+    bots.usesHistoryContext ? "从此会话继续，使用本机模型" : nil
+  }
+
   var body: some View {
     ConversationColumn(
       title: bots.title, tintIndex: bots.tintIndex,
@@ -28,7 +32,7 @@ struct BotsConversationContent: View {
       participantStatus: bots.participantStatus,
       isWaiting: bots.waiting,
       headerAccessory: historyMenu,
-      composerPlaceholder: bots.displayedHistory == nil ? nil : "从此会话继续，使用本机模型",
+      composerPlaceholder: composerPlaceholder,
       onStop: { bots.abort() },
       onInsert: bots.running ? { bots.send(inserting: true) } : nil,
       onRecover: { bots.recover() },

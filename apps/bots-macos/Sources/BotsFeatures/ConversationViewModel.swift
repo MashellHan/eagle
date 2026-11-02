@@ -79,6 +79,10 @@ public final class ConversationViewModel: ObservableObject {
   public var pulls: [PullSummary] { state.pulls }
   /// Tokens and cost so far, for the inspector's 用量 section.
   public var usage: Usage? { state.usage }
+  public var usesHistoryContext: Bool {
+    guard let historyView else { return false }
+    return !followsReceivedWhenEmpty || (historyView.usable && displayedHeadIsCurrent)
+  }
   public var canSend: Bool {
     !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       && connection == .ready
@@ -265,7 +269,7 @@ public final class ConversationViewModel: ObservableObject {
       errorBanner = "正在建立本机续聊，请稍候再发送。"
       return
     }
-    if followsReceivedWhenEmpty, historyView?.usable != true || !displayedHeadIsCurrent {
+    if followsReceivedWhenEmpty, !usesHistoryContext {
       displayedBranch = nil
       historyView = nil
     }

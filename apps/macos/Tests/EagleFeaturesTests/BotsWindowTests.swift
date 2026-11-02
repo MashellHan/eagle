@@ -120,11 +120,44 @@ struct BotsWindowTests {
         return false
       })
     #expect(!remote.didContinue)
+    let content = BotsConversationContent(bots: bots, layout: ShellLayoutViewModel())
+    #expect(app.conversation.usesHistoryContext)
+    #expect(content.composerPlaceholder == "从此会话继续，使用本机模型")
     bots.setDraft("explicitly continue here")
     bots.send()
     try await waitUntil { bots.localBranchId == "local-continued" }
     #expect(bots.displayedHistory == nil)
     #expect(remote.didContinue)
+    #expect(content.composerPlaceholder == nil)
+    #expect(!app.conversation.usesHistoryContext)
+  }
+
+  @Test(
+    "the composer hint matches ordinary send for passive incomplete history and strict picker intent"
+  )
+  func passiveIncompleteComposerHint() async throws {
+    let remote = WindowNativeHistory()
+    remote.usable = false
+    let (bots, app, port, _) = try await window(history: remote)
+    defer { bots.disconnect() }
+    try await waitUntil { bots.displayedHistory?.messages.isEmpty == false }
+    let content = BotsConversationContent(bots: bots, layout: ShellLayoutViewModel())
+    #expect(content.composerPlaceholder == nil, "the automatic incomplete view sends locally")
+    #expect(!app.conversation.usesHistoryContext)
+    bots.setDraft("ordinary local input despite the passive transcript")
+    bots.send()
+    try await waitUntil { port.sent.count == 1 }
+    #expect(port.sent.first?.text == "ordinary local input despite the passive transcript")
+    #expect(!remote.didContinue)
+    bots.showHistory("received")
+    try await waitUntil { bots.displayedHistory != nil }
+    #expect(content.composerPlaceholder == "从此会话继续，使用本机模型")
+    #expect(app.conversation.usesHistoryContext)
+    bots.setDraft("explicit incomplete history must still wait")
+    bots.send()
+    await Task.yield()
+    #expect(port.sent.count == 1 && !remote.didContinue)
+    #expect(app.conversation.draft == "explicit incomplete history must still wait")
   }
 
   @Test("an automatically observed empty foreign branch leaves the real composer on local chat")
@@ -478,6 +511,7 @@ struct BotsWindowTests {
 @MainActor private final class WindowNativeHistory: NativeHistoryPort {
   var didContinue = false
   var empty = false
+  var usable = true
   var views = 0
   func branches(botId: String) async throws -> [NativeHistoryBranch] {
     [
@@ -489,7 +523,7 @@ struct BotsWindowTests {
   func view(botId: String, head: String) async throws -> NativeHistoryView {
     views += 1
     return NativeHistoryView(
-      head: head, branchId: "received", usable: !empty,
+      head: head, branchId: "received", usable: !empty && usable,
       messages: empty
         ? []
         : [
@@ -498,7 +532,7 @@ struct BotsWindowTests {
             blocks: [.text("received user before model completion")])
         ])
   }
-  func assess(botId: String, head: String) async throws -> Bool { !empty }
+  func assess(botId: String, head: String) async throws -> Bool { !empty && usable }
   func continueHistory(
     botId: String, head: String, text: String, requestId: String
   ) async throws -> NativeHistoryContinuation {

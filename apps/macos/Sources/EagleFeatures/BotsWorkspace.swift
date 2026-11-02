@@ -522,6 +522,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   @Published private(set) var historyBranches: [NativeHistoryBranch] = []
   @Published private(set) var displayedHistory: NativeHistoryView?
+  @Published private(set) var usesHistoryContext = false
   @Published private(set) var localBranchId: String?
 
   func showHistory(_ branchId: String?) {
@@ -598,6 +599,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
   /// Domain state in, Eagle's transcript out. Called after every published change.
   private func publish() {
     guard let app else {
+      if usesHistoryContext { usesHistoryContext = false }
       if !items.isEmpty { items = [] }
       if !groups.isEmpty { groups = [] }
       if !sections.isEmpty { sections = [] }
@@ -615,6 +617,9 @@ final class BotsWorkspaceViewModel: ObservableObject {
       historyBranches = conversation.historyBranches
     }
     if displayedHistory != conversation.historyView { displayedHistory = conversation.historyView }
+    if usesHistoryContext != conversation.usesHistoryContext {
+      usesHistoryContext = conversation.usesHistoryContext
+    }
     if localBranchId != conversation.localBranchId { localBranchId = conversation.localBranchId }
     if conversation.hasSnapshot {
       let state = conversation.state

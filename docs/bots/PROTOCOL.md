@@ -212,6 +212,9 @@ started chat. Nonempty partial messages display before assessment; without an
 explicit picker choice, an unusable view does not block an ordinary local send.
 An explicit picker choice still requires a usable head to continue, while usable
 received history retains the continuation path.
+The composer hint follows that same send context: passive unusable history shows
+the ordinary local hint, while explicit history selection or a usable received
+head keeps the local-model continuation hint.
 An uncertain continuation keeps its admission guard and original outbox request
 until a response or submission confirms admission/rejection. A definite refusal
 restores the draft and is never automatically replayed.
