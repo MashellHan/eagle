@@ -3349,3 +3349,27 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - No device, service, cloud, deployment or installation operation occurred here.
   All histories/backlog remain; root/D1/collection/dashboard are unchanged/N/A.
   Source SwiftPM remains released and tracked source freezes after this commit.
+
+## 2026-11-03 00:24 optional history: signed installation, final UI verification pending
+
+- Root reports the complete signed `b174e51` App installed on A/B through the
+  original installer: version 0.16.0, build `1793635780863`. The original group
+  (`e51ea7ee` prefix), device IDs, permissions and history are retained;
+  installation checks reported history enabled/ready=true.
+- A's original five and B's original two daily Bots automatically converged to
+  seven on each device, without adding test Bots to daily data. Original isolated
+  test roots stopped normally and their SQLite snapshots remain preserved.
+- A's earlier daily-service UI start returned `screen_locked`. Root then verified
+  normal App quit/reopen automatically started daemon `33236`: `/v1/health`,
+  seven Bots and the binding passed (`.local/e2e-readiness/physical-888578a/A/b174e51-daily-restored.json`).
+  B's installed daily daemon `89200` has seven Bots. Both Macs remain locked;
+  final installed-b174 two-way UI visibility and DO/TS latency evidence await
+  unlock. No lock-screen operation or further permission request is made here.
+- Earlier f472 physical passes remain valid: new-Bot automatic arrival 2.5575s
+  (`.local/e2e-readiness/physical-888578a/f472f5c-create-A-to-B-2358-ready.json`),
+  A→B 4.071618125s and B→A 3.952585125s. These are earlier-candidate samples.
+- Root verified personal GitHub identity `MashellHan` and is checking the feature
+  ref before the normal `sync/optional-history` push. Physical acceptance remains
+  the goal; a push does not complete it. This is a documentation-only record:
+  implementation/Worker/D1/collection are unchanged, no gates are run, and
+  Service/Review remain undisturbed. Tracked implementation stays frozen.
