@@ -5,10 +5,13 @@ import { createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import WebSocket from "ws";
+import { readConfig } from "../../src/config.ts";
 import type { BotDirectory } from "../../src/core/BotDirectory.ts";
 import type { BotRegistry } from "../../src/core/BotRegistry.ts";
 import type { RuntimeHandle } from "../../src/core/RuntimePort.ts";
 import { HistoryCoordinator } from "../../src/history/coordinator.ts";
+import { startDaemon } from "../../src/main.ts";
 import { pageHead } from "../../src/runtime/pi/historyIncremental.ts";
 import {
   type DeviceRequest,
@@ -16,6 +19,7 @@ import {
   SocketDevicePort,
 } from "../../src/tools/devices/port.ts";
 import { DeviceChannel } from "../../src/tools/devices/socket.ts";
+import { TriggerProducers } from "../../src/triggers/producers.ts";
 import { waitFor } from "../support/pi.ts";
 import { startStack } from "../support/server.ts";
 
@@ -423,5 +427,98 @@ test("coordinator close joins a late real Bot open and never runs history after 
     await coordinator.close();
     await stack.close();
     await bench.close();
+  }
+});
+
+test("daemon shutdown stops core admission before joining a held history native open", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "bots-close-history-"));
+  let attached: Socket | undefined;
+  const bench = await fixture((socket, request) => {
+    if (request.method === "history.attach") attached = socket;
+    socket.write(
+      `${JSON.stringify({
+        requestId: request.requestId,
+        result: request.method === "history.peers" ? [] : { enabled: true, ready: true },
+      })}\n`,
+    );
+  });
+  let schedulerStopped = false;
+  const stop = TriggerProducers.prototype.stop;
+  t.mock.method(TriggerProducers.prototype, "stop", function (this: TriggerProducers) {
+    schedulerStopped = true;
+    stop.call(this);
+  });
+  const daemon = await startDaemon(
+    readConfig({
+      argv: ["--root", root, "--port", "0"],
+      env: { BOTS_DEVICE_SOCKET: bench.path },
+    }),
+  );
+  const opening = Promise.withResolvers<void>();
+  let began = false;
+  let opened = false;
+  let shutAfterOpen = false;
+  let closing: Promise<void> | undefined;
+  let socket: WebSocket | undefined;
+  try {
+    const bot = await daemon.registry.create("held history", "tr_close_history");
+    const open = daemon.registry.open.bind(daemon.registry);
+    t.mock.method(daemon.registry, "open", async (...args: Parameters<typeof open>) => {
+      began = true;
+      await opening.promise;
+      const handle = await open(...args);
+      opened = true;
+      return handle;
+    });
+    const shutdown = daemon.registry.shutdown.bind(daemon.registry);
+    t.mock.method(daemon.registry, "shutdown", () => {
+      shutAfterOpen = opened;
+      return shutdown();
+    });
+    socket = new WebSocket(`ws://127.0.0.1:${daemon.port}/v1/socket`, {
+      headers: { authorization: `Bearer ${daemon.token}` },
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket?.once("open", resolve);
+      socket?.once("error", reject);
+    });
+    const welcome = new Promise<void>((resolve) => socket?.once("message", () => resolve()));
+    socket.send(JSON.stringify({ type: "hello", protocolVersion: 1, client: "close-history" }));
+    await welcome;
+    await waitFor(() => attached !== undefined, "history attachment");
+    attached?.write(
+      `${JSON.stringify({
+        type: "history.packet",
+        sourceDeviceId: randomUUID(),
+        payload: {
+          type: "pull",
+          id: randomUUID(),
+          request: { method: "branches", botId: bot.id },
+        },
+      })}\n`,
+    );
+    await waitFor(() => began, "actual coordinator native open");
+    let finished = false;
+    closing = daemon.close().then(() => {
+      finished = true;
+    });
+    const health = await fetch(`http://127.0.0.1:${daemon.port}/v1/health`).catch(() => undefined);
+    assert.deepEqual(
+      { schedulerStopped, acceptingHTTP: health?.status === 200 },
+      { schedulerStopped: true, acceptingHTTP: false },
+      "optional history cannot hold core admission open during shutdown",
+    );
+    await waitFor(() => socket?.readyState === WebSocket.CLOSED, "shutdown WebSocket close");
+    assert.equal(finished, false, "native history leases still join before registry shutdown");
+    opening.resolve();
+    await closing;
+    assert.equal(shutAfterOpen, true, "registry shutdown follows the late native open");
+    assert.equal(daemon.registry.handleOf(bot.id), undefined);
+  } finally {
+    opening.resolve();
+    socket?.terminate();
+    await (closing ?? daemon.close());
+    await bench.close();
+    await rm(root, { recursive: true, force: true });
   }
 });

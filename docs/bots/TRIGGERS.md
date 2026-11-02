@@ -207,6 +207,9 @@ Triggers add producers to a process that previously had only a transport:
    logs and the lock. A producer that admits after the drain is a defect; the
    registry's `closing` flag refuses new work, and `invoke` surfaces that refusal
    instead of retrying.
+   Optional history detaches immediately and joins its native leases before the
+   registry closes, but that join never delays stopping HTTP/WebSocket admission
+   or the scheduler. The existing absolute shutdown budget still applies.
 3. **Delete:** four ordered steps, each resumable after a crash:
    1. set a **deleting** flag that refuses new leases and new `invoke` for that bot,
    2. wait for the leases already granted, and for their journal writes, to finish,

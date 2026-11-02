@@ -2892,3 +2892,26 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   findings are registered for the next small fix. Next: Root's updated codec/
   helper rollout and actual two-Mac route/visibility samples, plus those fixes.
   Herdr collection, D1 and dashboard rendering: N/A; no deployment/installation.
+
+## 2026-11-02 18:17 optional history: confirmed admission and shutdown
+
+- Client `49fc436` fixes replay of a continuation already confirmed placed in a
+  reopened snapshot. Its provider remains held while an actual steer is sent;
+  ConversationTests is 14/14 after a real red. Node `54a0335` serializes the same
+  request's native admission across ordinary chat and continuation, without root
+  routing documents or a provider-completion wait. Native history is 34/34,
+  failure/idempotency 6/6, channels 8/8; real cli-history-transfer eval passes.
+  Bots types/lint and strict client format pass; source SwiftPM is released.
+- A real daemon/IPC shutdown red showed HTTP still accepting and the scheduler
+  not stopped while history held a native open. Stopping core admission before
+  joining history now passes both full affected files, main + IPC 21/21, plus
+  Bots types/lint. The existing absolute deadline is unchanged. Raw logs are
+  `.local/history-admitted-reopen-*`, `history-admission-race-*` and
+  `history-shutdown-*`; this is separate from the TS 11/11 + channel 25/25 evidence.
+- Root reports all `df62149` candidate gates green. Read-only candidate logs show
+  root 276/276, browser 191 pass/11 existing skips, Bots test and coverage runs
+  801/801; candidate SPM and official App build also passed. Those belong to
+  `eagle-hc`, not the moving source head; historical source full-gate failures
+  remain retained. Root owns helper/Worker rollout, installations and actual
+  two-Mac App timing. TS review and physical DO/TS two-way visibility remain
+  pending; no latency claim. Herdr collection, D1 and dashboard rendering: N/A.
