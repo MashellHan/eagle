@@ -36,6 +36,7 @@ type ApiBody = {
   directory: { devices: { deviceId: string }[] };
 };
 let mf: Miniflare;
+const historyDiagnostics: Record<string, unknown>[] = [];
 mkdirSync(".local", { recursive: true });
 const root = mkdtempSync(resolve(".local/device-api-"));
 const base = "https://devices.test/api/devices/v1";
@@ -59,6 +60,10 @@ export class DeviceExecution extends Execution {
 }
 export class DeviceRegistry extends Registry {
  async check(token,targetId){const result=await super.check(token,targetId);
+  if(result.ok&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_history_exception'").toArray().length){
+   const fault=this.ctx.storage.sql.exec("SELECT deviceId FROM test_history_exception WHERE deviceId=?",result.source.deviceId).toArray()[0];
+   if(fault){this.ctx.storage.sql.exec("DELETE FROM test_history_exception WHERE deviceId=?",result.source.deviceId);throw new Error('Too many subrequests. diagnostic-private-marker '+token);}
+  }
   if(result.ok&&targetId&&result.source.deviceId!==targetId&&this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_revoke_after_check'").toArray().length){
    const row=this.ctx.storage.sql.exec("SELECT deviceId FROM test_revoke_after_check WHERE deviceId=?",result.source.deviceId).toArray()[0];
    if(row)this.ctx.storage.transactionSync(()=>{this.ctx.storage.sql.exec("DELETE FROM test_revoke_after_check WHERE deviceId=?",row.deviceId);this.ctx.storage.sql.exec("UPDATE devices SET groupId=NULL,membershipEpoch=membershipEpoch+1,credentialVersion=credentialVersion+1 WHERE deviceId=?",row.deviceId);});
@@ -111,6 +116,16 @@ export default worker;
       ],
     }),
     unsafeInspectDurableObjects: true,
+    handleStructuredLogs(log) {
+      if (log.level === "error") console.error(log.message);
+      else console.log(log.message);
+      try {
+        const value = JSON.parse(log.message) as Record<string, unknown>;
+        if (value.event === "history_failed") historyDiagnostics.push(value);
+      } catch {
+        /* Runtime messages need not be JSON. */
+      }
+    },
   });
   await mf.ready;
 });
@@ -1428,6 +1443,64 @@ const authentication = (token: string) => ({
   sessionToken: token,
   capabilities: ["command"],
   policy: { mode: "all-approve", version: 1 },
+});
+
+test("history RPC exceptions log safe phase and request correlation without changing denial or queue recovery", async () => {
+  const owner = await identity("history-diagnostics");
+  const source = await rawSocket(owner.deviceId, "agent");
+  const exchange = async (value: unknown) => {
+    const response = frame<Record<string, unknown>>(source);
+    source.send(JSON.stringify(value));
+    return response;
+  };
+  try {
+    assert.equal((await exchange(authentication(owner.token))).type, "ready");
+    const registry = await mf.unsafeGetDurableObjectStorage(
+      "eagle",
+      "DeviceRegistry",
+      { name: "registry" },
+    );
+    await registry.exec("CREATE TABLE test_history_exception(deviceId TEXT)");
+    await registry.exec(
+      "INSERT INTO test_history_exception VALUES(?)",
+      owner.deviceId,
+    );
+    const requestId = randomUUID();
+    assert.deepEqual(
+      await exchange({ type: "history.configure", requestId, proof: null }),
+      { type: "history.error", requestId, error: "history_invalid_frame" },
+    );
+    const deadline = Date.now() + 2000;
+    while (
+      !historyDiagnostics.some((log) => log.requestId === requestId) &&
+      Date.now() < deadline
+    )
+      await new Promise((done) => setTimeout(done, 10));
+    assert.deepEqual(
+      historyDiagnostics.find((log) => log.requestId === requestId),
+      {
+        event: "history_failed",
+        layer: "device-execution",
+        phase: "frame.source_check",
+        category: "platform_request_limit",
+        requestId,
+      },
+      "RPC failures must identify the phase without leaking the exception, token, proof or packet",
+    );
+    assert.equal(
+      (
+        await exchange({
+          type: "history.configure",
+          requestId: randomUUID(),
+          proof: null,
+        })
+      ).type,
+      "history.configured",
+      "failure releases the bounded history queue for the next frame",
+    );
+  } finally {
+    source.terminate();
+  }
 });
 
 test("authenticated outbound history frames bypass paused/always-ask execution and relay only ciphertext", async () => {

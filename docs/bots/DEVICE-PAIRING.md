@@ -24,6 +24,13 @@ Bots attaches through the existing private device socket after local startup;
 no chat open/submit awaits this optional channel. This slice proves local process
 and DO transport; native App/Tailscale and physical visibility timing follow.
 
+Worker history exceptions emit `history_failed` with the Device Execution layer,
+fixed processing phase, allowlisted exception category and validated frame request
+ID for short-tail correlation, including peer/delivery RPCs. Diagnostics never emit
+raw exception messages, tokens, proofs, packet bodies or history content. Existing
+error responses, current authorization and queue/frame limits remain unchanged;
+a reported limit category identifies an exception class, not a proven quota cause.
+
 - 设备属于 Eagle 的共享设备群。一个 App 配置一次，当前及以后创建的 Bot 都可使用；
   不再为每个 Bot 复制设备名单、凭据或五项权限，也不要求另开远程工具组。
 - 群有稳定的 `groupId` 和多个成员，支持 A/B/C/D 等三台以上设备；各成员相互发现，

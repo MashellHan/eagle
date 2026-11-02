@@ -73,6 +73,49 @@ type PendingPolicy = {
   resolve: (value: PolicySetResult) => void;
   timer: ReturnType<typeof setTimeout>;
 };
+function historyFailure(
+  phase: string,
+  requestId: unknown,
+  error: unknown,
+): void {
+  let category = "unknown";
+  if (error instanceof z.ZodError || error instanceof SyntaxError)
+    category = "validation";
+  else if (error instanceof Error) {
+    const message = error.message.slice(0, 512);
+    if (
+      /too many (?:subrequests|api requests|concurrent requests|open connections)/i.test(
+        message,
+      )
+    )
+      category = "platform_request_limit";
+    else if (/overloaded|too many requests queued/i.test(message))
+      category = "overloaded";
+    else if (
+      /network connection lost|connection reset|broken pipe/i.test(message)
+    )
+      category = "connection_lost";
+    else if (
+      /timed out|timeout|deadline exceeded/i.test(message) ||
+      error.name === "TimeoutError"
+    )
+      category = "timeout";
+    else if (/object (?:has been |was )?reset|object restarted/i.test(message))
+      category = "object_reset";
+    else if (error.name === "AbortError") category = "aborted";
+  }
+  const correlation = DeviceId.safeParse(requestId);
+  console.error(
+    JSON.stringify({
+      event: "history_failed",
+      layer: "device-execution",
+      phase,
+      category,
+      ...(correlation.success ? { requestId: correlation.data } : {}),
+    }),
+  );
+}
+
 class DeviceAuthenticationError extends Error {}
 export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
   private agent?: Agent;
@@ -155,41 +198,53 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
   async historyPeer(
     token: string,
     origin: string,
+    requestId?: string,
   ): Promise<{ peer: HistoryPeer } | { error: string }> {
-    const agent = this.agent;
-    if (!agent || agent.expires <= Date.now())
-      return { error: "history_offline" };
-    const proof = agent.history;
-    if (!proof) return { error: "history_disabled" };
-    if (origin !== agent.origin) return { error: "history_service_mismatch" };
-    const registry = this.env.DEVICE_REGISTRY.getByName("registry");
-    const checked = await registry.check(token, agent.deviceId);
-    if (!checked.ok) return { error: "history_unauthorized" };
-    const peer = HistoryPeer.safeParse({ device: checked.target, proof });
-    if (!peer.success || !(await verifyHistoryPeer(peer.data, origin)))
-      return { error: "history_identity_expired_or_changed" };
-    const own = await registry.check(agent.token, agent.deviceId);
-    const final = await registry.check(token, agent.deviceId);
-    if (
-      !own.ok ||
-      !final.ok ||
-      this.agent !== agent ||
-      agent.history !== proof ||
-      agent.expires <= Date.now() ||
-      proof.expiresAt <= Date.now() ||
-      final.target.credentialVersion !== agent.credentialVersion ||
-      final.target.publicKey !== peer.data.device.publicKey ||
-      final.target.groupId !== proof.groupId ||
-      final.target.membershipEpoch !== proof.membershipEpoch
-    )
-      return { error: "history_unauthorized" };
-    return { peer: HistoryPeer.parse({ device: final.target, proof }) };
+    let phase = "peer.caller_check";
+    try {
+      const agent = this.agent;
+      if (!agent || agent.expires <= Date.now())
+        return { error: "history_offline" };
+      const proof = agent.history;
+      if (!proof) return { error: "history_disabled" };
+      if (origin !== agent.origin) return { error: "history_service_mismatch" };
+      const registry = this.env.DEVICE_REGISTRY.getByName("registry");
+      const checked = await registry.check(token, agent.deviceId);
+      if (!checked.ok) return { error: "history_unauthorized" };
+      phase = "peer.identity_verify";
+      const peer = HistoryPeer.safeParse({ device: checked.target, proof });
+      if (!peer.success || !(await verifyHistoryPeer(peer.data, origin)))
+        return { error: "history_identity_expired_or_changed" };
+      phase = "peer.own_check";
+      const own = await registry.check(agent.token, agent.deviceId);
+      phase = "peer.caller_recheck";
+      const final = await registry.check(token, agent.deviceId);
+      if (
+        !own.ok ||
+        !final.ok ||
+        this.agent !== agent ||
+        agent.history !== proof ||
+        agent.expires <= Date.now() ||
+        proof.expiresAt <= Date.now() ||
+        final.target.credentialVersion !== agent.credentialVersion ||
+        final.target.publicKey !== peer.data.device.publicKey ||
+        final.target.groupId !== proof.groupId ||
+        final.target.membershipEpoch !== proof.membershipEpoch
+      )
+        return { error: "history_unauthorized" };
+      phase = "peer.result_parse";
+      return { peer: HistoryPeer.parse({ device: final.target, proof }) };
+    } catch (error) {
+      historyFailure(phase, requestId, error);
+      throw error;
+    }
   }
   /** Ciphertext and notifications are transient; neither enters storage or the operation journal. */
   async receiveHistory(
     token: string,
     source: HistoryPeer,
     input: HistoryPacket | null,
+    requestId?: string,
   ): Promise<string | null> {
     const bytes = new TextEncoder().encode(
       JSON.stringify({ source, packet: input }),
@@ -207,20 +262,27 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
     this.historyRate.frames++;
     this.historyRate.bytes += bytes;
     this.historyDeliveries++;
+    let phase = "receive.target_peer";
     try {
       const agent = this.agent;
-      const target = await this.historyPeer(token, source.proof.serviceOrigin);
+      const target = await this.historyPeer(
+        token,
+        source.proof.serviceOrigin,
+        requestId ?? input?.requestId,
+      );
       if ("error" in target) return target.error;
       if (!agent || this.agent !== agent) return "history_offline";
+      phase = "receive.source_peer_rpc";
       const current = await this.env.DEVICE_EXECUTION.getByName(
         source.device.deviceId,
-      ).historyPeer(agent.token, agent.origin);
+      ).historyPeer(agent.token, agent.origin, requestId ?? input?.requestId);
       if (
         "error" in current ||
         canonicalDeviceJSON(current.peer) !== canonicalDeviceJSON(source)
       )
         return "history_source_changed";
       if (input !== null) {
+        phase = "receive.packet_validate";
         const packet = HistoryPacket.parse(input);
         if (
           packet.groupId !== source.device.groupId ||
@@ -239,13 +301,19 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
         )
           return "history_packet_identity_mismatch";
       }
-      const fresh = await this.historyPeer(token, agent.origin);
+      phase = "receive.target_recheck";
+      const fresh = await this.historyPeer(
+        token,
+        agent.origin,
+        requestId ?? input?.requestId,
+      );
       if ("error" in fresh) return fresh.error;
       if (
         this.agent !== agent ||
         canonicalDeviceJSON(fresh.peer) !== canonicalDeviceJSON(target.peer)
       )
         return "history_target_changed";
+      phase = "receive.socket_send";
       agent.socket.send(
         JSON.stringify(
           input === null
@@ -254,19 +322,25 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
         ),
       );
       return null;
-    } catch {
+    } catch (error) {
+      historyFailure(phase, requestId ?? input?.requestId, error);
       return "history_delivery_failed";
     } finally {
       this.historyDeliveries--;
     }
   }
-  private async history(socket: WebSocket, input: unknown): Promise<void> {
+  private async history(
+    socket: WebSocket,
+    input: unknown,
+    stage: (phase: string) => void,
+  ): Promise<void> {
     const message = HistoryAgentFrame.parse(input);
     const reply = (value: object) =>
       this.send(socket, { requestId: message.requestId, ...value });
     const agent = this.agent;
     if (!agent || agent.socket !== socket) return;
     const registry = this.env.DEVICE_REGISTRY.getByName("registry");
+    stage("frame.source_check");
     const checked = await registry.check(agent.token, agent.deviceId);
     if (this.agent !== agent) return;
     if (
@@ -278,6 +352,7 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
       return;
     }
     if (message.type === "history.configure") {
+      stage("frame.configure_verify");
       if (
         message.proof !== null &&
         !(await verifyHistoryPeer(
@@ -288,6 +363,7 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
         reply({ type: "history.error", error: "history_identity_invalid" });
         return;
       }
+      stage("frame.configure_recheck");
       const fresh = await registry.check(agent.token, agent.deviceId);
       if (this.agent !== agent) return;
       if (
@@ -302,7 +378,12 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
       reply({ type: "history.configured" });
       return;
     }
-    const self = await this.historyPeer(agent.token, agent.origin);
+    stage("frame.source_peer");
+    const self = await this.historyPeer(
+      agent.token,
+      agent.origin,
+      message.requestId,
+    );
     if ("error" in self) {
       reply({ type: "history.error", error: self.error });
       return;
@@ -318,28 +399,42 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
         });
         return;
       }
+      stage("frame.target_receive_rpc");
       const error = await this.env.DEVICE_EXECUTION.getByName(
         message.targetDeviceId,
-      ).receiveHistory(agent.token, self.peer, message.packet);
+      ).receiveHistory(
+        agent.token,
+        self.peer,
+        message.packet,
+        message.requestId,
+      );
       if (this.agent === agent)
         reply(
           error ? { type: "history.error", error } : { type: "history.sent" },
         );
       return;
     }
+    stage("frame.directory");
     const directory = await registry.directory(agent.deviceId);
     const peers: HistoryPeer[] = [];
     for (const device of directory.devices.slice(0, 32)) {
       if (device.deviceId === agent.deviceId) continue;
       const target = this.env.DEVICE_EXECUTION.getByName(device.deviceId);
-      const result = await target.historyPeer(agent.token, agent.origin);
+      stage("frame.peer_rpc");
+      const result = await target.historyPeer(
+        agent.token,
+        agent.origin,
+        message.requestId,
+      );
       if ("peer" in result) {
         peers.push(result.peer);
         if (message.type === "history.changed") {
+          stage("frame.peer_notify_rpc");
           const error = await target.receiveHistory(
             agent.token,
             self.peer,
             null,
+            message.requestId,
           );
           if (error) {
             reply({ type: "history.error", error });
@@ -483,11 +578,16 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
           }
           historyFrames++;
           historyBytes += bytes;
+          let phase = "frame.parse";
           historyChain = historyChain
             .then(async () => {
-              if (live()) await this.history(socket, data);
+              if (live())
+                await this.history(socket, data, (value) => {
+                  phase = value;
+                });
             })
-            .catch(() => {
+            .catch((error) => {
+              historyFailure(phase, requestId.data.requestId, error);
               this.send(socket, {
                 type: "history.error",
                 requestId: requestId.data.requestId,

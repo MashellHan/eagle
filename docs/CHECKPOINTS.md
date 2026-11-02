@@ -3076,3 +3076,24 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Physical A→B 11.8129s/B→A 18.103s failures remain; DO/TS two-way App visibility
   within 5s is still pending. No UI/SDK/Agent/Worker/auth/physical-data changes.
   Collection, D1 and dashboard: N/A; source SwiftPM remains released.
+
+
+## 2026-11-02 21:33 optional history: safe Worker failure diagnosis
+
+- Root’s 2a4 two-Mac short window failed: B’s fresh message was absent on A for
+  18.101708875s, with `history_invalid_frame` and `history_delivery_failed` again.
+  Receipt: `.local/e2e-readiness/physical-888578a/2a4-first-B-to-A.json`. Root’s
+  2a4 full Bots ordinary/coverage 809/809 and both closed scheduler P2 reviews do
+  not prove physical acceptance. Old histories remain preserved; Root owns the
+  capability switches, personal Worker deployment and bounded tail.
+- Worker diagnostics add only safe `history_failed` layer/phase/category and
+  validated requestId correlation through peer/delivery RPCs. Raw exceptions,
+  tokens, proofs and packet/history bodies are excluded; auth, wire errors and
+  queue/frame budgets stay unchanged. `platform_request_limit` is an injected
+  fixture classification, not an observed online quota conclusion.
+- Real Miniflare/DO red 25/26 → affected green 26/26 verifies safe correlation,
+  unchanged rejection and next-frame recovery. Types, affected lint and the Device
+  Worker dry-run bundle pass; logs: `.local/history-worker-diagnostic-*.log`.
+  No full gate, device, App, helper or live Worker was operated by service. Earlier
+  physical failures and DO/TS two-way App visibility within 5s remain pending.
+  D1, collection and dashboard: N/A; source SwiftPM remains released.
