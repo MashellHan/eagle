@@ -2951,3 +2951,19 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - B Accessibility is authorized through the Herdr chain; Device bridge AX is
   still false. Root owns all physical operations. This UI fix changes neither
   D1 nor the deployed `888578a` Worker; no new gates or App were started here.
+
+## 2026-11-02 20:04 optional history: live root after an empty echo
+
+- Root's preserved two-Mac state now proves A's first chat reached its model and
+  local AX. B remained empty for 14.8081s; only a manual archive export exposed
+  the three records to sync. This is a failed visibility sample, not a latency
+  pass. B's later native continuation reached A's storage but was not displayed
+  automatically within 18s; that separate sequential-handoff UI gap remains open.
+- Real SDK/SQLite red reproduces empty A→B→A echo shadowing A's live root in the
+  branch directory. The directory now keeps the local root live, while old
+  immutable heads remain addressable. Both history files pass 35/35, including
+  held-provider user visibility, reopen and B's actual continuation input;
+  types/lint pass. Logs: `.local/history-root-echo-{red,final,types,lint}.log`.
+- Hint fix `979729b` has host 20/20 evidence and is under fixed review. No physical
+  App/daemon/Worker/data changed here; source SwiftPM remains free. Root owns
+  physical retests. Herdr collection/auth, D1 and dashboard rendering: N/A.

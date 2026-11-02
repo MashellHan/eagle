@@ -54,6 +54,9 @@ raw groups and effective contributions; continuation requires that assessment.
 The initial page is the newest window, `snapshot` starts an independent new-tail
 pull, and `cursor` pages older records. `until` pins a backfill snapshot.
 The branch directory includes root, local continuations and received branches.
+The local root always lists its live native branch selector; an echoed received
+snapshot of that branch cannot shadow later local commits. Its old immutable
+received head remains separately addressable, without requiring an archive export.
 The optional scheduler remembers a missing-ancestor backfill even when its holder
 currently has no older page. A later notice retries that gap independently of the
 unchanged tip's new-tail cursor. Unavailable Bots retry with a bounded delay while

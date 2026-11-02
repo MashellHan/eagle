@@ -647,9 +647,10 @@ export class NativeHistory {
       const state = await tx.doc(HistoryState);
       const received = await tx.doc(BranchDirectory);
       const root = `${state.originId}/c${this.#rootId}`;
-      const selections = new Map([
-        [root, { branchId: root, conversationId: root, selection: root }],
-      ]);
+      const selections = new Map<
+        string,
+        { branchId: string; conversationId: string; selection: string }
+      >();
       for (const [head, value] of Object.entries(state.heads))
         selections.set(value.branchId, {
           branchId: value.branchId,
@@ -668,6 +669,7 @@ export class NativeHistory {
           conversationId: value.conversationId,
           selection: branchId,
         });
+      selections.set(root, { branchId: root, conversationId: root, selection: root });
       const branches = [...selections.values()]
         .sort((a, b) => a.branchId.localeCompare(b.branchId))
         .filter(

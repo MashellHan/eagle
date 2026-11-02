@@ -12,6 +12,100 @@ import { pageHead } from "../../src/runtime/pi/historyIncremental.ts";
 import { NativeHistory } from "../../src/runtime/pi/NativeHistory.ts";
 import { assistant, createBench, text, toolCall, trace, waitFor } from "../support/pi.ts";
 
+test("an empty A to B to A echo cannot shadow the live root's first committed chat", async () => {
+  const a = await createBench({ settings: { compaction: { enabled: false } } });
+  const b = await createBench({ settings: { compaction: { enabled: false } } });
+  let left = await a.runtime.open(a.spec());
+  const right = await b.runtime.open(b.spec());
+  const held = Promise.withResolvers<void>();
+  let sourceCalls = 0;
+  let targetCalls = 0;
+  try {
+    b.faux.setResponses([
+      (context) => {
+        targetCalls++;
+        assert.match(JSON.stringify(context.messages), /first local chat after empty echo/);
+        assert.match(JSON.stringify(context.messages), /A answered after the empty echo/);
+        return text("B continues the first real chat");
+      },
+    ]);
+    const empty = await left.exportHistoryPage();
+    assert.deepEqual(empty.records, []);
+    await right.importHistoryPage(empty);
+    const received = (await right.listHistoryBranches()).branches.find(
+      (branch) => branch.branchId === empty.branchId,
+    );
+    assert.ok(received);
+    const echo = await right.exportHistoryPage({ selection: received.selection });
+    assert.equal(echo.head, empty.head);
+    await left.importHistoryPage(echo);
+    a.faux.setResponses([
+      async (context) => {
+        sourceCalls++;
+        assert.match(JSON.stringify(context.messages), /first local chat after empty echo/);
+        await held.promise;
+        return text("A answered after the empty echo");
+      },
+    ]);
+    await left.submit({
+      requestId: "r_after_empty_echo",
+      text: "first local chat after empty echo",
+      whenBusy: "followUp",
+      trace,
+    });
+    await waitFor(() => sourceCalls === 1, "the first local provider is held after user commit");
+    const live = (await left.listHistoryBranches()).branches.find(
+      (branch) => branch.branchId === empty.branchId,
+    );
+    assert.ok(live);
+    const partial = await left.exportHistoryPage({ selection: live.selection });
+    assert.match(
+      JSON.stringify(partial.records),
+      /first local chat after empty echo/,
+      "the directory must expose native commits without an archive export",
+    );
+    assert.equal(partial.branchId, empty.branchId);
+    await right.importHistoryPage(partial);
+    assert.equal((await right.assessHistoryHead(partial.head)).usable, false);
+    held.resolve();
+    await waitFor(
+      async () => (await left.submission({ requestId: "r_after_empty_echo" }))?.status === "done",
+      "first local answer",
+    );
+    await left.close(trace, 5_000);
+    left = await a.runtime.open(a.spec());
+    await left.importHistoryPage(echo);
+    const reopened = (await left.listHistoryBranches()).branches.find(
+      (branch) => branch.branchId === empty.branchId,
+    );
+    assert.ok(reopened);
+    const complete = await left.exportHistoryPage({ selection: reopened.selection });
+    assert.match(JSON.stringify(complete.records), /A answered after the empty echo/);
+    assert.notEqual(complete.head, empty.head);
+    assert.deepEqual(
+      (await left.exportHistoryPage({ selection: empty.head })).records,
+      [],
+      "the old echoed immutable head stays empty",
+    );
+    await right.importHistoryPage(complete);
+    assert.equal((await right.assessHistoryHead(complete.head)).usable, true);
+    assert.equal(targetCalls, 0, "all receives were passive");
+    const continued = await right.continueHistory({
+      head: complete.head,
+      requestId: "r_after_echo_continue",
+      text: "continue locally on B",
+    });
+    assert.equal(continued.submission.status, "done");
+    assert.equal(targetCalls, 1);
+  } finally {
+    held.resolve();
+    await left.close(trace, 5_000);
+    await right.close(trace, 5_000);
+    await a.cleanup();
+    await b.cleanup();
+  }
+});
+
 test("an archive-only receiver accepts a pure later delta and reopens into a usable native head", async () => {
   const a = await createBench({ settings: { compaction: { enabled: false } } });
   const b = await createBench({ settings: { compaction: { enabled: false } } });
