@@ -5,7 +5,9 @@ import Foundation
 public struct DeviceHostConfiguration: Codable, Sendable {
   public let version: Int
   public let profile: String
-  public let baseUrl: String
+  /// Empty means "no relay chosen yet": a published bundle ships without one, and the person
+  /// names their own service in Settings.
+  public var baseUrl: String
   public let machServiceName: String
   public let launchAgentPlist: String
 
@@ -19,15 +21,19 @@ public struct DeviceHostConfiguration: Codable, Sendable {
     guard version == 1, !profile.isEmpty, profile.utf8.count <= 80,
       let url = URLComponents(string: baseUrl), url.user == nil, url.password == nil,
       url.query == nil, url.fragment == nil, ["", "/"].contains(url.path),
-      let host = url.host?.lowercased(), !host.isEmpty, !serviceOrigin.isEmpty,
-      url.scheme?.lowercased() == "https"
-        || (url.scheme?.lowercased() == "http"
-          && ["127.0.0.1", "localhost", "[::1]"].contains(host)),
+      baseUrl.isEmpty
+        || (url.host?.isEmpty == false
+          && (url.scheme?.lowercased() == "https"
+            || (url.scheme?.lowercased() == "http"
+              && ["127.0.0.1", "localhost", "[::1]"].contains(url.host?.lowercased())))),
       machServiceName == "ai.hexly.eagle.devices"
         || machServiceName.hasPrefix("ai.hexly.eagle.devices."),
       launchAgentPlist == machServiceName + ".plist"
     else { throw DeviceHostError.invalidConfiguration }
   }
+  /// False until the person (or a candidate build) names a relay: nothing is contacted before.
+  public var isConfigured: Bool { !serviceOrigin.isEmpty }
+
   public var serviceOrigin: String {
     guard var url = URLComponents(string: baseUrl), let host = url.url?.host() else { return "" }
     url.scheme = url.scheme?.lowercased()

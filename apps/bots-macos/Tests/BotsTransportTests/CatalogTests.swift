@@ -141,20 +141,30 @@ final class CatalogHTTPClientTests: XCTestCase {
       }
     }
     let loaded = try await client.loadGateway()
-    XCTAssertEqual(loaded.model, "m")
-    XCTAssertTrue(loaded.hasApiKey)
+    XCTAssertEqual(loaded.settings.model, "m")
+    XCTAssertTrue(loaded.settings.hasApiKey)
     // A daemon that predates the level or the groups reports none; the client assumes defaults.
-    XCTAssertEqual(loaded.thinkingLevel, "medium")
-    XCTAssertEqual(loaded.toolGroups, ["core", "coding", "herdr", "agents", "trigger"])
+    XCTAssertEqual(loaded.settings.thinkingLevel, "medium")
+    XCTAssertEqual(
+      loaded.settings.toolGroups,
+      ["persona", "machine", "core", "coding", "herdr", "agents", "trigger"])
+    XCTAssertEqual(loaded.settings.corePrompt, "")
+    XCTAssertNil(loaded.machinePrompt)
     // An omitted key must not be sent, so the daemon keeps the stored one.
     let saved = try await client.saveGateway(
       baseURL: "http://x/v1", model: "m2", thinkingLevel: "xhigh", toolGroups: ["core", "coding"],
       apiKey: nil)
-    XCTAssertEqual(saved.model, "m2")
+    XCTAssertEqual(saved.settings.model, "m2")
     XCTAssertNil(savedBody["apiKey"])
     XCTAssertEqual(savedBody["model"] as? String, "m2")
     XCTAssertEqual(savedBody["thinkingLevel"] as? String, "xhigh")
     XCTAssertEqual(savedBody["toolGroups"] as? [String], ["core", "coding"])
+    _ = try await client.saveToolSettings(corePrompt: "只说结论。", toolGroups: ["core", "coding"])
+    XCTAssertEqual(savedBody["corePrompt"] as? String, "只说结论。")
+    XCTAssertEqual(savedBody["toolGroups"] as? [String], ["core", "coding"])
+    XCTAssertNil(savedBody["baseUrl"])
+    XCTAssertNil(savedBody["model"])
+    XCTAssertNil(savedBody["apiKey"])
     let probe = try await client.testGateway(baseURL: "http://x/v1", model: "m", apiKey: "k")
     XCTAssertTrue(probe.ok)
     XCTAssertEqual(probe.models, 2)

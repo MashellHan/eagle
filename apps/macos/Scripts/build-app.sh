@@ -8,11 +8,13 @@
 # EAGLE_AGENT_NPM_CACHE    private cache verified against the root lock
 # EAGLE_BOTS_NPM_CACHE     private cache verified against the Bots lock
 # EAGLE_DEVICE_PROFILE     device-candidate (default) or device-release
-# EAGLE_DEVICE_SERVICE_URL HTTPS origin override; candidate defaults to localhost,
-#                         required for device-release
+# EAGLE_DEVICE_SERVICE_URL optional HTTPS origin baked into the bundle; a release normally
+#                         ships none, and the person configures the address in Settings
 # EAGLE_UPDATES_URL       where the App asks which macOS version is published; unset
 #                         means "this build never asks"
 # EAGLE_CODESIGN_IDENTITY  '-' for local candidate, real identity for release
+# EAGLE_ADHOC_RELEASE=1    publish a device-release bundle signed ad-hoc (un-notarized;
+#                          the downloader must remove the quarantine flag by hand)
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -26,7 +28,7 @@ case "$CONFIG" in debug|release) ;; *) echo "Expected debug or release" >&2; exi
 PROFILE="${EAGLE_DEVICE_PROFILE:-device-candidate}"
 case "$PROFILE" in
   device-candidate) APP_NAME="Eagle Device Candidate.app" ;;
-  device-release) APP_NAME="Eagle.app" ;;
+  device-release) APP_NAME="Eagle for Mac.app" ;;
   *) echo "Expected device-candidate or device-release profile" >&2; exit 1 ;;
 esac
 NODE_BINARY="${EAGLE_NODE_BINARY:-$(command -v node)}"
@@ -38,14 +40,14 @@ if [ -z "$AGENT_CACHE" ] || [ -z "$BOTS_CACHE" ]; then
   exit 1
 fi
 if [ "$PROFILE" = device-release ]; then
-  if [ -z "${EAGLE_DEVICE_SERVICE_URL:-}" ] || [ "$IDENTITY" = - ]; then
-    echo "Release needs EAGLE_DEVICE_SERVICE_URL and an explicit signing identity" >&2
+  if [ "$IDENTITY" = - ] && [ "${EAGLE_ADHOC_RELEASE:-}" != 1 ]; then
+    echo "Release needs an explicit signing identity, or EAGLE_ADHOC_RELEASE=1 for an un-notarized package" >&2
     exit 1
   fi
 fi
 swift build -c "$CONFIG"
 BINARY_DIRECTORY="$(swift build -c "$CONFIG" --show-bin-path)"
-BINARY="$BINARY_DIRECTORY/EagleApp"
+BINARY="$BINARY_DIRECTORY/Eagle"
 HELPER="$BINARY_DIRECTORY/EagleDeviceHelper"
 if [ ! -x "$HELPER" ]; then
   echo "Build requires the EagleDeviceHelper SPM executable target" >&2
@@ -58,7 +60,7 @@ STAGING="$(mktemp -d "$OUTPUT_DIRECTORY/.stage.XXXXXX")"
 trap 'rm -rf "$STAGING"' EXIT HUP INT TERM
 STAGED_APP="$STAGING/$APP_NAME"
 
-if [ ! -f Support/AppIcon.icns ]; then
+if [ ! -f Sources/EagleDesign/Resources/AppIcon.icns ]; then
   swift Scripts/make-icon.swift
 fi
 "$NODE_BINARY" Scripts/assemble-device-app.ts --app "$STAGED_APP" \
@@ -71,12 +73,19 @@ fi
   --destination "$STAGED_APP/Contents/Resources/DeviceRuntime" \
   --node "$NODE_BINARY" --agent-cache "$AGENT_CACHE" --bots-cache "$BOTS_CACHE" >/dev/null
 if [ "$IDENTITY" = - ]; then
-  echo "Signing: ad-hoc candidate (local verification only)" >&2
+  if [ "$PROFILE" = device-release ]; then
+    echo "Signing: ad-hoc release (un-notarized; downloaders remove quarantine by hand)" >&2
+    ADHOC="--allow-adhoc"
+  else
+    echo "Signing: ad-hoc candidate (local verification only)" >&2
+    ADHOC=""
+  fi
 else
   echo "Signing: configured identity" >&2
+  ADHOC=""
 fi
 "$NODE_BINARY" Scripts/assemble-device-app.ts --mode sign --app "$STAGED_APP" \
-  --identity "$IDENTITY" >/dev/null
+  --identity "$IDENTITY" $ADHOC >/dev/null
 
 rm -rf "$APP"
 mv "$STAGED_APP" "$APP"

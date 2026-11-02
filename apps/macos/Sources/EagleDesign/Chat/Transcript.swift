@@ -162,23 +162,3 @@ public struct DeliveryNote: View {
     .accessibilityElement(children: .combine)
   }
 }
-
-/// `正在输入...` row with the small green arc from the reference.
-public struct TypingIndicator: View {
-  private let text: String
-
-  public init(_ text: String = "正在输入...") {
-    self.text = text
-  }
-
-  public var body: some View {
-    HStack(spacing: 9) {
-      SpinnerArc(size: 13, lineWidth: 1.8)
-      Text(text)
-        .font(Theme.TypeScale.body)
-        .foregroundStyle(Theme.Palette.textSecondary)
-      Spacer(minLength: 0)
-    }
-    .accessibilityLabel(text)
-  }
-}

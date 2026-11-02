@@ -22,8 +22,9 @@ public struct InspectorColumn: View {
   private let usage: [InspectorUsageRow]
   private let choices: [InspectorChoiceRow]
   /// The selected trigger's read-only detail; empty leaves the section's placeholder.
-  private let triggers: [InspectorUsageRow]
+  private let triggers: [InspectorTriggerRow]
   private let onChoose: (String, String) -> Void
+  private let onToggleTrigger: (String, Bool) -> Void
   @Binding private var tab: Tab
   private let onRetryTask: (String) -> Void
   private let onStopTask: (String) -> Void
@@ -31,11 +32,14 @@ public struct InspectorColumn: View {
   private let onCollapse: () -> Void
   private let onShare: () -> Void
   private let face: BotFace.Style?
+  /// The bot is working: its portrait breathes like the sidebar row and the waiting line.
+  private let isBusy: Bool
   private let label: String?
   private let onEditFace: (() -> Void)?
   private let onCommitName: ((String) -> Void)?
   private let onCommitLabel: ((String) -> Void)?
   private let computerContent: AnyView?
+  private let libraryContent: AnyView?
 
   public init(
     name: String,
@@ -46,8 +50,9 @@ public struct InspectorColumn: View {
     tasks: [InspectorTaskRow] = [],
     usage: [InspectorUsageRow] = [],
     choices: [InspectorChoiceRow] = [],
-    triggers: [InspectorUsageRow] = [],
+    triggers: [InspectorTriggerRow] = [],
     onChoose: @escaping (String, String) -> Void = { _, _ in },
+    onToggleTrigger: @escaping (String, Bool) -> Void = { _, _ in },
     tab: Binding<Tab>,
     onRetryTask: @escaping (String) -> Void = { _ in },
     onStopTask: @escaping (String) -> Void = { _ in },
@@ -55,11 +60,13 @@ public struct InspectorColumn: View {
     onCollapse: @escaping () -> Void = {},
     onShare: @escaping () -> Void = {},
     face: BotFace.Style? = nil,
+    isBusy: Bool = false,
     label: String? = nil,
     onEditFace: (() -> Void)? = nil,
     onCommitName: ((String) -> Void)? = nil,
     onCommitLabel: ((String) -> Void)? = nil,
-    computerContent: AnyView? = nil
+    computerContent: AnyView? = nil,
+    libraryContent: AnyView? = nil
   ) {
     self.name = name
     self.subtitle = subtitle
@@ -71,6 +78,7 @@ public struct InspectorColumn: View {
     self.choices = choices
     self.triggers = triggers
     self.onChoose = onChoose
+    self.onToggleTrigger = onToggleTrigger
     self._tab = tab
     self.onRetryTask = onRetryTask
     self.onStopTask = onStopTask
@@ -78,20 +86,23 @@ public struct InspectorColumn: View {
     self.onCollapse = onCollapse
     self.onShare = onShare
     self.face = face
+    self.isBusy = isBusy
     self.label = label
     self.onEditFace = onEditFace
     self.onCommitName = onCommitName
     self.onCommitLabel = onCommitLabel
     self.computerContent = computerContent
+    self.libraryContent = libraryContent
   }
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       HeaderRow {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.Metric.headerControlGap) {
           Spacer(minLength: 0)
           IconButton(
-            systemName: "square.and.arrow.up", label: "分享", style: .circled, action: onShare)
+            systemName: "square.and.arrow.up", label: "分享",
+            size: Theme.Metric.headerControlHeight, style: .circled, action: onShare)
           IconButton(
             systemName: "xmark",
             label: "收起检查器",
@@ -108,6 +119,7 @@ public struct InspectorColumn: View {
         subtitle: subtitle,
         tintIndex: tintIndex,
         face: face,
+        isBusy: isBusy,
         label: label,
         onEditFace: onEditFace,
         onCommitName: onCommitName,
@@ -143,7 +155,7 @@ public struct InspectorColumn: View {
     case .model:
       return InspectorSections.model(choices: choices, usage: usage)
     case .triggers:
-      return [InspectorSections.triggersSection.with(.usage(triggers))]
+      return [InspectorSections.triggersSection.with(.triggers(triggers))]
     case .library:
       return InspectorSections.library()
     case .computer:
@@ -154,6 +166,8 @@ public struct InspectorColumn: View {
   @ViewBuilder private var content: some View {
     if tab == .computer, let computerContent {
       computerContent
+    } else if tab == .library, let libraryContent {
+      libraryContent
     } else {
       ForEach(sections) { section in
         InspectorSectionView(
@@ -161,7 +175,8 @@ public struct InspectorColumn: View {
           onExpand: onExpand,
           onRetryTask: onRetryTask,
           onStopTask: onStopTask,
-          onChoose: onChoose
+          onChoose: onChoose,
+          onToggleTrigger: onToggleTrigger
         )
       }
     }
@@ -173,6 +188,7 @@ private struct Identity: View {
   let subtitle: String
   let tintIndex: Int
   let face: BotFace.Style?
+  let isBusy: Bool
   let label: String?
   let onEditFace: (() -> Void)?
   let onCommitName: ((String) -> Void)?
@@ -213,6 +229,7 @@ private struct Identity: View {
   private var avatar: some View {
     if let face {
       BotFace(style: face, size: Theme.Metric.avatarInspector)
+        .modifier(BusyWhenWorking(active: isBusy, rise: 3))
         .overlay {
           if hoveringAvatar, onEditFace != nil {
             ZStack {
@@ -236,6 +253,7 @@ private struct Identity: View {
         size: Theme.Metric.avatarInspector,
         shape: .blob
       )
+      .modifier(BusyWhenWorking(active: isBusy, rise: 3))
     }
   }
 

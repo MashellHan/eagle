@@ -3,6 +3,7 @@
   "version": "0.14.2",
   "config": {
     "publishedAgentVersion": "1.0.0",
+    "publishedMacosVersion": "0.15.3",
     "macosReleaseUrl": "https://github.com/nocoo/eagle/releases/latest",
     "repositoryUrl": "https://github.com/nocoo/eagle"
   },
@@ -20,7 +21,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check . --error-on-warnings",
     "format": "biome check --write .",
-    "test": "node --test tests/*.test.ts",
+    "test": "node --test --test-concurrency=1 tests/*.test.ts",
     "test:devices": "node --test tests/device-integration/*.test.ts",
     "test:browser": "playwright test",
     "test:focus": "node --test tests/native/composer-focus.test.ts",

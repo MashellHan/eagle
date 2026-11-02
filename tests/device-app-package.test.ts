@@ -281,23 +281,45 @@ for (const [description, url] of [
   });
 }
 
-test("release assembly requires a build-time HTTPS origin and fails before publishing an invalid bundle", () => {
+test("release assembly without a build-time origin ships an unconfigured bundle", () => {
   const f = fixture();
   try {
-    for (const url of [
-      undefined,
-      "http://127.0.0.1:17053",
-      "https://devices.test/path",
-    ]) {
+    const result = prepare(f, ["--profile", "device-release"]);
+    assert.equal(result.status, 0, result.stderr);
+    const config = JSON.parse(
+      readFileSync(join(f.app, "Contents/Resources/DeviceHost.json"), "utf8"),
+    );
+    // A published App names no relay: the person configures their own in Settings.
+    assert.equal(config.baseUrl, "");
+    assert.equal(config.profile, "device-release");
+    assert.equal(config.machServiceName, "ai.hexly.eagle.devices");
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+test("release assembly still rejects an origin that is not a bare HTTPS origin", () => {
+  for (const url of ["http://127.0.0.1:17053", "https://devices.test/path"]) {
+    const f = fixture();
+    try {
       const result = prepare(f, [
         "--profile",
         "device-release",
-        ...(url ? ["--service-url", url] : []),
+        "--service-url",
+        url,
       ]);
       assert.notEqual(result.status, 0);
-      assert.match(result.stderr, /release requires a build-time HTTPS origin/);
+      assert.match(result.stderr, /must be an HTTPS origin/);
       assert.equal(existsSync(f.app), false);
+    } finally {
+      rmSync(f.root, { recursive: true, force: true });
     }
+  }
+});
+
+test("release assembly keeps an explicit build-time origin when one is given", () => {
+  const f = fixture();
+  try {
     const valid = prepare(f, [
       "--profile",
       "device-release",

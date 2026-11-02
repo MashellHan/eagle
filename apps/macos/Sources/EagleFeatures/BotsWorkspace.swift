@@ -71,17 +71,16 @@ final class BotsWorkspaceViewModel: ObservableObject {
   @Published private(set) var error: String?
   @Published private(set) var canRecover = false
   @Published private(set) var running = false
+  /// A run with nothing to show yet: the wave line above the composer, not a transcript row.
+  @Published private(set) var waiting = false
   /// The selected bot's live tasks, already named and nested for the inspector's 任务 section.
   @Published private(set) var tasks: [InspectorTaskRow] = []
   /// The selected bot's spend, already formatted for the inspector's 用量 section.
   @Published private(set) var usage: [InspectorUsageRow] = []
   /// The selected bot's model and reasoning level, as menus.
   @Published private(set) var choices: [InspectorChoiceRow] = []
-  /// The trigger a person opened from the sidebar, and its read-only detail.
-  @Published private(set) var selectedTriggerId: String?
-  @Published private(set) var triggerDetail: TriggerDetail?
-  /// The selected trigger's detail as the inspector's label/value rows.
-  @Published private(set) var triggerRows: [InspectorUsageRow] = []
+  /// Every trigger this bot owns, with its plan and a switch: they live in the bot's own panel.
+  @Published private(set) var triggerItems: [InspectorTriggerRow] = []
   @Published private(set) var connection: ConnectionState = .connecting
   /// The bot's exchanges with other bots, as the transcript folds them into one row each.
   @Published private(set) var exchanges: [PeerExchangeSummary] = []
@@ -156,6 +155,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
   private let gatewayProbe: @MainActor () async -> Bool?
   private let presenter = BotsPresenter()
   private var app: AppViewModel?
+  var history: AppViewModel? { app }
   private var connectionTask: Task<Void, Never>?
   private var connectionGeneration = UUID()
   private var rows: [SidebarBotRow] = []
@@ -176,7 +176,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
         do {
           let token = try TokenStore(root: settings.rootURL).read()
           let client = CatalogHTTPClient(baseURL: settings.baseURL, token: token)
-          return try await client.loadGateway().configured
+          return try await client.loadGateway().settings.configured
         } catch {
           return nil
         }
@@ -197,7 +197,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
       conversation: ConversationViewModel(conversation: connection, outbox: outbox),
       outbox: outbox,
       triggers: TriggerHTTPClient(baseURL: settings.baseURL, token: token),
-      peers: PeerHTTPClient(baseURL: settings.baseURL, token: token)
+      peers: PeerHTTPClient(baseURL: settings.baseURL, token: token),
+      replicas: catalog
     )
   }
 
@@ -221,22 +222,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   func owns(_ id: String?) -> Bool {
     guard let id else { return false }
-    if Self.triggerId(from: id) != nil { return true }
     // Membership follows the catalog, not whether a deferred publish has projected rows yet.
     return app?.bots.contains { $0.id == id } ?? false
-  }
-
-  /// A trigger row addresses one definition of the selected bot; the prefix keeps it apart
-  /// from a bot id and from the sample workspace.
-  static func triggerRowId(botId: String, triggerId: String) -> String {
-    "tr:\(botId):\(triggerId)"
-  }
-
-  static func triggerId(from rowId: String) -> String? {
-    guard rowId.hasPrefix("tr:") else { return nil }
-    let parts = rowId.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
-    guard parts.count == 3, !parts[2].isEmpty else { return nil }
-    return String(parts[2])
   }
 
   /// Whether a section id belongs to this window's groups (a daemon group or 未分组).
@@ -380,19 +367,9 @@ final class BotsWorkspaceViewModel: ObservableObject {
 
   func select(_ id: String) {
     guard let app, owns(id) else { return }
-    if let triggerId = Self.triggerId(from: id) {
-      // A trigger row never changes the open bot: it opens that definition's detail.
-      selectedTriggerId = triggerId
-      Task { await loadTriggerDetail(triggerId) }
-      onSelect?(id)
-      return
-    }
     // The sender's side starts an exchange without ever receiving a peer message, so the list is
     // read on selection and again when a run settles, not only when peer traffic arrives.
     selectedId = id
-    selectedTriggerId = nil
-    triggerDetail = nil
-    if !triggerRows.isEmpty { triggerRows = [] }
     app.select(id)
     // The sidebar's selection is the shell's, so a programmatic selection (a new bot, a
     // development shell) moves the list too.
@@ -401,36 +378,16 @@ final class BotsWorkspaceViewModel: ObservableObject {
     Task { await refreshExchanges() }
   }
 
-  /// One click on a row's switch. The daemon republishes the list, so the row follows.
-  func toggleTrigger(_ rowId: String) {
-    guard
-      let app,
-      let triggerId = Self.triggerId(from: rowId),
-      let botId = selectedId,
-      let current = app.conversation.state.triggers.first(where: { $0.id == triggerId })
-    else { return }
+  /// One click on a switch in the bot's own panel; the daemon republishes the list.
+  func setTriggerEnabled(_ triggerId: String, _ enabled: Bool) {
+    guard let app, let botId = selectedId else { return }
     Task {
       do {
         _ = try await app.setTriggerEnabled(
-          botId: botId, triggerId: triggerId, enabled: !current.enabled)
-        if selectedTriggerId == triggerId { await loadTriggerDetail(triggerId) }
+          botId: botId, triggerId: triggerId, enabled: enabled)
       } catch {
         self.error = (error as? ClientError)?.message ?? error.localizedDescription
       }
-    }
-  }
-
-  /// Read-only detail for the inspector; a fetch failure leaves the rows empty, not wrong.
-  func loadTriggerDetail(_ triggerId: String) async {
-    guard let app, let botId = selectedId else { return }
-    do {
-      let detail = try await app.triggerDetail(botId: botId, triggerId: triggerId)
-      triggerDetail = detail
-      let rows = detail.map(presenter.inspectorTrigger) ?? []
-      if triggerRows != rows { triggerRows = rows }
-    } catch {
-      triggerDetail = nil
-      if !triggerRows.isEmpty { triggerRows = [] }
     }
   }
 
@@ -632,6 +589,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
     selectedId = nil
     connection = .stopped
     running = false
+    waiting = false
     canRecover = false
     gatewayConfigured = nil
     needsModelSetup = false
@@ -661,6 +619,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
       if !tasks.isEmpty { tasks = [] }
       if !usage.isEmpty { usage = [] }
       if !choices.isEmpty { choices = [] }
+      if !triggerItems.isEmpty { triggerItems = [] }
+      if waiting { waiting = false }
       return
     }
     let conversation = app.conversation
@@ -677,7 +637,11 @@ final class BotsWorkspaceViewModel: ObservableObject {
     let nextRows = app.bots.map { bot in
       SidebarBotRow(
         groupId: bot.groupId,
-        item: presenter.sidebarItem(for: bot, preview: previews[bot.id]?.text ?? "")
+        item: presenter.sidebarItem(
+          for: bot,
+          preview: previews[bot.id]?.text ?? "",
+          running: bot.id == app.selection ? conversation.state.running : nil
+        )
       )
     }
     if rows != nextRows { rows = nextRows }
@@ -695,12 +659,14 @@ final class BotsWorkspaceViewModel: ObservableObject {
       transcript.clear()
       canRecover = false
       running = false
+      waiting = false
       error = nil
       // Keep the socket state visible while the catalog still lists bots to choose from.
       connection = app.bots.isEmpty ? .stopped : conversation.connection
       if !tasks.isEmpty { tasks = [] }
       if !usage.isEmpty { usage = [] }
       if !choices.isEmpty { choices = [] }
+      if !triggerItems.isEmpty { triggerItems = [] }
       return
     }
     if title != selected.title { title = selected.title }
@@ -718,7 +684,18 @@ final class BotsWorkspaceViewModel: ObservableObject {
     let nextChoices = presenter.agentChoices(
       for: selected, agent: conversation.state.agent, models: app.models)
     if choices != nextChoices { choices = nextChoices }
+    let nextTriggers = conversation.state.triggers.map { trigger in
+      InspectorTriggerRow(
+        id: trigger.id,
+        name: trigger.name,
+        detail: presenter.triggerSubtitle(trigger),
+        isOn: trigger.enabled
+      )
+    }
+    if triggerItems != nextTriggers { triggerItems = nextTriggers }
     if running != conversation.state.running { running = conversation.state.running }
+    let nextWaiting = presenter.isWaiting(for: conversation.state)
+    if waiting != nextWaiting { waiting = nextWaiting }
     noteRunSettled(conversation.state.running)
     if connection != conversation.connection { connection = conversation.connection }
     let nextRecover = conversation.state.unavailable != nil || conversation.parked
@@ -738,37 +715,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
       groups: groups.map { SidebarItemGroup(id: $0.id, title: $0.title) },
       collapsed: collapsed
     )
-    let next = botSections + triggerSections()
+    let next = botSections
     if sections != next { sections = next }
-  }
-
-  /// The selected bot's triggers, right under the bot list: one row per definition with a
-  /// one-click switch, and no section menu because the model owns the definitions.
-  private func triggerSections() -> [SidebarSection] {
-    guard let selectedId, let state = app?.conversation.state else { return [] }
-    guard !state.triggers.isEmpty else { return [] }
-    let sectionId = "owned:\(selectedId)"
-    let items = state.triggers.map { trigger in
-      SidebarItem(
-        id: Self.triggerRowId(botId: selectedId, triggerId: trigger.id),
-        title: trigger.name,
-        subtitle: presenter.triggerSubtitle(trigger),
-        tintIndex: tintIndex,
-        toggle: SidebarToggle(
-          isOn: trigger.enabled,
-          label: "\(trigger.enabled ? "停用" : "启用") \(trigger.name)"
-        )
-      )
-    }
-    return [
-      SidebarSection(
-        id: sectionId,
-        title: "触发器",
-        isExpanded: !collapsed.contains(sectionId),
-        items: items,
-        role: .owned
-      )
-    ]
   }
 
   private func mirrorConversationDraftIntoComposer() {
@@ -926,17 +874,6 @@ struct BotsPresenter {
     }
     flushTools()
     flushExchanges(upTo: nil)
-    // A running tool already shows its own row; the typing row is for a silent model.
-    let toolRunning = rows.contains { entry in
-      switch entry {
-      case .tool(_, let row): return row.isRunning
-      case .toolRun(_, let rows): return rows.contains { $0.isRunning }
-      default: return false
-      }
-    }
-    if !toolRunning, let typing = typingEntry(for: state) {
-      rows.append(typing)
-    }
     if let unavailable = state.unavailable {
       rows.append(
         .assistant(id: "unavailable", blocks: [.note("这个 Bot 暂时不可用：\(unavailable.message)")])
@@ -1213,12 +1150,31 @@ struct BotsPresenter {
     }
   }
 
-  /// While a run works and there is no growing text yet, the transcript shows the typing
-  /// row: the first token has not arrived, or the run moved on to another round.
-  func typingEntry(for state: ConversationState) -> TranscriptEntry? {
-    guard state.unavailable == nil, state.running else { return nil }
-    if let streaming = state.streamingMessage, !streaming.text.isEmpty { return nil }
-    return .typing(id: "typing-run")
+  /// Whether the bot is working with nothing to show yet: no growing text and no tool of its
+  /// own still executing. The window draws this as the wave line above the composer, never as
+  /// a transcript row, so starting and settling cannot move a message.
+  func isWaiting(for state: ConversationState) -> Bool {
+    guard state.unavailable == nil, state.running else { return false }
+    if let streaming = state.streamingMessage, !streaming.text.isEmpty { return false }
+    return !hasRunningTool(state)
+  }
+
+  /// A call inside the newest run that has no result yet: the tool row is already the sign of
+  /// work, so the wave line stays away.
+  private func hasRunningTool(_ state: ConversationState) -> Bool {
+    let (paired, _) = pairTools(state.messages)
+    let lastUserIndex = state.messages.lastIndex { $0.role == .user }
+    for (messageIndex, message) in state.messages.enumerated() where message.role == .assistant {
+      for (blockIndex, block) in message.blocks.enumerated() {
+        guard case .toolCall(_, let name, _) = block,
+          !Self.peerTools.contains(name),
+          paired[ToolCallKey(messageId: message.id, block: blockIndex)] == nil,
+          messageIndex > (lastUserIndex ?? -1)
+        else { continue }
+        return true
+      }
+    }
+    return false
   }
 
   func subtitle(for state: ConversationState, connection: ConnectionState) -> String {
@@ -1240,14 +1196,17 @@ struct BotsPresenter {
     abs(bot.id.hashValue) % Theme.Palette.avatarTints.count
   }
 
-  func sidebarItem(for bot: BotSummary, preview: String = "") -> SidebarItem {
+  /// `running` overrides the catalog for the open bot: its own socket knows the run before the
+  /// daemon's catalog round trip does, so every surface showing that bot moves together.
+  func sidebarItem(for bot: BotSummary, preview: String = "", running: Bool? = nil) -> SidebarItem {
     SidebarItem(
       id: bot.id,
       title: bot.title,
       subtitle: preview,
-      tag: bot.state == .running ? "回答中" : bot.label,
+      tag: bot.label,
       tintIndex: tintIndex(for: bot),
-      face: faceStyle(for: bot)
+      face: faceStyle(for: bot),
+      busy: running ?? (bot.state == .running)
     )
   }
 

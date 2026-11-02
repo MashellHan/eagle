@@ -222,3 +222,55 @@ test("assembly refuses an existing output and leaves source locks unchanged on a
     rmSync(f.root, { recursive: true, force: true });
   }
 });
+
+test("the pruner drops development artifacts and keeps what runs", async () => {
+  const { pruneDevelopmentFiles } = (await import(
+    "../apps/macos/Scripts/assemble-device-runtime.ts"
+  )) as typeof import("../apps/macos/Scripts/assemble-device-runtime.ts");
+  const root = mkdtempSync(join(tmpdir(), "eagle-runtime-prune-"));
+  try {
+    const pkg = join(root, "bots/node_modules/pkg");
+    mkdirSync(join(pkg, "dist"), { recursive: true });
+    mkdirSync(join(pkg, "__tests__"), { recursive: true });
+    mkdirSync(join(pkg, "docs"), { recursive: true });
+    mkdirSync(join(root, "bots/node_modules/.bin"), { recursive: true });
+    mkdirSync(join(root, "bots/src"), { recursive: true });
+    const writes: Record<string, string> = {
+      [`${pkg}/package.json`]: "{}",
+      [`${pkg}/dist/index.js`]: "export {};",
+      [`${pkg}/dist/index.js.map`]: "{}",
+      [`${pkg}/dist/index.d.ts`]: "export {};",
+      [`${pkg}/README.md`]: "# pkg",
+      [`${pkg}/LICENSE`]: "MIT",
+      [`${pkg}/__tests__/index.js`]: "test()",
+      [`${pkg}/docs/guide.md`]: "# guide",
+      [`${root}/bots/node_modules/.bin/pkg`]: "#!/bin/sh\n",
+      // Outside node_modules the source tree is the product, not a package's leftovers.
+      [`${root}/bots/src/main.ts`]: "export const x = 1;",
+      [`${root}/bots/NOTES.md`]: "# notes",
+    };
+    for (const [path, body] of Object.entries(writes))
+      writeFileSync(path, body);
+    const counts = pruneDevelopmentFiles(root);
+    assert.deepEqual(counts, { files: 3, directories: 2 });
+    for (const path of [
+      `${pkg}/dist/index.js.map`,
+      `${pkg}/dist/index.d.ts`,
+      `${pkg}/README.md`,
+      `${pkg}/__tests__`,
+      `${pkg}/docs`,
+    ])
+      assert.equal(existsSync(path), false, path);
+    for (const path of [
+      `${pkg}/package.json`,
+      `${pkg}/dist/index.js`,
+      `${pkg}/LICENSE`,
+      `${root}/bots/node_modules/.bin/pkg`,
+      `${root}/bots/src/main.ts`,
+      `${root}/bots/NOTES.md`,
+    ])
+      assert.equal(existsSync(path), true, path);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

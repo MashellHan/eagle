@@ -236,7 +236,7 @@ function macOSSystem(): DeviceInstallerSystem {
       };
     },
     prepare(bundle) {
-      checked(join(bundle, "Contents/MacOS/EagleApp"), [
+      checked(join(bundle, "Contents/MacOS/Eagle"), [
         "--prepare-device-update",
       ]);
     },

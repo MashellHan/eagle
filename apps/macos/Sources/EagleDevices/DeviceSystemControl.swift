@@ -4,6 +4,7 @@ import ServiceManagement
 
 @MainActor public protocol DeviceControl: AnyObject {
   var socketPath: String? { get }
+  var serviceProfile: String? { get }
   func start(
     confirm: @escaping @MainActor @Sendable (DeviceApprovalRequest) async -> Bool) async throws
   func retryStart(
@@ -14,6 +15,7 @@ import ServiceManagement
 }
 
 extension DeviceControl {
+  public var serviceProfile: String? { nil }
   public func retryStart(
     confirm: @escaping @MainActor @Sendable (DeviceApprovalRequest) async -> Bool
   ) async throws {
@@ -30,10 +32,34 @@ extension DeviceControl {
   private var client: DeviceXPCClient?
   private let log = Logger(subsystem: "ai.hexly.eagle.devices", category: "background")
   public var socketPath: String? { configuration?.socketPath }
-  public init(bundle: URL = Bundle.main.bundleURL, defaults: UserDefaults = .standard) {
+  public var serviceProfile: String? { configuration?.profile }
+  public init(
+    bundle: URL = Bundle.main.bundleURL, defaults: UserDefaults = .standard,
+    /// Owned tests may supply isolated legacy storage; production derives it from the App bundle.
+    legacyDefaults: UserDefaults? = nil
+  ) {
     self.bundle = bundle
     self.defaults = defaults
     configuration = try? DeviceHostConfiguration.load(bundle: bundle)
+    guard let configuration else { return }
+    let legacy =
+      legacyDefaults
+      ?? Self.legacyAppDomain(
+        profile: configuration.profile, identifier: Bundle(url: bundle)?.bundleIdentifier
+      )
+      .flatMap { UserDefaults(suiteName: $0) }
+    if let legacy {
+      DeviceServiceAddress.migrateLegacy(profile: configuration.profile, from: legacy)
+    }
+  }
+
+  static func legacyAppDomain(profile: String, identifier: String?) -> String? {
+    switch (profile, identifier) {
+    case ("device-release", "ai.hexly.eagle.macos"),
+      ("device-candidate", "ai.hexly.eagle.macos.device-candidate"):
+      return identifier
+    default: return nil
+    }
   }
   public func start(
     confirm: @escaping @MainActor @Sendable (DeviceApprovalRequest) async -> Bool

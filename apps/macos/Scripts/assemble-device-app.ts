@@ -42,8 +42,10 @@ type PrepareOptions = {
 type Execute = (program: string, args: string[]) => unknown;
 const save = (path: string, value: unknown) =>
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
-function origin(value: string | undefined, profile: Profile): string {
-  const requirement = `${profile === "device-release" ? "release" : "candidate"} requires a build-time HTTPS origin`;
+/** A build-time origin is optional: a published App ships none and the person names one. */
+function origin(value: string | undefined): string {
+  const requirement =
+    "a service origin must be an HTTPS origin without path, query or credentials";
   if (!value) throw new Error(requirement);
   const url = new URL(value);
   if (
@@ -69,7 +71,8 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
   const { sourceRoot, app, binary, helper, profile } = options;
   if (!app.endsWith(".app") || existsSync(app))
     throw new Error("bundle destination must be a new .app");
-  const support = join(sourceRoot, "apps/macos/Support");
+  const macos = join(sourceRoot, "apps/macos");
+  const support = join(macos, "Support");
   const config = JSON.parse(
     readFileSync(
       join(
@@ -81,10 +84,9 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
       "utf8",
     ),
   ) as HostConfig;
-  if (profile === "device-release" || options.serviceUrl)
-    config.baseUrl = origin(options.serviceUrl, profile);
+  if (options.serviceUrl) config.baseUrl = origin(options.serviceUrl);
   if (!existsSync(binary) || !existsSync(helper))
-    throw new Error("EagleApp and EagleDeviceHelper binaries are required");
+    throw new Error("Eagle and EagleDeviceHelper binaries are required");
   // The app's version is its own: releases of the website, the Agent and the app are
   // independent, so this file is the single source for every bundle the app is built into.
   const version = JSON.parse(
@@ -104,7 +106,7 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
       ? "ai.hexly.eagle.macos.device-candidate"
       : "ai.hexly.eagle.macos";
   const name =
-    profile === "device-candidate" ? "Eagle Device Candidate" : "Eagle";
+    profile === "device-candidate" ? "Eagle Device Candidate" : "Eagle for Mac";
   let info = readFileSync(join(support, "Info.plist"), "utf8");
   info = info.replace(
     "</dict>",
@@ -143,12 +145,15 @@ export function prepareDeviceBundle(options: PrepareOptions): void {
   mkdirSync(resources);
   mkdirSync(join(contents, "Library/LaunchServices"), { recursive: true });
   mkdirSync(join(contents, "Library/LaunchAgents"));
-  copyFileSync(binary, join(contents, "MacOS/EagleApp"));
+  copyFileSync(binary, join(contents, "MacOS/Eagle"));
   copyFileSync(helper, join(app, helperRelative));
-  chmodSync(join(contents, "MacOS/EagleApp"), 0o755);
+  chmodSync(join(contents, "MacOS/Eagle"), 0o755);
   chmodSync(join(app, helperRelative), 0o755);
   writeFileSync(join(contents, "Info.plist"), info);
-  copyFileSync(join(support, "AppIcon.icns"), join(resources, "AppIcon.icns"));
+  copyFileSync(
+    join(macos, "Sources/EagleDesign/Resources/AppIcon.icns"),
+    join(resources, "AppIcon.icns"),
+  );
   save(join(resources, "DeviceHost.json"), config);
   let launchConfiguration = readFileSync(join(support, templatePlist), "utf8");
   if (profile === "device-candidate") {
@@ -285,12 +290,18 @@ export function signDeviceBundle(
   identity: string,
   execute: Execute = (program, args) =>
     execFileSync(program, args, { stdio: "pipe" }),
+  /** A published build may be ad-hoc signed on purpose: it is un-notarized and needs a manual
+   * quarantine removal, so it takes an explicit opt-in rather than a default. */
+  allowAdhoc = false,
 ): void {
   const resources = join(app, "Contents/Resources");
   const config = JSON.parse(
     readFileSync(join(resources, "DeviceHost.json"), "utf8"),
   ) as HostConfig;
-  if (!identity || (identity === "-" && config.profile !== "device-candidate"))
+  if (
+    !identity ||
+    (identity === "-" && config.profile !== "device-candidate" && !allowAdhoc)
+  )
     throw new Error("release requires an explicit signing identity");
   const runtime = join(resources, "DeviceRuntime");
   verifyRuntimeLinks(runtime);
@@ -329,7 +340,12 @@ export function signDeviceBundle(
   );
   save(join(resources, "DeviceSigning.json"), {
     version: 1,
-    mode: identity === "-" ? "ad-hoc-candidate" : "configured-identity",
+    mode:
+      identity === "-"
+        ? config.profile === "device-candidate"
+          ? "ad-hoc-candidate"
+          : "ad-hoc-release"
+        : "configured-identity",
     nodeSignature: "preserved",
   });
   sign(app);
@@ -355,6 +371,7 @@ if (
         "release-url": { type: "string" },
         "updates-url": { type: "string" },
         identity: { type: "string", default: "-" },
+        "allow-adhoc": { type: "boolean", default: false },
         "source-root": {
           type: "string",
           default: resolve(dirname(fileURLToPath(import.meta.url)), "../../.."),
@@ -363,7 +380,12 @@ if (
     });
     if (!values.app) throw new Error("--app is required");
     if (values.mode === "sign")
-      signDeviceBundle(resolve(values.app), values.identity);
+      signDeviceBundle(
+        resolve(values.app),
+        values.identity,
+        undefined,
+        values["allow-adhoc"],
+      );
     else {
       if (
         values.mode !== "prepare" ||

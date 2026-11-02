@@ -21,11 +21,11 @@ public struct SidebarPanel: View {
   private let onGallery: () -> Void
   private let unreadCount: Int
   private let onUnread: () -> Void
+  /// The product's own name and version, lowercase as the brand writes them.
   private let userName: String
+  private let productVersion: String
   private let onPinItem: (String) -> Void
   private let moveTargets: (String) -> [SidebarItemGroup]
-  /// The trailing switch's one action: a trigger row toggles, it never opens a menu.
-  private let onToggleItem: (String) -> Void
   private let onMoveItem: (String, String?) -> Void
   private let onMarkUnread: (String) -> Void
   private let onCopyId: (String) -> Void
@@ -58,10 +58,11 @@ public struct SidebarPanel: View {
     onGallery: @escaping () -> Void = {},
     unreadCount: Int = 0,
     onUnread: @escaping () -> Void = {},
-    userName: String = "Zheng Li",
+    userName: String = "eagle",
+    productVersion: String = "",
     onPinItem: @escaping (String) -> Void = { _ in },
     moveTargets: @escaping (String) -> [SidebarItemGroup] = { _ in [] },
-    onToggleItem: @escaping (String) -> Void = { _ in },
+
     onMoveItem: @escaping (String, String?) -> Void = { _, _ in },
     onMarkUnread: @escaping (String) -> Void = { _ in },
     onCopyId: @escaping (String) -> Void = { _ in },
@@ -88,9 +89,9 @@ public struct SidebarPanel: View {
     self.unreadCount = unreadCount
     self.onUnread = onUnread
     self.userName = userName
+    self.productVersion = productVersion
     self.onPinItem = onPinItem
     self.moveTargets = moveTargets
-    self.onToggleItem = onToggleItem
     self.onMoveItem = onMoveItem
     self.onMarkUnread = onMarkUnread
     self.onCopyId = onCopyId
@@ -117,13 +118,16 @@ public struct SidebarPanel: View {
       Spacer(minLength: 0)
       toolbar
     }
-    .frame(height: Theme.Metric.headerControlHeight)
+    .frame(height: Theme.Metric.headerControlHeight, alignment: .top)
     .padding(.horizontal, Theme.Metric.contentInset)
+    // The list below would paint over the controls' shadows without this room.
+    .padding(.bottom, Theme.Metric.roundShadowBleed)
     .padding(.top, Theme.Metric.headerTopInset)
   }
 
   private var toolbar: some View {
-    HStack(spacing: 6) {
+    // One spacing for every header group, so the circle rhythm matches the reference.
+    HStack(spacing: Theme.Metric.headerControlGap) {
       IconButton(
         systemName: "magnifyingglass",
         label: "搜索",
@@ -200,7 +204,7 @@ public struct SidebarPanel: View {
 
   @ViewBuilder
   private func sectionHeader(_ section: SidebarSection, isFirst: Bool) -> some View {
-    if section.role == .ungrouped || section.role == .owned {
+    if section.role == .ungrouped {
       sectionHeaderContent(section, isFirst: isFirst)
     } else {
       sectionHeaderContent(section, isFirst: isFirst)
@@ -290,20 +294,7 @@ public struct SidebarPanel: View {
 
   @ViewBuilder
   private func row(_ item: SidebarItem) -> some View {
-    HStack(spacing: Theme.Metric.rowToggleGap) {
-      selectableRow(item)
-      if let toggle = item.toggle {
-        // Outside the row's button, so one click switches and never selects.
-        SwitchToggle(
-          isOn: Binding(get: { toggle.isOn }, set: { _ in onToggleItem(item.id) }),
-          label: toggle.label,
-          size: .compact
-        )
-        .padding(.trailing, Theme.Metric.rowContentInset)
-        .help(toggle.label)
-      }
-    }
-    .id(item.id)
+    selectableRow(item).id(item.id)
   }
 
   @ViewBuilder
@@ -412,27 +403,47 @@ public struct SidebarPanel: View {
 
   /// No card and no border: the avatar lines up with the list avatars at the
   /// shared 20 pt content inset.
+  @ViewBuilder private var productMark: some View {
+    if let icon = EagleIcon.image {
+      Image(nsImage: icon)
+        .resizable()
+        .interpolation(.high)
+        .frame(width: Theme.Metric.avatarRow, height: Theme.Metric.avatarRow)
+        .clipShape(
+          RoundedRectangle(
+            cornerRadius: Theme.Metric.productMarkRadius, style: .continuous)
+        )
+    } else {
+      Avatar(initial: "e", tint: Theme.Palette.avatarTint(2), size: Theme.Metric.avatarRow)
+    }
+  }
+
   private var footer: some View {
     HStack(spacing: Theme.Metric.rowAvatarGap) {
       Button(action: onAccount) {
         HStack(spacing: Theme.Metric.rowAvatarGap) {
-          Avatar(initial: "Z", tint: Theme.Palette.avatarTint(2), size: Theme.Metric.avatarRow)
+          productMark
           Text(userName)
             .font(Theme.TypeScale.rowTitle)
             .foregroundStyle(Theme.Palette.textPrimary)
             .lineLimit(1)
+          if !productVersion.isEmpty { Tag(productVersion) }
         }
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
-      .accessibilityLabel("账户与设置")
+      .accessibilityLabel("eagle \(productVersion)，账户与设置")
       Spacer(minLength: 0)
-      HStack(spacing: 12) {
-        Image(systemName: "bell")
-          .font(.system(size: 13))
-          .foregroundStyle(Theme.Palette.textSecondary)
+      HStack(spacing: Theme.Metric.headerControlGap) {
+        IconButton(
+          systemName: "gearshape", label: "设置",
+          size: Theme.Metric.headerControlHeight,
+          style: .circled,
+          action: onAccount
+        )
         IconButton(
           systemName: "square.grid.2x2", label: "Eagle 模板库",
+          size: Theme.Metric.headerControlHeight,
           style: .circled, action: onGallery
         )
       }

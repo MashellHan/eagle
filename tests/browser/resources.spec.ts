@@ -225,7 +225,7 @@ test("environment resources retain Space, show bounded dual axes and honest miss
   await expect(cpuDots.last()).toBeVisible();
   await expect(memoryDots).toHaveCount(1);
   await expect(memoryDots).toBeVisible();
-  await page.clock.runFor(180000);
+  await page.clock.fastForward(180000);
   await expect(environment).toContainText("历史快照");
   await expect(environment).toContainText("上次网络");
   await expect(cpuDots).toHaveCount(2);

@@ -352,7 +352,8 @@ struct SettingsGatewayTests {
     await model.loadGateway()
     #expect(model.gatewayBaseURL == "http://typed/v1")
     #expect(model.gatewayModel == "typed-model")
-    #expect(model.gatewayToolGroups == ["core", "coding", "agents", "trigger"])
+    #expect(
+      model.gatewayToolGroups == ["persona", "machine", "core", "coding", "agents", "trigger"])
     GatewayHTTPStub.handler = nil
   }
 
@@ -438,8 +439,12 @@ struct SettingsGatewayTests {
     }
     let model = SettingsViewModel(botsSettings: settings, urlSession: session)
     await model.loadGateway()
-    #expect(model.gateway?.toolGroups == ["core", "coding", "herdr", "agents", "trigger"])
-    #expect(model.gatewayToolGroups == ["core", "coding", "herdr", "agents", "trigger"])
+    #expect(
+      model.gateway?.toolGroups
+        == ["persona", "machine", "core", "coding", "herdr", "agents", "trigger"])
+    #expect(
+      model.gatewayToolGroups
+        == ["persona", "machine", "core", "coding", "herdr", "agents", "trigger"])
     GatewayHTTPStub.handler = nil
   }
 
@@ -454,7 +459,9 @@ struct SettingsGatewayTests {
     model.setToolGroup("herdr", isOn: false)
     #expect(model.isToolGroupEnabled("herdr") == false)
     model.setToolGroup("herdr", isOn: true)
-    #expect(model.gatewayToolGroups == ["core", "coding", "herdr", "agents", "trigger"])
+    #expect(
+      model.gatewayToolGroups
+        == ["persona", "machine", "core", "coding", "herdr", "agents", "trigger"])
   }
 
   @Test("loadGatewayIfNeeded fetches only once")
@@ -602,11 +609,12 @@ struct SettingsGatewayTests {
       let body = gatewayHTTPBody(request)
       let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
       #expect(
-        parsed?["toolGroups"] as? [String] == ["core", "coding", "herdr", "agents", "trigger"])
+        parsed?["toolGroups"] as? [String]
+          == ["persona", "machine", "core", "coding", "herdr", "agents", "trigger"])
       return (
         200,
         Data(
-          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","coding","herdr","agents","trigger"]}}"#
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["persona","machine","core","coding","herdr","agents","trigger"]}}"#
             .utf8)
       )
     }
@@ -624,11 +632,13 @@ struct SettingsGatewayTests {
     GatewayHTTPStub.handler = { request in
       let body = gatewayHTTPBody(request)
       let parsed = try JSONSerialization.jsonObject(with: try #require(body)) as? [String: Any]
-      #expect(parsed?["toolGroups"] as? [String] == ["core", "coding", "agents", "trigger"])
+      #expect(
+        parsed?["toolGroups"] as? [String]
+          == ["persona", "machine", "core", "coding", "agents", "trigger"])
       return (
         200,
         Data(
-          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["core","coding","agents","trigger"]}}"#
+          #"{"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"toolGroups":["persona","machine","core","coding","agents","trigger"]}}"#
             .utf8)
       )
     }
@@ -663,7 +673,8 @@ struct SettingsGatewayTests {
     model.gatewayBaseURL = "http://gw/v1"
     model.gatewayModel = "m1"
     await model.saveGateway()
-    #expect(saved == ["core", "coding", "herdr", "agents", "search", "trigger"])
+    #expect(
+      saved == ["persona", "machine", "core", "coding", "herdr", "agents", "search", "trigger"])
 
     GatewayHTTPStub.handler = { request in
       #expect(request.httpMethod == "GET")
@@ -692,6 +703,122 @@ struct SettingsGatewayTests {
     await model.saveGateway()
     #expect(model.gatewayMessage == "bad gateway")
     GatewayHTTPStub.handler = nil
+  }
+
+  @Test("loadGateway reads the persona and the machine file")
+  func loadsCorePrompts() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    GatewayHTTPStub.handler = { _ in
+      (
+        200,
+        Data(
+          #"""
+          {"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"corePrompt":"只说结论。"},"machinePrompt":{"path":"/m/AGENTS.md","text":"机器规则"}}
+          """#.utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    await model.loadGateway()
+    #expect(model.gatewayCorePrompt == "只说结论。")
+    #expect(model.gatewayMachinePrompt?.path == "/m/AGENTS.md")
+    #expect(model.gatewayMachinePrompt?.text == "机器规则")
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("saveTools sends only the persona and the groups, and takes the answer back")
+  func savesTools() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    var body: [String: Any]?
+    GatewayHTTPStub.handler = { request in
+      if let data = gatewayHTTPBody(request) {
+        body = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+      }
+      return (
+        200,
+        Data(
+          #"""
+          {"settings":{"configured":true,"provider":"magpie","baseUrl":"http://gw/v1","model":"m1","hasApiKey":true,"corePrompt":"新的人格","toolGroups":["persona","machine","core","coding"]},"machinePrompt":{"path":"/m/AGENTS.md","text":"机器规则"}}
+          """#.utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.gatewayCorePrompt = "  新的人格  "
+    model.gatewayCorePromptChosen = true
+    await model.saveTools()
+    #expect(body?["corePrompt"] as? String == "  新的人格  ")
+    #expect(body?["baseUrl"] == nil, "the tools page never rewrites the gateway")
+    #expect(model.gatewayCorePrompt == "新的人格")
+    #expect(!model.gatewayCorePromptChosen)
+    #expect(model.gatewayMachinePrompt?.path == "/m/AGENTS.md")
+    #expect(model.gatewayMessage == "已保存，工具与人格从下一轮开始生效")
+    GatewayHTTPStub.handler = nil
+  }
+
+  @Test("a held tools save keeps the newer prompt draft and its ownership")
+  func saveToolsPreservesNewerDraft() async throws {
+    let (settings, session) = try settingsGatewayFixture()
+    let entered = AsyncStream<Void>.makeStream()
+    let release = DispatchSemaphore(value: 0)
+    defer {
+      release.signal()
+      entered.continuation.finish()
+      GatewayHTTPStub.handler = nil
+    }
+    GatewayHTTPStub.handler = { request in
+      #expect(request.httpMethod == "PUT")
+      let data = try #require(gatewayHTTPBody(request))
+      let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+      #expect(body?["corePrompt"] as? String == "  submitted A  ")
+      entered.continuation.yield(())
+      release.wait()
+      return (
+        200,
+        Data(
+          #"{"settings":{"configured":false,"provider":"magpie","baseUrl":"","model":"","hasApiKey":false,"corePrompt":"submitted A"}}"#
+            .utf8)
+      )
+    }
+    let model = SettingsViewModel(botsSettings: settings, urlSession: session)
+    model.gatewayCorePrompt = "  submitted A  "
+    model.gatewayCorePromptChosen = true
+    let saving = Task { await model.saveTools() }
+    var requests = entered.stream.makeAsyncIterator()
+    _ = await requests.next()
+    model.gatewayCorePrompt = "newer B"
+    model.gatewayCorePromptChosen = true
+    release.signal()
+    await saving.value
+    #expect(model.gateway?.corePrompt == "submitted A", "the stored result still records A")
+    #expect(model.gatewayCorePrompt == "newer B")
+    #expect(model.gatewayCorePromptChosen, "a later load must not overwrite the unsaved edit")
+    GatewayHTTPStub.handler = { _ in
+      (
+        200,
+        Data(
+          #"{"settings":{"configured":false,"provider":"magpie","baseUrl":"","model":"","hasApiKey":false,"corePrompt":"submitted A"}}"#
+            .utf8)
+      )
+    }
+    await model.loadGateway()
+    #expect(model.gatewayCorePrompt == "newer B")
+    #expect(model.gatewayCorePromptChosen)
+    GatewayHTTPStub.handler = { _ in
+      (400, Data(#"{"error":{"kind":"invalid_command","message":"owned save refusal"}}"#.utf8))
+    }
+    await model.saveTools()
+    #expect(model.gatewayMessage == "owned save refusal")
+    #expect(model.gatewayCorePrompt == "newer B")
+    #expect(model.gatewayCorePromptChosen)
+  }
+
+  @Test("both core prompts are on by default and can be switched off")
+  func defaults() {
+    let model = SettingsViewModel()
+    #expect(model.isToolGroupEnabled("persona"))
+    #expect(model.isToolGroupEnabled("machine"))
+    model.setToolGroup("persona", isOn: false)
+    #expect(model.isToolGroupEnabled("persona") == false)
+    #expect(model.isToolGroupEnabled("machine"))
   }
 }
 

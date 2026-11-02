@@ -99,7 +99,10 @@ struct DeviceServiceHostTests {
       let port = DeviceLocalPort(path: host.socketPath)
       let status = try await port.call("status")
       #expect(status["localReady"]?.bool == true)
-      #expect(status["policy"]?["mode"]?.string == "all-approve")
+      // A device nobody decided about asks before it acts...
+      #expect(status["policy"]?["mode"]?.string == "always-ask")
+      // ...and this case is about the tool path once the person has allowed it.
+      _ = try await host.call("policy.set", params: .object(["mode": .string("all-approve")]))
       let output = host.stateDirectory.appendingPathComponent("proof.txt")
       let operation: DeviceJSON = .object([
         "kind": .string("file.write"), "path": .string(output.path), "content": .string("真实本机"),
@@ -123,6 +126,34 @@ struct DeviceServiceHostTests {
       let policy = try await host.call("policy.set", params: .object(["mode": .string("paused")]))
       #expect(policy["mode"]?.string == "paused")
       #expect(try await port.call("status")["policy"]?["mode"]?.string == "paused")
+    } catch {
+      try await clean(host)
+      throw error
+    }
+    try await clean(host)
+  }
+
+  @Test("sync management crosses the trusted Host but remains forbidden on the Bot socket")
+  func syncManagement() async throws {
+    let host = try host()
+    try await ready(host)
+    do {
+      for method in ["sync.share", "sync.incoming", "sync.endpoints.publish"] {
+        // Node errors follow Host admission; incoming {} is a valid default request.
+        do {
+          _ = try await host.call(method, params: .object([:]))
+          Issue.record("this offline management request must return a Node error")
+        } catch {
+          #expect(error is DevicePortError, "expected Node rejection, got \(error)")
+          #expect((error as? DevicePortError)?.code == "device_service_failed")
+        }
+        await #expect(throws: DevicePortError.self) {
+          try await DeviceLocalPort(path: host.socketPath).call(method, params: .object([:]))
+        }
+      }
+      await #expect(throws: DeviceHostError.self) {
+        try await host.call("sync.unknown", params: .object([:]))
+      }
     } catch {
       try await clean(host)
       throw error
@@ -190,7 +221,7 @@ struct DeviceServiceHostTests {
     await #expect(throws: DevicePortError.self) {
       try await client.call("policy.set", params: .object(["mode": .string("paused")]))
     }
-    #expect(try await host.call("policy.get")["mode"]?.string == "all-approve")
+    #expect(try await host.call("policy.get")["mode"]?.string == "always-ask")
     client.invalidate()
     withExtendedLifetime(server) { listener.invalidate() }
     let trustedListener = NSXPCListener.anonymous()
@@ -234,7 +265,7 @@ struct DeviceServiceHostTests {
       #expect(host.failure == nil)
       #expect(try String(contentsOf: starts, encoding: .utf8).split(separator: "\n").count == 2)
       #expect(try await host.call("service.status")["localReady"]?.bool == true)
-      #expect(try await host.call("policy.get")["mode"]?.string == "all-approve")
+      #expect(try await host.call("policy.get")["mode"]?.string == "always-ask")
     } catch {
       await host.stop()
       throw error

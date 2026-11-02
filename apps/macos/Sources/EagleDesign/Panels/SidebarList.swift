@@ -4,16 +4,6 @@ import SwiftUI
 /// owns the groups and maps them onto these sections.
 /// A row's trailing switch: one click, no menu. A sidebar row that has one reserves the
 /// space so its title truncates instead of sliding under it.
-public struct SidebarToggle: Hashable, Sendable {
-  public let isOn: Bool
-  public let label: String
-
-  public init(isOn: Bool, label: String) {
-    self.isOn = isOn
-    self.label = label
-  }
-}
-
 public struct SidebarItem: Identifiable, Hashable, Sendable {
   public let id: String
   public let title: String
@@ -26,8 +16,8 @@ public struct SidebarItem: Identifiable, Hashable, Sendable {
   public let pinned: Bool
   /// Unread rows carry the accent dot at the trailing edge.
   public let unread: Bool
-  /// A trailing switch; nil keeps the row a plain selection target.
-  public let toggle: SidebarToggle?
+  /// A bot that is answering: its face turns slowly instead of wearing a "working" tag.
+  public let busy: Bool
 
   public init(
     id: String,
@@ -38,7 +28,7 @@ public struct SidebarItem: Identifiable, Hashable, Sendable {
     face: BotFace.Style? = nil,
     pinned: Bool = false,
     unread: Bool = false,
-    toggle: SidebarToggle? = nil
+    busy: Bool = false
   ) {
     self.id = id
     self.title = title
@@ -48,7 +38,7 @@ public struct SidebarItem: Identifiable, Hashable, Sendable {
     self.face = face
     self.pinned = pinned
     self.unread = unread
-    self.toggle = toggle
+    self.busy = busy
   }
 }
 
@@ -59,9 +49,6 @@ public struct SidebarSection: Identifiable, Hashable, Sendable {
     case sample
     case group
     case ungrouped
-    /// Rows the selected bot owns (its triggers): no rename, no move, no delete — the
-    /// model owns the definitions and the row only switches one on or off.
-    case owned
   }
 
   public let id: String
@@ -93,8 +80,6 @@ public struct SidebarSection: Identifiable, Hashable, Sendable {
       return nil
     case .ungrouped:
       return "未分组不能删除"
-    case .owned:
-      return "这些行由 Bot 自己管理"
     case .group:
       return items.isEmpty ? nil : "组内还有 \(items.count) 个 Bot，先移走再删除"
     }

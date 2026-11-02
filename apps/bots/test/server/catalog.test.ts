@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { MAX_HTTP_BODY_BYTES } from "../../src/protocol/limits.ts";
 import { frameQueue, hello, send, startStack } from "../support/server.ts";
 
 const api = (stack: { port: number; token: string }) => {
@@ -102,7 +103,8 @@ test("an unknown endpoint and an oversized body are refused", async () => {
     const huge = await fetch(`http://127.0.0.1:${stack.port}/v1/bots`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ title: "x".repeat(9_000) }),
+      // One byte over the shared frame cap: the whole body is refused before it is parsed.
+      body: JSON.stringify({ title: "x".repeat(MAX_HTTP_BODY_BYTES) }),
     });
     assert.equal(huge.status, 500, "a body over the cap is refused");
   } finally {

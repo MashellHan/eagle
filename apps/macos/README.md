@@ -10,6 +10,70 @@ MacMini-2 → MacMini 1 command with original-ID result retrieval have been veri
 Fresh-Mac installation and reverse-direction acceptance remain unverified.
 Other overview and inspector content still includes demos.
 
+## Download a published build
+
+A published build is **ad-hoc signed and not notarized**: there is no Developer ID
+certificate in this project's release path, so macOS cannot vouch for the download and
+blocks it on first launch. One command clears that, and nothing else should be disabled:
+
+```sh
+cd ~/Downloads
+ditto -x -k Eagle-<version>-macos.zip .
+xattr -dr com.apple.quarantine "Eagle for Mac.app"
+cp -R "Eagle for Mac.app" /Applications/
+open "/Applications/Eagle for Mac.app"
+```
+
+Extract with `ditto -x -k` (or double-click the zip in Finder); plain `unzip` turns the
+archive's AppleDouble metadata into real `._*` files and breaks the code signature. After the
+step above `codesign --verify --deep --strict "Eagle for Mac.app"` passes and the App runs; `spctl`
+still reports `rejected`, which is what "ad-hoc, un-notarized" means.
+
+`xattr -dr` removes the quarantine attribute that the browser/`gh` put on the unpacked
+bundle, which is exactly what Gatekeeper refuses. If macOS still asks after that, allow the
+app once in **System Settings → Privacy & Security**; never run `sudo spctl --master-disable`,
+which turns off Gatekeeper for every app on the Mac. The device service is a per-user
+background item, so approve **Eagle** under **System Settings → General → Login Items &
+Extensions** when it asks, or the App stays at "service not running".
+
+The App itself ships **no** device service address. After the first launch, open
+**设置 → 设备 → 服务地址** and enter the origin of the relay you run (HTTPS; `http` is accepted
+only for loopback). Until then the App registers no background service and contacts nothing.
+
+**Replacing an installed copy** (an upgrade, or a rebuild of the same version) must unregister
+the background service first, or macOS kills the new helper with a code-signing failure:
+
+```sh
+"/Applications/Eagle for Mac.app/Contents/MacOS/Eagle" --prepare-device-update
+```
+
+Then replace the bundle and open the new copy; it registers its service again on launch.
+
+Every upgrade repeats the unblock step: a new download carries quarantine again, and an
+ad-hoc signature changes with each build, so replace the whole bundle instead of patching it.
+Nothing verifies the publisher, and the bundle carries no Apple notarization ticket —
+downloads are trusted because they come from this repository's releases, nothing more.
+
+## Build the ad-hoc release yourself
+
+`EAGLE_ADHOC_RELEASE=1` is the explicit opt-in that publishes a `device-release` bundle
+without a signing identity; without it a release build still refuses to sign ad-hoc:
+
+```sh
+export EAGLE_DEVICE_PROFILE=device-release
+export EAGLE_UPDATES_URL=https://app.example.com/api/live
+export EAGLE_CODESIGN_IDENTITY=-
+export EAGLE_ADHOC_RELEASE=1
+apps/macos/Scripts/build-app.sh release
+ditto -c -k --keepParent "apps/macos/.build/device-release/Eagle for Mac.app" \
+  "/tmp/Eagle-$(node -p "require('./apps/macos/Support/Version.json').version")-macos.zip"
+shasum -a 256 /tmp/Eagle-*-macos.zip
+```
+
+The zip is the release asset: `gh release create v<version> /tmp/Eagle-<version>-macos.zip`
+(or `gh release upload`). The bundle records `"mode": "ad-hoc-release"` in
+`Contents/Resources/DeviceSigning.json`, so an installed copy states what it is.
+
 ## Build the pairing candidate on another Mac
 
 Requires **macOS 15+**, Xcode or Command Line Tools, and an **official standalone
@@ -78,7 +142,7 @@ physical A-to-B command does not establish every step on a clean machine.
 
 ```sh
 cd apps/macos
-swift run EagleApp          # same shell without a bundle; ⌘⇧G opens the gallery
+swift run Eagle             # same shell without a bundle; ⌘⇧G opens the gallery
 swift test                 # Swift Testing suites for the logic layer
 ./Scripts/coverage.sh      # same tests plus a 90% logic-coverage gate
 swift run SnapshotRenderer ../../.local/macos-snapshots   # PNGs for review
@@ -128,7 +192,7 @@ Sources/
                        ThreeColumnShell
     Gallery/           TemplateGallery
   EagleFeatures/     ObservableObject view models and mock data
-  EagleApp/          AppKit delegate, window, gallery window
+  EagleApp/          AppKit delegate, window, gallery window (the `Eagle` product)
   SnapshotRenderer/  offscreen PNG renderer
   Scripts/           build-app, make-icon, coverage
 ```

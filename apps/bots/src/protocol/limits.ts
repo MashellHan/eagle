@@ -2,6 +2,8 @@
 // encoded frame unless the name says otherwise.
 
 export const MAX_FRAME_BYTES = 256 * 1024;
+/** Ordinary HTTP JSON, measured as received; replica/resource and raw delivery caps stay separate. */
+export const MAX_HTTP_BODY_BYTES = MAX_FRAME_BYTES;
 export const MAX_SEND_TEXT = 8_000;
 export const MAX_TITLE_CHARS = 80;
 /** A bot's optional label: short enough to sit next to the title in the sidebar. */

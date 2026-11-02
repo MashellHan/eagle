@@ -26,6 +26,7 @@ struct BotsConversationContent: View {
       onSend: { bots.send() },
       showsSidebar: layout.showsSidebar, showsInspector: layout.showsInspector,
       participantStatus: bots.participantStatus,
+      isWaiting: bots.waiting,
       onStop: { bots.abort() },
       onInsert: bots.running ? { bots.send(inserting: true) } : nil,
       onRecover: { bots.recover() },

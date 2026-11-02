@@ -30,7 +30,10 @@ public struct IconButton: View {
     self.systemName = systemName
     self.label = label
     self.size = size
-    self.glyphSize = glyphSize ?? size * 0.55
+    switch style {
+    case .plain: self.glyphSize = glyphSize ?? size * 0.55
+    case .circled: self.glyphSize = glyphSize ?? size * Theme.Metric.roundGlyphRatio
+    }
     self.tint = tint
     self.style = style
     self.action = action
@@ -39,7 +42,7 @@ public struct IconButton: View {
   public var body: some View {
     Button(action: action) {
       Image(systemName: systemName)
-        .font(.system(size: glyphSize, weight: .medium))
+        .font(.system(size: glyphSize, weight: style == .circled ? .regular : .medium))
         .foregroundStyle(tint)
         .frame(width: size, height: size)
         .background { background }
@@ -58,10 +61,35 @@ public struct IconButton: View {
       RoundedRectangle(cornerRadius: Theme.Metric.controlRadius, style: .continuous)
         .fill(hovering ? Theme.Palette.hover : .clear)
     case .circled:
-      Circle()
-        .fill(hovering ? Theme.Palette.hover : Theme.Palette.card)
-        .overlay(Circle().strokeBorder(Theme.Palette.line, lineWidth: Theme.Metric.hairline))
+      RoundControlSurface(size: size, hovering: hovering)
     }
+  }
+}
+
+/// The white circle every header control shares: a hairline ring, a soft shadow that lifts it off
+/// the sidebar, and a hover wash that keeps the ring readable.
+struct RoundControlSurface: View {
+  let size: CGFloat
+  let hovering: Bool
+
+  var body: some View {
+    Circle()
+      .fill(Theme.Palette.card)
+      .overlay {
+        Circle().fill(hovering ? Theme.Palette.hover : .clear)
+      }
+      .overlay {
+        Circle().strokeBorder(
+          hovering ? Theme.Palette.line.opacity(1.4) : Theme.Palette.line,
+          lineWidth: Theme.Metric.hairline
+        )
+      }
+      .shadow(
+        color: .black.opacity(Theme.Metric.roundShadowOpacity),
+        radius: Theme.Metric.roundShadowRadius,
+        y: Theme.Metric.roundShadowY
+      )
+      .frame(width: size, height: size)
   }
 }
 

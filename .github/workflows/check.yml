@@ -7,6 +7,17 @@ concurrency:
   group: check-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  bots-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: apps/bots-sync/package-lock.json
+      - run: npm --prefix apps/bots-sync ci
+      - run: npm --prefix apps/bots-sync run check
   test:
     runs-on: ubuntu-latest
     steps:
@@ -22,7 +33,9 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
   macos:
-    runs-on: macos-15
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
       # Swift builds independently. Real App/device integration tests also exercise
@@ -34,8 +47,10 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             apps/bots/package-lock.json
+            apps/bots-sync/package-lock.json
       - run: npm ci
       - run: npm --prefix apps/bots ci
+      - run: npm --prefix apps/bots-sync ci
       - run: npm --workspace @nocoo/eagle-agent run build
       - run: npm run test:devices
       - run: swift build --package-path apps/macos

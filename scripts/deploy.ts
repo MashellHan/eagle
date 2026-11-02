@@ -9,18 +9,14 @@ if (git("status", "--porcelain"))
     "Commit the release before deploying; the health endpoint must identify the exact source revision.",
   );
 const revision = git("rev-parse", "HEAD");
-// The published app version is the app's own file; the release page is one link for both
-// the Worker's answer and the App's prompt.
-const macosVersion = (
-  JSON.parse(readFileSync("apps/macos/Support/Version.json", "utf8")) as {
-    version: string;
-  }
-).version;
-const macosReleaseUrl = (
-  JSON.parse(readFileSync("package.json", "utf8")) as {
-    config?: { macosReleaseUrl?: string };
-  }
-).config?.macosReleaseUrl;
+// The app ships on its own cadence and many releases carry no app asset, so `/api/live` may
+// only claim a version that is actually attached to a GitHub release. That claim is the
+// manifest's, never the app's source version.
+const manifest = JSON.parse(readFileSync("package.json", "utf8")) as {
+  config?: { publishedMacosVersion?: string; macosReleaseUrl?: string };
+};
+const macosVersion = manifest.config?.publishedMacosVersion;
+const macosReleaseUrl = manifest.config?.macosReleaseUrl;
 // The tracked repository carries only an example. A deployment names its own configuration:
 // the local file when one exists, otherwise the JSON in EAGLE_WRANGLER_CONFIG (CI secret).
 const configPath = "apps/web/wrangler.jsonc";
@@ -45,8 +41,9 @@ execFileSync(
     configPath,
     "--var",
     `BUILD_REVISION:${revision}`,
-    "--var",
-    `MACOS_VERSION:${macosVersion}`,
+    ...(macosVersion === undefined
+      ? []
+      : ["--var", `MACOS_VERSION:${macosVersion}`]),
     ...(macosReleaseUrl === undefined
       ? []
       : ["--var", `MACOS_RELEASE_URL:${macosReleaseUrl}`]),

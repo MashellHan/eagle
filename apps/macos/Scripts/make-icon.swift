@@ -2,7 +2,8 @@ import AppKit
 import Foundation
 
 /// Builds `Support/AppIcon.iconset` from the Eagle brand composition and packs
-/// it into `Support/AppIcon.icns`.
+/// it into `Sources/EagleDesign/Resources/AppIcon.icns`, which is both the bundle
+/// icon and the Dock icon of a bundle-less `swift run` (see `EagleIcon`).
 ///
 /// Source artwork: hexly.ai `public/brands/eagle/v1.0.0/hero-square.webp`
 /// (authored composition of the approved 2048 px eagle foreground plus its
@@ -15,7 +16,7 @@ let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let texture = root.appendingPathComponent("Support/Brand/eagle-texture.png")
 let mark = root.appendingPathComponent("Support/Brand/eagle-mark.png")
 let iconset = root.appendingPathComponent("Support/AppIcon.iconset")
-let output = root.appendingPathComponent("Support/AppIcon.icns")
+let output = root.appendingPathComponent("Sources/EagleDesign/Resources/AppIcon.icns")
 
 guard let textureImage = NSImage(contentsOf: texture), let markImage = NSImage(contentsOf: mark)
 else {

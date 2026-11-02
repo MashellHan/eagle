@@ -21,6 +21,7 @@ struct ThemeTests {
     #expect(Theme.Metric.headerBandHeight == Theme.Metric.participantHeight)
     #expect(Theme.Metric.headerTopInset == 20)
     #expect(Theme.Metric.participantHeight == 40)
+    #expect(Theme.Metric.participantAvatar == 25)
     #expect(
       Theme.Metric.headerTopInset + Theme.Metric.headerBandHeight <= Theme.Metric.headerHeight)
     #expect(Theme.Metric.trafficLightsEnd == 75.5)
@@ -29,10 +30,12 @@ struct ThemeTests {
     #expect(Theme.Metric.rowContentInset + Theme.Metric.listCardInset == Theme.Metric.contentInset)
     #expect(Theme.Metric.edgeFadeHeight == 20)
     #expect(Theme.Metric.toolbarTopInset == 0)
-    #expect(Theme.Metric.headerControlHeight == Theme.Metric.avatarRow)
+    // The reference header control is its own size: 35 pt with a 16 pt glyph.
+    #expect(Theme.Metric.headerControlHeight == 35)
+    #expect(Theme.Metric.headerControlHeight * Theme.Metric.roundGlyphRatio < 17)
     #expect(Theme.Metric.composerHeight == Theme.Metric.footerHeight)
     #expect(Theme.Metric.composerBottomInset == Theme.Metric.footerBottom)
-    #expect(Theme.Metric.toolbarHeight == 32)
+    #expect(Theme.Metric.toolbarHeight == Theme.Metric.headerControlHeight)
     #expect(Theme.Metric.unreadPillHeight == 28)
     #expect(Theme.Metric.inspectorRowHeight == 40)
     #expect(Theme.Metric.composerHeight == 54)
@@ -114,9 +117,8 @@ struct TranscriptTests {
       .assistant(id: "a1", blocks: [.paragraph("x")]),
       .user(id: "u1", text: "y"),
       .note(id: "n1", text: "z", tintIndices: [0]),
-      .typing(id: "t1"),
     ]
-    #expect(rows.map(\.id) == ["a1", "u1", "n1", "t1"])
+    #expect(rows.map(\.id) == ["a1", "u1", "n1"])
     #expect(Set(rows.map(\.id)).count == rows.count)
   }
 

@@ -80,7 +80,8 @@ export class DeviceRuntime {
           );
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-          initial = { mode: "all-approve", version: 1 };
+          // A device nobody has decided about asks before it acts.
+          initial = { mode: "always-ask", version: 1 };
         }
         this.policy = this.journal.policy(initial) as DevicePolicy;
       }

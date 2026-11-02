@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
@@ -56,6 +57,11 @@ test("private helper config boots offline local tools; Bot port cannot change po
       waiters.get(message.requestId)?.(message);
   });
   child.once("exit", () => readyReject(new Error(`service exited: ${stderr}`)));
+  writeFileSync(
+    join(root, "policy.json"),
+    JSON.stringify({ mode: "all-approve", version: 1 }),
+    { mode: 0o600 },
+  );
   child.stdin.write(
     `${JSON.stringify({ type: "configure", version: 1, baseUrl: "http://127.0.0.1:1", deviceId, publicKey: key.publicKey.export({ type: "spki", format: "der" }).toString("base64url"), name: "offline-test", platform: "darwin", arch: "arm64", stateDirectory: root, socketPath })}\n`,
   );
@@ -154,9 +160,10 @@ test("private helper config boots offline local tools; Bot port cannot change po
       "an uncertain remote operation cannot become a local retry",
     );
     const lostFile = join(root, "lost-response-count");
+    const releaseFile = join(root, "lost-response-release");
     const lostOperation = {
       kind: "command",
-      command: `printf x >> '${lostFile}'; sleep 0.1; cat '${lostFile}'`,
+      command: `printf x >> '${lostFile}'; while [ ! -f '${releaseFile}' ]; do sleep 0.01; done; cat '${lostFile}'`,
     };
     const lostRequest = {
       ...input,
@@ -166,40 +173,69 @@ test("private helper config boots offline local tools; Bot port cannot change po
       digest: await deviceDigest(canonicalDeviceJSON(lostOperation)),
     };
     const lostSocket = connect(socketPath);
-    lostSocket.end(
-      `${JSON.stringify({ requestId: randomUUID(), method: "execute", params: lostRequest })}\n`,
-    );
-    await new Promise<void>((resolveClosed) =>
-      lostSocket.once("close", () => resolveClosed()),
-    );
-    // Recovery is asynchronous on the service's own schedule, so wait on a wall-clock
-    // deadline rather than a fixed attempt count; a slow runner must not read as a lost
-    // operation, and the assertion stays exactly the same.
-    let recoveredCommand: { status: string; output?: string } = {
-      status: "running",
-    };
-    const recoveredBy = Date.now() + 10_000;
-    for (;;) {
-      recoveredCommand = (
-        await request("operation.get", { ...lostRequest, action: "get" })
-      ).result as { status: string; output?: string };
-      if (recoveredCommand.status === "completed" || Date.now() > recoveredBy)
-        break;
-      await new Promise((resolve) => setTimeout(resolve, 10));
+    let lostReply = "";
+    lostSocket.on("data", (data) => {
+      lostReply += data.toString();
+    });
+    try {
+      lostSocket.write(
+        `${JSON.stringify({ requestId: randomUUID(), method: "execute", params: lostRequest })}\n`,
+      );
+      let droppedAfterAdmission = false;
+      let recoveredCommand: { status: string; output?: string } = {
+        status: "running",
+      };
+      const recoveredBy = Date.now() + 10_000;
+      for (;;) {
+        if (
+          !droppedAfterAdmission &&
+          existsSync(lostFile) &&
+          readFileSync(lostFile, "utf8") === "x"
+        ) {
+          assert.equal(lostReply, "", "admitted command has not replied");
+          const closed = new Promise<void>((resolveClosed) =>
+            lostSocket.once("close", () => resolveClosed()),
+          );
+          lostSocket.destroy();
+          await closed;
+          droppedAfterAdmission = true;
+          writeFileSync(releaseFile, "release");
+        }
+        if (droppedAfterAdmission)
+          recoveredCommand = (
+            await request("operation.get", { ...lostRequest, action: "get" })
+          ).result as { status: string; output?: string };
+        if (recoveredCommand.status === "completed" || Date.now() > recoveredBy)
+          break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.equal(
+        droppedAfterAdmission,
+        true,
+        "drop follows actual execution",
+      );
+      assert.equal(lostReply, "", "the original response was never received");
+      assert.equal(
+        recoveredCommand.status,
+        "completed",
+        `the lost admission was still ${recoveredCommand.status}`,
+      );
+      assert.equal(
+        (
+          (
+            await request("execute", {
+              ...lostRequest,
+              requestId: randomUUID(),
+            })
+          ).result as { output: string }
+        ).output,
+        "x",
+      );
+      assert.equal(readFileSync(lostFile, "utf8"), "x");
+    } finally {
+      lostSocket.destroy();
+      writeFileSync(releaseFile, "release");
     }
-    assert.equal(
-      recoveredCommand.status,
-      "completed",
-      `the lost admission was still ${recoveredCommand.status}`,
-    );
-    assert.equal(
-      (
-        (await request("execute", { ...lostRequest, requestId: randomUUID() }))
-          .result as { output: string }
-      ).output,
-      "x",
-    );
-    assert.equal(readFileSync(lostFile, "utf8"), "x");
     const asking = await trusted("policy.set", { mode: "always-ask" });
     const policyVersion = (asking.result as { version: number }).version;
     const askingOperation = {
@@ -369,6 +405,13 @@ test("private helper config boots offline local tools; Bot port cannot change po
 });
 
 function serviceConfiguration(root: string) {
+  // These cases are about the transport and the journal, not about the decision that must come
+  // first: a fresh device asks, so the fixture states the allow it expects.
+  writeFileSync(
+    join(root, "policy.json"),
+    JSON.stringify({ mode: "all-approve", version: 1 }),
+    { mode: 0o600 },
+  );
   return {
     type: "configure",
     version: 1,

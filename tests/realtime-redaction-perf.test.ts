@@ -1,20 +1,29 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
-import { test } from "node:test";
+import { type TestContext, test } from "node:test";
 import { redact } from "../packages/agent/collector.ts";
 import { redactScreen, terminalScreen } from "../packages/agent/realtime.ts";
 
-function medianRuntime(
-  input: string,
+function medianRuntimes(
+  inputs: string[],
+  context: TestContext,
   redactor: (input: string, secrets: string[]) => unknown = redactScreen,
 ) {
-  redactor(input, []);
-  const samples = Array.from({ length: 5 }, () => {
-    const start = performance.now();
-    redactor(input, []);
-    return performance.now() - start;
-  });
-  return samples.sort((left, right) => left - right)[2];
+  for (const input of inputs) redactor(input, []);
+  const samples: number[][] = inputs.map(() => []);
+  const orders: number[][] = [];
+  for (let round = 0; round < 5; round++) {
+    const order = inputs.map((_, index) => index);
+    if (round % 2) order.reverse();
+    orders.push(order);
+    for (const index of order) {
+      const start = performance.now();
+      redactor(inputs[index], []);
+      samples[index].push(performance.now() - start);
+    }
+  }
+  context.diagnostic(JSON.stringify({ orders, wallSamplesMs: samples }));
+  return samples.map((values) => values.sort((left, right) => left - right)[2]);
 }
 
 for (const [name, whitespace] of [
@@ -22,11 +31,11 @@ for (const [name, whitespace] of [
   ["tabs", "\t"],
 ] as const) {
   test(`redaction scales linearly across long horizontal ${name}`, (context) => {
-    const timings = [8192, 16384, 32768, 65536].map((length) => {
-      const input = `Token${whitespace.repeat(length)}usage: 42;`;
-      assert.equal(redactScreen(input, []), input);
-      return medianRuntime(input);
-    });
+    const inputs = [8192, 16384, 32768, 65536].map(
+      (length) => `Token${whitespace.repeat(length)}usage: 42;`,
+    );
+    for (const input of inputs) assert.equal(redactScreen(input, []), input);
+    const timings = medianRuntimes(inputs, context);
     context.diagnostic(
       `${name} 8k/16k/32k/64k ms: ${timings.map((time) => time.toFixed(2)).join(" / ")}`,
     );
@@ -41,7 +50,10 @@ for (const [name, whitespace] of [
 test("redaction scales across large full-screen frames", (context) => {
   const row =
     "Token usage: 42 total | Context window: 96% left | Ready for the next task.\n";
-  const timings = [512, 1024].map((rows) => medianRuntime(row.repeat(rows)));
+  const timings = medianRuntimes(
+    [512, 1024].map((rows) => row.repeat(rows)),
+    context,
+  );
   context.diagnostic(
     `full-screen ${row.length * 512}/${row.length * 1024} characters ms: ${timings.map((time) => time.toFixed(2)).join(" / ")}`,
   );
@@ -64,17 +76,18 @@ test("shared redaction handles repeated key words without an assignment", (conte
 test("shared redaction scans unterminated base64 line runs once", (context) => {
   const input = `${"Q".repeat(64)}\n`.repeat(4096);
   assert.equal(redact(input, []), input);
-  const elapsed = medianRuntime(input, redact);
+  const elapsed = medianRuntimes([input], context, redact)[0];
   context.diagnostic(`base64 lines 260k ms: ${elapsed.toFixed(2)}`);
   assert(elapsed < 400, `base64 lines: ${elapsed}ms`);
 });
 
 test("styled redaction scales across repeated lowercase bearer prefixes", (context) => {
-  const timings = [8192, 16384].map((rows) =>
-    medianRuntime(
-      `\u001b[32m${"bearer fixture;\n".repeat(rows)}`,
-      terminalScreen,
+  const timings = medianRuntimes(
+    [8192, 16384].map(
+      (rows) => `\u001b[32m${"bearer fixture;\n".repeat(rows)}`,
     ),
+    context,
+    terminalScreen,
   );
   context.diagnostic(
     `styled bearer 128k/256k ms: ${timings.map((time) => time.toFixed(2)).join(" / ")}`,

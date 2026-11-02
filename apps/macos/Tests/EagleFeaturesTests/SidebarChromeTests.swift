@@ -36,4 +36,17 @@ struct SidebarChromeTests {
     #expect(model.decorate(ungrouped).role == .ungrouped)
     #expect(model.decorate(group).deleteBlockedReason == "组内还有 1 个 Bot，先移走再删除")
   }
+
+  @Test("a working bot keeps its busy flag through decoration, so its face can move")
+  func keepsBusy() {
+    let model = SidebarChromeViewModel()
+    let section = SidebarSection(
+      id: "g_1", title: "工作",
+      items: [SidebarItem(id: "b_1", title: "一", subtitle: "", busy: true)],
+      role: .group)
+    #expect(model.decorate(section).items.first?.busy == true)
+    model.togglePin("b_1")
+    model.markUnread("b_1")
+    #expect(model.decorate(section).items.first?.busy == true)
+  }
 }
