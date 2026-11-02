@@ -192,7 +192,8 @@ final class BotsWorkspaceViewModel: ObservableObject {
     let outbox = OutboxStore(directory: settings.clientDirectory)
     return AppViewModel(
       catalog: catalog,
-      conversation: ConversationViewModel(conversation: connection, outbox: outbox),
+      conversation: ConversationViewModel(
+        conversation: connection, outbox: outbox, history: catalog),
       outbox: outbox,
       triggers: TriggerHTTPClient(baseURL: settings.baseURL, token: token),
       peers: PeerHTTPClient(baseURL: settings.baseURL, token: token)
@@ -519,6 +520,17 @@ final class BotsWorkspaceViewModel: ObservableObject {
     if composer.text != value { composer.text = value }
   }
 
+  @Published private(set) var historyBranches: [NativeHistoryBranch] = []
+  @Published private(set) var displayedHistory: NativeHistoryView?
+  @Published private(set) var localBranchId: String?
+
+  func showHistory(_ branchId: String?) {
+    Task { [weak self] in
+      await self?.app?.conversation.selectHistory(branchId)
+      self?.publish()
+    }
+  }
+
   func send(inserting: Bool = false) {
     guard let app else { return }
     // Only a known-missing gateway blocks; an unreachable settings endpoint must not turn
@@ -599,6 +611,11 @@ final class BotsWorkspaceViewModel: ObservableObject {
       return
     }
     let conversation = app.conversation
+    if historyBranches != conversation.historyBranches {
+      historyBranches = conversation.historyBranches
+    }
+    if displayedHistory != conversation.historyView { displayedHistory = conversation.historyView }
+    if localBranchId != conversation.localBranchId { localBranchId = conversation.localBranchId }
     if conversation.hasSnapshot {
       let state = conversation.state
       let source = presenter.previewSource(for: state)
@@ -650,7 +667,7 @@ final class BotsWorkspaceViewModel: ObservableObject {
     let nextSubtitle = presenter.subtitle(
       for: conversation.state, connection: conversation.connection)
     if subtitle != nextSubtitle { subtitle = nextSubtitle }
-    transcript.update(conversation.state, exchanges: exchanges, bots: app.bots)
+    transcript.update(conversation.displayState, exchanges: exchanges, bots: app.bots)
     loadExchangesIfNeeded()
     let nextTasks = presenter.inspectorTasks(for: conversation.state.tasks)
     if tasks != nextTasks { tasks = nextTasks }
@@ -716,7 +733,10 @@ final class BotsWorkspaceViewModel: ObservableObject {
       conversation.$errorBanner.map { _ in }.eraseToAnyPublisher(),
       conversation.$parked.map { _ in }.eraseToAnyPublisher(),
       conversation.$isSending.map { _ in }.eraseToAnyPublisher(),
-      conversation.$hasOlder.map { _ in }.eraseToAnyPublisher()
+      conversation.$hasOlder.map { _ in }.eraseToAnyPublisher(),
+      conversation.$historyView.map { _ in }.eraseToAnyPublisher(),
+      conversation.$historyBranches.map { _ in }.eraseToAnyPublisher(),
+      conversation.$localBranchId.map { _ in }.eraseToAnyPublisher()
     )
     .sink { [weak self] _ in self?.schedulePublish() }
     .store(in: &cancellables)

@@ -7,6 +7,41 @@ import Testing
 @Suite("Device policy settings", .serialized)
 @MainActor
 struct DeviceSettingsPolicyTests {
+  @Test("group history is trusted management independent of paused command policy")
+  func groupHistory() async throws {
+    let (model, control, defaults) = deviceSettingsFixture()
+    defer { defaults.removePersistentDomain(forName: control.domain) }
+    var history = false
+    control.handler = { method, params in
+      if method == "policy.get" {
+        return .object(["mode": .string("paused"), "version": .number(7)])
+      }
+      if method == "history.get" {
+        return .object(["enabled": .bool(history), "ready": .bool(history)])
+      }
+      if method == "history.set" {
+        history = params?["enabled"] == .bool(true)
+        return .object(["enabled": .bool(history), "ready": .bool(history)])
+      }
+      return nil
+    }
+    await model.startIfNeeded()
+    #expect(model.historyEnabled == false)
+    await model.setHistoryEnabled(true)
+    #expect(model.historyEnabled == true)
+    #expect(model.policy?.mode == .paused)
+    #expect(
+      !control.calls.contains {
+        $0.0 == "policy.set" || $0.0 == "execute" || $0.0 == "approval.request"
+      })
+    control.handler = { method, _ in
+      if method == "history.set" { throw DevicePortError("history_unavailable") }
+      return nil
+    }
+    await model.setHistoryEnabled(false)
+    #expect(model.historyEnabled == true)
+    #expect(model.errorCode != nil)
+  }
   @Test("remote policy changes bind their target and do not change this computer's policy")
   func remotePolicy() async throws {
     let (model, control, defaults) = deviceSettingsFixture()

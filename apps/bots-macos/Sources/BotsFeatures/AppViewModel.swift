@@ -316,6 +316,7 @@ public final class AppViewModel: ObservableObject {
     bots = catalog.bots
     groups = catalog.groups
     keepSelectionValid()
+    conversation.historyChanged()
   }
 
   /// A write is followed by a read: the daemon owns the ids, the order and the memberships.

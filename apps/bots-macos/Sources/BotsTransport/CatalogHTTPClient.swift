@@ -74,7 +74,7 @@ public struct GatewayProbe: Decodable, Sendable, Equatable {
 
 /// The catalog over HTTP (docs/bots/PROTOCOL.md, "HTTP endpoints"). Every call carries the
 /// bearer token; a 401 is an authentication failure, never a retry.
-public final class CatalogHTTPClient: CatalogPort, Sendable {
+public final class CatalogHTTPClient: CatalogPort, NativeHistoryPort, Sendable {
   private let baseURL: URL
   private let token: String
   private let session: URLSession
@@ -329,6 +329,36 @@ public final class CatalogHTTPClient: CatalogPort, Sendable {
       }
       socket.start()
     }
+  }
+
+  public func branches(botId: String) async throws -> [NativeHistoryBranch] {
+    struct Payload: Decodable { let branches: [NativeHistoryBranch] }
+    return try await request(
+      path: "/v1/bots/\(botId)/history/branches", method: "POST", body: [:], as: Payload.self
+    ).branches
+  }
+
+  public func view(botId: String, head: String) async throws -> NativeHistoryView {
+    try await request(
+      path: "/v1/bots/\(botId)/history/view", method: "POST", body: ["head": head],
+      as: NativeHistoryView.self)
+  }
+
+  public func assess(botId: String, head: String) async throws -> Bool {
+    struct Payload: Decodable { let usable: Bool }
+    return try await request(
+      path: "/v1/bots/\(botId)/history/assess", method: "POST", body: ["head": head],
+      as: Payload.self
+    ).usable
+  }
+
+  public func continueHistory(botId: String, head: String, text: String, requestId: String)
+    async throws -> NativeHistoryContinuation
+  {
+    try await request(
+      path: "/v1/bots/\(botId)/history/continue", method: "POST",
+      body: ["head": head, "text": text, "requestId": requestId], as: NativeHistoryContinuation.self
+    )
   }
 
   private struct ErrorPayload: Decodable {

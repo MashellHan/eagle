@@ -29,6 +29,98 @@ final class ConversationTests: XCTestCase {
     model.select(botId: "b_1")
   }
 
+  func testPassiveUserDisplaysBeforeAssessmentWithoutChangingLocalState() async throws {
+    let remote = FakeNativeHistory()
+    let socket = FakeConversation()
+    let outbox = OutboxStore(directory: outboxDirectory)
+    let model = ConversationViewModel(conversation: socket, outbox: outbox, history: remote)
+    model.select(botId: "b_1")
+    socket.emit(.connection(.ready))
+    socket.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await waitUntil { model.hasSnapshot }
+    remote.blockAssessment = true
+    await model.refreshHistory()
+    XCTAssertEqual(model.displayState.messages.map(\.text), ["received committed user"])
+    XCTAssertTrue(model.state.messages.isEmpty)
+    XCTAssertFalse(model.historyView?.usable ?? true)
+    XCTAssertTrue(remote.continued.isEmpty)
+    model.draft = "cannot continue incomplete input"
+    model.send()
+    XCTAssertTrue(socket.sent.isEmpty)
+    XCTAssertTrue(remote.continued.isEmpty)
+    remote.finishAssessment(false)
+    model.disconnect()
+  }
+
+  func testLiveContextRemainsUntilExplicitBranchContinueAndNextSendUsesLocalChat() async throws {
+    let remote = FakeNativeHistory()
+    remote.blockContinuation = true
+    let socket = FakeConversation()
+    let outbox = OutboxStore(directory: outboxDirectory)
+    let model = ConversationViewModel(conversation: socket, outbox: outbox, history: remote)
+    model.select(botId: "b_1")
+    socket.emit(.connection(.ready))
+    let local = Message(
+      id: "local", role: .user, state: .complete, createdAt: "x", blocks: [.text("local context")])
+    socket.emit(.snapshot(ConversationSnapshot(botId: "b_1", messages: [local])))
+    try await waitUntil { model.hasSnapshot }
+    await model.refreshHistory()
+    XCTAssertEqual(model.displayState.messages, [local])
+    await model.selectHistory("remote-branch")
+    try await waitUntil { model.historyView?.usable == true }
+    XCTAssertEqual(model.displayState.messages.map(\.text), ["received committed user"])
+    XCTAssertEqual(model.state.messages, [local])
+    model.draft = "explicit local continuation"
+    model.send()
+    try await waitUntil { remote.continued.count == 1 }
+    model.draft = "next prompt"
+    model.send()
+    try await Task.sleep(for: .milliseconds(30))
+    XCTAssertTrue(socket.sent.isEmpty, "ordinary send cannot race ahead of continuation admission")
+    remote.finishContinuation()
+    try await waitUntil { !model.isSending }
+    XCTAssertNil(model.historyView)
+    XCTAssertEqual(model.localBranchId, "new-local-branch")
+    model.draft = "next prompt"
+    model.send()
+    try await waitUntil { socket.sent.count == 1 }
+    XCTAssertEqual(socket.sent.first?.text, "next prompt")
+    XCTAssertTrue(
+      try outbox.entries(for: "b_1").allSatisfy { $0.text != "explicit local continuation" })
+    model.disconnect()
+  }
+
+  func testUncertainContinuationReopenKeepsHeadAndRequestInsteadOfOrdinarySend() async throws {
+    let remote = FakeNativeHistory()
+    remote.failContinuation = true
+    let firstSocket = FakeConversation()
+    let outbox = OutboxStore(directory: outboxDirectory)
+    let first = ConversationViewModel(conversation: firstSocket, outbox: outbox, history: remote)
+    first.select(botId: "b_1")
+    firstSocket.emit(.connection(.ready))
+    firstSocket.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await waitUntil { first.historyView?.usable == true }
+    first.draft = "keep the continuation identity"
+    first.send()
+    try await waitUntil { remote.continued.count == 1 && !first.isSending }
+    let stored = try XCTUnwrap(outbox.entries(for: "b_1").first)
+    XCTAssertEqual(stored.historyHead, remote.continued[0].head)
+    first.disconnect()
+    remote.failContinuation = false
+    let socket = FakeConversation()
+    let reopened = ConversationViewModel(
+      conversation: socket, outbox: OutboxStore(directory: outboxDirectory), history: remote)
+    reopened.select(botId: "b_1")
+    socket.emit(.connection(.ready))
+    socket.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await waitUntil { remote.continued.count == 2 && !reopened.isSending }
+    XCTAssertEqual(remote.continued[1].head, stored.historyHead)
+    XCTAssertEqual(remote.continued[1].requestId, stored.requestId)
+    XCTAssertTrue(socket.sent.isEmpty)
+    XCTAssertTrue(try outbox.entries(for: "b_1").isEmpty)
+    reopened.disconnect()
+  }
+
   func testAnAgentUpdatePreservesLoadedHistoryAndUnconfirmedSends() async throws {
     let (model, fake, outbox) = makeModel()
     ready(model)
@@ -249,6 +341,53 @@ final class ConversationTests: XCTestCase {
       try await Task.sleep(nanoseconds: 10_000_000)
     }
     XCTFail("condition not met within \(timeout) s")
+  }
+}
+
+@MainActor private final class FakeNativeHistory: NativeHistoryPort {
+  var blockAssessment = false
+  var assessment: CheckedContinuation<Bool, Never>?
+  var continued: [(head: String, text: String, requestId: String)] = []
+  var failContinuation = false
+  var blockContinuation = false
+  var continuation: CheckedContinuation<Void, Never>?
+  func finishContinuation() {
+    continuation?.resume()
+    continuation = nil
+  }
+  func branches(botId: String) async throws -> [NativeHistoryBranch] {
+    [
+      NativeHistoryBranch(
+        branchId: "remote-branch", conversationId: "remote-conversation",
+        selection: String(repeating: "a", count: 64))
+    ]
+  }
+  func view(botId: String, head: String) async throws -> NativeHistoryView {
+    NativeHistoryView(
+      head: head, branchId: "remote-branch", usable: false,
+      messages: [
+        Message(
+          id: "remote", role: .user, state: .complete, createdAt: "x",
+          blocks: [.text("received committed user")])
+      ])
+  }
+  func assess(botId: String, head: String) async throws -> Bool {
+    if blockAssessment { return await withCheckedContinuation { assessment = $0 } }
+    return true
+  }
+  func finishAssessment(_ usable: Bool) {
+    assessment?.resume(returning: usable)
+    assessment = nil
+  }
+  func continueHistory(botId: String, head: String, text: String, requestId: String) async throws
+    -> NativeHistoryContinuation
+  {
+    continued.append((head, text, requestId))
+    if failContinuation { throw ClientError("response lost after possible admission") }
+    if blockContinuation { await withCheckedContinuation { continuation = $0 } }
+    return NativeHistoryContinuation(
+      branchId: "new-local-branch",
+      submission: Submission(id: "submission", requestId: requestId, status: .done))
   }
 }
 

@@ -69,6 +69,61 @@ final class CatalogHTTPClientTests: XCTestCase {
     StubProtocol.handler = nil
   }
 
+  func testNativeHistoryReadsAndExplicitContinuationUseSeparateAuthenticatedRoutes() async throws {
+    let head = String(repeating: "a", count: 64)
+    var operations: [String] = []
+    StubProtocol.handler = { request in
+      XCTAssertEqual(request.httpMethod, "POST")
+      XCTAssertEqual(
+        request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token-0123456789")
+      let operation = try XCTUnwrap(request.url?.lastPathComponent)
+      operations.append(operation)
+      let body =
+        try JSONSerialization.jsonObject(with: XCTUnwrap(bodyData(request))) as? [String: String]
+      switch operation {
+      case "branches":
+        return (
+          200,
+          Data(
+            "{\"branches\":[{\"branchId\":\"remote\",\"conversationId\":\"source\",\"selection\":\"\(head)\"}]}"
+              .utf8)
+        )
+      case "view":
+        XCTAssertEqual(body?["head"], head)
+        return (
+          200,
+          Data(
+            "{\"head\":\"\(head)\",\"branchId\":\"remote\",\"usable\":false,\"messages\":[]}".utf8)
+        )
+      case "assess": return (200, Data("{\"usable\":true}".utf8))
+      case "continue":
+        XCTAssertEqual(
+          body, ["head": head, "text": "continue locally", "requestId": "r_kept_identity"])
+        return (
+          200,
+          Data(
+            "{\"branchId\":\"local\",\"submission\":{\"id\":\"s_1\",\"requestId\":\"r_kept_identity\",\"status\":\"unanswered\"}}"
+              .utf8)
+        )
+      default:
+        XCTFail("unexpected history operation")
+        return (500, Data())
+      }
+    }
+    let list = try await client.branches(botId: "b_1")
+    XCTAssertEqual(list.first?.selection, head)
+    let view = try await client.view(botId: "b_1", head: head)
+    XCTAssertFalse(view.usable)
+    XCTAssertEqual(
+      operations, ["branches", "view"], "display does not wait for assessment or submit")
+    let usable = try await client.assess(botId: "b_1", head: head)
+    XCTAssertTrue(usable)
+    let result = try await client.continueHistory(
+      botId: "b_1", head: head, text: "continue locally", requestId: "r_kept_identity")
+    XCTAssertEqual(result.submission.status, .unanswered)
+    XCTAssertEqual(result.submission.requestId, "r_kept_identity")
+  }
+
   private func bot(_ id: String, _ title: String) -> String {
     """
     {"id":"\(id)","title":"\(title)","createdAt":"x","updatedAt":"x",
@@ -146,7 +201,8 @@ final class CatalogHTTPClientTests: XCTestCase {
     // A daemon that predates the level or the groups reports none; the client assumes defaults.
     XCTAssertEqual(loaded.settings.thinkingLevel, "medium")
     XCTAssertEqual(
-      loaded.settings.toolGroups, ["persona", "machine", "core", "coding", "herdr", "agents", "trigger"])
+      loaded.settings.toolGroups,
+      ["persona", "machine", "core", "coding", "herdr", "agents", "trigger"])
     // An omitted key must not be sent, so the daemon keeps the stored one.
     let saved = try await client.saveGateway(
       baseURL: "http://x/v1", model: "m2", thinkingLevel: "xhigh", toolGroups: ["core", "coding"],

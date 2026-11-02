@@ -27,6 +27,8 @@ struct BotsConversationContent: View {
       showsSidebar: layout.showsSidebar, showsInspector: layout.showsInspector,
       participantStatus: bots.participantStatus,
       isWaiting: bots.waiting,
+      headerAccessory: historyMenu,
+      composerPlaceholder: bots.displayedHistory == nil ? nil : "从此会话继续，使用本机模型",
       onStop: { bots.abort() },
       onInsert: bots.running ? { bots.send(inserting: true) } : nil,
       onRecover: { bots.recover() },
@@ -37,5 +39,31 @@ struct BotsConversationContent: View {
       onOpenPeerExchange: { id in Task { await bots.openExchange(id) } }
     )
     .id(bots.selectedId)
+  }
+
+  private var historyMenu: AnyView? {
+    guard !bots.historyBranches.isEmpty else { return nil }
+    return AnyView(
+      Menu {
+        Button(bots.localBranchId == nil ? "本机会话" : "本机续聊") { bots.showHistory(nil) }
+        Divider()
+        ForEach(Array(bots.historyBranches.enumerated()), id: \.element.id) { index, branch in
+          Button("收到的会话 \(index + 1)") { bots.showHistory(branch.branchId) }
+        }
+      } label: {
+        Label(
+          bots.displayedHistory.map { $0.usable ? "收到的会话 · 可继续" : "收到的会话 · 同步中" }
+            ?? (bots.localBranchId == nil ? "本机会话" : "本机续聊"),
+          systemImage: "arrow.triangle.branch"
+        )
+        .font(Theme.TypeScale.note)
+        .foregroundStyle(Theme.Palette.textSecondary)
+      }
+      .menuStyle(.borderlessButton)
+      .labelStyle(.iconOnly)
+      .frame(width: Theme.Metric.headerControlHeight)
+      .fixedSize()
+      .accessibilityIdentifier("bots.history.branch")
+    )
   }
 }

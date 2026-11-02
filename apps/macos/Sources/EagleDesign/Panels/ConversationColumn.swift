@@ -61,6 +61,8 @@ public struct ConversationColumn: View {
   private let participantStatus: ParticipantStatus?
   /// Whether a bot is working with nothing to show yet: the wave line above the composer.
   private let isWaiting: Bool
+  private let headerAccessory: AnyView?
+  private let composerPlaceholder: String?
   private let onStop: () -> Void
   private let onInsert: (() -> Void)?
   private let onRecover: () -> Void
@@ -82,6 +84,8 @@ public struct ConversationColumn: View {
     showsInspector: Bool = true,
     participantStatus: ParticipantStatus? = nil,
     isWaiting: Bool = false,
+    headerAccessory: AnyView? = nil,
+    composerPlaceholder: String? = nil,
     onStop: @escaping () -> Void = {},
     onInsert: (() -> Void)? = nil,
     onRecover: @escaping () -> Void = {},
@@ -103,6 +107,8 @@ public struct ConversationColumn: View {
     self.showsInspector = showsInspector
     self.participantStatus = participantStatus
     self.isWaiting = isWaiting
+    self.headerAccessory = headerAccessory
+    self.composerPlaceholder = composerPlaceholder
     self.onStop = onStop
     self.onInsert = onInsert
     self.onRecover = onRecover
@@ -136,7 +142,7 @@ public struct ConversationColumn: View {
       .animation(.easeOut(duration: 0.18), value: isWaiting)
 
       Composer(
-        placeholder: "给 \(title) 发消息",
+        placeholder: composerPlaceholder ?? "给 \(title) 发消息",
         hint: onInsert == nil ? nil : "⌘↩ 插入当前回答",
         text: $draft,
         onSend: onSend,
@@ -178,6 +184,7 @@ public struct ConversationColumn: View {
               systemName: "sidebar.left", label: "展开侧栏", style: .circled, action: onShowSidebar)
           }
           Spacer(minLength: 0)
+          headerAccessory
           if !showsInspector {
             IconButton(
               systemName: "sidebar.right", label: "展开检查器", style: .circled,

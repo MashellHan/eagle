@@ -42,6 +42,7 @@ public struct OutboxEntry: Codable, Sendable, Equatable, Identifiable {
   public var text: String
   public var whenBusy: BusyMode
   public var createdAt: String
+  public var historyHead: String?
 
   public var id: String { requestId }
 
@@ -50,12 +51,14 @@ public struct OutboxEntry: Codable, Sendable, Equatable, Identifiable {
     requestId: String,
     text: String,
     whenBusy: BusyMode = .followUp,
+    historyHead: String? = nil,
     createdAt: String = ISO8601DateFormatter().string(from: Date())
   ) {
     self.botId = botId
     self.requestId = requestId
     self.text = text
     self.whenBusy = whenBusy
+    self.historyHead = historyHead
     self.createdAt = createdAt
   }
 }

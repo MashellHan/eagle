@@ -16,13 +16,17 @@ provider input containing imported history, retry/reopen dedup and preserved
 ancestry. `eagle-dev history export/import/continue` drives this local boundary;
 `cli-history-transfer` exercises isolated A/B daemons and reopen with a scripted
 provider. Independent review and isolated dev App observation precede acceptance.
-Sync transport, Worker changes, Tailscale, UI and resource replication remain later stages; chat
-open/submit must never wait for them. Runtime semantics are in RUNTIME.md.
+Chat open/submit never wait for optional sync. Runtime semantics are in RUNTIME.md.
 The final delivery still requires automatic empty-Bot discovery and committed-entry
 propagation, followed by two-Mac App visibility acceptance over Tailscale and DO.
 Stage 2A is the native/catalog incremental boundary only: bounded new-tail/backfill
 pages, committed-user visibility while a provider is blocked, passive durable import
-and complete-head admission. Device transport and App rendering follow this slice.
+and complete-head admission. Stage 2B now connects authenticated encrypted DO/WSS,
+automatic catalog/native pull, the native passive transcript and explicit composer,
+plus the group-history switch. Related native tests pass; the latest large-backfill
+process run is non-green. Scheduler/review fixes, Root's running-App/two-Mac
+acceptance, final gates and Tailscale remain outstanding.
+Resource/skill replication is outside this scope.
 
 The current tool taxonomy, native extension integration and test-evidence map are
 in [Extensions and tools](EXTENSIONS-AND-TOOLS.md). That guide also

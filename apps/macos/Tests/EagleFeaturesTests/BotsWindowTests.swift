@@ -27,6 +27,7 @@ struct BotsWindowTests {
 
   private func window(
     gateway: Bool? = true,
+    history: NativeHistoryPort? = nil,
     catalog: StubCatalog = StubCatalog(),
     triggers: StubTriggers = StubTriggers()
   ) async throws -> (
@@ -51,7 +52,8 @@ struct BotsWindowTests {
     let conversation = ConversationViewModel(
       botId: "",
       conversation: conversationPort,
-      outbox: outbox
+      outbox: outbox,
+      history: history
     )
     let app = AppViewModel(
       catalog: catalog, conversation: conversation, outbox: outbox, triggers: triggers)
@@ -99,6 +101,30 @@ struct BotsWindowTests {
     )
     try await waitUntil { bots.composer.text == "hello from Eagle" }
     #expect(bots.composer.text == "hello from Eagle", "the restored draft is what the user sees")
+  }
+
+  @Test("received committed messages reach the real host transcript without changing live context")
+  func passiveTranscript() async throws {
+    let remote = WindowNativeHistory()
+    let (bots, app, _, _) = try await window(history: remote)
+    defer { bots.disconnect() }
+    try await waitUntil {
+      bots.displayedHistory?.messages.first?.text == "received user before model completion"
+    }
+    #expect(app.conversation.state.messages.isEmpty)
+    #expect(
+      bots.transcript.entries.contains { entry in
+        if case .user(_, let text, _) = entry {
+          return text == "received user before model completion"
+        }
+        return false
+      })
+    #expect(!remote.didContinue)
+    bots.setDraft("explicitly continue here")
+    bots.send()
+    try await waitUntil { bots.localBranchId == "local-continued" }
+    #expect(bots.displayedHistory == nil)
+    #expect(remote.didContinue)
   }
 
   @Test("sidebar previews use the last received chat text rather than lifecycle state")
@@ -430,6 +456,35 @@ struct BotsWindowTests {
 }
 
 /// The two ports this window needs, with just enough behaviour for the bindings.
+@MainActor private final class WindowNativeHistory: NativeHistoryPort {
+  var didContinue = false
+  func branches(botId: String) async throws -> [NativeHistoryBranch] {
+    [
+      NativeHistoryBranch(
+        branchId: "received", conversationId: "foreign",
+        selection: String(repeating: "a", count: 64))
+    ]
+  }
+  func view(botId: String, head: String) async throws -> NativeHistoryView {
+    NativeHistoryView(
+      head: head, branchId: "received", usable: true,
+      messages: [
+        Message(
+          id: "foreign-user", role: .user, state: .complete, createdAt: "x",
+          blocks: [.text("received user before model completion")])
+      ])
+  }
+  func assess(botId: String, head: String) async throws -> Bool { true }
+  func continueHistory(
+    botId: String, head: String, text: String, requestId: String
+  ) async throws -> NativeHistoryContinuation {
+    didContinue = true
+    return NativeHistoryContinuation(
+      branchId: "local-continued",
+      submission: Submission(id: "s_1", requestId: requestId, status: .done))
+  }
+}
+
 final class StubCatalog: CatalogPort {
   var catalogContinuation: AsyncStream<BotCatalog>.Continuation?
   var bots: [BotSummary] = []

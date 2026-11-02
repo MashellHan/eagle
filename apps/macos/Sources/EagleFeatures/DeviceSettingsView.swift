@@ -18,6 +18,27 @@ public struct DeviceSettingsView: View {
       connectionStatus
       serviceAddressCard
       SettingsCard {
+        VStack(alignment: .leading, spacing: 8) {
+          Toggle(
+            "同步群内 Bot 和会话",
+            isOn: Binding(
+              get: { model.historyEnabled == true },
+              set: { enabled in Task { await model.setHistoryEnabled(enabled) } }
+            )
+          )
+          .toggleStyle(.switch)
+          .tint(Theme.Palette.accentStrong)
+          .font(Theme.TypeScale.note)
+          .disabled(!model.localReady || model.controlsBusy || model.historyEnabled == nil)
+          .accessibilityIdentifier("devices.history")
+          Text("在已配对设备间同步。查看收到的会话不会改变本机对话，继续时使用本机模型。")
+            .font(Theme.TypeScale.note)
+            .foregroundStyle(Theme.Palette.textMuted)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 18)
+      }
+      SettingsCard {
         pairingContent.padding(.vertical, 18)
       }
       directoryCard

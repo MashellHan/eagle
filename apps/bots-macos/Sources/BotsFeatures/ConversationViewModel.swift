@@ -14,6 +14,9 @@ public final class ConversationViewModel: ObservableObject {
   @Published public private(set) var errorBanner: String?
   @Published public private(set) var isSending = false
   @Published public private(set) var hasOlder = false
+  @Published public private(set) var historyBranches: [NativeHistoryBranch] = []
+  @Published public private(set) var historyView: NativeHistoryView?
+  @Published public private(set) var localBranchId: String?
   /// A parked task is recoverable: `recover` retries it.
   @Published public private(set) var parked = false
   private var draftStorage = ""
@@ -29,9 +32,18 @@ public final class ConversationViewModel: ObservableObject {
   }
 
   private let conversation: ConversationPort
+  private let history: NativeHistoryPort?
   private let outbox: OutboxStore
   private let now: () -> Date
   private var eventsTask: Task<Void, Never>?
+  private var historyTask: Task<Void, Never>?
+  private var assessmentTask: Task<Void, Never>?
+  private var historyDirty = false
+  private var historyGeneration = UUID()
+  private var viewGeneration = UUID()
+  private var continuationRequests: [String: String] = [:]
+  private var displayedBranch: String?
+  private var followsReceivedWhenEmpty = true
   private var selectedBotId: String?
   /// The outbox is reconciled after the first snapshot of the selected bot, never after
   /// the handshake: a send before the subscription exists is refused as `not_admitted`.
@@ -48,10 +60,12 @@ public final class ConversationViewModel: ObservableObject {
     botId: String = "",
     conversation: ConversationPort,
     outbox: OutboxStore,
+    history: NativeHistoryPort? = nil,
     now: @escaping () -> Date = { Date() }
   ) {
     self.state = ConversationState(botId: botId)
     self.conversation = conversation
+    self.history = history
     self.outbox = outbox
     self.now = now
   }
@@ -71,11 +85,99 @@ public final class ConversationViewModel: ObservableObject {
       && state.unavailable == nil
   }
 
+  public var displayState: ConversationState {
+    guard let historyView else { return state }
+    var displayed = state
+    displayed.messages = historyView.messages
+    displayed.running = false
+    return displayed
+  }
+
+  public func historyChanged() {
+    guard history != nil, hasSnapshot else { return }
+    historyDirty = true
+    guard historyTask == nil else { return }
+    let generation = historyGeneration
+    historyTask = Task { [weak self] in
+      guard let self else { return }
+      while self.historyDirty, self.historyGeneration == generation, !Task.isCancelled {
+        self.historyDirty = false
+        await self.refreshHistory()
+      }
+      if self.historyGeneration == generation { self.historyTask = nil }
+    }
+  }
+
+  public func refreshHistory() async {
+    guard let history, let botId = selectedBotId, hasSnapshot else { return }
+    do {
+      let branches = try await history.branches(botId: botId)
+      guard selectedBotId == botId, !Task.isCancelled else { return }
+      historyBranches = branches.filter {
+        $0.selection.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil
+      }
+      if displayedBranch == nil, followsReceivedWhenEmpty, state.messages.isEmpty, !state.running {
+        displayedBranch = historyBranches.first?.branchId
+      }
+      if let selected = historyBranches.first(where: { $0.branchId == displayedBranch }) {
+        await showHistory(selected, botId: botId)
+      }
+    } catch {
+      // Optional history reads leave the live conversation and composer available.
+    }
+  }
+
+  public func selectHistory(_ branchId: String?) async {
+    viewGeneration = UUID()
+    followsReceivedWhenEmpty = false
+    displayedBranch = branchId
+    assessmentTask?.cancel()
+    guard let branchId, let branch = historyBranches.first(where: { $0.branchId == branchId }),
+      let botId = selectedBotId
+    else {
+      historyView = nil
+      return
+    }
+    await showHistory(branch, botId: botId)
+  }
+
+  private func showHistory(_ branch: NativeHistoryBranch, botId: String) async {
+    guard let history else { return }
+    let generation = UUID()
+    viewGeneration = generation
+    do {
+      let view = try await history.view(botId: botId, head: branch.selection)
+      guard selectedBotId == botId, displayedBranch == branch.branchId,
+        viewGeneration == generation, !Task.isCancelled
+      else { return }
+      historyView = view
+      assessmentTask?.cancel()
+      assessmentTask = Task { [weak self] in
+        guard !Task.isCancelled else { return }
+        guard let usable = try? await history.assess(botId: botId, head: view.head),
+          !Task.isCancelled, self?.viewGeneration == generation,
+          self?.historyView?.head == view.head
+        else { return }
+        self?.historyView?.usable = usable
+      }
+    } catch { errorBanner = Self.describe(error) }
+  }
+
   /// Connects to a bot and replaces the transcript with its snapshot. Selecting the same bot
   /// again is a no-op, so a list refresh does not reconnect.
   public func select(botId: String) {
     if selectedBotId == botId, eventsTask != nil { return }
     eventsTask?.cancel()
+    historyGeneration = UUID()
+    viewGeneration = UUID()
+    historyTask?.cancel()
+    assessmentTask?.cancel()
+    historyTask = nil
+    displayedBranch = nil
+    historyView = nil
+    historyBranches = []
+    localBranchId = nil
+    followsReceivedWhenEmpty = true
     selectedBotId = botId
     reconciled = false
     hasSnapshot = false
@@ -105,8 +207,13 @@ public final class ConversationViewModel: ObservableObject {
   }
 
   public func disconnect() {
+    historyGeneration = UUID()
+    viewGeneration = UUID()
     eventsTask?.cancel()
     eventsTask = nil
+    historyTask?.cancel()
+    historyTask = nil
+    assessmentTask?.cancel()
     selectedBotId = nil
     conversation.close()
     connection = .stopped
@@ -122,6 +229,20 @@ public final class ConversationViewModel: ObservableObject {
   public func send(inserting: Bool) {
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty, connection == .ready, let botId = selectedBotId else { return }
+    guard !continuationRequests.values.contains(botId) else {
+      errorBanner = "正在建立本机续聊，请稍候再发送。"
+      return
+    }
+    if let view = historyView {
+      guard view.usable, !state.running, !isSending else {
+        errorBanner = "此会话尚不可继续，请等待同步完成或本机回答结束。"
+        return
+      }
+      let entry = OutboxEntry(
+        botId: botId, requestId: Identifiers.request(), text: text, historyHead: view.head)
+      continueHistory(entry, explicit: true)
+      return
+    }
     let requestId = Identifiers.request()
     draft = ""
     send(text: text, requestId: requestId, botId: botId, optimistic: true, inserting: inserting)
@@ -131,6 +252,10 @@ public final class ConversationViewModel: ObservableObject {
   /// restart of the app (`OutboxStore`).
   public func retry(_ entry: OutboxEntry) {
     refused.remove(entry.requestId)
+    if entry.historyHead != nil {
+      continueHistory(entry, explicit: false)
+      return
+    }
     send(text: entry.text, requestId: entry.requestId, botId: entry.botId, optimistic: true)
   }
 
@@ -186,6 +311,47 @@ public final class ConversationViewModel: ObservableObject {
   }
 
   // MARK: - Sending
+
+  private func continueHistory(_ entry: OutboxEntry, explicit: Bool) {
+    guard let history, let head = entry.historyHead else { return }
+    do { try outbox.add(entry) } catch {
+      errorBanner = "无法保存待发送的消息，消息没有发出。"
+      return
+    }
+    if explicit {
+      draft = ""
+      followsReceivedWhenEmpty = false
+      displayedBranch = nil
+      historyView = nil
+      assessmentTask?.cancel()
+    }
+    isSending = true
+    continuationRequests[entry.requestId] = entry.botId
+    Task { [weak self] in
+      guard let self else { return }
+      defer {
+        self.continuationRequests.removeValue(forKey: entry.requestId)
+        if self.selectedBotId == entry.botId { self.isSending = false }
+      }
+      do {
+        let result = try await history.continueHistory(
+          botId: entry.botId, head: head, text: entry.text, requestId: entry.requestId)
+        if result.submission.status.isTerminal {
+          try self.outbox.settle(result.submission, botId: entry.botId)
+        }
+        guard self.selectedBotId == entry.botId else { return }
+        if explicit { self.localBranchId = result.branchId }
+        self.state = Reducer.applySubmission(result.submission, to: self.state)
+        if result.submission.status == .unanswered {
+          self.errorBanner = "续聊未完成，请保留请求 \(entry.requestId)。"
+        }
+      } catch {
+        if self.selectedBotId == entry.botId {
+          self.errorBanner = "续聊结果尚未确认，请重试原请求 \(entry.requestId)。\(Self.describe(error))"
+        }
+      }
+    }
+  }
 
   private func send(
     text: String,
@@ -256,6 +422,10 @@ public final class ConversationViewModel: ObservableObject {
     where !refused.contains(entry.requestId)
       && !durableRefusals.contains(entry.requestId)
     {
+      if entry.historyHead != nil {
+        continueHistory(entry, explicit: false)
+        continue
+      }
       send(
         text: entry.text,
         requestId: entry.requestId,
@@ -331,6 +501,7 @@ public final class ConversationViewModel: ObservableObject {
         reconciled = true
         reconcileOutbox()
       }
+      historyChanged()
     case .append(let message, let replaces):
       state = Reducer.apply(.append(message: message, replaces: replaces), to: state)
     case .delta(let messageId, let changes):

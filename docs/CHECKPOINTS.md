@@ -2742,3 +2742,26 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   gates remain historical non-green: Bots 776/781, browser 179/12/11, Swift 344/1;
   last complete eval 15/15 predates 2A. Root owns physical controls. Herdr collection/
   auth, D1 and dashboard rendering: N/A. No deployment, installation or daily writes.
+
+## 2026-11-02 17:01 optional history: native passive transcript and composer
+
+- Actual host transcript red proved the old live-only projection hid received
+  messages. Native branch view/composer/group switch now pass related host and
+  DeviceSettings 71/71. Pending-admission send red is fixed; uncertain continuation
+  reopen keeps its original head/request ID. Client HTTP 8/8, Socket 6/6 and Catalog
+  5/5 passed; combined client run was 29/30 with the original steer assertion
+  retained. One unchanged full ConversationTests recheck passes 11/11; no cause
+  attributed to that earlier failure. SwiftPM released at 16:59:33.
+- `e44b634` expanded process/cipher evidence is `.local/history-auto-large-green.log`
+  5/5 (36.3s); earlier `.local/history-auto-process-green.log` 2/2 (16.35s) is a
+  separate run. The App completion-notice hook is under scheduler diagnosis.
+  Current `.local/history-native-app-process-green.log` is actually 1/2 failed:
+  final backfill/native pending completion timed out (51.5s). Preserve that red;
+  bounded scheduler diagnosis is in progress, without changing its timeout.
+  Actual A/B App visibility/latency remains for Root's fixed-head build and trial.
+- Reviewer has six open P2s: transport directory recovery, canceled timer handles,
+  stale notice success; old-branch answer lookup, continuation request indexing,
+  stale watch acquisition. These are subsequent bounded fixes. Full gates remain
+  historical non-green: Bots 776/781, browser 179/12/11, Swift 344/1; complete eval
+  15/15 predates 2A. Herdr collection/auth, D1 and dashboard rendering: N/A. No
+  deployment, installation or daily-data changes.

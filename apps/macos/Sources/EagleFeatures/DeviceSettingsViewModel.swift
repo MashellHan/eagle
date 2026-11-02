@@ -60,6 +60,10 @@ private struct DeviceServiceState: Decodable {
   let error: String?
 }
 
+private struct DeviceHistoryState: Decodable {
+  let enabled: Bool
+}
+
 /// One App-wide control surface. Pairing codes stay in memory; only their hash binds a saved request ID.
 @MainActor public final class DeviceSettingsViewModel: ObservableObject {
   public static let shared = DeviceSettingsViewModel()
@@ -72,6 +76,16 @@ private struct DeviceServiceState: Decodable {
   @Published public private(set) var directory: DeviceDirectoryState?
   @Published public private(set) var directoryIsStale = true
   @Published public private(set) var policy: DevicePolicyState?
+  @Published public private(set) var historyEnabled: Bool?
+  public func setHistoryEnabled(_ enabled: Bool) async {
+    await perform {
+      let state = try await self.control.call(
+        "history.set", params: .object(["enabled": .bool(enabled)])
+      )
+      .decoded(DeviceHistoryState.self)
+      self.historyEnabled = state.enabled
+    }
+  }
   @Published private var confirmedPolicies: [String: DevicePolicyState] = [:]
   @Published public private(set) var invitation: DevicePairingInvitation?
   @Published public private(set) var pendingRedeemRequestId: String?
@@ -345,6 +359,7 @@ private struct DeviceServiceState: Decodable {
       guard acceptsRead(generation) else { return }
       observedStatus = status
       guard status.localReady else {
+        publish(\.historyEnabled, nil)
         applyStatus(status)
         publish(\.errorCode, status.error.map { DevicePortError($0).code })
         denyPendingApproval()
@@ -357,6 +372,10 @@ private struct DeviceServiceState: Decodable {
         DevicePolicyState.self)
       guard acceptsRead(generation) else { return }
       publish(\.policy, currentPolicy)
+      let history = try? await control.call("history.get", params: nil).decoded(
+        DeviceHistoryState.self)
+      guard acceptsRead(generation) else { return }
+      publish(\.historyEnabled, history?.enabled)
       if isStarting { isStarting = false }
       if !includeDirectory {
         applyStatus(status)
@@ -374,6 +393,7 @@ private struct DeviceServiceState: Decodable {
         applyStatus(observedStatus)
       } else {
         started = false
+        publish(\.historyEnabled, nil)
         publish(\.localReady, false)
         publish(\.cloudStatus, "unknown")
         denyPendingApproval()

@@ -436,5 +436,15 @@ actual JSON wrapper inside the Device Service's 128 KiB plaintext budget; sealin
 retains the existing ciphertext frame cap. No model or tools run during receive/
 reopen. The native App observes welcome/bots independently of selection, preserves
 the landing/current conversation on catalog pushes, and releases observation when
-the host closes. Passive branch display and explicit continuation are the next
-App connection; catalog observation alone does not select a model context.
+the host closes. Catalog observation alone does not select a model context.
+
+The conversation chrome offers the current local conversation and received branch
+views. An empty local conversation follows incoming committed messages immediately;
+an active local conversation keeps its display/context. Viewing a branch is passive,
+and completion assessment follows the bounded display read. Sending from a complete
+received view explicitly continues it with the local configuration, then ordinary
+input stays on that native local branch. Uncertain continuation retries retain both
+the original head and request ID in the existing client outbox. Device settings has
+one optional group-history switch, independent of command execution policy.
+While the explicit continuation response is pending, the composer keeps another
+draft rather than racing an ordinary send into the previous local conversation.
