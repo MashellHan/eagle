@@ -207,7 +207,7 @@ struct BotsDaemonSupervisorTests {
         .utf8)
     try config.write(
       to: runtime.deletingLastPathComponent().appendingPathComponent("DeviceHost.json"))
-    let configuration = try DeviceHostConfiguration.load(bundle: app)
+    var configuration = try DeviceHostConfiguration.load(bundle: app)
     let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
       .appendingPathComponent("../../../../").standardizedFileURL
     let command = Process()
@@ -270,6 +270,13 @@ struct BotsDaemonSupervisorTests {
       environment: ["BOTS_ROOT": "/daily/bots", "BOTS_PORT": "43117"], bundle: app)
     #expect(inheritedDaily.rootPath == normal.rootPath)
     #expect(inheritedDaily.port == normal.port)
+    var fixtureConfig = try JSONDecoder().decode([String: DeviceJSON].self, from: config)
+    fixtureConfig["profile"] = .string(defaultsName)
+    try JSONEncoder().encode(fixtureConfig).write(
+      to: runtime.deletingLastPathComponent().appendingPathComponent("DeviceHost.json"))
+    configuration = try DeviceHostConfiguration.load(bundle: app)
+    try #require(configuration.profile == defaultsName)
+    try #require(!FileManager.default.fileExists(atPath: configuration.socketPath))
     let settings = BotsSettings(
       rootPath: try #require(info["root"]?.string), port: String(Int(port)))
     var publications: [(Int?, String?)] = []
