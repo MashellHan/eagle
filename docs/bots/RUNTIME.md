@@ -63,8 +63,7 @@ bounded received records before materialization; they remain unusable. Concurren
 drains claim their pending records in the same short native transaction as each
 append, across handles. Empty receives cannot discard another receive's work.
 Re-importing an older archive receipt repairs its record index without copying
-native entries. Received cursors also respect inherited records' own origin order
-when bounding an immutable head.
+native entries. Received cursors prove selected-head ancestry through native visibility or a bounded raw walk; native cursor witnesses retain an issued immutable bound without rescanning a large branch. Device clocks and per-origin sequence guesses cannot establish mixed-origin ancestry.
 
 ## Verified facts
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -354,6 +355,102 @@ test("an inherited A cursor cannot advance an old head of B's branch while valid
     assert.deepEqual(valid.records, newer.records.slice(0, 1));
   } finally {
     for (const harness of harnesses) await harness.close(ctx);
+    await bench.cleanup();
+  }
+});
+
+test("an immutable raw head bounds inherited records from two other origins by ancestry", async () => {
+  const bench = await createBench();
+  const source = await Harness.open(
+    await openNodeSqliteStorage(join(bench.dir, "mixed-source.sqlite")),
+    { registry: createRegistry(), models: createModels() },
+    ctx,
+  );
+  const target = await Harness.open(
+    await openNodeSqliteStorage(join(bench.dir, "mixed-target.sqlite")),
+    { registry: createRegistry(), models: createModels() },
+    ctx,
+  );
+  try {
+    const root = await source.root(ctx);
+    await source.commit(async (tx) => {
+      for (let turn = 0; turn < 2; turn++) {
+        await tx.appendEntry(root.id, {
+          kind: "pi.user",
+          model: [{ role: "user", content: `mixed user ${turn}`, timestamp: turn }],
+        });
+        await tx.appendEntry(root.id, {
+          kind: "pi.assistant",
+          model: [text(`mixed answer ${turn}`)],
+        });
+      }
+    }, ctx);
+    const original = await new NativeHistory(source, root.id, "b_mixed").exportPage();
+    const originB = randomUUID();
+    const branchId = `${randomUUID()}/c1`;
+    const identities = new Map(
+      original.records.map(({ entry }, index) => [
+        entry.id,
+        index < 2 ? entry.id : `${originB}/e${index + 1}`,
+      ]),
+    );
+    const records = original.records.map(({ entry, previous }, index) => ({
+      previous: previous === null ? null : (identities.get(previous) ?? null),
+      entry:
+        index < 2
+          ? entry
+          : {
+              ...entry,
+              id: identities.get(entry.id) as string,
+              originId: originB,
+              conversationId: `${originB}/c1`,
+            },
+    }));
+    const oldTip = records[1]?.entry.id;
+    const newTip = records[3]?.entry.id;
+    assert.ok(oldTip && newTip);
+    const old = {
+      ...original,
+      branchId,
+      conversationId: branchId,
+      tip: oldTip,
+      head: pageHead(branchId, oldTip),
+      records: records.slice(1, 2),
+    };
+    const newer = {
+      ...old,
+      tip: newTip,
+      head: pageHead(branchId, newTip),
+      records: records.slice(2),
+    };
+    const receiver = new NativeHistory(target, (await target.root(ctx)).id, "b_mixed");
+    await receiver.importPage(old);
+    await receiver.importPage(newer);
+    const forward = await receiver.exportPage({ selection: newer.head, limit: 1 });
+    assert.ok(forward.snapshot);
+    await assert.rejects(
+      receiver.exportPage({ selection: old.head, until: forward.snapshot }),
+      /selected head/,
+    );
+    const oldCursor = await receiver.exportPage({ selection: old.head, limit: 1 });
+    assert.ok(oldCursor.snapshot);
+    assert.equal(
+      (await receiver.exportPage({ selection: newer.head, until: oldCursor.snapshot })).tip,
+      oldTip,
+    );
+    await receiver.importPage({ ...newer, records });
+    assert.deepEqual(
+      (
+        await receiver.exportPage({
+          selection: newer.head,
+          ...(forward.cursor ? { before: forward.cursor } : {}),
+        })
+      ).records,
+      records.slice(0, 3),
+    );
+  } finally {
+    await source.close(ctx);
+    await target.close(ctx);
     await bench.cleanup();
   }
 });

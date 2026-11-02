@@ -94,6 +94,15 @@ const RecordLink = defineDocFamily({
   }),
   checkpointWhen: () => true,
 });
+// A cursor issued while walking one immutable head can be reused without rescanning its ancestry.
+const ReceivedCursor = defineDocFamily({
+  kind: "bots.history.cursor",
+  version: 1,
+  scope: "session",
+  family: true,
+  initial: (_seed: null) => ({ tip: "" }),
+  checkpointWhen: () => true,
+});
 const BranchProgress = defineDocFamily({
   kind: "bots.history.progress",
   version: 1,
@@ -406,17 +415,21 @@ export class NativeHistory {
     origin: string,
     input: HistoryPageRequest,
   ): Promise<HistoryPage> {
-    const cursor = (record: string) =>
-      Buffer.from(JSON.stringify({ origin, branchId: selected.branchId, record })).toString(
-        "base64url",
-      );
+    let bound = selected.tip;
+    const cursor = async (record: string) => {
+      const value = Buffer.from(
+        JSON.stringify({ origin, branchId: selected.branchId, record, head: bound }),
+      ).toString("base64url");
+      (await tx.doc(ReceivedCursor, value, null)).tip = bound;
+      return value;
+    };
     const read = async (id: string) => {
       const stored = await tx.doc(ReceivedRecord, id, null);
       return stored.body ? (JSON.parse(stored.body) as HistoryPage["records"][number]) : undefined;
     };
     const position = async (value: string | undefined) => {
       if (value === undefined) return undefined;
-      let parsed: { origin?: string; branchId?: string; record?: string };
+      let parsed: { origin?: string; branchId?: string; record?: string; head?: string };
       try {
         parsed = JSON.parse(Buffer.from(value, "base64url").toString());
       } catch {
@@ -436,17 +449,39 @@ export class NativeHistory {
       )
         return historyReject("history cursor is not in this branch");
       if (
-        tipOrder(selected.branchId, record.entry.id) > tipOrder(selected.branchId, selected.tip) ||
-        (record.entry.originId === selected.tip.split("/e")[0] &&
-          Number(record.entry.id.split("/e")[1]) > Number(selected.tip.split("/e")[1]))
+        record.entry.id === selected.tip ||
+        (parsed.head === selected.tip &&
+          (await tx.doc(ReceivedCursor, value, null)).tip === selected.tip)
       )
-        return historyReject("history cursor is outside selected head");
+        return record;
+      const tip = await tx.doc(ReceivedRecord, selected.tip, null);
+      const candidate = await tx.doc(ReceivedRecord, record.entry.id, null);
+      if (tip.nativeId && candidate.nativeId) {
+        const visible = await tx.scanEntries(
+          {
+            conversationId: tip.conversationId as ConversationId,
+            minEntryId: candidate.nativeId as EntryId,
+            maxEntryId: Math.min(candidate.nativeId, tip.nativeId) as EntryId,
+          },
+          1,
+        );
+        if (visible.items.length === 1) return record;
+      } else {
+        // Missing-ancestor heads only prove a bounded neighborhood; issued cursors retain their native witness.
+        let ancestor = selected.tip;
+        for (let count = 0; ancestor && count < 64; count++) {
+          if (ancestor === record.entry.id) return record;
+          ancestor = (await read(ancestor))?.previous ?? "";
+        }
+      }
+      historyReject("history cursor is outside selected head or its ancestry is not yet available");
       return record;
     };
     const after = await position(input.after);
     const before = await position(input.before);
     const until = await position(input.until);
     const tip = until?.entry.id ?? (selected.tip || null);
+    bound = tip ?? "";
     const result: HistoryPage = {
       version: 1,
       engine: "pi-durable@1.4.0",
@@ -456,7 +491,7 @@ export class NativeHistory {
       tip,
       head: pageHead(selected.branchId, tip),
       cursor: input.after ?? input.before ?? null,
-      snapshot: tip === null ? null : cursor(tip),
+      snapshot: tip === null ? null : await cursor(tip),
       hasMore: false,
       records: [],
     };
@@ -472,7 +507,7 @@ export class NativeHistory {
       const record = await read(id);
       if (!record) break;
       result.records.push(record);
-      const nextCursor = cursor(id);
+      const nextCursor = await cursor(id);
       if (
         Buffer.byteLength(JSON.stringify({ ...result, cursor: nextCursor })) >
         (input.maxBytes ?? MAX_HISTORY_PAGE_BYTES)
