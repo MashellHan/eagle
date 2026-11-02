@@ -57,8 +57,23 @@ public struct DaemonClient: Sendable {
     _ method: String,
     _ path: String,
     body: JSONObject? = nil,
-    requiresAuth: Bool = true
+    requiresAuth: Bool = true,
+    timeout: TimeInterval = 15
   ) async throws -> JSONObject {
+    let data = try await requestData(
+      method, path, body: body.map { try JSONSerialization.data(withJSONObject: $0) },
+      requiresAuth: requiresAuth, timeout: timeout)
+    return (try? JSONSerialization.jsonObject(with: data)) as? JSONObject ?? [:]
+  }
+
+  /// History archives are opaque: parsing/re-encoding can reorder native prompt sections.
+  public func requestData(
+    _ method: String,
+    _ path: String,
+    body: Data? = nil,
+    requiresAuth: Bool = true,
+    timeout: TimeInterval = 15
+  ) async throws -> Data {
     if requiresAuth {
       if let failure = Self.credentialFailure(config) { throw failure }
       if (config.token ?? "").isEmpty {
@@ -75,13 +90,13 @@ public struct DaemonClient: Sendable {
       : config.baseURL.appendingPathComponent(path)
     var request = URLRequest(url: url)
     request.httpMethod = method
-    request.timeoutInterval = 15
+    request.timeoutInterval = timeout
     if let token = config.token, !token.isEmpty {
       request.setValue("Bearer \(token)", forHTTPHeaderField: "authorization")
     }
     if let body {
       request.setValue("application/json", forHTTPHeaderField: "content-type")
-      request.httpBody = try JSONSerialization.data(withJSONObject: body)
+      request.httpBody = body
     }
     let data: Data
     let response: URLResponse
@@ -95,12 +110,12 @@ public struct DaemonClient: Sendable {
     guard let http = response as? HTTPURLResponse else {
       throw CLIError.unreachable("the daemon did not answer HTTP")
     }
-    if http.statusCode == 204 { return [:] }
+    if http.statusCode == 204 { return Data() }
     let object = (try? JSONSerialization.jsonObject(with: data)) as? JSONObject ?? [:]
     guard (200..<300).contains(http.statusCode) else {
       throw Self.failure(status: http.statusCode, object: object)
     }
-    return object
+    return data
   }
 
   private static func failure(status: Int, object: JSONObject) -> CLIError {

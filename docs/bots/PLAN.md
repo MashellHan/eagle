@@ -9,13 +9,17 @@ lives. Update it whenever a stage closes.
 
 ## Optional history handoff (2026-11-02)
 
-Stage 1 in progress: native SDK export, passive import and explicit local branch
+Stage 1 implementation: native SDK export, passive import and explicit local branch
 continuation, exercised with isolated A/B roots and a scripted real provider.
 Acceptance covers full tool groups/context, zero execution on import/reopen,
 provider input containing imported history, retry/reopen dedup and preserved
-ancestry. A subsequent CLI slice will drive this local boundary. Sync transport,
-Worker changes, Tailscale, UI and resource replication remain later stages; chat
+ancestry. `eagle-dev history export/import/continue` drives this local boundary;
+`cli-history-transfer` exercises isolated A/B daemons and reopen with a scripted
+provider. Independent review and isolated dev App observation precede acceptance.
+Sync transport, Worker changes, Tailscale, UI and resource replication remain later stages; chat
 open/submit must never wait for them. Runtime semantics are in RUNTIME.md.
+The final delivery still requires automatic empty-Bot discovery and committed-entry
+propagation, followed by two-Mac App visibility acceptance over Tailscale and DO.
 
 The current tool taxonomy, native extension integration and test-evidence map are
 in [Extensions and tools](EXTENSIONS-AND-TOOLS.md). That guide also

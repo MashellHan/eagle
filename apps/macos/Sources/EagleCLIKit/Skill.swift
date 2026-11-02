@@ -53,6 +53,9 @@ public enum Skill {
       \(binaryName) chat watch <bot>
       \(binaryName) chat history <bot> [--limit N] [--before e_12]
       \(binaryName) chat abort <bot>
+      \(binaryName) history export <bot> --out FILE [--branch ID]
+      \(binaryName) history import <bot> --file FILE
+      \(binaryName) history continue <bot> --head HEAD --request-id ID --text TEXT [--timeout 120]
       \(binaryName) usage [--days N]
       ```
 

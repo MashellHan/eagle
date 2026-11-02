@@ -54,6 +54,12 @@ prove a case fails closed.
 expectation. The runner also captures `{{dev.token}}`, `{{dev.path}}` and
 `{{dev.home}}`. Every case still ends with the same transcript assertions.
 
+`cli-history-transfer` sets `historyPeer: true` to boot an isolated second daemon,
+uses `{{peer.port}}`/`{{peer.root}}` in CLI environment overrides and transfers an
+opaque archive file under `{{source.root}}`. `restartHistoryPeer` proves import and
+continuation retries survive reopening native storage. Its last provider input
+must contain A's actual history; B's source-tool output file must remain absent.
+
 A run exits non-zero when any case fails, and the report names the first unmet
 expectation. `--repeat N` runs a case N times in a row: that is how a trigger is proven
 stable rather than lucky once.

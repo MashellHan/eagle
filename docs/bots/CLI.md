@@ -108,6 +108,16 @@ come from the daemon; a bot may also be named by its exact title when that title
 `{ "type": "append" | "delta" | "status" | "submission" | "history", ... }` exactly as the
 socket frames carry them.
 
+The local history slice adds `history export <bot> --out FILE [--branch ID]`,
+`history import <bot> --file FILE`, and
+`history continue <bot> --head HEAD --request-id ID --text TEXT [--timeout 120]`.
+All accept `--json`. Export creates a new 0600 file; it never overwrites one.
+Archive bytes preserve JSON insertion order, including native prompt sections.
+Import is passive and leaves the root conversation untouched. Continue uses the
+receiving Bot's model/tools and returns its separate branch ID; `--branch` can
+export that branch or an immutable head. Retrying continue requires the same ID
+and text. No sync transport or App UI is required for these local operations.
+
 ## Exit codes
 
 | Code | Meaning |

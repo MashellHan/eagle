@@ -5,7 +5,17 @@
 
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -40,6 +50,8 @@ type CaseFile = {
   readonly model: { readonly script: readonly ScriptedReply[]; readonly repeatLast?: boolean };
   /** `mint` (default) writes a development agent token; `none` leaves it unwritten. */
   readonly devToken?: "mint" | "none";
+  /** One isolated second daemon for local history handoff acceptance. */
+  readonly historyPeer?: boolean;
   readonly steps: readonly Step[];
   readonly expect?: {
     readonly messages?: readonly {
@@ -59,12 +71,14 @@ type CaseFile = {
     }[];
     readonly toolsCalled?: readonly string[];
     readonly files?: Readonly<Record<string, string>>;
+    readonly historyPeerFilesAbsent?: readonly string[];
     readonly noErrors?: boolean;
-    readonly modelRequests?: { readonly max: number };
+    readonly modelRequests?: { readonly max: number; readonly lastContains?: readonly string[] };
   };
 };
 
 type Step =
+  | { readonly kind: "restartHistoryPeer" }
   | { readonly kind: "chat"; readonly text: string; readonly timeoutMs?: number }
   | {
       readonly kind: "webhook";
@@ -154,7 +168,8 @@ function failure(message: string): never {
  * in flight instead of guessing with a sleep.
  */
 const scriptedModel = (script: readonly ScriptedReply[], repeatLast: boolean) => {
-  const requests: { readonly lastInput: string; readonly tools: number }[] = [];
+  const requests: { readonly input: string; readonly lastInput: string; readonly tools: number }[] =
+    [];
   const waiters = new Map<string, (() => void)[]>();
   let arrivals = 0;
   let index = 0;
@@ -187,6 +202,7 @@ const scriptedModel = (script: readonly ScriptedReply[], repeatLast: boolean) =>
         process.stdout.write(`model request ${requests.length + 1}\n`);
       }
       requests.push({
+        input: JSON.stringify(body.input ?? []),
         lastInput: JSON.stringify(body.input?.at(-1) ?? null).slice(0, 2_000),
         tools: body.tools?.length ?? 0,
       });
@@ -573,6 +589,7 @@ const runCase = async (
   const model = scriptedModel(study.model.script, study.model.repeatLast === true);
   const modelPort = await listen(model.server);
   let handle: DaemonHandle | undefined;
+  let historyPeer: DaemonHandle | undefined;
   let botId = "";
   try {
     if (usesCli && options.cli === undefined) {
@@ -612,6 +629,19 @@ const runCase = async (
     );
 
     handle = await boot(root, daemonEnv());
+    const peerRoot = join(root, "history-peer");
+    const bootHistoryPeer = async () => {
+      historyPeer = await boot(peerRoot, daemonEnv());
+      captured.set("peer", { root: peerRoot, port: historyPeer.port });
+    };
+    if (study.historyPeer === true) {
+      await mkdir(peerRoot, { recursive: true });
+      await writeFile(join(peerRoot, "gateway.json"), await readFile(join(root, "gateway.json")), {
+        mode: 0o600,
+      });
+      await bootHistoryPeer();
+      captured.set("source", { root });
+    }
     const token = handle.token;
     const created = await api(handle.port, token, "/v1/bots", {
       method: "POST",
@@ -706,6 +736,12 @@ const runCase = async (
         "timeoutMs" in step && step.timeoutMs !== undefined ? step.timeoutMs : left;
       if (stepBudget <= 0) failure(`case budget exhausted at a ${step.kind} step`);
       switch (step.kind) {
+        case "restartHistoryPeer": {
+          if (historyPeer === undefined) failure("case has no history peer");
+          await historyPeer.close();
+          await bootHistoryPeer();
+          break;
+        }
         case "chat": {
           requestSeq += 1;
           const requestId = `r_eval_${String(requestSeq).padStart(4, "0")}`;
@@ -898,6 +934,10 @@ const runCase = async (
         `${model.requests.length} model requests, expected at most ${expect.modelRequests.max}`,
       );
     }
+    for (const needle of expect.modelRequests?.lastContains ?? []) {
+      if (!model.requests.at(-1)?.input.includes(needle))
+        failure(`last provider input lacks ${JSON.stringify(needle)}`);
+    }
     if (expect.messages !== undefined) {
       let cursor = 0;
       for (const wanted of expect.messages) {
@@ -941,6 +981,15 @@ const runCase = async (
       );
       if (!body.includes(needle)) failure(`${path} does not contain ${JSON.stringify(needle)}`);
     }
+    for (const path of expect.historyPeerFilesAbsent ?? []) {
+      try {
+        await access(join(peerRoot, fill(path)));
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
+        throw error;
+      }
+      failure(`passive history executed a tool: ${path} exists on B`);
+    }
     if (expect.noErrors === true && view.errors.length > 0) {
       failure(`unexpected error frames: ${view.errors.join("; ")}`);
     }
@@ -958,6 +1007,7 @@ const runCase = async (
       detail: error instanceof Error ? error.message : String(error),
     };
   } finally {
+    await historyPeer?.close().catch(() => undefined);
     await handle?.close().catch(() => undefined);
     await new Promise<void>((resolve_) => model.server.close(() => resolve_()));
     if (!options.keep) await rm(root, { recursive: true, force: true });

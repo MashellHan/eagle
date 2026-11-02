@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// One parsed command line: positionals plus the flags the command declared.
@@ -114,6 +115,9 @@ public struct Commands: Sendable {
     case "chat":
       try await chat(tokens: Array(tokens.dropFirst()))
       return
+    case "history":
+      try await historyTransfer(Array(tokens.dropFirst()))
+      return
     case "usage":
       try await usage(tokens: Array(tokens.dropFirst()))
       return
@@ -133,6 +137,7 @@ public struct Commands: Sendable {
       \(config.binaryName) bots list|show|create|update|move|delete
       \(config.binaryName) groups list|create|rename|order|delete
       \(config.binaryName) chat send|watch|history|abort <bot>
+      \(config.binaryName) history export|import|continue <bot>
       \(config.binaryName) usage [--days N]
 
     Every command takes --json. Destructive commands need --yes.
@@ -510,6 +515,74 @@ public struct Commands: Sendable {
       {
         printer.text(Self.messageLine(message))
       }
+    }
+  }
+
+  private func historyTransfer(_ tokens: [String]) async throws {
+    guard let operation = tokens.first, ["export", "import", "continue"].contains(operation) else {
+      throw CLIError.usage(
+        "history export <bot> --out FILE [--branch ID] | import <bot> --file FILE | continue <bot> --head HEAD --request-id ID --text TEXT"
+      )
+    }
+    let flags: Set<String> =
+      operation == "export"
+      ? ["out", "branch"]
+      : operation == "import" ? ["file"] : ["head", "request-id", "text", "timeout"]
+    let arguments = try Arguments.parse(
+      Array(tokens.dropFirst()), valueFlags: flags, switchFlags: ["json"])
+    let name = try arguments.positional(0, "<bot>")
+    var file: URL?
+    var archive: Data?
+    if operation == "export" {
+      let output = URL(fileURLWithPath: try arguments.required("out"))
+      guard !FileManager.default.fileExists(atPath: output.path) else {
+        throw CLIError.usage("archive already exists: \(output.path)")
+      }
+      file = output
+    } else if operation == "import" {
+      let input = URL(fileURLWithPath: try arguments.required("file"))
+      let attributes = try FileManager.default.attributesOfItem(atPath: input.path)
+      guard ((attributes[.size] as? NSNumber)?.intValue ?? Int.max) <= 240 * 1024 else {
+        throw CLIError.usage("archive exceeds 240 KiB")
+      }
+      archive = try Data(contentsOf: input)
+    }
+    let bot = try await resolve(name)
+    let id = bot["id"] as? String ?? name
+    let path = "v1/bots/\(id)/history/\(operation)"
+    if operation == "export" {
+      let body: JSONObject = arguments.value("branch").map { ["selection": $0] } ?? [:]
+      let data = try await client.requestData(
+        "POST", path, body: JSONSerialization.data(withJSONObject: body))
+      guard let output = file else { throw CLIError.usage("missing archive path") }
+      let descriptor = Darwin.open(output.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+      guard descriptor >= 0 else {
+        throw CLIError.usage("could not create archive: \(output.path)")
+      }
+      let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+      do {
+        try handle.write(contentsOf: data)
+        try handle.close()
+      } catch {
+        try? handle.close()
+        try? FileManager.default.removeItem(at: output)
+        throw error
+      }
+      printer.output(arguments, json: ["file": output.path]) { $0["file"] as? String ?? "" }
+    } else if operation == "import" {
+      let data = try await client.requestData("POST", path, body: archive)
+      printer.text(String(decoding: data, as: UTF8.self))
+    } else {
+      let timeout = arguments.value("timeout").flatMap(TimeInterval.init) ?? 120
+      guard timeout.isFinite, timeout > 0 else {
+        throw CLIError.usage("--timeout must be positive")
+      }
+      let body: JSONObject = [
+        "head": try arguments.required("head"), "requestId": try arguments.required("request-id"),
+        "text": try arguments.required("text"),
+      ]
+      let result = try await client.request("POST", path, body: body, timeout: timeout)
+      printer.output(arguments, json: result) { $0["branchId"] as? String ?? "" }
     }
   }
 

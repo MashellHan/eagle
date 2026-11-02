@@ -2570,3 +2570,20 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   upstream preview are untouched.
 - Herdr collection/authentication, D1 and dashboard rendering: N/A. No Worker or
   transport implementation in this slice. Next hop: CLI acceptance and independent review.
+
+## 2026-11-02 14:51 optional history: CLI A/B handoff
+
+- `eagle-dev history export/import/continue` passes the isolated two-daemon case:
+  B's real provider input includes A's actual tool result, B does not write A's
+  tool output, and import/continuation retries survive reopening native storage.
+  CLI opaque-byte/0600/no-overwrite tests and strict Swift format pass.
+- Root typecheck/lint/build pass. Root check remains failed (three API fixture
+  ordering assertions and two redaction timings); original logs are retained.
+  Full Swift has a CLI settings copy-button assertion failure and browser
+  has a resources test failure; low-load file checks remain pending.
+  Bots check passes (767 tests; coverage 95.52% lines / 88.49% branches / 90.65%
+  functions); the earlier socket timeout passes its complete 23-test file on recheck.
+  Full eval, review and isolated App observation remain pending.
+- Herdr collection/authentication, D1 and dashboard rendering: N/A. Physical
+  bridge/Tailscale readiness is not history acceptance. Next: fixed CLI review head,
+  then committed-entry propagation and automatic empty-Bot discovery.

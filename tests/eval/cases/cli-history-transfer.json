@@ -1,0 +1,169 @@
+{
+  "id": "cli-history-transfer",
+  "title": "隔离 A/B：SDK 历史被动导入、重开与本机真实续聊",
+  "kind": "chat",
+  "historyPeer": true,
+  "toolGroups": ["core", "coding"],
+  "model": {
+    "script": [
+      {
+        "toolCall": {
+          "name": "write",
+          "args": { "path": "proof.txt", "content": "apricot42 from A" }
+        }
+      },
+      { "text": "A completed apricot42" },
+      { "text": "B continued from A" }
+    ]
+  },
+  "steps": [
+    {
+      "kind": "cli",
+      "args": [
+        "chat",
+        "send",
+        "eval cli-history-transfer",
+        "--text",
+        "Remember apricot42 and write proof.txt",
+        "--wait",
+        "--json"
+      ],
+      "stdoutContains": "A completed apricot42"
+    },
+    {
+      "kind": "cli",
+      "args": [
+        "history",
+        "export",
+        "eval cli-history-transfer",
+        "--out",
+        "{{source.root}}/handoff.json",
+        "--json"
+      ]
+    },
+    {
+      "kind": "cli",
+      "args": ["bots", "create", "--title", "B local", "--json"],
+      "env": { "EAGLE_PORT": "{{peer.port}}", "EAGLE_ROOT": "{{peer.root}}" },
+      "capture": "target"
+    },
+    {
+      "kind": "cli",
+      "args": [
+        "history",
+        "import",
+        "B local",
+        "--file",
+        "{{source.root}}/handoff.json",
+        "--json"
+      ],
+      "env": { "EAGLE_PORT": "{{peer.port}}", "EAGLE_ROOT": "{{peer.root}}" },
+      "capture": "imported"
+    },
+    {
+      "kind": "cli",
+      "args": [
+        "history",
+        "import",
+        "B local",
+        "--file",
+        "{{source.root}}/handoff.json",
+        "--json"
+      ],
+      "env": { "EAGLE_PORT": "{{peer.port}}", "EAGLE_ROOT": "{{peer.root}}" },
+      "json": "{\"head\":\"{{imported.head}}\",\"branchId\":\"{{imported.branchId}}\"}"
+    },
+    { "kind": "restartHistoryPeer" },
+    {
+      "kind": "cli",
+      "args": [
+        "history",
+        "import",
+        "B local",
+        "--file",
+        "{{source.root}}/handoff.json",
+        "--json"
+      ],
+      "env": { "EAGLE_PORT": "{{peer.port}}", "EAGLE_ROOT": "{{peer.root}}" },
+      "json": "{\"head\":\"{{imported.head}}\"}"
+    },
+    {
+      "kind": "cli",
+      "args": [
+        "history",
+        "export",
+        "B local",
+        "--out",
+        "{{peer.root}}/root-must-stay-empty.json"
+      ],
+      "env": { "EAGLE_PORT": "{{peer.port}}", "EAGLE_ROOT": "{{peer.root}}" },
+      "expectExit": 1
+    },
+    {
+      "kind": "cli",
+      "args": [
+        "history",
+        "continue",
+        "B local",
+        "--head",
+        "{{imported.head}}",
+        "--request-id",
+        "r_cli_history",
+        "--text",
+        "Continue on B",
+        "--json"
+      ],
+      "env": { "EAGLE_PORT": "{{peer.port}}", "EAGLE_ROOT": "{{peer.root}}" },
+      "stdoutContains": "B continued from A",
+      "capture": "continued"
+    },
+    { "kind": "restartHistoryPeer" },
+    {
+      "kind": "cli",
+      "args": [
+        "history",
+        "continue",
+        "B local",
+        "--head",
+        "{{imported.head}}",
+        "--request-id",
+        "r_cli_history",
+        "--text",
+        "Continue on B",
+        "--json"
+      ],
+      "env": { "EAGLE_PORT": "{{peer.port}}", "EAGLE_ROOT": "{{peer.root}}" },
+      "stdoutContains": "B continued from A",
+      "json": "{\"branchId\":\"{{continued.branchId}}\"}"
+    },
+    {
+      "kind": "cli",
+      "args": [
+        "history",
+        "export",
+        "B local",
+        "--branch",
+        "{{continued.branchId}}",
+        "--out",
+        "{{peer.root}}/continued.json",
+        "--json"
+      ],
+      "env": { "EAGLE_PORT": "{{peer.port}}", "EAGLE_ROOT": "{{peer.root}}" }
+    }
+  ],
+  "expect": {
+    "toolsCalled": ["write"],
+    "files": { "proof.txt": "apricot42 from A" },
+    "noErrors": true,
+    "historyPeerFilesAbsent": ["bots/{{target.bot.id}}/workspace/proof.txt"],
+    "modelRequests": {
+      "max": 3,
+      "lastContains": [
+        "Remember apricot42",
+        "Successfully wrote to proof.txt",
+        "A completed apricot42",
+        "Continue on B"
+      ]
+    }
+  }
+}

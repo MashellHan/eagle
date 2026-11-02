@@ -22,11 +22,24 @@ final class StubTransport: URLProtocol, @unchecked Sendable {
 
   override func startLoading() {
     let path = request.url?.path ?? ""
+    var requestBody = request.httpBody
+    if requestBody == nil, let stream = request.httpBodyStream {
+      stream.open()
+      defer { stream.close() }
+      var bytes = Data()
+      var buffer = [UInt8](repeating: 0, count: 4096)
+      while stream.hasBytesAvailable {
+        let count = stream.read(&buffer, maxLength: buffer.count)
+        if count <= 0 { break }
+        bytes.append(contentsOf: buffer.prefix(count))
+      }
+      requestBody = bytes
+    }
     Self.calls.append(
       Call(
         method: request.httpMethod ?? "GET", path: path,
         bearer: request.value(forHTTPHeaderField: "authorization"),
-        body: request.httpBody.map { String(decoding: $0, as: UTF8.self) }))
+        body: requestBody.map { String(decoding: $0, as: UTF8.self) }))
     if let failure = Self.failure {
       client?.urlProtocol(self, didFailWithError: failure)
       return
@@ -46,6 +59,41 @@ final class StubTransport: URLProtocol, @unchecked Sendable {
 
 @Suite("CLI commands", .serialized)
 struct CommandsTests {
+  @Test("history handoff preserves opaque archive bytes and routes explicit continuation")
+  func historyTransfer() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.appendingPathComponent("history.json")
+    let archive = #"{"head":"abc","sections":{"z":"first","a":"second"}}"#
+    StubTransport.calls = []
+    StubTransport.answers = [
+      "/v1/bots": (200, Self.catalog),
+      "/v1/bots/b_1/history/export": (200, archive),
+      "/v1/bots/b_1/history/import": (200, #"{"head":"abc","branchId":"branch"}"#),
+      "/v1/bots/b_1/history/continue": (
+        200, #"{"branchId":"local","submission":{"status":"done"}}"#
+      ),
+    ]
+    let exported = await run(["history", "export", "b_1", "--out", path.path, "--json"])
+    #expect(exported.code == 0)
+    #expect(try String(contentsOf: path, encoding: .utf8) == archive)
+    let attributes = try FileManager.default.attributesOfItem(atPath: path.path)
+    #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+    let repeated = await run(["history", "export", "b_1", "--out", path.path])
+    #expect(repeated.code == 2, "never overwrite an existing archive")
+    let imported = await run(["history", "import", "b_1", "--file", path.path, "--json"])
+    #expect(imported.code == 0)
+    #expect(StubTransport.calls.last?.body == archive, "JSON key order survives forwarding")
+    let continued = await run([
+      "history", "continue", "b_1", "--head", "abc", "--request-id", "r_1", "--text", "continue",
+      "--json",
+    ])
+    #expect(continued.code == 0)
+    #expect(StubTransport.calls.last?.path == "/v1/bots/b_1/history/continue")
+    #expect(StubTransport.calls.last?.body?.contains("r_1") == true)
+  }
+
   private func session() -> URLSession {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [StubTransport.self]
