@@ -214,3 +214,7 @@ the file, and the file wins over `~/.config/eagle/eagle-dev.json`.
 - One CLI process opens at most one socket and closes it on exit or Ctrl-C.
 - Every refused call prints `error.kind` verbatim and exits non-zero; a partial answer is
   never printed as if it were complete.
+- `history continue` requires a finite positive numeric timeout before submission.
+  An HTTP 200 with an unanswered submission still exits 1 and reports the original
+  request ID; callers retain that ID. Import reads at most 240 KiB + 1 byte through
+  one open handle, including files that grow or are replaced during reading.

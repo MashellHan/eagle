@@ -530,6 +530,15 @@ public struct Commands: Sendable {
       : operation == "import" ? ["file"] : ["head", "request-id", "text", "timeout"]
     let arguments = try Arguments.parse(
       Array(tokens.dropFirst()), valueFlags: flags, switchFlags: ["json"])
+    let timeout: TimeInterval
+    if let raw = arguments.value("timeout") {
+      guard let parsed = TimeInterval(raw), parsed.isFinite, parsed > 0 else {
+        throw CLIError.usage("--timeout must be a positive number")
+      }
+      timeout = parsed
+    } else {
+      timeout = 120
+    }
     let name = try arguments.positional(0, "<bot>")
     var file: URL?
     var archive: Data?
@@ -541,11 +550,19 @@ public struct Commands: Sendable {
       file = output
     } else if operation == "import" {
       let input = URL(fileURLWithPath: try arguments.required("file"))
-      let attributes = try FileManager.default.attributesOfItem(atPath: input.path)
-      guard ((attributes[.size] as? NSNumber)?.intValue ?? Int.max) <= 240 * 1024 else {
+      let handle = try FileHandle(forReadingFrom: input)
+      defer { try? handle.close() }
+      let limit = 240 * 1024
+      var data = Data()
+      while data.count <= limit {
+        let chunk = try handle.read(upToCount: min(64 * 1024, limit + 1 - data.count)) ?? Data()
+        if chunk.isEmpty { break }
+        data.append(chunk)
+      }
+      guard data.count <= limit else {
         throw CLIError.usage("archive exceeds 240 KiB")
       }
-      archive = try Data(contentsOf: input)
+      archive = data
     }
     let bot = try await resolve(name)
     let id = bot["id"] as? String ?? name
@@ -573,15 +590,18 @@ public struct Commands: Sendable {
       let data = try await client.requestData("POST", path, body: archive)
       printer.text(String(decoding: data, as: UTF8.self))
     } else {
-      let timeout = arguments.value("timeout").flatMap(TimeInterval.init) ?? 120
-      guard timeout.isFinite, timeout > 0 else {
-        throw CLIError.usage("--timeout must be positive")
-      }
+      let requestId = try arguments.required("request-id")
       let body: JSONObject = [
-        "head": try arguments.required("head"), "requestId": try arguments.required("request-id"),
+        "head": try arguments.required("head"), "requestId": requestId,
         "text": try arguments.required("text"),
       ]
       let result = try await client.request("POST", path, body: body, timeout: timeout)
+      let submission = result["submission"] as? JSONObject
+      guard submission?["status"] as? String == "done" else {
+        throw CLIError.refused(
+          kind: submission?["status"] as? String ?? "unknown",
+          message: "history continuation did not complete; retain requestId \(requestId)")
+      }
       printer.output(arguments, json: result) { $0["branchId"] as? String ?? "" }
     }
   }

@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 
@@ -59,6 +60,77 @@ final class StubTransport: URLProtocol, @unchecked Sendable {
 
 @Suite("CLI commands", .serialized)
 struct CommandsTests {
+  @Test("history continuation reports an unanswered admission with its original request id")
+  func historyUnanswered() async {
+    StubTransport.calls = []
+    StubTransport.answers = [
+      "/v1/bots": (200, Self.catalog),
+      "/v1/bots/b_1/history/continue": (
+        200, #"{"branchId":"local","submission":{"status":"unanswered","reason":"model_error"}}"#
+      ),
+    ]
+    let result = await run([
+      "history", "continue", "b_1", "--head", "abc", "--request-id", "r_keep_admission",
+      "--text", "continue",
+    ])
+    #expect(result.code == 1)
+    #expect(result.err.joined().contains("unanswered"))
+    #expect(result.err.joined().contains("r_keep_admission"))
+    #expect(result.out.isEmpty)
+  }
+
+  @Test("invalid history timeout is a usage error before any submission")
+  func historyTimeoutValidation() async {
+    StubTransport.answers = [
+      "/v1/bots": (200, Self.catalog),
+      "/v1/bots/b_1/history/continue": (200, #"{"submission":{"status":"done"}}"#),
+    ]
+    for timeout in ["banana", "nan", "inf", "0", "-1"] {
+      StubTransport.calls = []
+      let result = await run([
+        "history", "continue", "b_1", "--head", "abc", "--request-id", "r_timeout",
+        "--text", "continue", "--timeout", timeout,
+      ])
+      #expect(result.code == 2)
+      #expect(StubTransport.calls.isEmpty)
+    }
+  }
+
+  @Test("history import bounds an input that grows beyond its initial zero-byte size")
+  func historyGrowingInput() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fifo = directory.appendingPathComponent("archive.fifo")
+    #expect(mkfifo(fifo.path, 0o600) == 0)
+    let producer = Task.detached {
+      let descriptor = Darwin.open(fifo.path, O_WRONLY)
+      guard descriptor >= 0 else { return }
+      defer { Darwin.close(descriptor) }
+      _ = fcntl(descriptor, F_SETNOSIGPIPE, 1)
+      let body = [UInt8](repeating: 120, count: 240 * 1024 + 4096)
+      body.withUnsafeBytes { bytes in
+        var sent = 0
+        while sent < body.count {
+          let count = Darwin.write(
+            descriptor, bytes.baseAddress!.advanced(by: sent), body.count - sent)
+          if count <= 0 { break }
+          sent += count
+        }
+      }
+    }
+    StubTransport.calls = []
+    StubTransport.answers = [
+      "/v1/bots": (200, Self.catalog),
+      "/v1/bots/b_1/history/import": (200, #"{"head":"unexpected"}"#),
+    ]
+    let result = await run(["history", "import", "b_1", "--file", fifo.path])
+    await producer.value
+    #expect(result.code == 2)
+    #expect(result.err.joined().contains("240 KiB"))
+    #expect(StubTransport.calls.isEmpty)
+  }
+
   @Test("history handoff preserves opaque archive bytes and routes explicit continuation")
   func historyTransfer() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
