@@ -332,10 +332,24 @@ public final class CatalogHTTPClient: CatalogPort, NativeHistoryPort, Sendable {
   }
 
   public func branches(botId: String) async throws -> [NativeHistoryBranch] {
-    struct Payload: Decodable { let branches: [NativeHistoryBranch] }
-    return try await request(
-      path: "/v1/bots/\(botId)/history/branches", method: "POST", body: [:], as: Payload.self
-    ).branches
+    struct Payload: Decodable {
+      let branches: [NativeHistoryBranch]
+      let cursor: String?
+      let hasMore: Bool?
+    }
+    var branches: [NativeHistoryBranch] = []
+    var after: String?
+    repeat {
+      let page = try await request(
+        path: "/v1/bots/\(botId)/history/branches", method: "POST",
+        body: after.map { ["after": $0] } ?? [:], as: Payload.self)
+      branches.append(contentsOf: page.branches)
+      guard page.hasMore == true else { return branches }
+      guard let cursor = page.cursor, cursor != after else {
+        throw ClientError("the daemon returned an invalid branch cursor")
+      }
+      after = cursor
+    } while true
   }
 
   public func view(botId: String, head: String) async throws -> NativeHistoryView {
@@ -365,6 +379,7 @@ public final class CatalogHTTPClient: CatalogPort, NativeHistoryPort, Sendable {
     struct Body: Decodable {
       let kind: ErrorKind
       let message: String
+      let disposition: ErrorDisposition?
     }
     let error: Body
   }
@@ -413,13 +428,16 @@ public final class CatalogHTTPClient: CatalogPort, NativeHistoryPort, Sendable {
       throw ClientError("the daemon answered without an HTTP response")
     }
     guard (200..<300).contains(http.statusCode) else {
+      let disposition: ErrorDisposition =
+        (400..<500).contains(http.statusCode) ? .notAdmitted : .unknown
       if http.statusCode == 401 {
-        throw ClientError("the daemon rejected the token")
+        throw ClientError("the daemon rejected the token", disposition: disposition)
       }
       if let payload = try? JSONDecoder().decode(ErrorPayload.self, from: data) {
-        throw ClientError(payload.error.message)
+        throw ClientError(
+          payload.error.message, disposition: payload.error.disposition ?? disposition)
       }
-      throw ClientError("the daemon answered \(http.statusCode)")
+      throw ClientError("the daemon answered \(http.statusCode)", disposition: disposition)
     }
     return data
   }

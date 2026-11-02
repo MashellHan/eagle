@@ -105,6 +105,12 @@ final class ConversationTests: XCTestCase {
     try await waitUntil { remote.continued.count == 1 && !first.isSending }
     let stored = try XCTUnwrap(outbox.entries(for: "b_1").first)
     XCTAssertEqual(stored.historyHead, remote.continued[0].head)
+    first.draft = "must wait for unknown admission"
+    XCTAssertFalse(first.canSend)
+    first.send()
+    await Task.yield()
+    XCTAssertTrue(firstSocket.sent.isEmpty, "an unknown HTTP result does not release admission")
+    XCTAssertEqual(first.draft, "must wait for unknown admission")
     first.disconnect()
     remote.failContinuation = false
     let socket = FakeConversation()
@@ -118,6 +124,66 @@ final class ConversationTests: XCTestCase {
     XCTAssertEqual(remote.continued[1].requestId, stored.requestId)
     XCTAssertTrue(socket.sent.isEmpty)
     XCTAssertTrue(try outbox.entries(for: "b_1").isEmpty)
+    reopened.disconnect()
+  }
+
+  func testChangingTheDisplayedBranchCannotSendThePreviouslyLoadedHead() async throws {
+    let remote = FakeNativeHistory()
+    let socket = FakeConversation()
+    let outbox = OutboxStore(directory: outboxDirectory)
+    let model = ConversationViewModel(conversation: socket, outbox: outbox, history: remote)
+    model.select(botId: "b_1")
+    socket.emit(.connection(.ready))
+    socket.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await waitUntil { model.historyView?.usable == true }
+    remote.secondBranch = true
+    await model.refreshHistory()
+    remote.blockView = true
+    let changing = Task { await model.selectHistory("second-branch") }
+    try await waitUntil { remote.viewContinuation != nil }
+    model.draft = "only send to the chosen branch"
+    XCTAssertFalse(model.canSend)
+    model.send()
+    await Task.yield()
+    XCTAssertTrue(remote.continued.isEmpty, "the old A view must not admit Send intended for B")
+    XCTAssertTrue(socket.sent.isEmpty)
+    XCTAssertEqual(model.draft, "only send to the chosen branch")
+    remote.viewContinuation?.resume()
+    remote.viewContinuation = nil
+    await changing.value
+    try await waitUntil { model.historyView?.usable == true }
+    model.send()
+    try await waitUntil { remote.continued.count >= 1 && !model.isSending }
+    XCTAssertEqual(remote.continued.last?.head, String(repeating: "b", count: 64))
+    model.disconnect()
+  }
+
+  func testDefiniteContinuationRejectionRestoresDraftAndNeverReplaysOnReopen() async throws {
+    let remote = FakeNativeHistory()
+    remote.continuationError = ClientError(
+      "invalid history continuation", disposition: .notAdmitted)
+    let socket = FakeConversation()
+    let outbox = OutboxStore(directory: outboxDirectory)
+    let model = ConversationViewModel(conversation: socket, outbox: outbox, history: remote)
+    model.select(botId: "b_1")
+    socket.emit(.connection(.ready))
+    socket.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await waitUntil { model.historyView?.usable == true }
+    let invalid = String(repeating: "x", count: 8001)
+    model.draft = invalid
+    model.send()
+    try await waitUntil { remote.continued.count == 1 && !model.isSending }
+    XCTAssertEqual(model.draft, invalid)
+    XCTAssertTrue(try outbox.entries(for: "b_1").isEmpty)
+    model.disconnect()
+    let nextSocket = FakeConversation()
+    let reopened = ConversationViewModel(conversation: nextSocket, outbox: outbox, history: remote)
+    reopened.select(botId: "b_1")
+    nextSocket.emit(.connection(.ready))
+    nextSocket.emit(.snapshot(ConversationSnapshot(botId: "b_1")))
+    try await waitUntil { reopened.hasSnapshot }
+    try await Task.sleep(for: .milliseconds(30))
+    XCTAssertEqual(remote.continued.count, 1, "deterministic refusal cannot replay after reopen")
     reopened.disconnect()
   }
 
@@ -345,6 +411,10 @@ final class ConversationTests: XCTestCase {
 }
 
 @MainActor private final class FakeNativeHistory: NativeHistoryPort {
+  var secondBranch = false
+  var blockView = false
+  var viewContinuation: CheckedContinuation<Void, Never>?
+  var continuationError: Error?
   var blockAssessment = false
   var assessment: CheckedContinuation<Bool, Never>?
   var continued: [(head: String, text: String, requestId: String)] = []
@@ -356,15 +426,25 @@ final class ConversationTests: XCTestCase {
     continuation = nil
   }
   func branches(botId: String) async throws -> [NativeHistoryBranch] {
-    [
+    var result = [
       NativeHistoryBranch(
         branchId: "remote-branch", conversationId: "remote-conversation",
         selection: String(repeating: "a", count: 64))
     ]
+    if secondBranch {
+      result.append(
+        NativeHistoryBranch(
+          branchId: "second-branch", conversationId: "other",
+          selection: String(repeating: "b", count: 64)))
+    }
+    return result
   }
   func view(botId: String, head: String) async throws -> NativeHistoryView {
-    NativeHistoryView(
-      head: head, branchId: "remote-branch", usable: false,
+    if blockView { await withCheckedContinuation { viewContinuation = $0 } }
+    return NativeHistoryView(
+      head: head,
+      branchId: head == String(repeating: "b", count: 64) ? "second-branch" : "remote-branch",
+      usable: false,
       messages: [
         Message(
           id: "remote", role: .user, state: .complete, createdAt: "x",
@@ -383,6 +463,7 @@ final class ConversationTests: XCTestCase {
     -> NativeHistoryContinuation
   {
     continued.append((head, text, requestId))
+    if let continuationError { throw continuationError }
     if failContinuation { throw ClientError("response lost after possible admission") }
     if blockContinuation { await withCheckedContinuation { continuation = $0 } }
     return NativeHistoryContinuation(

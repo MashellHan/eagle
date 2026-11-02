@@ -124,6 +124,51 @@ final class CatalogHTTPClientTests: XCTestCase {
     XCTAssertEqual(result.submission.requestId, "r_kept_identity")
   }
 
+  func testHistoryBranchesReadEveryBoundedPageInOrder() async throws {
+    var cursors: [String?] = []
+    StubProtocol.handler = { request in
+      let body =
+        try JSONSerialization.jsonObject(with: XCTUnwrap(bodyData(request))) as? [String: String]
+      cursors.append(body?["after"])
+      let start = body?["after"] == "page-2" ? 32 : 0
+      let list = (start..<(start == 0 ? 32 : 35)).map { index in
+        [
+          "branchId": "branch-\(index)", "conversationId": "conversation",
+          "selection": String(repeating: "a", count: 64),
+        ]
+      }
+      return (
+        200,
+        try JSONSerialization.data(withJSONObject: [
+          "branches": list, "hasMore": start == 0, "cursor": start == 0 ? "page-2" : NSNull(),
+        ])
+      )
+    }
+    let result = try await client.branches(botId: "b_1")
+    XCTAssertEqual(result.map(\.branchId), (0..<35).map { "branch-\($0)" })
+    XCTAssertEqual(cursors, [nil, "page-2"])
+  }
+
+  func testContinuationHTTPRejectionKeepsDefiniteAndUnknownAdmissionSeparate() async throws {
+    for (status, supplied, disposition) in [
+      (400, Optional<ErrorDisposition>.none, ErrorDisposition.notAdmitted),
+      (500, nil, .unknown), (400, .unknown, .unknown), (500, .notAdmitted, .notAdmitted),
+    ] {
+      StubProtocol.handler = { _ in
+        var error = ["kind": "invalid_command", "message": "invalid input"]
+        if let supplied { error["disposition"] = supplied.rawValue }
+        return (status, try JSONSerialization.data(withJSONObject: ["error": error]))
+      }
+      do {
+        _ = try await client.continueHistory(
+          botId: "b_1", head: String(repeating: "a", count: 64), text: "bad", requestId: "r_keep")
+        XCTFail("the HTTP failure must throw")
+      } catch let error as ClientError {
+        XCTAssertEqual(error.disposition, disposition)
+      }
+    }
+  }
+
   private func bot(_ id: String, _ title: String) -> String {
     """
     {"id":"\(id)","title":"\(title)","createdAt":"x","updatedAt":"x",

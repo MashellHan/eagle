@@ -1100,7 +1100,11 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
               ? 400
               : 500;
       json(response, status, {
-        error: { kind, message: classified?.message ?? "the request failed" },
+        error: {
+          kind,
+          message: classified?.message ?? "the request failed",
+          ...(classified === undefined ? {} : { disposition: classified.disposition }),
+        },
       });
     }
   };

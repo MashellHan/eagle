@@ -204,6 +204,13 @@ Import never selects or overwrites the root chat. Export rejects active/incomple
 history. Invalid archives, ID/content conflicts and conflicting continuation retries
 answer `400 invalid_command`; no tasks or queue are imported. Native receipts survive
 reopen. A timeout/lost response is retried with the identical request ID and input.
+The composer cannot send an old displayed head while another branch is loading.
+An uncertain continuation keeps its admission guard and original outbox request
+until a response or submission confirms admission/rejection. A definite refusal
+restores the draft and is never automatically replayed. HTTP classified errors
+add optional `disposition`; a readable validation/auth refusal is `not_admitted`,
+whereas a lost response or possible admission remains unknown. Clients consume
+all bounded branch-directory pages, preserving the daemon's order and cursor.
 Head snapshots stay immutable; branch IDs retain independent continuations. Raw
 tool groups and context references are validated before any import write (RUNTIME.md).
 No credentials, local agent configuration or environment are transferred.

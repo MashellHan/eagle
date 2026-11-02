@@ -2812,3 +2812,30 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   Herdr collection/auth, D1 and dashboard rendering: N/A. Next broken hop is the
   fixed DO App candidate for Root's paired-helper/foreign-App trial, then Tailscale
   and final gates. No deployment, installation, identity or daily-data changes.
+
+## 2026-11-02 17:43 optional history: bounded client review fixes
+
+- Four client behaviors are red in `.local/history-client-review-red.log`: stale
+  displayed head during branch loading, unknown continuation admission releasing
+  ordinary Send, definite rejection replaying the outbox, and branches after page
+  32 being hidden. Small fixes and their affected checks are running; the two new
+  Node routing/watch findings remain open. No new full source gate was run.
+- Root owns detached candidate `dd3c0d4`, now moved to
+  `/Users/mengxionghan/workspace/eagle-hc`; evidence belongs under that tree's
+  `.local/candidate-evidence`. Its official App build passed (23.65s) and packaging
+  succeeded. The first candidate root check had four 10s timeouts and remains
+  failed evidence. Root's independent official-Node socket probe returned
+  `{bytes:106,error:EINVAL}` for the previous long path; no callback/lstat theory
+  is established. Root is verifying the short-path gate; source does not repeat it.
+- Source full gates remain historical non-green (Bots 776/781, browser 179 pass/
+  12 fail/11 platform skips, Swift 344 pass/1 fail). The latest automatic-gap
+  process run is 4/4, with earlier arrival 2/4 preserved and its timing difference
+  unexplained. Root's A UI evidence remains single-A local chat only; foreign
+  App/DO/B/latency and Tailscale acceptance are not established. Herdr collection,
+  dashboard authentication/D1/rendering: N/A. Next hop is client/routing fixes and
+  notice-lifetime diagnosis while Root independently prepares the physical trial.
+- Follow-up: affected client suites pass 23/23, and the real HTTP history file
+  passes 2/2 after preserving classified admission disposition (its new assertion
+  was red first). SwiftPM is released. The two Node findings now also have actual
+  behavioral reds: a conflicting continuation executes instead of refusing, and
+  a real SDK overflow snapshot paused in record reads publishes X after Y wins.

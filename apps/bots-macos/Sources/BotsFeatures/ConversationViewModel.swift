@@ -83,6 +83,16 @@ public final class ConversationViewModel: ObservableObject {
     !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       && connection == .ready
       && state.unavailable == nil
+      && displayedHeadIsCurrent
+      && !continuationRequests.values.contains(selectedBotId ?? "")
+  }
+
+  private var displayedHeadIsCurrent: Bool {
+    guard let displayedBranch else { return historyView == nil }
+    return historyView?.branchId == displayedBranch
+      && historyBranches.contains {
+        $0.branchId == displayedBranch && $0.selection == historyView?.head
+      }
   }
 
   public var displayState: ConversationState {
@@ -229,6 +239,7 @@ public final class ConversationViewModel: ObservableObject {
   public func send(inserting: Bool) {
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty, connection == .ready, let botId = selectedBotId else { return }
+    guard displayedHeadIsCurrent else { return }
     guard !continuationRequests.values.contains(botId) else {
       errorBanner = "正在建立本机续聊，请稍候再发送。"
       return
@@ -318,6 +329,9 @@ public final class ConversationViewModel: ObservableObject {
       errorBanner = "无法保存待发送的消息，消息没有发出。"
       return
     }
+    let previousView = historyView
+    let previousBranch = displayedBranch
+    let generation = viewGeneration
     if explicit {
       draft = ""
       followsReceivedWhenEmpty = false
@@ -330,12 +344,12 @@ public final class ConversationViewModel: ObservableObject {
     Task { [weak self] in
       guard let self else { return }
       defer {
-        self.continuationRequests.removeValue(forKey: entry.requestId)
         if self.selectedBotId == entry.botId { self.isSending = false }
       }
       do {
         let result = try await history.continueHistory(
           botId: entry.botId, head: head, text: entry.text, requestId: entry.requestId)
+        self.continuationRequests.removeValue(forKey: entry.requestId)
         if result.submission.status.isTerminal {
           try self.outbox.settle(result.submission, botId: entry.botId)
         }
@@ -346,6 +360,22 @@ public final class ConversationViewModel: ObservableObject {
           self.errorBanner = "续聊未完成，请保留请求 \(entry.requestId)。"
         }
       } catch {
+        if (error as? ClientError)?.disposition == .notAdmitted {
+          self.continuationRequests.removeValue(forKey: entry.requestId)
+          self.refused.insert(entry.requestId)
+          do { try self.outbox.refuse(requestId: entry.requestId) } catch {
+            self.errorBanner = "消息被拒绝，本地待发记录暂时没有删掉。"
+          }
+          if self.selectedBotId == entry.botId {
+            self.draft = self.draft.isEmpty ? entry.text : self.draft + "\n\n" + entry.text
+            if explicit, self.viewGeneration == generation {
+              self.displayedBranch = previousBranch
+              self.historyView = previousView
+            }
+            self.errorBanner = Self.describe(error)
+          }
+          return
+        }
         if self.selectedBotId == entry.botId {
           self.errorBanner = "续聊结果尚未确认，请重试原请求 \(entry.requestId)。\(Self.describe(error))"
         }
@@ -494,6 +524,9 @@ public final class ConversationViewModel: ObservableObject {
       hasSnapshot = true
       parked = state.parked
       hasOlder = value.truncatedBefore != nil
+      for record in value.pending {
+        continuationRequests.removeValue(forKey: record.requestId)
+      }
       // Every snapshot is a chance to make a refusal durable, even when no reconciliation
       // is due.
       persistPendingRefusals()
@@ -512,6 +545,7 @@ public final class ConversationViewModel: ObservableObject {
         to: state
       )
     case .submission(let record):
+      continuationRequests.removeValue(forKey: record.requestId)
       state = Reducer.apply(.submission(record), to: state)
       if record.status.isTerminal {
         inFlight.removeValue(forKey: record.requestId)

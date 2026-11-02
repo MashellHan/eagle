@@ -152,9 +152,11 @@ test("authenticated HTTP handoff exports/imports/continues with read/write scope
     const result = await continued.json();
     assert.match(JSON.stringify(result), /B continues/);
     assert.deepEqual(await (await call(b, b.token, right.id, "continue", body)).json(), result);
+    const refused = await call(b, b.token, right.id, "continue", { ...body, text: "changed" });
+    assert.equal(refused.status, 400);
     assert.equal(
-      (await call(b, b.token, right.id, "continue", { ...body, text: "changed" })).status,
-      400,
+      ((await refused.json()) as { error: { disposition: string } }).error.disposition,
+      "not_admitted",
     );
     for (const [operation, invalid] of [
       ["export", { extra: true }],

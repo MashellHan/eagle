@@ -143,9 +143,11 @@ public protocol ConversationPort: AnyObject {
 /// A failure the client itself produced (no connection, a rejected frame, a bad URL).
 public struct ClientError: Error, Sendable, CustomStringConvertible {
   public let message: String
+  public let disposition: ErrorDisposition?
 
-  public init(_ message: String) {
+  public init(_ message: String, disposition: ErrorDisposition? = nil) {
     self.message = message
+    self.disposition = disposition
   }
 
   public var description: String { message }
