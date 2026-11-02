@@ -24,6 +24,17 @@ Bots attaches through the existing private device socket after local startup;
 no chat open/submit awaits this optional channel. This slice proves local process
 and DO transport; native App/Tailscale and physical visibility timing follow.
 
+The Agent-role WSS uses `ctx.acceptWebSocket` and DO `webSocketMessage` events
+so each incoming frame has a platform request boundary for cross-DO history
+callbacks. The existing message/close closures remain in an instance-only socket
+map; both queues, current source/target authorization and frame budgets stay in
+place. Request-role short WSS connections retain their ordinary listeners.
+Close/error invokes the original cleanup and removes the map entry. No token or
+closure is serialized: the existing 5s authentication, 30s lease and pending
+timers keep active state alive; a cold socket without a handler closes with
+neutral `1012/socket_reconnect` for normal reconnection, without invalidating the
+cached session. This adds no hibernation recovery or DO restart.
+
 Worker history exceptions emit `history_failed` with the Device Execution layer,
 fixed processing phase, allowlisted exception category and validated frame request
 ID for short-tail correlation, including peer/delivery RPCs. Diagnostics never emit

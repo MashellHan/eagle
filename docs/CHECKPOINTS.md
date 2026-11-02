@@ -3207,3 +3207,38 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   histories and prior failures remain preserved. DO/TS two-way App visibility
   within 5s is still pending. D1, collection and dashboard: unchanged/N/A;
   source SwiftPM remains released.
+
+
+## 2026-11-02 23:11 optional history: Agent WSS event-boundary candidate
+
+- Root deployed `8d53e73` as existing Worker version `312bf053` at 22:44:13;
+  after the default 300s DO defer, the 22:49:57 window reported
+  `history_transport_frame_source_check_unknown_err_err_kuqaome`. The public
+  runtime subrequest-depth error matches these fixed flags; this is not evidence
+  of total-request or CPU quota exhaustion.
+- Root's controlled physical isolation kept App/Device Service running while
+  pausing only owned Bots daemons with automatic 60s resume. Fresh WSS/native
+  history ON then completed 24 serial `history.peers` calls (163–211ms, correct B).
+  Automatic daemon resume reproduced depth errors after 6.665s: 42 receipts in
+  29s included peer-RPC 8/source-check 2. Evidence remains under
+  `physical-888578a/A/depth-isolated-peers-2259.json` and
+  `depth-after-auto-resume-2259.json`; all device operations belong to Root.
+- This candidate moves only Agent-role WSS reception to `ctx.acceptWebSocket`
+  and DO message events. Original auth/source-proof rechecks, command/history
+  queues, limits and request-role listeners remain; instance handlers clean up
+  on close/error, and cold orphan sockets reconnect neutrally. No DO abort,
+  persisted credential/closure or hibernation recovery was added.
+- Local workerd does not enforce the production depth limit. The earlier real
+  long-connection runs (96 configure frames and 32 bidirectional rounds, each
+  49/49) are negative controls, not root-cause proof. The event-entry regression
+  is API red 48/49 → green 49/49 (32.92s): real DO dispatch/ciphertext, injected
+  public depth rejection while command pending/result and WSS survive, next
+  frame, close/error cleanup and cold-orphan neutral closure. Logs are
+  `.local/history-ws-event-red.log` and `-green.log`; native negative controls
+  remain `.local/history-request-context-native.log` and `-bidirectional.log`.
+- Types, affected lint and local Worker dry-run passed (`history-ws-event-*.log`);
+  normal commit hooks remain enabled. No source full gate, Swift/App, device,
+  deployment or service operation ran here. Root owns review/deployment/physical
+  retest; previous 11.8129s/18.103s/18.1017s failures and all histories remain.
+  DO/TS two-way App visibility within 5s is still pending. D1, collection and
+  dashboard: unchanged/N/A; source SwiftPM remains released.

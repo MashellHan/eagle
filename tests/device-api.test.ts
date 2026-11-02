@@ -49,6 +49,8 @@ before(async () => {
 import { z } from "zod";
 export class DeviceExecution extends Execution {
  testGetterReads=0;
+ testMessages=0;
+ webSocketMessage(socket,message){this.testMessages++;return super.webSocketMessage(socket,message);}
  async history(socket,input,stage){
   if(input.type==='history.test_error_like'){
    this.testGetterReads=0;stage(input.fault==='all_words'?'frame.target_receive_rpc':'frame.source_check');
@@ -78,7 +80,11 @@ export class DeviceExecution extends Execution {
   }
   return super.receiveHistory(token,source,input);
  }
- fetch(request){const url=new URL(request.url);if(url.pathname==='/test-getter-reads')return new Response(String(this.testGetterReads));if(url.pathname==='/test-close'){this.agent?.socket.close(Number(url.searchParams.get('code')),url.searchParams.get('reason'));return new Response('closed');}return super.fetch(request);}
+ fetch(request){const url=new URL(request.url);
+  if(url.pathname==='/test-sockets')return Response.json({messages:this.testMessages,accepted:this.ctx.getWebSockets().length,handlers:this.socketHandlers?.size??0,pending:this.pending.size,online:!!this.agent});
+  if(url.pathname==='/test-forget-socket'){this.socketHandlers?.clear();clearTimeout(this.lease);this.agent=undefined;return new Response('forgotten');}
+  if(url.pathname==='/test-socket-error'){this.webSocketError(this.ctx.getWebSockets()[0]);return new Response('failed');}
+  if(url.pathname==='/test-getter-reads')return new Response(String(this.testGetterReads));if(url.pathname==='/test-close'){this.agent?.socket.close(Number(url.searchParams.get('code')),url.searchParams.get('reason'));return new Response('closed');}return super.fetch(request);}
  observation(){const observation=super.observation();
   if(this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_observation_delay'").toArray().length){this.ctx.storage.sql.exec("UPDATE test_observation_delay SET started=1");return new Promise(resolve=>setTimeout(()=>resolve(observation),500));}
   return observation;
@@ -1640,6 +1646,240 @@ test("history transport exceptions return safe phase/category codes without chan
       });
   } finally {
     source.terminate();
+  }
+});
+
+test("Agent WSS dispatches through DO events while history failures preserve command progress and socket lifecycle", async () => {
+  const [a, b] = await Promise.all([
+    identity("history-long-lived-a"),
+    identity("history-long-lived-b"),
+  ]);
+  await pair(a.token, await code(b.token));
+  const devices = (await call("/directory", a.token)).body
+    .devices as unknown as Device[];
+  const origin = (await mf.ready).origin;
+  const cipher = async (owner: typeof a) =>
+    DeviceHistoryCipher.create(
+      origin,
+      devices.find((device) => device.deviceId === owner.deviceId) as Device,
+      async (proof) =>
+        sign(
+          null,
+          Buffer.from(historyKeyPayload(proof)),
+          owner.keys.privateKey,
+        ).toString("base64url"),
+    );
+  const [cipherA, cipherB] = await Promise.all([cipher(a), cipher(b)]);
+  const source = await rawSocket(a.deviceId, "agent");
+  const target = await rawSocket(b.deviceId, "agent");
+  const namespace = (await mf.getDurableObjectNamespace(
+    "DEVICE_EXECUTION",
+  )) as unknown as DurableObjectNamespace;
+  const execution = namespace.get(namespace.idFromName(a.deviceId));
+  const state = async () =>
+    (await (await execution.fetch("https://test/test-sockets")).json()) as {
+      messages: number;
+      accepted: number;
+      handlers: number;
+      pending: number;
+      online: boolean;
+    };
+  let caller: NativeWebSocket | undefined;
+  let orphan: NativeWebSocket | undefined;
+  const exchange = async (socket: NativeWebSocket, value: unknown) => {
+    const response = frame<Record<string, unknown>>(socket);
+    socket.send(JSON.stringify(value));
+    return response;
+  };
+  try {
+    for (const [socket, owner, key] of [
+      [source, a, cipherA],
+      [target, b, cipherB],
+    ] as const) {
+      assert.equal(
+        (await exchange(socket, authentication(owner.token))).type,
+        "ready",
+      );
+      assert.equal(
+        (
+          await exchange(socket, {
+            type: "history.configure",
+            requestId: randomUUID(),
+            proof: key.proof,
+          })
+        ).type,
+        "history.configured",
+      );
+    }
+    assert.deepEqual(
+      await state(),
+      {
+        messages: 2,
+        accepted: 1,
+        handlers: 1,
+        pending: 0,
+        online: true,
+      },
+      "Agent frames must enter the platform DO WebSocket handler",
+    );
+    for (let index = 0; index < 32; index++)
+      for (const [socket, receiver, from, to] of [
+        [source, target, cipherA, cipherB],
+        [target, source, cipherB, cipherA],
+      ] as const) {
+        assert.equal(
+          (
+            await exchange(socket, {
+              type: "history.peers",
+              requestId: randomUUID(),
+            })
+          ).type,
+          "history.peers",
+        );
+        const requestId = randomUUID();
+        const packet = await from.seal(
+          { device: to.device, proof: to.proof },
+          requestId,
+          { index },
+        );
+        const received = frame<{ source: HistoryPeer; packet: unknown }>(
+          receiver,
+        );
+        assert.deepEqual(
+          await exchange(socket, {
+            type: "history.send",
+            requestId,
+            targetDeviceId: to.device.deviceId,
+            packet,
+          }),
+          { type: "history.sent", requestId },
+          `bidirectional round ${index + 1} must deliver ciphertext`,
+        );
+        const delivery = await received;
+        assert.deepEqual(await to.open(delivery.source, delivery.packet), {
+          index,
+        });
+      }
+    const { deviceDigest, canonicalDeviceJSON } = await import(
+      "../packages/contracts/src/devices.ts"
+    );
+    const operation = {
+      kind: "command" as const,
+      command: "printf still-live",
+    };
+    const request = {
+      requestId: randomUUID(),
+      operationId: randomUUID(),
+      targetDeviceId: a.deviceId,
+      action: "run" as const,
+      operation,
+      digest: await deviceDigest(canonicalDeviceJSON(operation)),
+    };
+    caller = await rawSocket(a.deviceId, "request");
+    const relayed = frame<{ request: OperationRequest }>(source);
+    const result = frame<{ result: { status: string; output: string } }>(
+      caller,
+    );
+    caller.send(
+      JSON.stringify({ type: "request", sessionToken: b.token, request }),
+    );
+    const admitted = await relayed;
+    assert.equal((await state()).pending, 1);
+    const registry = await mf.unsafeGetDurableObjectStorage(
+      "eagle",
+      "DeviceRegistry",
+      { name: "registry" },
+    );
+    await registry.exec(
+      "INSERT INTO test_history_exception VALUES(?,?)",
+      a.deviceId,
+      "Subrequest depth limit exceeded. This request recursed through Workers too many times. This can happen e.g. if you have a Worker or Durable Object that calls other Workers or objects recursively.",
+    );
+    const failed = await exchange(source, {
+      type: "history.peers",
+      requestId: randomUUID(),
+    });
+    assert.equal(
+      failed.error,
+      "history_transport_frame_source_check_unknown_err_err_kuqaome",
+    );
+    assert.equal(
+      (await state()).pending,
+      1,
+      "history failure must retain the pending command",
+    );
+    source.send(
+      JSON.stringify({
+        type: "result",
+        requestId: admitted.request.requestId,
+        operationId: request.operationId,
+        targetDeviceId: a.deviceId,
+        result: { status: "completed", output: "still-live" },
+      }),
+    );
+    assert.deepEqual((await result).result, {
+      status: "completed",
+      output: "still-live",
+    });
+    assert.equal(
+      (
+        await exchange(source, {
+          type: "history.peers",
+          requestId: randomUUID(),
+        })
+      ).type,
+      "history.peers",
+    );
+    assert.equal(source.readyState, NativeWebSocket.OPEN);
+    assert.equal((await state()).pending, 0);
+    const closed = new Promise<void>((resolve) =>
+      source.once("close", () => resolve()),
+    );
+    source.close();
+    await closed;
+    assert.equal(
+      (await state()).handlers,
+      0,
+      "normal close releases the handler",
+    );
+    assert.equal((await state()).online, false);
+    orphan = await rawSocket(a.deviceId, "agent");
+    assert.equal(
+      (await exchange(orphan, authentication(a.token))).type,
+      "ready",
+    );
+    const errored = new Promise<number>((resolve) =>
+      orphan?.once("close", resolve),
+    );
+    await execution.fetch("https://test/test-socket-error");
+    assert.equal(await errored, 1011);
+    assert.equal((await state()).handlers, 0, "error releases the handler");
+    assert.equal((await state()).online, false);
+    orphan = await rawSocket(a.deviceId, "agent");
+    assert.equal(
+      (await exchange(orphan, authentication(a.token))).type,
+      "ready",
+    );
+    await execution.fetch("https://test/test-forget-socket");
+    const reconnected = new Promise<{ code: number; reason: string }>(
+      (resolve) =>
+        orphan?.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        ),
+    );
+    orphan.send(
+      JSON.stringify({ type: "history.peers", requestId: randomUUID() }),
+    );
+    assert.deepEqual(
+      await reconnected,
+      { code: 1012, reason: "socket_reconnect" },
+      "cold socket reconnect must preserve the existing session credential",
+    );
+  } finally {
+    caller?.terminate();
+    orphan?.terminate();
+    source.terminate();
+    target.terminate();
   }
 });
 

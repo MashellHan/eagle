@@ -311,6 +311,13 @@ function historyFailure(
 class DeviceAuthenticationError extends Error {}
 export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
   private agent?: Agent;
+  private socketHandlers = new Map<
+    WebSocket,
+    {
+      message: (data: string | ArrayBuffer) => void;
+      closed: () => void;
+    }
+  >();
   private pending = new Map<string, Pending>();
   private policies = new Map<string, PendingPolicy>();
   private lease?: ReturnType<typeof setTimeout>;
@@ -318,6 +325,25 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
   private historyRate = { until: 0, frames: 0, bytes: 0 };
   constructor(ctx: DurableObjectState, env: DeviceServiceEnv) {
     super(ctx, env);
+  }
+  webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): void {
+    const handler = this.socketHandlers.get(socket);
+    if (handler) handler.message(message);
+    else socket.close(1012, "socket_reconnect");
+  }
+  webSocketClose(socket: WebSocket, code: number, reason: string): void {
+    try {
+      socket.close([1005, 1006, 1015].includes(code) ? 1000 : code, reason);
+    } finally {
+      this.socketHandlers.get(socket)?.closed();
+    }
+  }
+  webSocketError(socket: WebSocket): void {
+    try {
+      socket.close(1011, "socket_error");
+    } finally {
+      this.socketHandlers.get(socket)?.closed();
+    }
   }
   observation(): DeviceObservation {
     const previous = this.ctx.storage.kv.get<DeviceObservation>("observation");
@@ -699,7 +725,9 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
     const pair = new WebSocketPair();
     const client = pair[0];
     const socket = pair[1];
-    socket.accept();
+    // Agent messages need a platform event boundary for cross-DO RPC ancestry.
+    if (role === "agent") this.ctx.acceptWebSocket(socket);
+    else socket.accept();
     let authenticated = false;
     let handled = false;
     let chain = Promise.resolve();
@@ -716,6 +744,7 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
       socket.close(1008, "authentication_timeout");
     }, 5000);
     const closed = () => {
+      this.socketHandlers.delete(socket);
       closedFlag = true;
       clearTimeout(timeout);
       if (this.agent?.socket === socket) {
@@ -729,7 +758,7 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
           this.pending.delete(id);
         }
     };
-    socket.addEventListener("message", (event) => {
+    const message = (event: { data: unknown }) => {
       if (!live()) return;
       const bytes =
         typeof event.data === "string"
@@ -1107,9 +1136,17 @@ export class DeviceExecution extends DurableObject<DeviceServiceEnv> {
           queuedBytes -= bytes;
         });
       this.ctx.waitUntil(chain);
-    });
-    socket.addEventListener("close", closed);
-    socket.addEventListener("error", closed);
+    };
+    if (role === "agent")
+      this.socketHandlers.set(socket, {
+        message: (data) => message({ data }),
+        closed,
+      });
+    else {
+      socket.addEventListener("message", message);
+      socket.addEventListener("close", closed);
+      socket.addEventListener("error", closed);
+    }
     return new Response(null, { status: 101, webSocket: client });
   }
 }
