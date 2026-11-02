@@ -421,8 +421,8 @@ export class DeviceHistoryTransport {
               response
                 .writeHead(200, { "content-type": "application/json" })
                 .end(JSON.stringify({ packet: ack }));
-            } catch {
-              response.writeHead(403).end();
+            } catch (error) {
+              response.writeHead(this.transient(error) ? 503 : 403).end();
             } finally {
               clearTimeout(deadline);
               this.incoming--;

@@ -2915,3 +2915,23 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   remain retained. Root owns helper/Worker rollout, installations and actual
   two-Mac App timing. TS review and physical DO/TS two-way visibility remain
   pending; no latency claim. Herdr collection, D1 and dashboard rendering: N/A.
+
+## 2026-11-02 18:27 optional history: direct availability boundaries
+
+- ACK body timeout has a real 10/11 red and 11/11 green at `bc163df`: the real
+  receiver flushes 200 headers and a partial ACK, then the unchanged 750ms
+  deadline aborts its read. The same sealed packet falls back to DO and publishes
+  once; cooldown and complete tampered-ACK/current-auth rejection remain covered.
+  Logs: `.local/history-direct-body-*`; types/lint/Agent build/hooks passed.
+- Receiver peer lookup `history_busy` has a separate real 10/11 red and 11/11
+  green in `.local/history-direct-receiver-*`. Known transient errors now return
+  503 through the existing whitelist; auth/parse/AEAD and unknown errors stay 403.
+  The existing listener case proves same-packet fallback and one publication,
+  including an unknown-error no-fallback control. No limits or protocol changed.
+- Root reports fixed `665b327` gates: root 278/278, Bots normal + coverage each
+  803/803, Bots-macOS 44+52+52 = 148, and official bundle passed. These are
+  candidate results, not full gates for the two later source deltas. Root owns
+  remaining Swift/hook/build/push/deploy/install and physical two-Mac acceptance;
+  source ran only the affected history file and types/lint/Agent build. No Swift
+  or App consumer started. Herdr collection, D1 and dashboard rendering: N/A;
+  actual DO/TS App visibility and latency remain unverified here.

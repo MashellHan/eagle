@@ -212,6 +212,8 @@ test("Tailscale history uses real encrypted listeners, retains packet identity o
   );
   let current = true;
   let denyAtA = false;
+  let receiverPeerError: Error | undefined;
+  let receiverPeerFailures = 0;
   let controls = 0;
   let busyEndpoint = true;
   const relays: string[] = [];
@@ -242,7 +244,13 @@ test("Tailscale history uses real encrypted listeners, retains packet identity o
           device: self.device,
           proof: frame.proof,
         });
-      if (frame.type === "history.peers")
+      if (frame.type === "history.peers") {
+        if (self === b && receiverPeerError) {
+          const error = receiverPeerError;
+          receiverPeerError = undefined;
+          receiverPeerFailures++;
+          throw error;
+        }
         return {
           type: "history.peers",
           peers: [...proofs.values()].filter(
@@ -252,6 +260,7 @@ test("Tailscale history uses real encrypted listeners, retains packet identity o
               (self !== a || !denyAtA),
           ),
         };
+      }
       if (frame.type === "history.send") {
         if (frame.packet?.purpose === "endpoint") {
           if (busyEndpoint) {
@@ -401,6 +410,42 @@ test("Tailscale history uses real encrypted listeners, retains packet identity o
     assert.deepEqual(
       await right.send(a.device.deviceId, { marker: "enabled again" }),
       { sent: true, route: "tailscale" },
+    );
+    const beforeBusy = received.length;
+    const beforeRelays = relays.length;
+    receiverPeerError = new Error("unclassified_receiver_failure");
+    await assert.rejects(
+      left.send(b.device.deviceId, { marker: "unknown receiver failure" }),
+      /history_direct_unauthorized/,
+    );
+    assert.equal(
+      relays.length,
+      beforeRelays,
+      "unknown receiver errors never fall back",
+    );
+    receiverPeerError = new Error("history_busy");
+    assert.deepEqual(
+      await left.send(b.device.deviceId, {
+        marker: "receiver temporarily busy",
+      }),
+      { sent: true, route: "do" },
+    );
+    assert.equal(
+      receiverPeerFailures,
+      2,
+      "both errors reached the real receiver peer lookup",
+    );
+    await untilHistory(() => received.length >= beforeBusy + 1);
+    assert.equal(
+      received.length,
+      beforeBusy + 1,
+      "the busy fallback publishes exactly once",
+    );
+    assert.equal(relays.length, beforeRelays + 1);
+    assert.equal(
+      relays.at(-1),
+      directId,
+      "receiver busy fallback retains the sealed packet ID",
     );
   } finally {
     left.close();

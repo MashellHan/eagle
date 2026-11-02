@@ -133,6 +133,9 @@ identity/group failures never fall back. Disable/offline/close releases the list
 The 750ms direct deadline includes reading the ACK body. An interrupted or timed-out
 body is a connectivity failure; a complete but invalid or unauthenticated ACK still
 fails closed without DO fallback.
+The direct receiver reports known transient peer-directory/history capacity or
+timeout errors as unavailable (503), allowing the same-packet DO fallback.
+Authentication, parse, AEAD and unclassified errors remain forbidden (403).
 The send receipt reports `tailscale` or `do`; neither route is App-visibility evidence.
 The optional packet-header `purpose` (`endpoint`/`ack`) is authenticated with the
 ciphertext, independently of Bots data; key proof/helper signing is unchanged.
