@@ -13,6 +13,8 @@ async function probe(binary: string): Promise<string> {
   try {
     return (
       await exec(binary, ["status", "--json"], {
+        // The macOS app executable also serves the CLI; background probes must select it.
+        env: { ...process.env, TAILSCALE_BE_CLI: "1" },
         timeout: 3000,
         maxBuffer: 1048576,
       })

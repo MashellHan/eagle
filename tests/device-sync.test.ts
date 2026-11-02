@@ -28,19 +28,21 @@ test("Registry and the independent Bot codec use the same normative sync metadat
   assert.deepEqual(SyncAccessResult.parse(fixture.response), fixture.response);
 });
 
-test("Tailscale discovery uses only bounded Self addresses, logged-out withdrawal and honest failures", async () => {
+test("Tailscale discovery stays in CLI mode with bounded Self, logged-out withdrawal and honest failures", async () => {
   const root = mkdtempSync(resolve(".local/device-sync-probe-"));
   const previous = process.env.PATH;
+  const previousMode = process.env.TAILSCALE_BE_CLI;
   const binary = join(root, "tailscale");
   const result = (value: unknown, exit = 0) => {
     writeFileSync(
       binary,
-      `#!/bin/sh\n[ "$1" = status ] && [ "$2" = --json ] || exit 2\nprintf '%s' '${JSON.stringify(value)}'\nexit ${exit}\n`,
+      `#!/bin/sh\n[ "$1" = status ] && [ "$2" = --json ] || exit 2\n[ "$TAILSCALE_BE_CLI" = 1 ] || { printf 'owned probe reached GUI mode\\n' >&2; exit 64; }\nprintf '%s' '${JSON.stringify(value)}'\nexit ${exit}\n`,
     );
     chmodSync(binary, 0o700);
   };
   try {
     process.env.PATH = root;
+    process.env.TAILSCALE_BE_CLI = "0";
     result({
       BackendState: "Running",
       Self: {
@@ -52,6 +54,7 @@ test("Tailscale discovery uses only bounded Self addresses, logged-out withdrawa
       { address: "100.64.1.2", port: 7015 },
       { address: "fd7a:115c:a1e0::12", port: 7015 },
     ]);
+    assert.equal(process.env.TAILSCALE_BE_CLI, "0");
     assert.deepEqual(await syncCandidates(null), []);
     result({ BackendState: "NeedsLogin", Self: null }, 1);
     assert.deepEqual(await syncCandidates(7015), []);
@@ -71,6 +74,8 @@ test("Tailscale discovery uses only bounded Self addresses, logged-out withdrawa
     await assert.rejects(syncCandidates(7015));
   } finally {
     process.env.PATH = previous;
+    if (previousMode === undefined) delete process.env.TAILSCALE_BE_CLI;
+    else process.env.TAILSCALE_BE_CLI = previousMode;
     rmSync(root, { recursive: true, force: true });
   }
 });

@@ -179,6 +179,12 @@ The local candidate is delivered at `~/Applications/Eagle Device Candidate.app`.
 artifact. Install the signed bundle without re-signing, then open the installed copy;
 the candidate bundle/profile and data remain separate from the daily App. This local
 ad-hoc candidate is not a distribution-signed or notarized release.
+
+Background Tailscale Self discovery runs `status --json` with `TAILSCALE_BE_CLI=1`
+in the probe child's environment, including the macOS App-executable fallback. It
+does not launch the Tailscale GUI or change VPN/login settings; Self validation,
+discovery deadlines and endpoint withdrawal/fencing still apply.
+
 ## Where the relay address comes from
 
 A **published App ships no relay address**: `Support/DeviceHost.release.json` carries an empty
