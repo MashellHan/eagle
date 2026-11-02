@@ -2683,3 +2683,21 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   claimed. Full Bots 776/781 and browser 179/12/11 remain non-green; complete Swift
   gate remains pending despite its single-file recheck. Herdr collection/auth, D1
   and dashboard rendering: N/A. No existing App/helper was modified or installed.
+
+## 2026-11-02 16:17 optional history: remaining record boundaries
+
+- Three reproduced record defects now pass: legacy archive receipts repair missing
+  record mappings without copying native entries; empty-first and empty-last
+  receives atomically preserve queued work across handles; inherited-origin cursors
+  cannot advance an immutable older head. Affected native/archive/HTTP files pass
+  28/28, Bots typecheck/lint pass. Passive-container isolation remains covered.
+  Red/green evidence: `.local/history-record-followup-{red,regression}.log`.
+- Transport commit `ab32579` has 34/34 independent-process/WSS tests and 16/16
+  native helper tests; the earlier SQLite-lock failure was resolved by reading
+  closed journals. No repeat of that passing case. Full gates remain historical:
+  Bots 776/781, browser 179 pass/12 fail/11 platform skips, Swift 344 pass/1 fail;
+  bounded rechecks do not replace them. Last complete eval was 15/15 before 2A.
+- Next broken hop: Bots automatic IPC scheduling, followed by App catalog/branch
+  visibility. `history.attach` remains single-consumer; Root owns the physical
+  handoff from daily Bots to the isolated App and restoration. No App/helper was
+  installed or changed. Herdr collection/auth, D1 and dashboard rendering: N/A.

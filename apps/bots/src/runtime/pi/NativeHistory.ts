@@ -87,7 +87,11 @@ const RecordLink = defineDocFamily({
   version: 1,
   scope: "session",
   family: true,
-  initial: (_seed: null) => ({ next: "" }),
+  initial: (_seed: null): { next: string; queued: boolean; workNext: string } => ({
+    next: "",
+    queued: false,
+    workNext: "",
+  }),
   checkpointWhen: () => true,
 });
 const BranchProgress = defineDocFamily({
@@ -95,7 +99,7 @@ const BranchProgress = defineDocFamily({
   version: 1,
   scope: "session",
   family: true,
-  initial: (_seed: null) => ({ next: "", revision: 0 }),
+  initial: (_seed: null) => ({ next: "", tail: "", revision: 0 }),
   checkpointWhen: () => true,
 });
 const NativeProvenance = defineDocFamily({
@@ -431,7 +435,11 @@ export class NativeHistory {
           .next !== parsed.record
       )
         return historyReject("history cursor is not in this branch");
-      if (tipOrder(selected.branchId, record.entry.id) > tipOrder(selected.branchId, selected.tip))
+      if (
+        tipOrder(selected.branchId, record.entry.id) > tipOrder(selected.branchId, selected.tip) ||
+        (record.entry.originId === selected.tip.split("/e")[0] &&
+          Number(record.entry.id.split("/e")[1]) > Number(selected.tip.split("/e")[1]))
+      )
         return historyReject("history cursor is outside selected head");
       return record;
     };
@@ -545,6 +553,11 @@ export class NativeHistory {
           historyReject("history branch ancestry conflict");
         link.next = record.entry.id;
       }
+      await this.#enqueue(
+        tx,
+        page.branchId,
+        page.records.map((record) => record.entry.id),
+      );
       const directory = await tx.doc(BranchDirectory);
       const previous = directory.branches[page.branchId];
       if (
@@ -564,30 +577,11 @@ export class NativeHistory {
         };
     }, ctx);
     // Each native append is a separate short transaction; backfill yields to local chat.
-    const progress = await this.#harness.snapshot(BranchProgress, page.branchId, ctx);
-    const revision = progress?.revision ?? 0;
-    const queue = [
-      ...new Set([
-        ...(progress?.next ? [progress.next] : []),
-        ...page.records.map((record) => record.entry.id),
-      ]),
-    ];
-    let remaining = 32;
-    const visited = new Set<string>();
-    while (queue.length && remaining > 0) {
-      const id = queue.shift() as string;
-      if (visited.has(id)) continue;
-      visited.add(id);
-      const next = await this.#materialize(id, page.branchId);
-      remaining -= 1;
-      if (next !== undefined && !visited.has(next) && !queue.includes(next)) queue.push(next);
+    for (let remaining = 32; remaining > 0; remaining -= 1) {
+      if (!(await this.#materialize(page.branchId))) break;
     }
     const pending = await this.#harness.commit(async (tx) => {
       const pending = await tx.doc(BranchProgress, page.branchId, null);
-      if ((pending.revision ?? 0) === revision) {
-        pending.next = queue[0] ?? "";
-        pending.revision = revision + 1;
-      }
       const head = await tx.doc(IncrementalHead, page.head, null);
       if (head.tip) {
         const tip = await tx.doc(ReceivedRecord, head.tip, null);
@@ -653,96 +647,130 @@ export class NativeHistory {
     }, ctx);
   }
 
-  async #materialize(id: string, branchId: string): Promise<string | undefined> {
+  async #enqueue(tx: Tx, branchId: string, ids: string[]) {
+    const progress = await tx.doc(BranchProgress, branchId, null);
+    // Adopt the single pending pointer written by older versions.
+    if (progress.next && !progress.tail) {
+      progress.tail = progress.next;
+      (await tx.doc(RecordLink, `${branchId}/${progress.next}`, null)).queued = true;
+    }
+    for (const id of ids) {
+      if ((await tx.doc(ReceivedRecord, id, null)).nativeId) continue;
+      const work = await tx.doc(RecordLink, `${branchId}/${id}`, null);
+      if (work.queued) continue;
+      work.queued = true;
+      work.workNext = "";
+      if (progress.tail)
+        (await tx.doc(RecordLink, `${branchId}/${progress.tail}`, null)).workNext = id;
+      else progress.next = id;
+      progress.tail = id;
+    }
+  }
+
+  async #materialize(branchId: string): Promise<boolean> {
     return this.#harness.commit(async (tx) => {
-      const stored = await tx.doc(ReceivedRecord, id, null);
-      if (!stored.body) return;
-      const record = JSON.parse(stored.body) as HistoryPage["records"][number];
-      const link = await tx.doc(RecordLink, `${branchId}/${id}`, null);
-      if (stored.nativeId) return link.next || undefined;
-      const parent =
-        record.previous === null ? undefined : await tx.doc(ReceivedRecord, record.previous, null);
-      if (parent !== undefined && !parent.nativeId) return;
-      const entry = record.entry;
-      const refs = new Map<string, EntryId>();
-      for (const ref of [
-        entry.head === entry.id ? undefined : entry.head,
-        ...(entry.edits ?? []).map((edit) => edit.target),
-      ]) {
-        if (ref === undefined || refs.has(ref)) continue;
-        const target = await tx.doc(ReceivedRecord, ref, null);
-        if (!target.nativeId || parent === undefined)
-          return historyReject("history reference missing");
-        const visible = await tx.scanEntries(
-          {
-            conversationId: parent.conversationId as ConversationId,
-            minEntryId: target.nativeId as EntryId,
-            maxEntryId: Math.min(target.nativeId, parent.nativeId) as EntryId,
-          },
-          1,
-        );
-        if (visible.items.length !== 1) historyReject("history reference outside ancestry");
-        refs.set(ref, target.nativeId as EntryId);
-      }
-      const tail =
-        parent === undefined
-          ? undefined
-          : (await tx.scanEntries({ conversationId: parent.conversationId as ConversationId }, 1))
-              .items[0];
-      const container =
-        parent === undefined
-          ? undefined
-          : await tx.conversation(parent.conversationId as ConversationId);
-      const passive =
-        parent === undefined
-          ? false
-          : (await tx.doc(PassiveConversation, String(parent.conversationId), null)).imported;
-      // SDK roots and local continuations can also be ownerless; only imports may share an append container.
-      const reuse =
-        parent !== undefined &&
-        parent.conversationId !== this.#rootId &&
-        container !== undefined &&
-        container.owner === undefined &&
-        passive &&
-        tail?.id === parent.nativeId;
-      const conversationId =
-        parent === undefined
-          ? (await tx.createConversation({ ownership: { kind: "ownerless" } })).id
-          : reuse
-            ? (parent.conversationId as ConversationId)
-            : (
-                await tx.forkConversation(
-                  parent.conversationId as ConversationId,
-                  parent.nativeId as EntryId,
-                  { ownership: { kind: "ownerless" } },
-                )
-              ).id;
-      (await tx.doc(PassiveConversation, String(conversationId), null)).imported = true;
-      const draft: EntryDraft = {
-        kind: entry.kind,
-        ...(entry.model === undefined ? {} : { model: entry.model }),
-        ...(entry.data === undefined ? {} : { data: entry.data }),
-        ...(entry.head === undefined
-          ? {}
-          : { head: entry.head === entry.id ? "self" : (refs.get(entry.head) as EntryId) }),
-        ...(entry.edits === undefined
-          ? {}
-          : {
-              edits: entry.edits.map((edit) => ({
-                ...edit,
-                target: refs.get(edit.target) as EntryId,
-              })),
-            }),
-      };
-      const native = await tx.appendEntry(conversationId, draft);
-      Object.assign(stored, { nativeId: native.id, conversationId });
-      Object.assign(await tx.doc(NativeProvenance, String(native.id), null), {
-        id: entry.id,
-        originId: entry.originId,
-        conversationId: entry.conversationId,
-      });
-      return link.next || undefined;
+      const progress = await tx.doc(BranchProgress, branchId, null);
+      if (!progress.next) return false;
+      const id = progress.next;
+      const work = await tx.doc(RecordLink, `${branchId}/${id}`, null);
+      progress.next = work.workNext || "";
+      if (!progress.next) progress.tail = "";
+      work.queued = false;
+      work.workNext = "";
+      const next = await this.#appendReceived(tx, id, branchId);
+      if (next) await this.#enqueue(tx, branchId, [next]);
+      return true;
     }, ctx);
+  }
+
+  async #appendReceived(tx: Tx, id: string, branchId: string): Promise<string | undefined> {
+    const stored = await tx.doc(ReceivedRecord, id, null);
+    if (!stored.body) return;
+    const record = JSON.parse(stored.body) as HistoryPage["records"][number];
+    const link = await tx.doc(RecordLink, `${branchId}/${id}`, null);
+    if (stored.nativeId) return link.next || undefined;
+    const parent =
+      record.previous === null ? undefined : await tx.doc(ReceivedRecord, record.previous, null);
+    if (parent !== undefined && !parent.nativeId) return;
+    const entry = record.entry;
+    const refs = new Map<string, EntryId>();
+    for (const ref of [
+      entry.head === entry.id ? undefined : entry.head,
+      ...(entry.edits ?? []).map((edit) => edit.target),
+    ]) {
+      if (ref === undefined || refs.has(ref)) continue;
+      const target = await tx.doc(ReceivedRecord, ref, null);
+      if (!target.nativeId || parent === undefined)
+        return historyReject("history reference missing");
+      const visible = await tx.scanEntries(
+        {
+          conversationId: parent.conversationId as ConversationId,
+          minEntryId: target.nativeId as EntryId,
+          maxEntryId: Math.min(target.nativeId, parent.nativeId) as EntryId,
+        },
+        1,
+      );
+      if (visible.items.length !== 1) historyReject("history reference outside ancestry");
+      refs.set(ref, target.nativeId as EntryId);
+    }
+    const tail =
+      parent === undefined
+        ? undefined
+        : (await tx.scanEntries({ conversationId: parent.conversationId as ConversationId }, 1))
+            .items[0];
+    const container =
+      parent === undefined
+        ? undefined
+        : await tx.conversation(parent.conversationId as ConversationId);
+    const passive =
+      parent === undefined
+        ? false
+        : (await tx.doc(PassiveConversation, String(parent.conversationId), null)).imported;
+    // SDK roots and local continuations can also be ownerless; only imports may share an append container.
+    const reuse =
+      parent !== undefined &&
+      parent.conversationId !== this.#rootId &&
+      container !== undefined &&
+      container.owner === undefined &&
+      passive &&
+      tail?.id === parent.nativeId;
+    const conversationId =
+      parent === undefined
+        ? (await tx.createConversation({ ownership: { kind: "ownerless" } })).id
+        : reuse
+          ? (parent.conversationId as ConversationId)
+          : (
+              await tx.forkConversation(
+                parent.conversationId as ConversationId,
+                parent.nativeId as EntryId,
+                { ownership: { kind: "ownerless" } },
+              )
+            ).id;
+    (await tx.doc(PassiveConversation, String(conversationId), null)).imported = true;
+    const draft: EntryDraft = {
+      kind: entry.kind,
+      ...(entry.model === undefined ? {} : { model: entry.model }),
+      ...(entry.data === undefined ? {} : { data: entry.data }),
+      ...(entry.head === undefined
+        ? {}
+        : { head: entry.head === entry.id ? "self" : (refs.get(entry.head) as EntryId) }),
+      ...(entry.edits === undefined
+        ? {}
+        : {
+            edits: entry.edits.map((edit) => ({
+              ...edit,
+              target: refs.get(edit.target) as EntryId,
+            })),
+          }),
+    };
+    const native = await tx.appendEntry(conversationId, draft);
+    Object.assign(stored, { nativeId: native.id, conversationId });
+    Object.assign(await tx.doc(NativeProvenance, String(native.id), null), {
+      id: entry.id,
+      originId: entry.originId,
+      conversationId: entry.conversationId,
+    });
+    return link.next || undefined;
   }
 
   async readHead(headId: string) {
@@ -909,7 +937,11 @@ export class NativeHistory {
         conversationId: archive.conversationId,
         branchId: archive.branchId,
       };
-      if (state.heads[archive.head] !== undefined) return receipt;
+      const existingHead = state.heads[archive.head];
+      if (existingHead !== undefined) {
+        await this.#indexArchive(tx, archive, existingHead);
+        return receipt;
+      }
       // Reuse the longest immutable prefix through a native fork, including shared ancestors.
       let prefix: Head | undefined;
       let count = 0;
@@ -1014,22 +1046,7 @@ export class NativeHistory {
         mapped.set(entry.id, local);
         nativeEntries.push(local);
       }
-      for (const [index, entry] of archive.entries.entries()) {
-        const stored = await tx.doc(ReceivedRecord, entry.id, null);
-        const previous = archive.entries[index - 1]?.id ?? null;
-        const body = JSON.stringify({ previous, entry });
-        if (stored.body && stored.body !== body) historyReject("history record content conflict");
-        stored.body = body;
-        if (!stored.nativeId)
-          Object.assign(stored, {
-            nativeId: nativeEntries[index],
-            conversationId: conversation.id,
-          });
-        const link = await tx.doc(RecordLink, `${archive.branchId}/${previous ?? "root"}`, null);
-        if (link.next && link.next !== entry.id) historyReject("history branch ancestry conflict");
-        link.next = entry.id;
-      }
-      state.heads[archive.head] = {
+      const importedHead = {
         branchId: archive.branchId,
         nativeId: conversation.id,
         conversationId: archive.conversationId,
@@ -1037,9 +1054,29 @@ export class NativeHistory {
         records: archive.entries.map((entry) => entry.id),
         entries: nativeEntries,
       };
+      state.heads[archive.head] = importedHead;
+      await this.#indexArchive(tx, archive, importedHead);
       // Each head is immutable; two versions of one remote branch remain separately addressable by head.
       return receipt;
     }, ctx);
+  }
+
+  async #indexArchive(tx: Tx, archive: HistoryArchive, head: Head) {
+    for (const [index, entry] of archive.entries.entries()) {
+      const stored = await tx.doc(ReceivedRecord, entry.id, null);
+      const previous = archive.entries[index - 1]?.id ?? null;
+      const body = JSON.stringify({ previous, entry });
+      if (stored.body && stored.body !== body) historyReject("history record content conflict");
+      stored.body = body;
+      if (!stored.nativeId)
+        Object.assign(stored, {
+          nativeId: head.entries[index],
+          conversationId: head.nativeId,
+        });
+      const link = await tx.doc(RecordLink, `${archive.branchId}/${previous ?? "root"}`, null);
+      if (link.next && link.next !== entry.id) historyReject("history branch ancestry conflict");
+      link.next = entry.id;
+    }
   }
 
   async continue(

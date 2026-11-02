@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai";
-import { createRegistry, Harness } from "@earendil-works/pi-durable";
+import { createRegistry, defineDocFamily, Harness } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { pageHead } from "../../src/runtime/pi/historyIncremental.ts";
 import { NativeHistory } from "../../src/runtime/pi/NativeHistory.ts";
@@ -182,89 +182,268 @@ test("a missing-ancestor received selection forwards bounded original records wh
   }
 });
 
-test("an empty receive cannot clear a concurrent bounded backfill's pending drain across NativeHistory instances", async () => {
+test("re-import repairs an old archive receipt without record docs before a pure delta after reopen", async () => {
   const bench = await createBench();
   const source = await Harness.open(
-    await openNodeSqliteStorage(join(bench.dir, "race-source.sqlite")),
+    await openNodeSqliteStorage(join(bench.dir, "legacy-source.sqlite")),
     { registry: createRegistry(), models: createModels() },
     ctx,
   );
-  const target = await Harness.open(
-    await openNodeSqliteStorage(join(bench.dir, "race-target.sqlite")),
+  const path = join(bench.dir, "legacy-target.sqlite");
+  let target = await Harness.open(
+    await openNodeSqliteStorage(path),
     { registry: createRegistry(), models: createModels() },
     ctx,
   );
-  let release!: () => void;
-  const blocked = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  let paused!: () => void;
-  const held = new Promise<void>((resolve) => {
-    paused = resolve;
-  });
   try {
     const root = await source.root(ctx);
     await source.commit(async (tx) => {
-      for (let turn = 0; turn < 40; turn += 1) {
-        await tx.appendEntry(root.id, {
-          kind: "pi.user",
-          model: [{ role: "user", content: `race user ${turn}`, timestamp: turn }],
-        });
-        await tx.appendEntry(root.id, {
-          kind: "pi.assistant",
-          model: [text(`race answer ${turn}`)],
-        });
-      }
+      await tx.appendEntry(root.id, {
+        kind: "pi.user",
+        model: [{ role: "user", content: "legacy ancestor user", timestamp: 0 }],
+      });
+      await tx.appendEntry(root.id, {
+        kind: "pi.assistant",
+        model: [text("legacy ancestor answer")],
+      });
     }, ctx);
-    const feed = new NativeHistory(source, root.id, "b_race");
-    const receiver = new NativeHistory(target, (await target.root(ctx)).id, "b_race");
-    const newest = await feed.exportPage();
-    assert.ok(newest.cursor && newest.snapshot);
-    await receiver.importPage(newest);
-    const middle = await feed.exportPage({ before: newest.cursor, until: newest.snapshot });
-    assert.ok(middle.cursor);
-    await receiver.importPage(middle);
-    const oldest = await feed.exportPage({ before: middle.cursor, until: newest.snapshot });
-    assert.equal(oldest.records.length, 16);
-    let commits = 0;
-    const interleaved = new NativeHistory(
-      new Proxy(target, {
-        get(harness, property) {
-          if (property === "commit")
-            return async (...args: unknown[]) => {
-              if (++commits === 2) {
-                paused();
-                await blocked;
-              }
-              return Reflect.apply(harness.commit, harness, args);
-            };
-          const value = Reflect.get(harness, property);
-          return typeof value === "function" ? value.bind(harness) : value;
-        },
-      }),
-      (await target.root(ctx)).id,
-      "b_race",
+    const feed = new NativeHistory(source, root.id, "b_legacy");
+    const archive = await feed.export();
+    const snapshot = await feed.exportPage();
+    const nativeRoot = (await target.root(ctx)).id;
+    await new NativeHistory(target, nativeRoot, "b_legacy").import(archive);
+    // Real native docs model the old receipt format; the committed entries and receipt remain intact.
+    const LegacyRecord = defineDocFamily({
+      kind: "bots.history.record",
+      version: 1,
+      scope: "session",
+      family: true,
+      initial: (_seed: null) => ({ body: "", nativeId: 0, conversationId: 0 }),
+      checkpointWhen: () => true,
+    });
+    await target.commit(async (tx) => {
+      for (const entry of archive.entries)
+        Object.assign(await tx.doc(LegacyRecord, entry.id, null), {
+          body: "",
+          nativeId: 0,
+          conversationId: 0,
+        });
+    }, ctx);
+    await target.close(ctx);
+    target = await Harness.open(
+      await openNodeSqliteStorage(path),
+      { registry: createRegistry(), models: createModels() },
+      ctx,
     );
-    const staleEmpty = interleaved.importPage({ ...newest, records: [] });
-    await held;
-    assert.equal((await receiver.importPage(oldest)).pending, true);
-    release();
-    await staleEmpty;
-    for (let drain = 0; drain < 4; drain += 1) {
-      if (!(await receiver.importPage({ ...newest, records: [] })).pending) break;
+    const receiver = new NativeHistory(target, nativeRoot, "b_legacy");
+    await receiver.import(archive);
+    await source.commit(async (tx) => {
+      await tx.appendEntry(root.id, {
+        kind: "pi.user",
+        model: [{ role: "user", content: "new pure delta user", timestamp: 1 }],
+      });
+      await tx.appendEntry(root.id, {
+        kind: "pi.assistant",
+        model: [text("new pure delta answer")],
+      });
+    }, ctx);
+    assert.ok(snapshot.snapshot);
+    const delta = await feed.exportPage({ after: snapshot.snapshot });
+    assert.equal(delta.records.length, 2);
+    assert.doesNotMatch(JSON.stringify(delta.records), /legacy ancestor/);
+    await receiver.importPage(delta);
+    assert.equal((await receiver.assessHead(delta.head)).usable, true);
+    const db = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(
+        db.prepare("SELECT count(*) n FROM entries").get()?.n,
+        4,
+        "repair indexes existing entries instead of copying the archive",
+      );
+    } finally {
+      db.close();
     }
-    assert.equal(
-      (await receiver.assessHead(newest.head)).usable,
-      true,
-      "the native progress pointer must survive a stale empty receive, then drain without resending records",
-    );
   } finally {
-    release();
     await source.close(ctx);
     await target.close(ctx);
     await bench.cleanup();
   }
 });
+
+test("an inherited A cursor cannot advance an old head of B's branch while valid received cursors still work", async () => {
+  const bench = await createBench();
+  const harnesses = await Promise.all(
+    ["cross-a", "cross-b", "cross-c"].map(async (name) =>
+      Harness.open(
+        await openNodeSqliteStorage(join(bench.dir, `${name}.sqlite`)),
+        { registry: createRegistry(), models: createModels() },
+        ctx,
+      ),
+    ),
+  );
+  const [a, b, c] = harnesses;
+  assert.ok(a && b && c);
+  try {
+    const rootA = await a.root(ctx);
+    await a.commit(async (tx) => {
+      for (let turn = 0; turn < 2; turn += 1) {
+        await tx.appendEntry(rootA.id, {
+          kind: "pi.user",
+          model: [{ role: "user", content: `ancestor ${turn}`, timestamp: turn }],
+        });
+        await tx.appendEntry(rootA.id, {
+          kind: "pi.assistant",
+          model: [text(`inherited answer ${turn}`)],
+        });
+      }
+    }, ctx);
+    const feedA = new NativeHistory(a, rootA.id, "b_cross");
+    const rootB = await b.root(ctx);
+    await new NativeHistory(b, rootB.id, "b_cross").import(await feedA.export());
+    const imported = (await b.commit((tx) => tx.scanConversations({}, 32), ctx)).items.find(
+      (value) => value.id !== rootB.id,
+    );
+    assert.ok(imported);
+    const shared = (
+      await b.commit(
+        (tx) => tx.scanEntries({ conversationId: imported.id, order: "ascending" }, 32),
+        ctx,
+      )
+    ).items;
+    const first = shared[0];
+    const last = shared.at(-1);
+    assert.ok(first && last);
+    const fork = await b.commit(
+      (tx) =>
+        tx.forkConversation(first.conversationId, last.id, { ownership: { kind: "ownerless" } }),
+      ctx,
+    );
+    const branch = await new NativeHistory(b, fork.id, "b_cross").exportPage();
+    const olderTip = branch.records[1]?.entry.id;
+    const newerTip = branch.records[3]?.entry.id;
+    assert.ok(olderTip && newerTip && branch.records[0]?.entry.originId);
+    assert.notEqual(branch.branchId.split("/c")[0], branch.records[0].entry.originId);
+    const receiver = new NativeHistory(c, (await c.root(ctx)).id, "b_cross");
+    const older = {
+      ...branch,
+      tip: olderTip,
+      head: pageHead(branch.branchId, olderTip),
+      records: branch.records.slice(1, 2),
+    };
+    const newer = {
+      ...branch,
+      tip: newerTip,
+      head: pageHead(branch.branchId, newerTip),
+      records: branch.records.slice(2, 4),
+    };
+    await receiver.importPage(older);
+    await receiver.importPage(newer);
+    const forwarded = await receiver.exportPage({ selection: newer.head, limit: 1 });
+    assert.ok(forwarded.snapshot && forwarded.cursor);
+    await assert.rejects(
+      receiver.exportPage({ selection: older.head, until: forwarded.snapshot }),
+      /selected head/,
+    );
+    const old = await receiver.exportPage({ selection: older.head, limit: 1 });
+    assert.deepEqual(old.records, older.records);
+    const valid = await receiver.exportPage({
+      selection: newer.head,
+      before: forwarded.cursor,
+      limit: 1,
+    });
+    assert.deepEqual(valid.records, newer.records.slice(0, 1));
+  } finally {
+    for (const harness of harnesses) await harness.close(ctx);
+    await bench.cleanup();
+  }
+});
+
+for (const emptyLast of [true, false]) {
+  test(`concurrent empty/backfill receives retain pending work with empty ${emptyLast ? "last" : "first"}`, async () => {
+    const bench = await createBench();
+    const source = await Harness.open(
+      await openNodeSqliteStorage(join(bench.dir, "race-source.sqlite")),
+      { registry: createRegistry(), models: createModels() },
+      ctx,
+    );
+    const target = await Harness.open(
+      await openNodeSqliteStorage(join(bench.dir, "race-target.sqlite")),
+      { registry: createRegistry(), models: createModels() },
+      ctx,
+    );
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let paused!: () => void;
+    const held = new Promise<void>((resolve) => {
+      paused = resolve;
+    });
+    try {
+      const root = await source.root(ctx);
+      await source.commit(async (tx) => {
+        for (let turn = 0; turn < 40; turn += 1) {
+          await tx.appendEntry(root.id, {
+            kind: "pi.user",
+            model: [{ role: "user", content: `race user ${turn}`, timestamp: turn }],
+          });
+          await tx.appendEntry(root.id, {
+            kind: "pi.assistant",
+            model: [text(`race answer ${turn}`)],
+          });
+        }
+      }, ctx);
+      const feed = new NativeHistory(source, root.id, "b_race");
+      const receiver = new NativeHistory(target, (await target.root(ctx)).id, "b_race");
+      const newest = await feed.exportPage();
+      assert.ok(newest.cursor && newest.snapshot);
+      await receiver.importPage(newest);
+      const middle = await feed.exportPage({ before: newest.cursor, until: newest.snapshot });
+      assert.ok(middle.cursor);
+      await receiver.importPage(middle);
+      const oldest = await feed.exportPage({ before: middle.cursor, until: newest.snapshot });
+      assert.equal(oldest.records.length, 16);
+      let commits = 0;
+      const interleaved = new NativeHistory(
+        new Proxy(target, {
+          get(harness, property) {
+            if (property === "commit")
+              return async (...args: unknown[]) => {
+                if (++commits === (emptyLast ? 2 : 34)) {
+                  paused();
+                  await blocked;
+                }
+                return Reflect.apply(harness.commit, harness, args);
+              };
+            const value = Reflect.get(harness, property);
+            return typeof value === "function" ? value.bind(harness) : value;
+          },
+        }),
+        (await target.root(ctx)).id,
+        "b_race",
+      );
+      const delayed = interleaved.importPage(emptyLast ? { ...newest, records: [] } : oldest);
+      await held;
+      const other = await receiver.importPage(emptyLast ? oldest : { ...newest, records: [] });
+      if (emptyLast) assert.equal(other.pending, true);
+      release();
+      await delayed;
+      for (let drain = 0; drain < 4; drain += 1) {
+        if (!(await receiver.importPage({ ...newest, records: [] })).pending) break;
+      }
+      assert.equal(
+        (await receiver.assessHead(newest.head)).usable,
+        true,
+        "the native progress pointer must survive a stale empty receive, then drain without resending records",
+      );
+    } finally {
+      release();
+      await source.close(ctx);
+      await target.close(ctx);
+      await bench.cleanup();
+    }
+  });
+}
 
 test("SDK ownerless ownership alone cannot distinguish the root from a passive import fork", async () => {
   const bench = await createBench();

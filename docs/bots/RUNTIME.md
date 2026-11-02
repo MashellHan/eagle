@@ -60,7 +60,11 @@ an ancestor tail alone never authorizes reuse of a local chat container.
 Archive import also installs native record/ancestry mappings so a later pure
 delta needs no repeated ancestors. Missing-ancestor selections can forward their
 bounded received records before materialization; they remain unusable. Concurrent
-drains update progress conditionally on the native stored revision, across handles.
+drains claim their pending records in the same short native transaction as each
+append, across handles. Empty receives cannot discard another receive's work.
+Re-importing an older archive receipt repairs its record index without copying
+native entries. Received cursors also respect inherited records' own origin order
+when bounding an immutable head.
 
 ## Verified facts
 
