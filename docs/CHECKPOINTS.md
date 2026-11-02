@@ -3038,3 +3038,19 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   Swift/App, Worker, auth or physical-data changes; source SwiftPM stays released.
   Herdr collection/authentication, D1 and dashboard rendering: N/A. Both routes/
   two-way App visibility within 5s remain pending; full gates were not rerun here.
+
+
+## 2026-11-02 21:04 optional history: fixed scheduler awaiting physical retest
+
+- Root fixed `d8a5abd` for daemon-only updates on both Macs, preserving all old
+  Bots and 413736 native-record-bytes of backlog. Root’s latest report keeps both
+  history capabilities deliberately disabled pending its short retest window.
+- Product source stays fixed for one directed review. Existing affected evidence
+  remains IPC 12/12, independent-process 5/5, types/lint and normal hooks passing;
+  no new test, full gate, Swift or App was started by service. Root owns the full
+  Bots gate in its stopped-App window and all physical controls.
+- A→B 11.812944542s and B→A 18.103s failures remain retained; the new daemon has no
+  physical latency pass yet. DO/TS two-way App visibility within 5s is still pending.
+  Any residual cloud error awaits bounded evidence, with no auth/limit change.
+  Herdr collection/authentication, D1 and dashboard rendering: N/A. Source consumers
+  and SwiftPM remain released; this update changes only the checkpoint.
