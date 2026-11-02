@@ -2988,3 +2988,22 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
 - Root separately proved the Tailscale App CLI needs TAILSCALE_BE_CLI in the
   helper's minimal environment. That Node-only child-environment fix is next;
   no helper/physical changes here. Herdr collection/auth, D1 and dashboard: N/A.
+
+## 2026-11-02 20:31 optional history: Root build/install preparation
+
+- Root reports `eagle-hc` fixed at `01a3aa5`: bare App build passed in 5.795s;
+  three runtime subtrees are byte-identical to `936804e`. Root read the production
+  diff, 34/34 affected Swift evidence and the closed cross-Bot inFlight review;
+  sequential handoff and Tailscale child-environment reviews were already closed.
+- A's official `936804e` App/helper update through the original installer took
+  4.52s; signing passed and a backup was retained. After daily Bots became idle, Root
+  stopped it through native settings; identity and data remain preserved.
+- B's first `936804e` download failed with a connection timeout and no archive;
+  that failure remains retained. Fresh TCP 0.146s and Tailscale DERP ping around
+  120ms are network readiness only. Root is retrying the download without side
+  effects and preparing both Macs with the `01a3aa5` bare App and matching runtime.
+- These are build/install/prepare facts, with no new two-Mac App latency pass.
+  Prior failures remain; DO/TS two-way App visibility within 5s is still pending.
+  D1, collection and dashboard: N/A, unchanged this round. Service changed only
+  this checkpoint, started no gate/Swift/App and touched no physical device,
+  Worker or helper. Source and SwiftPM remain released pending Root's feedback.
