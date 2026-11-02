@@ -207,7 +207,11 @@ reopen. A timeout/lost response is retried with the identical request ID and inp
 The composer cannot send an old displayed head while another branch is loading.
 An uncertain continuation keeps its admission guard and original outbox request
 until a response or submission confirms admission/rejection. A definite refusal
-restores the draft and is never automatically replayed. HTTP classified errors
+restores the draft and is never automatically replayed.
+Replaying the outbox after a snapshot that already confirms a pending request
+does not restore its admission guard; follow-up/steer can proceed while that
+request's provider is still running.
+HTTP classified errors
 add optional `disposition`; a readable validation/auth refusal is `not_admitted`,
 whereas a lost response or possible admission remains unknown. Clients consume
 all bounded branch-directory pages, preserving the daemon's order and cursor.

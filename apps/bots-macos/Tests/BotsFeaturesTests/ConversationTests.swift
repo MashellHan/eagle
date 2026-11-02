@@ -158,6 +158,35 @@ final class ConversationTests: XCTestCase {
     model.disconnect()
   }
 
+  func testReopenedAdmittedContinuationAllowsSteerWhileProviderStillRuns() async throws {
+    let remote = FakeNativeHistory()
+    remote.blockContinuation = true
+    let socket = FakeConversation()
+    let outbox = OutboxStore(directory: outboxDirectory)
+    try outbox.add(
+      OutboxEntry(
+        botId: "b_1", requestId: "r_admitted", text: "original continuation",
+        historyHead: String(repeating: "a", count: 64)))
+    let model = ConversationViewModel(conversation: socket, outbox: outbox, history: remote)
+    model.select(botId: "b_1")
+    socket.emit(.connection(.ready))
+    socket.emit(
+      .snapshot(
+        ConversationSnapshot(
+          botId: "b_1", pending: [Submission(id: "s_1", requestId: "r_admitted", status: .placed)],
+          running: true)))
+    try await waitUntil { remote.continuation != nil }
+    model.draft = "steer the already admitted local provider"
+    model.send(inserting: true)
+    try await waitUntil { socket.sent.count == 1 }
+    XCTAssertEqual(socket.sent.first?.text, "steer the already admitted local provider")
+    XCTAssertEqual(socket.busyModes, [.steer])
+    XCTAssertEqual(remote.continued.count, 1, "outbox retry still retains its original identity")
+    remote.finishContinuation()
+    try await waitUntil { !model.isSending }
+    model.disconnect()
+  }
+
   func testDefiniteContinuationRejectionRestoresDraftAndNeverReplaysOnReopen() async throws {
     let remote = FakeNativeHistory()
     remote.continuationError = ClientError(

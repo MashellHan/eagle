@@ -340,7 +340,11 @@ public final class ConversationViewModel: ObservableObject {
       assessmentTask?.cancel()
     }
     isSending = true
-    continuationRequests[entry.requestId] = entry.botId
+    if selectedBotId != entry.botId
+      || !state.pending.contains(where: { $0.requestId == entry.requestId })
+    {
+      continuationRequests[entry.requestId] = entry.botId
+    }
     Task { [weak self] in
       guard let self else { return }
       defer {
