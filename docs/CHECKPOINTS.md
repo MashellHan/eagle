@@ -4746,3 +4746,27 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   and the authorized real tick advances52→53, still unmerged with no pins/dispatch.
   The installed1800s schedule and old109 watcher are preserved. Original Review
   accepts the CLI and API fixture deltas; normal hooks/new-head CI remain next.
+
+### 2026-11-02 — normal branch push gates and realtime fixture ownership
+
+- Two normal pushes of head127d95d were rejected by pre-push before delivery:
+  root256/274 with16 failures and2 cancellations, then271/274 with3 failures.
+  Their original logs remain retained. Eleven unchanged affected complete files
+  pass78/78 separately; those diagnostics do not replace the complete push gate.
+- The slow-viewer fixture asserted a subscription after20ms before entering its
+  cleanup block. It now reuses the existing bounded realtime-message wait and
+  registers awaited cleanup immediately for every opened socket. The80-frame,
+  1013 close-code,20ms send cadence and final5000ms delivery oracles are unchanged.
+  Complete API38/38 passes; unchanged redaction performance6/6 also passes, but
+  the earlier full-root timing/ratio failures remain unassigned.
+- Original Review identified a comparison confound in separately timed size
+  batches. The measurement now interleaves five rounds in alternating size order,
+  logging every wall-time sample; contents, warmups, medians and400ms/ratio3/floor60
+  assertions remain. This addresses measurement order, not a proven historical
+  scheduler/GC/JIT cause. The API-only root run passed274/274 and types before
+  stopping on one formatter error; standard formatting corrected that line.
+- The installed candidate's prior local preview remains its existing scope.
+  Last cloud sync.identity was not_found; no new live collection, deployment or
+  cross-Mac acceptance occurred. Next: original read-only review, complete normal
+  hooks and own-branch push; PR112 remains closed/unmerged and the installed merge
+  monitor retains the later pinned-SHA two-Mac task.

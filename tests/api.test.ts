@@ -1444,6 +1444,13 @@ test("realtime has one controller, rejects stale identities and sequences, and c
   await close;
 });
 
+const until = async (condition: () => boolean) => {
+  const deadline = Date.now() + 2000;
+  while (!condition() && Date.now() < deadline)
+    await new Promise((r) => setTimeout(r, 10));
+  assert(condition(), "Expected realtime message was not received");
+};
+
 test("styled realtime is negotiated independently for agents and viewers", async () => {
   await request("/api/v1/reports", currentReport("styled-realtime"));
   const sockets: WebSocket[] = [];
@@ -1469,12 +1476,6 @@ test("styled realtime is negotiated independently for agents and viewers", async
     ws.accept();
     ws.send(JSON.stringify({ type: "ping" }));
     return { ws, messages };
-  };
-  const until = async (condition: () => boolean) => {
-    const deadline = Date.now() + 2000;
-    while (!condition() && Date.now() < deadline)
-      await new Promise((r) => setTimeout(r, 10));
-    assert(condition(), "Expected realtime message was not received");
   };
   try {
     const agent = await open("/api/v1/realtime-agent", {
@@ -1585,9 +1586,20 @@ test("realtime alarm expires an idle viewer without another request", async () =
   }
 });
 
-test("realtime bounds slow viewer output while acknowledged viewers keep receiving", async () => {
+test("realtime bounds slow viewer output while acknowledged viewers keep receiving", async (t) => {
   await request("/api/v1/reports", currentReport("slow-live"));
-  const open = liveSocket;
+  const open = async (...args: Parameters<typeof liveSocket>) => {
+    const socket = await liveSocket(...args);
+    t.after(async () => {
+      if (socket.readyState === NativeWebSocket.CLOSED) return;
+      const closed = new Promise<void>((resolve) =>
+        socket.once("close", () => resolve()),
+      );
+      socket.close();
+      await closed;
+    });
+    return socket;
+  };
   const agent = await open("/api/v1/realtime-agent", {
     Authorization: `Bearer ${token}`,
     "X-Eagle-Machine": "mac-one",
@@ -1627,7 +1639,7 @@ test("realtime bounds slow viewer output while acknowledged viewers keep receivi
     slowCode = event.code;
   });
   const settle = () => new Promise((r) => setTimeout(r, 20));
-  await settle();
+  await until(() => !!binding);
   assert(binding);
   // Maximum topology with long IDs must fit the 2 KiB hibernation attachment limit.
   const panes = Array.from({ length: 32 }, (_, i) => ({
@@ -1644,31 +1656,24 @@ test("realtime bounds slow viewer output while acknowledged viewers keep receivi
     }),
   );
   await settle();
-  try {
-    for (let revision = 1; revision <= 80; revision++) {
-      agent.send(
-        JSON.stringify({
-          type: "frame",
-          ...binding,
-          paneId: panes[0].id,
-          terminalId: panes[0].terminalId,
-          revision,
-          text: "x".repeat(32000),
-          observedAt: new Date().toISOString(),
-        }),
-      );
-      await settle();
-    }
-    const deadline = Date.now() + 5000;
-    while ((received < 80 || !slowCode) && Date.now() < deadline)
-      await settle();
-    assert.equal(received, 80);
-    assert.equal(slowCode, 1013);
-  } finally {
-    slow.close();
-    fast.close();
-    agent.close();
+  for (let revision = 1; revision <= 80; revision++) {
+    agent.send(
+      JSON.stringify({
+        type: "frame",
+        ...binding,
+        paneId: panes[0].id,
+        terminalId: panes[0].terminalId,
+        revision,
+        text: "x".repeat(32000),
+        observedAt: new Date().toISOString(),
+      }),
+    );
+    await settle();
   }
+  const deadline = Date.now() + 5000;
+  while ((received < 80 || !slowCode) && Date.now() < deadline) await settle();
+  assert.equal(received, 80);
+  assert.equal(slowCode, 1013);
 });
 
 test("abrupt viewer termination promptly removes its last subscription", async () => {
