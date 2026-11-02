@@ -101,11 +101,12 @@ function processPort(file: string, root: string) {
     diagnostics() {
       return stderr;
     },
-    historyTrace(botId: string) {
+    historyTrace(botId?: string) {
       return messages
         .filter(
           (message) =>
-            message.type === "history-page" && message.botId === botId,
+            message.type === "history-page" &&
+            (botId === undefined || message.botId === botId),
         )
         .slice(-80);
     },
@@ -468,6 +469,15 @@ const config=JSON.parse((await lines.next()).value);
 Object.assign(process.env,{BOTS_BASE_URL:config.baseUrl,BOTS_API_KEY:config.key,BOTS_PROVIDER:'device-local',BOTS_MODEL:'scripted-local',BOTS_THINKING_LEVEL:'off',BOTS_TOOL_GROUPS:'core',BOTS_COMPACTION:'off'});
 const {readConfig}=await import(pathToFileURL(config.source+'/src/config.ts').href);
 const {startDaemon}=await import(pathToFileURL(config.source+'/src/main.ts').href);
+let holdBot,releasePage,heldPage,changedBot;
+const {DeviceChannel}=await import(pathToFileURL(config.source+'/src/tools/devices/socket.ts').href);
+const call=DeviceChannel.prototype.call;
+DeviceChannel.prototype.call=async function(method,...args){
+  const changed=changedBot;
+  const result=await call.call(this,method,...args);
+  if(method==='history.changed')process.stdout.write(JSON.stringify({type:'notice-sent',botId:changed})+'\\n');
+  return result;
+};
 {
   const {BotRegistry}=await import(pathToFileURL(config.source+'/src/core/BotRegistry.ts').href);
   const touch=BotRegistry.prototype.touch;
@@ -480,8 +490,11 @@ const {startDaemon}=await import(pathToFileURL(config.source+'/src/main.ts').hre
   let fail=config.failOneBackfill;
   PiDurableRuntime.prototype.open=async function(...args){
     const handle=await open.apply(this,args);
+    const observe=handle.observeHistoryChanges.bind(handle);
+    handle.observeHistoryChanges=(listener)=>observe(()=>{changedBot=args[0].id;listener();});
     const read=handle.exportHistoryPage.bind(handle);
     handle.exportHistoryPage=async function(input){
+      if(holdBot===args[0].id){holdBot=undefined;process.stdout.write(JSON.stringify({type:'page-held',botId:args[0].id})+'\\n');await heldPage;}
       if(fail&&input?.before){fail=false;process.stdout.write(JSON.stringify({type:'backfill-rejected'})+'\\n');throw new Error('history_busy');}
       const page=await read(input);
       process.stdout.write(JSON.stringify({type:'history-page',botId:args[0].id,direction:input?.before?'backfill':input?.after?'tail':'latest',count:page.records.length,first:page.records[0]?.entry.id,previous:page.records[0]?.previous,last:page.records.at(-1)?.entry.id,head:page.head,hasMore:page.hasMore})+'\\n');
@@ -498,7 +511,14 @@ const {startDaemon}=await import(pathToFileURL(config.source+'/src/main.ts').hre
 }
 const daemon=await startDaemon(readConfig({argv:['--root',config.root,'--port','0'],env:{BOTS_DEVICE_SOCKET:config.socketPath}}));
 process.stdout.write(JSON.stringify({type:'ready',port:daemon.port})+'\\n');
-await lines.next();
+for await(const line of lines){
+  const control=JSON.parse(line);
+  if(control.type==='hold-page'){
+    holdBot=control.botId;heldPage=new Promise(done=>{releasePage=done;});
+    process.stdout.write(JSON.stringify({type:'page-gate-ready'})+'\\n');
+  }else if(control.type==='release-page')releasePage?.();
+}
+releasePage?.();
 await daemon.close();
 input.close();
 `,
@@ -1373,6 +1393,212 @@ test("optional DO history automatically discovers an empty Bot and shows committ
     for (const device of devices) await device.stop();
     await worker?.mf.dispose();
     for (const model of models) await closeServer(model.server);
+    rmSync(workerRoot, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a fresh native commit preempts an unrelated multi-branch scan across independent Device Services", {
+  timeout: 90000,
+}, async (t) => {
+  mkdirSync(".local", { recursive: true });
+  const workerRoot = mkdtempSync(resolve(".local/history-priority-worker-"));
+  const root = mkdtempSync("/tmp/eagle-history-priority-");
+  const key = randomBytes(32).toString("base64url");
+  const model = await modelFixture(key);
+  let worker: Awaited<ReturnType<typeof workerFixture>> | undefined;
+  const devices: ReturnType<typeof deviceProcess>[] = [];
+  const daemons: Awaited<ReturnType<typeof daemonProcess>>[] = [];
+  let release = () => {};
+  try {
+    worker = await workerFixture(workerRoot);
+    const a = deviceProcess(join(root, "a"), worker.origin);
+    const b = deviceProcess(join(root, "b"), worker.origin);
+    devices.push(a, b);
+    await Promise.all(devices.map((device) => device.ready()));
+    const invitation = await a.manage("pairing.create", {});
+    await b.manage("pairing.redeem", {
+      requestId: randomUUID(),
+      code: invitation.code,
+    });
+    const left = await daemonProcess(
+      join(root, "bots-a"),
+      a.socketPath,
+      model.baseUrl,
+      key,
+    );
+    daemons.push(left);
+    const cli = async (daemon: typeof left, ...args: string[]) => {
+      const { stdout } = await promisify(execFile)(
+        resolve("apps/macos/.build/debug/eagle-cli"),
+        args,
+        {
+          env: {
+            ...childEnv(root),
+            EAGLE_PORT: new URL(daemon.origin).port,
+            EAGLE_TOKEN: daemon.token,
+            EAGLE_ROOT: root,
+          },
+          timeout: 15000,
+        },
+      );
+      return JSON.parse(
+        stdout.trim().split("\n").at(-1) ?? "null",
+      ) as JSONRecord;
+    };
+    const history = async (
+      daemon: typeof left,
+      botId: string,
+      operation: string,
+      input: unknown,
+    ) => {
+      const response = await fetch(
+        `${daemon.origin}/v1/bots/${botId}/history/${operation}`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${daemon.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(input),
+        },
+      );
+      assert.equal(response.status, 200);
+      return (await response.json()) as JSONRecord;
+    };
+    const oldBot = await left.createBot(
+      "Many old branches before the fresh Bot",
+    );
+    model.answer("common completed ancestor");
+    await cli(
+      left,
+      "chat",
+      "send",
+      oldBot,
+      "--text",
+      "common ancestor",
+      "--wait",
+      "--json",
+    );
+    const ancestor = await history(left, oldBot, "page", {});
+    for (let branch = 0; branch < 8; branch++) {
+      model.answer(`old branch answer ${branch}`);
+      await cli(
+        left,
+        "history",
+        "continue",
+        oldBot,
+        "--head",
+        String(ancestor.head),
+        "--request-id",
+        `r_old_branch_${branch}`,
+        "--text",
+        `old branch ${branch}`,
+        "--json",
+      );
+    }
+    const oldList = await history(left, oldBot, "branches", {});
+    const oldCount = (oldList.branches as unknown[]).length;
+    assert.ok(
+      oldCount >= 9,
+      "actual native sibling branches supply the old workload",
+    );
+    const freshBot = await left.createBot(
+      "Fresh committed user during old scan",
+    );
+    left.send({ type: "hold-page", botId: oldBot });
+    await left.message((message) => message.type === "page-gate-ready");
+    const right = await daemonProcess(
+      join(root, "bots-b"),
+      b.socketPath,
+      model.baseUrl,
+      key,
+    );
+    daemons.push(right);
+    for (const device of devices)
+      await device.manage("history.set", { enabled: true });
+    await left.message((message) => message.type === "page-held");
+    release = model.hold("fresh provider remains held until passive display");
+    await cli(
+      left,
+      "chat",
+      "send",
+      freshBot,
+      "--text",
+      "fresh priority committed user",
+      "--json",
+    );
+    await left.message(
+      (message) => message.type === "notice-sent" && message.botId === freshBot,
+    );
+    left.send({ type: "release-page" });
+    await until(async () => {
+      const list = (await history(right, freshBot, "branches", {}))
+        .branches as { selection: string }[];
+      for (const branch of list) {
+        if (/^[a-f0-9]{64}$/.test(branch.selection)) {
+          const view = await history(right, freshBot, "view", {
+            head: branch.selection,
+          });
+          if (
+            JSON.stringify(view.messages).includes(
+              "fresh priority committed user",
+            )
+          ) {
+            assert.equal(
+              (
+                await history(right, freshBot, "assess", {
+                  head: branch.selection,
+                })
+              ).usable,
+              false,
+            );
+            return true;
+          }
+        }
+      }
+      return undefined;
+    }, "fresh committed user imports while its provider remains held");
+    const reads = left
+      .historyTrace()
+      .filter((page) => page.direction !== "receive");
+    const freshIndex = reads.findIndex(
+      (page) => page.botId === freshBot && Number(page.count) > 0,
+    );
+    assert.ok(freshIndex >= 0);
+    const oldBefore = reads
+      .slice(0, freshIndex)
+      .filter((page) => page.botId === oldBot).length;
+    t.diagnostic(
+      `fresh committed user arrived after ${oldBefore}/${oldCount} old branches; provider still held`,
+    );
+    assert.ok(
+      oldBefore < oldCount,
+      `fresh commit waited behind ${oldBefore}/${oldCount} old branches`,
+    );
+    await until(
+      async () =>
+        left.historyTrace(oldBot).filter((page) => page.direction !== "receive")
+          .length >= oldCount
+          ? true
+          : undefined,
+      "preempted old branches eventually finish",
+    );
+    assert.equal(
+      model.inputs.length,
+      10,
+      "passive imports execute no provider",
+    );
+    release();
+  } finally {
+    release();
+    for (const daemon of daemons) {
+      daemon.send({ type: "release-page" });
+      await daemon.stop();
+    }
+    for (const device of devices) await device.stop();
+    await worker?.mf.dispose();
+    await closeServer(model.server);
     rmSync(workerRoot, { recursive: true, force: true });
     rmSync(root, { recursive: true, force: true });
   }

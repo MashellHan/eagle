@@ -12,7 +12,7 @@ import type { BotRegistry } from "../../src/core/BotRegistry.ts";
 import type { RuntimeHandle } from "../../src/core/RuntimePort.ts";
 import { HistoryCoordinator } from "../../src/history/coordinator.ts";
 import { startDaemon } from "../../src/main.ts";
-import { pageHead } from "../../src/runtime/pi/historyIncremental.ts";
+import { pageHead, validateHistoryPage } from "../../src/runtime/pi/historyIncremental.ts";
 import {
   type DeviceRequest,
   operationDigest,
@@ -20,7 +20,7 @@ import {
 } from "../../src/tools/devices/port.ts";
 import { DeviceChannel } from "../../src/tools/devices/socket.ts";
 import { TriggerProducers } from "../../src/triggers/producers.ts";
-import { waitFor } from "../support/pi.ts";
+import { text, trace, waitFor } from "../support/pi.ts";
 import { startStack } from "../support/server.ts";
 
 const fixture = async (handle: (socket: Socket, request: Record<string, unknown>) => void) => {
@@ -318,6 +318,7 @@ test("a remote peer Bot failure cannot suppress local pending drain or the same 
         request: { method: string; input?: { selection: string } };
       };
     };
+    if (params.payload.type !== "pull") return;
     const query = params.payload.request;
     let failed = false;
     if (query.method === "catalog") result = { bots: [], hasMore: false };
@@ -359,6 +360,254 @@ test("a remote peer Bot failure cannot suppress local pending drain or the same 
     );
   } finally {
     await coordinator.close();
+    await bench.close();
+  }
+});
+
+test("an encrypted changed Bot preempts a multi-branch catch-up and empty echoes do not announce", async () => {
+  const peer = randomUUID();
+  const oldBot = "b_old_many_branches";
+  const freshBot = "b_fresh_priority";
+  const oldBranches = Array.from({ length: 8 }, () => `${randomUUID()}/c1`);
+  const freshBranch = `${randomUUID()}/c1`;
+  const page = (botId: string, branchId: string) => ({
+    version: 1,
+    engine: "pi-durable@1.4.0",
+    botId,
+    branchId,
+    conversationId: branchId,
+    head: pageHead(branchId, null),
+    tip: null,
+    cursor: null,
+    snapshot: null,
+    hasMore: false,
+    records: [],
+  });
+  const imported: string[] = [];
+  const reads: string[] = [];
+  let notices = 0;
+  let attached: Socket | undefined;
+  let releaseOld: (() => void) | undefined;
+  const registry = {
+    summaries: () => [{ id: oldBot }, { id: freshBot }],
+    handleOf: () => undefined,
+    observeHandles: () => () => {},
+    importHistoryCatalog: async () => {},
+    touch: () => true,
+    open: async (botId: string) => ({
+      importHistoryPage: async () => {
+        imported.push(botId);
+        return { pending: false };
+      },
+    }),
+    release: () => {},
+  } as unknown as BotRegistry;
+  const directory = { observeChanges: () => () => {} } as unknown as BotDirectory;
+  const bench = await fixture((socket, frame) => {
+    if (frame.method === "history.attach") attached = socket;
+    if (frame.method === "history.changed") notices++;
+    socket.write(
+      `${JSON.stringify({ requestId: frame.requestId, result: frame.method === "history.peers" ? [{ deviceId: peer }] : { enabled: true, ready: true } })}\n`,
+    );
+    if (frame.method !== "history.send") return;
+    const { payload } = frame.params as {
+      payload: {
+        type: string;
+        id: string;
+        request: { method: string; botId: string; input?: { selection: string } };
+      };
+    };
+    if (payload.type !== "pull") {
+      notices++;
+      return;
+    }
+    const query = payload.request;
+    reads.push(`${query.method}/${query.botId ?? ""}`);
+    const result =
+      query.method === "catalog"
+        ? { bots: [], hasMore: false }
+        : query.method === "branches"
+          ? {
+              branches: (query.botId === oldBot ? oldBranches : [freshBranch]).map((branchId) => ({
+                branchId,
+                conversationId: branchId,
+                selection: page(query.botId, branchId).head,
+              })),
+              cursor: null,
+              hasMore: false,
+            }
+          : page(
+              query.botId,
+              query.input?.selection === page(freshBot, freshBranch).head
+                ? freshBranch
+                : (oldBranches.find(
+                    (branch) => page(oldBot, branch).head === query.input?.selection,
+                  ) as string),
+            );
+    const reply = () =>
+      socket.write(
+        `${JSON.stringify({ type: "history.packet", sourceDeviceId: peer, payload: { type: "reply", id: payload.id, result, failed: false } })}\n`,
+      );
+    if (query.method === "page" && query.botId === oldBot && !releaseOld)
+      releaseOld = () => {
+        reply();
+      };
+    else reply();
+  });
+  const coordinator = new HistoryCoordinator(bench.path, registry, directory, () => {});
+  try {
+    await waitFor(() => releaseOld !== undefined, "one old branch page is held");
+    const first = reads.length;
+    attached?.write(`${JSON.stringify({ type: "history.changed", sourceDeviceId: peer })}\n`);
+    attached?.write(
+      `${JSON.stringify({ type: "history.packet", sourceDeviceId: peer, payload: { type: "changed", botIds: [freshBot], catalog: false } })}\n`,
+    );
+    releaseOld?.();
+    await waitFor(() => imported.includes(freshBot), "the hinted fresh Bot imports");
+    const next = reads.slice(first);
+    assert.equal(
+      next[0],
+      `branches/${freshBot}`,
+      "fresh work cannot wait for the rest of the peer's old branches",
+    );
+    assert.ok(
+      next.indexOf(`page/${freshBot}`) < oldBranches.length,
+      "fresh import is bounded by reads, not old branch count",
+    );
+    await waitFor(
+      () => imported.filter((bot) => bot === oldBot).length === oldBranches.length,
+      "old work is retained",
+    );
+    await waitFor(
+      () => reads.filter((read) => read === "catalog/").length === 2,
+      "the last coarse notice received during a scan is retained",
+    );
+    await waitFor(() => notices === 3, "initial catalog hint and compatibility notice finish");
+    const idle = notices;
+    const count = reads.length;
+    for (let echo = 0; echo < 2; echo++) {
+      attached?.write(
+        `${JSON.stringify({ type: "history.packet", sourceDeviceId: peer, payload: { type: "changed", botIds: [oldBot], catalog: false } })}\n`,
+      );
+      await waitFor(() => reads.length > count + echo, "a bounded duplicate branch directory read");
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    assert.equal(notices, idle, "empty/duplicate receives must not cause another announce");
+    assert.equal(
+      reads.filter((read) => read === `page/${oldBot}`).length,
+      oldBranches.length,
+      "unchanged immutable heads are not pulled again",
+    );
+  } finally {
+    releaseOld?.();
+    await coordinator.close();
+    await bench.close();
+  }
+});
+
+test("a native commit retains its last Bot hint after busy, while empty imports and opens stay quiet", async () => {
+  const stack = await startStack({ real: true });
+  const botId = await stack.createBot("native notice");
+  const peer = randomUUID();
+  const hints: { botIds: string[]; catalog: boolean }[] = [];
+  let published = 0;
+  const bench = await fixture((socket, frame) => {
+    let error: string | undefined;
+    if (frame.method === "history.send") {
+      const { payload } = frame.params as {
+        payload: {
+          type: string;
+          id: string;
+          botIds: string[];
+          catalog: boolean;
+          request?: { method: string };
+        };
+      };
+      if (payload.type === "changed") {
+        hints.push(payload);
+        if (payload.botIds.includes(botId)) {
+          if (hints.filter((hint) => hint.botIds.includes(botId)).length === 1)
+            error = "history_busy";
+          else published++;
+        }
+      } else if (payload.type === "pull") {
+        socket.write(
+          `${JSON.stringify({
+            type: "history.packet",
+            sourceDeviceId: peer,
+            payload: {
+              type: "reply",
+              id: payload.id,
+              failed: false,
+              result:
+                payload.request?.method === "catalog"
+                  ? { bots: [], hasMore: false }
+                  : { branches: [], hasMore: false, cursor: null },
+            },
+          })}\n`,
+        );
+      }
+    }
+    socket.write(
+      `${JSON.stringify({
+        requestId: frame.requestId,
+        ...(error
+          ? { error }
+          : {
+              result:
+                frame.method === "history.peers"
+                  ? [{ deviceId: peer }]
+                  : { enabled: true, ready: true },
+            }),
+      })}\n`,
+    );
+  });
+  const held = Promise.withResolvers<void>();
+  const handle = await stack.registry.open(botId, trace);
+  let observing = false;
+  const observe = handle.observeHistoryChanges?.bind(handle);
+  assert.ok(observe);
+  handle.observeHistoryChanges = (listener) => {
+    observing = true;
+    return observe(listener);
+  };
+  const coordinator = new HistoryCoordinator(bench.path, stack.registry, stack.directory, () => {});
+  try {
+    await waitFor(() => hints.some((hint) => hint.catalog), "initial catalog hint");
+    await waitFor(() => observing, "native observer attached outside open");
+    const baseline = hints.length;
+    const empty = validateHistoryPage(await handle.exportHistoryPage?.());
+    assert.deepEqual(empty.records, []);
+    await handle.importHistoryPage?.(empty);
+    await handle.importHistoryPage?.(empty);
+    await new Promise<void>((done) => setTimeout(done, 100));
+    assert.equal(hints.length, baseline, "open and duplicate empty native receives do not notify");
+    let calls = 0;
+    stack.faux?.setResponses([
+      async () => {
+        calls++;
+        await held.promise;
+        return text("after the hint has retried");
+      },
+    ]);
+    await handle.submit({
+      requestId: "r_last_hint",
+      text: "a single committed user",
+      whenBusy: "followUp",
+      trace,
+    });
+    await waitFor(
+      () => published === 1,
+      "last Bot hint retries busy without another commit or renewal",
+    );
+    assert.equal(calls, 1);
+    const attempts = hints.filter((hint) => hint.botIds.includes(botId));
+    assert.equal(attempts.length, 2);
+    assert.deepEqual(attempts[1], attempts[0], "the failed Bot IDs survive the retry");
+  } finally {
+    held.resolve();
+    await coordinator.close();
+    await stack.close();
     await bench.close();
   }
 });

@@ -18,6 +18,11 @@ const request = z.discriminatedUnion("method", [
   z.strictObject({ method: z.literal("page"), botId: bot, input: historyPageRequest }),
 ]);
 const packet = z.discriminatedUnion("type", [
+  z.strictObject({
+    type: z.literal("changed"),
+    botIds: z.array(bot).max(32),
+    catalog: z.boolean(),
+  }),
   z.strictObject({ type: z.literal("pull"), id: z.uuid(), request }),
   z.strictObject({
     type: z.literal("reply"),
@@ -63,6 +68,17 @@ export class HistoryCoordinator {
     { peer: string; resolve(value: unknown): void; reject(): void }
   >();
   readonly #fresh = new Set<string>();
+  readonly #scans = new Map<string, AsyncGenerator<void>>();
+  readonly #scanAgain = new Set<string>();
+  readonly #hot = new Map<
+    string,
+    { peer: string; botId: string; scan: AsyncGenerator<void>; again: boolean; started: boolean }
+  >();
+  readonly #heads = new Map<string, string>();
+  readonly #peers = new Set<string>();
+  readonly #dirtyBots = new Set<string>();
+  #catalogDirty = false;
+  #notifying = false;
   readonly #backfill = new Map<string, Backfill>();
   readonly #gaps = new Map<string, Backfill>();
   readonly #tails = new Map<string, string>();
@@ -109,9 +125,8 @@ export class HistoryCoordinator {
       if (handle) {
         this.#handles.set(summary.id, {
           handle,
-          detach: handle.observeHistoryChanges?.(() => this.#announce()) ?? (() => {}),
+          detach: handle.observeHistoryChanges?.(() => this.#announce(summary.id)) ?? (() => {}),
         });
-        this.#announce();
       }
     }
   }
@@ -156,7 +171,12 @@ export class HistoryCoordinator {
       .array(z.object({ deviceId: z.uuid() }))
       .max(32)
       .parse(await this.#channel?.call("history.peers"));
-    for (const peer of peers) this.#fresh.add(peer.deviceId);
+    this.#peers.clear();
+    for (const peer of peers) {
+      this.#peers.add(peer.deviceId);
+      this.#queueFresh(peer.deviceId);
+    }
+    void this.#channel?.call("history.changed").catch(() => {});
     this.#announce();
     void this.#work();
   }
@@ -166,12 +186,18 @@ export class HistoryCoordinator {
     if (value.type === "history.ready") {
       void this.#available(value.ready).catch(() => this.#channel?.close());
     } else if (value.type === "history.changed") {
-      this.#fresh.add(value.sourceDeviceId);
+      this.#peers.add(value.sourceDeviceId);
+      this.#queueFresh(value.sourceDeviceId);
       void this.#work();
     } else {
       const parsed = packet.safeParse(value.payload);
       if (!parsed.success) return;
-      if (parsed.data.type === "reply") {
+      if (parsed.data.type === "changed") {
+        this.#peers.add(value.sourceDeviceId);
+        if (parsed.data.catalog) this.#queueFresh(value.sourceDeviceId);
+        for (const botId of parsed.data.botIds) this.#queueHot(value.sourceDeviceId, botId);
+        void this.#work();
+      } else if (parsed.data.type === "reply") {
         const pending = this.#pending.get(parsed.data.id);
         if (pending?.peer !== value.sourceDeviceId) return;
         this.#pending.delete(parsed.data.id);
@@ -186,15 +212,76 @@ export class HistoryCoordinator {
     }
   }
 
-  #announce() {
-    if (!this.#ready || this.#notice || this.#closed) return;
+  #queueFresh(peer: string) {
+    if (this.#scans.has(peer)) this.#scanAgain.add(peer);
+    this.#fresh.add(peer);
+  }
+
+  #queueHot(peer: string, botId: string) {
+    const key = `${peer}/${botId}`;
+    const work = this.#hot.get(key);
+    if (work) work.again = true;
+    else
+      this.#hot.set(key, {
+        peer,
+        botId,
+        scan: this.#catchUpBot(peer, botId),
+        again: false,
+        started: false,
+      });
+  }
+
+  #announce(botId?: string) {
+    if (botId) this.#dirtyBots.add(botId);
+    else this.#catalogDirty = true;
+    this.#scheduleNotice();
+  }
+
+  #scheduleNotice(delay = 40) {
+    if (
+      !this.#ready ||
+      this.#notice ||
+      this.#notifying ||
+      this.#closed ||
+      !this.#peers.size ||
+      (!this.#dirtyBots.size && !this.#catalogDirty)
+    )
+      return;
     this.#notice = setTimeout(() => {
       this.#notice = undefined;
-      void this.#channel?.call("history.changed").catch(() => {
-        // Device Service owns bounded transient notice retries; retain the single attachment.
-      });
-    }, 40);
+      void this.#sendNotice();
+    }, delay);
     this.#notice.unref();
+  }
+
+  async #sendNotice() {
+    this.#notifying = true;
+    const botIds = [...this.#dirtyBots].slice(0, 32);
+    for (const id of botIds) this.#dirtyBots.delete(id);
+    const catalog = this.#catalogDirty;
+    this.#catalogDirty = false;
+    let failed = false;
+    for (const peer of this.#peers) {
+      if (this.#closed || !this.#ready) {
+        failed = true;
+        break;
+      }
+      try {
+        await this.#channel?.call("history.send", {
+          targetDeviceId: peer,
+          payload: { type: "changed", botIds, catalog },
+        });
+      } catch {
+        failed = true;
+      }
+    }
+    if (failed) {
+      for (const id of botIds) this.#dirtyBots.add(id);
+      this.#catalogDirty ||= catalog;
+    }
+    this.#notifying = false;
+    if (!failed) void this.#channel?.call("history.changed").catch(() => {});
+    this.#scheduleNotice(failed ? 1000 : 40);
   }
 
   async #withBot<T>(botId: string, run: (handle: RuntimeHandle) => Promise<T>): Promise<T> {
@@ -304,74 +391,87 @@ export class HistoryCoordinator {
       this.#botRetry = undefined;
       this.#unavailableBots.clear();
       this.#unavailableReads.clear();
-      for (const peer of this.#retryPeers) this.#fresh.add(peer);
+      for (const peer of this.#retryPeers) this.#queueFresh(peer);
       this.#retryPeers.clear();
       void this.#work();
     }, 1000);
     this.#botRetry.unref();
   }
 
-  async #catchUp(peer: string) {
+  async *#catchUp(peer: string) {
     for (;;) {
       const catalog = await this.#pull(peer, {
         method: "catalog",
         known: this.#registry.summaries().map((bot) => bot.id),
       });
+      const before = new Set(this.#registry.summaries().map((bot) => bot.id));
       await this.#registry.importHistoryCatalog(catalog, "tr_history_catalog");
-      this.#changed();
+      for (const bot of this.#registry.summaries()) {
+        if (!before.has(bot.id)) this.#queueHot(peer, bot.id);
+      }
+      if (this.#registry.summaries().length !== before.size) this.#changed();
+      yield;
       if (!(catalog as { hasMore: boolean }).hasMore) break;
     }
-    for (const bot of this.#registry.summaries()) {
-      if (this.#closed || !this.#ready) return;
-      if (this.#unavailableBots.has(bot.id) || this.#unavailableReads.has(`${peer}/${bot.id}`))
-        continue;
-      try {
-        let after: string | undefined;
-        do {
-          const list = branches.parse(
-            await this.#pull(peer, {
-              method: "branches",
-              botId: bot.id,
-              ...(after ? { after } : {}),
-            }),
-          );
-          for (const branch of list.branches) {
-            const key = `${peer}/${bot.id}/${branch.branchId}`;
-            const gap = this.#gaps.get(key);
-            if (gap && !this.#backfill.has(key)) this.#backfill.set(key, gap);
-            let tail = this.#tails.get(key);
-            for (let budget = 0; budget < 4; budget++) {
-              const page = await this.#receive(
-                bot.id,
-                await this.#pull(peer, {
-                  method: "page",
-                  botId: bot.id,
-                  input: { selection: branch.selection, ...(tail ? { after: tail } : {}) },
-                }),
-              );
-              if (page.snapshot) this.#tails.set(key, page.snapshot);
-              if (!tail && page.records[0]?.previous && page.cursor && page.snapshot) {
-                const backfill = {
-                  peer,
-                  botId: bot.id,
-                  selection: branch.selection,
-                  before: page.cursor,
-                  until: page.snapshot,
-                };
-                this.#gaps.set(key, backfill);
-                if (page.hasMore) this.#backfill.set(key, backfill);
-              }
-              if (!tail || !page.hasMore || !page.cursor) break;
-              tail = page.cursor;
-              this.#tails.set(key, tail);
-              if (budget === 3) this.#fresh.add(peer);
+    for (const bot of this.#registry.summaries()) yield* this.#catchUpBot(peer, bot.id);
+  }
+
+  async *#catchUpBot(peer: string, botId: string) {
+    if (this.#closed || !this.#ready) return;
+    if (this.#unavailableBots.has(botId) || this.#unavailableReads.has(`${peer}/${botId}`)) return;
+    try {
+      let after: string | undefined;
+      do {
+        const list = branches.parse(
+          await this.#pull(peer, {
+            method: "branches",
+            botId: botId,
+            ...(after ? { after } : {}),
+          }),
+        );
+        yield;
+        for (const branch of list.branches) {
+          const key = `${peer}/${botId}/${branch.branchId}`;
+          const gap = this.#gaps.get(key);
+          if (gap && !this.#backfill.has(key)) this.#backfill.set(key, gap);
+          if (/^[a-f0-9]{64}$/.test(branch.selection) && this.#heads.get(key) === branch.selection)
+            continue;
+          let tail = this.#tails.get(key);
+          for (let budget = 0; budget < 4; budget++) {
+            const page = await this.#receive(
+              botId,
+              await this.#pull(peer, {
+                method: "page",
+                botId: botId,
+                input: { selection: branch.selection, ...(tail ? { after: tail } : {}) },
+              }),
+            );
+            if (page.snapshot) this.#tails.set(key, page.snapshot);
+            if (!tail && page.records[0]?.previous && page.cursor && page.snapshot) {
+              const backfill = {
+                peer,
+                botId: botId,
+                selection: branch.selection,
+                before: page.cursor,
+                until: page.snapshot,
+              };
+              this.#gaps.set(key, backfill);
+              if (page.hasMore) this.#backfill.set(key, backfill);
             }
+            yield;
+            if (!tail || !page.hasMore || !page.cursor) {
+              this.#heads.set(key, branch.selection);
+              break;
+            }
+            tail = page.cursor;
+            this.#tails.set(key, tail);
+            if (budget === 3) this.#queueHot(peer, botId);
           }
-          after = list.hasMore ? (list.cursor ?? undefined) : undefined;
-        } while (after);
-      } catch {
-        this.#retryBot(bot.id, peer);
-      }
+        }
+        after = list.hasMore ? (list.cursor ?? undefined) : undefined;
+      } while (after);
+    } catch {
+      this.#retryBot(botId, peer);
     }
   }
 
@@ -384,9 +484,12 @@ export class HistoryCoordinator {
       while (
         this.#ready &&
         !this.#closed &&
-        (this.#fresh.size || this.#backfill.size || this.#drains.size)
+        (this.#hot.size || this.#fresh.size || this.#backfill.size || this.#drains.size)
       ) {
         const peer = this.#fresh.values().next().value;
+        const hot =
+          [...this.#hot.entries()].find(([, work]) => !work.started) ??
+          this.#hot.entries().next().value;
         const drainWork = [...this.#drains.entries()].find(
           ([, drain]) => !this.#unavailableBots.has(drain.botId),
         );
@@ -396,11 +499,28 @@ export class HistoryCoordinator {
             !this.#unavailableReads.has(`${backfill.peer}/${backfill.botId}`),
         );
         activePeer = undefined;
-        if (peer && (freshTurn || (!backfillWork && !drainWork))) {
+        if (hot && (!hot[1].started || freshTurn || (!backfillWork && !drainWork))) {
+          const [key, work] = hot;
+          work.started = true;
+          freshTurn = false;
+          const done = (await work.scan.next()).done;
+          this.#hot.delete(key);
+          if (done) {
+            if (work.again) this.#queueHot(work.peer, work.botId);
+          } else this.#hot.set(key, work);
+        } else if (peer && (freshTurn || (!backfillWork && !drainWork))) {
           activePeer = peer;
           freshTurn = false;
-          this.#fresh.delete(peer);
-          await this.#catchUp(peer);
+          const scan = this.#scans.get(peer) ?? this.#catchUp(peer);
+          this.#scans.set(peer, scan);
+          if ((await scan.next()).done) {
+            this.#scans.delete(peer);
+            this.#fresh.delete(peer);
+            if (this.#scanAgain.delete(peer)) this.#fresh.add(peer);
+          } else {
+            this.#fresh.delete(peer);
+            this.#fresh.add(peer);
+          }
         } else if (drainWork) {
           freshTurn = true;
           const [key, drain] = drainWork;
@@ -450,7 +570,10 @@ export class HistoryCoordinator {
         await new Promise<void>((resolve) => setImmediate(resolve));
       }
     } catch (error) {
-      if (activePeer) this.#fresh.add(activePeer);
+      if (activePeer) {
+        this.#scans.delete(activePeer);
+        this.#fresh.add(activePeer);
+      }
       if (
         error instanceof Error &&
         ["history_pull_timeout", "history_pull_unavailable"].includes(error.message)

@@ -426,10 +426,17 @@ After the local daemon is ready, an optional coordinator attaches as the single
 history consumer on the existing paired private socket. A busy consumer is never
 stolen: close releases the socket promptly and retry can acquire it after a host
 handoff. Disabled/unavailable history leaves local chat independent. Catalog and
-native-entry observers only queue coalesced notices; start/reconnect immediately
-pull missing catalog metadata and bounded branch pages. Imports broadcast the
-existing catalog, including an empty Bot. Fresh committed-user pages are imported
-and announced before completion assessment; old backfill yields between pages
+native-entry observers only queue coalesced notices. The existing encrypted
+history payload carries an additive `changed` message with at most 32 Bot IDs and
+a catalog bit; no Device frame or cloud history storage is added. Startup/reconnect
+and coarse notices retain full catch-up compatibility. Every catalog/branch/page
+read yields; a changed Bot preempts unrelated scans, while retained backfill/drain work advances
+between fresh reads. Unchanged immutable selections need no repeat page pull;
+missing-ancestor recovery remains queued even at the same head. Failed hint sends
+retain their Bot IDs/catalog bit and retry with bounded backoff without another
+commit. Opening a handle or importing an empty/duplicate page does not announce a
+native change. Imports broadcast the existing catalog, including an empty Bot.
+Fresh committed-user pages are imported and announced before completion assessment; old backfill yields between pages
 and has a separate queue. Native pending work drains independently after the final
 backfill page, without waiting for another notice. Failed reads retain their queued
 position and retry with bounded backoff on the existing attachment; fresh work gets

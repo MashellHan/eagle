@@ -3007,3 +3007,34 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   D1, collection and dashboard: N/A, unchanged this round. Service changed only
   this checkpoint, started no gate/Swift/App and touched no physical device,
   Worker or helper. Source and SwiftPM remain released pending Root's feedback.
+
+
+## 2026-11-02 20:49 optional history: fresh scheduling after physical misses
+
+- Root proves real `tailscale` delivery with matching runtime/helpers. Empty Bot
+  discovery took 3.56999675s (one App sample); A→B first-message visibility took
+  11.812944542s and failed the 5s bound. B→A missed at 18.103s and remained absent;
+  B’s real provider input contains the A message and B reply. Old unchanged branches
+  repeatedly consumed page reads before fresh work. These are failed samples.
+- Root temporarily disabled both history capabilities through native Settings to
+  stop scanning, preserving pairing, policy and all native histories. Local B chat
+  continues; disabling is not a scheduling fix. Physical evidence remains under
+  `.local/e2e-readiness/physical-888578a/`; service did not operate either device.
+- With history disabled, Root separately proves B’s native local chat displayed
+  user+assistant in 3.777647709s; the third real provider input includes A-first,
+  B-reply and B-offline. A normal quit/reopen on the same profile shows the saved
+  conversation with provider calls still three (no replay). This is local
+  degradation/reopen evidence only, not a sync sample; initial pre-catalog reads
+  remain retained. Receipts: `B-chat-with-history-disabled.json` and
+  `B-offline-restart-ui.json` in the same physical-evidence directory.
+- Real Unix-socket and independent Device Service/DO process reds reproduce the
+  full old-branch scan blocking a fresh committed user. The coordinator now yields
+  between reads, prioritizes bounded Bot hints in the existing encrypted payload,
+  skips unchanged immutable pages and retains last-hint busy retries. Final affected
+  IPC is 12/12 and process is 5/5, including held-provider visibility, large-record
+  backfill, same-head ancestor recovery and independent native pending drain; Bots
+  types/lint and root types/affected lint pass. Logs: `.local/history-scheduler-*`.
+- Physical latency failures remain open pending Root’s daemon-only retest. No
+  Swift/App, Worker, auth or physical-data changes; source SwiftPM stays released.
+  Herdr collection/authentication, D1 and dashboard rendering: N/A. Both routes/
+  two-way App visibility within 5s remain pending; full gates were not rerun here.
