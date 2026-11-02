@@ -8,7 +8,7 @@ import { createModels, fauxProvider } from "@earendil-works/pi-ai";
 import { createRegistry, type EntryId, Harness, type Storage } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { ClassifiedFailure } from "../../src/core/domain.ts";
-import type { RuntimeHandle } from "../../src/core/RuntimePort.ts";
+import type { RuntimeEvent, RuntimeHandle } from "../../src/core/RuntimePort.ts";
 import { archiveHash, type HistoryArchive } from "../../src/runtime/pi/historyArchive.ts";
 import { NativeHistory } from "../../src/runtime/pi/NativeHistory.ts";
 import type { PiDurableRuntime } from "../../src/runtime/pi/PiDurableRuntime.ts";
@@ -632,6 +632,12 @@ test("explicit local continuation keeps ordinary sends and reopen on its chosen 
       "done",
       "lookup still finds a pre-selection root admission after reopen",
     );
+    const oldRoot = present(await right.submission({ requestId: "r_active_old_root" }));
+    assert.match(
+      JSON.stringify(await right.entryById(present(oldRoot.answerEntryId))),
+      /B old root answer/,
+      "peer readers can still resolve the old root's answer by its native entry ID",
+    );
     await right.submit({
       requestId: "r_active_old_root",
       text: "B old root question",
@@ -647,6 +653,149 @@ test("explicit local continuation keeps ordinary sends and reopen on its chosen 
     assert.match(JSON.stringify(history.messages), /B reopened branch answer/);
     assert.doesNotMatch(JSON.stringify(history.messages), /B old root answer/);
   } finally {
+    await left.close(trace, 5000);
+    await right.close(trace, 5000);
+    await a.cleanup();
+    await b.cleanup();
+  }
+});
+
+test("a continuation request stays indexed after selecting another branch and reopening", async () => {
+  const a = await createBench({ settings: { compaction: { enabled: false } } });
+  const b = await createBench({ settings: { compaction: { enabled: false } } });
+  const left = await a.runtime.open(a.spec());
+  let right = await b.runtime.open(b.spec());
+  let calls = 0;
+  try {
+    a.faux.setResponses([text("common request ancestor")]);
+    await settled(left, "r_route_ancestor", "common request question");
+    const imported = await right.importHistory(await left.exportHistory());
+    b.faux.setResponses(
+      ["X original answer", "Y selected answer", "duplicate must not execute"].map(
+        (answer) => () => {
+          calls++;
+          return text(answer);
+        },
+      ),
+    );
+    const first = await right.continueHistory({
+      head: imported.head,
+      requestId: "r_route_x",
+      text: "X original question",
+    });
+    await right.continueHistory({
+      head: imported.head,
+      requestId: "r_route_y",
+      text: "Y selected question",
+    });
+    await right.close(trace, 5000);
+    right = await b.runtime.open(b.spec());
+    const queried = await right.submission({ requestId: "r_route_x" });
+    const retried = await right.submit({
+      requestId: "r_route_x",
+      text: "X original question",
+      whenBusy: "followUp",
+      trace,
+    });
+    await waitFor(
+      async () => (await right.submission({ submissionId: retried.id }))?.status === "done",
+      "retried original admission",
+    );
+    assert.deepEqual(
+      { queried: queried?.id, retried: retried.id, calls },
+      { queried: first.submission.id, retried: first.submission.id, calls: 2 },
+      "query and ordinary retry must find X rather than executing again on Y",
+    );
+    assert.match(
+      JSON.stringify(await right.entryById(present(queried?.answerEntryId))),
+      /X original answer/,
+      "an old continuation answer remains readable after selection changes",
+    );
+    assert.doesNotMatch(
+      JSON.stringify((await right.history({ limit: 50 })).messages),
+      /X original/,
+    );
+  } finally {
+    await left.close(trace, 5000);
+    await right.close(trace, 5000);
+    await a.cleanup();
+    await b.cleanup();
+  }
+});
+
+test("a delayed acquired watch cannot replace a newer selected branch or emit its baseline", async (t) => {
+  const a = await createBench({ settings: { compaction: { enabled: false } } });
+  const b = await createBench({ settings: { compaction: { enabled: false } } });
+  const left = await a.runtime.open(a.spec());
+  let kernel!: Harness & { readOnLine<T>(job: () => Promise<T>): Promise<T> };
+  const open = Harness.open;
+  t.mock.method(Harness, "open", async (...args: Parameters<typeof open>) => {
+    const harness = await open(...args);
+    kernel = harness as typeof kernel;
+    return harness;
+  });
+  const right = await b.runtime.open(b.spec());
+  let release!: () => void;
+  const held = new Promise<void>((done) => {
+    release = done;
+  });
+  let acquired = false;
+  let armed = false;
+  const read = kernel.readOnLine;
+  // Delay only the return of a real acquired SDK observer, after its Session line is free.
+  t.mock.method(kernel, "readOnLine", async function <
+    T,
+  >(this: typeof kernel, job: () => Promise<T>): Promise<T> {
+    const value = (await read.call(this, job)) as T;
+    if (armed && value !== null && typeof value === "object" && "observer" in value) {
+      armed = false;
+      acquired = true;
+      await held;
+    }
+    return value;
+  });
+  const events: RuntimeEvent[] = [];
+  const subscription = await right.subscribe(trace, (event) => events.push(event));
+  try {
+    a.faux.setResponses([text("watch ancestor")]);
+    await settled(left, "r_watch_ancestor", "watch ancestor question");
+    const imported = await right.importHistory(await left.exportHistory());
+    b.faux.setResponses([
+      text("newer watch answer"),
+      text("older watch answer"),
+      text("newer live follow-up answer"),
+    ]);
+    armed = true;
+    const older = right.continueHistory({
+      head: imported.head,
+      requestId: "r_watch_x",
+      text: "older watch question",
+    });
+    await waitFor(() => acquired, "X's real watch acquisition before baseline delivery");
+    await right.continueHistory({
+      head: imported.head,
+      requestId: "r_watch_y",
+      text: "newer watch question",
+    });
+    await waitFor(() => JSON.stringify(right.snapshot()).includes("newer watch answer"), "Y watch");
+    const beforeRelease = events.length;
+    release();
+    await older;
+    const stale = events.slice(beforeRelease).filter((event) => event.type === "snapshot");
+    assert.deepEqual(stale, [], "X's delayed baseline must never be published after Y");
+    assert.match(JSON.stringify(right.snapshot()), /newer watch answer/);
+    await settled(right, "r_watch_next", "newer branch follow-up");
+    await waitFor(
+      () => events.some((event) => JSON.stringify(event).includes("newer live follow-up answer")),
+      "the newer subscription still receives live commits",
+    );
+    assert.doesNotMatch(
+      JSON.stringify(right.snapshot()),
+      /older watch question|older watch answer/,
+    );
+  } finally {
+    release();
+    subscription.detach();
     await left.close(trace, 5000);
     await right.close(trace, 5000);
     await a.cleanup();

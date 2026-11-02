@@ -347,6 +347,7 @@ type Subscription = {
   episode: string;
   stream?: AgentEventStream;
   detached: boolean;
+  acquisition: number;
   /** The watch ended and escalation stopped reattaching it. */
   watchEnded?: boolean;
 };
@@ -567,6 +568,7 @@ class PiRuntimeHandle implements RuntimeHandle {
     const state: Subscription = {
       sink,
       detached: false,
+      acquisition: 0,
       episode: `listener:${++this.#watchSequence}`,
     };
     this.#currentEpisode = state.episode;
@@ -778,22 +780,11 @@ class PiRuntimeHandle implements RuntimeHandle {
   /** One entry, read by its own id: no paging, no window, so an old answer stays reachable. */
   async entryById(entryId: string): Promise<Message | undefined> {
     try {
-      const root = await this.#localConversation();
-      const page = await root.entries(
-        {
-          order: "ascending",
-          minEntryId: piEntryId(entryId),
-          maxEntryId: piEntryId(entryId),
-        },
-        1,
-        undefined,
+      const entry = await this.#harness.commit(
+        (tx) => tx.entry(piEntryId(entryId)),
         BACKGROUND_CONTEXT,
       );
-      for (const entry of page.items) {
-        const message = this.#mapper.entryMessage(entry);
-        if (message !== undefined && message.id === entryId) return message;
-      }
-      return undefined;
+      return entry === undefined ? undefined : this.#mapper.entryMessage(entry);
     } catch (cause) {
       if (cause instanceof ClassifiedFailure) throw cause;
       const minted = this.#classifier.classify("history", "storage_failed", "runtime");
@@ -1072,13 +1063,19 @@ class PiRuntimeHandle implements RuntimeHandle {
       readonly deferDelivery?: boolean;
     } = {},
   ): Promise<ConversationSnapshot> {
+    const nativeId = this.#activeId;
+    const acquisition = ++state.acquisition;
+    const current = () =>
+      !state.detached && state.acquisition === acquisition && this.#activeId === nativeId;
     // Read before the acquisition: a record set that is slightly older can only describe
     // work the snapshot still names, while one read afterwards can already have lost it.
     const active = await this.#activeRecords();
-    const stream = await watchEvents(this.#harness, this.#activeId, BACKGROUND_CONTEXT);
+    if (!current()) return this.#mapper.view();
+    const stream = await watchEvents(this.#harness, nativeId, BACKGROUND_CONTEXT);
     let ready = false;
     const buffered: (readonly AgentEvent[])[] = [];
     stream.start(async (batch) => {
+      if (!current()) return;
       if (!ready) {
         buffered.push(batch);
         return;
@@ -1086,6 +1083,10 @@ class PiRuntimeHandle implements RuntimeHandle {
       await this.#consumeGuarded(state, batch, trace);
     });
     const records = await this.#namedRecords(stream.snapshot, active);
+    if (!current()) {
+      void stream.stop();
+      return this.#mapper.view();
+    }
     for (const record of records) this.#rememberId(record);
     const baseline = this.#mapper.seed(stream.snapshot, trace, records)[0];
     const snapshot =
@@ -1093,7 +1094,9 @@ class PiRuntimeHandle implements RuntimeHandle {
     this.#resumeRunTrace(stream.snapshot);
     if (state.stream !== undefined) void state.stream.stop();
     state.stream = stream;
-    stream.closed.then((end) => this.#watchEnd(end, trace, state));
+    stream.closed.then((end) => {
+      if (state.stream === stream) this.#watchEnd(end, trace, state);
+    });
     try {
       options.deliverBaseline?.(snapshot);
     } catch {
@@ -1101,10 +1104,11 @@ class PiRuntimeHandle implements RuntimeHandle {
       return snapshot;
     }
     const open = (): void => {
-      if (state.detached || state.stream !== stream) return;
+      if (!current() || state.stream !== stream) return;
       ready = true;
       void (async () => {
         for (const batch of buffered.splice(0)) {
+          if (!current()) return;
           if (!(await this.#consumeGuarded(state, batch, trace))) return;
         }
       })();

@@ -36,7 +36,7 @@ import {
   pageHead,
   validateHistoryPage,
 } from "./historyIncremental.ts";
-import { LocalChatSelection } from "./LocalChat.ts";
+import { LocalChatRequest, LocalChatSelection } from "./LocalChat.ts";
 import { convertSubmission } from "./mapEvents.ts";
 
 type Provenance = { id: string; originId: string; conversationId: string };
@@ -1143,7 +1143,9 @@ export class NativeHistory {
         if (previous.head !== input.head || previous.text !== input.text)
           historyReject("history continuation request conflict");
         // Older local receipts also pin the native ID in their locally minted branch ID.
-        return { nativeId: previous.nativeId ?? Number(previous.branchId.split("/c")[1]) };
+        const nativeId = previous.nativeId ?? Number(previous.branchId.split("/c")[1]);
+        (await tx.doc(LocalChatRequest, input.requestId, null)).conversationId = nativeId;
+        return { nativeId };
       }
       const incremental = await tx.doc(IncrementalHead, input.head, null);
       const head =
@@ -1161,6 +1163,7 @@ export class NativeHistory {
       const branch = { nativeId: fork.id, conversationId: head.conversationId, botId: this.#botId };
       state.branches[branchId] = branch;
       (await tx.doc(LocalChatSelection)).conversationId = fork.id;
+      (await tx.doc(LocalChatRequest, input.requestId, null)).conversationId = fork.id;
       state.continuations[input.requestId] = {
         head: input.head,
         text: input.text,

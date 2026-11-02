@@ -669,3 +669,9 @@ conversation. Ordinary sends, watches and reopen then use that local selection;
 request IDs remain bound to the conversation that first admitted them. Selection
 and routing are native chat state, independent of optional sync. Selection is recorded at local fork admission; older retries and slower completions do not reselect. Passive receive
 never changes selection, including while a local provider is in flight.
+Continuation admission records its request's native conversation in the same
+transaction as the local selection, so request lookup and ordinary retries still
+find it after another selection and reopen. An answer entry is read by its native
+ID within the Bot, independent of the currently displayed conversation. A watch
+acquisition superseded by newer local intent discards its delayed baseline and
+releases its own stream without replacing the current subscription.
