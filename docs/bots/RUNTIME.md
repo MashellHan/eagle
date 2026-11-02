@@ -54,6 +54,9 @@ raw groups and effective contributions; continuation requires that assessment.
 The initial page is the newest window, `snapshot` starts an independent new-tail
 pull, and `cursor` pages older records. `until` pins a backfill snapshot.
 The branch directory includes root, local continuations and received branches.
+Only containers created by passive import may receive further foreign appends.
+Native ownerless ownership also describes local roots/continuations, so matching
+an ancestor tail alone never authorizes reuse of a local chat container.
 
 ## Verified facts
 

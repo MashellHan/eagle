@@ -106,6 +106,14 @@ const NativeProvenance = defineDocFamily({
   initial: (_seed: null) => ({ id: "", originId: "", conversationId: "" }),
   checkpointWhen: () => true,
 });
+const PassiveConversation = defineDocFamily({
+  kind: "bots.history.passive",
+  version: 1,
+  scope: "session",
+  family: true,
+  initial: (_seed: null): { imported: boolean } => ({ imported: false }),
+  checkpointWhen: () => true,
+});
 const BranchDirectory = defineDoc({
   kind: "bots.history.branches",
   version: 1,
@@ -568,10 +576,26 @@ export class NativeHistory {
           ? undefined
           : (await tx.scanEntries({ conversationId: parent.conversationId as ConversationId }, 1))
               .items[0];
+      const container =
+        parent === undefined
+          ? undefined
+          : await tx.conversation(parent.conversationId as ConversationId);
+      const passive =
+        parent === undefined
+          ? false
+          : (await tx.doc(PassiveConversation, String(parent.conversationId), null)).imported;
+      // SDK roots and local continuations can also be ownerless; only imports may share an append container.
+      const reuse =
+        parent !== undefined &&
+        parent.conversationId !== this.#rootId &&
+        container !== undefined &&
+        container.owner === undefined &&
+        passive &&
+        tail?.id === parent.nativeId;
       const conversationId =
         parent === undefined
           ? (await tx.createConversation({ ownership: { kind: "ownerless" } })).id
-          : tail?.id === parent.nativeId
+          : reuse
             ? (parent.conversationId as ConversationId)
             : (
                 await tx.forkConversation(
@@ -580,6 +604,7 @@ export class NativeHistory {
                   { ownership: { kind: "ownerless" } },
                 )
               ).id;
+      (await tx.doc(PassiveConversation, String(conversationId), null)).imported = true;
       const draft: EntryDraft = {
         kind: entry.kind,
         ...(entry.model === undefined ? {} : { model: entry.model }),
@@ -836,6 +861,7 @@ export class NativeHistory {
               prefix.entries[count - 1] as EntryId,
               { ownership: { kind: "ownerless" } },
             );
+      (await tx.doc(PassiveConversation, String(conversation.id), null)).imported = true;
       const mapped = new Map<string, EntryId>();
       const nativeEntries: number[] = [];
       for (const [index, entry] of archive.entries.entries()) {

@@ -11,6 +11,154 @@ import { pageHead } from "../../src/runtime/pi/historyIncremental.ts";
 import { NativeHistory } from "../../src/runtime/pi/NativeHistory.ts";
 import { assistant, createBench, text, toolCall, trace, waitFor } from "../support/pi.ts";
 
+test("SDK ownerless ownership alone cannot distinguish the root from a passive import fork", async () => {
+  const bench = await createBench();
+  const harness = await Harness.open(
+    await openNodeSqliteStorage(join(bench.dir, "ownership.sqlite")),
+    { registry: createRegistry(), models: createModels() },
+    ctx,
+  );
+  try {
+    const root = await harness.root(ctx);
+    const entry = await root.commit(
+      (tx) => tx.appendEntry(root.id, { kind: "ownership.probe" }),
+      ctx,
+    );
+    const fork = await harness.commit(
+      (tx) => tx.forkConversation(root.id, entry.id, { ownership: { kind: "ownerless" } }),
+      ctx,
+    );
+    const records = await harness.commit(
+      async (tx) => [await tx.conversation(root.id), await tx.conversation(fork.id)],
+      ctx,
+    );
+    assert.ok(records.every((record) => record !== undefined));
+    assert.ok(records.every((record) => record?.owner === undefined));
+  } finally {
+    await harness.close(ctx);
+    await bench.cleanup();
+  }
+});
+
+for (const location of ["root", "continuation"] as const) {
+  test(`received branch never appends into the local ${location} or changes its provider input`, async () => {
+    const a = await createBench({ settings: { compaction: { enabled: false } } });
+    const b = await createBench({ settings: { compaction: { enabled: false } } });
+    const left = await a.runtime.open(a.spec());
+    const right = await b.runtime.open(b.spec());
+    try {
+      a.faux.setResponses([text("common answer"), text("A local branch answer")]);
+      await left.submit({
+        requestId: "r_isolation_common",
+        text: "common question",
+        whenBusy: "followUp",
+        trace,
+      });
+      await waitFor(
+        async () => (await left.submission({ requestId: "r_isolation_common" }))?.status === "done",
+        "common tail",
+      );
+      let ancestor = await left.exportHistoryPage();
+      let selection: string | undefined;
+      if (location === "continuation") {
+        const branch = await left.continueHistory({
+          head: ancestor.head,
+          requestId: "r_isolation_local",
+          text: "A local branch question",
+        });
+        selection = branch.branchId;
+        ancestor = await left.exportHistoryPage({ selection });
+      }
+      const rootBefore = await left.history({ limit: 50 });
+      await right.importHistoryPage(ancestor);
+      b.faux.setResponses([text("FOREIGN B answer")]);
+      const foreign = await right.continueHistory({
+        head: ancestor.head,
+        requestId: "r_isolation_foreign",
+        text: "FOREIGN B question",
+      });
+      const page = await right.exportHistoryPage({ selection: foreign.branchId });
+      await left.importHistoryPage(page);
+      const unchanged = await left.exportHistoryPage(selection === undefined ? {} : { selection });
+      assert.deepEqual(
+        unchanged.records,
+        ancestor.records,
+        "incoming suffix must fork instead of appending to a live local container",
+      );
+      assert.deepEqual(await left.history({ limit: 50 }), rootBefore);
+      assert.match(
+        JSON.stringify((await left.readHistoryHead(page.head)).messages),
+        /FOREIGN B answer/,
+      );
+      a.faux.setResponses([
+        (context) => {
+          assert.doesNotMatch(JSON.stringify(context.messages), /FOREIGN B/);
+          assert.match(JSON.stringify(context.messages), /common answer/);
+          return text("A local input unchanged");
+        },
+      ]);
+      if (location === "root") {
+        await left.submit({
+          requestId: "r_isolation_next",
+          text: "A next question",
+          whenBusy: "followUp",
+          trace,
+        });
+        await waitFor(
+          async () => (await left.submission({ requestId: "r_isolation_next" }))?.status === "done",
+          "A local provider",
+        );
+      } else {
+        assert.equal(
+          (
+            await left.continueHistory({
+              head: unchanged.head,
+              requestId: "r_isolation_next",
+              text: "A next question",
+            })
+          ).submission.status,
+          "done",
+        );
+      }
+      a.faux.setResponses([
+        (context) => {
+          assert.match(JSON.stringify(context.messages), /FOREIGN B answer/);
+          return text("explicitly selected foreign branch");
+        },
+      ]);
+      assert.equal(
+        (
+          await left.continueHistory({
+            head: page.head,
+            requestId: "r_isolation_explicit",
+            text: "explicit branch selection",
+          })
+        ).submission.status,
+        "done",
+      );
+      const db = new DatabaseSync(join(a.spec().dir, "session.sqlite"), { readOnly: true });
+      try {
+        assert.equal(
+          db
+            .prepare(
+              "SELECT count(*) AS n FROM entries WHERE json_extract(record, '$.kind') = 'pi.user' AND json_extract(record, '$.model[0].content') = 'common question'",
+            )
+            .get()?.n,
+          1,
+          "the safe fork physically shares its ancestor",
+        );
+      } finally {
+        db.close();
+      }
+    } finally {
+      await left.close(trace, 5_000);
+      await right.close(trace, 5_000);
+      await a.cleanup();
+      await b.cleanup();
+    }
+  });
+}
+
 test("a throwing optional observer cannot break ordinary chat and detaches normally", async () => {
   const bench = await createBench();
   const bot = await bench.runtime.open(bench.spec());
