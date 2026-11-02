@@ -7,6 +7,16 @@ Status snapshot. The contracts live in
 [TESTING.md](TESTING.md). This file says what exists, what is next, and where it
 lives. Update it whenever a stage closes.
 
+## Optional history handoff (2026-11-02)
+
+Stage 1 in progress: native SDK export, passive import and explicit local branch
+continuation, exercised with isolated A/B roots and a scripted real provider.
+Acceptance covers full tool groups/context, zero execution on import/reopen,
+provider input containing imported history, retry/reopen dedup and preserved
+ancestry. A subsequent CLI slice will drive this local boundary. Sync transport,
+Worker changes, Tailscale, UI and resource replication remain later stages; chat
+open/submit must never wait for them. Runtime semantics are in RUNTIME.md.
+
 The current tool taxonomy, native extension integration and test-evidence map are
 in [Extensions and tools](EXTENSIONS-AND-TOOLS.md). That guide also
 specifies planned optional `memory`, `search` and `peers` groups and child-agent

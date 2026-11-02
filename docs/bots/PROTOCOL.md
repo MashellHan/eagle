@@ -182,6 +182,25 @@ it. A per-bot model picker still needs the `agent` capability.
 
 ## CLI clients and scopes
 
+### Local history handoff
+
+These additive HTTP operations are independent of optional sync. Archives are
+opaque, order-preserving `pi-durable@1.4.0` JSON (v1), bounded to 240 KiB.
+
+| Route | Scope | Request / response |
+| --- | --- | --- |
+| `POST /v1/bots/:id/history/export` | read | `{selection?: string}` (immutable head or local branch ID, omitted = current root); returns the archive directly |
+| `POST /v1/bots/:id/history/import` | write | The raw archive; returns `{head, conversationId, branchId}` |
+| `POST /v1/bots/:id/history/continue` | write | `{head, requestId, text}`; forks that imported complete head once per request ID, waits for local settlement and returns `{branchId, submission, answer?}` |
+
+Import never selects or overwrites the root chat. Export rejects active/incomplete
+history. Invalid archives, ID/content conflicts and conflicting continuation retries
+answer `400 invalid_command`; no tasks or queue are imported. Native receipts survive
+reopen. A timeout/lost response is retried with the identical request ID and input.
+Head snapshots stay immutable; branch IDs retain independent continuations. Raw
+tool groups and context references are validated before any import write (RUNTIME.md).
+No credentials, local agent configuration or environment are transferred.
+
 The App's own token in `<root>/token` stays the only credential with every right. Named
 CLI credentials are an additive set so a person can hand one to another agent, watch it,
 revoke it and delete it again (`CLI.md` owns the CLI itself).

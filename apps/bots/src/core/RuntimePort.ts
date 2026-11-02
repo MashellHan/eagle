@@ -74,7 +74,28 @@ export type RuntimeHistory = {
   readonly hasMore: boolean;
 };
 
+export type HistoryReceipt = {
+  readonly head: string;
+  readonly conversationId: string;
+  readonly branchId: string;
+};
+
+export type HistoryContinuation = {
+  readonly branchId: string;
+  readonly submission: Submission;
+  readonly answer?: Message;
+};
+
 export interface RuntimeHandle {
+  /** Explicit local handoff; the archive is runtime-owned JSON, never a database file. */
+  exportHistory?(branchId?: string, trace?: string): Promise<unknown>;
+  importHistory?(archive: unknown, trace?: string): Promise<HistoryReceipt>;
+  continueHistory?(input: {
+    head: string;
+    requestId: string;
+    text: string;
+    trace?: string;
+  }): Promise<HistoryContinuation>;
   refreshTools(trace: string): Promise<void>;
   /** Atomic: the view at attachment plus every later commit, with nothing lost between. */
   subscribe(trace: string, sink: (event: RuntimeEvent) => void): Promise<RuntimeSubscription>;

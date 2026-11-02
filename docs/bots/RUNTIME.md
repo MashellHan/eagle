@@ -12,6 +12,26 @@ The adapter owns a Harness per bot, translates its behaviour into `RuntimeEvent`
 classifies failures, and owns the submission ledger. It owns no catalog, no
 transport and no `rev`.
 
+## Optional history: local handoff (stage 1)
+
+Explicit export/import/continue operations use public pi-durable transactions and
+the Bot's native `session.sqlite`; no SQLite file is copied. Export accepts only
+idle, complete histories, including whole tool-call/result groups, raw context
+heads and edits (compaction). Origin/record IDs derive from committed native entry
+identity. A session document persists imported ID mappings, immutable head receipts
+and local branches, so retries, forwarding and reopen preserve shared ancestry.
+
+Import validates a bounded v1 archive and materializes an ownerless conversation
+with no tasks, submissions or inbox. It never selects or changes the current chat,
+executes tools, calls a model, or copies source model/tool/environment settings.
+Only explicit continuation forks an imported complete head and submits local work,
+using the receiving Bot's current configuration. Independent continuations retain
+separate branch IDs; timestamps never merge or select contexts.
+
+Local open/submit have no sync initialization, origin/receipt/export bookkeeping
+or network dependency. This slice adds no sync transport, staging store, resource
+replication, UI, live task migration or semantic branch merge.
+
 ## Verified facts
 
 Established with `@earendil-works/pi-durable@1.4.0` on Node 26.12.0 unless the

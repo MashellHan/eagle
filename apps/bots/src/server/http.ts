@@ -391,6 +391,8 @@ type Actor =
  * global and the credential routes. Every other mutation is a write.
  */
 const requiredScope = (path: string, method: string): ClientScope => {
+  if (method === "POST" && /^\/v1\/bots\/[A-Za-z0-9_-]+\/history\/export$/.test(path))
+    return "read";
   if (method === "GET" || method === "HEAD") {
     // The credential list names every client, so it is one of the admin routes.
     return path === "/v1/clients" ? "admin" : "read";
@@ -893,6 +895,62 @@ export const startServer = async (options: ServerOptions): Promise<Daemon> => {
           response.writeHead(204).end();
           return;
         }
+      }
+      const historyMatch = /^\/v1\/bots\/([A-Za-z0-9_-]+)\/history\/(export|import|continue)$/.exec(
+        path,
+      );
+      if (historyMatch !== null && request.method === "POST") {
+        const id = historyMatch[1] as string;
+        const operation = historyMatch[2] as string;
+        const body = await readBody(request);
+        if (
+          operation !== "import" &&
+          (!isObject(body) ||
+            (operation === "export"
+              ? Object.keys(body).some((key) => key !== "selection") ||
+                (body.selection !== undefined && typeof body.selection !== "string")
+              : Object.keys(body).some((key) => !["head", "requestId", "text"].includes(key)) ||
+                typeof body.head !== "string" ||
+                typeof body.requestId !== "string" ||
+                typeof body.text !== "string"))
+        ) {
+          json(response, 400, {
+            error: { kind: "invalid_command", message: "invalid history request" },
+          });
+          return;
+        }
+        const trace = `tr_http_${++sequence}`;
+        // A lease covers open, the explicit operation and its settlement, including disconnects.
+        if (!registry.touch(id)) {
+          await registry.open(id, trace);
+          if (!registry.touch(id)) {
+            json(response, 409, { error: { kind: "internal", message: "bot is unavailable" } });
+            return;
+          }
+        }
+        try {
+          const handle = await registry.open(id, trace);
+          let result: unknown;
+          if (operation === "export" && handle.exportHistory !== undefined)
+            result = await handle.exportHistory((body as { selection?: string }).selection, trace);
+          else if (operation === "import" && handle.importHistory !== undefined)
+            result = await handle.importHistory(body, trace);
+          else if (operation === "continue" && handle.continueHistory !== undefined)
+            result = await handle.continueHistory({
+              ...(body as { head: string; requestId: string; text: string }),
+              trace,
+            });
+          else {
+            json(response, 400, {
+              error: { kind: "invalid_command", message: "history handoff unavailable" },
+            });
+            return;
+          }
+          json(response, 200, result);
+        } finally {
+          registry.release(id);
+        }
+        return;
       }
       const match = /^\/v1\/bots\/([A-Za-z0-9_-]+)$/.exec(path);
       if (match !== null) {

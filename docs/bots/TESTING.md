@@ -22,6 +22,13 @@ or distribution signing.
 
 ## The loop
 
+Optional-history stage 1 uses real SDK/SQLite A/B histories and a scripted provider
+that asserts its actual input. Import and reopen must execute zero model/tool work;
+explicit continuation sees A's completed turn and tools while using B's local
+configuration. Retry/forward/reopen, shared ancestors, competing branches,
+compaction heads/edits and rejection of active/incomplete archives are deterministic
+runtime tests. CLI acceptance uses isolated roots/ports, never daily App data.
+
 For every behaviour change:
 
 1. Update the owning document first when a contract, semantic or log event changes.

@@ -57,7 +57,9 @@ import type { UsageMeter } from "../../tools/usage.ts";
 import { openWorkspace } from "../../tools/workspace.ts";
 import { FailureClassifier, type Minted } from "./classify.ts";
 import { entryMessageId } from "./convert.ts";
+import { HistoryInputError } from "./historyArchive.ts";
 import { convertSubmission, EventMapper } from "./mapEvents.ts";
+import { NativeHistory } from "./NativeHistory.ts";
 
 const Events = {
   openStart: declareEvent("runtime.open.start"),
@@ -86,6 +88,9 @@ const Events = {
   piSessionClosed: declareEvent("pi.session.closed"),
   toolsRefreshOk: declareEvent("runtime.tools.refresh.ok"),
   toolsRefreshFail: declareEvent("runtime.tools.refresh.fail"),
+  historyStart: declareEvent("runtime.history.start"),
+  historyOk: declareEvent("runtime.history.ok"),
+  historyFail: declareEvent("runtime.history.fail"),
   // The line a settled run writes is a catalog field, so a failed write is recorded as one.
   catalogWriteFail: declareEvent("core.catalog.write.fail"),
 } as const;
@@ -182,7 +187,7 @@ export class PiDurableRuntime implements RuntimePort {
     this.#options = options;
   }
 
-  async open(spec: RuntimeBotSpec): Promise<RuntimeHandle> {
+  async open(spec: RuntimeBotSpec): Promise<PiRuntimeHandle> {
     const log = this.#options.log;
     const started = performance.now();
     log.emit("info", "runtime", Events.openStart, { trace: spec.trace, botId: spec.id });
@@ -342,6 +347,51 @@ type HandleOptions = {
 };
 
 class PiRuntimeHandle implements RuntimeHandle {
+  exportHistory(branchId?: string, trace = this.#spec.trace) {
+    return this.#historyOperation(trace, () =>
+      new NativeHistory(this.#harness, this.#rootId, this.#spec.id).export(branchId),
+    );
+  }
+
+  importHistory(archive: unknown, trace = this.#spec.trace) {
+    return this.#historyOperation(trace, () =>
+      new NativeHistory(this.#harness, this.#rootId, this.#spec.id).import(archive),
+    );
+  }
+
+  continueHistory(input: { head: string; requestId: string; text: string; trace?: string }) {
+    return this.#historyOperation(input.trace ?? this.#spec.trace, () =>
+      new NativeHistory(this.#harness, this.#rootId, this.#spec.id).continue(input),
+    );
+  }
+
+  async #historyOperation<T>(trace: string, operation: () => Promise<T>): Promise<T> {
+    const started = performance.now();
+    const fields = { trace, botId: this.#spec.id };
+    this.#options.log.emit("info", "runtime", Events.historyStart, fields);
+    try {
+      const result = await operation();
+      this.#options.log.emit("info", "runtime", Events.historyOk, {
+        ...fields,
+        durMs: Math.round(performance.now() - started),
+      });
+      return result;
+    } catch (cause) {
+      const minted = this.#classifier.classify(
+        `history:${randomUUID()}`,
+        cause instanceof HistoryInputError ? "invalid_command" : "storage_failed",
+        "runtime",
+      );
+      this.#logFailure(minted, trace, Events.historyFail, "runtime");
+      throw new ClassifiedFailure(
+        minted.classification.failure,
+        "not_admitted",
+        cause instanceof HistoryInputError ? cause.message : minted.classification.message,
+        { cause },
+      );
+    }
+  }
+
   readonly #registry: Registry;
   #toolGroups: readonly string[];
 

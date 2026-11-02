@@ -262,6 +262,12 @@ inherited command environments remain correctness requirements.
 
 ## Non-goals (phase 1)
 
+Optional local history handoff is an additive stage after that original baseline:
+explicit export/import and a separate continuation branch, with native durability.
+Import is passive and leaves the current chat untouched; continuation uses this
+machine's Bot configuration. Local chat requires no sync service. See RUNTIME.md
+for completeness, provenance and branch boundaries; network sync and UI are later work.
+
 - Tools, file access, shell, code execution.
 - Bot-to-bot conversation, subagents, delegation, orchestration.
 - Multi-user, sharing, remote access, mobile.

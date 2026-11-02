@@ -2557,3 +2557,16 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   revision was the website `/api/live` `macos` block. The App's "cloud not ready" state
   comes from the local agent's register/heartbeat, which the relay answers
   `session_required` until this Mac's release identity is authorized on the web.
+## 2026-11-02 14:39 optional history: native local boundary
+
+- Isolated real SDK/SQLite A/B tests pass: passive import/reopen execute no model
+  or tool, B's actual provider receives A's real tool results and compacted/edited
+  context, retries/reopen deduplicate, concurrent branches share native ancestors.
+  Plain open/submit/reopen create no history origin/receipt document.
+- Authenticated local HTTP export/import/continue and read/write refusal tests pass.
+  Full Bots `npm run check` passes: 767 tests, types/lint/fixtures, coverage
+  95.52% lines / 88.41% branches / 90.65% functions. CLI/eval, independent review
+  and isolated dev App observation are pending. Candidate 43118, daily data and
+  upstream preview are untouched.
+- Herdr collection/authentication, D1 and dashboard rendering: N/A. No Worker or
+  transport implementation in this slice. Next hop: CLI acceptance and independent review.
