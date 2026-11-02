@@ -1139,14 +1139,22 @@ export class NativeHistory {
     const selected = await this.#harness.commit(async (tx) => {
       const state = await tx.doc(HistoryState);
       const previous = state.continuations[input.requestId];
+      const route = await tx.doc(LocalChatRequest, input.requestId, null);
+      const original = await tx.submissionByRequest(this.#rootId, input.requestId);
       if (previous !== undefined) {
         if (previous.head !== input.head || previous.text !== input.text)
           historyReject("history continuation request conflict");
         // Older local receipts also pin the native ID in their locally minted branch ID.
         const nativeId = previous.nativeId ?? Number(previous.branchId.split("/c")[1]);
-        (await tx.doc(LocalChatRequest, input.requestId, null)).conversationId = nativeId;
+        if (
+          (route.conversationId && route.conversationId !== nativeId) ||
+          (original && original.conversationId !== nativeId)
+        )
+          historyReject("history continuation request conflict");
+        route.conversationId = nativeId;
         return { nativeId };
       }
+      if (route.conversationId || original) historyReject("history continuation request conflict");
       const incremental = await tx.doc(IncrementalHead, input.head, null);
       const head =
         state.heads[input.head] ??
@@ -1163,7 +1171,7 @@ export class NativeHistory {
       const branch = { nativeId: fork.id, conversationId: head.conversationId, botId: this.#botId };
       state.branches[branchId] = branch;
       (await tx.doc(LocalChatSelection)).conversationId = fork.id;
-      (await tx.doc(LocalChatRequest, input.requestId, null)).conversationId = fork.id;
+      route.conversationId = fork.id;
       state.continuations[input.requestId] = {
         head: input.head,
         text: input.text,

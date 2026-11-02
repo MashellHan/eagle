@@ -679,3 +679,7 @@ find it after another selection and reopen. An answer entry is read by its nativ
 ID within the Bot, independent of the currently displayed conversation. A watch
 acquisition superseded by newer local intent discards its delayed baseline and
 releases its own stream without replacing the current subscription.
+That check also applies after asynchronous record reads inside a live batch,
+before changing the shared mapper or publishing a replacement snapshot. A new
+continuation refuses a request ID already bound by ordinary chat, before forking;
+repairing an older receipt may fill a missing route but never replace a binding.

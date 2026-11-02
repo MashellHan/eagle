@@ -1080,7 +1080,7 @@ class PiRuntimeHandle implements RuntimeHandle {
         buffered.push(batch);
         return;
       }
-      await this.#consumeGuarded(state, batch, trace);
+      await this.#consumeGuarded(state, batch, trace, current);
     });
     const records = await this.#namedRecords(stream.snapshot, active);
     if (!current()) {
@@ -1109,7 +1109,7 @@ class PiRuntimeHandle implements RuntimeHandle {
       void (async () => {
         for (const batch of buffered.splice(0)) {
           if (!current()) return;
-          if (!(await this.#consumeGuarded(state, batch, trace))) return;
+          if (!(await this.#consumeGuarded(state, batch, trace, current))) return;
         }
       })();
     };
@@ -1190,12 +1190,13 @@ class PiRuntimeHandle implements RuntimeHandle {
     state: Subscription,
     batch: readonly AgentEvent[],
     trace: string,
+    current: () => boolean,
   ): Promise<boolean> {
     try {
-      await this.#consume(state, batch, trace);
-      return true;
+      await this.#consume(state, batch, trace, current);
+      return current();
     } catch {
-      this.#listenerFault(state, trace);
+      if (current()) this.#listenerFault(state, trace);
       return false;
     }
   }
@@ -1225,7 +1226,23 @@ class PiRuntimeHandle implements RuntimeHandle {
     this.#reattach(state, trace);
   }
 
-  async #consume(state: Subscription, batch: readonly AgentEvent[], trace: string): Promise<void> {
+  async #consume(
+    state: Subscription,
+    batch: readonly AgentEvent[],
+    trace: string,
+    current: () => boolean,
+  ): Promise<void> {
+    // Read before changing the shared mapper: selection can change while records load.
+    let active = batch.some((event) => event.type === "snapshot")
+      ? await this.#activeRecords()
+      : [];
+    if (!current()) return;
+    for (const event of batch) {
+      if (event.type === "snapshot") {
+        active = await this.#namedRecords(event, active);
+        if (!current()) return;
+      }
+    }
     // A user entry is published before the record that names its send, so attribute the
     // whole batch first and then map it.
     this.#mapper.prime(batch);
@@ -1236,13 +1253,6 @@ class PiRuntimeHandle implements RuntimeHandle {
       this.#rememberId(record);
       const own = this.#traceOf(event.record.id, event.record.requestId);
       if (own !== undefined && record?.entryId !== undefined) byEntry.set(record.entryId, own);
-    }
-    // A snapshot names work but cannot describe it: read the records it names first.
-    let active = batch.some((event) => event.type === "snapshot")
-      ? await this.#activeRecords()
-      : [];
-    for (const event of batch) {
-      if (event.type === "snapshot") active = await this.#namedRecords(event, active);
     }
     for (const record of active) this.#rememberId(record);
     for (const event of batch) {

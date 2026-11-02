@@ -10,6 +10,7 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { ClassifiedFailure } from "../../src/core/domain.ts";
 import type { RuntimeEvent, RuntimeHandle } from "../../src/core/RuntimePort.ts";
 import { archiveHash, type HistoryArchive } from "../../src/runtime/pi/historyArchive.ts";
+import { LocalChatSelection } from "../../src/runtime/pi/LocalChat.ts";
 import { NativeHistory } from "../../src/runtime/pi/NativeHistory.ts";
 import type { PiDurableRuntime } from "../../src/runtime/pi/PiDurableRuntime.ts";
 import { assistant, createBench, text, toolCall, trace, waitFor } from "../support/pi.ts";
@@ -716,6 +717,179 @@ test("a continuation request stays indexed after selecting another branch and re
       /X original/,
     );
   } finally {
+    await left.close(trace, 5000);
+    await right.close(trace, 5000);
+    await a.cleanup();
+    await b.cleanup();
+  }
+});
+
+test("continuation cannot replace an ordinary request's first native admission", async () => {
+  const a = await createBench({ settings: { compaction: { enabled: false } } });
+  const b = await createBench({ settings: { compaction: { enabled: false } } });
+  const left = await a.runtime.open(a.spec());
+  let right = await b.runtime.open(b.spec());
+  let calls = 0;
+  try {
+    a.faux.setResponses([text("shared source")]);
+    await settled(left, "r_source_binding", "shared question");
+    const imported = await right.importHistory(await left.exportHistory());
+    b.faux.setResponses(
+      Array.from({ length: 5 }, () => () => {
+        calls++;
+        return text(`local answer ${calls}`);
+      }),
+    );
+    for (const [requestId, select] of [
+      ["r_bound_root", false],
+      ["r_bound_branch", true],
+    ] as const) {
+      if (select)
+        await right.continueHistory({
+          head: imported.head,
+          requestId: "r_choose_branch",
+          text: "choose local branch",
+        });
+      const original = await right.submit({
+        requestId,
+        text: "ordinary first",
+        whenBusy: "followUp",
+        trace,
+      });
+      await waitFor(
+        async () => (await right.submission({ requestId }))?.status === "done",
+        "first ordinary admission",
+      );
+      const before = calls;
+      await assert.rejects(
+        right.continueHistory({ head: imported.head, requestId, text: "different continuation" }),
+        (error: unknown) =>
+          error instanceof ClassifiedFailure && error.disposition === "not_admitted",
+      );
+      await right.close(trace, 5000);
+      right = await b.runtime.open(b.spec());
+      assert.equal((await right.submission({ requestId }))?.id, original.id);
+      assert.equal(
+        (await right.submit({ requestId, text: "ordinary first", whenBusy: "followUp", trace })).id,
+        original.id,
+      );
+      assert.equal(
+        calls,
+        before,
+        "neither conflicting continue nor original retry may execute again",
+      );
+    }
+  } finally {
+    await left.close(trace, 5000);
+    await right.close(trace, 5000);
+    await a.cleanup();
+    await b.cleanup();
+  }
+});
+
+test("an old SDK overflow snapshot paused in record reads cannot mutate or publish over a new branch", async (t) => {
+  const a = await createBench({ settings: { compaction: { enabled: false } } });
+  const b = await createBench({ settings: { compaction: { enabled: false } } });
+  const left = await a.runtime.open(a.spec());
+  let kernel!: Harness & { readOnLine<T>(job: () => Promise<T>): Promise<T> };
+  const open = Harness.open;
+  t.mock.method(Harness, "open", async (...args: Parameters<typeof open>) => {
+    const harness = await open(...args);
+    kernel = harness as typeof kernel;
+    return harness;
+  });
+  const right = await b.runtime.open(b.spec());
+  const acquisition = Promise.withResolvers<void>();
+  const records = Promise.withResolvers<void>();
+  let armAcquisition = false;
+  let acquired = false;
+  let armRecords = false;
+  let readingRecords = false;
+  let baselineArmed = false;
+  const read = kernel.readOnLine;
+  t.mock.method(kernel, "readOnLine", async function <
+    T,
+  >(this: typeof kernel, job: () => Promise<T>): Promise<T> {
+    const value = (await read.call(this, job)) as T;
+    if (armAcquisition && value !== null && typeof value === "object" && "observer" in value) {
+      armAcquisition = false;
+      acquired = true;
+      await acquisition.promise;
+    }
+    return value;
+  });
+  const inspect = kernel.inspect.bind(kernel);
+  t.mock.method(kernel, "inspect", async (...args: Parameters<typeof inspect>) => {
+    const value = await inspect(...args);
+    if (armRecords) {
+      armRecords = false;
+      readingRecords = true;
+      await records.promise;
+    }
+    return value;
+  });
+  const events: RuntimeEvent[] = [];
+  const subscription = await right.subscribe(trace, (event) => {
+    events.push(event);
+    // The acquired baseline is synchronous; the real overflow snapshot consumes next.
+    if (acquired && !baselineArmed && event.type === "snapshot") {
+      baselineArmed = true;
+      armRecords = true;
+    }
+  });
+  try {
+    a.faux.setResponses([text("overflow ancestor")]);
+    await settled(left, "r_overflow_ancestor", "ancestor question");
+    const imported = await right.importHistory(await left.exportHistory());
+    b.faux.setResponses([text("X answer"), text("Y chosen answer"), text("Y follow-up answer")]);
+    armAcquisition = true;
+    const older = right.continueHistory({
+      head: imported.head,
+      requestId: "r_overflow_x",
+      text: "X question",
+    });
+    await waitFor(() => acquired, "real X watch acquisition");
+    const selected = present(await kernel.snapshot(LocalChatSelection, ctx));
+    const x = present(
+      await kernel.conversation(
+        selected.conversationId as Parameters<Harness["conversation"]>[0],
+        ctx,
+      ),
+    );
+    // Real commits overflow the SDK's 100-frame queue before this observer starts.
+    for (let index = 0; index < 102; index++)
+      await x.configure({ instructions: `old-X-overflow-${index}` }, ctx);
+    acquisition.resolve();
+    await waitFor(() => readingRecords, "overflow snapshot entered actual async consumer");
+    await older;
+    await right.continueHistory({
+      head: imported.head,
+      requestId: "r_overflow_y",
+      text: "Y question",
+    });
+    await waitFor(
+      () => JSON.stringify(right.snapshot()).includes("Y chosen answer"),
+      "new Y snapshot",
+    );
+    const before = events.length;
+    records.resolve();
+    await new Promise<void>((done) => setImmediate(done));
+    await new Promise<void>((done) => setImmediate(done));
+    assert.deepEqual(
+      events.slice(before).filter((event) => event.type === "snapshot"),
+      [],
+      "stale consumer cannot publish X over Y",
+    );
+    assert.doesNotMatch(JSON.stringify(right.snapshot()), /old-X-overflow|X question|X answer/);
+    await settled(right, "r_overflow_next", "Y next");
+    await waitFor(
+      () => events.some((event) => JSON.stringify(event).includes("Y follow-up answer")),
+      "new watch remains live",
+    );
+  } finally {
+    acquisition.resolve();
+    records.resolve();
+    subscription.detach();
     await left.close(trace, 5000);
     await right.close(trace, 5000);
     await a.cleanup();

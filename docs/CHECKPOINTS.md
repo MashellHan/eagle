@@ -2839,3 +2839,10 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   was red first). SwiftPM is released. The two Node findings now also have actual
   behavioral reds: a conflicting continuation executes instead of refusing, and
   a real SDK overflow snapshot paused in record reads publishes X after Y wins.
+- Node routing/watch follow-up passes the four affected native files, 44/44
+  (`.local/history-routing-second-green.log`), plus Bots types/lint. First native
+  request binding now wins before any continuation fork; stale consumer reads
+  return before mapper changes or delivery. The optional coordinator's peer/Bot
+  failure isolation and late-open shutdown findings remain open, as does arrival
+  stability. Root reports the short-path candidate root check at 275/276; the one
+  offline-recovery fixture failure is retained, pending precise event ordering.
