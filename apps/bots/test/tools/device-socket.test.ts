@@ -795,6 +795,119 @@ test("hot and coarse scans import all five delta pages before caching the newer 
   }
 });
 
+test("a reply survives outbound-slot busy without waiting for the peer's pull timeout", async () => {
+  const stack = await startStack({ real: true });
+  const botId = await stack.createBot("current committed chat");
+  const handle = await stack.registry.open(botId, trace);
+  stack.faux?.setResponses([text("committed before backpressure")]);
+  await handle.submit({
+    requestId: "r_reply_busy",
+    text: "fresh user",
+    whenBusy: "followUp",
+    trace,
+  });
+  await waitFor(
+    async () => (await handle.submission({ requestId: "r_reply_busy" }))?.status === "done",
+    "committed native reply page",
+  );
+  const peer = randomUUID();
+  const replyId = randomUUID();
+  const rejectedId = randomUUID();
+  const closingId = randomUUID();
+  let closingAttempts = 0;
+  const releases: (() => void)[] = [];
+  const replies: { id: string; result: unknown }[] = [];
+  let attached: Socket | undefined;
+  let active = 0;
+  let busy = 0;
+  let rejected = 0;
+  let blocked = true;
+  const bench = await fixture((socket, frame) => {
+    if (frame.method === "history.attach") attached = socket;
+    const respond = (error?: string) =>
+      socket.write(
+        `${JSON.stringify({ requestId: frame.requestId, ...(error ? { error } : { result: frame.method === "history.peers" ? [{ deviceId: peer }] : { enabled: true, ready: true } }) })}\n`,
+      );
+    if (frame.method !== "history.send") {
+      respond();
+      return;
+    }
+    const { payload } = frame.params as {
+      payload: { type: string; id: string; request?: { method: string }; result: unknown };
+    };
+    if (active >= 2) {
+      if (payload.type === "reply") busy++;
+      respond("history_busy");
+      return;
+    }
+    if (payload.type === "reply") {
+      if (payload.id === closingId) {
+        closingAttempts++;
+        respond("history_busy");
+        return;
+      }
+      if (payload.id === rejectedId) {
+        rejected++;
+        respond("history_unauthorized");
+        return;
+      }
+      replies.push(payload);
+      respond();
+      return;
+    }
+    const finish = () => {
+      active--;
+      respond();
+      if (payload.type === "pull")
+        socket.write(
+          `${JSON.stringify({ type: "history.packet", sourceDeviceId: peer, payload: { type: "reply", id: payload.id, failed: false, result: payload.request?.method === "catalog" ? { bots: [], hasMore: false } : { branches: [], hasMore: false, cursor: null } } })}\n`,
+        );
+    };
+    active++;
+    if (blocked) releases.push(finish);
+    else finish();
+  });
+  const coordinator = new HistoryCoordinator(bench.path, stack.registry, stack.directory, () => {});
+  const pull = (id: string) =>
+    attached?.write(
+      `${JSON.stringify({ type: "history.packet", sourceDeviceId: peer, payload: { type: "pull", id, request: { method: "page", botId, input: {} } } })}\n`,
+    );
+  try {
+    await waitFor(() => active === 2, "outgoing pull and coalesced notice occupy both host slots");
+    pull(replyId);
+    await waitFor(
+      () => busy === 1,
+      "native page reply meets the actual two-slot capacity boundary",
+    );
+    blocked = false;
+    for (const release of releases.splice(0)) release();
+    await waitFor(
+      () => replies.some((reply) => reply.id === replyId),
+      "the same native reply arrives without another peer notice or 5s pull timeout",
+    );
+    const delivered = replies.filter((reply) => reply.id === replyId);
+    assert.equal(delivered.length, 1);
+    assert.match(JSON.stringify(delivered[0]?.result), /fresh user/);
+    pull(rejectedId);
+    await waitFor(() => rejected === 1, "explicit authorization refusal");
+    await new Promise<void>((done) => setTimeout(done, 150));
+    assert.equal(rejected, 1, "identity failures are never retried as backpressure");
+    assert.equal(attached?.destroyed, false);
+    pull(closingId);
+    await waitFor(() => closingAttempts === 1, "busy reply before shutdown");
+    attached?.write(`${JSON.stringify({ type: "history.ready", enabled: false, ready: false })}\n`);
+    await coordinator.close();
+    await new Promise<void>((done) => setTimeout(done, 150));
+    assert.equal(closingAttempts, 1, "disabled/closed attachment cannot retry the retained reply");
+  } finally {
+    blocked = false;
+    for (const release of releases.splice(0)) release();
+    await coordinator.close();
+    await stack.close();
+    await bench.close();
+  }
+});
+
 test("a native commit retains its last Bot hint after busy, while empty imports and opens stay quiet", async () => {
   const stack = await startStack({ real: true });
   const botId = await stack.createBot("native notice");

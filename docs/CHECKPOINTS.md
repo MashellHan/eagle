@@ -3242,3 +3242,36 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   retest; previous 11.8129s/18.103s/18.1017s failures and all histories remain.
   DO/TS two-way App visibility within 5s is still pending. D1, collection and
   dashboard: unchanged/N/A; source SwiftPM remains released.
+
+
+## 2026-11-02 23:30 optional history: retain replies across brief busy backpressure
+
+- Root's immediate `2c27fb4` Worker window now spans 430s/343 automatic receipts
+  with zero depth/transport exceptions; the Worker remains unchanged. This is
+  progress in transport stability, not latency acceptance. On daemon `2a4b3e5`
+  and Swift `01a3`, native A→B appeared automatically in 10.496829916s and B→A
+  in 11.906388541s: both still FAIL the 5s requirement. Receipts remain
+  `physical-888578a/fixed2c-{A-to-B-2319,B-to-A-2320}.json` and
+  `B-fixed2c-timelines.json`; model inputs include the other device's context.
+- The exact old-Bot branches reply `70feee5c-4d5b-4aaf-8c6b-74446bcaf307`
+  returned busy with no later success for that ID. The next pull started after
+  the original 5000ms wait, blocking fresh work. It belongs to old Bot
+  `b_01a19c0b-afde-791f-82aa-47ed54f51706`, not current Sync-A-2036.
+  A's catalog reply `dfdd9f18-1178-4410-a2d8-2604bb4a1e6b` also hit busy.
+- The narrow Bots-only candidate retains the already-read reply and logical ID
+  for bounded busy-only waiting. Identity errors are not retried; close/off or
+  attachment replacement stops retries. No new read, concurrency, protocol,
+  active-branch hint or Worker/Agent/SDK/UI change; the original 5s pull remains.
+- Real IPC red 14/15 → green 15/15 proves two occupied outbound slots, the lost
+  native page, same-ID/content recovery after release, one identity refusal and
+  disabled/close cleanup. Logs are `.local/history-reply-backpressure-red.log`
+  and `-green.log`. Bots types/affected lint passed. At 23:31, the existing
+  independent process file finished 5/5 (57.13s), including same-head ancestor
+  recovery and fresh user after 3/9 old branches with its provider still held;
+  `.local/history-reply-backpressure-process-green.log` retains the result.
+  These are code/affected-check evidence only, not a new physical latency pass.
+- Root prepares daemon-only replacement and owns switches, devices and physical
+  retest; all old Bot/head/backlog data remains. DO/TS two-way App visibility
+  within 5s is still pending. No source full root/Bots gate, service, Swift/App,
+  deployment or device operation is run here. Root/D1/collection/dashboard:
+  unchanged/N/A; source SwiftPM remains released.

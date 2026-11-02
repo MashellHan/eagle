@@ -336,13 +336,19 @@ export class HistoryCoordinator {
     } catch {
       failed = true;
     }
-    try {
-      await this.#channel?.call("history.send", {
-        targetDeviceId: peer,
-        payload: { type: "reply", id: pull.id, failed, result: result ?? null },
-      });
-    } catch {
-      /* A fresh notice or reconnect retries reads, never execution. */
+    const channel = this.#channel;
+    const payload = { type: "reply", id: pull.id, failed, result: result ?? null };
+    // Retain the read reply through brief backpressure, inside the peer's 5s pull budget.
+    const deadline = Date.now() + 1000;
+    while (!this.#closed && this.#ready && channel && channel === this.#channel) {
+      try {
+        await channel.call("history.send", { targetDeviceId: peer, payload });
+        return;
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== "history_busy" || Date.now() >= deadline)
+          return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      }
     }
   }
 

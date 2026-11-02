@@ -493,7 +493,11 @@ and has a separate queue. Native pending work drains independently after the fin
 backfill page, without waiting for another notice. Failed reads retain their queued
 position and retry with bounded backoff on the existing attachment; fresh work gets
 the first turn, then one background page/drain may advance before another fresh
-round. Completion broadcasts to the native App. Page replies reserve their
+round. A served reply retains its already-read result and logical ID through
+brief `history_busy` backpressure: retry at 100ms intervals within a 1s window,
+without a new read or peer notice. Other errors are not retried; disabled/closed
+or replaced attachments stop the retry. The two serving slots and original 5s
+pull timeout remain unchanged. Completion broadcasts to the native App. Page replies reserve their
 actual JSON wrapper inside the Device Service's 128 KiB plaintext budget; sealing
 retains the existing ciphertext frame cap. No model or tools run during receive/
 reopen. The native App observes welcome/bots independently of selection, preserves
