@@ -48,7 +48,22 @@ before(async () => {
     `import worker,{DeviceRegistry as Registry,DeviceExecution as Execution} from "../../apps/web/src/worker/device-service.ts";
 import { z } from "zod";
 export class DeviceExecution extends Execution {
+ testGetterReads=0;
  async history(socket,input,stage){
+  if(input.type==='history.test_error_like'){
+   this.testGetterReads=0;stage(input.fault==='all_words'?'frame.target_receive_rpc':'frame.source_check');
+   const getter=()=>{this.testGetterReads++;throw new Error('private-getter-message');};
+   if(input.fault==='own_message')throw Object.create(null,{message:{value:'Cannot perform I/O on behalf of a different request. private-message'},name:{get:getter},stack:{get:getter},toString:{get:getter},_zod:{get:getter}});
+   if(input.fault==='getters')throw Object.create(null,{message:{get:getter},name:{get:getter},toString:{get:getter},_zod:{get:getter}});
+   if(input.fault==='primitive')throw 17;
+   if(input.fault==='null')throw null;
+   if(input.fault==='no_message')throw {};
+   if(input.fault==='name')throw {name:'private-name',message:'private-message'};
+   if(input.fault==='all_words')throw {name:'private-name',message:'RPC session stub closed disposed recursive internal serialization clone request context durable object limit exceeded binding storage undefined function permission private-message'};
+   if(input.fault==='proxy_descriptor')throw new Proxy({},{getOwnPropertyDescriptor(){throw new Error('private-descriptor-message');}});
+   if(input.fault==='proxy_prototype')throw new Proxy({},{getPrototypeOf(){throw new Error('private-prototype-message');}});
+   throw new Error('No such durable object. Cannot read properties of undefined. RPC session closed disposed binding context storage permission. private-message');
+  }
   if(input.type==='history.test_zod'){
    stage('frame.configure_verify');throw new z.ZodError([
     {code:'private_code',path:['private_path'],message:'private_message',input:'private_input',keys:['private_key']},
@@ -63,7 +78,7 @@ export class DeviceExecution extends Execution {
   }
   return super.receiveHistory(token,source,input);
  }
- fetch(request){const url=new URL(request.url);if(url.pathname==='/test-close'){this.agent?.socket.close(Number(url.searchParams.get('code')),url.searchParams.get('reason'));return new Response('closed');}return super.fetch(request);}
+ fetch(request){const url=new URL(request.url);if(url.pathname==='/test-getter-reads')return new Response(String(this.testGetterReads));if(url.pathname==='/test-close'){this.agent?.socket.close(Number(url.searchParams.get('code')),url.searchParams.get('reason'));return new Response('closed');}return super.fetch(request);}
  observation(){const observation=super.observation();
   if(this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='test_observation_delay'").toArray().length){this.ctx.storage.sql.exec("UPDATE test_observation_delay SET started=1");return new Promise(resolve=>setTimeout(()=>resolve(observation),500));}
   return observation;
@@ -1508,7 +1523,9 @@ test("history transport exceptions return safe phase/category codes without chan
           error:
             category === "syntax"
               ? "history_syntax_frame_source_check"
-              : `history_transport_frame_source_check_${category}`,
+              : category === "unknown"
+                ? "history_transport_frame_source_check_unknown_err_err_kn"
+                : `history_transport_frame_source_check_${category}`,
         });
         HistoryServerFrame.parse(response);
         assert.match(String(response.error), /^[a-z_]{1,80}$/);
@@ -1619,6 +1636,82 @@ test("history transport exceptions return safe phase/category codes without chan
           ).type,
           "history.configured",
           "validation failures also release the bounded queue",
+        );
+      });
+  } finally {
+    source.terminate();
+  }
+});
+
+test("error-like history exceptions use own data without invoking getters or leaking unknown values", async (t) => {
+  const owner = await identity("history-error-like");
+  const source = await rawSocket(owner.deviceId, "agent");
+  const namespace = (await mf.getDurableObjectNamespace(
+    "DEVICE_EXECUTION",
+  )) as unknown as DurableObjectNamespace;
+  const execution = namespace.get(namespace.idFromName(owner.deviceId));
+  const exchange = async (value: unknown) => {
+    const response = frame<Record<string, unknown>>(source);
+    source.send(JSON.stringify(value));
+    return response;
+  };
+  try {
+    assert.equal((await exchange(authentication(owner.token))).type, "ready");
+    for (const [fault, expected] of [
+      ["own_message", "history_transport_frame_source_check_io_context"],
+      ["getters", "history_transport_frame_source_check_unknown_acc_acc_kn"],
+      ["primitive", "history_transport_frame_source_check_unknown_num_unk_kn"],
+      ["null", "history_transport_frame_source_check_unknown_nil_unk_kn"],
+      ["no_message", "history_transport_frame_source_check_unknown_obj_unk_kn"],
+      ["name", "history_transport_frame_source_check_unknown_obj_unk_kn"],
+      [
+        "native",
+        "history_transport_frame_source_check_unknown_err_err_krscdxaogtvp",
+      ],
+      [
+        "all_words",
+        "history_transport_frame_target_receive_rpc_unknown_obj_unk_krsbcduizlqxaomegtvfp",
+      ],
+      [
+        "proxy_descriptor",
+        "history_transport_frame_source_check_unknown_blk_blk_kn",
+      ],
+      [
+        "proxy_prototype",
+        "history_transport_frame_source_check_unknown_blk_blk_kn",
+      ],
+    ] as const)
+      await t.test(fault, async () => {
+        const requestId = randomUUID();
+        const response = await exchange({
+          type: "history.test_error_like",
+          requestId,
+          fault,
+        });
+        assert.equal(response.type, "history.error");
+        assert.equal(response.requestId, requestId);
+        HistoryServerFrame.parse(response);
+        const code = String(response.error);
+        assert.match(code, /^[a-z_]{1,80}$/);
+        assert.doesNotMatch(code, /private|17/);
+        assert.equal(
+          await (
+            await execution.fetch("https://test/test-getter-reads")
+          ).text(),
+          "0",
+          "diagnostics must inspect data descriptors, never getters or coercion",
+        );
+        assert.equal(code, expected);
+        if (fault === "all_words") assert.equal(code.length, 80);
+        assert.equal(
+          (
+            await exchange({
+              type: "history.configure",
+              requestId: randomUUID(),
+              proof: null,
+            })
+          ).type,
+          "history.configured",
         );
       });
   } finally {

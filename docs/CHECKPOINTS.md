@@ -3181,3 +3181,29 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   Root owns the next deployment and observation; data is preserved, prior latency
   failures remain, and DO/TS two-way App visibility within 5s is still pending.
   D1, collection and dashboard: unchanged/N/A; source SwiftPM remains released.
+
+## 2026-11-02 22:36 optional history: safe error-like normalization
+
+- Root reports fixed `ac019d5e` root 291/291, browser 191 pass + 11 existing
+  platform skips, dry-run/review/public live passing and existing personal Worker
+  deployment `47ed6e4b`. A60613/B39759 are post-deploy connections; 182 receipts
+  have no Zod/Syntax codes but include source-check unknown 11 and peer-RPC unknown
+  12. Actual cause is still unknown; service performed no device or tail operation.
+- The narrow follow-up reads only own data descriptors and the original bounded
+  message classifier. Local Zod identity avoids its getter-reading custom
+  `Symbol.hasInstance`; accessor/reflection/instance-check failures get fixed
+  labels. Unmatched native/Error-like values carry short shape/name and all 20
+  public-word flags in fixed order; no message, custom name, token or coercion
+  leaves diagnostics. Contract dictionary is in `docs/bots/DEVICE-PAIRING.md`.
+- Complete affected API red 35/48 → green 48/48 proves getter/`_zod` isolation,
+  Proxy failures with next-frame progress, primitive/null/no-message shapes,
+  native unmatched public-word clues and all flags at exactly 80 characters.
+  `.local/history-worker-error-like-red-complete.log` and `-green.log` retain
+  evidence; earlier `-red.log` is the preliminary 37/43 run. These direct fake
+  shapes are not proof of an online cross-realm exception. Real RPC injections,
+  original Zod/Syntax, inner delivery/denial/retry controls also remain passing.
+- Types, affected lint and local Worker dry-run pass; no Root full gate or
+  Swift/App/service was started here. Root owns deployment and physical retest;
+  histories and prior failures remain preserved. DO/TS two-way App visibility
+  within 5s is still pending. D1, collection and dashboard: unchanged/N/A;
+  source SwiftPM remains released.

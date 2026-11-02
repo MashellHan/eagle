@@ -73,6 +73,22 @@ type PendingPolicy = {
   resolve: (value: PolicySetResult) => void;
   timer: ReturnType<typeof setTimeout>;
 };
+function historyData(value: unknown, key: string) {
+  if (
+    value === null ||
+    (typeof value !== "object" && typeof value !== "function")
+  )
+    return { state: "none", value: undefined };
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor) return { state: "none", value: undefined };
+    return "value" in descriptor
+      ? { state: "data", value: descriptor.value as unknown }
+      : { state: "acc", value: undefined };
+  } catch {
+    return { state: "blk", value: undefined };
+  }
+}
 function historyFailure(
   phase: string,
   requestId: unknown,
@@ -80,9 +96,49 @@ function historyFailure(
 ): string {
   let category = "unknown";
   let detail = "";
-  if (error instanceof z.ZodError) {
+  const brand = historyData(error, "_zod");
+  const zodConstructor = historyData(brand.value, "constr").value;
+  const issues = historyData(error, "issues");
+  const messageData = historyData(error, "message");
+  const nameData = historyData(error, "name");
+  const message =
+    typeof messageData.value === "string"
+      ? messageData.value.slice(0, 512)
+      : "";
+  const ownName =
+    typeof nameData.value === "string" ? nameData.value : undefined;
+  const nativeNames = [
+    [Error.prototype, "Error", "err"],
+    [EvalError.prototype, "EvalError", "evl"],
+    [RangeError.prototype, "RangeError", "rng"],
+    [ReferenceError.prototype, "ReferenceError", "ref"],
+    [SyntaxError.prototype, "SyntaxError", "syn"],
+    [TypeError.prototype, "TypeError", "typ"],
+    [URIError.prototype, "URIError", "uri"],
+    [AggregateError.prototype, "AggregateError", "agg"],
+  ] as const;
+  let native = false;
+  let syntax = false;
+  let prototype: unknown;
+  let blocked = false;
+  try {
+    native = Function.prototype[Symbol.hasInstance].call(Error, error);
+    syntax = Function.prototype[Symbol.hasInstance].call(SyntaxError, error);
+    if (
+      error !== null &&
+      (typeof error === "object" || typeof error === "function")
+    )
+      prototype = Object.getPrototypeOf(error);
+  } catch {
+    blocked = true;
+  }
+  if (
+    (zodConstructor === z.ZodError || zodConstructor === z.ZodRealError) &&
+    issues.state === "data"
+  ) {
     category = "zod";
-    const issue = error.issues[0];
+    const issue = historyData(issues.value, "0").value;
+    const issueCode = historyData(issue, "code").value;
     const code = [
       "invalid_type",
       "too_big",
@@ -95,18 +151,20 @@ function historyFailure(
       "invalid_element",
       "invalid_value",
       "custom",
-    ].includes(issue?.code)
-      ? issue.code
+    ].includes(typeof issueCode === "string" ? issueCode : "")
+      ? (issueCode as string)
       : "unknown";
-    const path = issue?.path ?? [];
-    const [root, field] = path;
+    const path = historyData(issue, "path").value;
+    const length = historyData(path, "length").value;
+    const root = historyData(path, "0").value;
+    const field = historyData(path, "1").value;
     const knownPath =
-      (path.length === 1 &&
+      (length === 1 &&
         typeof root === "string" &&
         ["type", "requestId", "targetDeviceId", "packet", "proof"].includes(
           root,
         )) ||
-      (path.length === 2 &&
+      (length === 2 &&
         typeof field === "string" &&
         ((root === "packet" &&
           [
@@ -135,12 +193,13 @@ function historyFailure(
               "signature",
             ].includes(field))));
     const fieldPath = knownPath
-      ? path.join("_").replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
+      ? (length === 1 ? [root] : [root, field])
+          .join("_")
+          .replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
       : "unknown";
     detail = `_${code}_${fieldPath}`;
-  } else if (error instanceof SyntaxError) category = "syntax";
-  else if (error instanceof Error) {
-    const message = error.message.slice(0, 512);
+  } else if (syntax) category = "syntax";
+  else {
     if (
       /too many (?:subrequests|api requests|concurrent requests|open connections)/i.test(
         message,
@@ -167,12 +226,71 @@ function historyFailure(
       category = "connection_lost";
     else if (
       /timed out|timeout|deadline exceeded/i.test(message) ||
-      error.name === "TimeoutError"
+      ownName === "TimeoutError"
     )
       category = "timeout";
     else if (/object (?:has been |was )?reset|object restarted/i.test(message))
       category = "object_reset";
-    else if (error.name === "AbortError") category = "aborted";
+    else if (ownName === "AbortError") category = "aborted";
+  }
+  if (category === "unknown") {
+    const shape =
+      blocked || messageData.state === "blk"
+        ? "blk"
+        : messageData.state === "acc"
+          ? "acc"
+          : error === null
+            ? "nil"
+            : native
+              ? "err"
+              : {
+                  object: "obj",
+                  function: "fun",
+                  string: "str",
+                  number: "num",
+                  boolean: "boo",
+                  undefined: "und",
+                  bigint: "big",
+                  symbol: "sym",
+                }[typeof error];
+    const name =
+      blocked || nameData.state === "blk"
+        ? "blk"
+        : nameData.state === "acc"
+          ? "acc"
+          : (nativeNames.find((entry) =>
+              ownName === undefined
+                ? entry[0] === prototype
+                : entry[1] === ownName,
+            )?.[2] ?? "unk");
+    const flags = (
+      [
+        ["r", /\brpc\b/i],
+        ["s", /\bsessions?\b/i],
+        ["b", /\bstubs?\b/i],
+        ["c", /\bclosed\b/i],
+        ["d", /\bdisposed\b/i],
+        ["u", /\brecurs(?:ive|ion|ively)\b/i],
+        ["i", /\binternal\b/i],
+        ["z", /\bserializ(?:e[ds]?|ation|ing)\b/i],
+        ["l", /\bclon(?:e[ds]?|ing)\b/i],
+        ["q", /\brequests?\b/i],
+        ["x", /\bcontexts?\b/i],
+        ["a", /\bdurable\b/i],
+        ["o", /\bobjects?\b/i],
+        ["m", /\blimits?\b/i],
+        ["e", /\bexceeded\b/i],
+        ["g", /\bbindings?\b/i],
+        ["t", /\bstorage\b/i],
+        ["v", /\bundefined\b/i],
+        ["f", /\bfunctions?\b/i],
+        ["p", /\b(?:denied|permissions?)\b/i],
+      ] as const
+    )
+      .filter((entry) => entry[1].test(message))
+      .map((entry) => entry[0])
+      .join("");
+    detail = `_${shape}_${name}_k${flags || "n"}`;
   }
   const correlation = DeviceId.safeParse(requestId);
   console.error(
@@ -187,7 +305,7 @@ function historyFailure(
   const stage = phase.replaceAll(".", "_");
   if (category === "zod") return `history_zod_${stage}${detail}`;
   if (category === "syntax") return `history_syntax_${stage}`;
-  return `history_transport_${stage}_${category}`;
+  return `history_transport_${stage}_${category}${detail}`;
 }
 
 class DeviceAuthenticationError extends Error {}

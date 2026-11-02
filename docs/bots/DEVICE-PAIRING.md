@@ -42,6 +42,26 @@ depth or CPU limits), alongside the existing allowlist and `unknown`. These code
 remain nontransient; no Agent retry/503/fallback semantics change. A reported
 category identifies an exception class, not a proven online cause.
 
+Error-like messages use only own string data descriptors, limited to 512 characters;
+no getter, coercion, stack/cause or arbitrary key enumeration is used. Local Zod
+identity/first issue use data descriptors rather than Zod's custom `Symbol.hasInstance`.
+Reflection failures and native instance checks are guarded. Unmatched errors return
+`history_transport_<phase>_unknown_<shape>_<name>_k<flags>`; no raw message or name
+is returned. Shapes are `err/obj/fun/str/num/boo/nil/und/big/sym`, with `acc` for
+message accessors and `blk` for blocked reflection. Names are the fixed native
+`err/evl/rng/ref/syn/typ/uri/agg`, or `acc/blk/unk`; custom names become `unk`.
+Missing own names may use an exact known native prototype identity, never an
+inherited name getter. These labels describe the observed value, not its remote origin.
+
+Public-word flags include every match in fixed order `rsbcduizlqxaomegtvfp`:
+`r=rpc, s=session, b=stub, c=closed, d=disposed, u=recursive/recursion,
+i=internal, z=serialize/serialization, l=clone, q=request, x=context,
+a=durable, o=object, m=limit, e=exceeded, g=binding, t=storage, v=undefined,
+f=function, p=denied/permission`. Only whole words and explicit inflections match;
+no match is `n`. All 20 flags fit the existing 80-character budget even at the
+longest phase; the final code is never truncated. Known categories and inner
+`history_delivery_failed` retain their existing semantics and Agent consumers.
+
 - 设备属于 Eagle 的共享设备群。一个 App 配置一次，当前及以后创建的 Bot 都可使用；
   不再为每个 Bot 复制设备名单、凭据或五项权限，也不要求另开远程工具组。
 - 群有稳定的 `groupId` 和多个成员，支持 A/B/C/D 等三台以上设备；各成员相互发现，
