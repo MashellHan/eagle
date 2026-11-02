@@ -11,6 +11,261 @@ import { pageHead } from "../../src/runtime/pi/historyIncremental.ts";
 import { NativeHistory } from "../../src/runtime/pi/NativeHistory.ts";
 import { assistant, createBench, text, toolCall, trace, waitFor } from "../support/pi.ts";
 
+test("an archive-only receiver accepts a pure later delta and reopens into a usable native head", async () => {
+  const a = await createBench({ settings: { compaction: { enabled: false } } });
+  const b = await createBench({ settings: { compaction: { enabled: false } } });
+  const left = await a.runtime.open(a.spec());
+  let right = await b.runtime.open(b.spec());
+  try {
+    a.faux.setResponses([text("archive ancestor answer"), text("pure delta answer")]);
+    await left.submit({
+      requestId: "r_pure_ancestor",
+      text: "ancestor question",
+      whenBusy: "followUp",
+      trace,
+    });
+    await waitFor(
+      async () => (await left.submission({ requestId: "r_pure_ancestor" }))?.status === "done",
+      "ancestor",
+    );
+    await right.importHistory(await left.exportHistory());
+    const snapshot = await left.exportHistoryPage();
+    assert.ok(snapshot.snapshot);
+    await left.submit({
+      requestId: "r_pure_delta",
+      text: "delta question",
+      whenBusy: "followUp",
+      trace,
+    });
+    await waitFor(
+      async () => (await left.submission({ requestId: "r_pure_delta" }))?.status === "done",
+      "delta",
+    );
+    const delta = await left.exportHistoryPage({ after: snapshot.snapshot });
+    assert.ok(delta.records.length > 0);
+    assert.doesNotMatch(JSON.stringify(delta.records), /archive ancestor answer|ancestor question/);
+    await right.importHistoryPage(delta);
+    await right.close(trace, 5_000);
+    right = await b.runtime.open(b.spec());
+    await right.importHistoryPage(delta);
+    assert.equal((await right.assessHistoryHead(delta.head)).usable, true);
+    b.faux.setResponses([
+      (context) => {
+        assert.match(JSON.stringify(context.messages), /archive ancestor answer/);
+        assert.match(JSON.stringify(context.messages), /pure delta answer/);
+        return text("B continues pure delta");
+      },
+    ]);
+    assert.equal(
+      (
+        await right.continueHistory({
+          head: delta.head,
+          requestId: "r_pure_continue",
+          text: "B next",
+        })
+      ).submission.status,
+      "done",
+    );
+  } finally {
+    await left.close(trace, 5_000);
+    await right.close(trace, 5_000);
+    await a.cleanup();
+    await b.cleanup();
+  }
+});
+
+test("a missing-ancestor received selection forwards bounded original records while remaining unusable", async () => {
+  const a = await createBench();
+  const b = await createBench();
+  const c = await createBench();
+  const left = await a.runtime.open(a.spec());
+  let middle = await b.runtime.open(b.spec());
+  const right = await c.runtime.open(c.spec());
+  try {
+    a.faux.setResponses([
+      text("old answer"),
+      text("forward before backfill"),
+      text("future answer"),
+    ]);
+    await left.submit({
+      requestId: "r_partial_old",
+      text: "older missing ancestor",
+      whenBusy: "followUp",
+      trace,
+    });
+    await waitFor(
+      async () => (await left.submission({ requestId: "r_partial_old" }))?.status === "done",
+      "old answer",
+    );
+    await left.submit({
+      requestId: "r_partial_forward",
+      text: "missing user ancestor",
+      whenBusy: "followUp",
+      trace,
+    });
+    await waitFor(
+      async () => (await left.submission({ requestId: "r_partial_forward" }))?.status === "done",
+      "answer",
+    );
+    const tail = await left.exportHistoryPage({ limit: 2 });
+    assert.ok(tail.records[0]?.previous);
+    await middle.importHistoryPage(tail);
+    await middle.close(trace, 5_000);
+    middle = await b.runtime.open(b.spec());
+    const branch = (await middle.listHistoryBranches()).branches.find(
+      (value) => value.branchId === tail.branchId,
+    );
+    assert.ok(branch);
+    const forwarded = await middle.exportHistoryPage({
+      selection: branch.selection,
+      limit: 1,
+      maxBytes: 4096,
+    });
+    assert.deepEqual(forwarded.records, tail.records.slice(-1));
+    assert.ok(forwarded.cursor);
+    const older = await middle.exportHistoryPage({
+      selection: branch.selection,
+      before: forwarded.cursor,
+      limit: 1,
+      maxBytes: 4096,
+    });
+    assert.deepEqual(older.records, tail.records.slice(0, 1));
+    await right.importHistoryPage(older);
+    assert.equal(forwarded.head, tail.head);
+    assert.ok(Buffer.byteLength(JSON.stringify(forwarded)) <= 4096);
+    await right.importHistoryPage(forwarded);
+    assert.match(
+      JSON.stringify((await right.readHistoryHead(tail.head)).messages),
+      /forward before backfill/,
+    );
+    assert.equal((await right.assessHistoryHead(tail.head)).usable, false);
+    await middle.importHistoryPage(await left.exportHistoryPage());
+    assert.deepEqual(
+      (
+        await middle.exportHistoryPage({
+          selection: branch.selection,
+          before: forwarded.cursor,
+          limit: 1,
+        })
+      ).records,
+      older.records,
+      "received cursors survive later native materialization",
+    );
+    await left.submit({
+      requestId: "r_partial_future",
+      text: "future user",
+      whenBusy: "followUp",
+      trace,
+    });
+    await waitFor(
+      async () => (await left.submission({ requestId: "r_partial_future" }))?.status === "done",
+      "future answer",
+    );
+    const future = await left.exportHistoryPage({ limit: 2 });
+    await right.importHistoryPage(future);
+    const futureForward = await right.exportHistoryPage({ selection: future.head });
+    assert.ok(futureForward.snapshot);
+    await assert.rejects(
+      right.exportHistoryPage({ selection: tail.head, until: futureForward.snapshot }),
+      /selected head/,
+    );
+    await assert.rejects(
+      right.continueHistory({ head: tail.head, requestId: "r_partial_c", text: "must not run" }),
+    );
+  } finally {
+    await left.close(trace, 5_000);
+    await middle.close(trace, 5_000);
+    await right.close(trace, 5_000);
+    await a.cleanup();
+    await b.cleanup();
+    await c.cleanup();
+  }
+});
+
+test("an empty receive cannot clear a concurrent bounded backfill's pending drain across NativeHistory instances", async () => {
+  const bench = await createBench();
+  const source = await Harness.open(
+    await openNodeSqliteStorage(join(bench.dir, "race-source.sqlite")),
+    { registry: createRegistry(), models: createModels() },
+    ctx,
+  );
+  const target = await Harness.open(
+    await openNodeSqliteStorage(join(bench.dir, "race-target.sqlite")),
+    { registry: createRegistry(), models: createModels() },
+    ctx,
+  );
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let paused!: () => void;
+  const held = new Promise<void>((resolve) => {
+    paused = resolve;
+  });
+  try {
+    const root = await source.root(ctx);
+    await source.commit(async (tx) => {
+      for (let turn = 0; turn < 40; turn += 1) {
+        await tx.appendEntry(root.id, {
+          kind: "pi.user",
+          model: [{ role: "user", content: `race user ${turn}`, timestamp: turn }],
+        });
+        await tx.appendEntry(root.id, {
+          kind: "pi.assistant",
+          model: [text(`race answer ${turn}`)],
+        });
+      }
+    }, ctx);
+    const feed = new NativeHistory(source, root.id, "b_race");
+    const receiver = new NativeHistory(target, (await target.root(ctx)).id, "b_race");
+    const newest = await feed.exportPage();
+    assert.ok(newest.cursor && newest.snapshot);
+    await receiver.importPage(newest);
+    const middle = await feed.exportPage({ before: newest.cursor, until: newest.snapshot });
+    assert.ok(middle.cursor);
+    await receiver.importPage(middle);
+    const oldest = await feed.exportPage({ before: middle.cursor, until: newest.snapshot });
+    assert.equal(oldest.records.length, 16);
+    let commits = 0;
+    const interleaved = new NativeHistory(
+      new Proxy(target, {
+        get(harness, property) {
+          if (property === "commit")
+            return async (...args: unknown[]) => {
+              if (++commits === 2) {
+                paused();
+                await blocked;
+              }
+              return Reflect.apply(harness.commit, harness, args);
+            };
+          const value = Reflect.get(harness, property);
+          return typeof value === "function" ? value.bind(harness) : value;
+        },
+      }),
+      (await target.root(ctx)).id,
+      "b_race",
+    );
+    const staleEmpty = interleaved.importPage({ ...newest, records: [] });
+    await held;
+    assert.equal((await receiver.importPage(oldest)).pending, true);
+    release();
+    await staleEmpty;
+    for (let drain = 0; drain < 4; drain += 1) {
+      if (!(await receiver.importPage({ ...newest, records: [] })).pending) break;
+    }
+    assert.equal(
+      (await receiver.assessHead(newest.head)).usable,
+      true,
+      "the native progress pointer must survive a stale empty receive, then drain without resending records",
+    );
+  } finally {
+    release();
+    await source.close(ctx);
+    await target.close(ctx);
+    await bench.cleanup();
+  }
+});
+
 test("SDK ownerless ownership alone cannot distinguish the root from a passive import fork", async () => {
   const bench = await createBench();
   const harness = await Harness.open(

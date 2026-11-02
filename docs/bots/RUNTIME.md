@@ -57,6 +57,10 @@ The branch directory includes root, local continuations and received branches.
 Only containers created by passive import may receive further foreign appends.
 Native ownerless ownership also describes local roots/continuations, so matching
 an ancestor tail alone never authorizes reuse of a local chat container.
+Archive import also installs native record/ancestry mappings so a later pure
+delta needs no repeated ancestors. Missing-ancestor selections can forward their
+bounded received records before materialization; they remain unusable. Concurrent
+drains update progress conditionally on the native stored revision, across handles.
 
 ## Verified facts
 

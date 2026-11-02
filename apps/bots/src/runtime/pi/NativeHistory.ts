@@ -95,7 +95,7 @@ const BranchProgress = defineDocFamily({
   version: 1,
   scope: "session",
   family: true,
-  initial: (_seed: null) => ({ next: "" }),
+  initial: (_seed: null) => ({ next: "", revision: 0 }),
   checkpointWhen: () => true,
 });
 const NativeProvenance = defineDocFamily({
@@ -205,6 +205,16 @@ export class NativeHistory {
         input.selection === undefined
           ? undefined
           : await tx.doc(IncrementalHead, input.selection, null);
+      const receivedCursor = [input.after, input.before, input.until].some((value) => {
+        if (value === undefined) return false;
+        try {
+          return "record" in JSON.parse(Buffer.from(value, "base64url").toString());
+        } catch {
+          return false;
+        }
+      });
+      if (incremental?.branchId && (!incremental.nativeId || receivedCursor))
+        return this.#exportReceived(tx, incremental, state.originId, input);
       const selected =
         saved ??
         (incremental?.nativeId ? incremental : undefined) ??
@@ -386,6 +396,104 @@ export class NativeHistory {
     }, ctx);
   }
 
+  async #exportReceived(
+    tx: Tx,
+    selected: { branchId: string; conversationId: string; botId: string; tip: string },
+    origin: string,
+    input: HistoryPageRequest,
+  ): Promise<HistoryPage> {
+    const cursor = (record: string) =>
+      Buffer.from(JSON.stringify({ origin, branchId: selected.branchId, record })).toString(
+        "base64url",
+      );
+    const read = async (id: string) => {
+      const stored = await tx.doc(ReceivedRecord, id, null);
+      return stored.body ? (JSON.parse(stored.body) as HistoryPage["records"][number]) : undefined;
+    };
+    const position = async (value: string | undefined) => {
+      if (value === undefined) return undefined;
+      let parsed: { origin?: string; branchId?: string; record?: string };
+      try {
+        parsed = JSON.parse(Buffer.from(value, "base64url").toString());
+      } catch {
+        return historyReject("invalid history cursor");
+      }
+      if (
+        parsed?.origin !== origin ||
+        parsed.branchId !== selected.branchId ||
+        typeof parsed.record !== "string"
+      )
+        return historyReject("foreign history cursor");
+      const record = await read(parsed.record);
+      if (
+        !record ||
+        (await tx.doc(RecordLink, `${selected.branchId}/${record.previous ?? "root"}`, null))
+          .next !== parsed.record
+      )
+        return historyReject("history cursor is not in this branch");
+      if (tipOrder(selected.branchId, record.entry.id) > tipOrder(selected.branchId, selected.tip))
+        return historyReject("history cursor is outside selected head");
+      return record;
+    };
+    const after = await position(input.after);
+    const before = await position(input.before);
+    const until = await position(input.until);
+    const tip = until?.entry.id ?? (selected.tip || null);
+    const result: HistoryPage = {
+      version: 1,
+      engine: "pi-durable@1.4.0",
+      branchId: selected.branchId,
+      conversationId: selected.conversationId,
+      botId: selected.botId,
+      tip,
+      head: pageHead(selected.branchId, tip),
+      cursor: input.after ?? input.before ?? null,
+      snapshot: tip === null ? null : cursor(tip),
+      hasMore: false,
+      records: [],
+    };
+    let id =
+      after === undefined
+        ? before === undefined
+          ? tip
+          : before.previous
+        : after.entry.id === tip
+          ? null
+          : (await tx.doc(RecordLink, `${selected.branchId}/${after.entry.id}`, null)).next || null;
+    for (let count = 0; id && count < (input.limit ?? 32); count += 1) {
+      const record = await read(id);
+      if (!record) break;
+      result.records.push(record);
+      const nextCursor = cursor(id);
+      if (
+        Buffer.byteLength(JSON.stringify({ ...result, cursor: nextCursor })) >
+        (input.maxBytes ?? MAX_HISTORY_PAGE_BYTES)
+      ) {
+        result.records.pop();
+        if (!result.records.length) historyReject("history record exceeds page budget");
+        result.hasMore = true;
+        break;
+      }
+      result.cursor = nextCursor;
+      id =
+        after === undefined
+          ? record.previous
+          : id === tip
+            ? null
+            : (await tx.doc(RecordLink, `${selected.branchId}/${id}`, null)).next || null;
+      result.hasMore = id !== null && (await read(id)) !== undefined;
+    }
+    if (after === undefined) result.records.reverse();
+    const receipt = await tx.doc(IncrementalHead, result.head, null);
+    Object.assign(receipt, {
+      branchId: selected.branchId,
+      conversationId: selected.conversationId,
+      botId: selected.botId,
+      tip: tip ?? "",
+    });
+    return validateHistoryPage(result);
+  }
+
   async importPage(input: unknown) {
     const page = validateHistoryPage(input);
     await this.#harness.commit(async (tx) => {
@@ -457,6 +565,7 @@ export class NativeHistory {
     }, ctx);
     // Each native append is a separate short transaction; backfill yields to local chat.
     const progress = await this.#harness.snapshot(BranchProgress, page.branchId, ctx);
+    const revision = progress?.revision ?? 0;
     const queue = [
       ...new Set([
         ...(progress?.next ? [progress.next] : []),
@@ -473,20 +582,24 @@ export class NativeHistory {
       remaining -= 1;
       if (next !== undefined && !visited.has(next) && !queue.includes(next)) queue.push(next);
     }
-    await this.#harness.commit(async (tx) => {
+    const pending = await this.#harness.commit(async (tx) => {
       const pending = await tx.doc(BranchProgress, page.branchId, null);
-      pending.next = queue[0] ?? "";
+      if ((pending.revision ?? 0) === revision) {
+        pending.next = queue[0] ?? "";
+        pending.revision = revision + 1;
+      }
       const head = await tx.doc(IncrementalHead, page.head, null);
       if (head.tip) {
         const tip = await tx.doc(ReceivedRecord, head.tip, null);
         if (tip.nativeId) Object.assign(head, { nativeId: tip.conversationId, tail: tip.nativeId });
       }
+      return pending.next !== "";
     }, ctx);
     return {
       head: page.head,
       branchId: page.branchId,
       conversationId: page.conversationId,
-      pending: queue.length > 0,
+      pending,
     };
   }
 
@@ -900,6 +1013,21 @@ export class NativeHistory {
         };
         mapped.set(entry.id, local);
         nativeEntries.push(local);
+      }
+      for (const [index, entry] of archive.entries.entries()) {
+        const stored = await tx.doc(ReceivedRecord, entry.id, null);
+        const previous = archive.entries[index - 1]?.id ?? null;
+        const body = JSON.stringify({ previous, entry });
+        if (stored.body && stored.body !== body) historyReject("history record content conflict");
+        stored.body = body;
+        if (!stored.nativeId)
+          Object.assign(stored, {
+            nativeId: nativeEntries[index],
+            conversationId: conversation.id,
+          });
+        const link = await tx.doc(RecordLink, `${archive.branchId}/${previous ?? "root"}`, null);
+        if (link.next && link.next !== entry.id) historyReject("history branch ancestry conflict");
+        link.next = entry.id;
       }
       state.heads[archive.head] = {
         branchId: archive.branchId,
