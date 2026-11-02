@@ -3127,3 +3127,28 @@ before relay forwarding are under fault-injection tests; Lead owns integration.
   DO/TS two-way App visibility within 5s is still pending. D1, collection and
   dashboard are unchanged/N/A. Source and SwiftPM remain released, awaiting
   Root's real classification.
+
+
+## 2026-11-02 22:05 optional history: safe error codes handed off
+
+- Fixed product `ae063b6a` exposes only outer non-validation history exceptions
+  as safe phase/category codes. Directed review found no P1/P2 or blocker; codes
+  are at most 65 characters. True parse `history_invalid_frame`, inner
+  `history_delivery_failed`, retry/503/fallback, auth/RPC/limits and finally/next-frame
+  behavior remain unchanged. API red 24/28 → green 28/28, types, affected lint,
+  local Worker dry-run and normal hook passed; evidence is
+  `.local/history-worker-error-codes-*.log`.
+- Root took this head in `eagle-hc` for one root/browser/dry-run run followed by
+  the authorized existing personal Worker deployment. No new gate result,
+  deployment confirmation or real phase/category has been reported yet; these
+  remain pending. Service does not infer a green result or an online quota cause.
+- Latest e030 physical observation: both WSS connections ended/reopened under
+  online tail; version-bound tail 397 still had logCount 0. A's new connection
+  produced 63 receipts in 43s, including 24 `invalid_frame` and 4 `delivery_failed`.
+  Earlier 11.8129s/18.103s and 2a4's 18.101708875s App failures remain retained,
+  including B-fresh's late arrival. B's fourth provider context and unique 50-record
+  raw/native wire matches prove consumption/persistence only, not latency.
+- DO/TS two-way App visibility within 5s remains pending; all data is preserved.
+  Root owns switches, devices, deployment and WSS/tail. This doc-only commit starts
+  no gate/test/service/Swift/App; source and SwiftPM remain released and frozen
+  pending a concrete classification. D1, collection and dashboard: unchanged/N/A.
